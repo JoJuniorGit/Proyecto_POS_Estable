@@ -7,19 +7,23 @@ public sealed record StageSupplierInvoiceRequestDto(
     string? SupplierRifOrNit,
     string? SupplierCommercialName,
     SupplierColumnMappingDto? ColumnMapping,
-    IReadOnlyList<StageLineDto> Lines);
+    IReadOnlyList<StageLineDto> Lines,
+    string Currency,
+    decimal AppliedRate);
 
 public sealed record StageLineDto(
     string? SupplierCode,
     string? Barcode,
     string? Name,
     decimal Quantity,
-    decimal UnitCostUSD);
+    decimal UnitCostDocument);
 
 public sealed record SupplierInvoiceDetailDto(
     int Id,
     int SupplierId,
     string Status,
+    string Currency,
+    decimal AppliedRate,
     IReadOnlyList<SupplierInvoiceLineDto> Lines);
 
 public sealed record SupplierInvoiceLineDto(
@@ -28,6 +32,7 @@ public sealed record SupplierInvoiceLineDto(
     string? Barcode,
     string? Name,
     decimal Quantity,
+    decimal UnitCostDocument,
     decimal UnitCostUSD,
     string Status,
     int? ResolvedProductId,
@@ -41,6 +46,8 @@ public sealed record SupplierInvoiceLineDto(
     decimal? SuggestedWholesalePriceUSD,
     bool IsApproved,
     string MatchMethod);
+
+public sealed record CreateInvoiceProductRequestDto(string Barcode, string Name);
 
 public sealed record ConfirmSupplierInvoiceRequestDto(IReadOnlyList<ConfirmLineDto> Lines);
 

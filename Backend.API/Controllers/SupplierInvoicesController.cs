@@ -63,4 +63,20 @@ public sealed class SupplierInvoicesController : ControllerBase
         var invoice = await _supplierInvoiceService.ConfirmAsync(id, request, cancellationToken);
         return Ok(invoice);
     }
+
+    [HttpPost("{id:int}/lines/{lineId:int}/create-product")]
+    [ProducesResponseType(typeof(SupplierInvoiceDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<SupplierInvoiceDetailDto>> CreateProductFromLineAsync(
+        int id,
+        int lineId,
+        [FromBody] CreateInvoiceProductRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var invoice = await _supplierInvoiceService.CreateProductFromLineAsync(id, lineId, request, cancellationToken);
+        return Ok(invoice);
+    }
 }

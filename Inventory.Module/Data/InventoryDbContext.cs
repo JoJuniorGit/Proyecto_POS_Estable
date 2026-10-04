@@ -1,3 +1,4 @@
+using Core.Common;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -208,6 +209,13 @@ public class InventoryDbContext : DbContext
                 .HasConversion<string>()
                 .HasMaxLength(32)
                 .HasDefaultValue(SupplierInvoiceStatus.Draft);
+            entity.Property(i => i.Currency)
+                .HasMaxLength(8)
+                .HasDefaultValue(CurrencyCodes.Usd);
+            entity.Property(i => i.AppliedRate)
+                .HasColumnType("numeric(18,4)")
+                .HasPrecision(18, 4)
+                .HasDefaultValue(1m);
             entity.HasOne(i => i.Supplier)
                 .WithMany(s => s.Invoices)
                 .HasForeignKey(i => i.SupplierId)
@@ -237,6 +245,7 @@ public class InventoryDbContext : DbContext
                 .HasDefaultValue(MatchMethod.None);
             entity.Property(line => line.IsApproved).HasDefaultValue(true);
             entity.Property(line => line.Quantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+            entity.Property(line => line.UnitCostDocument).HasColumnType("numeric(18,2)").HasPrecision(18, 2).HasDefaultValue(0m);
             entity.Property(line => line.UnitCostUSD).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
             entity.Property(line => line.OldCostPriceUSD).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
             entity.Property(line => line.OldProfitMarginRetail).HasColumnType("numeric(18,2)").HasPrecision(18, 2);

@@ -1,11 +1,13 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.DTOs;
 using Core.Interfaces;
 using Desktop.Client.Services;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,12 +20,15 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     private readonly ClientSupplierInvoiceService _invoiceService;
     private readonly IDialogService _dialogService;
     private readonly IFilePickerDialog _filePicker;
+    private readonly IExchangeRateService _exchangeRateService;
     private int _disposed;
+    private bool _isCreatingProduct;
 
     public UserSession UserSession { get; }
     public bool CanMutateCatalog => UserSession.CanMutateCatalog;
     public ObservableCollection<SupplierInvoiceColumnMappingItem> ColumnMappings { get; } = new();
     public ObservableCollection<SupplierInvoiceLineViewModel> Lines { get; } = new();
+    public IReadOnlyList<string> CurrencyOptions { get; } = new[] { CurrencyCodes.Usd, CurrencyCodes.BsS };
 
     [ObservableProperty]
     private bool _isBusy;
@@ -49,13 +54,30 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private SupplierInvoiceDetailDto? _stagedInvoice;
 
+    [ObservableProperty]
+    private string _selectedCurrency = CurrencyCodes.Usd;
+
+    [ObservableProperty]
+    private string _appliedRateText = string.Empty;
+
+    public bool IsBsSCurrency => string.Equals(SelectedCurrency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
+    public bool IsBsSInvoice => string.Equals(StagedInvoice?.Currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Factura Bs.S exige una tasa aplicada válida (&gt; 0); en USD la tasa se normaliza a 1.</summary>
+    public bool HasValidAppliedRate => !IsBsSCurrency || (TryParseAppliedRate(AppliedRateText, out var rate) && rate > 0m);
+
+    public bool ShowRateValidationHint => IsBsSCurrency && !HasValidAppliedRate;
+    public bool IsCurrencyInputEnabled => CanMutateCatalog && !IsBusy;
+    public bool IsRateInputEnabled => IsCurrencyInputEnabled && IsBsSCurrency;
+
     public bool CanSelectFile => CanMutateCatalog && !IsBusy;
     public bool CanLookupSupplier => CanMutateCatalog && !IsBusy &&
         (!string.IsNullOrWhiteSpace(SupplierRifOrNit) || !string.IsNullOrWhiteSpace(SupplierCommercialName));
     public bool CanCreateSupplier => CanMutateCatalog && !IsBusy && SelectedSupplier is null &&
         !string.IsNullOrWhiteSpace(SupplierCommercialName);
     public bool CanStageInvoice => CanMutateCatalog && !IsBusy && SelectedSupplier is not null &&
-        !string.IsNullOrWhiteSpace(SelectedFilePath) && HasFileHeaders && HasValidColumnMapping();
+        !string.IsNullOrWhiteSpace(SelectedFilePath) && HasFileHeaders && HasValidColumnMapping() &&
+        HasValidAppliedRate;
     public bool CanConfirmInvoice => CanMutateCatalog && !IsBusy && StagedInvoice is not null &&
         Lines.Any(line => line.IsApproved && line.CanApprove);
 
@@ -63,17 +85,20 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         ClientSupplierInvoiceService invoiceService,
         UserSession userSession,
         IDialogService dialogService,
-        IFilePickerDialog filePicker)
+        IFilePickerDialog filePicker,
+        IExchangeRateService exchangeRateService)
     {
         ArgumentNullException.ThrowIfNull(invoiceService);
         ArgumentNullException.ThrowIfNull(userSession);
         ArgumentNullException.ThrowIfNull(dialogService);
         ArgumentNullException.ThrowIfNull(filePicker);
+        ArgumentNullException.ThrowIfNull(exchangeRateService);
 
         _invoiceService = invoiceService;
         UserSession = userSession;
         _dialogService = dialogService;
         _filePicker = filePicker;
+        _exchangeRateService = exchangeRateService;
         UserSession.PropertyChanged += OnUserSessionPropertyChanged;
     }
 
@@ -100,9 +125,33 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedFilePathChanged(string value) => RefreshCommandStates();
 
+    partial void OnSelectedCurrencyChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsBsSCurrency));
+        OnPropertyChanged(nameof(IsRateInputEnabled));
+        OnPropertyChanged(nameof(HasValidAppliedRate));
+        OnPropertyChanged(nameof(ShowRateValidationHint));
+        OnPropertyChanged(nameof(CanStageInvoice));
+        StageInvoiceCommand.NotifyCanExecuteChanged();
+
+        if (IsBsSCurrency && string.IsNullOrWhiteSpace(AppliedRateText))
+        {
+            _ = PrefillAppliedRateAsync();
+        }
+    }
+
+    partial void OnAppliedRateTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasValidAppliedRate));
+        OnPropertyChanged(nameof(ShowRateValidationHint));
+        OnPropertyChanged(nameof(CanStageInvoice));
+        StageInvoiceCommand.NotifyCanExecuteChanged();
+    }
+
     partial void OnStagedInvoiceChanged(SupplierInvoiceDetailDto? value)
     {
         OnPropertyChanged(nameof(CanConfirmInvoice));
+        OnPropertyChanged(nameof(IsBsSInvoice));
         ConfirmInvoiceCommand.NotifyCanExecuteChanged();
     }
 
@@ -273,12 +322,17 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
                 SelectedFilePath,
                 columnMapping,
                 cancellationToken);
+            var appliedRate = IsBsSCurrency
+                ? (TryParseAppliedRate(AppliedRateText, out var parsedRate) ? parsedRate : 0m)
+                : 1m;
             var request = new StageSupplierInvoiceRequestDto(
                 SelectedSupplier.Id,
                 SelectedSupplier.RifOrNit,
                 SelectedSupplier.CommercialName,
                 columnMapping,
-                lines);
+                lines,
+                SelectedCurrency,
+                appliedRate);
             var invoice = await _invoiceService.StageAsync(request, cancellationToken);
             var updatedSupplier = SelectedSupplier with { ColumnMapping = columnMapping };
             var supplierIndex = Suppliers.IndexOf(SelectedSupplier);
@@ -361,6 +415,64 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand]
+    private async Task CreateProductAsync(SupplierInvoiceLineViewModel? line, CancellationToken cancellationToken)
+    {
+        if (line is null || StagedInvoice is null)
+        {
+            return;
+        }
+
+        if (!CanMutateCatalog)
+        {
+            ShowAccessDenied();
+            return;
+        }
+
+        if (IsBusy || _isCreatingProduct || !line.CanCreateProduct)
+        {
+            return;
+        }
+
+        _isCreatingProduct = true;
+        try
+        {
+            var dialogViewModel = new CreateInvoiceProductDialogViewModel(line, IsBsSInvoice);
+            if (_dialogService.ShowCreateInvoiceProductDialog(dialogViewModel) != true)
+            {
+                return;
+            }
+
+            var barcode = dialogViewModel.Barcode.Trim();
+            var productName = dialogViewModel.Name.Trim();
+            IsBusy = true;
+            StatusMessage = "Creando el producto en el catálogo...";
+            try
+            {
+                var updatedInvoice = await _invoiceService.CreateProductFromLineAsync(
+                    StagedInvoice.Id,
+                    line.LineId,
+                    new CreateInvoiceProductRequestDto(barcode, productName),
+                    cancellationToken);
+                LoadStagedInvoice(updatedInvoice);
+                StatusMessage = $"Producto '{productName}' creado. Revise el costo y confirme la factura.";
+            }
+            catch (Exception exception)
+            {
+                StatusMessage = $"No se pudo crear el producto: {exception.Message}";
+                _dialogService.ShowError("Error al crear el producto", StatusMessage);
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+        finally
+        {
+            _isCreatingProduct = false;
+        }
+    }
+
     public void LoadStagedInvoice(SupplierInvoiceDetailDto invoice)
     {
         ArgumentNullException.ThrowIfNull(invoice);
@@ -433,6 +545,8 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanCreateSupplier));
         OnPropertyChanged(nameof(CanStageInvoice));
         OnPropertyChanged(nameof(CanConfirmInvoice));
+        OnPropertyChanged(nameof(IsCurrencyInputEnabled));
+        OnPropertyChanged(nameof(IsRateInputEnabled));
         SelectFileCommand.NotifyCanExecuteChanged();
         LookupSupplierCommand.NotifyCanExecuteChanged();
         CreateSupplierCommand.NotifyCanExecuteChanged();
@@ -445,4 +559,51 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
 
     private static string? NormalizeInput(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>Precarga la tasa vigente solo si el usuario aun no escribio una (Bs.S).</summary>
+    private async Task PrefillAppliedRateAsync()
+    {
+        try
+        {
+            var currentRate = await _exchangeRateService.GetCurrentRateAsync();
+            if (currentRate.Rate > 0m && IsBsSCurrency && string.IsNullOrWhiteSpace(AppliedRateText))
+            {
+                AppliedRateText = currentRate.Rate.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+        catch (Exception)
+        {
+            // Sin tasa vigente la factura Bs.S queda bloqueada; el usuario puede escribirla a mano.
+        }
+    }
+
+    /// <summary>Acepta tasa con coma o punto decimal ("36,50" / "36.50").</summary>
+    private static bool TryParseAppliedRate(string? value, out decimal rate)
+    {
+        rate = 0m;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var normalized = value.Trim().Replace(" ", string.Empty, StringComparison.Ordinal);
+        var commaIndex = normalized.LastIndexOf(',');
+        var dotIndex = normalized.LastIndexOf('.');
+        if (commaIndex >= 0 && dotIndex >= 0)
+        {
+            normalized = commaIndex > dotIndex
+                ? normalized.Replace(".", string.Empty, StringComparison.Ordinal).Replace(',', '.')
+                : normalized.Replace(",", string.Empty, StringComparison.Ordinal);
+        }
+        else if (commaIndex >= 0)
+        {
+            normalized = normalized.Replace(',', '.');
+        }
+
+        return decimal.TryParse(
+            normalized,
+            NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
+            CultureInfo.InvariantCulture,
+            out rate);
+    }
 }

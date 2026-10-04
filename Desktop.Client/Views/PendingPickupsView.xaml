@@ -172,14 +172,48 @@
                                     </TextBlock>
                                 </Border>
 
-                                <!-- Píldora de Pendiente de Retiro (#FEF3C7 / #92400E, CornerRadius="100") -->
-                                <Border Grid.Column="1" Background="#FEF3C7" BorderBrush="#FDE68A" BorderThickness="1" CornerRadius="100" Padding="10,4"
+                                <Border Grid.Column="1" BorderThickness="1" CornerRadius="100" Padding="10,4"
                                         Margin="10,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#FEF3C7"/>
+                                            <Setter Property="BorderBrush" Value="#FDE68A"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsPartiallyDelivered}" Value="True">
+                                                    <Setter Property="Background" Value="#DBEAFE"/>
+                                                    <Setter Property="BorderBrush" Value="#93C5FD"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <materialDesign:PackIcon Kind="ClockAlertOutline" Width="14" Height="14"
-                                                                 VerticalAlignment="Center" Foreground="#92400E"/>
-                                        <TextBlock Text="Pendiente de Retiro" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="#92400E" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                                        <materialDesign:PackIcon Width="14" Height="14" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon.Style>
+                                                <Style TargetType="materialDesign:PackIcon">
+                                                    <Setter Property="Kind" Value="ClockAlertOutline"/>
+                                                    <Setter Property="Foreground" Value="#92400E"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPartiallyDelivered}" Value="True">
+                                                            <Setter Property="Kind" Value="PackageCheck"/>
+                                                            <Setter Property="Foreground" Value="#1D4ED8"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </materialDesign:PackIcon.Style>
+                                        </materialDesign:PackIcon>
+                                        <TextBlock Text="{Binding DeliveryStatusLabel}" FontSize="11" FontWeight="SemiBold"
+                                                   Margin="5,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#92400E"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPartiallyDelivered}" Value="True">
+                                                            <Setter Property="Foreground" Value="#1D4ED8"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </StackPanel>
                                 </Border>
 
@@ -223,6 +257,21 @@
                                 </StackPanel>
                             </WrapPanel>
 
+                            <StackPanel Visibility="{Binding IsPartiallyDelivered, Converter={StaticResource BoolToVis}}"
+                                        Margin="0,0,0,14">
+                                <TextBlock Text="{Binding ProgressText}"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="#1D4ED8"
+                                           Margin="0,0,0,5"/>
+                                <ProgressBar Minimum="0"
+                                             Maximum="100"
+                                             Value="{Binding ProgressPercent, Mode=OneWay}"
+                                             Height="6"
+                                             Foreground="#3B82F6"
+                                             Background="#DBEAFE"/>
+                            </StackPanel>
+
                             <!-- Contenedor Gris Ultra Pálido (#F8FAFC) con Productos y Botón de Acción -->
                             <Border Background="#F8FAFC" CornerRadius="6" Padding="16,12,16,16" Margin="0,0,0,0">
                                 <StackPanel>
@@ -230,14 +279,18 @@
                                     <Grid Margin="0,0,0,8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="70"/>
+                                            <ColumnDefinition Width="80"/>
                                             <ColumnDefinition Width="80"/>
                                             <ColumnDefinition Width="130"/>
                                             <ColumnDefinition Width="140"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="PRODUCTO" FontSize="11" FontWeight="SemiBold" Foreground="#64748B"/>
                                         <TextBlock Grid.Column="1" Text="CANT." FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
-                                        <TextBlock Grid.Column="2" Text="P. UNIT. BS.S" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Right"/>
-                                        <TextBlock Grid.Column="3" Text="SUBTOTAL BS.S" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                                        <TextBlock Grid.Column="2" Text="ENTREGADO" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="3" Text="PENDIENTE" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="P. UNIT. BS.S" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                                        <TextBlock Grid.Column="5" Text="SUBTOTAL BS.S" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Right"/>
                                     </Grid>
 
                                     <!-- Lista de Productos -->
@@ -247,6 +300,8 @@
                                                 <Grid Margin="0,3">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="70"/>
+                                                        <ColumnDefinition Width="80"/>
                                                         <ColumnDefinition Width="80"/>
                                                         <ColumnDefinition Width="130"/>
                                                         <ColumnDefinition Width="140"/>
@@ -255,10 +310,14 @@
                                                                FontSize="12" Foreground="#1E293B" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                                                     <TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat='x{0:0.###}'}"
                                                                FontSize="12" Foreground="#64748B" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    <TextBlock Grid.Column="2" Text="{Binding UnitPriceBsS, StringFormat='Bs.S {0:N2}'}"
+                                                    <TextBlock Grid.Column="2" Text="{Binding DeliveredQuantity, StringFormat='{}{0:0.###}'}"
+                                                               FontSize="12" Foreground="#475569" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="3" Text="{Binding PendingQuantity, StringFormat='{}{0:0.###}'}"
+                                                               FontSize="12" Foreground="#475569" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="4" Text="{Binding UnitPriceBsS, StringFormat='Bs.S {0:N2}'}"
                                                                FontSize="12" Foreground="#475569" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                                Typography.NumeralAlignment="Tabular"/>
-                                                    <TextBlock Grid.Column="3" Text="{Binding SubtotalBsS, StringFormat='Bs.S {0:N2}'}"
+                                                    <TextBlock Grid.Column="5" Text="{Binding SubtotalBsS, StringFormat='Bs.S {0:N2}'}"
                                                                FontSize="12" FontWeight="SemiBold" Foreground="#0F172A" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                                Typography.NumeralAlignment="Tabular"/>
                                                 </Grid>
@@ -266,19 +325,31 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
 
-                                    <!-- Botón de Acción Plano (Flat Design, #5E35B1) con espacio superior para respirar -->
-                                    <Button Command="{Binding Data.ConfirmPickupCommand, Source={StaticResource Proxy}}"
-                                            CommandParameter="{Binding}"
-                                            Style="{DynamicResource MaterialDesignFlatMidBgButton}"
-                                            materialDesign:ButtonAssist.CornerRadius="6"
-                                            Background="#5E35B1" Foreground="White"
-                                            Height="36" HorizontalAlignment="Right" Padding="18,0"
-                                            Margin="0,14,0,0">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <materialDesign:PackIcon Kind="PackageCheck" Width="16" Height="16" VerticalAlignment="Center"/>
-                                            <TextBlock Text="Confirmar Retiro / Entregar" Margin="8,0,0,0" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                    </Button>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                                        <Button Command="{Binding Data.DeliverAllCommand, Source={StaticResource Proxy}}"
+                                                CommandParameter="{Binding}"
+                                                AutomationProperties.AutomationId="PendingPickups_DeliverAllButton"
+                                                Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                                BorderBrush="#5E35B1" Foreground="#5E35B1"
+                                                Height="36" Padding="16,0" Margin="0,0,8,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="PackageCheck" Width="16" Height="16" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Retiro Completo" Margin="8,0,0,0" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Command="{Binding Data.ConfirmPickupCommand, Source={StaticResource Proxy}}"
+                                                CommandParameter="{Binding}"
+                                                AutomationProperties.AutomationId="PendingPickups_ConfirmButton"
+                                                Style="{DynamicResource MaterialDesignFlatMidBgButton}"
+                                                materialDesign:ButtonAssist.CornerRadius="6"
+                                                Background="#5E35B1" Foreground="White"
+                                                Height="36" Padding="18,0">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="PackageCheck" Width="16" Height="16" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Confirmar Retiro / Entregar" Margin="8,0,0,0" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
 

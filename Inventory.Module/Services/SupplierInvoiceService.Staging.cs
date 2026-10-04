@@ -1,4 +1,5 @@
 using System.Linq;
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
@@ -16,6 +17,7 @@ public partial class SupplierInvoiceService
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        var (currency, appliedRate) = ResolveCurrencySnapshot(request);
         var lines = ValidateAndNormalizeLines(request.Lines);
         var supplier = await ResolveSupplierAsync(request, cancellationToken);
         await UpsertColumnMappingAsync(supplier.Id, request.ColumnMapping, cancellationToken);
@@ -24,13 +26,18 @@ public partial class SupplierInvoiceService
         var invoice = new SupplierInvoice
         {
             SupplierId = supplier.Id,
-            Status = SupplierInvoiceStatus.Draft
+            Status = SupplierInvoiceStatus.Draft,
+            Currency = currency,
+            AppliedRate = appliedRate
         };
 
         foreach (var line in lines)
         {
+            var unitCostUsd = currency == CurrencyCodes.Usd
+                ? line.UnitCostDocument
+                : Core.Helpers.PricingCalculator.ToUSD(line.UnitCostDocument, appliedRate);
             var match = await MatchProductAsync(supplier.Id, line, similarityThreshold, cancellationToken);
-            invoice.Lines.Add(CreateStagedLine(line, match));
+            invoice.Lines.Add(CreateStagedLine(line, match, unitCostUsd));
         }
 
         _context.SupplierInvoices.Add(invoice);
@@ -215,6 +222,29 @@ public partial class SupplierInvoiceService
         throw new KeyNotFoundException("No supplier matches the supplied RIF/NIT or commercial name. Select or create a supplier before staging.");
     }
 
+    private static (string Currency, decimal AppliedRate) ResolveCurrencySnapshot(
+        StageSupplierInvoiceRequestDto request)
+    {
+        if (!string.Equals(request.Currency, CurrencyCodes.Usd, StringComparison.Ordinal) &&
+            !string.Equals(request.Currency, CurrencyCodes.BsS, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The supplier invoice currency must be USD or Bs.S.");
+        }
+
+        if (string.Equals(request.Currency, CurrencyCodes.Usd, StringComparison.Ordinal))
+        {
+            return (CurrencyCodes.Usd, 1m);
+        }
+
+        if (request.AppliedRate <= 0m)
+        {
+            throw new ArgumentException(
+                "An applied exchange rate greater than zero is required for supplier invoices in Bs.S.");
+        }
+
+        return (CurrencyCodes.BsS, Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(request.AppliedRate));
+    }
+
     private static List<StageLineDto> ValidateAndNormalizeLines(IReadOnlyList<StageLineDto>? sourceLines)
     {
         if (sourceLines is null || sourceLines.Count == 0)
@@ -234,7 +264,7 @@ public partial class SupplierInvoiceService
                 OptionalColumn(line.Barcode),
                 OptionalColumn(line.Name),
                 line.Quantity,
-                line.UnitCostUSD))
+                line.UnitCostDocument))
             .ToList();
 
         if (lines.Count == 0)
@@ -244,7 +274,7 @@ public partial class SupplierInvoiceService
 
         foreach (var line in lines)
         {
-            if (line.Quantity < 0m || line.UnitCostUSD < 0m)
+            if (line.Quantity < 0m || line.UnitCostDocument < 0m)
             {
                 throw new ArgumentException("Invoice quantities and unit costs cannot be negative.", nameof(sourceLines));
             }

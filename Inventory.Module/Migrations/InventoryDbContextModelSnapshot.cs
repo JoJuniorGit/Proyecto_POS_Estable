@@ -461,8 +461,21 @@ namespace Inventory.Module.Migrations
                     b.Property<DateTime?>("AppliedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal>("AppliedRate")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)")
+                        .HasDefaultValue(1m);
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasDefaultValue("USD");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -573,6 +586,12 @@ namespace Inventory.Module.Migrations
 
                     b.Property<int>("SupplierInvoiceId")
                         .HasColumnType("integer");
+
+                    b.Property<decimal>("UnitCostDocument")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m);
 
                     b.Property<decimal>("UnitCostUSD")
                         .HasPrecision(18, 2)

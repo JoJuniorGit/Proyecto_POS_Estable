@@ -21,11 +21,20 @@ public interface IDialogService
     bool ShowSuccessDialog(string message, string? secondaryActionLabel = null);
     Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title);
     bool? ShowProductDialog(ViewModels.ProductDialogViewModel dialogVm);
+
+    /// <summary>
+    /// 8.146-T5 (S4): modal de captura del código de barras universal al crear un producto desde una línea de factura.
+    /// Implementación por defecto sin UI (stubs headless): null equivale a diálogo cancelado, igual que
+    /// <see cref="ShowPartialDeliveryDialogAsync"/>.
+    /// </summary>
+    bool? ShowCreateInvoiceProductDialog(ViewModels.CreateInvoiceProductDialogViewModel dialogVm) => null;
     (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();
     Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(System.Collections.Generic.List<PaymentMethodDto> paymentMethods, decimal availableCashLocal);
     Task<(bool confirmed, System.Collections.Generic.IEnumerable<UpdateSaleItemDto>? modifiedItems)> ShowEditSaleDialogAsync(SaleDto sale, decimal exchangeRate);
+    Task<PartialDeliveryDialogResult?> ShowPartialDeliveryDialogAsync(PendingPickupClientDto pickup) =>
+        Task.FromResult<PartialDeliveryDialogResult?>(null);
     Task ShowPairingQrDialogAsync();
     Task<bool> ShowServerConnectionDialogAsync();
     Task<ProductDto?> ShowVariantSelectionDialogAsync(ProductQuickInfoDto parentProduct);
@@ -38,5 +47,9 @@ public interface IDialogService
     void CloseCurrentModal(object? result = null);
 }
 
-
+public class PartialDeliveryDialogResult
+{
+    public System.Collections.Generic.List<PartialDeliveryItemRequestDto> Items { get; set; } = new();
+    public string? Notes { get; set; }
+}
 

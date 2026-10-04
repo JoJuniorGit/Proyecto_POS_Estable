@@ -36,4 +36,10 @@ public interface ISupplierInvoiceService
         int invoiceId,
         ConfirmSupplierInvoiceRequestDto request,
         CancellationToken cancellationToken = default);
+
+    Task<SupplierInvoiceDetailDto> CreateProductFromLineAsync(
+        int invoiceId,
+        int lineId,
+        CreateInvoiceProductRequestDto request,
+        CancellationToken cancellationToken = default);
 }

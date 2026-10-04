@@ -248,6 +248,28 @@ public class ClientHttpContractTests
     }
 
     [Fact]
+    public async Task Sales_DeliverPartialAsync_TargetsDeliveriesRoute()
+    {
+        var requests = await CaptureAsync<SalesService>(
+            c => new SalesService(c),
+            s => s.DeliverPartialAsync(
+                42,
+                new[] { new PartialDeliveryItemRequestDto { SaleItemId = 9, Quantity = 1.5m } },
+                "Retiro parcial",
+                "idempotency-key"));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/sales/42/deliveries", typeof(SalesController), nameof(SalesController.DeliverPartialAsync));
+    }
+
+    [Fact]
+    public async Task Sales_GetDeliveryNoteAsync_TargetsDeliveryReceiptRoute()
+    {
+        var requests = await CaptureAsync<SalesService>(c => new SalesService(c), s => s.GetDeliveryNoteAsync(42, 7));
+
+        AssertRequest(Assert.Single(requests), HttpMethod.Get, "/api/sales/42/deliveries/7/receipt", typeof(SalesController), nameof(SalesController.GetDeliveryNotePdfAsync));
+    }
+
+    [Fact]
     public async Task Sales_UpdateSaleItemsAsync_PutsToSaleItemsRoute()
     {
         var requests = await CaptureAsync<SalesService>(

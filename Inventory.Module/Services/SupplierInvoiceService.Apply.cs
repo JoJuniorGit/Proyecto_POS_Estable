@@ -19,17 +19,20 @@ public partial class SupplierInvoiceService
         InventoryDbContext context,
         ISystemSettingsService systemSettingsService,
         ISupplierProductSimilaritySearch similaritySearch,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IProductManagementService productManagementService)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(systemSettingsService);
         ArgumentNullException.ThrowIfNull(similaritySearch);
         ArgumentNullException.ThrowIfNull(currentUserService);
+        ArgumentNullException.ThrowIfNull(productManagementService);
 
         _context = context;
         _systemSettingsService = systemSettingsService;
         _similaritySearch = similaritySearch;
         _currentUserService = currentUserService;
+        _productManagementService = productManagementService;
     }
 
     public Task<SupplierInvoiceDetailDto> ConfirmAsync(
@@ -98,6 +101,17 @@ public partial class SupplierInvoiceService
                     }
 
                     await ApplyApprovedLineAsync(invoice.Id, line, productId, confirmation, cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(line.SupplierCode))
+                    {
+                        // 8.146-S5/D8: aprendizaje de alias dentro de la misma transacción;
+                        // el rollback del confirm no deja cambios de alias.
+                        await UpsertSupplierProductCodeAsync(
+                            invoice.SupplierId,
+                            line.SupplierCode,
+                            productId,
+                            cancellationToken);
+                        await _context.SaveChangesAsync(cancellationToken);
+                    }
                 }
 
                 invoice.Status = SupplierInvoiceStatus.Applied;

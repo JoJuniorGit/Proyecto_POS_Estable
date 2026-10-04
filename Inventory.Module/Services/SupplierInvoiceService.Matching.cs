@@ -116,7 +116,7 @@ public partial class SupplierInvoiceService
         return new ProductMatch(null, MatchMethod.None);
     }
 
-    private static SupplierInvoiceLine CreateStagedLine(StageLineDto line, ProductMatch match)
+    private static SupplierInvoiceLine CreateStagedLine(StageLineDto line, ProductMatch match, decimal unitCostUsd)
     {
         var product = match.Product;
         decimal? retailMargin = product is null
@@ -131,12 +131,10 @@ public partial class SupplierInvoiceService
                 : retailMargin;
 
         var status = product is null
-            ? SupplierInvoiceLineStatus.Conflict
-            : product.CostPriceUSD == 0m
-                ? SupplierInvoiceLineStatus.New
-                : line.UnitCostUSD != product.CostPriceUSD
-                    ? SupplierInvoiceLineStatus.Update
-                    : SupplierInvoiceLineStatus.Unchanged;
+            ? SupplierInvoiceLineStatus.New
+            : unitCostUsd != product.CostPriceUSD
+                ? SupplierInvoiceLineStatus.Update
+                : SupplierInvoiceLineStatus.Unchanged;
 
         return new SupplierInvoiceLine
         {
@@ -144,7 +142,8 @@ public partial class SupplierInvoiceService
             Barcode = line.Barcode,
             Name = line.Name,
             Quantity = line.Quantity,
-            UnitCostUSD = line.UnitCostUSD,
+            UnitCostDocument = line.UnitCostDocument,
+            UnitCostUSD = unitCostUsd,
             Status = status,
             ResolvedProductId = product?.Id,
             OldCostPriceUSD = product?.CostPriceUSD,
@@ -154,10 +153,10 @@ public partial class SupplierInvoiceService
             MarginRetailOverride = retailMargin,
             MarginWholesaleOverride = wholesaleMargin,
             SuggestedRetailPriceUSD = retailMargin is decimal retail
-                ? Core.Helpers.PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + retail / 100m))
+                ? Core.Helpers.PricingCalculator.RoundPriceUp(unitCostUsd * (1m + retail / 100m))
                 : null,
             SuggestedWholesalePriceUSD = wholesaleMargin is decimal wholesale
-                ? Core.Helpers.PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + wholesale / 100m))
+                ? Core.Helpers.PricingCalculator.RoundPriceUp(unitCostUsd * (1m + wholesale / 100m))
                 : null,
             MatchMethod = match.Method
         };

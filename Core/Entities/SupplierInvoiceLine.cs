@@ -8,6 +8,12 @@ public class SupplierInvoiceLine : BaseEntity
     public string? Barcode { get; set; }
     public string? Name { get; set; }
     public decimal Quantity { get; set; }
+
+    /// <summary>
+    /// Costo unitario tal como lo emitió el proveedor en la moneda del documento (8.146-S2, auditoría).
+    /// </summary>
+    public decimal UnitCostDocument { get; set; }
+
     public decimal UnitCostUSD { get; set; }
     public SupplierInvoiceLineStatus Status { get; set; } = SupplierInvoiceLineStatus.New;
     public int? ResolvedProductId { get; set; }

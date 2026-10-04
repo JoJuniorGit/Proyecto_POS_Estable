@@ -207,6 +207,10 @@ public partial class SalesController
         {
             return this.ApiNotFound($"Venta con ID {id} no encontrada.");
         }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            return this.ApiConflict("Otro usuario modificó el retiro simultáneamente. Actualice la lista e intente de nuevo.");
+        }
     }
 
     [NonAction]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Core.DTOs;
 
@@ -16,16 +17,72 @@ public class PendingPickupClientDto
     public string CustomerPhone { get; set; } = string.Empty;
     public decimal TotalUSD { get; set; }
     public decimal TotalBsS { get; set; }
+    public decimal TotalUnits { get; set; }
+    public decimal DeliveredUnits { get; set; }
     public string DeliveryStatus { get; set; } = "PendingPickup";
     public List<PendingPickupItemDto> Items { get; set; } = new();
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public PartialDeliveryDialogResult? PendingDraft { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsPartiallyDelivered => string.Equals(DeliveryStatus, "PartiallyDelivered", StringComparison.Ordinal);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DeliveryStatusLabel => IsPartiallyDelivered ? "Entrega Parcial" : "Pendiente de Retiro";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string ProgressText => $"Retirado: {DeliveredUnits:0.###}/{TotalUnits:0.###}";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public double ProgressPercent => TotalUnits <= 0m
+        ? 0d
+        : decimal.ToDouble(Math.Clamp(DeliveredUnits / TotalUnits * 100m, 0m, 100m));
 }
 
 public class PendingPickupItemDto
 {
+    public int SaleItemId { get; set; }
+    public int ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public decimal Quantity { get; set; }
+    public decimal DeliveredQuantity { get; set; }
+    public decimal PendingQuantity { get; set; }
     public decimal UnitPriceBsS { get; set; }
     public decimal SubtotalBsS { get; set; }
+}
+
+public class DeliveryReceiptClientDto
+{
+    public int DeliveryId { get; set; }
+    public int SaleId { get; set; }
+    public int? InvoiceNumber { get; set; }
+    public DateTime DeliveredAt { get; set; }
+    public string DeliveredByName { get; set; } = string.Empty;
+    public string? CustomerName { get; set; }
+    public string? CustomerCedula { get; set; }
+    public string DeliveryStatus { get; set; } = string.Empty;
+    public decimal TotalUnits { get; set; }
+    public decimal DeliveredUnits { get; set; }
+    public decimal PendingUnits { get; set; }
+    public List<DeliveryReceiptItemClientDto> Items { get; set; } = new();
+}
+
+public class DeliveryReceiptItemClientDto
+{
+    public int SaleItemId { get; set; }
+    public int ProductId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public decimal QuantityDelivered { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal UnitPriceBsS { get; set; }
+    public decimal SubtotalBsS { get; set; }
+}
+
+public class PartialDeliveryItemRequestDto
+{
+    public int SaleItemId { get; set; }
+    public decimal Quantity { get; set; }
 }
 
 public class SalePaymentDto
@@ -114,6 +171,13 @@ public interface ISalesService
 
     Task<(IEnumerable<PendingPickupClientDto> Items, int TotalCount)> GetPendingPickupsPagedAsync(int limit = 200, int offset = 0);
     Task ConfirmPickupAsync(int saleId);
+    Task<DeliveryReceiptClientDto> DeliverPartialAsync(
+        int saleId,
+        IReadOnlyList<PartialDeliveryItemRequestDto> items,
+        string? notes,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+    Task<byte[]> GetDeliveryNoteAsync(int saleId, int deliveryId, CancellationToken cancellationToken = default);
     Task UpdateSaleItemsAsync(int saleId, IEnumerable<UpdateSaleItemDto> items, decimal exchangeRate);
     Task<byte[]?> GetReceiptAsync(int saleId);
 }

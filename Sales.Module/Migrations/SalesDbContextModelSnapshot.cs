@@ -611,6 +611,76 @@ namespace Sales.Module.Migrations
                     b.ToTable("Sales");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.SaleDelivery", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeliveredByName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int?>("DeliveredByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<int>("SaleId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeliveredByUserId");
+
+                    b.HasIndex("SaleId")
+                        .HasDatabaseName("IX_SaleDeliveries_SaleId");
+
+                    b.ToTable("SaleDeliveries");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.SaleDeliveryItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("QuantityDelivered")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<int>("SaleDeliveryId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SaleItemId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SaleDeliveryId")
+                        .HasDatabaseName("IX_SaleDeliveryItems_SaleDeliveryId");
+
+                    b.HasIndex("SaleItemId")
+                        .HasDatabaseName("IX_SaleDeliveryItems_SaleItemId");
+
+                    b.ToTable("SaleDeliveryItems");
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.SaleItem", b =>
                 {
                     b.Property<int>("Id")
@@ -618,6 +688,10 @@ namespace Sales.Module.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("DeliveredQuantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
 
                     b.Property<bool>("IsCustomPrice")
                         .HasColumnType("boolean");
@@ -649,6 +723,12 @@ namespace Sales.Module.Migrations
 
                     b.Property<decimal>("UnitPriceBsS")
                         .HasColumnType("decimal(18,4)");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -761,6 +841,35 @@ namespace Sales.Module.Migrations
                     b.Navigation("Customer");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.SaleDelivery", b =>
+                {
+                    b.HasOne("Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("DeliveredByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Sales.Module.Entities.Sale", null)
+                        .WithMany()
+                        .HasForeignKey("SaleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.SaleDeliveryItem", b =>
+                {
+                    b.HasOne("Sales.Module.Entities.SaleDelivery", null)
+                        .WithMany("Items")
+                        .HasForeignKey("SaleDeliveryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Sales.Module.Entities.SaleItem", null)
+                        .WithMany()
+                        .HasForeignKey("SaleItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.SaleItem", b =>
                 {
                     b.HasOne("Sales.Module.Entities.Sale", "Sale")
@@ -806,6 +915,11 @@ namespace Sales.Module.Migrations
                     b.Navigation("Items");
 
                     b.Navigation("Payments");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.SaleDelivery", b =>
+                {
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }

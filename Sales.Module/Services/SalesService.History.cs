@@ -28,15 +28,36 @@ public partial class SalesService
 
         EnsureHoldClaimAccess(sale, actingUserId);
 
-        if (sale.Status != SaleStatus.Completed || sale.DeliveryStatus != SaleDeliveryStatus.PendingPickup)
-            throw new InvalidOperationException($"El pedido #{sale.InvoiceNumber ?? sale.Id} no se encuentra en estado Pendiente por Retirar.");
+        var invalidPickupMessage = $"El pedido #{sale.InvoiceNumber ?? sale.Id} no se encuentra en estado Pendiente por Retirar.";
+        if (sale.Status != SaleStatus.Completed
+            || (sale.DeliveryStatus != SaleDeliveryStatus.PendingPickup
+                && sale.DeliveryStatus != SaleDeliveryStatus.PartiallyDelivered))
+        {
+            throw new InvalidOperationException(invalidPickupMessage);
+        }
 
-        sale.DeliveryStatus = SaleDeliveryStatus.Delivered;
-        sale.PickupDate = DateTime.UtcNow;
+        var pendingItems = sale.Items
+            .Select(item => (SaleItemId: item.Id, Quantity: item.Quantity - item.DeliveredQuantity))
+            .Where(item => item.Quantity > 0m)
+            .ToList();
+        if (pendingItems.Count == 0)
+        {
+            throw new InvalidOperationException(invalidPickupMessage);
+        }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await DeliverPartialAsync(saleId, pendingItems, null, actingUserId, cancellationToken);
 
-        return MapToHistoryDetail(sale);
+        var updatedSale = await _context.Sales
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(s => s.Customer)
+            .Include(s => s.Cashier)
+            .Include(s => s.Items)
+            .Include(s => s.Payments).ThenInclude(p => p.PaymentMethod)
+            .FirstOrDefaultAsync(s => s.Id == saleId, cancellationToken);
+
+        if (updatedSale == null) throw new KeyNotFoundException("Venta no encontrada.");
+        return MapToHistoryDetail(updatedSale);
     }
 
     // 8.9-B2: soporta scope por cajero (Cashier filtra sus entregas; Admin/Manager ven todas).
@@ -50,7 +71,9 @@ public partial class SalesService
 
         var sales = await _context.Sales
             .AsNoTracking()
-            .Where(s => s.Status == SaleStatus.Completed && s.DeliveryStatus == SaleDeliveryStatus.PendingPickup)
+            .Where(s => s.Status == SaleStatus.Completed
+                && (s.DeliveryStatus == SaleDeliveryStatus.PendingPickup
+                    || s.DeliveryStatus == SaleDeliveryStatus.PartiallyDelivered))
             .Where(s => !cashierId.HasValue || s.CashierId == cashierId.Value)
             .OrderByDescending(s => s.Date)
             .ThenByDescending(s => s.Id)
@@ -67,16 +90,22 @@ public partial class SalesService
                 CustomerPhone = s.Customer != null ? s.Customer.Phone : string.Empty,
                 TotalUSD = s.TotalUSD,
                 TotalBsS = s.TotalBsS,
+                TotalUnits = s.Items.Sum(i => i.Quantity),
+                DeliveredUnits = s.Items.Sum(i => i.DeliveredQuantity),
                 DeliveryStatus = s.DeliveryStatus.ToString(),
                 PickupDate = s.PickupDate,
-                Items = s.Items.Select(i => new SaleItemHistoryDto
+                Items = s.Items.Select(i => new PendingPickupItemDto
                 {
-                    Id = i.Id,
+                    SaleItemId = i.Id,
+                    ProductId = i.ProductId,
                     ProductName = i.ProductName,
                     Quantity = i.Quantity,
+                    DeliveredQuantity = i.DeliveredQuantity,
+                    PendingQuantity = i.Quantity - i.DeliveredQuantity,
                     UnitPrice = i.UnitPrice,
                     UnitPriceBsS = i.UnitPriceBsS,
-                    SubtotalBsS = i.SubtotalBsS
+                    SubtotalBsS = i.SubtotalBsS,
+                    IsCustomPrice = i.IsCustomPrice
                 }).ToList()
             })
             .ToListAsync(cancellationToken);
@@ -89,7 +118,8 @@ public partial class SalesService
         return await _context.Sales
             .AsNoTracking()
             .CountAsync(s => s.Status == SaleStatus.Completed
-                && s.DeliveryStatus == SaleDeliveryStatus.PendingPickup
+                && (s.DeliveryStatus == SaleDeliveryStatus.PendingPickup
+                    || s.DeliveryStatus == SaleDeliveryStatus.PartiallyDelivered)
                 && (!cashierId.HasValue || s.CashierId == cashierId.Value), cancellationToken);
     }
 

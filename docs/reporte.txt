@@ -11750,3 +11750,239 @@ G5. Crash al abrir la vista de facturas de proveedor: el ComboBox de proveedores
     muestra nombre + RIF). E2E de salud endurecido: falla si la aplicación se
     cierra durante la navegación o si una vista no renderiza su título.
 ================================================================================
+
+================================================================================
+ANEXO 8.145 — ENTREGAS PARCIALES (MERCANCÍA EN CUSTODIA) EN RETIROS PENDIENTES (SDD) — 2026-10-03
+================================================================================
+Change SDD: 2026-10-03-custody-partial-deliveries; artefactos en
+openspec/changes/2026-10-03-custody-partial-deliveries/ (exploration, proposal,
+4 specs, design, tasks, state, verify-report).
+
+Alcance: backend (Sales.Module, Backend.API) + clientes WPF (Desktop.Client /
+Desktop.Client.Core) y Web (Web.Frontend + bundle regenerado en
+Backend.API/wwwroot). Entrega por work units en V0.15 (chain stacked-to-main,
+elegida por el mantenedor; sin push/PR/merge: decisión pendiente del
+mantenedor).
+
+A. ENTREGA POR SLICE
+
+A1. Slice 1 — 1f17988: dominio y migración. SaleDeliveryStatus agrega
+    PartiallyDelivered=2; SaleItem.DeliveredQuantity numeric(18,3) default 0;
+    entidades SaleDelivery + SaleDeliveryItem (log append-only con fecha UTC,
+    cajero id + snapshot de nombre, cantidades por evento); SalesDbContext
+    (FKs Restrict/Cascade, índices, xmin en SaleItem); migración aditiva
+    20261003223255_AddCustodyPartialDeliveries con backfill (DeliveryStatus=0 →
+    DeliveredQuantity=Quantity) y Down; smoke gated + 6 tests de modelo.
+A2. Slice 2 — 106dcdc: servicio y API. DeliverPartialAsync transaccional
+    (validaciones con mensajes exactos, contadores por línea, log, transición
+    Parcial/Completado, PickupDate solo al completar, sin inventario ni dinero);
+    confirm-pickup legacy delega entregando todas las cantidades pendientes;
+    GET pending-pickups incluye PartiallyDelivered con cantidades y agregados;
+    POST /api/sales/{id}/deliveries con Idempotency-Key obligatorio (registro
+    DENTRO de la transacción, replay JSON idéntico, mismatch 422, 409 por xmin,
+    400/403/404); 88 tests del filtro del slice.
+A3. Slice 3 — c5d9ae7: Nota de Despacho. DeliveryNotePdfGenerator (PDF directo,
+    hora local Venezuela, cajero, ítems, pendientes históricos reconstruidos del
+    log al momento del evento — reimpresión estable —, aviso "no es factura
+    fiscal", sin datos monetarios); GET
+    /api/sales/{id}/deliveries/{deliveryId}/receipt sale-scoped
+    (403/404/application-pdf); 9 tests.
+A4. Slice 4 — d23e299: UI WPF. Modal de cantidades (clamp al pendiente, notas,
+    cancelación sin request, borrador restaurado tras 409), badge azul "Entrega
+    Parcial" + "Retirado: X/Y", columnas Entregado/Pendiente, impresión de la
+    nota (PDF temporal + visor del sistema), idempotency key por intento.
+A5. Slice 5 — 331b975: UI Web + bundle regenerado. Modal de despacho (clamp,
+    confirm-disabled, errores 400/409), badge/progreso, impresión por blob
+    autenticado en pestaña nueva; helpers puros con node:test; bundle web
+    regenerado en Backend.API/wwwroot (convención del repo, precedente
+    8.129-8.143).
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CommandCenter.Tests: 1585/1585 (0 fallos, 0 omitidos) —
+    +50 tests netos sobre el baseline 1535 de 8.144.
+B3. Cobertura (gate del repo): Core 0.8805 (≥0.70), Sales.Module 0.8895 (≥0.80),
+    Inventory.Module 0.8428 (≥0.72) — PASS.
+B4. Web: npm test 300/300 (65 suites); npm run lint (oxlint) 0 hallazgos;
+    bundle estático consistente (index.html referencia assets existentes, 0
+    referencias colgadas a assets borrados).
+B5. Verificación independiente por slice (verificador dedicado, read-only):
+    T1 PASS WITH WARNINGS; T2 PASS WITH WARNINGS (tras corrección: idempotencia
+    movida dentro de la transacción + fixture sin ítems); T3 PASS; T4 PASS WITH
+    WARNINGS (tras corrección de wiring del modal WPF); T5 PASS; verificación
+    final PASS WITH WARNINGS.
+
+C. HOOKS Y GGA
+
+core.hooksPath=.githooks activo; los commits se realizaron sin --no-verify. El
+pre-push de GGA es opt-in y no se ejecutó (no hubo push).
+
+D. LIMITACIONES CONOCIDAS
+
+D1. Los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en local
+    (smoke de migración/backfill, carrera xmin real, unique index de
+    idempotencia); quedan cubiertos en CI al configurar la variable.
+D2. Sin e2e DOM/interactivo de los modales Web; sin test interactivo del modal
+    WPF (wiring validado estáticamente contra la semántica de WPF).
+D3. E2E WPF de salud no ejecutado en la verificación final; su navegación no
+    abre el modal de despacho.
+D4. Clamp Web no redondea a 3 decimales (el server redondea numeric(18,3));
+    parseo decimal dependiente de cultura (es-VE usa coma).
+D5. El DTO de pendientes cambió Items[].id → Items[].saleItemId; consumidores
+    actuales verificados (Desktop/Web), clientes externos no auditados.
+
+E. ROLLBACK
+
+E1. La migración AddCustodyPartialDeliveries es aditiva; Down elimina
+    SaleDeliveryItems/SaleDeliveries y la columna DeliveredQuantity (sin
+    operaciones de datos).
+E2. Cada slice es revertible por commit; el endpoint legacy confirm-pickup
+    sigue funcional y la feature se desactiva revirtiendo servicio/endpoints/UI.
+E3. Ventas históricas intactas: la feature no escribe campos monetarios ni
+    inventario (el stock se descuenta al 100% en el checkout original).
+
+F. VERIFY SDD
+
+F1. sdd-verify: PASS WITH WARNINGS — 0 CRITICAL, 0 blockers; 15/15 requisitos;
+    31/34 escenarios conformes (3 escenarios runtime-gated: backfill x2 y
+    carrera de concurrencia). Reporte: openspec/changes/
+    2026-10-03-custody-partial-deliveries/verify-report.md.
+F2. Warnings: los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en
+    local — la cobertura real corre en CI; el validador nativo
+    `gentle-ai sdd-verify-validate` no existe en este build (mismo hallazgo que
+    8.144), por lo que la persistencia del reporte se hizo por decisión del
+    orquestador, sin settlement nativo.
+
+G. REMEDIACIÓN (2026-10-03)
+
+G1. CRASH WPF AL ENTRAR A RETIROS PENDIENTES (reportado por el mantenedor):
+    causa raíz = `ProgressBar.Value="{Binding ProgressPercent}"` (RangeBase.Value
+    bindea TwoWay por defecto) sobre una propiedad de solo lectura → al
+    instanciar el DataTemplate de la fila se lanzaba XamlParseException →
+    DispatcherUnhandledException → Shutdown() con exit code 0 (sin evento de
+    crash ni crash.txt de UI). Con lista vacía el template nunca se instanciaba,
+    por eso el E2E de salud pasaba. Fix: `Mode=OneWay` en el binding (b93c8b9).
+    Regresión: el mock E2E ahora devuelve filas reales (PendingPickup +
+    PartiallyDelivered) y el E2E de pickups valida el render con datos.
+G2. RETIRO COMPLETO: botón nuevo en Web (0b4fcdf) y WPF (2839817) que abre el
+    mismo modal de despacho con TODAS las cantidades pendientes pre-cargadas
+    (WPF vía `PendingDraft`; Web vía `prefillPending`), confirmando en un solo
+    paso con el mismo POST idempotente, impresión y auditoría. Sin caminos
+    duplicados: un solo `DeliverPartialAsync` por confirmación.
+G3. RESIDUALES CERRADOS:
+    - D1 (gated vacuous): ejecutados con PostgreSQL 18 local real (BD pos_test):
+      filtro CustodyPartialDelivery 40/40 con evidencia de no-early-return
+      (unique index real SQLSTATE 23505, conflicto xmin con rollback sin doble
+      conteo, backfill real del smoke de migración).
+    - D2 (sin e2e interactivo): WPF 4 tests FlaUI (render con filas, Escape,
+      Cancelar, Retiro Completo pre-cargado con confirmación en UNA activación)
+      + Web 3 tests Playwright (parcial, completo, 409 con borrador preservado).
+    - D3: E2E WPF completo 18/18 (incluye salud 2/2).
+    - D4 (redondeo/cultura): normalización a 3 decimales en clamp y payload;
+      parseo tolerante a coma decimal en Web y en el diálogo WPF.
+    - D5 (cambio de forma del DTO): alias `id` en `PendingPickupItemDto`
+      (compat con la forma previa; serializa junto a `saleItemId`).
+    - Extra: test de snapshot inmutable ante rename de usuario; revalidación de
+      `isInvalid` tras recarga 409 en Web.
+G4. VERIFICACIÓN DE LA REMEDIACIÓN (independiente): build Release 0/0; suite
+    .NET 1591/1591; E2E WPF 18/18; Web 301/301 + lint 0 + Playwright 3/3;
+    bundle regenerado con referencias consistentes (index.html ↔ assets).
+    Commits: b93c8b9 (crash), 069a7fe (DTO+tests Postgres), 0b4fcdf (Web +
+    bundle), 2839817 (WPF + E2E).
+G5. RESIDUALES QUE PERMANECEN (aceptados): el E2E WPF descarta el diálogo de
+    oferta de impresión (no asserta su aparición); el mock E2E responde siempre
+    `Delivered` (la permanencia del parcial tras entrega parcial está cubierta
+    por unit tests); `<input type="number">` web puede sanear la coma según
+    locale del navegador (el helper la soporta; el e2e cubre punto); la apertura
+    real del visor PDF (`Process.Start`) no se ejercita en tests automatizados
+    (patrón espejado pre-existente, opener inyectado en unit tests).
+================================================================================
+
+================================================================================
+ANEXO 8.146 — SOPORTE MULTI-MONEDA (Bs.S) Y CREACIÓN DE PRODUCTOS CON CÓDIGO DE BARRAS EN FACTURAS DE PROVEEDOR (SDD) — 2026-10-03
+================================================================================
+Change SDD: 2026-10-03-supplier-invoice-multicurrency; artefactos en
+openspec/changes/2026-10-03-supplier-invoice-multicurrency/ (exploration, proposal,
+4 specs, design, tasks, state, verify-report).
+
+Alcance: backend (Core, Inventory.Module, Backend.API) + cliente WPF (Desktop.Client /
+Desktop.Client.Core). Web.Frontend sin cambios; la UI es únicamente WPF. Entrega por
+slices en V0.15 (chain stacked-to-main cacheada de 8.144/8.145); push/PR/merge quedan a
+decisión del mantenedor.
+
+A. ENTREGA POR SLICE
+
+A1. Slice 1 — a772152: dominio multi-moneda. SupplierInvoice.Currency (varchar(8),
+    default 'USD') + AppliedRate (numeric(18,4), default 1); SupplierInvoiceLine.
+    UnitCostDocument (numeric(18,2)); CurrencyCodes en Core.Common; DTOs (request con
+    currency/rate requeridos, StageLineDto.UnitCostUSD→UnitCostDocument, detalle/línea);
+    migración aditiva 20261004040512_AddSupplierInvoiceMulticurrency con backfill
+    (UnitCostDocument = UnitCostUSD) y Down que elimina solo las 3 columnas; smoke/model.
+A2. Slice 2 — 35b9639: staging. Validación fail-fast (moneda ∈ {USD, Bs.S}; Bs.S exige
+    tasa > 0), tasa redondeada hacia arriba a 2 dec (RoundExchangeRateCeiling), USD
+    fuerza tasa 1; normalización server-side ToUSD (AwayFromZero, 2 dec) persistiendo
+    ambos costos (documento + USD); clasificación nueva: sin match → New ([NUEVO]);
+    costo normalizado difiere (incl. 0) → Update; igual → Unchanged; Conflict solo legacy.
+A3. Slice 3 — 423c2c2: creación en caliente. POST /api/supplier-invoices/{id}/lines/
+    {lineId}/create-product (Admin/Manager) atómico (execution strategy + transacción
+    relacional): validaciones con mensajes exactos (draft, pertenencia, sin resolver,
+    EAN/UPC ^\d{8,14}$, nombre ≤100); producto identidad-only (SKU = barcode capturado,
+    costo/márgenes/precios/stock en 0 — sin herencia de códigos de la factura); alias
+    SupplierProductCode upsert compartido (creación + confirm, last-write-wins, misma
+    transacción); re-clasificación de la línea con snapshots en cero; cliente API desktop.
+A4. Slice 4 — 7c7caf7: UI WPF. Cabecera moneda/tasa (precarga BCV solo si el campo está
+    vacío; parseo tolerante coma/punto; gate de stage), badge [NUEVO], CanApprove por
+    producto resuelto, acción "Crear Producto" por fila, columna "Costo factura (Bs.S)"
+    vía ViewModelProxy, modal CreateInvoiceProductDialog (EAN/UPC vacío por defecto,
+    8–14 dígitos, autofocus/Enter/Esc) + IDialogService/WpfDialogService.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CommandCenter.Tests: 1651/1651 (baseline 1591 + 60 netos).
+B3. Cobertura (gate del repo): Core 0.8815 (≥0.70), Sales.Module 0.8893 (≥0.80),
+    Inventory.Module 0.8517 (≥0.72) — PASS.
+B4. Enfocados SupplierInvoice: 103/103 (8 s).
+B5. E2E WPF (arranque/navegación/flujos): 17/18 y 16/18 con flakes NO deterministas de
+    UI Automation (COMException 0x80131505, timeouts FlaUI) en PendingPickupsTests
+    (feature ajena, 8.145); re-ejecución aislada de la clase: 4/4 PASS. Residual de entorno.
+B6. Verificación independiente por slice (verificador dedicado, read-only): T2 PASS;
+    T3 PASS; T4 PASS WITH WARNINGS; T5 PASS; final PASS WITH WARNINGS (7/7 requisitos;
+    19/23 escenarios compliant + 4 partials de capa HTTP/gated). Reporte:
+    openspec/changes/2026-10-03-supplier-invoice-multicurrency/verify-report.md.
+
+C. HOOKS Y GGA
+
+core.hooksPath=.githooks activo; los commits se realizaron sin --no-verify. El pre-push
+de GGA es opt-in y no se ejecutó (no hubo push).
+
+D. LIMITACIONES CONOCIDAS
+
+D1. Tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en local (smoke de
+    migración/backfill y retry xmin real); corren en CI.
+D2. Los 400/404/409 del endpoint nuevo están verificados estáticamente (middleware
+    global); el 403 Cashier sí se ejerció por TestServer.
+D3. El rollback de creación posterior al flush del producto no está inyectado por fallo
+    (SQLite cubre efectos cero del caso SKU duplicado; confirm cubre rollback de alias).
+D4. Runtime WPF (render/modal/foco) verificado por compilación + estática + E2E de
+    arranque; sin E2E interactivo del modal nuevo ni aserción unitaria de CostComparison.
+D5. Borde aceptado: una línea [NUEVO] con costo 0 queda Unchanged tras crear el producto
+    (regla de igualdad de costo D4: 0 == 0).
+
+E. ROLLBACK
+
+E1. Migración aditiva; Down elimina solo las 3 columnas nuevas.
+E2. Revertir endpoint + modal + cabecera desactiva la feature; la creación agrega solo
+    filas nuevas de producto/alias (catalogo desactivable con herramientas existentes).
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS — 0 CRITICAL; 4 PARTIAL (capa HTTP
+    estática + gated Postgres), 0 UNTESTED, 0 FAILING; 7/7 requisitos. Reporte en el
+    change (verify-report.md). Validador nativo `gentle-ai sdd-verify-validate` sigue
+    ausente en este build (mismo residual que 8.144/8.145).
+
+Commits: dac0a11 (plan), a772152 (slice 1), 35b9639 (slice 2), 423c2c2 (slice 3),
+7c7caf7 (slice 4) + commit de cierre de este ANEXO (git log / L10 del tracker ODD).
+================================================================================

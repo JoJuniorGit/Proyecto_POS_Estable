@@ -20,6 +20,12 @@ public interface ISupplierInvoiceService
         ConfirmSupplierInvoiceRequestDto request,
         CancellationToken cancellationToken = default);
 
+    Task<SupplierInvoiceDetailDto> CreateProductFromLineAsync(
+        int invoiceId,
+        int lineId,
+        CreateInvoiceProductRequestDto request,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<SupplierSummaryDto>> GetSuppliersAsync(
         string? rifOrNit,
         string? commercialName,

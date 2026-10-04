@@ -107,6 +107,21 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         return await ReadRequiredResponseAsync<SupplierInvoiceDetailDto>(response, cancellationToken);
     }
 
+    public async Task<SupplierInvoiceDetailDto> CreateProductFromLineAsync(
+        int invoiceId,
+        int lineId,
+        CreateInvoiceProductRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using var response = await _httpClient.PostAsJsonAsync(
+            $"api/supplier-invoices/{invoiceId}/lines/{lineId}/create-product",
+            request,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await ReadRequiredResponseAsync<SupplierInvoiceDetailDto>(response, cancellationToken);
+    }
+
     private static async Task<TResponse> ReadRequiredResponseAsync<TResponse>(
         HttpResponseMessage response,
         CancellationToken cancellationToken)

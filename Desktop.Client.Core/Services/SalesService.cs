@@ -357,6 +357,51 @@ public class SalesService : ISalesService
         }
     }
 
+    public async Task<DeliveryReceiptClientDto> DeliverPartialAsync(
+        int saleId,
+        IReadOnlyList<PartialDeliveryItemRequestDto> items,
+        string? notes,
+        string idempotencyKey,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{saleId}/deliveries")
+        {
+            Content = JsonContent.Create(new { Items = items, Notes = notes })
+        };
+        request.Headers.Add("Idempotency-Key", idempotencyKey);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new System.Exception(ApiErrorParser.FromBody(
+                errorContent,
+                $"Error del servidor ({(int)response.StatusCode})"));
+        }
+
+        return await response.Content.ReadFromJsonAsync<DeliveryReceiptClientDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer el comprobante de despacho.");
+    }
+
+    public async Task<byte[]> GetDeliveryNoteAsync(
+        int saleId,
+        int deliveryId,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            $"api/sales/{saleId}/deliveries/{deliveryId}/receipt",
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new System.Exception(ApiErrorParser.FromBody(
+                errorContent,
+                $"Error del servidor ({(int)response.StatusCode})"));
+        }
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+    }
+
     public async Task UpdateSaleItemsAsync(int saleId, IEnumerable<UpdateSaleItemDto> items, decimal exchangeRate)
     {
         var body = new { ExchangeRate = exchangeRate, Items = items };

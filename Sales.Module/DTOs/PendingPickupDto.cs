@@ -14,7 +14,9 @@ public class PendingPickupDto
     public string CustomerPhone { get; set; } = string.Empty;
     public decimal TotalUSD { get; set; }
     public decimal TotalBsS { get; set; }
+    public decimal TotalUnits { get; set; }
+    public decimal DeliveredUnits { get; set; }
     public string DeliveryStatus { get; set; } = "PendingPickup";
     public DateTime? PickupDate { get; set; }
-    public List<SaleItemHistoryDto> Items { get; set; } = new();
+    public List<PendingPickupItemDto> Items { get; set; } = new();
 }

@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getPendingPickupsPage, confirmPickup } from '../services/pendingPickupApi';
+import {
+  deliverPartialPickup,
+  getDeliveryNoteBlob,
+  getPendingPickupsPage,
+} from '../services/pendingPickupApi';
 import { formatBsS, formatUSD, formatQuantity } from '../utils/formatters';
-import Modal from '../components/ui/Modal';
 import {
   PackageCheck,
   User,
@@ -12,11 +15,43 @@ import {
   RefreshCw,
   Search,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  Printer,
 } from 'lucide-react';
 import RoleGuard from '../navigation/RoleGuard';
+import PartialDeliveryModal from '../components/pending/PartialDeliveryModal';
+import { computeProgress } from '../utils/deliveryProgress';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import './PendingPickupsPage.css';
+
+function PickupStatus({ pickup, size }) {
+  if (pickup.deliveryStatus !== 'PartiallyDelivered') {
+    const sizeClass = size === 'mobile' ? 'ppk-custody-badge-md' : 'ppk-custody-badge-xl';
+    return (
+      <span className={`badge badge-warning ppk-custody-badge ${sizeClass}`}>
+        En Custodia
+      </span>
+    );
+  }
+
+  const progress = computeProgress(pickup.items || []);
+  const sizeClass = size === 'mobile' ? 'ppk-partial-state-mobile' : 'ppk-partial-state-desktop';
+
+  return (
+    <div className={`ppk-partial-state ${sizeClass}`}>
+      <span className="badge ppk-partial-badge">Entrega Parcial</span>
+      <progress
+        className="ppk-partial-progress"
+        value={progress.percent}
+        max="100"
+        aria-label={`Progreso de entrega: ${progress.label}`}
+      >
+        {progress.percent}%
+      </progress>
+      <span className="ppk-progress-label">{progress.label} artículos</span>
+    </div>
+  );
+}
 
 export default function PendingPickupsPage() {
   return (
@@ -33,8 +68,11 @@ function PendingPickupsPageContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedSaleId, setExpandedSaleId] = useState(null);
   const [selectedPickup, setSelectedPickup] = useState(null);
-  const [isConfirming, setIsConfirming] = useState(false);
+  const [prefillPending, setPrefillPending] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [deliveryReceipt, setDeliveryReceipt] = useState(null);
+  const [printError, setPrintError] = useState(null);
+  const [isPrinting, setIsPrinting] = useState(false);
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   // 8.14-N1: paginación de UI — página actual (offset) y si hay más para el botón "Ver más".
@@ -47,12 +85,19 @@ function PendingPickupsPageContent() {
     setError(null);
     try {
       const { items, totalCount } = await getPendingPickupsPage({ limit: PAGE_SIZE, offset: 0 });
-      setPickups(items || []);
-      setPageOffset(items?.length || 0);
-      setHasMore(totalCount > (items?.length || 0));
+      const loadedItems = items || [];
+      setPickups(loadedItems);
+      setPageOffset(loadedItems.length);
+      setHasMore(totalCount > loadedItems.length);
+      setSelectedPickup((currentPickup) => {
+        if (!currentPickup) return currentPickup;
+        return loadedItems.find((item) => item.saleId === currentPickup.saleId) || null;
+      });
+      return loadedItems;
     } catch (err) {
       console.error('[PendingPickupsPage] Error cargando retiros pendientes:', err);
       setError('No se pudieron cargar los pedidos pendientes por retirar.');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -98,23 +143,53 @@ function PendingPickupsPageContent() {
     return inv.includes(q) || name.includes(q) || cedula.includes(q);
   });
 
-  const handleConfirmPickupClick = (pickup) => {
+  const handleConfirmPickupClick = (pickup, shouldPrefillPending = false) => {
+    setError(null);
+    setPrintError(null);
+    setPrefillPending(shouldPrefillPending);
     setSelectedPickup(pickup);
   };
 
-  const handleExecutePickup = async () => {
-    if (!selectedPickup) return;
-    setIsConfirming(true);
+  const handlePartialDelivery = async ({ saleId, items, notes, idempotencyKey }) => {
+    const receipt = await deliverPartialPickup(saleId, items, notes, idempotencyKey);
+    const invoiceNumber = receipt.invoiceNumber || saleId;
+    setSuccessMessage(`Retiro registrado con éxito para la Factura N° ${invoiceNumber}.`);
+    setDeliveryReceipt(receipt);
+    setPrintError(null);
+    setError(null);
+    setSelectedPickup(null);
+    await loadPickups();
+  };
+
+  const handleRejectedPartialDelivery = async (rejectedError, saleId) => {
+    const refreshedPickups = await loadPickups();
+    if (refreshedPickups && !refreshedPickups.some((pickup) => pickup.saleId === saleId)) {
+      setError(rejectedError.message || 'El pedido ya no tiene cantidades pendientes por retirar.');
+    }
+  };
+
+  const handlePrintDeliveryNote = async () => {
+    if (!deliveryReceipt || isPrinting) return;
+
+    let printWindow;
+    setIsPrinting(true);
+    setPrintError(null);
     try {
-      await confirmPickup(selectedPickup.saleId);
-      setSuccessMessage(`¡Retiro confirmado con éxito para la Factura N° ${selectedPickup.invoiceNumber || selectedPickup.saleId}!`);
-      setSelectedPickup(null);
-      await loadPickups();
+      printWindow = window.open('about:blank', '_blank');
+      if (!printWindow) {
+        throw new Error('El navegador bloqueó la ventana de impresión. Permita ventanas emergentes e intente de nuevo.');
+      }
+
+      const note = await getDeliveryNoteBlob(deliveryReceipt.saleId, deliveryReceipt.deliveryId);
+      const objectUrl = URL.createObjectURL(note);
+      printWindow.opener = null;
+      printWindow.location.replace(objectUrl);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (err) {
-      console.error('[PendingPickupsPage] Error al confirmar retiro:', err);
-      setError(err.message || 'Ocurrió un error al confirmar la entrega.');
+      if (printWindow && !printWindow.closed) printWindow.close();
+      setPrintError(err.message || 'No se pudo abrir la Nota de Despacho. El retiro permanece registrado.');
     } finally {
-      setIsConfirming(false);
+      setIsPrinting(false);
     }
   };
 
@@ -155,22 +230,48 @@ function PendingPickupsPageContent() {
       </div>
 
       {successMessage && (
-        <div className="alert-box success-alert mb-4 flex-align-center gap-2 ppk-success-alert">
-          <CheckCircle size={20} className="flex-shrink-0" />
-          <span>{successMessage}</span>
+        <div className="alert-box success-alert mb-4 flex-align-center gap-2 ppk-success-alert" role="status" aria-live="polite">
+          <CheckCircle size={20} className="flex-shrink-0" aria-hidden="true" />
+          <span className="ppk-success-message">{successMessage}</span>
+          {deliveryReceipt && (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline flex-align-center gap-1 ppk-print-button"
+              onClick={handlePrintDeliveryNote}
+              disabled={isPrinting}
+            >
+              {isPrinting ? (
+                <Loader2 className="animate-spin" size={16} aria-hidden="true" />
+              ) : (
+                <Printer size={16} aria-hidden="true" />
+              )}
+              {isPrinting ? 'Preparando...' : 'Imprimir Nota de Despacho'}
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-sm btn-link text-success ml-auto ppk-alert-close"
-            onClick={() => setSuccessMessage(null)}
+            onClick={() => {
+              setSuccessMessage(null);
+              setDeliveryReceipt(null);
+              setPrintError(null);
+            }}
           >
             Aceptar
           </button>
         </div>
       )}
 
+      {printError && (
+        <div className="alert-box danger-alert mb-4 ppk-print-error" role="alert">
+          <AlertCircle size={20} className="flex-shrink-0" aria-hidden="true" />
+          <span>{printError}</span>
+        </div>
+      )}
+
       {error && (
-        <div className="alert-box danger-alert mb-4">
-          <AlertCircle size={20} className="flex-shrink-0" />
+        <div className="alert-box danger-alert mb-4" role="alert">
+          <AlertCircle size={20} className="flex-shrink-0" aria-hidden="true" />
           <span>{error}</span>
         </div>
       )}
@@ -259,9 +360,7 @@ function PendingPickupsPageContent() {
                         </td>
 
                         <td className="ppk-table-pad text-center">
-                          <span className="badge badge-warning ppk-custody-badge ppk-custody-badge-xl">
-                            En Custodia
-                          </span>
+                          <PickupStatus pickup={pickup} size="desktop" />
                         </td>
 
                         <td className="ppk-table-pad text-right" onClick={(e) => e.stopPropagation()}>
@@ -271,7 +370,14 @@ function PendingPickupsPageContent() {
                               className="btn btn-sm btn-outline flex-align-center gap-1 ppk-confirm-btn"
                               onClick={() => handleConfirmPickupClick(pickup)}
                             >
-                              <PackageCheck size={15} /> Confirmar Retiro
+                              <PackageCheck size={15} aria-hidden="true" /> Confirmar Retiro
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline flex-align-center gap-1 ppk-confirm-btn"
+                              onClick={() => handleConfirmPickupClick(pickup, true)}
+                            >
+                              <PackageCheck size={15} aria-hidden="true" /> Retiro Completo
                             </button>
                           </div>
                         </td>
@@ -335,9 +441,7 @@ function PendingPickupsPageContent() {
                       </div>
                     </div>
 
-                    <span className="badge badge-warning ppk-custody-badge ppk-custody-badge-md">
-                      En Custodia
-                    </span>
+                    <PickupStatus pickup={pickup} size="mobile" />
                   </div>
 
                   {/* Customer Info Box */}
@@ -378,7 +482,15 @@ function PendingPickupsPageContent() {
                       className="btn btn-outline flex-1 flex-align-center justify-center gap-1 ppk-confirm-btn-mobile"
                       onClick={() => handleConfirmPickupClick(pickup)}
                     >
-                      <PackageCheck size={18} /> Confirmar Retiro
+                      <PackageCheck size={18} aria-hidden="true" /> Confirmar Retiro
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-outline flex-1 flex-align-center justify-center gap-1 w-full ppk-confirm-btn-mobile"
+                      onClick={() => handleConfirmPickupClick(pickup, true)}
+                    >
+                      <PackageCheck size={18} aria-hidden="true" /> Retiro Completo
                     </button>
 
                     <button
@@ -430,54 +542,14 @@ function PendingPickupsPageContent() {
         </>
       )}
 
-      {/* Modal de Confirmación de Retiro */}
       {selectedPickup && (
-        <Modal
-          isOpen={Boolean(selectedPickup)}
+        <PartialDeliveryModal
+          pickup={selectedPickup}
+          prefillPending={prefillPending}
           onClose={() => setSelectedPickup(null)}
-          title="Confirmar Entrega de Mercancía"
-          maxWidth="480px"
-        >
-          <div className="p-2 text-center ppk-modal-body">
-            <div className="ppk-confirm-icon">
-              <PackageCheck size={28} />
-            </div>
-
-            <h4 className="font-bold mb-2 text-primary ppk-modal-title">
-              ¿Entregar pedido a <span className="ppk-customer-white">{selectedPickup.customerName || 'Consumidor Final'}</span>?
-            </h4>
-            <p className="text-muted text-sm mb-4 ppk-modal-text">
-              Se registrará la salida física de la mercancía correspondiente a la <span className="font-bold ppk-modal-highlight">Factura N° {selectedPickup.invoiceNumber || selectedPickup.saleId}</span>.
-            </p>
-
-            <div className="d-flex justify-center gap-3 ppk-modal-actions ppk-border-top-solid">
-              <button
-                type="button"
-                className="btn btn-outline ppk-btn-min110"
-                onClick={() => setSelectedPickup(null)}
-                disabled={isConfirming}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary d-inline-flex flex-align-center justify-center gap-2 ppk-btn-confirm"
-                onClick={handleExecutePickup}
-                disabled={isConfirming}
-              >
-                {isConfirming ? (
-                  <>
-                    <Loader2 className="animate-spin" size={18} /> Procesando...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle size={18} /> Confirmar Entrega
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </Modal>
+          onConfirm={handlePartialDelivery}
+          onRejected={handleRejectedPartialDelivery}
+        />
       )}
     </div>
   );

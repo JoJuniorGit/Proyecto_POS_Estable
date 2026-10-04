@@ -162,6 +162,21 @@ public class PendingPickupTests
             Status = SaleStatus.Completed,
             DeliveryStatus = SaleDeliveryStatus.PendingPickup,
             PickupDate = null,
+            Items = new List<SaleItem>
+            {
+                new SaleItem
+                {
+                    Id = 1,
+                    SaleId = 13,
+                    ProductId = 101,
+                    ProductName = "Harina Pan",
+                    Quantity = 10m,
+                    UnitPrice = 10m,
+                    UnitPriceBsS = 400m,
+                    Subtotal = 100m,
+                    SubtotalBsS = 4000m
+                }
+            },
             Payments = new List<SalePayment>
             {
                 new SalePayment { Id = 1, Amount = 100m, AmountBsS = 4000m, ExchangeRate = 40m }

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Core.Common;
 using Core.Entities;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
@@ -38,6 +39,24 @@ public class SupplierInvoiceMigrationSmokeTests
         var lineType = model.FindEntityType(typeof(SupplierInvoiceLine))!;
         Assert.Equal("numeric(18,2)", lineType.FindProperty(nameof(SupplierInvoiceLine.UnitCostUSD))!.GetColumnType());
         Assert.Equal("numeric(18,3)", lineType.FindProperty(nameof(SupplierInvoiceLine.Quantity))!.GetColumnType());
+
+        // 8.146 multi-moneda: snapshot de moneda/tasa por documento + costo en moneda de la factura.
+        var invoiceType = model.FindEntityType(typeof(SupplierInvoice))!;
+        var currency = invoiceType.FindProperty(nameof(SupplierInvoice.Currency))!;
+        Assert.Equal(8, currency.GetMaxLength());
+        Assert.Equal(CurrencyCodes.Usd, currency.GetDefaultValue());
+
+        var appliedRate = invoiceType.FindProperty(nameof(SupplierInvoice.AppliedRate))!;
+        Assert.Equal("numeric(18,4)", appliedRate.GetColumnType());
+        Assert.Equal(18, appliedRate.GetPrecision());
+        Assert.Equal(4, appliedRate.GetScale());
+        Assert.Equal(1m, appliedRate.GetDefaultValue());
+
+        var unitCostDocument = lineType.FindProperty(nameof(SupplierInvoiceLine.UnitCostDocument))!;
+        Assert.Equal("numeric(18,2)", unitCostDocument.GetColumnType());
+        Assert.Equal(18, unitCostDocument.GetPrecision());
+        Assert.Equal(2, unitCostDocument.GetScale());
+        Assert.Equal(0m, unitCostDocument.GetDefaultValue());
     }
 
     [Fact]
@@ -100,6 +119,48 @@ public class SupplierInvoiceMigrationSmokeTests
             "AND indexdef ILIKE '%CREATE UNIQUE INDEX%' AND indexdef ILIKE '%WHERE%'")
             .SingleAsync();
         Assert.Equal(1, supplierCodeIndexIsUniqueAndFiltered);
+
+        // 8.146: columnas aditivas + backfill del costo documental.
+        var multicurrencyColumnCount = await context.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns " +
+            "WHERE table_schema = 'public' AND " +
+            "((table_name = 'SupplierInvoices' AND column_name IN ('Currency', 'AppliedRate')) " +
+            "OR (table_name = 'SupplierInvoiceLines' AND column_name = 'UnitCostDocument'))")
+            .SingleAsync();
+        Assert.Equal(3, multicurrencyColumnCount);
+
+        var currencyColumnShape = await context.Database.SqlQueryRaw<string>(
+            "SELECT data_type || ':' || character_maximum_length::text AS \"Value\" " +
+            "FROM information_schema.columns WHERE table_schema = 'public' " +
+            "AND table_name = 'SupplierInvoices' AND column_name = 'Currency'")
+            .SingleAsync();
+        Assert.Equal("character varying:8", currencyColumnShape);
+
+        var currencyColumnDefault = await context.Database.SqlQueryRaw<string>(
+            "SELECT column_default AS \"Value\" FROM information_schema.columns " +
+            "WHERE table_schema = 'public' AND table_name = 'SupplierInvoices' AND column_name = 'Currency'")
+            .SingleAsync();
+        Assert.Contains("'USD'", currencyColumnDefault);
+
+        var appliedRateColumnShape = await context.Database.SqlQueryRaw<string>(
+            "SELECT data_type || ':' || numeric_precision::text || ':' || numeric_scale::text AS \"Value\" " +
+            "FROM information_schema.columns WHERE table_schema = 'public' " +
+            "AND table_name = 'SupplierInvoices' AND column_name = 'AppliedRate'")
+            .SingleAsync();
+        Assert.Equal("numeric:18:4", appliedRateColumnShape);
+
+        var documentCostColumnShape = await context.Database.SqlQueryRaw<string>(
+            "SELECT data_type || ':' || numeric_precision::text || ':' || numeric_scale::text AS \"Value\" " +
+            "FROM information_schema.columns WHERE table_schema = 'public' " +
+            "AND table_name = 'SupplierInvoiceLines' AND column_name = 'UnitCostDocument'")
+            .SingleAsync();
+        Assert.Equal("numeric:18:2", documentCostColumnShape);
+
+        var backfilledLinesMismatch = await context.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM \"SupplierInvoiceLines\" " +
+            "WHERE \"UnitCostDocument\" <> \"UnitCostUSD\"")
+            .SingleAsync();
+        Assert.Equal(0, backfilledLinesMismatch);
 
         if (productsBefore is not null)
         {

@@ -62,6 +62,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <TextBox Grid.Row="0" Grid.Column="0"
@@ -105,6 +106,24 @@
                         </DataTemplate>
                     </ComboBox.ItemTemplate>
                 </ComboBox>
+
+                <ComboBox Grid.Row="2" Grid.Column="0"
+                          ItemsSource="{Binding CurrencyOptions}"
+                          SelectedItem="{Binding SelectedCurrency, Mode=TwoWay}"
+                          Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                          materialDesign:HintAssist.Hint="Moneda del documento"
+                          IsEnabled="{Binding IsCurrencyInputEnabled}"
+                          Margin="0,8,10,0" />
+                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,8,10,0">
+                    <TextBox Text="{Binding AppliedRateText, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                             materialDesign:HintAssist.Hint="Tasa aplicada (Bs.S)"
+                             IsEnabled="{Binding IsRateInputEnabled}"
+                             AutomationProperties.Name="Tasa de cambio aplicada" />
+                    <TextBlock Text="Indique una tasa mayor que cero para facturas en Bs.S."
+                               Foreground="#DC2626" FontSize="11" Margin="4,4,0,0"
+                               Visibility="{Binding ShowRateValidationHint, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
             </Grid>
         </materialDesign:Card>
 
@@ -188,9 +207,9 @@
             <DataGrid.RowStyle>
                 <Style TargetType="DataGridRow" BasedOn="{StaticResource MaterialDesignDataGridRow}">
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding IsConflict}" Value="True">
-                            <Setter Property="Opacity" Value="0.78" />
-                            <Setter Property="ToolTip" Value="La línea requiere revisión y no se aplicará al catálogo." />
+                        <DataTrigger Binding="{Binding CanCreateProduct}" Value="True">
+                            <Setter Property="Opacity" Value="0.9" />
+                            <Setter Property="ToolTip" Value="Producto nuevo: use 'Crear Producto' para capturar el código de barras y resolver la línea." />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
@@ -207,7 +226,7 @@
                                     <Style TargetType="Border">
                                         <Setter Property="Background" Value="#E3F2FD" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[NEW]">
+                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[NUEVO]">
                                                 <Setter Property="Background" Value="#E8F5E9" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding StatusLabel}" Value="[UPDATE]">
@@ -229,6 +248,10 @@
                 </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Cantidad" Binding="{Binding Quantity, StringFormat={}{0:N3}}" Width="90" />
                 <DataGridTextColumn Header="Costo USD" Binding="{Binding UnitCostUSD, StringFormat={}{0:N2}}" Width="100" />
+                <DataGridTextColumn Header="Costo factura (Bs.S)"
+                                    Binding="{Binding UnitCostDocument, Mode=OneWay, StringFormat={}{0:N2}}"
+                                    Width="130"
+                                    Visibility="{Binding Data.IsBsSInvoice, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}" />
                 <DataGridTextColumn Header="Costo anterior → nuevo" Binding="{Binding CostComparison}" Width="160" />
                 <DataGridTemplateColumn Header="Margen detal %" Width="125"
                                         Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
@@ -265,6 +288,24 @@
                                       HorizontalAlignment="Center"
                                       VerticalAlignment="Center"
                                       AutomationProperties.Name="Aprobar línea de factura" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Crear Producto" Width="140"
+                                        Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="Crear Producto"
+                                    Command="{Binding Data.CreateProductCommand, Source={StaticResource ViewModelProxy}}"
+                                    CommandParameter="{Binding}"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    Visibility="{Binding CanCreateProduct, Converter={StaticResource BoolToVis}}"
+                                    IsEnabled="{Binding CanCreateProduct}"
+                                    FontSize="11"
+                                    Padding="8,2"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.Name="Crear producto desde la línea" />
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
