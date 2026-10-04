@@ -13,7 +13,14 @@ public class Program
     public static void Main(string[] args)
     {
         bool isE2E = args != null && Array.Exists(args, a => a.Equals("--e2e", StringComparison.OrdinalIgnoreCase));
-        if (!isE2E)
+        // 8.148-T2: el harness E2E full-stack lanza un cliente REAL en máquinas de desarrollo donde
+        // puede haber otra instancia abierta; el modo test-only (variable de entorno) omite el mutex
+        // global. En uso normal el flag no existe y la protección de instancia única queda intacta.
+        bool isE2EFullStack = string.Equals(
+            Environment.GetEnvironmentVariable("E2E_SKIP_SINGLE_INSTANCE"),
+            "1",
+            StringComparison.Ordinal);
+        if (!isE2E && !isE2EFullStack)
         {
             _singleInstanceMutex = new Mutex(true, "Global\\POS_Desktop_Client_SingleInstance_Mutex", out bool createdNew);
 
