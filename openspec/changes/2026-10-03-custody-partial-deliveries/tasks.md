@@ -66,5 +66,5 @@ Chain strategy: stacked-to-main
 
 ## Phase 6: Verification & Docs
 
-- [ ] 6.1 `dotnet build CommandCenter.slnx -c Release` 0/0; `dotnet test`; `npm test` + `npm run lint`; `scripts/check-coverage.py`.
-- [ ] 6.2 ANEXO 8.145 in `docs/reporte.txt` (slices, evidence, GGA, rollback, limitations).
+- [x] 6.1 `dotnet build CommandCenter.slnx -c Release` 0/0; `dotnet test`; `npm test` + `npm run lint`; `scripts/check-coverage.py`.
+- [x] 6.2 ANEXO 8.145 in `docs/reporte.txt` (slices, evidence, GGA, rollback, limitations).

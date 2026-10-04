@@ -11750,3 +11750,107 @@ G5. Crash al abrir la vista de facturas de proveedor: el ComboBox de proveedores
     muestra nombre + RIF). E2E de salud endurecido: falla si la aplicación se
     cierra durante la navegación o si una vista no renderiza su título.
 ================================================================================
+
+================================================================================
+ANEXO 8.145 — ENTREGAS PARCIALES (MERCANCÍA EN CUSTODIA) EN RETIROS PENDIENTES (SDD) — 2026-10-03
+================================================================================
+Change SDD: 2026-10-03-custody-partial-deliveries; artefactos en
+openspec/changes/2026-10-03-custody-partial-deliveries/ (exploration, proposal,
+4 specs, design, tasks, state, verify-report).
+
+Alcance: backend (Sales.Module, Backend.API) + clientes WPF (Desktop.Client /
+Desktop.Client.Core) y Web (Web.Frontend + bundle regenerado en
+Backend.API/wwwroot). Entrega por work units en V0.15 (chain stacked-to-main,
+elegida por el mantenedor; sin push/PR/merge: decisión pendiente del
+mantenedor).
+
+A. ENTREGA POR SLICE
+
+A1. Slice 1 — 1f17988: dominio y migración. SaleDeliveryStatus agrega
+    PartiallyDelivered=2; SaleItem.DeliveredQuantity numeric(18,3) default 0;
+    entidades SaleDelivery + SaleDeliveryItem (log append-only con fecha UTC,
+    cajero id + snapshot de nombre, cantidades por evento); SalesDbContext
+    (FKs Restrict/Cascade, índices, xmin en SaleItem); migración aditiva
+    20261003223255_AddCustodyPartialDeliveries con backfill (DeliveryStatus=0 →
+    DeliveredQuantity=Quantity) y Down; smoke gated + 6 tests de modelo.
+A2. Slice 2 — 106dcdc: servicio y API. DeliverPartialAsync transaccional
+    (validaciones con mensajes exactos, contadores por línea, log, transición
+    Parcial/Completado, PickupDate solo al completar, sin inventario ni dinero);
+    confirm-pickup legacy delega entregando todas las cantidades pendientes;
+    GET pending-pickups incluye PartiallyDelivered con cantidades y agregados;
+    POST /api/sales/{id}/deliveries con Idempotency-Key obligatorio (registro
+    DENTRO de la transacción, replay JSON idéntico, mismatch 422, 409 por xmin,
+    400/403/404); 88 tests del filtro del slice.
+A3. Slice 3 — c5d9ae7: Nota de Despacho. DeliveryNotePdfGenerator (PDF directo,
+    hora local Venezuela, cajero, ítems, pendientes históricos reconstruidos del
+    log al momento del evento — reimpresión estable —, aviso "no es factura
+    fiscal", sin datos monetarios); GET
+    /api/sales/{id}/deliveries/{deliveryId}/receipt sale-scoped
+    (403/404/application-pdf); 9 tests.
+A4. Slice 4 — d23e299: UI WPF. Modal de cantidades (clamp al pendiente, notas,
+    cancelación sin request, borrador restaurado tras 409), badge azul "Entrega
+    Parcial" + "Retirado: X/Y", columnas Entregado/Pendiente, impresión de la
+    nota (PDF temporal + visor del sistema), idempotency key por intento.
+A5. Slice 5 — 331b975: UI Web + bundle regenerado. Modal de despacho (clamp,
+    confirm-disabled, errores 400/409), badge/progreso, impresión por blob
+    autenticado en pestaña nueva; helpers puros con node:test; bundle web
+    regenerado en Backend.API/wwwroot (convención del repo, precedente
+    8.129-8.143).
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CommandCenter.Tests: 1585/1585 (0 fallos, 0 omitidos) —
+    +50 tests netos sobre el baseline 1535 de 8.144.
+B3. Cobertura (gate del repo): Core 0.8805 (≥0.70), Sales.Module 0.8895 (≥0.80),
+    Inventory.Module 0.8428 (≥0.72) — PASS.
+B4. Web: npm test 300/300 (65 suites); npm run lint (oxlint) 0 hallazgos;
+    bundle estático consistente (index.html referencia assets existentes, 0
+    referencias colgadas a assets borrados).
+B5. Verificación independiente por slice (verificador dedicado, read-only):
+    T1 PASS WITH WARNINGS; T2 PASS WITH WARNINGS (tras corrección: idempotencia
+    movida dentro de la transacción + fixture sin ítems); T3 PASS; T4 PASS WITH
+    WARNINGS (tras corrección de wiring del modal WPF); T5 PASS; verificación
+    final PASS WITH WARNINGS.
+
+C. HOOKS Y GGA
+
+core.hooksPath=.githooks activo; los commits se realizaron sin --no-verify. El
+pre-push de GGA es opt-in y no se ejecutó (no hubo push).
+
+D. LIMITACIONES CONOCIDAS
+
+D1. Los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en local
+    (smoke de migración/backfill, carrera xmin real, unique index de
+    idempotencia); quedan cubiertos en CI al configurar la variable.
+D2. Sin e2e DOM/interactivo de los modales Web; sin test interactivo del modal
+    WPF (wiring validado estáticamente contra la semántica de WPF).
+D3. E2E WPF de salud no ejecutado en la verificación final; su navegación no
+    abre el modal de despacho.
+D4. Clamp Web no redondea a 3 decimales (el server redondea numeric(18,3));
+    parseo decimal dependiente de cultura (es-VE usa coma).
+D5. El DTO de pendientes cambió Items[].id → Items[].saleItemId; consumidores
+    actuales verificados (Desktop/Web), clientes externos no auditados.
+
+E. ROLLBACK
+
+E1. La migración AddCustodyPartialDeliveries es aditiva; Down elimina
+    SaleDeliveryItems/SaleDeliveries y la columna DeliveredQuantity (sin
+    operaciones de datos).
+E2. Cada slice es revertible por commit; el endpoint legacy confirm-pickup
+    sigue funcional y la feature se desactiva revirtiendo servicio/endpoints/UI.
+E3. Ventas históricas intactas: la feature no escribe campos monetarios ni
+    inventario (el stock se descuenta al 100% en el checkout original).
+
+F. VERIFY SDD
+
+F1. sdd-verify: PASS WITH WARNINGS — 0 CRITICAL, 0 blockers; 15/15 requisitos;
+    31/34 escenarios conformes (3 escenarios runtime-gated: backfill x2 y
+    carrera de concurrencia). Reporte: openspec/changes/
+    2026-10-03-custody-partial-deliveries/verify-report.md.
+F2. Warnings: los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en
+    local — la cobertura real corre en CI; el validador nativo
+    `gentle-ai sdd-verify-validate` no existe en este build (mismo hallazgo que
+    8.144), por lo que la persistencia del reporte se hizo por decisión del
+    orquestador, sin settlement nativo.
+================================================================================
