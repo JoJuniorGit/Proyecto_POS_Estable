@@ -46,9 +46,9 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: Delivery Note PDF
 
-- [ ] 3.1 RED: `CommandCenter.Tests/Unit/DeliveryNotePdfGeneratorTests.cs` (content: date, cashier, items, remaining; PDF non-empty).
-- [ ] 3.2 Create `Sales.Module/Receipts/DeliveryNotePdfGenerator.cs` from immutable log data (Note Content).
-- [ ] 3.3 Add `GET /{id}/deliveries/{deliveryId}/receipt` (sale-scoped; 404 wrong sale/id) (Retrieval Endpoint and Access).
+- [x] 3.1 RED: `CommandCenter.Tests/Unit/DeliveryNotePdfGeneratorTests.cs` (content: date, cashier, items, remaining; PDF non-empty).
+- [x] 3.2 Create `Sales.Module/Receipts/DeliveryNotePdfGenerator.cs` from immutable log data (Note Content).
+- [x] 3.3 Add `GET /{id}/deliveries/{deliveryId}/receipt` (sale-scoped; 404 wrong sale/id) (Retrieval Endpoint and Access).
 
 ## Phase 4: WPF Dispatch UI
 

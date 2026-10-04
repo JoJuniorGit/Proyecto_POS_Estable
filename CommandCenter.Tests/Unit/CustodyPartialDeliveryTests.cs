@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
@@ -471,5 +472,130 @@ public class CustodyPartialDeliveryTests
                 Assert.Equal(480m, item.SubtotalBsS);
             });
         Assert.Equal(1, await service.CountPendingPickupsAsync());
+    }
+
+    [Fact]
+    public async Task GetDeliveryNotePdfAsync_ExistingDelivery_ReturnsNonEmptyPdf()
+    {
+        using var context = CreateContext();
+        var sale = CustodySale(112, deliveredQuantity: 4m).Build();
+        context.Sales.Add(sale);
+        var delivery = new SaleDelivery
+        {
+            SaleId = sale.Id,
+            DeliveredAt = new DateTime(2026, 10, 3, 12, 30, 0, DateTimeKind.Utc),
+            DeliveredByName = "Ana Paredes",
+            Items = new List<SaleDeliveryItem>
+            {
+                new()
+                {
+                    SaleItemId = 1,
+                    ProductId = 7,
+                    ProductName = "Test Product",
+                    QuantityDelivered = 4m
+                }
+            }
+        };
+        context.SaleDeliveries.Add(delivery);
+        await context.SaveChangesAsync();
+
+        var pdf = CreateSalesService(context).GetDeliveryNotePdfAsync(sale.Id, delivery.Id);
+
+        Assert.NotEmpty(pdf);
+    }
+
+    [Fact]
+    public async Task GetDeliveryNotePdfAsync_ReprintUsesPendingBalanceAtRecordedEvent()
+    {
+        using var context = CreateContext();
+        var sale = CustodySale(116, SaleDeliveryStatus.PartiallyDelivered, deliveredQuantity: 7m).Build();
+        context.Sales.Add(sale);
+        var earlierDelivery = new SaleDelivery
+        {
+            SaleId = sale.Id,
+            DeliveredAt = new DateTime(2026, 10, 3, 12, 30, 0, DateTimeKind.Utc),
+            DeliveredByName = "Ana Paredes",
+            Items = new List<SaleDeliveryItem>
+            {
+                new()
+                {
+                    SaleItemId = 1,
+                    ProductId = 7,
+                    ProductName = "Test Product",
+                    QuantityDelivered = 4m
+                }
+            }
+        };
+        var laterDelivery = new SaleDelivery
+        {
+            SaleId = sale.Id,
+            DeliveredAt = new DateTime(2026, 10, 4, 12, 30, 0, DateTimeKind.Utc),
+            DeliveredByName = "Carlos Perez",
+            Items = new List<SaleDeliveryItem>
+            {
+                new()
+                {
+                    SaleItemId = 1,
+                    ProductId = 7,
+                    ProductName = "Test Product",
+                    QuantityDelivered = 3m
+                }
+            }
+        };
+        context.SaleDeliveries.AddRange(earlierDelivery, laterDelivery);
+        await context.SaveChangesAsync();
+
+        var pdf = CreateSalesService(context).GetDeliveryNotePdfAsync(sale.Id, earlierDelivery.Id);
+        var content = Encoding.ASCII.GetString(pdf);
+
+        Assert.Contains("(6) Tj", content);
+        Assert.DoesNotContain("(3) Tj", content);
+    }
+
+    [Fact]
+    public async Task GetDeliveryNotePdfAsync_MissingDelivery_ThrowsKeyNotFoundException()
+    {
+        using var context = CreateContext();
+        var sale = CustodySale(113).Build();
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var exception = Assert.Throws<KeyNotFoundException>(() =>
+            CreateSalesService(context).GetDeliveryNotePdfAsync(sale.Id, 999));
+
+        Assert.Equal("Entrega no encontrada.", exception.Message);
+    }
+
+    [Fact]
+    public async Task GetDeliveryNotePdfAsync_DeliveryBelongsToAnotherSale_ThrowsKeyNotFoundException()
+    {
+        using var context = CreateContext();
+        var sale = CustodySale(114).Build();
+        var otherSale = CustodySale(115).Build();
+        otherSale.Items.Single().Id = 2;
+        context.Sales.AddRange(sale, otherSale);
+        var delivery = new SaleDelivery
+        {
+            SaleId = otherSale.Id,
+            DeliveredAt = DateTime.UtcNow,
+            DeliveredByName = "Ana Paredes",
+            Items = new List<SaleDeliveryItem>
+            {
+                new()
+                {
+                    SaleItemId = 2,
+                    ProductId = 7,
+                    ProductName = "Test Product",
+                    QuantityDelivered = 1m
+                }
+            }
+        };
+        context.SaleDeliveries.Add(delivery);
+        await context.SaveChangesAsync();
+
+        var exception = Assert.Throws<KeyNotFoundException>(() =>
+            CreateSalesService(context).GetDeliveryNotePdfAsync(sale.Id, delivery.Id));
+
+        Assert.Equal("Entrega no encontrada.", exception.Message);
     }
 }

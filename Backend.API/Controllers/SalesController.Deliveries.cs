@@ -12,6 +12,37 @@ namespace Backend.API.Controllers;
 
 public partial class SalesController
 {
+    [HttpGet("{id:int}/deliveries/{deliveryId:int}/receipt")]
+    [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetDeliveryNotePdfAsync(
+        int id,
+        int deliveryId,
+        CancellationToken cancellationToken = default)
+    {
+        const string accessDeniedMessage = "Acceso denegado: no tiene permisos para confirmar esta entrega.";
+        if (User.IsInRole("Driver"))
+        {
+            return this.ApiForbidden(accessDeniedMessage);
+        }
+
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
+        {
+            return this.ApiForbidden(accessDeniedMessage);
+        }
+
+        try
+        {
+            byte[] pdfBytes = _salesService.GetDeliveryNotePdfAsync(id, deliveryId, cancellationToken);
+            return File(pdfBytes, "application/pdf");
+        }
+        catch (System.Collections.Generic.KeyNotFoundException ex)
+        {
+            return this.ApiNotFound(ex.Message);
+        }
+    }
+
     [HttpPost("{id}/deliveries")]
     [ProducesResponseType(typeof(DeliveryReceiptDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]

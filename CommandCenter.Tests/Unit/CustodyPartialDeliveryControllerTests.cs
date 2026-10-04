@@ -83,6 +83,34 @@ public class CustodyPartialDeliveryControllerTests
         return sale;
     }
 
+    private static async Task<SaleDelivery> SeedDeliveryAsync(
+        SalesDbContext context,
+        int saleId,
+        int saleItemId = 1,
+        decimal quantityDelivered = 4m)
+    {
+        var saleItem = await context.SaleItems.SingleAsync(item => item.Id == saleItemId);
+        var delivery = new SaleDelivery
+        {
+            SaleId = saleId,
+            DeliveredAt = new DateTime(2026, 10, 3, 12, 30, 0, DateTimeKind.Utc),
+            DeliveredByName = "Ana Paredes",
+            Items = new List<SaleDeliveryItem>
+            {
+                new()
+                {
+                    SaleItemId = saleItem.Id,
+                    ProductId = saleItem.ProductId,
+                    ProductName = saleItem.ProductName,
+                    QuantityDelivered = quantityDelivered
+                }
+            }
+        };
+        context.SaleDeliveries.Add(delivery);
+        await context.SaveChangesAsync();
+        return delivery;
+    }
+
     private static PartialDeliveryRequest CreateRequest(decimal quantity, string? notes = null)
     {
         return new PartialDeliveryRequest
@@ -251,5 +279,99 @@ public class CustodyPartialDeliveryControllerTests
         Assert.Equal(
             "Otro usuario modificó el retiro simultáneamente. Actualice la lista e intente de nuevo.",
             GetProblemMessage(conflict.Value));
+    }
+
+    [Fact]
+    public async Task GetDeliveryNote_WhenDriverHasAdminClaim_ReturnsForbidden()
+    {
+        using var context = CreateContext();
+        var sale = await SeedCustodySaleAsync(context, 200, deliveredQuantity: 4m);
+        var delivery = await SeedDeliveryAsync(context, sale.Id);
+        var controller = CreateController(context, UserRole.Driver);
+        AttachHttpContext(
+            controller,
+            $"/api/sales/{sale.Id}/deliveries/{delivery.Id}/receipt",
+            ActingUserId.ToString(),
+            null,
+            "Admin",
+            "Driver");
+
+        var result = await controller.GetDeliveryNotePdfAsync(sale.Id, delivery.Id);
+
+        var forbidden = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, forbidden.StatusCode);
+        Assert.Equal("Acceso denegado: no tiene permisos para confirmar esta entrega.", GetProblemMessage(forbidden.Value));
+    }
+
+    [Fact]
+    public async Task GetDeliveryNote_WhenDeliveryDoesNotExist_ReturnsNotFoundProblemDetails()
+    {
+        using var context = CreateContext();
+        var sale = await SeedCustodySaleAsync(context, 201);
+        var controller = CreateController(context);
+        AttachHttpContext(
+            controller,
+            $"/api/sales/{sale.Id}/deliveries/999/receipt",
+            ActingUserId.ToString(),
+            null,
+            "Admin");
+
+        var result = await controller.GetDeliveryNotePdfAsync(sale.Id, 999);
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, notFound.StatusCode);
+        Assert.Equal("Entrega no encontrada.", GetProblemMessage(notFound.Value));
+    }
+
+    [Fact]
+    public async Task GetDeliveryNote_WhenDeliveryBelongsToAnotherSale_ReturnsNotFoundProblemDetails()
+    {
+        using var context = CreateContext();
+        var sale = await SeedCustodySaleAsync(context, 202);
+        var otherSale = new SaleBuilder()
+            .WithId(203)
+            .WithInvoiceNumber(1203)
+            .WithStatus(SaleStatus.Completed)
+            .WithDeliveryStatus(SaleDeliveryStatus.PartiallyDelivered)
+            .WithItem(8, "Other Product", 3m, 1m)
+            .Build();
+        otherSale.Items.Single().Id = 2;
+        context.Sales.Add(otherSale);
+        await context.SaveChangesAsync();
+        var delivery = await SeedDeliveryAsync(context, otherSale.Id, saleItemId: 2, quantityDelivered: 1m);
+        var controller = CreateController(context);
+        AttachHttpContext(
+            controller,
+            $"/api/sales/{sale.Id}/deliveries/{delivery.Id}/receipt",
+            ActingUserId.ToString(),
+            null,
+            "Admin");
+
+        var result = await controller.GetDeliveryNotePdfAsync(sale.Id, delivery.Id);
+
+        var notFound = Assert.IsType<NotFoundObjectResult>(result);
+        Assert.Equal(StatusCodes.Status404NotFound, notFound.StatusCode);
+        Assert.Equal("Entrega no encontrada.", GetProblemMessage(notFound.Value));
+    }
+
+    [Fact]
+    public async Task GetDeliveryNote_WhenDeliveryExists_ReturnsPdfContent()
+    {
+        using var context = CreateContext();
+        var sale = await SeedCustodySaleAsync(context, 204, deliveredQuantity: 4m);
+        var delivery = await SeedDeliveryAsync(context, sale.Id);
+        var controller = CreateController(context);
+        AttachHttpContext(
+            controller,
+            $"/api/sales/{sale.Id}/deliveries/{delivery.Id}/receipt",
+            ActingUserId.ToString(),
+            null,
+            "Admin");
+
+        var result = await controller.GetDeliveryNotePdfAsync(sale.Id, delivery.Id);
+
+        var file = Assert.IsType<FileContentResult>(result);
+        Assert.Equal("application/pdf", file.ContentType);
+        Assert.NotEmpty(file.FileContents);
     }
 }

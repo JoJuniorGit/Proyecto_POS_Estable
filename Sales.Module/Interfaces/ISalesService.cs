@@ -28,6 +28,7 @@ public interface ISalesService
         string? idempotencyKey = null,
         byte[]? idempotencyPayloadHash = null,
         string? requestPath = null);
+    byte[] GetDeliveryNotePdfAsync(int saleId, int deliveryId, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleHistoryDto> ConfirmPickupAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null, int limit = 200, int offset = 0, System.Threading.CancellationToken cancellationToken = default);
     Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate, System.DateTime? endDate, string? search = null, int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
+using Sales.Module.Receipts;
 
 namespace Sales.Module.Services;
 
@@ -164,6 +165,40 @@ public partial class SalesService
 
             return receipt;
         });
+    }
+
+    public byte[] GetDeliveryNotePdfAsync(int saleId, int deliveryId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var delivery = _context.SaleDeliveries
+            .AsNoTracking()
+            .Include(item => item.Items)
+            .FirstOrDefault(item => item.Id == deliveryId && item.SaleId == saleId);
+        if (delivery == null) throw new KeyNotFoundException("Entrega no encontrada.");
+
+        var sale = _context.Sales
+            .AsNoTracking()
+            .Include(item => item.Items)
+            .FirstOrDefault(item => item.Id == saleId);
+        if (sale == null) throw new KeyNotFoundException("Entrega no encontrada.");
+
+        var deliveriesThroughEvent = _context.SaleDeliveries
+            .AsNoTracking()
+            .Include(item => item.Items)
+            .Where(item => item.SaleId == saleId && item.Id <= delivery.Id)
+            .ToList();
+        var deliveredQuantitiesAtEvent = deliveriesThroughEvent
+            .SelectMany(item => item.Items)
+            .GroupBy(item => item.SaleItemId)
+            .ToDictionary(group => group.Key, group => group.Sum(item => item.QuantityDelivered));
+        var pendingItems = sale.Items
+            .Select(item => new DeliveryNotePendingItem(
+                item.ProductName,
+                item.Quantity - deliveredQuantitiesAtEvent.GetValueOrDefault(item.Id)))
+            .Where(item => item.Quantity > 0m)
+            .ToList();
+
+        return DeliveryNotePdfGenerator.BuildPdf(delivery, sale, pendingItems);
     }
 
     private async Task<string> ResolveDeliveryUserNameAsync(int? actingUserId, CancellationToken cancellationToken)
