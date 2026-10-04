@@ -4,6 +4,8 @@ using Desktop.Client.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -13,6 +15,7 @@ public partial class PendingPickupsViewModel : ObservableObject
 {
     private readonly ISalesService _salesService;
     private readonly IDialogService _dialogService;
+    private readonly Action<DeliveryReceiptClientDto, byte[]> _openDeliveryNote;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -45,10 +48,14 @@ public partial class PendingPickupsViewModel : ObservableObject
                (p.InvoiceNumber?.ToString() ?? p.SaleId.ToString()).Contains(q);
     }
 
-    public PendingPickupsViewModel(ISalesService salesService, IDialogService dialogService)
+    public PendingPickupsViewModel(
+        ISalesService salesService,
+        IDialogService dialogService,
+        Action<DeliveryReceiptClientDto, byte[]>? openDeliveryNote = null)
     {
         _salesService = salesService;
         _dialogService = dialogService;
+        _openDeliveryNote = openDeliveryNote ?? SaveAndOpenDeliveryNote;
     }
 
     public async Task EnsureLoadedAsync()
@@ -133,37 +140,100 @@ public partial class PendingPickupsViewModel : ObservableObject
     {
         if (pickup == null) return;
 
+        var dialogResult = await _dialogService.ShowPartialDeliveryDialogAsync(pickup);
+        var requestedItems = dialogResult?.Items?
+            .Where(item => item is not null && item.Quantity > 0m)
+            .ToList();
+        if (requestedItems is not { Count: > 0 }) return;
+
         string invoiceLabel = pickup.InvoiceNumber.HasValue
             ? $"Factura N° {pickup.InvoiceNumber:D5}"
             : $"Pedido #{pickup.SaleId}";
 
-        bool confirmed = _dialogService.ShowConfirm(
-            "Confirmar Entrega",
-            $"¿Confirmar la entrega de mercancía a {pickup.CustomerName}?\n{invoiceLabel}\nTotal: ${CurrencyDisplay.Number(pickup.TotalUSD)} USD");
-
-        if (!confirmed) return;
-
         IsLoading = true;
         try
         {
-            await _salesService.ConfirmPickupAsync(pickup.SaleId);
-            SuccessMessage = $"¡Retiro confirmado! {invoiceLabel} entregado a {pickup.CustomerName}.";
-            
-            var existing = Pickups.FirstOrDefault(x => x != null && x.SaleId == pickup.SaleId);
-            if (existing != null)
+            var receipt = await _salesService.DeliverPartialAsync(
+                pickup.SaleId,
+                requestedItems,
+                dialogResult!.Notes,
+                Guid.NewGuid().ToString("N"));
+
+            if (string.Equals(receipt.DeliveryStatus, "Delivered", StringComparison.Ordinal))
             {
-                Pickups.Remove(existing);
-                _totalCount = Math.Max(0, _totalCount - 1);
-                UpdateHasMore();
+                var existing = Pickups.FirstOrDefault(x => x != null && x.SaleId == pickup.SaleId);
+                if (existing != null)
+                {
+                    Pickups.Remove(existing);
+                    _totalCount = Math.Max(0, _totalCount - 1);
+                    UpdateHasMore();
+                }
+            }
+            else
+            {
+                IsLoading = false;
+                await EnsureLoadedAsync();
+            }
+
+            SuccessMessage = $"Retiro registrado para {invoiceLabel} de {pickup.CustomerName}.";
+
+            if (_dialogService.ShowConfirm(
+                "Nota de Despacho",
+                "Retiro registrado. ¿Desea imprimir la Nota de Despacho?"))
+            {
+                await PrintDeliveryNoteAsync(receipt);
             }
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Error", $"Error al confirmar retiro: {ex.Message}");
+            _dialogService.ShowError("Error", ex.Message);
+            IsLoading = false;
+            await EnsureLoadedAsync();
+
+            var refreshedPickup = Pickups.FirstOrDefault(x => x != null && x.SaleId == pickup.SaleId);
+            if (refreshedPickup != null)
+            {
+                refreshedPickup.PendingDraft = new PartialDeliveryDialogResult
+                {
+                    Items = requestedItems,
+                    Notes = dialogResult!.Notes
+                };
+                await ConfirmPickupAsync(refreshedPickup);
+            }
         }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    private async Task PrintDeliveryNoteAsync(DeliveryReceiptClientDto receipt)
+    {
+        try
+        {
+            var bytes = await _salesService.GetDeliveryNoteAsync(receipt.SaleId, receipt.DeliveryId);
+            if (bytes.Length == 0)
+            {
+                _dialogService.ShowWarning("Nota de Despacho", "La nota de despacho no está disponible.");
+                return;
+            }
+
+            _openDeliveryNote(receipt, bytes);
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Nota de Despacho", $"No se pudo abrir la nota de despacho: {ex.Message}");
+        }
+    }
+
+    private static void SaveAndOpenDeliveryNote(DeliveryReceiptClientDto receipt, byte[] bytes)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "CommandCenterDeliveryNotes");
+        Directory.CreateDirectory(directory);
+        var filePath = Path.Combine(
+            directory,
+            $"Nota_Despacho_{receipt.SaleId}_{receipt.DeliveryId}_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
+        File.WriteAllBytes(filePath, bytes);
+        Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
     }
 }

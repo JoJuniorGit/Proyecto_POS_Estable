@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -14,9 +15,9 @@ public class PendingPickupsViewModelTests
     private readonly Mock<ISalesService> _salesServiceMock = new();
     private readonly Mock<IDialogService> _dialogServiceMock = new();
 
-    private PendingPickupsViewModel CreateViewModel()
+    private PendingPickupsViewModel CreateViewModel(Action<DeliveryReceiptClientDto, byte[]>? openDeliveryNote = null)
     {
-        return new PendingPickupsViewModel(_salesServiceMock.Object, _dialogServiceMock.Object);
+        return new PendingPickupsViewModel(_salesServiceMock.Object, _dialogServiceMock.Object, openDeliveryNote);
     }
 
     [Fact]
@@ -63,28 +64,30 @@ public class PendingPickupsViewModelTests
     }
 
     [Fact]
-    public async Task ConfirmPickupAsync_WhenUserConfirms_RemovesItemDirectlyFromPickupsCollection()
+    public async Task ConfirmPickupAsync_WhenDeliveryIsCompleted_RemovesItemFromPickupsCollection()
     {
-        var pickup = new PendingPickupClientDto
-        {
-            SaleId = 42,
-            InvoiceNumber = 205,
-            CustomerName = "Carlos Perez",
-            TotalUSD = 50m,
-            Date = DateTime.UtcNow
-        };
+        var pickup = CreatePickup(42, totalUnits: 2m);
 
         _salesServiceMock
             .Setup(s => s.GetPendingPickupsPagedAsync(It.IsAny<int>(), 0))
             .ReturnsAsync((new List<PendingPickupClientDto> { pickup }, 1));
 
         _dialogServiceMock
+            .Setup(d => d.ShowPartialDeliveryDialogAsync(It.IsAny<PendingPickupClientDto>()))
+            .ReturnsAsync(CreateDialogResult(new PartialDeliveryItemRequestDto { SaleItemId = 142, Quantity = 2m }));
+
+        _dialogServiceMock
             .Setup(d => d.ShowConfirm(It.IsAny<string>(), It.IsAny<string>()))
-            .Returns(true);
+            .Returns(false);
 
         _salesServiceMock
-            .Setup(s => s.ConfirmPickupAsync(42))
-            .Returns(Task.CompletedTask);
+            .Setup(s => s.DeliverPartialAsync(
+                42,
+                It.IsAny<IReadOnlyList<PartialDeliveryItemRequestDto>>(),
+                It.IsAny<string?>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateReceipt(42, "Delivered"));
 
         var vm = CreateViewModel();
         await vm.EnsureLoadedAsync();
@@ -93,39 +96,182 @@ public class PendingPickupsViewModelTests
 
         await vm.ConfirmPickupCommand.ExecuteAsync(pickup);
 
-        _salesServiceMock.Verify(s => s.ConfirmPickupAsync(42), Times.Once);
+        _salesServiceMock.Verify(s => s.DeliverPartialAsync(
+            42,
+            It.Is<IReadOnlyList<PartialDeliveryItemRequestDto>>(items => items.Count == 1 && items[0].Quantity == 2m),
+            It.IsAny<string?>(),
+            It.Is<string>(key => key.Length == 32),
+            It.IsAny<CancellationToken>()), Times.Once);
         Assert.Empty(vm.Pickups);
         Assert.NotNull(vm.SuccessMessage);
         Assert.Contains("Factura N° 00205", vm.SuccessMessage);
     }
 
     [Fact]
-    public async Task ConfirmPickupAsync_WhenUserCancels_DoesNotConfirmOrRemove()
+    public async Task ConfirmPickupAsync_WhenDialogIsCancelled_DoesNotSendRequestOrRemove()
     {
-        var pickup = new PendingPickupClientDto
-        {
-            SaleId = 42,
-            InvoiceNumber = 205,
-            CustomerName = "Carlos Perez",
-            TotalUSD = 50m,
-            Date = DateTime.UtcNow
-        };
+        var pickup = CreatePickup(42);
 
         _salesServiceMock
             .Setup(s => s.GetPendingPickupsPagedAsync(It.IsAny<int>(), 0))
             .ReturnsAsync((new List<PendingPickupClientDto> { pickup }, 1));
 
         _dialogServiceMock
-            .Setup(d => d.ShowConfirm(It.IsAny<string>(), It.IsAny<string>()))
-            .Returns(false);
+            .Setup(d => d.ShowPartialDeliveryDialogAsync(It.IsAny<PendingPickupClientDto>()))
+            .ReturnsAsync((PartialDeliveryDialogResult?)null);
 
         var vm = CreateViewModel();
         await vm.EnsureLoadedAsync();
 
         await vm.ConfirmPickupCommand.ExecuteAsync(pickup);
 
-        _salesServiceMock.Verify(s => s.ConfirmPickupAsync(It.IsAny<int>()), Times.Never);
+        _salesServiceMock.Verify(s => s.DeliverPartialAsync(
+            It.IsAny<int>(),
+            It.IsAny<IReadOnlyList<PartialDeliveryItemRequestDto>>(),
+            It.IsAny<string?>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
         Assert.Single(vm.Pickups);
+    }
+
+    [Fact]
+    public async Task ConfirmPickupAsync_WhenDeliveryIsPartial_ReloadsUpdatedPickup()
+    {
+        var pickup = CreatePickup(42, totalUnits: 5m);
+        var updatedPickup = CreatePickup(42, totalUnits: 5m, deliveredUnits: 2m, deliveryStatus: "PartiallyDelivered");
+
+        _salesServiceMock
+            .SetupSequence(s => s.GetPendingPickupsPagedAsync(It.IsAny<int>(), 0))
+            .ReturnsAsync((new List<PendingPickupClientDto> { pickup }, 1))
+            .ReturnsAsync((new List<PendingPickupClientDto> { updatedPickup }, 1));
+
+        _dialogServiceMock
+            .Setup(d => d.ShowPartialDeliveryDialogAsync(It.IsAny<PendingPickupClientDto>()))
+            .ReturnsAsync(CreateDialogResult(new PartialDeliveryItemRequestDto { SaleItemId = 142, Quantity = 2m }));
+        _dialogServiceMock
+            .Setup(d => d.ShowConfirm(It.IsAny<string>(), It.IsAny<string>()))
+            .Returns(false);
+        _salesServiceMock
+            .Setup(s => s.DeliverPartialAsync(
+                42,
+                It.IsAny<IReadOnlyList<PartialDeliveryItemRequestDto>>(),
+                It.IsAny<string?>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateReceipt(42, "PartiallyDelivered"));
+
+        var vm = CreateViewModel();
+        await vm.EnsureLoadedAsync();
+
+        await vm.ConfirmPickupCommand.ExecuteAsync(pickup);
+
+        _salesServiceMock.Verify(s => s.GetPendingPickupsPagedAsync(It.IsAny<int>(), 0), Times.Exactly(2));
+        var refreshed = Assert.Single(vm.Pickups);
+        Assert.Same(updatedPickup, refreshed);
+        Assert.Equal(2m, refreshed.DeliveredUnits);
+        Assert.Equal(3m, Assert.Single(refreshed.Items).PendingQuantity);
+    }
+
+    [Fact]
+    public async Task ConfirmPickupAsync_WhenDeliveryConflicts_ShowsServerErrorAndReloads()
+    {
+        const string errorMessage = "Otro usuario modificó el retiro simultáneamente. Actualice la lista e intente de nuevo.";
+        var pickup = CreatePickup(42, totalUnits: 5m);
+        var updatedPickup = CreatePickup(42, totalUnits: 5m, deliveredUnits: 2m, deliveryStatus: "PartiallyDelivered");
+        _salesServiceMock
+            .SetupSequence(s => s.GetPendingPickupsPagedAsync(It.IsAny<int>(), 0))
+            .ReturnsAsync((new List<PendingPickupClientDto> { pickup }, 1))
+            .ReturnsAsync((new List<PendingPickupClientDto> { updatedPickup }, 1));
+        _dialogServiceMock
+            .SetupSequence(d => d.ShowPartialDeliveryDialogAsync(It.IsAny<PendingPickupClientDto>()))
+            .ReturnsAsync(new PartialDeliveryDialogResult
+            {
+                Items = new List<PartialDeliveryItemRequestDto> { new() { SaleItemId = 142, Quantity = 1m } },
+                Notes = "Cliente retira el resto luego."
+            })
+            .ReturnsAsync((PartialDeliveryDialogResult?)null);
+        _salesServiceMock
+            .Setup(s => s.DeliverPartialAsync(
+                42,
+                It.IsAny<IReadOnlyList<PartialDeliveryItemRequestDto>>(),
+                It.IsAny<string?>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception(errorMessage));
+
+        var vm = CreateViewModel();
+        await vm.EnsureLoadedAsync();
+
+        await vm.ConfirmPickupCommand.ExecuteAsync(pickup);
+
+        _dialogServiceMock.Verify(d => d.ShowError("Error", errorMessage), Times.Once);
+        _salesServiceMock.Verify(s => s.GetPendingPickupsPagedAsync(It.IsAny<int>(), 0), Times.Exactly(2));
+        _salesServiceMock.Verify(s => s.DeliverPartialAsync(
+            42,
+            It.IsAny<IReadOnlyList<PartialDeliveryItemRequestDto>>(),
+            It.IsAny<string?>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _dialogServiceMock.Verify(d => d.ShowPartialDeliveryDialogAsync(It.Is<PendingPickupClientDto>(refreshed =>
+            refreshed.PendingDraft != null
+            && refreshed.PendingDraft.Items.Single().Quantity == 1m
+            && refreshed.PendingDraft.Notes == "Cliente retira el resto luego.")), Times.Once);
+        Assert.Same(updatedPickup, Assert.Single(vm.Pickups));
+    }
+
+    [Fact]
+    public async Task ConfirmPickupAsync_WhenPrintIsAccepted_DownloadsAndOpensDeliveryNote()
+    {
+        var pickup = CreatePickup(42, totalUnits: 2m);
+        var receipt = CreateReceipt(42, "Delivered", deliveryId: 77);
+        var noteBytes = new byte[] { 1, 2, 3 };
+        DeliveryReceiptClientDto? openedReceipt = null;
+        byte[]? openedBytes = null;
+
+        _salesServiceMock
+            .Setup(s => s.GetPendingPickupsPagedAsync(It.IsAny<int>(), 0))
+            .ReturnsAsync((new List<PendingPickupClientDto> { pickup }, 1));
+        _dialogServiceMock
+            .Setup(d => d.ShowPartialDeliveryDialogAsync(It.IsAny<PendingPickupClientDto>()))
+            .ReturnsAsync(CreateDialogResult(new PartialDeliveryItemRequestDto { SaleItemId = 142, Quantity = 2m }));
+        _dialogServiceMock
+            .Setup(d => d.ShowConfirm("Nota de Despacho", "Retiro registrado. ¿Desea imprimir la Nota de Despacho?"))
+            .Returns(true);
+        _salesServiceMock
+            .Setup(s => s.DeliverPartialAsync(
+                42,
+                It.IsAny<IReadOnlyList<PartialDeliveryItemRequestDto>>(),
+                It.IsAny<string?>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(receipt);
+        _salesServiceMock
+            .Setup(s => s.GetDeliveryNoteAsync(42, 77, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(noteBytes);
+
+        var vm = CreateViewModel((opened, bytes) =>
+        {
+            openedReceipt = opened;
+            openedBytes = bytes;
+        });
+        await vm.EnsureLoadedAsync();
+
+        await vm.ConfirmPickupCommand.ExecuteAsync(pickup);
+
+        _salesServiceMock.Verify(s => s.GetDeliveryNoteAsync(42, 77, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Same(receipt, openedReceipt);
+        Assert.Equal(noteBytes, openedBytes);
+    }
+
+    [Fact]
+    public void PendingPickupClientDto_WithPartialDelivery_ProvidesLocalizedProgress()
+    {
+        var pickup = CreatePickup(42, totalUnits: 10m, deliveredUnits: 4m, deliveryStatus: "PartiallyDelivered");
+
+        Assert.True(pickup.IsPartiallyDelivered);
+        Assert.Equal("Entrega Parcial", pickup.DeliveryStatusLabel);
+        Assert.Equal("Retirado: 4/10", pickup.ProgressText);
+        Assert.Equal(40d, pickup.ProgressPercent);
     }
 
     [Theory]
@@ -210,4 +356,47 @@ public class PendingPickupsViewModelTests
         Assert.Single(vm.Pickups);
         Assert.Equal(2, vm.Pickups[0].SaleId);
     }
+
+    private static PendingPickupClientDto CreatePickup(
+        int saleId,
+        decimal totalUnits = 3m,
+        decimal deliveredUnits = 0m,
+        string deliveryStatus = "PendingPickup")
+    {
+        return new PendingPickupClientDto
+        {
+            SaleId = saleId,
+            InvoiceNumber = 205,
+            Date = DateTime.UtcNow,
+            CustomerName = "Carlos Perez",
+            TotalUSD = 50m,
+            TotalUnits = totalUnits,
+            DeliveredUnits = deliveredUnits,
+            DeliveryStatus = deliveryStatus,
+            Items = new List<PendingPickupItemDto>
+            {
+                new()
+                {
+                    SaleItemId = 100 + saleId,
+                    ProductId = 9,
+                    ProductName = "Producto",
+                    Quantity = totalUnits,
+                    DeliveredQuantity = deliveredUnits,
+                    PendingQuantity = totalUnits - deliveredUnits
+                }
+            }
+        };
+    }
+
+    private static PartialDeliveryDialogResult CreateDialogResult(params PartialDeliveryItemRequestDto[] items) => new()
+    {
+        Items = items.ToList()
+    };
+
+    private static DeliveryReceiptClientDto CreateReceipt(int saleId, string deliveryStatus, int deliveryId = 70) => new()
+    {
+        DeliveryId = deliveryId,
+        SaleId = saleId,
+        DeliveryStatus = deliveryStatus
+    };
 }

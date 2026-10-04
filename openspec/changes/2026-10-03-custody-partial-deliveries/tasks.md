@@ -52,11 +52,11 @@ Chain strategy: stacked-to-main
 
 ## Phase 4: WPF Dispatch UI
 
-- [ ] 4.1 Extend `Desktop.Client.Core/Services/ISalesService.cs` + `SalesService.cs`: deliver partial + fetch note; mirror client DTOs.
-- [ ] 4.2 RED: extend `CommandCenter.Tests/Unit/PendingPickupsViewModelTests.cs` + new dialog VM tests (clamp, disabled confirm, mapping, progress).
-- [ ] 4.3 Create `PartialDeliveryDialogViewModel` + `Desktop.Client/Views/PartialDeliveryDialog.xaml(.cs)`; success print action.
-- [ ] 4.4 Modify `PendingPickupsViewModel.cs`, `IDialogService`, `Desktop.Client/Views/PendingPickupsView.xaml`: badge, progress, modal launch (Dispatch Dialog, Partial Badge and Progress, Delivery Note Print).
-- [ ] 4.5 Print wiring: note bytes → temp PDF → `Process.Start`; 409 → message + reload.
+- [x] 4.1 Extend `Desktop.Client.Core/Services/ISalesService.cs` + `SalesService.cs`: deliver partial + fetch note; mirror client DTOs.
+- [x] 4.2 RED: extend `CommandCenter.Tests/Unit/PendingPickupsViewModelTests.cs` + new dialog VM tests (clamp, disabled confirm, mapping, progress).
+- [x] 4.3 Create `PartialDeliveryDialogViewModel` + `Desktop.Client/Views/PartialDeliveryDialog.xaml(.cs)`; success print action.
+- [x] 4.4 Modify `PendingPickupsViewModel.cs`, `IDialogService`, `Desktop.Client/Views/PendingPickupsView.xaml`: badge, progress, modal launch (Dispatch Dialog, Partial Badge and Progress, Delivery Note Print).
+- [x] 4.5 Print wiring: note bytes → temp PDF → `Process.Start`; 409 → message + reload.
 
 ## Phase 5: Web Dispatch UI
 

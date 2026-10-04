@@ -4,6 +4,7 @@ using Core.Common;
 using Core.DTOs;
 using Core.Logging;
 using Desktop.Client.Views;
+using Desktop.Client.ViewModels;
 using Microsoft.Extensions.Logging;
 
 namespace Desktop.Client.Services;
@@ -258,6 +259,39 @@ public partial class WpfDialogService
         else Application.Current.Dispatcher.Invoke(openDialog);
 
         return System.Threading.Tasks.Task.FromResult((confirmed, modifiedItems));
+    }
+
+    public System.Threading.Tasks.Task<PartialDeliveryDialogResult?> ShowPartialDeliveryDialogAsync(PendingPickupClientDto pickup)
+    {
+        if (Application.Current == null)
+        {
+            return System.Threading.Tasks.Task.FromResult<PartialDeliveryDialogResult?>(null);
+        }
+
+        ArgumentNullException.ThrowIfNull(pickup);
+        PartialDeliveryDialogResult? result = null;
+        var viewModel = new PartialDeliveryDialogViewModel(pickup);
+
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var dialog = new PartialDeliveryDialog
+            {
+                DataContext = viewModel,
+                Owner = Application.Current.MainWindow,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                result = viewModel.Result;
+            }
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
     }
 
     public System.Threading.Tasks.Task ShowPairingQrDialogAsync()
