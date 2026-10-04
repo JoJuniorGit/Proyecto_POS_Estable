@@ -7,7 +7,11 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: proposed
+phase: verified
+verify: pass_with_warnings (9/9 requisitos; 20/28 compliant + 8 partials gated/runtime; ver verify-report.md)
+apply:
+  slice: 7/7
+  branch: V0.15
 artifacts:
   exploration: openspec/changes/2026-10-04-supplier-invoice-ocr/exploration.md
   proposal: openspec/changes/2026-10-04-supplier-invoice-ocr/proposal.md
@@ -31,4 +35,4 @@ decisions:
   endpoint: POST /api/supplier-invoices/ocr-extract multipart (<=20MB, <=5 pages, Admin/Manager)
   tessdata: data-pack-if-available else vendored Backend.API/tessdata (spa+eng)
   web-scope: wpf-desktop-only
-next: sdd-apply
+next: push/pr/merge (decisión del mantenedor) + sdd-archive
