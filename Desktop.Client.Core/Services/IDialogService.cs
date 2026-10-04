@@ -29,12 +29,6 @@ public interface IDialogService
     /// </summary>
     bool? ShowCreateInvoiceProductDialog(ViewModels.CreateInvoiceProductDialogViewModel dialogVm) => null;
 
-    /// <summary>
-    /// 8.147-S4/T7: captura una foto con la cámara del dispositivo y devuelve la ruta del JPG temporal.
-    /// Implementación por defecto sin UI (stubs headless): null = cancelado o sin cámara; el camino de
-    /// archivo (Escanear factura OCR) sigue disponible sin cámara.
-    /// </summary>
-    string? ShowCameraCaptureDialog() => null;
     (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();

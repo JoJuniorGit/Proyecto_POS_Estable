@@ -105,7 +105,7 @@ public class OcrExtractionEndpointTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
         Assert.NotNull(problem);
-        Assert.Contains("no está soportada", problem.Detail, StringComparison.Ordinal);
+        Assert.Equal("La extensión '.docx' no está soportada; use png, jpg, jpeg, webp, bmp, tif o pdf.", problem.Detail);
         Assert.Equal(0, engine.Calls);
     }
 

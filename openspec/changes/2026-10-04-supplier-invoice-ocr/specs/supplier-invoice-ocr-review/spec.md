@@ -4,27 +4,20 @@
 
 ### Requirement: Document Capture
 
-The WPF review flow MUST allow attaching a file (`png`, `jpg`, `jpeg`, `pdf`) or capturing a photo with the device camera; the camera path MUST degrade gracefully (clear message, no crash) when no camera is available. The existing tabular file path (xlsx/csv/xml) MUST remain unchanged.
+The WPF review flow MUST allow attaching a file (`png`, `jpg`, `jpeg`, `webp`, `bmp`, `tif`, `tiff` or `pdf`) through "Escanear factura (OCR)". Camera capture was removed by the maintainer on 2026-10-04 (tracker L14): file attachment is the only capture path. The existing tabular file path (xlsx/csv/xml) MUST remain unchanged.
 
 #### Scenario: Attach an image or PDF
 
 - GIVEN the supplier invoice view with a selected supplier
-- WHEN the user picks "Escanear factura (OCR)" and selects a JPG/PDF
+- WHEN the user picks "Escanear factura (OCR)" and selects a supported image or PDF
 - THEN the file is uploaded to the extraction endpoint
 - AND the returned rows and previews populate the review state
 
-#### Scenario: Camera capture
+#### Scenario: Additional image formats
 
-- GIVEN a device with an available camera
-- WHEN the user opens camera capture and takes a photo
-- THEN the captured image flows into the same extraction path
-
-#### Scenario: No camera available
-
-- GIVEN a device without a usable camera
-- WHEN the user opens camera capture
-- THEN a clear message is shown
-- AND the application keeps working with the file path only
+- GIVEN a WEBP, BMP or TIFF invoice image
+- WHEN the user selects it
+- THEN the upload is accepted by the endpoint and the review state is populated
 
 ### Requirement: Side-by-Side Staging Review
 

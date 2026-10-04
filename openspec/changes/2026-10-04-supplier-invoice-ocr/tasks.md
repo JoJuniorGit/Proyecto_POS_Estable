@@ -65,7 +65,7 @@ Chain strategy: stacked-to-main
 
 - [ ] 6.1 `SupplierInvoiceView.xaml`: "Escanear factura (OCR)" + camera buttons; split layout (left previews with zoom + page navigation, right existing grid) only for OCR origin.
 - [ ] 6.2 Cell highlighting: yellow 60–85 / red < 60 from persisted confidences; clears on edit.
-- [ ] 6.3 `CameraCaptureDialog` (+`ICameraCaptureService`, OpenCvSharp `VideoCapture`) with graceful no-camera path; `IDialogService.ShowCameraCaptureDialog` + Wpf impl.
+- [x] 6.3 Camera dialog REMOVED (T10, L14): capture is file-only; client OpenCvSharp/WpfExtensions packages and the System.Drawing.Common bump reverted; OCR file button + wheel zoom kept.
 - [ ] 6.4 Client tests for highlight mapping/zoom state; build + existing client tests green.
 
 ## Phase 7: Verification

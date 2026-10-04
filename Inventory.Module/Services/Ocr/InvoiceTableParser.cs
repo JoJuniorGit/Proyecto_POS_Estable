@@ -397,11 +397,15 @@ public sealed class InvoiceTableParser
     }
 
     /// <summary>
-    /// 8.147-T3: espejo exacto de <c>TryParseDecimal</c> de
-    /// <c>Desktop.Client.Core/Services/SupplierInvoiceService.Parsing.cs</c> para que la ruta OCR
-    /// y la tabular interpreten los números igual: símbolos de moneda y espacios fuera; con coma y
-    /// punto presentes el último es el separador decimal; coma sola = decimal; punto solo =
-    /// decimal InvariantCulture (p. ej. "4.250" → 4.25).
+    /// 8.147-T3/T9-D2: espejo exacto de <c>TryParseDecimal</c> de
+    /// <c>Desktop.Client.Core/Services/SupplierInvoiceService.Parsing.cs</c> para que la ruta OCR y
+    /// la tabular interpreten los números igual. Símbolos de moneda y espacios fuera; con coma y
+    /// punto presentes el último es el separador decimal; coma sola = decimal es-VE; punto(s) solos
+    /// = separador de miles cuando cada grupo posterior a un punto tiene exactamente 3 dígitos y
+    /// hay al menos un dígito antes del primer punto ("4.250" → 4250, "1.234.567" → 1234567).
+    /// Puntos con 1–2 o 4+ dígitos después quedan decimales ("4.25" → 4.25, "4.2500" → 4.25).
+    /// Trade-off aceptado: una cantidad de 3 decimales escrita con punto se lee como miles; es-VE
+    /// escribe esos decimales con coma.
     /// </summary>
     private static bool TryParseDecimal(string? value, out decimal result)
     {
@@ -433,12 +437,55 @@ public sealed class InvoiceTableParser
         {
             normalized = normalized.Replace(',', '.');
         }
+        else if (dotIndex >= 0 && IsThousandsSeparatedByDots(normalized))
+        {
+            normalized = normalized.Replace(".", string.Empty, StringComparison.Ordinal);
+        }
 
         return decimal.TryParse(
             normalized,
             NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
             CultureInfo.InvariantCulture,
             out result);
+    }
+
+    /// <summary>
+    /// 8.147-T9/D2: es-VE usa el punto como separador de miles y la coma como decimal. Un valor con
+    /// puntos solos es formato de miles cuando cada grupo posterior a un punto tiene exactamente
+    /// 3 dígitos y hay un dígito inmediatamente antes del primer punto.
+    /// </summary>
+    private static bool IsThousandsSeparatedByDots(string value)
+    {
+        var firstDot = value.IndexOf('.');
+        if (firstDot <= 0 || !char.IsAsciiDigit(value[firstDot - 1]))
+        {
+            return false;
+        }
+
+        var groupLength = 0;
+        for (var index = firstDot + 1; index < value.Length; index++)
+        {
+            var character = value[index];
+            if (character == '.')
+            {
+                if (groupLength != 3)
+                {
+                    return false;
+                }
+
+                groupLength = 0;
+            }
+            else if (char.IsAsciiDigit(character))
+            {
+                groupLength++;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        return groupLength == 3;
     }
 
     /// <summary>Normaliza a minúsculas sin diacríticos ni símbolos (solo letras y dígitos).</summary>

@@ -163,12 +163,20 @@ public partial class SupplierInvoiceService
                 ? Core.Helpers.PricingCalculator.RoundPriceUp(unitCostUsd * (1m + wholesale / 100m))
                 : null,
             MatchMethod = match.Method,
-            // 8.147-S6/D10: solo las líneas OCR persisten confianzas; las tabulares quedan null.
-            OcrNameConfidence = ocrSourced ? line.OcrNameConfidence : null,
-            OcrQuantityConfidence = ocrSourced ? line.OcrQuantityConfidence : null,
-            OcrUnitCostConfidence = ocrSourced ? line.OcrUnitCostConfidence : null
+            // 8.147-S6/D10 + T9/D3: solo las líneas OCR persisten confianzas; las tabulares quedan
+            // null y las OCR se acotan a 0–100 (las confianzas llegan de clientes no confiables).
+            OcrNameConfidence = ocrSourced ? ClampOcrConfidence(line.OcrNameConfidence) : null,
+            OcrQuantityConfidence = ocrSourced ? ClampOcrConfidence(line.OcrQuantityConfidence) : null,
+            OcrUnitCostConfidence = ocrSourced ? ClampOcrConfidence(line.OcrUnitCostConfidence) : null
         };
     }
+
+    /// <summary>
+    /// 8.147-T9/D3: las confianzas OCR llegan de clientes no confiables; se acotan al rango
+    /// porcentual 0–100 antes de persistirlas (null se conserva null).
+    /// </summary>
+    private static decimal? ClampOcrConfidence(decimal? confidence) =>
+        confidence is null ? null : Math.Clamp(confidence.Value, 0m, 100m);
 
     private sealed record ProductMatch(Product? Product, MatchMethod Method);
 }

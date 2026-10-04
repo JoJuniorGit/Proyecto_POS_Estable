@@ -155,31 +155,6 @@ public partial class WpfDialogService
         return res;
     }
 
-    public string? ShowCameraCaptureDialog()
-    {
-        if (Application.Current == null) return null;
-        using var _ = TrackModal();
-        string? capturedFilePath = null;
-        Action openDialog = () =>
-        {
-            // 8.147-T7/D5: la cámara vive fuera del contenedor DI (servicio efímero por captura).
-            using var cameraService = new CameraCaptureService();
-            var dialog = new CameraCaptureDialog(cameraService)
-            {
-                Owner = Application.Current.MainWindow
-            };
-            if (dialog.ShowDialog() == true)
-            {
-                capturedFilePath = dialog.CapturedFilePath;
-            }
-        };
-
-        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
-        else Application.Current.Dispatcher.Invoke(openDialog);
-
-        return capturedFilePath;
-    }
-
     public (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(Core.DTOs.ProductDto product)
     {
         if (Application.Current == null) return (false, 0m, string.Empty);

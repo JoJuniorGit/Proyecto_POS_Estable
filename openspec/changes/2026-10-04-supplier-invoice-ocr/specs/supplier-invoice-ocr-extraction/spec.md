@@ -57,7 +57,7 @@ Every extracted field (name, quantity, unit cost) MUST carry a confidence score 
 
 ### Requirement: OCR Extraction Endpoint
 
-The system MUST expose `POST /api/supplier-invoices/ocr-extract` (Admin/Manager) accepting a multipart upload of `png`, `jpg`, `jpeg` or `pdf` (max 20 MB, max 5 PDF pages) plus the optional selected supplier id and mapping names; it MUST respond with the extracted rows (with confidences), one PNG preview per processed page, and best-effort detected RIF/supplier-name strings, and MUST reject unsupported types/sizes with `ProblemDetails` without persisting anything.
+The system MUST expose `POST /api/supplier-invoices/ocr-extract` (Admin/Manager) accepting a multipart upload of `png`, `jpg`, `jpeg`, `webp`, `bmp`, `tif`, `tiff` or `pdf` (max 20 MB, max 5 PDF pages) plus the optional selected supplier id and mapping names; it MUST respond with the extracted rows (with confidences), one PNG preview per processed page, and best-effort detected RIF/supplier-name strings, and MUST reject unsupported types/sizes with `ProblemDetails` without persisting anything.
 
 #### Scenario: Extract from an image upload
 

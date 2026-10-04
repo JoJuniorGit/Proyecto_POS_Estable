@@ -117,7 +117,7 @@ public sealed class SupplierInvoicesController : ControllerBase
         {
             return this.ApiBadRequest(
                 "Solicitud de extracción OCR inválida.",
-                $"La extensión '{extension}' no está soportada; use png, jpg, jpeg o pdf.");
+                OcrExtractionService.UnsupportedExtensionMessage(extension));
         }
 
         if (file.Length > OcrExtractionService.MaxFileBytes)

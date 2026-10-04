@@ -201,7 +201,17 @@ public class OcrExtractionServiceTests
         var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.ExtractAsync(new OcrExtractionRequestDto(new byte[] { 1, 2, 3 }, "factura.docx", null, null)));
 
-        Assert.Equal("La extensión '.docx' no está soportada; use png, jpg, jpeg o pdf.", exception.Message);
+        Assert.Equal(
+            "La extensión '.docx' no está soportada; use png, jpg, jpeg, webp, bmp, tif o pdf.",
+            exception.Message);
+    }
+
+    [Fact]
+    public void AllowedExtensions_AdvertiseImageFormatsAndPdf()
+    {
+        Assert.Equal(
+            new[] { ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".pdf" },
+            OcrExtractionService.AllowedExtensions);
     }
 
     [Fact]

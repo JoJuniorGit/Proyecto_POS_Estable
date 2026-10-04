@@ -120,6 +120,9 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         {
             ".png" => "image/png",
             ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".tif" or ".tiff" => "image/tiff",
             ".pdf" => "application/pdf",
             _ => "application/octet-stream"
         };

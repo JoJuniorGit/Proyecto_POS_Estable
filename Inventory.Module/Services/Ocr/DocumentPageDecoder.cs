@@ -20,7 +20,7 @@ public sealed class DocumentPageDecoder
     }
 
     /// <summary>
-    /// Decodifica el archivo según su extensión (png/jpg/jpeg/pdf) a páginas PNG.
+    /// Decodifica el archivo según su extensión (png/jpg/jpeg/webp/bmp/tif/tiff/pdf) a páginas PNG.
     /// Una extensión no soportada lanza <see cref="ArgumentException"/>.
     /// </summary>
     public IReadOnlyList<OcrImage> DecodePages(byte[] fileBytes, string extension)
@@ -37,9 +37,10 @@ public sealed class DocumentPageDecoder
         return normalized switch
         {
             ".pdf" => _pdfDecoder.Decode(fileBytes),
-            ".png" or ".jpg" or ".jpeg" => new[] { _imageDecoder.Decode(fileBytes) },
+            ".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp" or ".tif" or ".tiff" =>
+                new[] { _imageDecoder.Decode(fileBytes) },
             _ => throw new ArgumentException(
-                $"La extensión '{extension}' no está soportada; use png, jpg, jpeg o pdf.", nameof(extension))
+                OcrExtractionService.UnsupportedExtensionMessage(extension), nameof(extension))
         };
     }
 }

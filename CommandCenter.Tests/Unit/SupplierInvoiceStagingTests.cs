@@ -137,6 +137,28 @@ public class SupplierInvoiceStagingTests
     }
 
     [Fact]
+    public async Task StageAsync_OcrSourcedClampsFieldConfidencesToZeroHundred()
+    {
+        var (service, context) = CreateService();
+        var supplier = await AddSupplierAsync(context);
+
+        var invoice = await service.StageAsync(CreateOcrRequest(
+            supplier.Id,
+            null,
+            new StageLineDto(null, null, "Scanned product", 2m, 5m, 150m, -12.5m, null)));
+
+        var line = Assert.Single(invoice.Lines);
+        Assert.Equal(100m, line.OcrNameConfidence);
+        Assert.Equal(0m, line.OcrQuantityConfidence);
+        Assert.Null(line.OcrUnitCostConfidence);
+
+        var persisted = await context.SupplierInvoiceLines.SingleAsync();
+        Assert.Equal(100m, persisted.OcrNameConfidence);
+        Assert.Equal(0m, persisted.OcrQuantityConfidence);
+        Assert.Null(persisted.OcrUnitCostConfidence);
+    }
+
+    [Fact]
     public async Task StageAsync_TabularStagingKeepsConfidencesNull()
     {
         var (service, context) = CreateService();

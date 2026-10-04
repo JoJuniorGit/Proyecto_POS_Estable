@@ -1,4 +1,8 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Net.Http.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Core.Common;
@@ -15,12 +19,10 @@ namespace CommandCenter.Tests.Unit;
 
 /// <summary>
 /// 8.147-S4/S5/S6 (T7): edición de campos OCR con bandas de confianza, correcciones al confirm,
-/// etiqueta de página del panel de previews y degradación de cámara sin UI (headless).
+/// etiqueta de página del panel de previews y gating de comandos sin UI (headless).
 /// </summary>
 public sealed class SupplierInvoiceOcrReviewTests
 {
-    private const string CameraFilePath = "C:\\temp\\captura-ocr.jpg";
-
     [Theory]
     [InlineData(0, "Red")]
     [InlineData(59.99, "Red")]
@@ -281,61 +283,43 @@ public sealed class SupplierInvoiceOcrReviewTests
     }
 
     [Fact]
-    public async Task ScanCamera_WhenDialogReturnsNull_DoesNotExtractAndKeepsFilePathWorking()
+    public void OcrFileFilter_AdvertisesAdditionalImageFormats()
     {
-        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
-        var dialog = new Mock<IDialogService>();
-        dialog.Setup(service => service.ShowCameraCaptureDialog()).Returns((string?)null);
-        var viewModel = CreateViewModel(service.Object, dialog.Object);
-        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null);
-
-        await viewModel.ScanCameraCommand.ExecuteAsync(null);
-
-        dialog.Verify(service => service.ShowCameraCaptureDialog(), Times.Once);
-        service.VerifyNoOtherCalls();
-        Assert.False(viewModel.IsOcrSource);
+        Assert.Equal(
+            "Facturas escaneadas (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff;*.pdf)|" +
+            "*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff;*.pdf|" +
+            "Imágenes (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff)|" +
+            "*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff|PDF (*.pdf)|*.pdf",
+            SupplierInvoiceViewModel.OcrFileFilter);
     }
 
-    [Fact]
-    public async Task ScanCamera_WhenDialogReturnsPath_ExtractsAndStagesThatFile()
+    [Theory]
+    [InlineData(".png", "image/png")]
+    [InlineData(".jpg", "image/jpeg")]
+    [InlineData(".jpeg", "image/jpeg")]
+    [InlineData(".webp", "image/webp")]
+    [InlineData(".bmp", "image/bmp")]
+    [InlineData(".tif", "image/tiff")]
+    [InlineData(".tiff", "image/tiff")]
+    [InlineData(".pdf", "application/pdf")]
+    public async Task ExtractOcrAsync_UploadsFileWithExpectedContentType(string extension, string expectedMediaType)
     {
-        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
-        var extracted = new OcrExtractionResultDto(
-            new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 90m, 80m, 70m) },
-            new[] { "cGFnZTE=" },
-            null,
-            null);
-        var staged = CreateInvoice(CreateLine(ocrNameConfidence: 90m));
-        service.Setup(client => client.ExtractOcrAsync(
-                CameraFilePath, 7, null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(extracted);
-        service.Setup(client => client.StageAsync(
-                It.IsAny<StageSupplierInvoiceRequestDto>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(staged);
-        var dialog = new Mock<IDialogService>();
-        dialog.Setup(service => service.ShowCameraCaptureDialog()).Returns(CameraFilePath);
-        var viewModel = CreateViewModel(service.Object, dialog.Object);
-        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null);
+        var filePath = Path.Combine(Path.GetTempPath(), $"ocr-upload-{Guid.NewGuid():N}{extension}");
+        await File.WriteAllBytesAsync(filePath, new byte[] { 1, 2, 3 });
+        try
+        {
+            var handler = new ContentTypeCaptureHandler();
+            using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+            var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
 
-        await viewModel.ScanCameraCommand.ExecuteAsync(null);
+            await service.ExtractOcrAsync(filePath, null, null);
 
-        service.Verify(client => client.ExtractOcrAsync(
-            CameraFilePath, 7, null, It.IsAny<CancellationToken>()), Times.Once);
-        Assert.True(viewModel.IsOcrSource);
-        Assert.True(Assert.Single(viewModel.Lines).IsEditorEnabled);
-    }
-
-    [Fact]
-    public async Task ScanCamera_WithoutSupplier_ShowsWarningAndDoesNotOpenCamera()
-    {
-        var dialog = new Mock<IDialogService>();
-        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>(), dialog.Object);
-
-        await viewModel.ScanCameraCommand.ExecuteAsync(null);
-
-        dialog.Verify(service => service.ShowCameraCaptureDialog(), Times.Never);
-        dialog.Verify(service => service.ShowWarning(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            Assert.Equal(expectedMediaType, handler.FileContentType);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
     }
 
     private static (SupplierInvoiceViewModel ViewModel, Mock<ClientSupplierInvoiceService> Service, Mock<IDialogService> Dialog)
@@ -395,4 +379,23 @@ public sealed class SupplierInvoiceOcrReviewTests
             ocrNameConfidence,
             ocrQuantityConfidence,
             ocrUnitCostConfidence);
+
+    /// <summary>Captura el Content-Type de la parte "file" del multipart OCR sin salir a la red.</summary>
+    private sealed class ContentTypeCaptureHandler : HttpMessageHandler
+    {
+        public string? FileContentType { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var multipart = Assert.IsType<MultipartFormDataContent>(request.Content);
+            FileContentType = multipart.First().Headers.ContentType?.MediaType;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new OcrExtractionResultDto([], [], null, null))
+            });
+        }
+    }
 }

@@ -108,6 +108,30 @@ public class OcrPageDecoderTests
         AssertPngSignature(page);
     }
 
+    [Theory]
+    [InlineData(".bmp")]
+    [InlineData(".tif")]
+    [InlineData(".tiff")]
+    [InlineData(".webp")]
+    public void DecodePages_AdditionalImageFormats_RoundTripWithPixelDimensions(string extension)
+    {
+        var decoder = CreateDocumentDecoder();
+        using var source = new Mat(70, 110, MatType.CV_8UC3, new Scalar(230, 230, 230));
+        Cv2.Rectangle(source, new Rect(10, 10, 50, 25), Scalar.Black, thickness: -1);
+        Assert.True(
+            Cv2.ImEncode(extension, source, out var encoded),
+            $"el runtime de OpenCV no pudo codificar {extension}");
+
+        var pages = decoder.DecodePages(encoded, extension);
+
+        var page = Assert.Single(pages);
+        Assert.Equal(110, page.PixelWidth);
+        Assert.Equal(70, page.PixelHeight);
+        AssertPngSignature(page);
+        using var decoded = Cv2.ImDecode(page.EncodedBytes, ImreadModes.Unchanged);
+        Assert.Equal(3, decoded.Channels());
+    }
+
     [Fact]
     public void ImagePageDecoder_Decode_GarbageBytes_ThrowsArgumentException()
     {

@@ -11,7 +11,7 @@ Supplier invoices arrive as photos, scans or PDFs. Manual typing into staging is
 - Per-field confidence scoring (name/quantity/unit cost) returned by extraction and persisted on staged lines.
 - `POST /api/supplier-invoices/ocr-extract` multipart endpoint (png/jpg/jpeg/pdf, ≤20 MB, ≤5 pages, Admin/Manager, ProblemDetails) returning rows, page previews (PNG) and best-effort supplier/RIF hints.
 - OCR-sourced staging: stage without column mapping (`OcrSourced` flag), confidence persisted on `SupplierInvoiceLine`.
-- WPF: "Escanear factura (OCR)" file path + camera capture dialog, side-by-side staging (backend-rendered previews with zoom/page navigation + existing editable grid), yellow/red low-confidence cell highlighting.
+- WPF: "Escanear factura (OCR)" file path (png/jpg/jpeg/webp/bmp/tif/tiff/pdf; camera capture removed by maintainer decision 2026-10-04, L14), side-by-side staging (backend-rendered previews with zoom/page navigation + existing editable grid), yellow/red low-confidence cell highlighting and reviewer corrections flowing to confirm.
 
 ### Out of Scope
 - Web.Frontend; OCR of tabular formats (xlsx/csv/xml keep the current path); automatic invoice approval (human-in-the-loop gated by confirm); handwriting recognition; multi-branch concerns.

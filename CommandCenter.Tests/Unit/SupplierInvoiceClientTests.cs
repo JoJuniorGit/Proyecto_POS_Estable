@@ -395,6 +395,29 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
+    public async Task ParseFileWithMappingAsync_ParsesDotThousandsWithEsVeConvention()
+    {
+        // 8.147-T9/D2: punto(s) con grupos de exactamente 3 dígitos = miles es-VE ("4.250" → 4250);
+        // con coma y punto presentes gana el último como decimal; punto con 1–2 o 4+ dígitos queda decimal.
+        var service = CreateClientService();
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(
+            "Barcode;Supplier Code;Name;Quantity;Unit Cost\n" +
+            "1;SUP-1;Miles;4.250;1.234.567\n" +
+            "2;SUP-2;Decimales;4.25;4.2500\n" +
+            "3;SUP-3;Ambos;1.234,56;1,234.56"));
+
+        var lines = await service.ParseFileWithMappingAsync(stream, ".csv", Mapping());
+
+        Assert.Equal(3, lines.Count);
+        Assert.Equal(4250m, lines[0].Quantity);
+        Assert.Equal(1234567m, lines[0].UnitCostDocument);
+        Assert.Equal(4.25m, lines[1].Quantity);
+        Assert.Equal(4.25m, lines[1].UnitCostDocument);
+        Assert.Equal(1234.56m, lines[2].Quantity);
+        Assert.Equal(1234.56m, lines[2].UnitCostDocument);
+    }
+
+    [Fact]
     public async Task ConfirmInvoiceAsync_SendsOnlyApprovedRowsWithMarginOverrides()
     {
         var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);

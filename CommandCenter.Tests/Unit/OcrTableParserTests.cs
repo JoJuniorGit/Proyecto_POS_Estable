@@ -175,13 +175,37 @@ public class OcrTableParserTests
         Assert.Equal(1234.56m, lines[1].Quantity);
         Assert.Equal(12.5m, lines[1].UnitCost);
         Assert.Equal(12.5m, lines[2].Quantity);
-        // Espejo de TryParseDecimal: punto único = separador decimal (InvariantCulture).
-        Assert.Equal(4.25m, lines[2].UnitCost);
+        // 8.147-T9/D2: punto solo con grupos de exactamente 3 dígitos = separador de miles es-VE.
+        Assert.Equal(4250m, lines[2].UnitCost);
         Assert.Equal(365m, lines[3].Quantity);
         Assert.Equal(1234.56m, lines[3].UnitCost);
-        // Banda numérica partida en dos palabras: "$" + "4.250" se unen antes de parsear.
-        Assert.Equal(4.25m, lines[4].Quantity);
+        // Banda numérica partida en dos palabras: "$" + "4.250" se unen antes de parsear (miles es-VE).
+        Assert.Equal(4250m, lines[4].Quantity);
         Assert.Equal(1234.56m, lines[4].UnitCost);
+    }
+
+    [Fact]
+    public void DotThousandsHeuristic_ParsesEsVeConventionLikeFilePath()
+    {
+        var page = Page([
+            .. GenericHeader(),
+            .. DataRow("Uno", "4.250", "1.234.567", 130),
+            .. DataRow("Dos", "4.25", "4.2500", 160),
+            .. DataRow("Tres", "0.500", "-4.250", 190),
+            .. DataRow("Cuatro", ".50", "0.25", 220)]);
+
+        var lines = _parser.Parse([page], template: null);
+
+        Assert.Equal(4, lines.Count);
+        Assert.Equal(4250m, lines[0].Quantity);
+        Assert.Equal(1234567m, lines[0].UnitCost);
+        Assert.Equal(4.25m, lines[1].Quantity);
+        Assert.Equal(4.25m, lines[1].UnitCost);
+        Assert.Equal(500m, lines[2].Quantity);
+        Assert.Equal(-4250m, lines[2].UnitCost);
+        // 8.147-T9/D2: sin dígito antes del primer punto no hay regla de miles → decimal puro.
+        Assert.Equal(0.5m, lines[3].Quantity);
+        Assert.Equal(0.25m, lines[3].UnitCost);
     }
 
     [Fact]

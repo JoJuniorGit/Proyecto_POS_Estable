@@ -17,7 +17,15 @@ public sealed class OcrExtractionService : IOcrExtractionService
     public const long MaxFileBytes = 20L * 1024 * 1024;
 
     /// <summary>Extensiones aceptadas por el flujo OCR (S4), normalizadas a minúsculas.</summary>
-    public static readonly IReadOnlyList<string> AllowedExtensions = [".png", ".jpg", ".jpeg", ".pdf"];
+    public static readonly IReadOnlyList<string> AllowedExtensions =
+        [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".pdf"];
+
+    /// <summary>
+    /// 8.147-T10: mensaje exacto de extensión no soportada, compartido con el guard rápido del
+    /// controller para que la lista de formatos no derive entre capas.
+    /// </summary>
+    public static string UnsupportedExtensionMessage(string extension) =>
+        $"La extensión '{extension}' no está soportada; use png, jpg, jpeg, webp, bmp, tif o pdf.";
 
     /// <summary>
     /// 8.147-T4/S7: patrón best-effort de RIF venezolano ([JGVEP] + 8–9 dígitos + dígito de
@@ -101,8 +109,7 @@ public sealed class OcrExtractionService : IOcrExtractionService
         var extension = Path.GetExtension(request.FileName);
         if (!AllowedExtensions.Contains(extension.ToLowerInvariant()))
         {
-            throw new ArgumentException(
-                $"La extensión '{extension}' no está soportada; use png, jpg, jpeg o pdf.");
+            throw new ArgumentException(UnsupportedExtensionMessage(extension));
         }
 
         if (fileBytes.Length > MaxFileBytes)

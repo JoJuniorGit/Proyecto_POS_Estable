@@ -20,8 +20,10 @@ public partial class SupplierInvoiceViewModel
         "Hay filas OCR sin nombre ni código; complete al menos un identificador antes de cargar.";
 
     public const string OcrFileFilter =
-        "Facturas escaneadas (*.png;*.jpg;*.jpeg;*.pdf)|*.png;*.jpg;*.jpeg;*.pdf|" +
-        "Imágenes (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|PDF (*.pdf)|*.pdf";
+        "Facturas escaneadas (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff;*.pdf)|" +
+        "*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff;*.pdf|" +
+        "Imágenes (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff)|" +
+        "*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff|PDF (*.pdf)|*.pdf";
 
     public const double MinOcrZoom = 0.5;
     public const double MaxOcrZoom = 4.0;
@@ -134,42 +136,8 @@ public partial class SupplierInvoiceViewModel
     }
 
     /// <summary>
-    /// 8.147-S4/L4 (T7): captura por cámara opcional. Si el diálogo devuelve una ruta (JPG
-    /// temporal) entra al mismo camino de extracción que el archivo; null (cancelado o sin
-    /// cámara) no hace nada y deja el camino de archivo intacto.
-    /// </summary>
-    [RelayCommand]
-    private async Task ScanCameraAsync(CancellationToken cancellationToken)
-    {
-        if (!CanMutateCatalog)
-        {
-            ShowAccessDenied();
-            return;
-        }
-
-        if (IsBusy)
-        {
-            return;
-        }
-
-        if (SelectedSupplier is null)
-        {
-            _dialogService.ShowWarning("Datos incompletos", "Seleccione un proveedor antes de escanear la factura.");
-            return;
-        }
-
-        var capturedFilePath = _dialogService.ShowCameraCaptureDialog();
-        if (string.IsNullOrWhiteSpace(capturedFilePath))
-        {
-            return;
-        }
-
-        await ScanOcrFileAsync(capturedFilePath, cancellationToken);
-    }
-
-    /// <summary>
-    /// Extrae las líneas del archivo escaneado y las stagea como origen OCR. Punto de entrada
-    /// compartido con la futura captura por cámara (T7).
+    /// Extrae las líneas del archivo escaneado y las stagea como origen OCR. Único punto de
+    /// entrada del flujo de captura por archivo (L4: la carga de imagen no depende de cámara).
     /// </summary>
     public async Task ScanOcrFileAsync(string filePath, CancellationToken cancellationToken = default)
     {

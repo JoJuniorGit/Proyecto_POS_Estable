@@ -12,7 +12,7 @@ Backend-owned OCR pipeline: uploads are decoded (PDF → page bitmaps via PDFium
 | D2 | Pipeline location | **Backend** (engine + preprocessing + parsing) | Client-side OCR | User criteria ("Procesamiento y Backend"); native deps centralized; client stays thin; CI already runs `net10.0-windows` on windows-2025. |
 | D3 | Preprocessing | **OpenCvSharp4**: grayscale → CLAHE → Otsu (adaptive fallback) → deskew (Hough/minAreaRect) | Magick.NET (-deskew built-in, less control) | Fine-grained control per step; each step a pure function testable with synthetic images. |
 | D4 | PDF handling | **PDFtoImage** (PDFium, MIT) backend; **previews rendered by the backend** | Client-side PDF rendering (adds PDF stack to client) | Uniform previews for images and PDFs ("what the OCR saw"); client needs no PDF dependency. |
-| D5 | Camera | **OpenCvSharp4 `VideoCapture`** in `Desktop.Client` | WinRT MediaCapture (requires TFM bump → cascades to tests), skip camera | Avoids the `net10.0-windows10.0.x` cascade; camera-only usage isolated; graceful degradation when no camera; ~45 MB native trade-off documented. |
+| D5 | Camera | **OpenCvSharp4 `VideoCapture`** in `Desktop.Client` | WinRT MediaCapture (requires TFM bump → cascades to tests), skip camera | Avoids the `net10.0-windows10.0.x` cascade; camera-only usage isolated; graceful degradation when no camera; ~45 MB native trade-off documented. **Updated 2026-10-04 (T10): REMOVED by maintainer decision (tracker L14) — capture is file-only; client OpenCvSharp/WpfExtensions packages and the System.Drawing.Common bump were reverted.** |
 | D6 | Parser input | **Tesseract TSV word boxes**; rows by Y-clustering (median-height tolerance), columns by X-alignment to header anchors | Plain text + regex only | Positional data resolves multi-column invoices reliably; boxes make it deterministic and unit-testable with canned data. |
 | D7 | Column keywords | Supplier `SupplierColumnMapping` names first (sent with the request), generic fallback second | Generic only | Satisfies "reglas heurísticas basadas en la Planilla de Mapeo del Proveedor"; works for new suppliers via fallback. |
 | D8 | Confidence aggregation | **Minimum** of contributing words' confidences (conservative), 0–100 with 1 decimal; unresolved field = 0 | Average | Stricter flagging means the reviewer verifies more, never less; deterministic and simple to test. |
@@ -20,7 +20,7 @@ Backend-owned OCR pipeline: uploads are decoded (PDF → page bitmaps via PDFium
 | D10 | Confidence persistence | 3 nullable `numeric(5,2)` columns on `SupplierInvoiceLines` (`OcrNameConfidence`, `OcrQuantityConfidence`, `OcrUnitCostConfidence`) | Client-only dictionary | The staged grid renders after staging (server round-trip); persisted values survive reloads; null for non-OCR lines. |
 | D11 | OCR staging discriminator | `StageSupplierInvoiceRequestDto.OcrSourced` (default false) | Implicit (confidences present), relax mapping requirement always | First-import template requirement stays for tabular flow; OCR rows have no columns to map; explicit flag is zero-surprise. |
 | D12 | Extraction endpoint | `POST /api/supplier-invoices/ocr-extract` multipart (file + optional supplierId + flat mapping fields) → rows + previews + hints | JSON with base64 file | Multipart is the natural upload shape; flat form fields avoid nested multipart binding; RBAC inherited from the controller class. |
-| D13 | Client flow | New "Escanear factura (OCR)" button (file) + camera dialog; extraction → review state (previews/page/zoom) → OCR-sourced stage; tabular path untouched | Extend the existing file filter only | Keeps the two flows legible; no column-mapping UI for OCR. |
+| D13 | Client flow | New "Escanear factura (OCR)" button (file only since T10); extraction → review state (previews/page/zoom) → OCR-sourced stage; tabular path untouched | Extend the existing file filter only | Keeps the two flows legible; no column-mapping UI for OCR. |
 | D14 | tessdata delivery | Prefer data NuGet pack; else vendored `Backend.API/tessdata` (spa+eng) copied to output; engine datapath configured | Runtime download | Deterministic local install; verified in T2 (pack availability is an implementation check). |
 | D15 | CI | Suite stays mock-based (`IOcrEngine` stub); one gated native smoke (`TEST_OCR_NATIVE=1`) enabled in CI; vulnerability gate must stay clean | Native tests always on | Keeps CI deterministic; natives exercised deliberately. |
 
@@ -29,7 +29,7 @@ Backend-owned OCR pipeline: uploads are decoded (PDF → page bitmaps via PDFium
 ## Data Flow
 
 ```
-WPF capture (file png/jpg/pdf | camera → temp jpg)
+WPF capture (file: png/jpg/jpeg/webp/bmp/tif/tiff/pdf)
   → POST /api/supplier-invoices/ocr-extract (multipart: file, supplierId?, mapping names)
   ▼
 OcrExtractionService
@@ -62,10 +62,10 @@ Draft invoice lines persist confidences → grid highlights yellow/red → opera
 | `Backend.API/Controllers/SupplierInvoicesController.cs` | Modify | `ocr-extract` endpoint |
 | `Backend.API/tessdata/*` (conditional) | Create | Vendored spa+eng if no data pack |
 | `Desktop.Client.Core/Services/SupplierInvoiceService.cs`, `ISupplierInvoiceService.cs` | Modify | Upload + DTO pass-through |
-| `Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel*.cs` (+`OcrReview` partial) | Modify | OCR flow state, previews, zoom, camera command |
-| `Desktop.Client/Views/SupplierInvoiceView.xaml` | Modify | Split view + highlights + OCR/camera buttons |
-| `Desktop.Client/Views/CameraCaptureDialog.xaml(+.cs)` + `ICameraCaptureService` | Create | Camera preview/capture (OpenCvSharp) |
-| `Desktop.Client.Core/Services/IDialogService.cs`, `WpfDialogService*` | Modify | `ShowCameraCaptureDialog` |
+| `Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel*.cs` (+`OcrReview` partial) | Modify | OCR flow state, previews, zoom, editable cells + confirm corrections |
+| `Desktop.Client/Views/SupplierInvoiceView.xaml` | Modify | Split view + highlights + OCR button + editable cells |
+| `Desktop.Client/Views/CameraCaptureDialog.xaml(+.cs)` + `ICameraCaptureService` | Removed (T10) | Camera capture removed by maintainer decision (L14); client OpenCvSharp/WpfExtensions packages and the System.Drawing.Common bump reverted. |
+| `Desktop.Client.Core/Services/IDialogService.cs`, `WpfDialogService*` | Modify | `ShowCameraCaptureDialog` component REMOVED by T10 (L14); dialog service back to its pre-camera surface |
 | Tests: `Unit/Ocr*Tests`, `Unit/SupplierInvoice*Tests`, `Integration/Ocr*`, `Integration/SupplierInvoice*` | Create/Modify | Parser/preprocessing/endpoint/staging/client coverage |
 | `.github/workflows/ci.yml` | Modify | `TEST_OCR_NATIVE=1` for the gated smoke |
 
@@ -98,7 +98,7 @@ public sealed record StageLineDto(..., decimal? OcrNameConfidence = null,
 
 // endpoint
 POST /api/supplier-invoices/ocr-extract  [Admin,Manager]  (multipart/form-data)
-  fields: file (png|jpg|jpeg|pdf, <=20 MB), supplierId?, nameColumn?, quantityColumn?, unitCostColumn?, supplierCodeColumn?, barcodeColumn?
+  fields: file (png|jpg|jpeg|webp|bmp|tif|tiff|pdf, <=20 MB), supplierId?, nameColumn?, quantityColumn?, unitCostColumn?, supplierCodeColumn?, barcodeColumn?
   → 200 OcrExtractionResultDto | 400 ProblemDetails | 403 | 413/400 size
 ```
 
@@ -110,7 +110,7 @@ POST /api/supplier-invoices/ocr-extract  [Admin,Manager]  (multipart/form-data)
 | Unit (service) | Extraction orchestration with stub `IOcrEngine` + stub decoder (pages, caps, hints, previews) | xUnit + mocks |
 | Integration | Endpoint contracts: image/PDF happy path (stub engine), unsupported type/size 400, Cashier 403 (TestServer), no persistence | `WebApplicationFactory` patterns |
 | Unit (staging) | `OcrSourced` first-import without template; confidence persisted; tabular flow still requires mapping | In-memory `InventoryDbContext` |
-| Client unit | OCR upload service route/payload; VM flow (extract → stage with flag/confidences → review state); zoom/page state; camera command degradation; highlight mapping logic (bands) | xUnit + mocks (headless) |
+| Client unit | OCR upload service route/payload; VM flow (extract → stage with flag/confidences → review state); zoom/page state; highlight mapping logic (bands); confirm corrections gating | xUnit + mocks (headless) |
 | Gated | Real Tesseract native smoke on a generated image (`TEST_OCR_NATIVE=1`, set in CI) | xUnit with env gate + silent local skip |
 | Regression | Full suite (baseline 1651) + coverage gates | `dotnet test` |
 
@@ -129,10 +129,10 @@ Additive migration `AddSupplierInvoiceLineOcrConfidence`: three nullable `numeri
 3. Extraction endpoint (+ DTOs, DI, caps, RBAC; stub-engine tests).
 4. Schema + OCR staging (`OcrSourced`, confidences).
 5. Client service + VM flow (+ headless tests).
-6. WPF UI (split view, zoom, highlights, camera dialog) + wiring.
+6. WPF UI (split view, zoom, highlights, editable OCR cells) + wiring.
 
 Apply `size:exception` only if a slice exceeds the 400-line review budget.
 
 ## Open Questions
 
-None. Assumptions flagged: camera via OpenCvSharp with documented size trade-off (D5); tessdata delivery verified in T2 (D14); confidence bands are constants now, movable to settings later (D9).
+None. Assumptions/updates: camera was removed by maintainer decision 2026-10-04 (D5/T10, tracker L14) and image formats extended to webp/bmp/tif/tiff; tessdata delivery verified in T2 (D14); confidence bands are constants now, movable to settings later (D9).
