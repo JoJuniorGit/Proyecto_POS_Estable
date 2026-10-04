@@ -1,0 +1,56 @@
+# Facturas de Proveedor — Multi-moneda (Bs.S) + Creación de Productos con Código de Barras
+
+Objetivo: soportar facturas de proveedor emitidas en Bs.S con tasa de cambio aplicada por documento (snapshot inmutable) normalizando costos a USD, y habilitar la creación en caliente de productos desde el staging exigiendo el EAN/UPC real del artículo físico, con alias automático del código del proveedor. Branch: V0.15. Entrega: work units en V0.15 (chain stacked-to-main, reutilizada de 8.144/8.145). SDD: `openspec/changes/2026-10-03-supplier-invoice-multicurrency/`. RDD: off (clone-local). Tests: `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --filter "FullyQualifiedName~SupplierInvoice"` · build `dotnet build CommandCenter.slnx -c Release`.
+
+## Specs
+
+Fuente: pedido del usuario, verbatim (L1). Decisiones confirmadas por el mantenimiento (L3).
+
+- **S1 (Selector de Moneda y Tasa)**: "La cabecera de ingreso de factura debe incluir un selector de moneda (USD/Bs) y un campo numérico obligatorio para la Tasa de Cambio Aplicada (si la moneda es Bs)."
+  - UI WPF: combo USD / Bs.S; tasa > 0 obligatoria si Bs.S, precargada con la tasa vigente (`IExchangeRateService`) y editable; se envía en el stage y se persiste como snapshot por documento (`SupplierInvoice.Currency`, `.AppliedRate`, redondeada con `RoundExchangeRateCeiling`). Si la moneda es USD, `AppliedRate` se normaliza a 1.
+- **S2 (Normalización de Costos)**: "El sistema debe utilizar esta tasa para convertir automáticamente el costo unitario en Bs al costo base del sistema (ej. USD), garantizando que el recálculo de márgenes de ganancia sea preciso independientemente de la devaluación."
+  - Backend (zero-trust): `UnitCostUSD = PricingCalculator.ToUSD(UnitCostDocument, AppliedRate)` (AwayFromZero, 2 dec); clasificación, márgenes y precios sugeridos operan en USD. Se persiste `UnitCostDocument` (costo de la factura, fidelidad/auditoría) junto a `UnitCostUSD` (normalizado).
+- **S3 (Acción de Creación)**: "Si el motor de conciliación marca un ítem como [NUEVO], la interfaz de pre-visualización (Staging) debe habilitar un botón/flujo de 'Crear Producto'."
+  - Decisión del usuario (opción 1, L3): ítem **sin coincidencia** → `New` / badge `[NUEVO]` + botón "Crear Producto"; **no aprobable** hasta resolver producto. Producto existente con costo 0 pasa a `Update` / `[UPDATE]` (0.00 → costo nuevo) y sigue aprobable. `Conflict` queda legacy (compatibilidad de datos).
+- **S4 (Captura Obligatoria de Código de Barras)**: "Al crear el producto, el sistema no debe heredar el código de la factura como código de barras principal (ya que suele ser un SKU de control interno del proveedor). En su lugar, debe desplegar un modal exigiendo al usuario que escanee o digite el Código de Barras Universal (EAN/UPC) real del producto físico."
+  - Modal con campo EAN/UPC **vacío** (sin herencia del SupplierCode ni de la columna barcode de la factura), obligatorio, 8–14 dígitos, autofocus, Enter confirma; el valor capturado se usa como `Product.SKU` (en este sistema SKU **es** el código de barras).
+- **S5 (Mapeo Secundario Alias)**: "El código interno de la factura debe guardarse automáticamente en una tabla de referencias cruzadas (SupplierSKU o Alias) para que, en la próxima factura de ese proveedor, el sistema reconozca el producto automáticamente."
+  - Upsert en `SupplierProductCode` (índice único `(SupplierId, Code)`): al crear el producto y al confirmar líneas aprobadas con `SupplierCode` (last-write-wins hacia el producto confirmado).
+- **S6 (Decisiones de diseño; supuestos marcados)**: (supuesto) EAN/UPC = 8–14 dígitos numéricos; moneda como código string `"USD"` / `"Bs.S"` (convención POS, sin enum nuevo); la creación es de **identidad** (nombre + SKU=barcode + alias + resolución de línea) — costo, márgenes, precios y stock se aplican solo en confirm (invariante 8.144; el producto nace con costo 0 y la línea pasa a `[UPDATE] 0.00 → costo`); los márgenes para el producto nuevo se editan en la grilla como hoy (prefill 0 si no hay historial).
+
+## Tasks
+
+| ID | Specs | Route | Descripción | Estado / commit |
+|----|-------|-------|-------------|-----------------|
+| T1 | S1-S6 | inline (orchestrator) | Doc ODD + artefactos SDD + commit de planificación | hecho — commit docs (hash en T2) |
+| T2 | S1-S2 | delegated (writer) | Dominio + DTOs + DbContext + migración aditiva + smoke/model tests | pendiente |
+| T3 | S1-S2 | delegated (writer) | Staging: validación moneda/tasa + normalización + nueva clasificación ([NUEVO]/[UPDATE]) + tests | pendiente |
+| T4 | S3-S5 | delegated (writer) | Creación en caliente: servicio atómico + endpoint + alias en apply + cliente API + tests | pendiente |
+| T5 | S1-S4 | delegated (writer) | UI WPF: cabecera moneda/tasa, costo documento, botón + modal Crear Producto, badges | pendiente |
+| T6 | S1-S5 | delegated (verify) + inline | Verificación independiente por slice + final + ANEXO 8.146 | pendiente |
+
+Estrategia de entrega: `ask-on-risk` → cadena **stacked-to-main** cacheada de 8.144/8.145 (trabajo y commits por work unit sobre V0.15; push/PR/merge quedan a decisión del mantenedor).
+
+## Log
+
+- L1 (2026-10-03) — Pedido del usuario, verbatim:
+
+> Soporte Multi-moneda (Bs) y Creación de Productos con Mapeo de Código de Barras en Ingreso de Facturas
+>
+> Descripción:
+> Refactorizar el módulo de "Ingreso de Facturas de Proveedor" para soportar documentos emitidos en moneda local (Bolívares) aplicando una tasa de cambio específica por documento. Adicionalmente, se debe permitir la creación en caliente de productos nuevos desde la factura, exigiendo la captura del código de barras real del artículo físico.
+>
+> Criterios de Aceptación (Soporte Multi-moneda):
+>
+> Selector de Moneda y Tasa: La cabecera de ingreso de factura debe incluir un selector de moneda (USD/Bs) y un campo numérico obligatorio para la Tasa de Cambio Aplicada (si la moneda es Bs).
+>
+> Normalización de Costos: El sistema debe utilizar esta tasa para convertir automáticamente el costo unitario en Bs al costo base del sistema (ej. USD), garantizando que el recálculo de márgenes de ganancia sea preciso independientemente de la devaluación.
+>
+> Criterios de Aceptación (Creación de Productos):
+> 3. Acción de Creación: Si el motor de conciliación marca un ítem como [NUEVO], la interfaz de pre-visualización (Staging) debe habilitar un botón/flujo de "Crear Producto".
+> 4. Captura Obligatoria de Código de Barras: Al crear el producto, el sistema no debe heredar el código de la factura como código de barras principal (ya que suele ser un SKU de control interno del proveedor). En su lugar, debe desplegar un modal exigiendo al usuario que escanee o digite el Código de Barras Universal (EAN/UPC) real del producto físico.
+> 5. Mapeo Secundario (Alias): El código interno de la factura debe guardarse automáticamente en una tabla de referencias cruzadas (SupplierSKU o Alias) para que, en la próxima factura de ese proveedor, el sistema reconozca el producto automáticamente.
+
+- L2 (2026-10-03) — Nuevas features recibidas en la misma sesión y encoladas como changes SDD posteriores: (2) OCR open source (Tesseract + preprocesamiento + revisión lado a lado) y (3) sesiones stateful + auditoría + autorizaciones remotas SignalR ("Paso 3" del roadmap del mantenedor). Orden asumido de trabajo: multi-moneda → OCR → sesiones. Detalle en memoria `roadmap/pos-backlog`.
+- L3 (2026-10-03) — Decisión del mantenedor sobre el criterio 3 (opción 1): sin coincidencia → `[NUEVO]` + botón "Crear Producto" (no aprobable hasta crear); producto existente con costo 0 → `[UPDATE]`.
+- L4 (2026-10-03) — Evidencia de exploración (CodeGraph + explorer read-only): el alias `SupplierProductCode` nunca se escribe (solo `Matching.cs:57-74` lo lee); `Product.SKU` ES el barcode (`Product.cs:23`, índice único); no existe tipo de moneda (patrón `"USD"`/`"Bs.S"` + `Sale.AppliedRate` con `RoundExchangeRateCeiling`; `PricingCalculator.ToUSD` existe); clasificación actual `Matching.cs:133-139`; UI `[CONFLICT]`/`[NEW]` (`SupplierInvoiceViewModel.Staging.cs:17,53`); creación de producto reutilizable vía `IProductManagementService.CreateProductFromDtoAsync` (`InventoryService.ProductCrud.cs:17`, RBAC + SKU único); modal precedente `IDialogService.ShowProductDialog`; RDD off (clone-local); baseline suite 1591; ANEXO siguiente 8.146.

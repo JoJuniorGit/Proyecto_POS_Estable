@@ -1,0 +1,33 @@
+change: 2026-10-03-supplier-invoice-multicurrency
+store: openspec
+scope: wpf-desktop-only
+created: 2026-10-03
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: proposed
+artifacts:
+  exploration: openspec/changes/2026-10-03-supplier-invoice-multicurrency/exploration.md
+  proposal: openspec/changes/2026-10-03-supplier-invoice-multicurrency/proposal.md
+  specs:
+    - openspec/changes/2026-10-03-supplier-invoice-multicurrency/specs/supplier-invoice-multicurrency/spec.md
+    - openspec/changes/2026-10-03-supplier-invoice-multicurrency/specs/supplier-invoice-staging/spec.md
+    - openspec/changes/2026-10-03-supplier-invoice-multicurrency/specs/supplier-product-hot-creation/spec.md
+    - openspec/changes/2026-10-03-supplier-invoice-multicurrency/specs/supplier-invoice-apply/spec.md
+  design: openspec/changes/2026-10-03-supplier-invoice-multicurrency/design.md
+  tasks: openspec/changes/2026-10-03-supplier-invoice-multicurrency/tasks.md
+decisions:
+  confirmed: 2026-10-03
+  user-classification-decision: unmatched-new-with-create-action; zero-cost-update
+  currency-model: string-codes (USD/Bs.S) + applied-rate snapshot per document
+  normalization: server-side ToUSD AwayFromZero 2dp; round rate ceiling 2dp
+  document-cost: persisted both (UnitCostDocument + UnitCostUSD)
+  creation-scope: identity-only; cost/margin/price/stock applied at confirm
+  creation-api: atomic endpoint on supplier-invoices controller
+  barcode: Product.SKU; EAN/UPC 8-14 digits (assumption)
+  alias: upsert on create and apply; last-write-wins to confirmed product
+  modal: new lightweight dialog via IDialogService
+  web-scope: wpf-desktop-only
+next: sdd-apply
