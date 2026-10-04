@@ -59,6 +59,7 @@ Chain strategy: stacked-to-main
 - [ ] 5.1 Desktop client `ISupplierInvoiceService`/`SupplierInvoiceService`: `ExtractOcrAsync` multipart upload.
 - [ ] 5.2 `SupplierInvoiceViewModel.OcrReview` partial: extract → build `StageLineDto` (defaults 0 + confidence 0 when unresolved) → stage with `OcrSourced = true`; review state (previews, selected page, zoom); clear on new source/confirm.
 - [ ] 5.3 Tests (headless): upload route/payload; stage flag/confidences; review state transitions; camera-degradation command path.
+- [ ] 5.4 (emergent, spec "Editing clears the highlight" → "value flows to confirm as usual") Confirm corrections: `ConfirmLineDto` optional `Name`/`Quantity`/`UnitCostDocument` corrections — zero-trust validated (name non-blank ≤100 when provided, quantity/cost ≥ 0), document cost re-normalized with the invoice snapshot rate, the corrected field's OCR confidence cleared, applied inside the confirm transaction.
 
 ## Phase 6: WPF UI
 

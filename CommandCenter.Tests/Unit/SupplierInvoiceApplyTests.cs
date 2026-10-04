@@ -1,4 +1,5 @@
 using CommandCenter.Tests.Builders;
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Core.Helpers;
@@ -201,6 +202,232 @@ public class SupplierInvoiceApplyTests
         Assert.Empty(await context.SupplierProductCodes.ToListAsync());
     }
 
+    [Fact]
+    public async Task ConfirmAsync_AppliesCorrectionsAndClearsCorrectedFieldConfidences()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-CORRECTION", 4m, 6m, 20m);
+        var line = CreateLine(product, 2m, 9m);
+        line.Name = "OCR NAME";
+        line.UnitCostDocument = 9m;
+        line.OcrNameConfidence = 41.5m;
+        line.OcrQuantityConfidence = 63.2m;
+        line.OcrUnitCostConfidence = 78.9m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, "  Corrected name  ", 3.5m, 12.25m)
+        }));
+
+        var savedLine = await context.SupplierInvoiceLines.SingleAsync(candidate => candidate.Id == line.Id);
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        var movement = await context.StockMovements.SingleAsync();
+        Assert.Equal("Corrected name", savedLine.Name);
+        Assert.Equal(3.5m, savedLine.Quantity);
+        Assert.Equal(12.25m, savedLine.UnitCostDocument);
+        Assert.Equal(12.25m, savedLine.UnitCostUSD);
+        Assert.Null(savedLine.OcrNameConfidence);
+        Assert.Null(savedLine.OcrQuantityConfidence);
+        Assert.Null(savedLine.OcrUnitCostConfidence);
+        Assert.Equal(12.25m, savedProduct.CostPriceUSD);
+        Assert.Equal(9.5m, savedProduct.StockQuantity);
+        Assert.Equal(3.5m, movement.QuantityChange);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_NormalizesCorrectedBsSCostWithInvoiceSnapshotRate()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-CORRECTION-SNAPSHOT", 4m, 6m, 20m);
+        // La tasa "vigente"/del producto difiere del snapshot: la corrección debe usar la de la factura.
+        product.LastConversionRate = 50m;
+        var line = CreateLine(product, 1m, 10m);
+        line.UnitCostDocument = 365m;
+        line.OcrUnitCostConfidence = 30m;
+        var invoice = await AddInvoiceAsync(context, CurrencyCodes.BsS, 36.5m, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, UnitCostDocument: 730m)
+        }));
+
+        var savedLine = await context.SupplierInvoiceLines.SingleAsync(candidate => candidate.Id == line.Id);
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(730m, savedLine.UnitCostDocument);
+        Assert.Equal(20m, savedLine.UnitCostUSD);
+        Assert.Equal(20m, savedProduct.CostPriceUSD);
+        Assert.Null(savedLine.OcrUnitCostConfidence);
+        Assert.Equal(1m, savedLine.Quantity);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_KeepsUncorrectedFieldConfidences()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-CORRECTION-KEEP", 4m, 6m, 20m);
+        var line = CreateLine(product, 2m, 9m);
+        line.Name = "OCR NAME";
+        line.UnitCostDocument = 9m;
+        line.OcrNameConfidence = 41.5m;
+        line.OcrQuantityConfidence = 63.2m;
+        line.OcrUnitCostConfidence = 78.9m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, Name: "Corrected name")
+        }));
+
+        var savedLine = await context.SupplierInvoiceLines.SingleAsync(candidate => candidate.Id == line.Id);
+        Assert.Equal("Corrected name", savedLine.Name);
+        Assert.Null(savedLine.OcrNameConfidence);
+        Assert.Equal(63.2m, savedLine.OcrQuantityConfidence);
+        Assert.Equal(78.9m, savedLine.OcrUnitCostConfidence);
+        Assert.Equal(2m, savedLine.Quantity);
+        Assert.Equal(9m, savedLine.UnitCostDocument);
+        Assert.Equal(9m, savedLine.UnitCostUSD);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithoutCorrectionsKeepsLineValuesAndConfidences()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-CORRECTION-NONE", 4m, 6m, 20m);
+        var line = CreateLine(product, 2m, 9m);
+        line.Name = "OCR NAME";
+        line.UnitCostDocument = 9m;
+        line.OcrNameConfidence = 41.5m;
+        line.OcrQuantityConfidence = 63.2m;
+        line.OcrUnitCostConfidence = 78.9m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        var savedLine = await context.SupplierInvoiceLines.SingleAsync(candidate => candidate.Id == line.Id);
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal("OCR NAME", savedLine.Name);
+        Assert.Equal(2m, savedLine.Quantity);
+        Assert.Equal(9m, savedLine.UnitCostDocument);
+        Assert.Equal(9m, savedLine.UnitCostUSD);
+        Assert.Equal(41.5m, savedLine.OcrNameConfidence);
+        Assert.Equal(63.2m, savedLine.OcrQuantityConfidence);
+        Assert.Equal(78.9m, savedLine.OcrUnitCostConfidence);
+        Assert.Equal(9m, savedProduct.CostPriceUSD);
+        Assert.Equal(8m, savedProduct.StockQuantity);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RejectsBlankCorrectedNameWithoutApplyingChanges()
+    {
+        var (context, product, line, invoice) = await ArrangeCorrectionTestAsync("APPLY-CORRECTION-BLANK");
+        using var contextScope = context;
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, "   ", null, null)
+            })));
+
+        Assert.Equal("The corrected product name cannot be blank.", exception.Message);
+        await AssertNoApplySideEffectsAsync(context, product, line);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RejectsCorrectedNameLongerThan100Characters()
+    {
+        var (context, product, line, invoice) = await ArrangeCorrectionTestAsync("APPLY-CORRECTION-LONG");
+        using var contextScope = context;
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, new string('x', 101), null, null)
+            })));
+
+        Assert.Equal("The corrected product name cannot exceed 100 characters.", exception.Message);
+        await AssertNoApplySideEffectsAsync(context, product, line);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RejectsNegativeCorrectedQuantityWithoutApplyingChanges()
+    {
+        var (context, product, line, invoice) = await ArrangeCorrectionTestAsync("APPLY-CORRECTION-QTY");
+        using var contextScope = context;
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, null, -1m, null)
+            })));
+
+        Assert.Equal("The corrected quantity cannot be negative.", exception.Message);
+        await AssertNoApplySideEffectsAsync(context, product, line);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RejectsNegativeCorrectedUnitCostWithoutApplyingChanges()
+    {
+        var (context, product, line, invoice) = await ArrangeCorrectionTestAsync("APPLY-CORRECTION-COST");
+        using var contextScope = context;
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, null, null, -0.01m)
+            })));
+
+        Assert.Equal("The corrected unit cost cannot be negative.", exception.Message);
+        await AssertNoApplySideEffectsAsync(context, product, line);
+    }
+
+    private static async Task<(InventoryDbContext Context, Product Product, SupplierInvoiceLine Line, SupplierInvoice Invoice)> ArrangeCorrectionTestAsync(string sku)
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var product = CreateProduct(sku, 4m, 6m, 20m);
+        var line = CreateLine(product, 2m, 9m);
+        line.Name = "OCR NAME";
+        line.UnitCostDocument = 9m;
+        line.OcrNameConfidence = 41.5m;
+        line.OcrQuantityConfidence = 63.2m;
+        line.OcrUnitCostConfidence = 78.9m;
+        var invoice = await AddInvoiceAsync(context, line);
+        return (context, product, line, invoice);
+    }
+
+    private static async Task AssertNoApplySideEffectsAsync(
+        InventoryDbContext context,
+        Product product,
+        SupplierInvoiceLine line)
+    {
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        var savedLine = await context.SupplierInvoiceLines.SingleAsync(candidate => candidate.Id == line.Id);
+        var savedInvoice = await context.SupplierInvoices.SingleAsync(candidate => candidate.Id == line.SupplierInvoiceId);
+        Assert.Equal(4m, savedProduct.CostPriceUSD);
+        Assert.Equal(6m, savedProduct.StockQuantity);
+        Assert.Equal("OCR NAME", savedLine.Name);
+        Assert.Equal(2m, savedLine.Quantity);
+        Assert.Equal(9m, savedLine.UnitCostDocument);
+        Assert.Equal(9m, savedLine.UnitCostUSD);
+        Assert.Equal(SupplierInvoiceStatus.Draft, savedInvoice.Status);
+        Assert.Empty(await context.StockMovements.ToListAsync());
+    }
+
     private static SupplierInvoiceService CreateService(
         InventoryDbContext context,
         ICurrentUserService? currentUser = null)
@@ -218,6 +445,12 @@ public class SupplierInvoiceApplyTests
 
     private static async Task<SupplierInvoice> AddInvoiceAsync(
         InventoryDbContext context,
+        params SupplierInvoiceLine[] lines) => await AddInvoiceAsync(context, CurrencyCodes.Usd, 1m, lines);
+
+    private static async Task<SupplierInvoice> AddInvoiceAsync(
+        InventoryDbContext context,
+        string currency,
+        decimal appliedRate,
         params SupplierInvoiceLine[] lines)
     {
         var suffix = Guid.NewGuid().ToString("N");
@@ -230,6 +463,8 @@ public class SupplierInvoiceApplyTests
         {
             Supplier = supplier,
             Status = SupplierInvoiceStatus.Draft,
+            Currency = currency,
+            AppliedRate = appliedRate,
             Lines = new List<SupplierInvoiceLine>(lines)
         };
 

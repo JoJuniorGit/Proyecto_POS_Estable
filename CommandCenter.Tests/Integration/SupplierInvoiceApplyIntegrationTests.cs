@@ -144,6 +144,85 @@ public class SupplierInvoiceApplyIntegrationTests
     }
 
     [Fact]
+    public async Task ConfirmAsync_RejectsForgedNegativeCorrectionWithoutPersisting()
+    {
+        var (context, connection) = TestDatabaseFactory.CreateSqliteInventoryDbContext();
+        await using var connectionScope = connection;
+        await using var contextScope = context;
+        var product = CreateProduct("APPLY-FORGED-CORRECTION", 4m, 6m, 20m);
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 2m, 11m));
+        var line = Assert.Single(invoice.Lines);
+        line.Name = "OCR NAME";
+        line.UnitCostDocument = 11m;
+        line.OcrNameConfidence = 30m;
+        line.OcrQuantityConfidence = 40m;
+        line.OcrUnitCostConfidence = 50m;
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, null, -1m, null)
+            })));
+
+        Assert.Equal("The corrected quantity cannot be negative.", exception.Message);
+        await using var verificationContext = CreateSqliteInventoryDbContext(connection);
+        var savedProduct = await verificationContext.Products.AsNoTracking().SingleAsync(candidate => candidate.Id == product.Id);
+        var savedInvoice = await verificationContext.SupplierInvoices.AsNoTracking().SingleAsync(candidate => candidate.Id == invoice.Id);
+        var savedLine = await verificationContext.SupplierInvoiceLines.AsNoTracking().SingleAsync(candidate => candidate.Id == line.Id);
+        Assert.Equal(4m, savedProduct.CostPriceUSD);
+        Assert.Equal(6m, savedProduct.StockQuantity);
+        Assert.Equal(SupplierInvoiceStatus.Draft, savedInvoice.Status);
+        Assert.Equal("OCR NAME", savedLine.Name);
+        Assert.Equal(2m, savedLine.Quantity);
+        Assert.Equal(40m, savedLine.OcrQuantityConfidence);
+        Assert.Empty(await verificationContext.StockMovements.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_CommitsCorrectionsTogetherWithApply()
+    {
+        var (context, connection) = TestDatabaseFactory.CreateSqliteInventoryDbContext();
+        await using var connectionScope = connection;
+        await using var contextScope = context;
+        var product = CreateProduct("APPLY-CORRECTION-COMMIT", 4m, 6m, 20m);
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 2m, 9m));
+        var line = Assert.Single(invoice.Lines);
+        line.Name = "OCR NAME";
+        line.UnitCostDocument = 9m;
+        line.OcrNameConfidence = 41.5m;
+        line.OcrQuantityConfidence = 63.2m;
+        line.OcrUnitCostConfidence = 78.9m;
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        var result = await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, "  Corrected name  ", 3.5m, 12.25m)
+        }));
+
+        Assert.Equal(nameof(SupplierInvoiceStatus.Applied), result.Status);
+        await using var verificationContext = CreateSqliteInventoryDbContext(connection);
+        var savedLine = await verificationContext.SupplierInvoiceLines.AsNoTracking().SingleAsync(candidate => candidate.Id == line.Id);
+        var savedProduct = await verificationContext.Products.AsNoTracking().SingleAsync(candidate => candidate.Id == product.Id);
+        var savedInvoice = await verificationContext.SupplierInvoices.AsNoTracking().SingleAsync(candidate => candidate.Id == invoice.Id);
+        var movement = await verificationContext.StockMovements.AsNoTracking().SingleAsync();
+        Assert.Equal("Corrected name", savedLine.Name);
+        Assert.Equal(3.5m, savedLine.Quantity);
+        Assert.Equal(12.25m, savedLine.UnitCostDocument);
+        Assert.Equal(12.25m, savedLine.UnitCostUSD);
+        Assert.Null(savedLine.OcrNameConfidence);
+        Assert.Null(savedLine.OcrQuantityConfidence);
+        Assert.Null(savedLine.OcrUnitCostConfidence);
+        Assert.Equal(12.25m, savedProduct.CostPriceUSD);
+        Assert.Equal(9.5m, savedProduct.StockQuantity);
+        Assert.Equal(3.5m, movement.QuantityChange);
+        Assert.Equal(SupplierInvoiceStatus.Applied, savedInvoice.Status);
+    }
+
+    [Fact]
     public async Task ConfirmEndpoint_CashierReceivesForbiddenWithoutApplyingInvoice()
     {
         var (context, connection) = TestDatabaseFactory.CreateSqliteInventoryDbContext();

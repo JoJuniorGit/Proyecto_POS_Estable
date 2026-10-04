@@ -66,7 +66,12 @@ public sealed record ConfirmLineDto(
     int LineId,
     bool IsApproved,
     decimal? MarginRetailOverride,
-    decimal? MarginWholesaleOverride);
+    decimal? MarginWholesaleOverride,
+    // 8.147-T7b/S6: correcciones del revisor para campos OCR (null = sin corrección). El servicio
+    // de confirm las valida zero-trust y renormaliza el costo documental con el snapshot de la factura.
+    string? Name = null,
+    decimal? Quantity = null,
+    decimal? UnitCostDocument = null);
 
 public sealed record SupplierColumnMappingDto(
     string? BarcodeColumnName,
