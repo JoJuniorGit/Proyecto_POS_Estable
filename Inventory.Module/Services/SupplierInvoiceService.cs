@@ -39,5 +39,8 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         line.SuggestedRetailPriceUSD,
         line.SuggestedWholesalePriceUSD,
         line.IsApproved,
-        line.MatchMethod.ToString());
+        line.MatchMethod.ToString(),
+        line.OcrNameConfidence,
+        line.OcrQuantityConfidence,
+        line.OcrUnitCostConfidence);
 }

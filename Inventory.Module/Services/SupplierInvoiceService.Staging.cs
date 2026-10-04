@@ -20,7 +20,13 @@ public partial class SupplierInvoiceService
         var (currency, appliedRate) = ResolveCurrencySnapshot(request);
         var lines = ValidateAndNormalizeLines(request.Lines);
         var supplier = await ResolveSupplierAsync(request, cancellationToken);
-        await UpsertColumnMappingAsync(supplier.Id, request.ColumnMapping, cancellationToken);
+        // 8.147-S6/D11: las filas OCR ya vienen estructuradas; sin mapping en la request no hay
+        // plantilla que aprender ni exigir. La ruta tabular conserva el requisito de primera importación.
+        if (request.ColumnMapping is not null || !request.OcrSourced)
+        {
+            await UpsertColumnMappingAsync(supplier.Id, request.ColumnMapping, cancellationToken);
+        }
+
         var similarityThreshold = await ReadSimilarityThresholdAsync(cancellationToken);
 
         var invoice = new SupplierInvoice
@@ -37,7 +43,7 @@ public partial class SupplierInvoiceService
                 ? line.UnitCostDocument
                 : Core.Helpers.PricingCalculator.ToUSD(line.UnitCostDocument, appliedRate);
             var match = await MatchProductAsync(supplier.Id, line, similarityThreshold, cancellationToken);
-            invoice.Lines.Add(CreateStagedLine(line, match, unitCostUsd));
+            invoice.Lines.Add(CreateStagedLine(line, match, unitCostUsd, request.OcrSourced));
         }
 
         _context.SupplierInvoices.Add(invoice);
@@ -264,7 +270,10 @@ public partial class SupplierInvoiceService
                 OptionalColumn(line.Barcode),
                 OptionalColumn(line.Name),
                 line.Quantity,
-                line.UnitCostDocument))
+                line.UnitCostDocument,
+                line.OcrNameConfidence,
+                line.OcrQuantityConfidence,
+                line.OcrUnitCostConfidence))
             .ToList();
 
         if (lines.Count == 0)

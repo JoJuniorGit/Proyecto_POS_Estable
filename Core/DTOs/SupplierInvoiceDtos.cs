@@ -9,14 +9,21 @@ public sealed record StageSupplierInvoiceRequestDto(
     SupplierColumnMappingDto? ColumnMapping,
     IReadOnlyList<StageLineDto> Lines,
     string Currency,
-    decimal AppliedRate);
+    decimal AppliedRate,
+    // 8.147-S6/D11: las filas OCR llegan ya estructuradas; true relaja el requisito de plantilla
+    // de la primera importación. La ruta tabular (false) conserva el requisito vigente.
+    bool OcrSourced = false);
 
 public sealed record StageLineDto(
     string? SupplierCode,
     string? Barcode,
     string? Name,
     decimal Quantity,
-    decimal UnitCostDocument);
+    decimal UnitCostDocument,
+    // 8.147-S6/D10: confianza OCR por campo (0–100, 1 decimal); omitidas/null en filas tabulares.
+    decimal? OcrNameConfidence = null,
+    decimal? OcrQuantityConfidence = null,
+    decimal? OcrUnitCostConfidence = null);
 
 public sealed record SupplierInvoiceDetailDto(
     int Id,
@@ -45,7 +52,11 @@ public sealed record SupplierInvoiceLineDto(
     decimal? SuggestedRetailPriceUSD,
     decimal? SuggestedWholesalePriceUSD,
     bool IsApproved,
-    string MatchMethod);
+    string MatchMethod,
+    // 8.147-S6/D10: confianzas OCR persistidas (0–100); null en filas tabulares.
+    decimal? OcrNameConfidence,
+    decimal? OcrQuantityConfidence,
+    decimal? OcrUnitCostConfidence);
 
 public sealed record CreateInvoiceProductRequestDto(string Barcode, string Name);
 

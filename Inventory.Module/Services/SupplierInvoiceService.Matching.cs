@@ -116,7 +116,11 @@ public partial class SupplierInvoiceService
         return new ProductMatch(null, MatchMethod.None);
     }
 
-    private static SupplierInvoiceLine CreateStagedLine(StageLineDto line, ProductMatch match, decimal unitCostUsd)
+    private static SupplierInvoiceLine CreateStagedLine(
+        StageLineDto line,
+        ProductMatch match,
+        decimal unitCostUsd,
+        bool ocrSourced)
     {
         var product = match.Product;
         decimal? retailMargin = product is null
@@ -158,7 +162,11 @@ public partial class SupplierInvoiceService
             SuggestedWholesalePriceUSD = wholesaleMargin is decimal wholesale
                 ? Core.Helpers.PricingCalculator.RoundPriceUp(unitCostUsd * (1m + wholesale / 100m))
                 : null,
-            MatchMethod = match.Method
+            MatchMethod = match.Method,
+            // 8.147-S6/D10: solo las líneas OCR persisten confianzas; las tabulares quedan null.
+            OcrNameConfidence = ocrSourced ? line.OcrNameConfidence : null,
+            OcrQuantityConfidence = ocrSourced ? line.OcrQuantityConfidence : null,
+            OcrUnitCostConfidence = ocrSourced ? line.OcrUnitCostConfidence : null
         };
     }
 
