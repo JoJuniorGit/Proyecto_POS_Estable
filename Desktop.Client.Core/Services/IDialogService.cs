@@ -21,6 +21,13 @@ public interface IDialogService
     bool ShowSuccessDialog(string message, string? secondaryActionLabel = null);
     Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title);
     bool? ShowProductDialog(ViewModels.ProductDialogViewModel dialogVm);
+
+    /// <summary>
+    /// 8.146-T5 (S4): modal de captura del código de barras universal al crear un producto desde una línea de factura.
+    /// Implementación por defecto sin UI (stubs headless): null equivale a diálogo cancelado, igual que
+    /// <see cref="ShowPartialDeliveryDialogAsync"/>.
+    /// </summary>
+    bool? ShowCreateInvoiceProductDialog(ViewModels.CreateInvoiceProductDialogViewModel dialogVm) => null;
     (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();

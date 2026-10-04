@@ -13,15 +13,16 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     public string? Name => _source.Name;
     public decimal Quantity => _source.Quantity;
     public decimal UnitCostUSD => _source.UnitCostUSD;
+    public decimal UnitCostDocument => _source.UnitCostDocument;
     public string Status => _source.Status;
-    public string StatusLabel => ResolvedProductId is null ? "[CONFLICT]" : GetStatusLabel(Status);
+    public string StatusLabel => ResolvedProductId is null ? "[NUEVO]" : GetStatusLabel(Status);
     public int? ResolvedProductId => _source.ResolvedProductId;
     public decimal? OldCostPriceUSD => _source.OldCostPriceUSD;
     public string CostComparison => string.Equals(Status, "Update", System.StringComparison.OrdinalIgnoreCase) && OldCostPriceUSD.HasValue
         ? $"{OldCostPriceUSD.Value:N2} → {UnitCostUSD:N2}"
         : UnitCostUSD.ToString("N2");
-    public bool IsConflict => StatusLabel == "[CONFLICT]";
-    public bool CanApprove => !IsConflict;
+    public bool CanApprove => ResolvedProductId is not null;
+    public bool CanCreateProduct => ResolvedProductId is null;
 
     [ObservableProperty]
     private bool _isApproved;
@@ -50,7 +51,7 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
 
     public static string GetStatusLabel(string? status) => status?.Trim().ToUpperInvariant() switch
     {
-        "NEW" => "[NEW]",
+        "NEW" => "[NUEVO]",
         "UPDATE" => "[UPDATE]",
         "UNCHANGED" => "[UNCHANGED]",
         "CONFLICT" => "[CONFLICT]",

@@ -60,13 +60,228 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Theory]
-    [InlineData("New", "[NEW]")]
+    [InlineData("New", "[NUEVO]")]
     [InlineData("Update", "[UPDATE]")]
     [InlineData("Unchanged", "[UNCHANGED]")]
     [InlineData("Conflict", "[CONFLICT]")]
     public void StatusBadge_MapsBackendStatus(string status, string expected)
     {
         Assert.Equal(expected, SupplierInvoiceLineViewModel.GetStatusLabel(status));
+    }
+
+    [Fact]
+    public void UnresolvedLine_ShowsNuevoBadgeAndIsCreationCandidate()
+    {
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1, resolvedProductId: null, status: "Conflict")));
+
+        var line = Assert.Single(viewModel.Lines);
+
+        Assert.Equal("[NUEVO]", line.StatusLabel);
+        Assert.False(line.CanApprove);
+        Assert.True(line.CanCreateProduct);
+    }
+
+    [Fact]
+    public void ResolvedLine_IsApprovableAndNotCreationCandidate()
+    {
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1)));
+
+        var line = Assert.Single(viewModel.Lines);
+
+        Assert.True(line.CanApprove);
+        Assert.False(line.CanCreateProduct);
+    }
+
+    [Fact]
+    public void BsSInvoice_ExposesDocumentCostAndCurrencyFlag()
+    {
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.LoadStagedInvoice(CreateInvoice(
+            CurrencyCodes.BsS,
+            CreateLine(1, unitCost: 10m, unitCostDocument: 365m)));
+
+        Assert.True(viewModel.IsBsSInvoice);
+        Assert.Equal(365m, Assert.Single(viewModel.Lines).UnitCostDocument);
+    }
+
+    [Fact]
+    public void CanStageInvoice_RequiresPositiveRateForBsSCurrency()
+    {
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        PrepareStageableInvoice(viewModel);
+
+        Assert.Equal(CurrencyCodes.Usd, viewModel.SelectedCurrency);
+        Assert.False(viewModel.IsBsSCurrency);
+        Assert.True(viewModel.CanStageInvoice);
+
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
+
+        Assert.True(viewModel.IsBsSCurrency);
+        Assert.Equal(string.Empty, viewModel.AppliedRateText);
+        Assert.False(viewModel.CanStageInvoice);
+        Assert.True(viewModel.ShowRateValidationHint);
+
+        viewModel.AppliedRateText = "36,50";
+
+        Assert.True(viewModel.CanStageInvoice);
+        Assert.False(viewModel.ShowRateValidationHint);
+
+        viewModel.AppliedRateText = "0";
+
+        Assert.False(viewModel.CanStageInvoice);
+        Assert.True(viewModel.ShowRateValidationHint);
+    }
+
+    [Fact]
+    public void SwitchingToBsSCurrency_PrefillsOfficialRate()
+    {
+        var viewModel = CreateViewModel(
+            Mock.Of<ClientSupplierInvoiceService>(),
+            exchangeRateService: CreateRateService(36.50m));
+
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
+
+        Assert.True(viewModel.IsBsSCurrency);
+        Assert.Equal("36.50", viewModel.AppliedRateText);
+    }
+
+    [Theory]
+    [InlineData("36,50", 36.50)]
+    [InlineData("36.50", 36.50)]
+    [InlineData("3.650,50", 3650.50)]
+    public async Task StageInvoiceAsync_BsSCurrency_SendsParsedAppliedRate(string rateText, decimal expectedRate)
+    {
+        var request = await CaptureStageRequestAsync(CurrencyCodes.BsS, rateText);
+
+        Assert.Equal(CurrencyCodes.BsS, request.Currency);
+        Assert.Equal(expectedRate, request.AppliedRate);
+    }
+
+    [Fact]
+    public void SwitchingBackToBsSCurrency_DoesNotOverrideUserEditedRate()
+    {
+        var viewModel = CreateViewModel(
+            Mock.Of<ClientSupplierInvoiceService>(),
+            exchangeRateService: CreateRateService(36.50m));
+
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
+        viewModel.AppliedRateText = "40";
+
+        viewModel.SelectedCurrency = CurrencyCodes.Usd;
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
+
+        Assert.Equal("40", viewModel.AppliedRateText);
+    }
+
+    [Fact]
+    public async Task StageInvoiceAsync_UsdCurrency_SendsCanonicalRateOne()
+    {
+        var request = await CaptureStageRequestAsync(CurrencyCodes.Usd, "999");
+
+        Assert.Equal(CurrencyCodes.Usd, request.Currency);
+        Assert.Equal(1m, request.AppliedRate);
+    }
+
+    [Fact]
+    public async Task StageAsync_BsSCurrency_SerializesCurrencyAndAppliedRateInJsonBody()
+    {
+        var invoice = CreateInvoice(CurrencyCodes.BsS, CreateLine(1));
+        var handler = new StubHttpMessageHandler(JsonResponse(invoice));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        await service.StageAsync(new StageSupplierInvoiceRequestDto(
+            7,
+            "J-123",
+            "Supplier",
+            null,
+            new[] { new StageLineDto("SUP-1", "12345", "Coffee", 2m, 365m) },
+            CurrencyCodes.BsS,
+            36.50m));
+
+        using var payload = JsonDocument.Parse(Assert.Single(handler.RequestBodies));
+        Assert.Equal("Bs.S", payload.RootElement.GetProperty("currency").GetString());
+        Assert.Equal(36.50m, payload.RootElement.GetProperty("appliedRate").GetDecimal());
+    }
+
+    [Fact]
+    public async Task CreateProductCommand_OnSuccess_ReloadsResolvedLine()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var invoice = CreateInvoice(CreateLine(1, resolvedProductId: null, status: "New"));
+        var refreshed = CreateInvoice(CreateLine(1));
+        CreateInvoiceProductRequestDto? captured = null;
+        service.Setup(client => client.CreateProductFromLineAsync(
+                invoice.Id,
+                1,
+                It.IsAny<CreateInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, CreateInvoiceProductRequestDto, CancellationToken>((_, _, request, _) => captured = request)
+            .ReturnsAsync(refreshed);
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(service => service.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(dialogVm =>
+            {
+                dialogVm.Barcode = "7591234567890";
+                dialogVm.Name = "Harina P.A.N. 1kg";
+            })
+            .Returns(true);
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(invoice);
+
+        await viewModel.CreateProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        Assert.NotNull(captured);
+        Assert.Equal("7591234567890", captured!.Barcode);
+        Assert.Equal("Harina P.A.N. 1kg", captured.Name);
+        var line = Assert.Single(viewModel.Lines);
+        Assert.True(line.CanApprove);
+        Assert.False(line.CanCreateProduct);
+        Assert.Equal("[UPDATE]", line.StatusLabel);
+    }
+
+    [Fact]
+    public async Task CreateProductCommand_OnFailure_ShowsErrorAndKeepsLineUnresolved()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var invoice = CreateInvoice(CreateLine(1, resolvedProductId: null, status: "New"));
+        service.Setup(client => client.CreateProductFromLineAsync(
+                invoice.Id,
+                1,
+                It.IsAny<CreateInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("El SKU 7591234567890 ya existe en el catálogo (409)."));
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(service => service.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Returns(true);
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(invoice);
+
+        await viewModel.CreateProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        dialog.Verify(
+            service => service.ShowError(It.IsAny<string>(), It.IsAny<string>()),
+            Times.Once);
+        var line = Assert.Single(viewModel.Lines);
+        Assert.True(line.CanCreateProduct);
+        Assert.Equal("[NUEVO]", line.StatusLabel);
+    }
+
+    [Fact]
+    public async Task CreateProductCommand_ForResolvedLine_DoesNotOpenDialog()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var dialog = new Mock<IDialogService>();
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1)));
+
+        await viewModel.CreateProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        dialog.Verify(
+            service => service.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()),
+            Times.Never);
     }
 
     [Fact]
@@ -319,9 +534,12 @@ public sealed class SupplierInvoiceClientTests
         Assert.Null(supplier.ColumnMapping);
     }
 
+    private const string InvoiceFilePath = "C:\\facturas\\factura.csv";
+
     private static SupplierInvoiceViewModel CreateViewModel(
         ClientSupplierInvoiceService invoiceService,
-        IDialogService? dialogService = null)
+        IDialogService? dialogService = null,
+        IExchangeRateService? exchangeRateService = null)
     {
         var userSession = new UserSession();
         userSession.SetUser(new UserDto { Id = 1, Name = "Manager", Role = UserRole.Manager });
@@ -329,7 +547,52 @@ public sealed class SupplierInvoiceClientTests
             invoiceService,
             userSession,
             dialogService ?? Mock.Of<IDialogService>(),
-            Mock.Of<IFilePickerDialog>());
+            Mock.Of<IFilePickerDialog>(),
+            exchangeRateService ?? CreateRateService(0m));
+    }
+
+    private static IExchangeRateService CreateRateService(decimal rate)
+    {
+        var rateService = new Mock<IExchangeRateService>();
+        rateService.Setup(service => service.GetCurrentRateAsync())
+            .ReturnsAsync((rate, (DateTime?)null));
+        return rateService.Object;
+    }
+
+    private static void PrepareStageableInvoice(SupplierInvoiceViewModel viewModel)
+    {
+        viewModel.SetFileHeaders(new[] { "Barcode", "Supplier Code", "Name", "Quantity", "Unit Cost" });
+        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Supplier", null);
+        viewModel.SelectedFilePath = InvoiceFilePath;
+    }
+
+    private static async Task<StageSupplierInvoiceRequestDto> CaptureStageRequestAsync(
+        string currency,
+        string? appliedRateText)
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        StageSupplierInvoiceRequestDto? captured = null;
+        service.Setup(client => client.ParseFileWithMappingAsync(
+                InvoiceFilePath,
+                It.IsAny<SupplierColumnMappingDto>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<StageLineDto> { new("SUP-1", "12345", "Coffee", 2m, 365m) });
+        service.Setup(client => client.StageAsync(
+                It.IsAny<StageSupplierInvoiceRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<StageSupplierInvoiceRequestDto, CancellationToken>((request, _) => captured = request)
+            .ReturnsAsync(CreateInvoice(CreateLine(1)));
+        var viewModel = CreateViewModel(service.Object);
+        PrepareStageableInvoice(viewModel);
+        viewModel.SelectedCurrency = currency;
+        if (appliedRateText is not null)
+        {
+            viewModel.AppliedRateText = appliedRateText;
+        }
+
+        await viewModel.StageInvoiceCommand.ExecuteAsync(null);
+
+        return Assert.IsType<StageSupplierInvoiceRequestDto>(captured);
     }
 
     private static Desktop.Client.Services.SupplierInvoiceService CreateClientService() => new(new HttpClient());
@@ -343,21 +606,27 @@ public sealed class SupplierInvoiceClientTests
             Mock.Of<IProductManagementService>());
 
     private static SupplierInvoiceDetailDto CreateInvoice(params SupplierInvoiceLineDto[] lines) =>
-        new(42, 7, "Draft", CurrencyCodes.Usd, 1m, lines);
+        CreateInvoice(CurrencyCodes.Usd, lines);
+
+    private static SupplierInvoiceDetailDto CreateInvoice(string currency, params SupplierInvoiceLineDto[] lines) =>
+        new(42, 7, "Draft", currency, currency == CurrencyCodes.BsS ? 36.5m : 1m, lines);
 
     private static SupplierInvoiceLineDto CreateLine(
         int id,
         decimal unitCost = 10m,
-        bool isApproved = true) => new(
+        bool isApproved = true,
+        int? resolvedProductId = 9,
+        string status = "Update",
+        decimal? unitCostDocument = null) => new(
             id,
             "SUP-1",
             "12345",
             "Coffee",
             2m,
+            unitCostDocument ?? unitCost,
             unitCost,
-            unitCost,
-            "Update",
-            9,
+            status,
+            resolvedProductId,
             8m,
             20m,
             10m,

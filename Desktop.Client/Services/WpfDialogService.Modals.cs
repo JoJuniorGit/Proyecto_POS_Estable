@@ -137,6 +137,24 @@ public partial class WpfDialogService
         return res;
     }
 
+    public bool? ShowCreateInvoiceProductDialog(ViewModels.CreateInvoiceProductDialogViewModel dialogVm)
+    {
+        if (Application.Current == null) return null;
+        using var _ = TrackModal();
+        bool? res = null;
+        Action openDialog = () =>
+        {
+            var dialog = new CreateInvoiceProductDialog(dialogVm);
+            dialog.Owner = Application.Current.MainWindow;
+            res = dialog.ShowDialog();
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return res;
+    }
+
     public (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(Core.DTOs.ProductDto product)
     {
         if (Application.Current == null) return (false, 0m, string.Empty);
