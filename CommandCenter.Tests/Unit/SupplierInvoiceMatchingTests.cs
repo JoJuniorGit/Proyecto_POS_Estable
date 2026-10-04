@@ -1,5 +1,6 @@
 using System.Globalization;
 using CommandCenter.Tests.Builders;
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
@@ -139,7 +140,7 @@ public class SupplierInvoiceMatchingTests
             new StageLineDto(null, null, "Near match", 1m, 11m));
 
         Assert.Null(result.ResolvedProductId);
-        Assert.Equal("Conflict", result.Status);
+        Assert.Equal("New", result.Status);
         Assert.Equal("None", result.MatchMethod);
     }
 
@@ -204,7 +205,7 @@ public class SupplierInvoiceMatchingTests
     }
 
     [Fact]
-    public async Task StageAsync_UnmatchedLineIsInformationalAndDoesNotCreateProduct()
+    public async Task StageAsync_UnmatchedLineIsCreationCandidateAndDoesNotCreateProduct()
     {
         var (service, context, _) = CreateService();
         var supplier = await AddSupplierAsync(context);
@@ -215,7 +216,7 @@ public class SupplierInvoiceMatchingTests
             new StageLineDto("UNKNOWN-CODE", null, "New catalog item", 1m, 7m));
 
         Assert.Null(result.ResolvedProductId);
-        Assert.Equal("Conflict", result.Status);
+        Assert.Equal("New", result.Status);
         Assert.Empty(await context.Products.ToListAsync());
     }
 
@@ -272,7 +273,9 @@ public class SupplierInvoiceMatchingTests
             null,
             null,
             includeMapping ? CreateMapping() : null,
-            new[] { line });
+            new[] { line },
+            CurrencyCodes.Usd,
+            1m);
 
         return StageAsync(service, request);
     }

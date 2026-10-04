@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.DTOs;
 using Core.Interfaces;
 using Desktop.Client.Services;
@@ -278,7 +279,10 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
                 SelectedSupplier.RifOrNit,
                 SelectedSupplier.CommercialName,
                 columnMapping,
-                lines);
+                lines,
+                // 8.146-T5 reemplaza estos placeholders por la moneda/tasa elegidas en la cabecera.
+                CurrencyCodes.Usd,
+                1m);
             var invoice = await _invoiceService.StageAsync(request, cancellationToken);
             var updatedSupplier = SelectedSupplier with { ColumnMapping = columnMapping };
             var supplierIndex = Suppliers.IndexOf(SelectedSupplier);

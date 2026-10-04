@@ -234,7 +234,9 @@ public sealed class SupplierInvoiceClientTests
             supplier.RifOrNit,
             supplier.CommercialName,
             mapping,
-            new[] { new StageLineDto("SUP-1", "12345", "Coffee", 2m, 4m) }));
+            new[] { new StageLineDto("SUP-1", "12345", "Coffee", 2m, 4m) },
+            CurrencyCodes.Usd,
+            1m));
         await service.GetInvoiceAsync(invoice.Id);
         await service.ConfirmAsync(
             invoice.Id,

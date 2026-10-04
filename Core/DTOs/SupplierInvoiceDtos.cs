@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Core.Common;
 
 namespace Core.DTOs;
 
@@ -9,8 +8,8 @@ public sealed record StageSupplierInvoiceRequestDto(
     string? SupplierCommercialName,
     SupplierColumnMappingDto? ColumnMapping,
     IReadOnlyList<StageLineDto> Lines,
-    string Currency = CurrencyCodes.Usd,
-    decimal AppliedRate = 1m);
+    string Currency,
+    decimal AppliedRate);
 
 public sealed record StageLineDto(
     string? SupplierCode,
