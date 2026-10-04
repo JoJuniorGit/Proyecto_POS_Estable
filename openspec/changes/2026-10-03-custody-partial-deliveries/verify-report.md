@@ -114,3 +114,13 @@ python scripts/check-coverage.py <coverage.cobertura.xml>  (exit 0)
 - Migración `AddCustodyPartialDeliveries` aditiva; `Down` elimina tablas + columna, sin operaciones de datos.
 - Cada slice es revertible por commit; el endpoint legacy `confirm-pickup` sigue funcional.
 - Snapshots financieros y ventas históricas intactos (la feature no escribe campos monetarios ni inventario).
+
+### Addendum — Remediación 2026-10-03 (post-verificación)
+
+Commits: `b93c8b9` (crash WPF), `069a7fe` (alias DTO + tests Postgres reales), `0b4fcdf` (Web: retiro completo, redondeo/cultura, reconcile 409, bundle), `2839817` (WPF: retiro completo + E2E interactivos).
+
+- **Crash reportado por el mantenedor**: `ProgressBar.Value` (TwoWay por defecto) sobre `ProgressPercent` readonly → `XamlParseException` al instanciar la fila → `Shutdown()` exit 0. Fix `Mode=OneWay`; regresión cubierta con el mock E2E devolviendo filas reales.
+- **Botón "Retiro Completo"** en Web y WPF: reutiliza el modal/flujo con cantidades precargadas (`prefillPending` / `PendingDraft`), un solo POST idempotente.
+- **Warnings cerrados**: (1) gated Postgres ejecutados localmente contra `pos_test` real (40/40; unique index 23505, xmin con rollback, backfill real) — CI sigue siendo la cobertura canónica; (2) e2e interactivos WPF 4/4 FlaUI + Web 3/3 Playwright; (3) E2E WPF completo 18/18; (5) redondeo a 3 decimales + coma decimal; (6) alias `id` de compatibilidad.
+- **Evidencia de la remediación**: build Release 0/0; suite .NET 1591/1591; E2E WPF 18/18; web 301/301 + lint 0 + Playwright 3/3; bundle regenerado con referencias consistentes.
+- **Residuales aceptados**: el E2E WPF descarta el diálogo de impresión sin assertar su aparición; el mock E2E responde siempre `Delivered` (permanencia parcial cubierta por unit tests); `<input type="number">` web puede sanear la coma según locale (el helper la soporta; e2e cubre punto); `Process.Start` real del visor PDF no se ejercita (opener inyectado, patrón pre-existente).

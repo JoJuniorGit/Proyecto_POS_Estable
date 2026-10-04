@@ -11853,4 +11853,48 @@ F2. Warnings: los tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en
     `gentle-ai sdd-verify-validate` no existe en este build (mismo hallazgo que
     8.144), por lo que la persistencia del reporte se hizo por decisión del
     orquestador, sin settlement nativo.
+
+G. REMEDIACIÓN (2026-10-03)
+
+G1. CRASH WPF AL ENTRAR A RETIROS PENDIENTES (reportado por el mantenedor):
+    causa raíz = `ProgressBar.Value="{Binding ProgressPercent}"` (RangeBase.Value
+    bindea TwoWay por defecto) sobre una propiedad de solo lectura → al
+    instanciar el DataTemplate de la fila se lanzaba XamlParseException →
+    DispatcherUnhandledException → Shutdown() con exit code 0 (sin evento de
+    crash ni crash.txt de UI). Con lista vacía el template nunca se instanciaba,
+    por eso el E2E de salud pasaba. Fix: `Mode=OneWay` en el binding (b93c8b9).
+    Regresión: el mock E2E ahora devuelve filas reales (PendingPickup +
+    PartiallyDelivered) y el E2E de pickups valida el render con datos.
+G2. RETIRO COMPLETO: botón nuevo en Web (0b4fcdf) y WPF (2839817) que abre el
+    mismo modal de despacho con TODAS las cantidades pendientes pre-cargadas
+    (WPF vía `PendingDraft`; Web vía `prefillPending`), confirmando en un solo
+    paso con el mismo POST idempotente, impresión y auditoría. Sin caminos
+    duplicados: un solo `DeliverPartialAsync` por confirmación.
+G3. RESIDUALES CERRADOS:
+    - D1 (gated vacuous): ejecutados con PostgreSQL 18 local real (BD pos_test):
+      filtro CustodyPartialDelivery 40/40 con evidencia de no-early-return
+      (unique index real SQLSTATE 23505, conflicto xmin con rollback sin doble
+      conteo, backfill real del smoke de migración).
+    - D2 (sin e2e interactivo): WPF 4 tests FlaUI (render con filas, Escape,
+      Cancelar, Retiro Completo pre-cargado con confirmación en UNA activación)
+      + Web 3 tests Playwright (parcial, completo, 409 con borrador preservado).
+    - D3: E2E WPF completo 18/18 (incluye salud 2/2).
+    - D4 (redondeo/cultura): normalización a 3 decimales en clamp y payload;
+      parseo tolerante a coma decimal en Web y en el diálogo WPF.
+    - D5 (cambio de forma del DTO): alias `id` en `PendingPickupItemDto`
+      (compat con la forma previa; serializa junto a `saleItemId`).
+    - Extra: test de snapshot inmutable ante rename de usuario; revalidación de
+      `isInvalid` tras recarga 409 en Web.
+G4. VERIFICACIÓN DE LA REMEDIACIÓN (independiente): build Release 0/0; suite
+    .NET 1591/1591; E2E WPF 18/18; Web 301/301 + lint 0 + Playwright 3/3;
+    bundle regenerado con referencias consistentes (index.html ↔ assets).
+    Commits: b93c8b9 (crash), 069a7fe (DTO+tests Postgres), 0b4fcdf (Web +
+    bundle), 2839817 (WPF + E2E).
+G5. RESIDUALES QUE PERMANECEN (aceptados): el E2E WPF descarta el diálogo de
+    oferta de impresión (no asserta su aparición); el mock E2E responde siempre
+    `Delivered` (la permanencia del parcial tras entrega parcial está cubierta
+    por unit tests); `<input type="number">` web puede sanear la coma según
+    locale del navegador (el helper la soporta; el e2e cubre punto); la apertura
+    real del visor PDF (`Process.Start`) no se ejercita en tests automatizados
+    (patrón espejado pre-existente, opener inyectado en unit tests).
 ================================================================================

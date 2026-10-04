@@ -36,5 +36,9 @@ apply:
   completed_tasks: [1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4, 4.5, 5.1, 5.2, 5.3]
   last_commit: 331b975
 phase: verified
-verify: pass_with_warnings (0 critical, 0 blockers; 15/15 requirements; 31/34 scenarios; verify-report.md)
+verify: pass_with_warnings remediated (0 critical, 0 blockers; 15/15 requirements; 34/34 scenarios with local Postgres evidence; verify-report.md)
+remediation:
+  commits: [b93c8b9, 069a7fe, 0b4fcdf, 2839817]
+  crash-fix: ProgressBar TwoWay sobre propiedad readonly -> Mode=OneWay
+  full-withdrawal-button: web+wpf
 next: sdd-archive
