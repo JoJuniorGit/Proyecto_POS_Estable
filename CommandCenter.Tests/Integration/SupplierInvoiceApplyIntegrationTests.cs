@@ -117,7 +117,7 @@ public class SupplierInvoiceApplyIntegrationTests
         var invalidProduct = CreateProduct("APPLY-ROLLBACK-INVALID", 7m, 8m, 30m);
         var invoice = await AddInvoiceAsync(
             context,
-            CreateLine(firstProduct, 2m, 11m),
+            CreateLine(firstProduct, 2m, 11m, supplierCode: "ROLLBACK-ALIAS"),
             CreateLine(invalidProduct, -1m, 13m));
         var lines = invoice.Lines.OrderBy(line => line.Id).ToArray();
         var service = CreateService(context);
@@ -140,6 +140,7 @@ public class SupplierInvoiceApplyIntegrationTests
         Assert.Equal(8m, savedInvalid.StockQuantity);
         Assert.Equal(SupplierInvoiceStatus.Draft, savedInvoice.Status);
         Assert.Empty(await verificationContext.StockMovements.AsNoTracking().ToListAsync());
+        Assert.Empty(await verificationContext.SupplierProductCodes.AsNoTracking().ToListAsync());
     }
 
     [Fact]
@@ -170,6 +171,56 @@ public class SupplierInvoiceApplyIntegrationTests
         Assert.Equal(6m, savedProduct.StockQuantity);
         Assert.Equal(SupplierInvoiceStatus.Draft, savedInvoice.Status);
         Assert.Empty(await verificationContext.StockMovements.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateProductFromLineAsync_DuplicateSkuLeavesNoSideEffects()
+    {
+        var (context, connection) = TestDatabaseFactory.CreateSqliteInventoryDbContext();
+        await using var connectionScope = connection;
+        await using var contextScope = context;
+        const string barcode = "7591234567890";
+        context.Products.Add(CreateProduct(barcode, 4m, 6m, 20m));
+        var invoice = await AddInvoiceAsync(context, CreateUnresolvedLine("DUP-ALIAS"));
+        var line = Assert.Single(invoice.Lines);
+        var service = CreateCreationService(context);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateProductFromLineAsync(
+            invoice.Id,
+            line.Id,
+            new CreateInvoiceProductRequestDto(barcode, "Duplicate product")));
+
+        Assert.Equal($"Product with SKU {barcode} already exists.", exception.Message);
+        await using var verificationContext = CreateSqliteInventoryDbContext(connection);
+        Assert.Single(await verificationContext.Products.AsNoTracking().ToListAsync());
+        Assert.Empty(await verificationContext.SupplierProductCodes.AsNoTracking().ToListAsync());
+        var savedLine = await verificationContext.SupplierInvoiceLines.AsNoTracking().SingleAsync(candidate => candidate.Id == line.Id);
+        Assert.Null(savedLine.ResolvedProductId);
+    }
+
+    [Fact]
+    public async Task CreateProductEndpoint_CashierReceivesForbiddenWithoutCreatingProduct()
+    {
+        var (context, connection) = TestDatabaseFactory.CreateSqliteInventoryDbContext();
+        await using var connectionScope = connection;
+        await using var contextScope = context;
+        var invoice = await AddInvoiceAsync(context, CreateUnresolvedLine("CASHIER-ALIAS"));
+        var line = Assert.Single(invoice.Lines);
+        var service = CreateCreationService(context);
+        await using var application = await CreateAuthorizationApplicationAsync(service);
+        using var client = application.GetTestServer().CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Role", "Cashier");
+
+        using var response = await client.PostAsJsonAsync(
+            $"/api/supplier-invoices/{invoice.Id}/lines/{line.Id}/create-product",
+            new CreateInvoiceProductRequestDto("7591234567890", "Product"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        await using var verificationContext = CreateSqliteInventoryDbContext(connection);
+        Assert.Empty(await verificationContext.Products.AsNoTracking().ToListAsync());
+        Assert.Empty(await verificationContext.SupplierProductCodes.AsNoTracking().ToListAsync());
+        var savedLine = await verificationContext.SupplierInvoiceLines.AsNoTracking().SingleAsync(candidate => candidate.Id == line.Id);
+        Assert.Null(savedLine.ResolvedProductId);
     }
 
     [Fact]
@@ -241,7 +292,25 @@ public class SupplierInvoiceApplyIntegrationTests
         var settings = Mock.Of<ISystemSettingsService>();
         var similaritySearch = Mock.Of<ISupplierProductSimilaritySearch>();
         currentUser ??= Mock.Of<ICurrentUserService>();
-        return new SupplierInvoiceService(context, settings, similaritySearch, currentUser);
+        return new SupplierInvoiceService(
+            context,
+            settings,
+            similaritySearch,
+            currentUser,
+            Mock.Of<IProductManagementService>());
+    }
+
+    private static SupplierInvoiceService CreateCreationService(InventoryDbContext context)
+    {
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.SetupGet(user => user.CanMutateCatalog).Returns(true);
+        var productManagementService = new InventoryService(context, currentUser.Object, null);
+        return new SupplierInvoiceService(
+            context,
+            Mock.Of<ISystemSettingsService>(),
+            Mock.Of<ISupplierProductSimilaritySearch>(),
+            currentUser.Object,
+            productManagementService);
     }
 
     private static async Task<WebApplication> CreateAuthorizationApplicationAsync(ISupplierInvoiceService service)
@@ -313,13 +382,27 @@ public class SupplierInvoiceApplyIntegrationTests
     private static SupplierInvoiceLine CreateLine(
         Product product,
         decimal quantity,
-        decimal unitCost) => new()
+        decimal unitCost,
+        string? supplierCode = null) => new()
     {
+        SupplierCode = supplierCode,
         Quantity = quantity,
         UnitCostUSD = unitCost,
         Status = SupplierInvoiceLineStatus.Update,
         ResolvedProduct = product,
         MatchMethod = MatchMethod.Barcode
+    };
+
+    private static SupplierInvoiceLine CreateUnresolvedLine(string? supplierCode) => new()
+    {
+        SupplierCode = supplierCode,
+        Barcode = "INVOICE-CODE",
+        Name = "New product",
+        Quantity = 1m,
+        UnitCostDocument = 9m,
+        UnitCostUSD = 9m,
+        Status = SupplierInvoiceLineStatus.New,
+        MatchMethod = MatchMethod.None
     };
 
     private static InventoryDbContext CreatePostgresContext(string connectionString) => new(

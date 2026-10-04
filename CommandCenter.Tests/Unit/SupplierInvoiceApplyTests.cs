@@ -134,6 +134,73 @@ public class SupplierInvoiceApplyTests
         Assert.Equal("supplier-invoice-user", movement.UserId);
     }
 
+    [Fact]
+    public async Task ConfirmAsync_UpsertsSupplierCodeAliasForApprovedLine()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-ALIAS", 4m, 5m, 20m);
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 2m, 9m, supplierCode: "XYZ-9"));
+        var line = Assert.Single(invoice.Lines);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        var alias = await context.SupplierProductCodes.SingleAsync();
+        Assert.Equal(invoice.SupplierId, alias.SupplierId);
+        Assert.Equal("XYZ-9", alias.Code);
+        Assert.Equal(product.Id, alias.ProductId);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_UpdatesExistingAliasToConfirmedProduct()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var confirmedProduct = CreateProduct("APPLY-ALIAS-NEW", 4m, 5m, 20m);
+        var previousProduct = CreateProduct("APPLY-ALIAS-OLD", 3m, 4m, 15m);
+        context.Products.AddRange(confirmedProduct, previousProduct);
+        await context.SaveChangesAsync();
+        var invoice = await AddInvoiceAsync(
+            context,
+            CreateLine(confirmedProduct, 2m, 9m, supplierCode: "XYZ-8"));
+        var line = Assert.Single(invoice.Lines);
+        context.SupplierProductCodes.Add(new SupplierProductCode
+        {
+            SupplierId = invoice.SupplierId,
+            ProductId = previousProduct.Id,
+            Code = "XYZ-8"
+        });
+        await context.SaveChangesAsync();
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        var alias = await context.SupplierProductCodes.SingleAsync();
+        Assert.Equal(confirmedProduct.Id, alias.ProductId);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_DoesNotWriteAliasWhenSupplierCodeIsMissing()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-NO-ALIAS", 4m, 5m, 20m);
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 2m, 9m, supplierCode: null));
+        var line = Assert.Single(invoice.Lines);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        Assert.Empty(await context.SupplierProductCodes.ToListAsync());
+    }
+
     private static SupplierInvoiceService CreateService(
         InventoryDbContext context,
         ICurrentUserService? currentUser = null)
@@ -141,7 +208,12 @@ public class SupplierInvoiceApplyTests
         var settings = Mock.Of<ISystemSettingsService>();
         var similaritySearch = Mock.Of<ISupplierProductSimilaritySearch>();
         currentUser ??= Mock.Of<ICurrentUserService>();
-        return new SupplierInvoiceService(context, settings, similaritySearch, currentUser);
+        return new SupplierInvoiceService(
+            context,
+            settings,
+            similaritySearch,
+            currentUser,
+            Mock.Of<IProductManagementService>());
     }
 
     private static async Task<SupplierInvoice> AddInvoiceAsync(
@@ -187,8 +259,10 @@ public class SupplierInvoiceApplyTests
         Product? product,
         decimal quantity,
         decimal unitCost,
-        SupplierInvoiceLineStatus status = SupplierInvoiceLineStatus.Update) => new()
+        SupplierInvoiceLineStatus status = SupplierInvoiceLineStatus.Update,
+        string? supplierCode = null) => new()
     {
+        SupplierCode = supplierCode,
         Quantity = quantity,
         UnitCostUSD = unitCost,
         Status = status,

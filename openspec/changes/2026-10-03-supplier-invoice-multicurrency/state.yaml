@@ -9,7 +9,7 @@ preflight:
   chain_strategy: stacked-to-main
 phase: applying
 apply:
-  slice: 2/4
+  slice: 3/4
   branch: V0.15
 artifacts:
   exploration: openspec/changes/2026-10-03-supplier-invoice-multicurrency/exploration.md

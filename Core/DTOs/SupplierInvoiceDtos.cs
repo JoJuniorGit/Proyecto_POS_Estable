@@ -47,6 +47,8 @@ public sealed record SupplierInvoiceLineDto(
     bool IsApproved,
     string MatchMethod);
 
+public sealed record CreateInvoiceProductRequestDto(string Barcode, string Name);
+
 public sealed record ConfirmSupplierInvoiceRequestDto(IReadOnlyList<ConfirmLineDto> Lines);
 
 public sealed record ConfirmLineDto(

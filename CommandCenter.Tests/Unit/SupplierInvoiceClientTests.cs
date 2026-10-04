@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using ClosedXML.Excel;
 using CommandCenter.Tests.Builders;
 using Core.Common;
@@ -256,6 +257,28 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
+    public async Task CreateProductFromLineAsync_PostsBarcodeAndNameToCreateProductRoute()
+    {
+        var invoice = CreateInvoice(CreateLine(1));
+        var handler = new StubHttpMessageHandler(JsonResponse(invoice));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        var result = await service.CreateProductFromLineAsync(
+            invoice.Id,
+            15,
+            new CreateInvoiceProductRequestDto("7591234567890", "Harina P.A.N. 1kg"));
+
+        Assert.Equal(invoice.Id, result.Id);
+        Assert.Equal(
+            $"/api/supplier-invoices/{invoice.Id}/lines/15/create-product",
+            Assert.Single(handler.RequestPaths));
+        using var payload = JsonDocument.Parse(Assert.Single(handler.RequestBodies));
+        Assert.Equal("7591234567890", payload.RootElement.GetProperty("barcode").GetString());
+        Assert.Equal("Harina P.A.N. 1kg", payload.RootElement.GetProperty("name").GetString());
+    }
+
+    [Fact]
     public async Task SupplierLookup_IncludesPersistedColumnMapping()
     {
         using var context = TestDatabaseFactory.CreateInventoryDbContext();
@@ -312,7 +335,12 @@ public sealed class SupplierInvoiceClientTests
     private static Desktop.Client.Services.SupplierInvoiceService CreateClientService() => new(new HttpClient());
 
     private static Inventory.Module.Services.SupplierInvoiceService CreateBackendService(InventoryDbContext context) =>
-        new(context, Mock.Of<ISystemSettingsService>(), Mock.Of<ISupplierProductSimilaritySearch>(), Mock.Of<ICurrentUserService>());
+        new(
+            context,
+            Mock.Of<ISystemSettingsService>(),
+            Mock.Of<ISupplierProductSimilaritySearch>(),
+            Mock.Of<ICurrentUserService>(),
+            Mock.Of<IProductManagementService>());
 
     private static SupplierInvoiceDetailDto CreateInvoice(params SupplierInvoiceLineDto[] lines) =>
         new(42, 7, "Draft", CurrencyCodes.Usd, 1m, lines);
@@ -355,13 +383,18 @@ public sealed class SupplierInvoiceClientTests
 
         public List<string> RequestPaths { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        public List<string> RequestBodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             RequestPaths.Add(request.RequestUri?.PathAndQuery ?? string.Empty);
-            return Task.FromResult(_responses.Dequeue());
+            RequestBodies.Add(request.Content is null
+                ? string.Empty
+                : await request.Content.ReadAsStringAsync(cancellationToken));
+            return _responses.Dequeue();
         }
     }
 }
