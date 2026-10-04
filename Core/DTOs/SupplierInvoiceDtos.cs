@@ -63,3 +63,16 @@ public sealed record SupplierColumnMappingDto(
     string NameColumnName,
     string QuantityColumnName,
     string UnitCostColumnName);
+
+// 8.147-T3: fila extraída por el parser heurístico de word-boxes OCR. Confianzas 0–100 (1
+// decimal); un campo no resuelto lleva valor null y confianza 0. T4 la expone en la respuesta
+// del endpoint de extracción (junto con previews y pistas de proveedor).
+public sealed record OcrExtractedLineDto(
+    string? SupplierCode,
+    string? Barcode,
+    string? Name,
+    decimal? Quantity,
+    decimal? UnitCost,
+    decimal NameConfidence,
+    decimal QuantityConfidence,
+    decimal UnitCostConfidence);
