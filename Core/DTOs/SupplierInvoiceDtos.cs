@@ -76,3 +76,20 @@ public sealed record OcrExtractedLineDto(
     decimal NameConfidence,
     decimal QuantityConfidence,
     decimal UnitCostConfidence);
+
+// 8.147-T4/D12: entrada del endpoint de extracción OCR (multipart ya materializado). El mapping
+// es opcional: solo lo envía el cliente cuando hay plantilla del proveedor; sin él el parser usa
+// keywords genéricas. Las pistas RIF/nombre son best-effort y nunca seleccionan ni persisten nada.
+public sealed record OcrExtractionRequestDto(
+    byte[] FileBytes,
+    string FileName,
+    int? SupplierId,
+    SupplierColumnMappingDto? ColumnMapping);
+
+// 8.147-T4/D12/S5: respuesta de extracción con filas (confianza por campo), una preview PNG por
+// página procesada (base64, en orden) y pistas detectadas.
+public sealed record OcrExtractionResultDto(
+    IReadOnlyList<OcrExtractedLineDto> Lines,
+    IReadOnlyList<string> PreviewPagesBase64,
+    string? DetectedRif,
+    string? DetectedSupplierName);

@@ -50,6 +50,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton<ImagePageDecoder>();
         builder.Services.AddSingleton<PdfPageDecoder>();
         builder.Services.AddSingleton<DocumentPageDecoder>();
+        builder.Services.AddSingleton<InvoiceTableParser>();
+        builder.Services.AddScoped<IOcrExtractionService, OcrExtractionService>();
         builder.Services.AddScoped<IReservationService, Inventory.Module.Services.ReservationService>();
         builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
