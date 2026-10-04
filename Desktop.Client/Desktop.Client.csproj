@@ -22,6 +22,10 @@
     <PackageReference Include="Microsoft.Extensions.Http" />
     <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" />
     <PackageReference Include="ZXing.Net.Bindings.Windows.Compatibility" />
+    <!-- 8.147-T7/D5: cámara del cliente vía OpenCvSharp (VideoCapture + preview WPF). -->
+    <PackageReference Include="OpenCvSharp4" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" />
+    <PackageReference Include="OpenCvSharp4.WpfExtensions" />
   </ItemGroup>
 
   <PropertyGroup>

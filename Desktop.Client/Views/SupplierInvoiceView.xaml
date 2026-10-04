@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
+             xmlns:converters="clr-namespace:Desktop.Client.Converters"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              mc:Ignorable="d"
              d:DesignHeight="720" d:DesignWidth="1100"
@@ -20,6 +21,8 @@
     <UserControl.Resources>
         <helpers:BindingProxy x:Key="ViewModelProxy" Data="{Binding}" />
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <converters:Base64PngToImageSourceConverter x:Key="Base64PngToImageSourceConverter" />
+        <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
     </UserControl.Resources>
 
     <Grid Margin="20">
@@ -130,6 +133,8 @@
         <Grid Grid.Row="2" Margin="0,0,0,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -143,12 +148,36 @@
                     <TextBlock Text="Seleccionar factura (.xlsx, .csv, .xml)" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
-            <TextBox Grid.Column="1"
+            <Button Grid.Column="1"
+                    Command="{Binding ScanInvoiceCommand}"
+                    Style="{StaticResource MaterialDesignRaisedButton}"
+                    IsEnabled="{Binding CanScanInvoice}"
+                    ToolTip="Cargar una imagen o PDF escaneado y extraer las líneas con OCR"
+                    AutomationProperties.Name="Escanear factura con OCR"
+                    Margin="0,0,12,0">
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="ScanHelper" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock Text="Escanear factura (OCR)" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <Button Grid.Column="2"
+                    Command="{Binding ScanCameraCommand}"
+                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                    IsEnabled="{Binding CanMutateCatalog}"
+                    ToolTip="Tomar una foto de la factura con la cámara del dispositivo"
+                    AutomationProperties.Name="Capturar factura con cámara"
+                    Margin="0,0,12,0">
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="Camera" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock Text="Cámara" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <TextBox Grid.Column="3"
                      Text="{Binding SelectedFilePath}"
                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
                      IsReadOnly="True"
                      VerticalContentAlignment="Center" />
-            <ProgressBar Grid.Column="2"
+            <ProgressBar Grid.Column="4"
                          IsIndeterminate="{Binding IsBusy}"
                          Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
                          Width="100" Height="10" Margin="12,0,0,0"
@@ -190,7 +219,82 @@
             </StackPanel>
         </materialDesign:Card>
 
-        <DataGrid Grid.Row="4"
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 8.147-S5 (T7): revisión lado a lado solo cuando la factura staged viene de OCR;
+                 sin origen OCR la columna colapsa y la grilla conserva su layout de siempre. -->
+            <materialDesign:Card Grid.Column="0" Width="460" Margin="0,0,12,0"
+                                 Visibility="{Binding IsOcrSource, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="8,8,8,4">
+                        <Button Command="{Binding OcrPreviousPageCommand}"
+                                Style="{StaticResource MaterialDesignIconButton}"
+                                ToolTip="Página anterior"
+                                AutomationProperties.Name="Página anterior de la factura escaneada">
+                            <materialDesign:PackIcon Kind="ChevronLeft" />
+                        </Button>
+                        <TextBlock Text="{Binding OcrPageLabel}" VerticalAlignment="Center"
+                                   FontWeight="SemiBold" Margin="6,0" />
+                        <Button Command="{Binding OcrNextPageCommand}"
+                                Style="{StaticResource MaterialDesignIconButton}"
+                                ToolTip="Página siguiente"
+                                AutomationProperties.Name="Página siguiente de la factura escaneada">
+                            <materialDesign:PackIcon Kind="ChevronRight" />
+                        </Button>
+                        <Border Width="1" Background="{DynamicResource MaterialDesignDivider}" Margin="10,4" />
+                        <Button Command="{Binding OcrZoomOutCommand}"
+                                Style="{StaticResource MaterialDesignIconButton}"
+                                ToolTip="Alejar"
+                                AutomationProperties.Name="Alejar preview">
+                            <materialDesign:PackIcon Kind="MagnifyMinus" />
+                        </Button>
+                        <Button Command="{Binding ResetOcrZoomCommand}"
+                                Style="{StaticResource MaterialDesignIconButton}"
+                                ToolTip="Restablecer zoom (100%)"
+                                AutomationProperties.Name="Restablecer zoom del preview">
+                            <materialDesign:PackIcon Kind="Restore" />
+                        </Button>
+                        <Button Command="{Binding OcrZoomInCommand}"
+                                Style="{StaticResource MaterialDesignIconButton}"
+                                ToolTip="Acercar"
+                                AutomationProperties.Name="Acercar preview">
+                            <materialDesign:PackIcon Kind="MagnifyPlus" />
+                        </Button>
+                        <TextBlock Text="{Binding OcrZoom, Mode=OneWay, StringFormat={}{0:P0}}"
+                                   VerticalAlignment="Center" Margin="6,0,0,0"
+                                   Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                    </StackPanel>
+                    <ScrollViewer Grid.Row="1"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Background="#FAFAFA">
+                        <Image Source="{Binding OcrSelectedPreviewBase64, Mode=OneWay, Converter={StaticResource Base64PngToImageSourceConverter}}"
+                               Stretch="None"
+                               SnapsToDevicePixels="True"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center">
+                            <Image.LayoutTransform>
+                                <ScaleTransform ScaleX="{Binding OcrZoom, Mode=OneWay}"
+                                                ScaleY="{Binding OcrZoom, Mode=OneWay}" />
+                            </Image.LayoutTransform>
+                        </Image>
+                    </ScrollViewer>
+                    <TextBlock Grid.Row="2" Margin="8,6,8,8" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               Text="Verifique los campos resaltados en amarillo o rojo contra la imagen antes de aprobar." />
+                </Grid>
+            </materialDesign:Card>
+
+            <DataGrid Grid.Column="1"
                   ItemsSource="{Binding Lines}"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
@@ -215,7 +319,38 @@
                 </Style>
             </DataGrid.RowStyle>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="Producto" Binding="{Binding Name}" Width="*" MinWidth="160" />
+                <DataGridTemplateColumn Header="Producto" Width="*" MinWidth="160">
+                    <DataGridTemplateColumn.CellStyle>
+                        <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding NameConfidenceBand}" Value="Yellow">
+                                    <Setter Property="Background" Value="#FFF3C4" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding NameConfidenceBand}" Value="Red">
+                                    <Setter Property="Background" Value="#FFD6D6" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGridTemplateColumn.CellStyle>
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding Name}"
+                                           VerticalAlignment="Center"
+                                           Margin="8,0"
+                                           TextTrimming="CharacterEllipsis"
+                                           Visibility="{Binding IsEditorEnabled, Converter={StaticResource InverseBoolToVis}}" />
+                                <TextBox Text="{Binding EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         IsEnabled="{Binding IsEditorEnabled}"
+                                         Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}"
+                                         Padding="5,2"
+                                         VerticalContentAlignment="Center"
+                                         AutomationProperties.Name="Nombre OCR editable" />
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Código proveedor" Binding="{Binding SupplierCode}" Width="130" />
                 <DataGridTextColumn Header="Código de barras" Binding="{Binding Barcode}" Width="130" />
                 <DataGridTemplateColumn Header="Estado" Width="115">
@@ -246,12 +381,75 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Cantidad" Binding="{Binding Quantity, StringFormat={}{0:N3}}" Width="90" />
+                <DataGridTemplateColumn Header="Cantidad" Width="90">
+                    <DataGridTemplateColumn.CellStyle>
+                        <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding QuantityConfidenceBand}" Value="Yellow">
+                                    <Setter Property="Background" Value="#FFF3C4" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding QuantityConfidenceBand}" Value="Red">
+                                    <Setter Property="Background" Value="#FFD6D6" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGridTemplateColumn.CellStyle>
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding Quantity, StringFormat={}{0:N3}}"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Right"
+                                           Margin="8,0"
+                                           Visibility="{Binding IsEditorEnabled, Converter={StaticResource InverseBoolToVis}}" />
+                                <TextBox Text="{Binding EditQuantity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         IsEnabled="{Binding IsEditorEnabled}"
+                                         Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}"
+                                         HorizontalContentAlignment="Right"
+                                         Padding="5,2"
+                                         VerticalContentAlignment="Center"
+                                         AutomationProperties.Name="Cantidad OCR editable" />
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Costo USD" Binding="{Binding UnitCostUSD, StringFormat={}{0:N2}}" Width="100" />
-                <DataGridTextColumn Header="Costo factura (Bs.S)"
-                                    Binding="{Binding UnitCostDocument, Mode=OneWay, StringFormat={}{0:N2}}"
-                                    Width="130"
-                                    Visibility="{Binding Data.IsBsSInvoice, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}" />
+                <DataGridTemplateColumn Header="Costo factura (Bs.S)"
+                                        Width="130"
+                                        Visibility="{Binding Data.IsBsSInvoice, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
+                    <DataGridTemplateColumn.CellStyle>
+                        <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding UnitCostConfidenceBand}" Value="Yellow">
+                                    <Setter Property="Background" Value="#FFF3C4" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding UnitCostConfidenceBand}" Value="Red">
+                                    <Setter Property="Background" Value="#FFD6D6" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGridTemplateColumn.CellStyle>
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <TextBlock Text="{Binding UnitCostDocument, Mode=OneWay, StringFormat={}{0:N2}}"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Right"
+                                           Margin="8,0"
+                                           Visibility="{Binding IsEditorEnabled, Converter={StaticResource InverseBoolToVis}}" />
+                                <TextBox Text="{Binding EditUnitCostDocument, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         IsEnabled="{Binding IsEditorEnabled}"
+                                         Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}"
+                                         HorizontalContentAlignment="Right"
+                                         Padding="5,2"
+                                         VerticalContentAlignment="Center"
+                                         AutomationProperties.Name="Costo factura OCR editable" />
+                            </Grid>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Costo anterior → nuevo" Binding="{Binding CostComparison}" Width="160" />
                 <DataGridTemplateColumn Header="Margen detal %" Width="125"
                                         Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
@@ -310,7 +508,8 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
             </DataGrid.Columns>
-        </DataGrid>
+            </DataGrid>
+        </Grid>
 
         <Grid Grid.Row="5" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>

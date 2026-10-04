@@ -415,11 +415,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         try
         {
             var request = new ConfirmSupplierInvoiceRequestDto(approvedLines
-                .Select(line => new ConfirmLineDto(
-                    line.LineId,
-                    true,
-                    line.MarginRetailOverride,
-                    line.MarginWholesaleOverride))
+                .Select(line => line.ToConfirmLine())
                 .ToArray());
             var result = await _invoiceService.ConfirmAsync(StagedInvoice.Id, request, cancellationToken);
             LoadStagedInvoice(result);
@@ -504,7 +500,11 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         ClearLines();
         foreach (var line in invoice.Lines)
         {
-            var viewModel = new SupplierInvoiceLineViewModel(line);
+            var viewModel = new SupplierInvoiceLineViewModel(line)
+            {
+                // 8.147-S5/S6 (T7): solo las líneas de una factura OCR permiten revisar editando.
+                IsEditorEnabled = IsOcrSource
+            };
             viewModel.PropertyChanged += OnLinePropertyChanged;
             Lines.Add(viewModel);
         }

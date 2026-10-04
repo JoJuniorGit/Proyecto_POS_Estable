@@ -51,7 +51,29 @@ public partial class SupplierInvoiceViewModel
         OcrPreviewPagesBase64.Count > 0 && OcrSelectedPageIndex < OcrPreviewPagesBase64.Count - 1;
     public bool CanNavigateOcrPreviousPage => OcrSelectedPageIndex > 0;
 
+    /// <summary>
+    /// 8.147-S5: base64 de la página seleccionada. Propiedad calculada (en vez de un indexer en
+    /// XAML) para garantizar la notificación al cambiar de página y alimentar al converter.
+    /// </summary>
+    public string? OcrSelectedPreviewBase64 => OcrPreviewPagesBase64.Count == 0
+        ? null
+        : OcrPreviewPagesBase64[Math.Clamp(OcrSelectedPageIndex, 0, OcrPreviewPagesBase64.Count - 1)];
+
+    /// <summary>8.147-S5: etiqueta "Página X/Y" del panel de previews; vacía sin páginas.</summary>
+    public string OcrPageLabel => OcrPreviewPagesBase64.Count == 0
+        ? string.Empty
+        : $"Página {OcrSelectedPageIndex + 1}/{OcrPreviewPagesBase64.Count}";
+
     public bool CanScanInvoice => CanMutateCatalog && !IsBusy && SelectedSupplier is not null;
+
+    /// <summary>8.147-S5/S6: el origen OCR propaga el editor a las líneas ya cargadas.</summary>
+    partial void OnIsOcrSourceChanged(bool value)
+    {
+        foreach (var line in Lines)
+        {
+            line.IsEditorEnabled = value;
+        }
+    }
 
     partial void OnOcrPreviewPagesBase64Changed(IReadOnlyList<string> value)
     {
@@ -109,6 +131,40 @@ public partial class SupplierInvoiceViewModel
         }
 
         await ScanOcrFileAsync(filePath, cancellationToken);
+    }
+
+    /// <summary>
+    /// 8.147-S4/L4 (T7): captura por cámara opcional. Si el diálogo devuelve una ruta (JPG
+    /// temporal) entra al mismo camino de extracción que el archivo; null (cancelado o sin
+    /// cámara) no hace nada y deja el camino de archivo intacto.
+    /// </summary>
+    [RelayCommand]
+    private async Task ScanCameraAsync(CancellationToken cancellationToken)
+    {
+        if (!CanMutateCatalog)
+        {
+            ShowAccessDenied();
+            return;
+        }
+
+        if (IsBusy)
+        {
+            return;
+        }
+
+        if (SelectedSupplier is null)
+        {
+            _dialogService.ShowWarning("Datos incompletos", "Seleccione un proveedor antes de escanear la factura.");
+            return;
+        }
+
+        var capturedFilePath = _dialogService.ShowCameraCaptureDialog();
+        if (string.IsNullOrWhiteSpace(capturedFilePath))
+        {
+            return;
+        }
+
+        await ScanOcrFileAsync(capturedFilePath, cancellationToken);
     }
 
     /// <summary>
@@ -250,6 +306,8 @@ public partial class SupplierInvoiceViewModel
     {
         OnPropertyChanged(nameof(CanNavigateOcrNextPage));
         OnPropertyChanged(nameof(CanNavigateOcrPreviousPage));
+        OnPropertyChanged(nameof(OcrPageLabel));
+        OnPropertyChanged(nameof(OcrSelectedPreviewBase64));
         OcrNextPageCommand.NotifyCanExecuteChanged();
         OcrPreviousPageCommand.NotifyCanExecuteChanged();
     }
