@@ -264,13 +264,19 @@ export class ApiError extends Error {
 /**
  * Realiza una petición HTTP al backend.
  * @param {string} endpoint - Ruta relativa (ej: "/api/products/suggestions")
- * @param {object} options - Opciones adicionales de fetch (method, body, headers, signal, etc.)
- * @returns {Promise<any>} - La respuesta parseada como JSON, o null para 204 No Content.
+ * @param {object} options - Opciones adicionales de fetch (method, body, headers, signal, responseType, etc.)
+ * @returns {Promise<any>} - La respuesta parseada según responseType, o null para 204 No Content.
  */
 export async function apiFetch(endpoint, options = {}) {
   const url = `${CURRENT_BASE_URL}${endpoint}`;
 
-  const { headers: customHeaders, signal: callerSignal, _includeMeta, ...restOptions } = options;
+  const {
+    headers: customHeaders,
+    signal: callerSignal,
+    _includeMeta,
+    responseType = 'auto',
+    ...restOptions
+  } = options;
   const config = {
     credentials: 'include',
     ...restOptions,
@@ -360,9 +366,11 @@ export async function apiFetch(endpoint, options = {}) {
 
   // Intentar parsear como JSON, si falla retornar texto plano
   const contentType = response.headers.get('content-type');
-  const data = contentType && contentType.includes('application/json')
-    ? await response.json()
-    : await response.text();
+  const data = responseType === 'blob'
+    ? await response.blob()
+    : contentType && contentType.includes('application/json')
+      ? await response.json()
+      : await response.text();
 
   if (_includeMeta) {
     const totalCount = Number(response.headers.get('X-Total-Count') || 0);
@@ -381,6 +389,13 @@ export const api = {
   // 8.14-N1: GET devolviendo { data, totalCount } para paginación (X-Total-Count).
   getWithMeta: (endpoint, signal) =>
     apiFetch(endpoint, { method: 'GET', signal, _includeMeta: true }),
+
+  getBlob: (endpoint, optionsOrSignal) => {
+    const opts = (optionsOrSignal && typeof optionsOrSignal === 'object' && !('aborted' in optionsOrSignal))
+      ? optionsOrSignal
+      : { signal: optionsOrSignal };
+    return apiFetch(endpoint, { method: 'GET', ...opts, responseType: 'blob' });
+  },
 
   post: (endpoint, body, optionsOrSignal) => {
     const opts = (optionsOrSignal && typeof optionsOrSignal === 'object' && !('aborted' in optionsOrSignal))

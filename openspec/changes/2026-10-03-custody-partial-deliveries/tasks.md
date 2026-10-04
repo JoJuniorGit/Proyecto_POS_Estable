@@ -60,9 +60,9 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: Web Dispatch UI
 
-- [ ] 5.1 Extend `Web.Frontend/src/services/pendingPickupApi.js`: `deliverPartialPickup` (idempotency key) + `getDeliveryNote` (blob).
-- [ ] 5.2 Create `Web.Frontend/src/utils/deliveryProgress.js` + `node:test` (clamp, progress).
-- [ ] 5.3 Update `Web.Frontend/src/pages/PendingPickupsPage.jsx`: inputs modal, badge + progress, blob print, error reload (Dispatch Modal, Partial Badge and Progress, Delivery Note Print).
+- [x] 5.1 Extend `Web.Frontend/src/services/pendingPickupApi.js`: `deliverPartialPickup` (idempotency key) + `getDeliveryNote` (blob).
+- [x] 5.2 Create `Web.Frontend/src/utils/deliveryProgress.js` + `node:test` (clamp, progress).
+- [x] 5.3 Update `Web.Frontend/src/pages/PendingPickupsPage.jsx`: inputs modal, badge + progress, blob print, error reload (Dispatch Modal, Partial Badge and Progress, Delivery Note Print).
 
 ## Phase 6: Verification & Docs
 
