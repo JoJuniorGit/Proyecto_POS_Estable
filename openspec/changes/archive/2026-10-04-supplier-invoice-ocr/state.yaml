@@ -35,4 +35,5 @@ decisions:
   endpoint: POST /api/supplier-invoices/ocr-extract multipart (<=20MB, <=5 pages, Admin/Manager)
   tessdata: data-pack-if-available else vendored Backend.API/tessdata (spa+eng)
   web-scope: wpf-desktop-only
-next: push/pr/merge (decisión del mantenedor) + sdd-archive
+archived: 2026-10-04
+next: push/pr/merge (decisión del mantenedor)
