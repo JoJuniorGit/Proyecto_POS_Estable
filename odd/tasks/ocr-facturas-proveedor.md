@@ -1,0 +1,73 @@
+# OCR de Facturas de Proveedor — Digitalización y Carga Automática
+
+Objetivo: cargar facturas de proveedor por imagen/PDF/cámara usando un motor OCR open source (Tesseract) con preprocesamiento de imagen (OpenCV), extracción heurística de filas (plantilla del proveedor + fallback genérico) en backend, y revisión lado a lado en WPF (imagen con zoom + grilla editable con resaltado por confianza) antes de aprobar. Branch: V0.15. Entrega: work units en V0.15 (chain stacked-to-main cacheada de 8.144/8.145/8.146). SDD: `openspec/changes/2026-10-04-supplier-invoice-ocr/`. RDD: off (clone-local). Tests: `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release --filter "FullyQualifiedName~SupplierInvoice|FullyQualifiedName~Ocr"` · build `dotnet build CommandCenter.slnx -c Release`.
+
+## Specs
+
+Fuente: pedido del usuario, verbatim (L1). Decisiones de diseño en L2 (supuestos marcados).
+
+- **S1 (Motor OCR Open Source)**: "El sistema integrará una librería de código abierto líder en la industria (ej. Tesseract OCR) para la extracción de texto."
+  - Tesseract 5.x (Apache-2.0) detrás de `IOcrEngine` (tests determinísticos con TSV/stub; smoke nativo gated). Estado del engine aislado por interfaz.
+- **S2 (Preprocesamiento de Imagen)**: "Antes de pasar por el OCR, la imagen debe ser procesada (usando herramientas como OpenCV o Magick) para mejorar la precisión: escalado a escala de grises, binarización, aumento de contraste y corrección de inclinación (deskew)."
+  - OpenCvSharp4: escala de grises → contraste (CLAHE) → binarización (Otsu con fallback adaptativo) → deskew (ángulo por Hough/minAreaRect). Pasos como funciones puras testeables con imágenes sintéticas.
+- **S3 (Extracción y Plantillas (Parsing))**: "El backend debe utilizar expresiones regulares (Regex) o reglas heurísticas basadas en la 'Planilla de Mapeo del Proveedor' (previamente definida) para identificar dónde están las columnas de cantidad, descripción y precio dentro del bloque de texto escaneado."
+  - Parser sobre word-boxes (TSV de Tesseract): fila por clustering Y, columnas por alineación X contra keywords de la plantilla (`SupplierColumnMapping` enviada por el cliente cuando hay proveedor) con fallback genérico (Descripción/Nombre/Producto · Cant/Cantidad · Precio/Costo/Unitario/Importe · Código/SKU/Ref · Barras/EAN); regex numérico culture-tolerant (coma/punto); confianza por campo = agregación de las palabras que lo componen.
+- **S4 (Captura de Documento)**: "La interfaz debe permitir adjuntar un archivo (PNG/JPG/PDF) o utilizar la cámara del dispositivo para tomar la foto."
+  - WPF: botón "Escanear factura (OCR)" (png/jpg/jpeg/pdf, ≤20 MB, PDF ≤5 páginas) + diálogo de cámara (OpenCvSharp `VideoCapture`, degradación elegante si no hay cámara). La ruta tabular existente (xlsx/csv/xml) no cambia.
+- **S5 (Validación Lado a Lado)**: "la pantalla de 'Staging' (pre-visualización) debe dividirse en dos: Izquierda: La imagen original escaneada (con zoom). Derecha: La tabla de datos extraídos editable."
+  - Split view en `SupplierInvoiceView` cuando la factura staged proviene de OCR: izquierda previews PNG renderizadas por el backend (navegación por página, zoom por rueda/botones); derecha la grilla existente (editable, già con márgenes y aprobación).
+- **S6 (Corrección de Errores)**: "Cualquier campo donde el OCR tenga un nivel de confianza bajo (Low Confidence Score) debe resaltarse en amarillo o rojo para obligar al cajero a verificarlo visualmente contra la imagen antes de aprobar la carga."
+  - Confianzas por campo persistidas en la línea (`OcrNameConfidence`, `OcrQuantityConfidence`, `OcrUnitCostConfidence`, numeric(5,2) nullable, porcentaje 0–100); resaltado de celdas: amarillo 60–85, rojo <60 (constantes `Core.Common.OcrConfidence`); solo líneas OCR.
+- **S7 (Decisiones de diseño / supuestos)**:
+  - OCR + preprocesamiento + parsing corren en **backend** (criterios "Procesamiento y Backend"); el cliente captura, sube y revisa. (supuesto: revisión = grilla staged existente + panel de imagen, no un wizard nuevo.)
+  - Líneas OCR stagean **sin plantilla**: `StageSupplierInvoiceRequestDto.OcrSourced = true` relaja el requisito de mapping de primera importación (la persistencia de la plantilla de archivos no cambia).
+  - Previews las sirve el backend (PNG base64 en la respuesta) → el cliente no agrega lector PDF; para imágenes la preview muestra lo que el OCR vio.
+  - Cámara del cliente vía OpenCvSharp4 (evita bump de TFM a WinRT; trade-off ~45 MB de nativos, documentado).
+  - tessdata español+inglés: paquete de datos NuGet si existe; si no, vendored bajo `Backend.API/tessdata` (documentado, copiado a output).
+  - Límites v1: 20 MB de subida, 5 páginas de PDF; extracción best-effort de RIF/nombre de proveedor para prefill (nunca auto-commit).
+  - Web.Frontend fuera de alcance (el módulo es WPF-only).
+
+## Tasks
+
+| ID | Specs | Route | Descripción | Estado / commit |
+|----|-------|-------|-------------|-----------------|
+| T1 | S1-S7 | inline (orchestrator) | Doc ODD + artefactos SDD + commit de planificación | hecho — commit de planificación (hash se registra en T2) |
+| T2 | S1-S2 | delegated (writer) | Backend OCR core: paquetes + `IOcrEngine`/Tesseract + preprocesamiento OpenCV + raster PDF + tessdata + tests | pendiente |
+| T3 | S3 | delegated (writer) | Parser heurístico word-boxes → filas/columnas/confianza + tests canned TSV | pendiente |
+| T4 | S3, S5 | delegated (writer) | Endpoint `POST /api/supplier-invoices/ocr-extract` + DTOs + DI + límites/RBAC/previews/RIF + tests | pendiente |
+| T5 | S6 | delegated (writer) | Persistencia de confianzas (entidad/DTO/migración) + `OcrSourced` en staging + tests | pendiente |
+| T6 | S4-S6 | delegated (writer) | Cliente: servicios upload + VM flujo OCR (extracción→stage→preview/zoom/cámara) + tests headless | pendiente |
+| T7 | S4-S6 | delegated (writer) | UI WPF: split view + zoom + resaltado por confianza + diálogo de cámara + wiring | pendiente |
+| T8 | S1-S6 | delegated (verify) + inline | Verificación independiente por slice + final + ANEXO 8.147 | pendiente |
+
+Estrategia de entrega: `ask-on-risk` → cadena **stacked-to-main** cacheada (misma política de la cadena V0.15 vigente).
+
+## Log
+
+- L1 (2026-10-04) — Pedido del usuario, verbatim:
+
+> Implementación de OCR Open Source para Digitalización y Carga Automática de Facturas
+>
+> Objetivo:
+> Habilitar la carga de facturas de proveedores a través de imágenes (fotos o escaneos). El sistema utilizará un motor OCR de código abierto para extraer los datos estructurados (Proveedor, RIF, Códigos, Cantidades y Costos) y pre-llenar la tabla de revisión (Staging), minimizando la entrada manual de datos.
+>
+> Criterios de Aceptación (Procesamiento y Backend):
+>
+> Motor OCR Open Source: El sistema integrará una librería de código abierto líder en la industria (ej. Tesseract OCR) para la extracción de texto.
+>
+> Preprocesamiento de Imagen: Antes de pasar por el OCR, la imagen debe ser procesada (usando herramientas como OpenCV o Magick) para mejorar la precisión: escalado a escala de grises, binarización, aumento de contraste y corrección de inclinación (deskew).
+>
+> Extracción y Plantillas (Parsing): El backend debe utilizar expresiones regulares (Regex) o reglas heurísticas basadas en la "Planilla de Mapeo del Proveedor" (previamente definida) para identificar dónde están las columnas de cantidad, descripción y precio dentro del bloque de texto escaneado.
+>
+> Criterios de Aceptación (Interfaz de Usuario / UI):
+> 4. Captura de Documento: La interfaz debe permitir adjuntar un archivo (PNG/JPG/PDF) o utilizar la cámara del dispositivo para tomar la foto.
+> 5. Validación Lado a Lado (Side-by-Side): Dado que el OCR nunca es 100% preciso, la pantalla de "Staging" (pre-visualización) debe dividirse en dos:
+>
+> Izquierda: La imagen original escaneada (con zoom).
+>
+> Derecha: La tabla de datos extraídos editable.
+>
+> Corrección de Errores (Human-in-the-loop): Cualquier campo donde el OCR tenga un nivel de confianza bajo (Low Confidence Score) debe resaltarse en amarillo o rojo para obligar al cajero a verificarlo visualmente contra la imagen antes de aprobar la carga.
+
+- L2 (2026-10-04) — Evidencia de exploración (sesión + grep): CI corre en **windows-2025** (nativos de Tesseract/OpenCV/PDFium llegan por NuGet — sin apt); gestión central de paquetes (`Directory.Packages.props`, con cultura de pins de vulnerabilidades y gate `dotnet list package --vulnerable`); el cliente WPF ya trae ZXing/MaterialDesign, TFM `net10.0-windows` (bump a WinRT sería cascadeante → cámara vía OpenCvSharp); **sin** captura de cámara previa en el repo; `UpsertColumnMappingAsync` (`SupplierInvoiceService.Mapping.cs:12`) exige plantilla en la primera importación de un proveedor → el flujo OCR necesita `OcrSourced`; el filtro del file picker es tabular (xlsx/csv/xml) y `IDialogService`/`IFilePickerDialog` ya están abstraídos; la vista de staging y su VM existen con BindingProxy y grilla editable (base para el side-by-side).
+- L3 (2026-10-04) — Plan SDD creado (proposal + 3 specs + design + tasks + state) y doc ODD. Próximo: T2 (backend OCR core) delegado a writer con verificación independiente.

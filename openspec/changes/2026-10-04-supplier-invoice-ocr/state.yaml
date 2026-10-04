@@ -1,0 +1,34 @@
+change: 2026-10-04-supplier-invoice-ocr
+store: openspec
+scope: wpf-desktop-only
+created: 2026-10-04
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: proposed
+artifacts:
+  exploration: openspec/changes/2026-10-04-supplier-invoice-ocr/exploration.md
+  proposal: openspec/changes/2026-10-04-supplier-invoice-ocr/proposal.md
+  specs:
+    - openspec/changes/2026-10-04-supplier-invoice-ocr/specs/supplier-invoice-ocr-extraction/spec.md
+    - openspec/changes/2026-10-04-supplier-invoice-ocr/specs/supplier-invoice-staging/spec.md
+    - openspec/changes/2026-10-04-supplier-invoice-ocr/specs/supplier-invoice-ocr-review/spec.md
+  design: openspec/changes/2026-10-04-supplier-invoice-ocr/design.md
+  tasks: openspec/changes/2026-10-04-supplier-invoice-ocr/tasks.md
+decisions:
+  confirmed: 2026-10-04
+  engine: tesseract-5-behind-ioorengine-interface
+  pipeline-location: backend
+  preprocessing: opencvsharp grayscale-clahe-otsu-deskew
+  pdf: pdfium-via-pdftoimage-backend; previews-backend-rendered
+  camera: opencvsharp-videocapture-client (graceful degradation; size trade-off documented)
+  parser: tsv-word-boxes; template-keywords-first + generic-fallback; tolerant numerics
+  confidence: per-field-0-100 (min of contributing words); bands red<60 yellow<85 (Core constants)
+  persistence: 3 nullable numeric(5,2) columns on SupplierInvoiceLines
+  staging-ocr: OcrSourced flag relaxes first-import mapping requirement (tabular untouched)
+  endpoint: POST /api/supplier-invoices/ocr-extract multipart (<=20MB, <=5 pages, Admin/Manager)
+  tessdata: data-pack-if-available else vendored Backend.API/tessdata (spa+eng)
+  web-scope: wpf-desktop-only
+next: sdd-apply
