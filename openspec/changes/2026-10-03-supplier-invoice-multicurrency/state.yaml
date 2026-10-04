@@ -7,7 +7,8 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: applying
+phase: verified
+verify: pass_with_warnings (7/7 requisitos; 19/23 escenarios compliant + 4 partials estáticos; ver verify-report.md)
 apply:
   slice: 4/4
   branch: V0.15
@@ -33,4 +34,4 @@ decisions:
   alias: upsert on create and apply; last-write-wins to confirmed product
   modal: new lightweight dialog via IDialogService
   web-scope: wpf-desktop-only
-next: sdd-apply
+next: push/pr/merge (decisión del mantenedor) + sdd-archive

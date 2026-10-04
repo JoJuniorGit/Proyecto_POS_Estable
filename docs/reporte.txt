@@ -11898,3 +11898,91 @@ G5. RESIDUALES QUE PERMANECEN (aceptados): el E2E WPF descarta el diálogo de
     real del visor PDF (`Process.Start`) no se ejercita en tests automatizados
     (patrón espejado pre-existente, opener inyectado en unit tests).
 ================================================================================
+
+================================================================================
+ANEXO 8.146 — SOPORTE MULTI-MONEDA (Bs.S) Y CREACIÓN DE PRODUCTOS CON CÓDIGO DE BARRAS EN FACTURAS DE PROVEEDOR (SDD) — 2026-10-03
+================================================================================
+Change SDD: 2026-10-03-supplier-invoice-multicurrency; artefactos en
+openspec/changes/2026-10-03-supplier-invoice-multicurrency/ (exploration, proposal,
+4 specs, design, tasks, state, verify-report).
+
+Alcance: backend (Core, Inventory.Module, Backend.API) + cliente WPF (Desktop.Client /
+Desktop.Client.Core). Web.Frontend sin cambios; la UI es únicamente WPF. Entrega por
+slices en V0.15 (chain stacked-to-main cacheada de 8.144/8.145); push/PR/merge quedan a
+decisión del mantenedor.
+
+A. ENTREGA POR SLICE
+
+A1. Slice 1 — a772152: dominio multi-moneda. SupplierInvoice.Currency (varchar(8),
+    default 'USD') + AppliedRate (numeric(18,4), default 1); SupplierInvoiceLine.
+    UnitCostDocument (numeric(18,2)); CurrencyCodes en Core.Common; DTOs (request con
+    currency/rate requeridos, StageLineDto.UnitCostUSD→UnitCostDocument, detalle/línea);
+    migración aditiva 20261004040512_AddSupplierInvoiceMulticurrency con backfill
+    (UnitCostDocument = UnitCostUSD) y Down que elimina solo las 3 columnas; smoke/model.
+A2. Slice 2 — 35b9639: staging. Validación fail-fast (moneda ∈ {USD, Bs.S}; Bs.S exige
+    tasa > 0), tasa redondeada hacia arriba a 2 dec (RoundExchangeRateCeiling), USD
+    fuerza tasa 1; normalización server-side ToUSD (AwayFromZero, 2 dec) persistiendo
+    ambos costos (documento + USD); clasificación nueva: sin match → New ([NUEVO]);
+    costo normalizado difiere (incl. 0) → Update; igual → Unchanged; Conflict solo legacy.
+A3. Slice 3 — 423c2c2: creación en caliente. POST /api/supplier-invoices/{id}/lines/
+    {lineId}/create-product (Admin/Manager) atómico (execution strategy + transacción
+    relacional): validaciones con mensajes exactos (draft, pertenencia, sin resolver,
+    EAN/UPC ^\d{8,14}$, nombre ≤100); producto identidad-only (SKU = barcode capturado,
+    costo/márgenes/precios/stock en 0 — sin herencia de códigos de la factura); alias
+    SupplierProductCode upsert compartido (creación + confirm, last-write-wins, misma
+    transacción); re-clasificación de la línea con snapshots en cero; cliente API desktop.
+A4. Slice 4 — 7c7caf7: UI WPF. Cabecera moneda/tasa (precarga BCV solo si el campo está
+    vacío; parseo tolerante coma/punto; gate de stage), badge [NUEVO], CanApprove por
+    producto resuelto, acción "Crear Producto" por fila, columna "Costo factura (Bs.S)"
+    vía ViewModelProxy, modal CreateInvoiceProductDialog (EAN/UPC vacío por defecto,
+    8–14 dígitos, autofocus/Enter/Esc) + IDialogService/WpfDialogService.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CommandCenter.Tests: 1651/1651 (baseline 1591 + 60 netos).
+B3. Cobertura (gate del repo): Core 0.8815 (≥0.70), Sales.Module 0.8893 (≥0.80),
+    Inventory.Module 0.8517 (≥0.72) — PASS.
+B4. Enfocados SupplierInvoice: 103/103 (8 s).
+B5. E2E WPF (arranque/navegación/flujos): 17/18 y 16/18 con flakes NO deterministas de
+    UI Automation (COMException 0x80131505, timeouts FlaUI) en PendingPickupsTests
+    (feature ajena, 8.145); re-ejecución aislada de la clase: 4/4 PASS. Residual de entorno.
+B6. Verificación independiente por slice (verificador dedicado, read-only): T2 PASS;
+    T3 PASS; T4 PASS WITH WARNINGS; T5 PASS; final PASS WITH WARNINGS (7/7 requisitos;
+    19/23 escenarios compliant + 4 partials de capa HTTP/gated). Reporte:
+    openspec/changes/2026-10-03-supplier-invoice-multicurrency/verify-report.md.
+
+C. HOOKS Y GGA
+
+core.hooksPath=.githooks activo; los commits se realizaron sin --no-verify. El pre-push
+de GGA es opt-in y no se ejecutó (no hubo push).
+
+D. LIMITACIONES CONOCIDAS
+
+D1. Tests gated por TEST_POSTGRES_CONNECTION pasan vacuamente en local (smoke de
+    migración/backfill y retry xmin real); corren en CI.
+D2. Los 400/404/409 del endpoint nuevo están verificados estáticamente (middleware
+    global); el 403 Cashier sí se ejerció por TestServer.
+D3. El rollback de creación posterior al flush del producto no está inyectado por fallo
+    (SQLite cubre efectos cero del caso SKU duplicado; confirm cubre rollback de alias).
+D4. Runtime WPF (render/modal/foco) verificado por compilación + estática + E2E de
+    arranque; sin E2E interactivo del modal nuevo ni aserción unitaria de CostComparison.
+D5. Borde aceptado: una línea [NUEVO] con costo 0 queda Unchanged tras crear el producto
+    (regla de igualdad de costo D4: 0 == 0).
+
+E. ROLLBACK
+
+E1. Migración aditiva; Down elimina solo las 3 columnas nuevas.
+E2. Revertir endpoint + modal + cabecera desactiva la feature; la creación agrega solo
+    filas nuevas de producto/alias (catalogo desactivable con herramientas existentes).
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS — 0 CRITICAL; 4 PARTIAL (capa HTTP
+    estática + gated Postgres), 0 UNTESTED, 0 FAILING; 7/7 requisitos. Reporte en el
+    change (verify-report.md). Validador nativo `gentle-ai sdd-verify-validate` sigue
+    ausente en este build (mismo residual que 8.144/8.145).
+
+Commits: dac0a11 (plan), a772152 (slice 1), 35b9639 (slice 2), 423c2c2 (slice 3),
+7c7caf7 (slice 4) + commit de cierre de este ANEXO (git log / L10 del tracker ODD).
+================================================================================
