@@ -234,7 +234,7 @@ public partial class SupplierInvoiceService
                 OptionalColumn(line.Barcode),
                 OptionalColumn(line.Name),
                 line.Quantity,
-                line.UnitCostUSD))
+                line.UnitCostDocument))
             .ToList();
 
         if (lines.Count == 0)
@@ -244,7 +244,7 @@ public partial class SupplierInvoiceService
 
         foreach (var line in lines)
         {
-            if (line.Quantity < 0m || line.UnitCostUSD < 0m)
+            if (line.Quantity < 0m || line.UnitCostDocument < 0m)
             {
                 throw new ArgumentException("Invoice quantities and unit costs cannot be negative.", nameof(sourceLines));
             }

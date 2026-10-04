@@ -134,7 +134,7 @@ public partial class SupplierInvoiceService
             ? SupplierInvoiceLineStatus.Conflict
             : product.CostPriceUSD == 0m
                 ? SupplierInvoiceLineStatus.New
-                : line.UnitCostUSD != product.CostPriceUSD
+                : line.UnitCostDocument != product.CostPriceUSD
                     ? SupplierInvoiceLineStatus.Update
                     : SupplierInvoiceLineStatus.Unchanged;
 
@@ -144,7 +144,8 @@ public partial class SupplierInvoiceService
             Barcode = line.Barcode,
             Name = line.Name,
             Quantity = line.Quantity,
-            UnitCostUSD = line.UnitCostUSD,
+            UnitCostDocument = line.UnitCostDocument,
+            UnitCostUSD = line.UnitCostDocument,
             Status = status,
             ResolvedProductId = product?.Id,
             OldCostPriceUSD = product?.CostPriceUSD,
@@ -154,10 +155,10 @@ public partial class SupplierInvoiceService
             MarginRetailOverride = retailMargin,
             MarginWholesaleOverride = wholesaleMargin,
             SuggestedRetailPriceUSD = retailMargin is decimal retail
-                ? Core.Helpers.PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + retail / 100m))
+                ? Core.Helpers.PricingCalculator.RoundPriceUp(line.UnitCostDocument * (1m + retail / 100m))
                 : null,
             SuggestedWholesalePriceUSD = wholesaleMargin is decimal wholesale
-                ? Core.Helpers.PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + wholesale / 100m))
+                ? Core.Helpers.PricingCalculator.RoundPriceUp(line.UnitCostDocument * (1m + wholesale / 100m))
                 : null,
             MatchMethod = match.Method
         };

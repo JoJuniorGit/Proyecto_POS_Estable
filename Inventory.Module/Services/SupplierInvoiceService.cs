@@ -16,6 +16,8 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         invoice.Id,
         invoice.SupplierId,
         invoice.Status.ToString(),
+        invoice.Currency,
+        invoice.AppliedRate,
         invoice.Lines.Select(ToLineDto).ToArray());
 
     private static SupplierInvoiceLineDto ToLineDto(SupplierInvoiceLine line) => new(
@@ -24,6 +26,7 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         line.Barcode,
         line.Name,
         line.Quantity,
+        line.UnitCostDocument,
         line.UnitCostUSD,
         line.Status.ToString(),
         line.ResolvedProductId,

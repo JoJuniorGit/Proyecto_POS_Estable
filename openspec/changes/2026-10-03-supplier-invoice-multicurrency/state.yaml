@@ -7,7 +7,10 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: proposed
+phase: applying
+apply:
+  slice: 1/4
+  branch: V0.15
 artifacts:
   exploration: openspec/changes/2026-10-03-supplier-invoice-multicurrency/exploration.md
   proposal: openspec/changes/2026-10-03-supplier-invoice-multicurrency/proposal.md

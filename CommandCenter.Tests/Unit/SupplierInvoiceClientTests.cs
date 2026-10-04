@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text;
 using ClosedXML.Excel;
 using CommandCenter.Tests.Builders;
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Core.Helpers;
@@ -131,7 +132,7 @@ public sealed class SupplierInvoiceClientTests
         Assert.Equal("SUP-1", line.SupplierCode);
         Assert.Equal("Coffee", line.Name);
         Assert.Equal(2m, line.Quantity);
-        Assert.Equal(4.25m, line.UnitCostUSD);
+        Assert.Equal(4.25m, line.UnitCostDocument);
     }
 
     [Fact]
@@ -145,7 +146,7 @@ public sealed class SupplierInvoiceClientTests
 
         var line = Assert.Single(lines);
         Assert.Equal(2.5m, line.Quantity);
-        Assert.Equal(4.25m, line.UnitCostUSD);
+        Assert.Equal(4.25m, line.UnitCostDocument);
     }
 
     [Fact]
@@ -174,7 +175,7 @@ public sealed class SupplierInvoiceClientTests
         var line = Assert.Single(lines);
         Assert.Equal("12345", line.Barcode);
         Assert.Equal(3m, line.Quantity);
-        Assert.Equal(5.50m, line.UnitCostUSD);
+        Assert.Equal(5.50m, line.UnitCostDocument);
     }
 
     [Fact]
@@ -312,7 +313,7 @@ public sealed class SupplierInvoiceClientTests
         new(context, Mock.Of<ISystemSettingsService>(), Mock.Of<ISupplierProductSimilaritySearch>(), Mock.Of<ICurrentUserService>());
 
     private static SupplierInvoiceDetailDto CreateInvoice(params SupplierInvoiceLineDto[] lines) =>
-        new(42, 7, "Draft", lines);
+        new(42, 7, "Draft", CurrencyCodes.Usd, 1m, lines);
 
     private static SupplierInvoiceLineDto CreateLine(
         int id,
@@ -323,6 +324,7 @@ public sealed class SupplierInvoiceClientTests
             "12345",
             "Coffee",
             2m,
+            unitCost,
             unitCost,
             "Update",
             9,
