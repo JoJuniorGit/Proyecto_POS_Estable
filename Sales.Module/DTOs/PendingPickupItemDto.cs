@@ -3,6 +3,14 @@ namespace Sales.Module.DTOs;
 public class PendingPickupItemDto
 {
     public int SaleItemId { get; set; }
+
+    // Compatibilidad: la forma previa del DTO exponía este campo como `id`.
+    public int Id
+    {
+        get => SaleItemId;
+        set => SaleItemId = value;
+    }
+
     public int ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public decimal Quantity { get; set; }

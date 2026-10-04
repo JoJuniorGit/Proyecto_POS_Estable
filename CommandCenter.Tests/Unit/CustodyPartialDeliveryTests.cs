@@ -58,6 +58,62 @@ public class CustodyPartialDeliveryTests
     }
 
     [Fact]
+    public void PendingPickupItemDto_CompatibilityAlias_SerializesBothIdentifiers()
+    {
+        var dto = new PendingPickupDto
+        {
+            Items = new List<PendingPickupItemDto>
+            {
+                new() { SaleItemId = 42 }
+            }
+        };
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(dto, JsonSerializerOptions.Web));
+        var item = document.RootElement.GetProperty("items")[0];
+
+        Assert.True(item.TryGetProperty("id", out var legacyId));
+        Assert.True(item.TryGetProperty("saleItemId", out var saleItemId));
+        Assert.Equal(42, legacyId.GetInt32());
+        Assert.Equal(legacyId.GetInt32(), saleItemId.GetInt32());
+    }
+
+    [Fact]
+    public async Task DeliverPartial_UserRename_PreservesDeliveredByNameSnapshot()
+    {
+        using var context = CreateContext();
+        var sale = CustodySale(100).Build();
+        context.Sales.Add(sale);
+        context.Users.Add(new User
+        {
+            Id = 5,
+            Cedula = "V-87654321",
+            Name = "Juan",
+            FullName = "Juan",
+            Username = "juan"
+        });
+        await context.SaveChangesAsync();
+
+        var service = CreateSalesService(context);
+        var receipt = await service.DeliverPartialAsync(
+            sale.Id,
+            new[] { (SaleItemId: sale.Items.Single().Id, Quantity: 2m) },
+            notes: null,
+            actingUserId: 5);
+
+        var user = await context.Users.SingleAsync(candidate => candidate.Id == 5);
+        user.Name = "Pedro";
+        await context.SaveChangesAsync();
+
+        context.ChangeTracker.Clear();
+        var delivery = await context.SaleDeliveries
+            .AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == receipt.DeliveryId);
+
+        Assert.Equal("Juan", delivery.DeliveredByName);
+        Assert.Equal(5, delivery.DeliveredByUserId);
+    }
+
+    [Fact]
     public async Task DeliverPartial_ValidSubset_UpdatesCountersStatusPartial_AndWritesEvent()
     {
         using var context = CreateContext();
