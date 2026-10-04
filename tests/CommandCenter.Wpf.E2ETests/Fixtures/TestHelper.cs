@@ -9,7 +9,7 @@ public static class TestHelper
     public static void EnsureLoggedIn(Window window)
     {
         var usernameBox = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Username"))?.AsTextBox(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Username"))?.AsTextBox()),
             TimeSpan.FromSeconds(3)
         );
 
@@ -21,7 +21,7 @@ public static class TestHelper
 
             // Wait until login view is dismissed
             Retry.WhileNotNull(
-                () => window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Username")),
+                () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Username"))),
                 TimeSpan.FromSeconds(8)
             );
         }
@@ -34,7 +34,7 @@ public static class TestHelper
     public static void EnsureLoggedInWithCredentials(Window window, string username, string password)
     {
         var usernameBox = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Username"))?.AsTextBox(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Username"))?.AsTextBox()),
             TimeSpan.FromSeconds(8)
         );
 
@@ -44,7 +44,7 @@ public static class TestHelper
         }
 
         var passwordBox = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Password")),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Password"))),
             TimeSpan.FromSeconds(8)
         );
 
@@ -76,7 +76,7 @@ public static class TestHelper
         submitButton.Invoke();
 
         var dismissed = Retry.WhileNotNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Username")),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("Login_Username"))),
             TimeSpan.FromSeconds(20)
         );
 
@@ -92,11 +92,11 @@ public static class TestHelper
     public static bool NavigateTo(Window window, string navButtonAutomationId)
     {
         var navBtn = Retry.WhileNull(
-            () =>
+            () => UiaRetry.RetryUia(() =>
             {
                 var btn = window.FindFirstDescendant(cf => cf.ByAutomationId(navButtonAutomationId))?.AsButton();
                 return (btn != null && btn.IsEnabled) ? btn : null;
-            },
+            }),
             TimeSpan.FromSeconds(8)
         );
 

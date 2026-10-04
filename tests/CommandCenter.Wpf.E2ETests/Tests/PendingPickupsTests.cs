@@ -28,16 +28,16 @@ public class PendingPickupsTests : IClassFixture<WpfAppFixture>
         Assert.True(TestHelper.NavigateTo(window, "Nav_BtnPendingPickups"));
 
         var searchInput = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_SearchInput")),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_SearchInput"))),
             TimeSpan.FromSeconds(8));
         var refreshButton = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_RefreshButton"))?.AsButton(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_RefreshButton"))?.AsButton()),
             TimeSpan.FromSeconds(8));
         var confirmButton = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_ConfirmButton"))?.AsButton(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_ConfirmButton"))?.AsButton()),
             TimeSpan.FromSeconds(8));
         var deliverAllButton = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_DeliverAllButton"))?.AsButton(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_DeliverAllButton"))?.AsButton()),
             TimeSpan.FromSeconds(8));
 
         Assert.NotNull(searchInput.Result);
@@ -57,17 +57,17 @@ public class PendingPickupsTests : IClassFixture<WpfAppFixture>
         Assert.True(TestHelper.NavigateTo(window, "Nav_BtnPendingPickups"));
 
         var confirmButton = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_ConfirmButton"))?.AsButton(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_ConfirmButton"))?.AsButton()),
             TimeSpan.FromSeconds(8));
         Assert.NotNull(confirmButton.Result);
         confirmButton.Result!.Invoke();
 
         var dialogConfirmButton = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_ConfirmButton")),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_ConfirmButton"))),
             TimeSpan.FromSeconds(8));
         Assert.NotNull(dialogConfirmButton.Result);
         var dialogQuantityInput = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_QuantityInput"))?.AsTextBox(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_QuantityInput"))?.AsTextBox()),
             TimeSpan.FromSeconds(8));
         Assert.NotNull(dialogQuantityInput.Result);
 
@@ -88,17 +88,17 @@ public class PendingPickupsTests : IClassFixture<WpfAppFixture>
         Assert.True(TestHelper.NavigateTo(window, "Nav_BtnPendingPickups"));
 
         var confirmButton = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_ConfirmButton"))?.AsButton(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_ConfirmButton"))?.AsButton()),
             TimeSpan.FromSeconds(8));
         Assert.NotNull(confirmButton.Result);
         confirmButton.Result!.Invoke();
 
         var dialogConfirmButton = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_ConfirmButton")),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_ConfirmButton"))),
             TimeSpan.FromSeconds(8));
         Assert.NotNull(dialogConfirmButton.Result);
         var cancelButton = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_CancelButton"))?.AsButton(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_CancelButton"))?.AsButton()),
             TimeSpan.FromSeconds(8));
         Assert.NotNull(cancelButton.Result);
         cancelButton.Result!.Invoke();
@@ -117,31 +117,36 @@ public class PendingPickupsTests : IClassFixture<WpfAppFixture>
         Assert.True(TestHelper.NavigateTo(window, "Nav_BtnPendingPickups"));
 
         var deliverAllButton = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_DeliverAllButton"))?.AsButton(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PendingPickups_DeliverAllButton"))?.AsButton()),
             TimeSpan.FromSeconds(8));
         Assert.NotNull(deliverAllButton.Result);
         deliverAllButton.Result!.Invoke();
 
         var quantityInput = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_QuantityInput"))?.AsTextBox(),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_QuantityInput"))?.AsTextBox()),
             TimeSpan.FromSeconds(8));
         Assert.NotNull(quantityInput.Result);
         Assert.Equal("1", quantityInput.Result!.Text);
 
-        var confirmButton = Retry.WhileNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_ConfirmButton"))?.AsButton(),
+        // Cerrar el diálogo con SU PROPIO confirm (PartialDelivery_ConfirmButton). El botón por fila
+        // PendingPickups_ConfirmButton queda detrás del modal pero su Invoke UIA NO está bloqueado
+        // (el InvokePattern del peer no respeta el disable Win32 del owner): dispara
+        // ConfirmPickupCommand y apila un segundo PartialDeliveryDialog, dejando el primero
+        // irrecuperable y rompiendo la aserción de cierre.
+        var dialogConfirmButton = Retry.WhileNull(
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_ConfirmButton"))?.AsButton()),
             TimeSpan.FromSeconds(8));
-        Assert.NotNull(confirmButton.Result);
-        confirmButton.Result!.Invoke();
+        Assert.NotNull(dialogConfirmButton.Result);
+        dialogConfirmButton.Result!.Invoke();
 
         AssertPartialDeliveryDialogClosed(window);
 
-        var printOffer = Retry.WhileNull(FindPrintOfferWindow, TimeSpan.FromSeconds(8));
+        var printOffer = Retry.WhileNull(() => UiaRetry.RetryUia(() => FindPrintOfferWindow()), TimeSpan.FromSeconds(8));
         if (printOffer.Result is not null)
         {
             printOffer.Result.Focus();
             Keyboard.Press(VirtualKeyShort.ESCAPE);
-            Retry.WhileNotNull(FindPrintOfferWindow, TimeSpan.FromSeconds(8));
+            Retry.WhileNotNull(() => UiaRetry.RetryUia(() => FindPrintOfferWindow()), TimeSpan.FromSeconds(8));
             Assert.Null(FindPrintOfferWindow());
         }
 
@@ -151,7 +156,7 @@ public class PendingPickupsTests : IClassFixture<WpfAppFixture>
     private static void AssertPartialDeliveryDialogClosed(Window window)
     {
         Retry.WhileNotNull(
-            () => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_ConfirmButton")),
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_ConfirmButton"))),
             TimeSpan.FromSeconds(8));
         Assert.Null(window.FindFirstDescendant(cf => cf.ByAutomationId("PartialDelivery_ConfirmButton")));
     }
