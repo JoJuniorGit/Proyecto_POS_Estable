@@ -234,10 +234,44 @@ public class E2EMockHttpMessageHandler : HttpMessageHandler
             return Json(new { items = Array.Empty<object>(), totalCount = 0 });
         }
 
-        if (sub.Equals("pending", StringComparison.OrdinalIgnoreCase) ||
-            sub.Equals("pending-pickups", StringComparison.OrdinalIgnoreCase))
+        if (sub.Equals("pending", StringComparison.OrdinalIgnoreCase))
         {
             return Json(Array.Empty<object>());
+        }
+
+        if (sub.Equals("pending-pickups", StringComparison.OrdinalIgnoreCase))
+        {
+            return Json(new[]
+            {
+                new
+                {
+                    saleId = 2013,
+                    invoiceNumber = 279,
+                    date = new DateTime(2026, 9, 11, 5, 12, 19, DateTimeKind.Utc),
+                    customerName = "JOseito",
+                    customerCedula = "223456789",
+                    customerPhone = string.Empty,
+                    totalUSD = 0.34m,
+                    totalBsS = 283.05m,
+                    totalUnits = 1m,
+                    deliveredUnits = 0m,
+                    deliveryStatus = "PendingPickup",
+                    items = new[]
+                    {
+                        new
+                        {
+                            saleItemId = 981,
+                            productId = 1125,
+                            productName = "Afeitadoras Dorco Negras 2H 5U",
+                            quantity = 1m,
+                            deliveredQuantity = 0m,
+                            pendingQuantity = 1m,
+                            unitPriceBsS = 283.05m,
+                            subtotalBsS = 283.05m
+                        }
+                    }
+                }
+            });
         }
 
         if (sub.Equals("customers", StringComparison.OrdinalIgnoreCase))

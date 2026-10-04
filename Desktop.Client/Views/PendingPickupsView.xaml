@@ -266,7 +266,7 @@
                                            Margin="0,0,0,5"/>
                                 <ProgressBar Minimum="0"
                                              Maximum="100"
-                                             Value="{Binding ProgressPercent}"
+                                             Value="{Binding ProgressPercent, Mode=OneWay}"
                                              Height="6"
                                              Foreground="#3B82F6"
                                              Background="#DBEAFE"/>
