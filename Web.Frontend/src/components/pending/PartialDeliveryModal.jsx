@@ -10,7 +10,7 @@ function quantityOrZero(value) {
   return Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
 }
 
-function createDeliveryRows(items = []) {
+function createDeliveryRows(items = [], prefillPending = false) {
   return (Array.isArray(items) ? items : []).map((item) => {
     const totalQuantity = quantityOrZero(item.totalQuantity ?? item.quantity);
     const deliveredQuantity = quantityOrZero(item.deliveredQuantity);
@@ -23,15 +23,15 @@ function createDeliveryRows(items = []) {
       totalQuantity,
       deliveredQuantity,
       pendingQuantity,
-      quantity: 0,
+      quantity: prefillPending ? pendingQuantity : 0,
       isInvalid: false,
     };
   });
 }
 
-function reconcileDeliveryRows(items, previousRows) {
+function reconcileDeliveryRows(items, previousRows, prefillPending) {
   const previousById = new Map(previousRows.map((row) => [row.saleItemId, row]));
-  return createDeliveryRows(items).map((row) => {
+  return createDeliveryRows(items, prefillPending).map((row) => {
     const previous = previousById.get(row.saleItemId);
     if (!previous) return row;
 
@@ -39,13 +39,13 @@ function reconcileDeliveryRows(items, previousRows) {
     return {
       ...row,
       quantity: clamped.value,
-      isInvalid: previous.isInvalid || clamped.isInvalid,
+      isInvalid: clamped.isInvalid,
     };
   });
 }
 
-export default function PartialDeliveryModal({ pickup, onClose, onConfirm, onRejected }) {
-  const [rows, setRows] = useState(() => createDeliveryRows(pickup?.items));
+export default function PartialDeliveryModal({ pickup, onClose, onConfirm, onRejected, prefillPending = false }) {
+  const [rows, setRows] = useState(() => createDeliveryRows(pickup?.items, prefillPending));
   const [notes, setNotes] = useState('');
   const [requestError, setRequestError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -57,8 +57,8 @@ export default function PartialDeliveryModal({ pickup, onClose, onConfirm, onRej
   }
 
   useEffect(() => {
-    setRows((previousRows) => reconcileDeliveryRows(pickup?.items, previousRows));
-  }, [pickup]);
+    setRows((previousRows) => reconcileDeliveryRows(pickup?.items, previousRows, prefillPending));
+  }, [pickup, prefillPending]);
 
   const handleClose = useCallback(() => {
     if (!isSubmittingRef.current) onClose?.();

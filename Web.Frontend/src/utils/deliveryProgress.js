@@ -19,11 +19,11 @@ export function clampQuantity(value, pending) {
 
   if (rawValue === '') return { value: 0, isInvalid: false };
 
-  const requested = Number(rawValue);
+  const requested = Number(rawValue.replace(',', '.'));
   if (!Number.isFinite(requested)) return { value: 0, isInvalid: true };
 
   return {
-    value: Math.min(Math.max(requested, 0), maximum),
+    value: normalizeQuantity(Math.min(Math.max(requested, 0), maximum)),
     isInvalid: requested < 0 || requested > maximum,
   };
 }
@@ -88,6 +88,6 @@ export function buildDeliveryPayload(rows) {
     })
     .map((row) => ({
       saleItemId: row.saleItemId,
-      quantity: Number(row.quantity),
+      quantity: normalizeQuantity(Number(row.quantity)),
     }));
 }

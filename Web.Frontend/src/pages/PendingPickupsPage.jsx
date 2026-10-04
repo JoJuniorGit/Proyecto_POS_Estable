@@ -68,6 +68,7 @@ function PendingPickupsPageContent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedSaleId, setExpandedSaleId] = useState(null);
   const [selectedPickup, setSelectedPickup] = useState(null);
+  const [prefillPending, setPrefillPending] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
   const [deliveryReceipt, setDeliveryReceipt] = useState(null);
   const [printError, setPrintError] = useState(null);
@@ -142,9 +143,10 @@ function PendingPickupsPageContent() {
     return inv.includes(q) || name.includes(q) || cedula.includes(q);
   });
 
-  const handleConfirmPickupClick = (pickup) => {
+  const handleConfirmPickupClick = (pickup, shouldPrefillPending = false) => {
     setError(null);
     setPrintError(null);
+    setPrefillPending(shouldPrefillPending);
     setSelectedPickup(pickup);
   };
 
@@ -368,7 +370,14 @@ function PendingPickupsPageContent() {
                               className="btn btn-sm btn-outline flex-align-center gap-1 ppk-confirm-btn"
                               onClick={() => handleConfirmPickupClick(pickup)}
                             >
-                              <PackageCheck size={15} /> Confirmar Retiro
+                              <PackageCheck size={15} aria-hidden="true" /> Confirmar Retiro
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline flex-align-center gap-1 ppk-confirm-btn"
+                              onClick={() => handleConfirmPickupClick(pickup, true)}
+                            >
+                              <PackageCheck size={15} aria-hidden="true" /> Retiro Completo
                             </button>
                           </div>
                         </td>
@@ -473,7 +482,15 @@ function PendingPickupsPageContent() {
                       className="btn btn-outline flex-1 flex-align-center justify-center gap-1 ppk-confirm-btn-mobile"
                       onClick={() => handleConfirmPickupClick(pickup)}
                     >
-                      <PackageCheck size={18} /> Confirmar Retiro
+                      <PackageCheck size={18} aria-hidden="true" /> Confirmar Retiro
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-outline flex-1 flex-align-center justify-center gap-1 w-full ppk-confirm-btn-mobile"
+                      onClick={() => handleConfirmPickupClick(pickup, true)}
+                    >
+                      <PackageCheck size={18} aria-hidden="true" /> Retiro Completo
                     </button>
 
                     <button
@@ -528,6 +545,7 @@ function PendingPickupsPageContent() {
       {selectedPickup && (
         <PartialDeliveryModal
           pickup={selectedPickup}
+          prefillPending={prefillPending}
           onClose={() => setSelectedPickup(null)}
           onConfirm={handlePartialDelivery}
           onRejected={handleRejectedPartialDelivery}

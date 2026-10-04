@@ -10,10 +10,13 @@ import {
 describe('delivery progress helpers', () => {
   test('clampQuantity accepts fractions and marks values outside the pending range', () => {
     assert.deepEqual(clampQuantity('1.25', 2), { value: 1.25, isInvalid: false });
+    assert.deepEqual(clampQuantity('1,5', 2), { value: 1.5, isInvalid: false });
+    assert.deepEqual(clampQuantity('1.23456', 2), { value: 1.235, isInvalid: false });
     assert.deepEqual(clampQuantity('4', 3), { value: 3, isInvalid: true });
     assert.deepEqual(clampQuantity('-0.5', 3), { value: 0, isInvalid: true });
     assert.deepEqual(clampQuantity('', 3), { value: 0, isInvalid: false });
     assert.deepEqual(clampQuantity('invalid', 3), { value: 0, isInvalid: true });
+    assert.deepEqual(clampQuantity(Number.NaN, 3), { value: 0, isInvalid: true });
   });
 
   test('computeProgress aggregates delivered and pending fractional units', () => {
@@ -55,8 +58,10 @@ describe('delivery progress helpers', () => {
       { saleItemId: 12, quantity: '1.25' },
       { saleItemId: 13, quantity: 2, isInvalid: true },
       { saleItemId: 14, quantity: -1 },
+      { saleItemId: 15, quantity: '1.23456' },
     ]), [
       { saleItemId: 12, quantity: 1.25 },
+      { saleItemId: 15, quantity: 1.235 },
     ]);
   });
 });

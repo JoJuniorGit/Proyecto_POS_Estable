@@ -42,6 +42,32 @@ describe('PartialDeliveryModal and delivery API', () => {
     assert.ok(submitButton?.includes('disabled'), 'dispatch confirmation starts disabled');
   });
 
+  test('prefillPending starts every quantity at its pending amount and enables confirmation', () => {
+    const html = renderToString(React.createElement(PartialDeliveryModal, {
+      pickup: {
+        saleId: 42,
+        invoiceNumber: 123,
+        customerName: 'Cliente de prueba',
+        items: [
+          { saleItemId: 7, productName: 'Producto fraccionable', totalQuantity: 4, deliveredQuantity: 2.5, pendingQuantity: 1.5 },
+          { saleItemId: 8, productName: 'Producto en unidades', totalQuantity: 2, deliveredQuantity: 1.625, pendingQuantity: 0.375 },
+        ],
+      },
+      prefillPending: true,
+      onClose: () => {},
+      onConfirm: async () => {},
+    }));
+
+    const quantityInputs = html.match(/<input\b[^>]*class="input-field ppd-quantity-input"[^>]*>/g) || [];
+    assert.equal(quantityInputs.length, 2);
+    assert.match(quantityInputs[0], /value="1\.5"/);
+    assert.match(quantityInputs[1], /value="0\.375"/);
+    assert.match(quantityInputs[0], /aria-invalid="false"/);
+
+    const submitButton = html.match(/<button\b[^>]*>/g)?.find((button) => button.includes('type="submit"'));
+    assert.ok(submitButton && !submitButton.includes('disabled'), 'prefilled dispatch is ready to confirm');
+  });
+
   test('deliverPartialPickup sends the full line payload and idempotency header', async () => {
     let request;
     const receipt = { deliveryId: 19, saleId: 42, deliveryStatus: 'PartiallyDelivered' };
