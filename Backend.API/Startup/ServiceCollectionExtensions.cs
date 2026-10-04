@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using Inventory.Module.Data;
 using Inventory.Module.Services;
+using Inventory.Module.Services.Ocr;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -41,6 +42,14 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IProductManagementService>(sp => (InventoryService)sp.GetRequiredService<IInventoryService>());
         builder.Services.AddScoped<ISupplierProductSimilaritySearch, PostgresSupplierProductSimilaritySearch>();
         builder.Services.AddScoped<ISupplierInvoiceService, SupplierInvoiceService>();
+        // 8.147-T2: OCR de facturas de proveedor — motor Tesseract, preprocesado OpenCV y
+        // decodificadores de imagen/PDF. El motor es singleton (Lazy internamente) y lo consume
+        // el endpoint de extracción (T4).
+        builder.Services.AddSingleton<ImagePreprocessor>();
+        builder.Services.AddSingleton<IOcrEngine>(_ => new TesseractOcrEngine());
+        builder.Services.AddSingleton<ImagePageDecoder>();
+        builder.Services.AddSingleton<PdfPageDecoder>();
+        builder.Services.AddSingleton<DocumentPageDecoder>();
         builder.Services.AddScoped<IReservationService, Inventory.Module.Services.ReservationService>();
         builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
