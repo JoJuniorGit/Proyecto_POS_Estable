@@ -28,4 +28,19 @@ public class SupplierInvoiceLine : BaseEntity
     public decimal? SuggestedWholesalePriceUSD { get; set; }
     public bool IsApproved { get; set; } = true;
     public MatchMethod MatchMethod { get; set; } = MatchMethod.None;
+
+    /// <summary>
+    /// 8.147-S6/D10: confianza (0–100, 1 decimal) del nombre extraído por OCR; null en filas tabulares.
+    /// </summary>
+    public decimal? OcrNameConfidence { get; set; }
+
+    /// <summary>
+    /// 8.147-S6/D10: confianza (0–100, 1 decimal) de la cantidad extraída por OCR; null en filas tabulares.
+    /// </summary>
+    public decimal? OcrQuantityConfidence { get; set; }
+
+    /// <summary>
+    /// 8.147-S6/D10: confianza (0–100, 1 decimal) del costo unitario extraído por OCR; null en filas tabulares.
+    /// </summary>
+    public decimal? OcrUnitCostConfidence { get; set; }
 }

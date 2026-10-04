@@ -28,6 +28,7 @@ public interface IDialogService
     /// <see cref="ShowPartialDeliveryDialogAsync"/>.
     /// </summary>
     bool? ShowCreateInvoiceProductDialog(ViewModels.CreateInvoiceProductDialogViewModel dialogVm) => null;
+
     (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();

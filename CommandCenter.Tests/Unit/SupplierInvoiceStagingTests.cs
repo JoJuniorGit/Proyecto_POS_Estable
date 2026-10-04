@@ -99,6 +99,128 @@ public class SupplierInvoiceStagingTests
     }
 
     [Fact]
+    public async Task StageAsync_OcrSourcedFirstImportWithoutMappingPersistsDraft()
+    {
+        var (service, context) = CreateService();
+        var supplier = await AddSupplierAsync(context);
+
+        var invoice = await service.StageAsync(CreateOcrRequest(
+            supplier.Id,
+            null,
+            new StageLineDto(null, null, "Scanned product", 2m, 5m, 91.5m, 88m, 40.25m)));
+
+        Assert.Equal(supplier.Id, invoice.SupplierId);
+        Assert.Equal(1, await context.SupplierInvoices.CountAsync());
+        Assert.Empty(await context.SupplierColumnMappings.ToListAsync());
+    }
+
+    [Fact]
+    public async Task StageAsync_OcrSourcedPersistsFieldConfidences()
+    {
+        var (service, context) = CreateService();
+        var supplier = await AddSupplierAsync(context);
+
+        var invoice = await service.StageAsync(CreateOcrRequest(
+            supplier.Id,
+            null,
+            new StageLineDto(null, null, "Scanned product", 2m, 5m, 91.5m, 88m, 40.25m)));
+
+        var line = Assert.Single(invoice.Lines);
+        Assert.Equal(91.5m, line.OcrNameConfidence);
+        Assert.Equal(88m, line.OcrQuantityConfidence);
+        Assert.Equal(40.25m, line.OcrUnitCostConfidence);
+
+        var persisted = await context.SupplierInvoiceLines.SingleAsync();
+        Assert.Equal(91.5m, persisted.OcrNameConfidence);
+        Assert.Equal(88m, persisted.OcrQuantityConfidence);
+        Assert.Equal(40.25m, persisted.OcrUnitCostConfidence);
+    }
+
+    [Fact]
+    public async Task StageAsync_OcrSourcedClampsFieldConfidencesToZeroHundred()
+    {
+        var (service, context) = CreateService();
+        var supplier = await AddSupplierAsync(context);
+
+        var invoice = await service.StageAsync(CreateOcrRequest(
+            supplier.Id,
+            null,
+            new StageLineDto(null, null, "Scanned product", 2m, 5m, 150m, -12.5m, null)));
+
+        var line = Assert.Single(invoice.Lines);
+        Assert.Equal(100m, line.OcrNameConfidence);
+        Assert.Equal(0m, line.OcrQuantityConfidence);
+        Assert.Null(line.OcrUnitCostConfidence);
+
+        var persisted = await context.SupplierInvoiceLines.SingleAsync();
+        Assert.Equal(100m, persisted.OcrNameConfidence);
+        Assert.Equal(0m, persisted.OcrQuantityConfidence);
+        Assert.Null(persisted.OcrUnitCostConfidence);
+    }
+
+    [Fact]
+    public async Task StageAsync_TabularStagingKeepsConfidencesNull()
+    {
+        var (service, context) = CreateService();
+        var supplier = await AddSupplierAsync(context);
+
+        var invoice = await service.StageAsync(CreateRequest(
+            supplier.Id,
+            null,
+            null,
+            CreateMapping(),
+            new StageLineDto(null, null, "Tabular product", 1m, 5m, 91.5m, 88m, 40.25m)));
+
+        var line = Assert.Single(invoice.Lines);
+        Assert.Null(line.OcrNameConfidence);
+        Assert.Null(line.OcrQuantityConfidence);
+        Assert.Null(line.OcrUnitCostConfidence);
+
+        var persisted = await context.SupplierInvoiceLines.SingleAsync();
+        Assert.Null(persisted.OcrNameConfidence);
+        Assert.Null(persisted.OcrQuantityConfidence);
+        Assert.Null(persisted.OcrUnitCostConfidence);
+    }
+
+    [Fact]
+    public async Task StageAsync_TabularFirstImportWithoutMappingStillThrows()
+    {
+        var (service, context) = CreateService();
+        var supplier = await AddSupplierAsync(context);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.StageAsync(CreateRequest(
+            supplier.Id,
+            null,
+            null,
+            null,
+            new StageLineDto(null, null, "Tabular product", 1m, 5m))));
+
+        Assert.StartsWith(
+            "A confirmed column mapping is required for a supplier's first import.",
+            exception.Message);
+        Assert.Empty(await context.SupplierInvoices.ToListAsync());
+    }
+
+    [Fact]
+    public async Task StageAsync_OcrSourcedWithMappingStillUpsertsMapping()
+    {
+        var (service, context) = CreateService();
+        var supplier = await AddSupplierAsync(context);
+        var mapping = CreateMapping();
+
+        await service.StageAsync(CreateOcrRequest(
+            supplier.Id,
+            mapping,
+            new StageLineDto(null, null, "Scanned product", 1m, 5m, 70m, 70m, 70m)));
+
+        var savedMapping = await context.SupplierColumnMappings.SingleAsync();
+        Assert.Equal(supplier.Id, savedMapping.SupplierId);
+        Assert.Equal(mapping.NameColumnName, savedMapping.NameColumnName);
+        Assert.Equal(mapping.QuantityColumnName, savedMapping.QuantityColumnName);
+        Assert.Equal(mapping.UnitCostColumnName, savedMapping.UnitCostColumnName);
+    }
+
+    [Fact]
     public async Task StageAsync_RejectsEmptyOrUnparseableRowsWithoutPersistingDraft()
     {
         var (service, context) = CreateService();
@@ -431,6 +553,19 @@ public class SupplierInvoiceStagingTests
         lines,
         CurrencyCodes.Usd,
         1m);
+
+    private static StageSupplierInvoiceRequestDto CreateOcrRequest(
+        int supplierId,
+        SupplierColumnMappingDto? mapping,
+        params StageLineDto[] lines) => new(
+        supplierId,
+        null,
+        null,
+        mapping,
+        lines,
+        CurrencyCodes.Usd,
+        1m,
+        true);
 
     private static StageSupplierInvoiceRequestDto CreateBsSRequest(
         int supplierId,

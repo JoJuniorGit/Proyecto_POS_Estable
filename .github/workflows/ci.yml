@@ -77,6 +77,9 @@ jobs:
         env:
           TEST_POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=pos_test;Username=postgres;Password=root"
           SMOKE_DB_SUFFIX: ${{ github.run_id }}
+          # 8.147-T2/D15: habilita el smoke nativo de OCR (Tesseract + tessdata vendido);
+          # sin la variable el test retorna silenciosamente y la suite queda mock-based.
+          TEST_OCR_NATIVE: "1"
         run: dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj --no-build --configuration Release --collect:"XPlat Code Coverage" --settings CommandCenter.Tests/coverage.runsettings --verbosity normal
 
       # 8.9-L5 + 8.26-E4: gate de cobertura por capa de DOMINIO (scripts/check-coverage.py),

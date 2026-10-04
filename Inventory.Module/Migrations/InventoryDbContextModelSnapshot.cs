@@ -542,6 +542,18 @@ namespace Inventory.Module.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<decimal?>("OcrNameConfidence")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal?>("OcrQuantityConfidence")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal?>("OcrUnitCostConfidence")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
                     b.Property<decimal?>("OldCostPriceUSD")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");

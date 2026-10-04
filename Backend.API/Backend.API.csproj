@@ -27,6 +27,14 @@
     <ProjectReference Include="..\Logistics.Module\Logistics.Module.csproj" />
   </ItemGroup>
 
+  <!-- 8.147-T2/D14: tessdata vendido (spa+eng de tesseract-ocr/tessdata_fast; ver
+       Backend.API/tessdata/SOURCES.md). CopyToOutputDirectory hace que los nativos de datos
+       fluyan a Backend.API, a los proyectos que lo referencian (tests) y a la publicacion,
+       donde TesseractOcrEngine los resuelve desde AppContext.BaseDirectory/tessdata. -->
+  <ItemGroup>
+    <Content Include="tessdata\*.traineddata" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- 8.29-A4: la configuracion de desarrollo (credenciales locales) no debe
        empaquetarse en la publicacion Release destinada a instaladores de clientes. -->
   <ItemGroup Condition="'$(Configuration)' == 'Release'">

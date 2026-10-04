@@ -168,5 +168,8 @@ public sealed class SupplierInvoiceCreationDialogViewModelTests
             null,
             null,
             false,
-            "None");
+            "None",
+            null,
+            null,
+            null);
 }

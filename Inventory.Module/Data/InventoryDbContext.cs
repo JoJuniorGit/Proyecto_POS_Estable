@@ -255,6 +255,10 @@ public class InventoryDbContext : DbContext
             entity.Property(line => line.MarginWholesaleOverride).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
             entity.Property(line => line.SuggestedRetailPriceUSD).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
             entity.Property(line => line.SuggestedWholesalePriceUSD).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
+            // 8.147-S6/D10: confianza OCR por campo (0–100, numeric(5,2)); null en filas tabulares.
+            entity.Property(line => line.OcrNameConfidence).HasColumnType("numeric(5,2)").HasPrecision(5, 2);
+            entity.Property(line => line.OcrQuantityConfidence).HasColumnType("numeric(5,2)").HasPrecision(5, 2);
+            entity.Property(line => line.OcrUnitCostConfidence).HasColumnType("numeric(5,2)").HasPrecision(5, 2);
             entity.HasOne(line => line.SupplierInvoice)
                 .WithMany(invoice => invoice.Lines)
                 .HasForeignKey(line => line.SupplierInvoiceId)

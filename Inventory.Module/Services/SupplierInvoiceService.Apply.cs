@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Core.Helpers;
@@ -100,6 +101,7 @@ public partial class SupplierInvoiceService
                         continue;
                     }
 
+                    ApplyCorrections(line, invoice, confirmation);
                     await ApplyApprovedLineAsync(invoice.Id, line, productId, confirmation, cancellationToken);
                     if (!string.IsNullOrWhiteSpace(line.SupplierCode))
                     {
@@ -211,6 +213,62 @@ public partial class SupplierInvoiceService
         if (confirmation.MarginRetailOverride is < 0m || confirmation.MarginWholesaleOverride is < 0m)
         {
             throw new ArgumentException("Approved supplier invoice margin overrides cannot be negative.", nameof(confirmation));
+        }
+    }
+
+    /// <summary>
+    /// 8.147-T7b/S6: correcciones del revisor sobre campos OCR verificados contra la imagen.
+    /// Solo datos: no re-clasifica ni re-matchea (la línea ya está resuelta) y ApplyApprovedLineAsync
+    /// consume Quantity/UnitCostUSD corregidos. El costo documental se renormaliza con el snapshot
+    /// de la factura (Currency/AppliedRate), nunca con la tasa BCV vigente. Todos los rechazos se
+    /// validan antes de mutar la línea.
+    /// </summary>
+    private static void ApplyCorrections(
+        SupplierInvoiceLine line,
+        SupplierInvoice invoice,
+        ConfirmLineDto confirmation)
+    {
+        var correctedName = confirmation.Name?.Trim();
+        if (confirmation.Name is not null && string.IsNullOrEmpty(correctedName))
+        {
+            throw new ArgumentException("The corrected product name cannot be blank.");
+        }
+
+        if (correctedName is { Length: > 100 })
+        {
+            throw new ArgumentException("The corrected product name cannot exceed 100 characters.");
+        }
+
+        if (confirmation.Quantity is < 0m)
+        {
+            throw new ArgumentException("The corrected quantity cannot be negative.");
+        }
+
+        if (confirmation.UnitCostDocument is < 0m)
+        {
+            throw new ArgumentException("The corrected unit cost cannot be negative.");
+        }
+
+        if (correctedName is not null)
+        {
+            line.Name = correctedName;
+            // El campo fue verificado/corregido por el revisor: su confianza OCR deja de aplicar.
+            line.OcrNameConfidence = null;
+        }
+
+        if (confirmation.Quantity is decimal correctedQuantity)
+        {
+            line.Quantity = correctedQuantity;
+            line.OcrQuantityConfidence = null;
+        }
+
+        if (confirmation.UnitCostDocument is decimal correctedUnitCostDocument)
+        {
+            line.UnitCostDocument = correctedUnitCostDocument;
+            line.UnitCostUSD = invoice.Currency == CurrencyCodes.Usd
+                ? correctedUnitCostDocument
+                : PricingCalculator.ToUSD(correctedUnitCostDocument, invoice.AppliedRate);
+            line.OcrUnitCostConfidence = null;
         }
     }
 }

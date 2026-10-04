@@ -15,6 +15,12 @@ public interface ISupplierInvoiceService
         SupplierColumnMappingDto columnMapping,
         CancellationToken cancellationToken = default);
 
+    Task<OcrExtractionResultDto> ExtractOcrAsync(
+        string filePath,
+        int? supplierId,
+        SupplierColumnMappingDto? columnMapping,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<SupplierSummaryDto>> GetSuppliersAsync(
         string? rifOrNit,
         string? commercialName,

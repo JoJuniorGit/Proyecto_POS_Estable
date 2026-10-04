@@ -57,6 +57,28 @@ public class SupplierInvoiceMigrationSmokeTests
         Assert.Equal(18, unitCostDocument.GetPrecision());
         Assert.Equal(2, unitCostDocument.GetScale());
         Assert.Equal(0m, unitCostDocument.GetDefaultValue());
+
+        // 8.147-T5/D10: confianzas OCR nullable numeric(5,2), sin default.
+        var nameConfidence = lineType.FindProperty(nameof(SupplierInvoiceLine.OcrNameConfidence))!;
+        Assert.Equal("numeric(5,2)", nameConfidence.GetColumnType());
+        Assert.Equal(5, nameConfidence.GetPrecision());
+        Assert.Equal(2, nameConfidence.GetScale());
+        Assert.True(nameConfidence.IsNullable);
+        Assert.Null(nameConfidence.GetDefaultValue());
+
+        var quantityConfidence = lineType.FindProperty(nameof(SupplierInvoiceLine.OcrQuantityConfidence))!;
+        Assert.Equal("numeric(5,2)", quantityConfidence.GetColumnType());
+        Assert.Equal(5, quantityConfidence.GetPrecision());
+        Assert.Equal(2, quantityConfidence.GetScale());
+        Assert.True(quantityConfidence.IsNullable);
+        Assert.Null(quantityConfidence.GetDefaultValue());
+
+        var unitCostConfidence = lineType.FindProperty(nameof(SupplierInvoiceLine.OcrUnitCostConfidence))!;
+        Assert.Equal("numeric(5,2)", unitCostConfidence.GetColumnType());
+        Assert.Equal(5, unitCostConfidence.GetPrecision());
+        Assert.Equal(2, unitCostConfidence.GetScale());
+        Assert.True(unitCostConfidence.IsNullable);
+        Assert.Null(unitCostConfidence.GetDefaultValue());
     }
 
     [Fact]
@@ -161,6 +183,23 @@ public class SupplierInvoiceMigrationSmokeTests
             "WHERE \"UnitCostDocument\" <> \"UnitCostUSD\"")
             .SingleAsync();
         Assert.Equal(0, backfilledLinesMismatch);
+
+        // 8.147: columnas aditivas de confianza OCR (nullable numeric(5,2), sin default).
+        var ocrConfidenceColumnCount = await context.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns " +
+            "WHERE table_schema = 'public' AND table_name = 'SupplierInvoiceLines' " +
+            "AND column_name IN ('OcrNameConfidence', 'OcrQuantityConfidence', 'OcrUnitCostConfidence')")
+            .SingleAsync();
+        Assert.Equal(3, ocrConfidenceColumnCount);
+
+        var ocrConfidenceShapedColumnCount = await context.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns " +
+            "WHERE table_schema = 'public' AND table_name = 'SupplierInvoiceLines' " +
+            "AND column_name IN ('OcrNameConfidence', 'OcrQuantityConfidence', 'OcrUnitCostConfidence') " +
+            "AND data_type = 'numeric' AND numeric_precision = 5 AND numeric_scale = 2 " +
+            "AND is_nullable = 'YES' AND column_default IS NULL")
+            .SingleAsync();
+        Assert.Equal(3, ocrConfidenceShapedColumnCount);
 
         if (productsBefore is not null)
         {

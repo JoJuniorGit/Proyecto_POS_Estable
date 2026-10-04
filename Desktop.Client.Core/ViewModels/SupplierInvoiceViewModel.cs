@@ -184,6 +184,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
 
         IsBusy = true;
         SelectedFilePath = filePath;
+        ClearOcrReviewState();
         StagedInvoice = null;
         Lines.Clear();
         StatusMessage = "Leyendo encabezados del archivo...";
@@ -322,28 +323,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
                 SelectedFilePath,
                 columnMapping,
                 cancellationToken);
-            var appliedRate = IsBsSCurrency
-                ? (TryParseAppliedRate(AppliedRateText, out var parsedRate) ? parsedRate : 0m)
-                : 1m;
-            var request = new StageSupplierInvoiceRequestDto(
-                SelectedSupplier.Id,
-                SelectedSupplier.RifOrNit,
-                SelectedSupplier.CommercialName,
-                columnMapping,
-                lines,
-                SelectedCurrency,
-                appliedRate);
-            var invoice = await _invoiceService.StageAsync(request, cancellationToken);
-            var updatedSupplier = SelectedSupplier with { ColumnMapping = columnMapping };
-            var supplierIndex = Suppliers.IndexOf(SelectedSupplier);
-            if (supplierIndex >= 0)
-            {
-                Suppliers[supplierIndex] = updatedSupplier;
-            }
-
-            SelectedSupplier = updatedSupplier;
-            LoadStagedInvoice(invoice);
-            StatusMessage = $"Factura #{invoice.Id} preparada. Revise las líneas antes de confirmar.";
+            await StagePreparedLinesAsync(lines, columnMapping, ocrSourced: false, cancellationToken);
         }
         catch (Exception exception)
         {
@@ -355,6 +335,49 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             IsBusy = false;
             RefreshCommandStates();
         }
+    }
+
+    /// <summary>
+    /// Núcleo de staging compartido por la ruta tabular (mapping + OcrSourced false) y la ruta
+    /// OCR (mapping null + OcrSourced true, D11). El cache local de plantilla solo se actualiza
+    /// cuando hay mapping; la extracción OCR no debe borrar la plantilla guardada.
+    /// </summary>
+    private async Task StagePreparedLinesAsync(
+        IReadOnlyList<StageLineDto> lines,
+        SupplierColumnMappingDto? columnMapping,
+        bool ocrSourced,
+        CancellationToken cancellationToken)
+    {
+        var supplier = SelectedSupplier
+            ?? throw new InvalidOperationException("Seleccione un proveedor antes de preparar la factura.");
+        var appliedRate = IsBsSCurrency
+            ? (TryParseAppliedRate(AppliedRateText, out var parsedRate) ? parsedRate : 0m)
+            : 1m;
+        var request = new StageSupplierInvoiceRequestDto(
+            supplier.Id,
+            supplier.RifOrNit,
+            supplier.CommercialName,
+            columnMapping,
+            lines,
+            SelectedCurrency,
+            appliedRate,
+            ocrSourced);
+        var invoice = await _invoiceService.StageAsync(request, cancellationToken);
+
+        if (columnMapping is not null)
+        {
+            var updatedSupplier = supplier with { ColumnMapping = columnMapping };
+            var supplierIndex = Suppliers.IndexOf(supplier);
+            if (supplierIndex >= 0)
+            {
+                Suppliers[supplierIndex] = updatedSupplier;
+            }
+
+            SelectedSupplier = updatedSupplier;
+        }
+
+        LoadStagedInvoice(invoice);
+        StatusMessage = $"Factura #{invoice.Id} preparada. Revise las líneas antes de confirmar.";
     }
 
     [RelayCommand(CanExecute = nameof(CanConfirmInvoice))]
@@ -392,14 +415,11 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         try
         {
             var request = new ConfirmSupplierInvoiceRequestDto(approvedLines
-                .Select(line => new ConfirmLineDto(
-                    line.LineId,
-                    true,
-                    line.MarginRetailOverride,
-                    line.MarginWholesaleOverride))
+                .Select(line => line.ToConfirmLine())
                 .ToArray());
             var result = await _invoiceService.ConfirmAsync(StagedInvoice.Id, request, cancellationToken);
             LoadStagedInvoice(result);
+            ClearOcrReviewState();
             StatusMessage = $"Factura #{result.Id} procesada correctamente.";
             _dialogService.ShowInfo("Factura procesada", StatusMessage);
         }
@@ -480,7 +500,11 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         ClearLines();
         foreach (var line in invoice.Lines)
         {
-            var viewModel = new SupplierInvoiceLineViewModel(line);
+            var viewModel = new SupplierInvoiceLineViewModel(line)
+            {
+                // 8.147-S5/S6 (T7): solo las líneas de una factura OCR permiten revisar editando.
+                IsEditorEnabled = IsOcrSource
+            };
             viewModel.PropertyChanged += OnLinePropertyChanged;
             Lines.Add(viewModel);
         }
@@ -496,6 +520,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         StagedInvoice = null;
         ClearLines();
         SetFileHeaders([]);
+        ClearOcrReviewState();
         StatusMessage = "Seleccione un archivo de factura y un proveedor para comenzar.";
         RefreshCommandStates();
     }
@@ -545,6 +570,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanCreateSupplier));
         OnPropertyChanged(nameof(CanStageInvoice));
         OnPropertyChanged(nameof(CanConfirmInvoice));
+        OnPropertyChanged(nameof(CanScanInvoice));
         OnPropertyChanged(nameof(IsCurrencyInputEnabled));
         OnPropertyChanged(nameof(IsRateInputEnabled));
         SelectFileCommand.NotifyCanExecuteChanged();
@@ -552,6 +578,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         CreateSupplierCommand.NotifyCanExecuteChanged();
         StageInvoiceCommand.NotifyCanExecuteChanged();
         ConfirmInvoiceCommand.NotifyCanExecuteChanged();
+        ScanInvoiceCommand.NotifyCanExecuteChanged();
     }
 
     private void ShowAccessDenied() =>
