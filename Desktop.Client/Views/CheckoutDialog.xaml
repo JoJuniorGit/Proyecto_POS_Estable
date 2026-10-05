@@ -84,6 +84,7 @@
 
                     <!-- Method -->
                     <ComboBox Grid.Column="0" ItemsSource="{Binding AvailableMethods}"
+                              AutomationProperties.AutomationId="Checkout_PaymentMethodCombo"
                               SelectedItem="{Binding SelectedMethod, Mode=TwoWay}"
                               materialDesign:HintAssist.Hint="Payment Method"
                               Style="{DynamicResource MaterialDesignFloatingHintComboBox}"
@@ -92,6 +93,7 @@
                     <!-- Amount Bs.S (primary input with decimal-cents behavior) -->
                     <StackPanel Grid.Column="1" Margin="0,0,10,0">
                         <TextBox x:Name="AmountInput"
+                                 AutomationProperties.AutomationId="Checkout_AmountInput"
                                  Text="{Binding AmountBsSText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  behaviors:DecimalCentsBehavior.IsEnabled="True"
                                  materialDesign:HintAssist.Hint="Amount Bs.S"
@@ -110,7 +112,7 @@
                              Margin="0,0,10,0"/>
 
                     <!-- Add Button -->
-                    <Button Grid.Column="3" Command="{Binding AddPaymentCommand}" Style="{DynamicResource MaterialDesignIconButton}" ToolTip="Add Payment" VerticalAlignment="Bottom">
+                    <Button Grid.Column="3" Command="{Binding AddPaymentCommand}" AutomationProperties.AutomationId="Checkout_AddPaymentButton" Style="{DynamicResource MaterialDesignIconButton}" ToolTip="Add Payment" VerticalAlignment="Bottom">
                         <materialDesign:PackIcon Kind="PlusBox" Width="28" Height="28" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                     </Button>
                 </Grid>
@@ -208,6 +210,7 @@
                         Height="40" Padding="20,0"/>
 
                 <Button Content="{Binding FinalizeSaleButtonLabel}" 
+                        AutomationProperties.AutomationId="Checkout_FinalizeSaleButton"
                         Command="{Binding FinalizeSaleCommand}"
                         Style="{DynamicResource MaterialDesignRaisedButton}" 
                         HorizontalAlignment="Right"

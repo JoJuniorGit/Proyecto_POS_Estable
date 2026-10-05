@@ -258,6 +258,7 @@
 
                     <!-- Order Table -->
                     <DataGrid x:Name="CartGrid"
+                              AutomationProperties.AutomationId="Pos_CartGrid"
                               ItemsSource="{Binding Cart.CartItems}" 
                               SelectedItem="{Binding Cart.SelectedSaleItem, Mode=TwoWay}"
                               AutoGenerateColumns="False" 
@@ -585,6 +586,7 @@
                                                VerticalAlignment="Center"/>
                                     
                                     <TextBlock Grid.Row="0" Grid.Column="1" 
+                                               AutomationProperties.AutomationId="Pos_TotalAmountText"
                                                Text="{Binding Cart.TotalAmountLocal, StringFormat='Bs.S {0:N2}'}" 
                                                FontWeight="Heavy" 
                                                FontSize="28" 
@@ -665,6 +667,7 @@
                     
                     <!-- Bottom-right Gear Icon (Opens Side Drawer) -->
                     <Button Grid.Row="1"
+                            AutomationProperties.AutomationId="Pos_OpenMenuButton"
                             Style="{DynamicResource MaterialDesignIconButton}"
                             Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
                             CommandParameter="{x:Static Dock.Right}"
@@ -684,7 +687,8 @@
                     <Border Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="6" Padding="8,3" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <materialDesign:PackIcon Kind="CurrencyUsd" Width="15" Height="15" VerticalAlignment="Center" Foreground="#166534" Margin="0,0,4,0"/>
-                            <TextBlock Text="{Binding CurrentExchangeRate, StringFormat='{}Tasa: {0:N2} Bs/$'}" 
+                            <TextBlock AutomationProperties.AutomationId="Pos_ExchangeRateText"
+                                       Text="{Binding CurrentExchangeRate, StringFormat='{}Tasa: {0:N2} Bs/$'}" 
                                        FontWeight="Bold" FontSize="12" Foreground="#166534" VerticalAlignment="Center"
                                        Typography.NumeralAlignment="Tabular"/>
                         </StackPanel>

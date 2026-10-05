@@ -148,6 +148,8 @@ public class UiaRetryTests
     [InlineData("-5")]
     [InlineData("NaN")]
     [InlineData("Infinity")]
+    // Desborde de TimeSpan (1e300 s >> TimeSpan.MaxValue): finito pero inválido como duración.
+    [InlineData("1e300")]
     public void ParseFindTimeout_AbsentOrInvalidValue_FallsBackToDocumentedDefault(string? raw)
     {
         Assert.Equal(UiaRetry.DefaultFindTimeout, UiaRetry.ParseFindTimeout(raw));
