@@ -12201,6 +12201,12 @@ F. VERIFY SDD
 F1. sdd-verify equivalente: PASS WITH WARNINGS — 0 CRITICAL; 4/5 requisitos (1 partial por
     CI-runtime), 11/13 escenarios compliant + 2 partials CI-runtime, 0 UNTESTED, 0 FAILING.
     Reporte en el change (verify-report.md).
+F2. sdd-archive ejecutado (2026-10-05): specs canonicas sincronizadas (wpf-e2e-full-stack 3 req/7
+    escenarios; wpf-e2e-stability 1 req/4 escenarios; ci-pipeline +1 req/+2 escenarios con prefijo
+    byte-identico) con readback SHA256 0-diff; composer ausente en el build instalado (desviacion
+    registrada; script determinista con aserciones de byte/conteo). Dos changes legacy del
+    2026-09-20 (8.142) archivados como partial intencional SIN sync de specs (formato
+    pre-convencion no-delta; contenido preservado verbatim en el archivo).
 
 G. CIERRE DE RESIDUALES (2026-10-04)
 
