@@ -36,4 +36,4 @@ decisions:
   flows: complete sale + history; cash drawer lifecycle; daily closure totals
   mock-mode: --e2e mock suite preserved
   ci: blocking wpf-e2e job (windows-2025 + PostgreSQL)
-next: push/pr/merge (decisión del mantenedor; el job wpf-e2e se prueba en el push) + sdd-archive
+next: push/pr/merge (decisión del mantenedor; el job wpf-e2e se prueba en el push)
