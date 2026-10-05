@@ -1,0 +1,30 @@
+change: 2026-10-05-audit-critical-remediation
+store: openspec
+scope: security-and-integrity-remediation
+created: 2026-10-05
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: proposed
+artifacts:
+  exploration: openspec/changes/2026-10-05-audit-critical-remediation/exploration.md
+  proposal: openspec/changes/2026-10-05-audit-critical-remediation/proposal.md
+  specs:
+    - openspec/changes/2026-10-05-audit-critical-remediation/specs/checkout-integrity/spec.md
+    - openspec/changes/2026-10-05-audit-critical-remediation/specs/stock-deduction-concurrency/spec.md
+    - openspec/changes/2026-10-05-audit-critical-remediation/specs/api-idempotency/spec.md
+    - openspec/changes/2026-10-05-audit-critical-remediation/specs/cart-commit-resilience/spec.md
+  design: openspec/changes/2026-10-05-audit-critical-remediation/design.md
+  tasks: openspec/changes/2026-10-05-audit-critical-remediation/tasks.md
+decisions:
+  source: docs/auditoria_integral_fases_1_4.txt (verified: 15 CONFIRMED, 1 drift, 4 PARTIAL, 0 FALSE; matrix [x] false 5/5)
+  sec-01: recompute rounding server-side after payments attach; client payload ignored
+  sec-02: reject IsCashAdvance in AddItemAsync and UpdateSaleItemsAsync; coordinator path untouched
+  sre-01: resolve targets, consolidate by (target, reason, saleId), order ascending by target id
+  sre-02: shared idempotency resolver; required keys on items/transaction/closure; unique ClosureDate index; idempotent cancel; WPF+Web client keys
+  clean-02: log via ClientStateLogger + re-sync from server + IDialogService notification; no silent catches
+  rdd: off (clone-local)
+  branch: V0.15
+next: sdd-apply
