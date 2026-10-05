@@ -12096,6 +12096,127 @@ Commits: 77ab69d (plan), 6dafd32, 0580da6, 1df554b, 39e5c5f, 554c419, 9796397,
 de3da77 + commit de cierre de este ANEXO (git log / L12 del tracker ODD).
 ================================================================================
 
+================================================================================
+ANEXO 8.148 — E2E FULL-STACK DE ESCRITORIO (NIVEL B) + HIGIENE UIA + CI (SDD) — 2026-10-04
+================================================================================
+Change SDD: 2026-10-04-wpf-e2e-full-stack; artefactos en
+openspec/changes/2026-10-04-wpf-e2e-full-stack/ (exploration, proposal, 3 specs,
+design, tasks, state, verify-report).
+
+Alcance: infraestructura de pruebas (tests/CommandCenter.Wpf.E2ETests), hooks de
+automatizacion id-only en vistas WPF, un guard test-only en Desktop.Client/Program.cs y el
+workflow CI. Sin cambios de logica de producto. Entrega por slices en V0.15 (chain
+stacked-to-main); push/PR/merge/archivo quedan a decision del mantenedor.
+
+A. ENTREGA POR SLICE
+
+A1. Slice 1 — 6fdde9e: harness full-stack. FullStackFixture (gate E2E_POSTGRES_CONNECTION con
+    fail-closed en CI; puerto libre; base aislada pos_e2e_<run> con create/drop FORCE;
+    Backend.API real via ASPNETCORE_HTTP_PORT — ASPNETCORE_URLS es inerte en Program.cs;
+    health 90 s; bootstrap por API real: login 403 requiresPasswordChange → cambio de clave
+    anonimo → re-login → tasa → producto con X-Client-Version; settings del cliente
+    backup/ESCRITURA hacia el harness/restore; cliente real SIN --e2e; teardown idempotente
+    en finally). E2eApiClient + smoke + tests de gating. Dos fixes de campo: el mutex global
+    del cliente se omite SOLO con env E2E_SKIP_SINGLE_INSTANCE=1 (una instancia abierta del
+    mantenedor bloqueaba todo el E2E; produccion intacta) y la direccion del cliente se
+    resuelve escribiendo el client_settings.json persistido (el fallback por env no aplicaba
+    contra el appsettings del cliente).
+A2. Slice 2 — 0313f04: higiene UIA. UiaRetry (COMException acotado, presupuesto 4/500 ms,
+    ultimo fault con stack original, no-COM al primer intento, null logico sin retry) +
+    FindTimeout por E2E_FIND_TIMEOUT_SECONDS (default 10 s) + 19 tests; 24 sitios de espera
+    envueltos por dentro del Retry existente (timeouts y tipos intactos; aserciones 35=35).
+    T3b: fix determinista del test DeliverAll (el wrap masivo de T3 habia cambiado el
+    objetivo al boton de fila detras del modal; se restauro PartialDelivery_ConfirmButton
+    con evidencia instrumentada).
+A3. Slice 3 — 4bc5df7: flujo real de VENTA completa (login → busqueda por SKU → carrito con
+    total Ceiling(costo×margen) en Bs.S → cobro efectivo → N° de factura → Historial por
+    busqueda con total del periodo == cobrado). Descubrimientos: el BcvExchangeRateJob pisa
+    la tasa post-boot (asentamiento + alineacion por UI antes de vender); el recovery de
+    venta previa bloquea con modal (se rechaza); el drawer arranca cerrado en modo real;
+    PerformantDataGrid sin peer UIA (historial por busqueda+totales). 11 AutomationIds
+    id-only. Nota: PosView.xaml traia WIP pre-existente del mantenedor; el commit llevo SOLO
+    los ids (separacion quirurgica con backup/stash; WIP preservado en el working tree).
+A4. Slice 4 — b333602: flujos reales de CAJA y CIERRE. La sesion de caja NACE del primer
+    cobro (no hay apertura en UI); CASH IN solo Admin; cierre diario por UI con arqueo
+    declarado 0 (grid sin peer) → rollover real (saldo fisico arrastrado, esperado
+    reiniciado). T5b: id estable CustomDialog_ConfirmButton + WaitForDialogButton (flake del
+    boton "Si"). T5c: cierre del flake SendInput/Win32(5) — UiaRetry lo clasifica como
+    transitorio (+3 tests) y el commit del carrito paso a UIA-first (click del ListItem con
+    flag single-shot, sin doble alta) en ambos flujos.
+A5. Slice 5 — ac00e38: job CI `wpf-e2e` (windows-2025, timeout 30, bloqueante): adicion pura
+    de 74 lineas; build Release completo (el harness lanza exes Release) → PostgreSQL
+    preinstalado (el fixture deriva/crea/dropea pos_e2e_<run>) → dotnet test del proyecto E2E
+    con trx y E2E_POSTGRES_CONNECTION (GITHUB_ACTIONS=true ⇒ fail-closed, sin silent-skip) →
+    artefactos (trx + logs) solo en fallo.
+A6. Slice 6 (cierre) — hash en L10: sidecar persistente de recuperacion del settings del
+    cliente (kill duro entre neutralizacion y teardown) + verificacion final + ANEXO.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CommandCenter.Tests: 1770/1770 (sin cambios netos; feature de test-infra).
+B3. Cobertura (gate del repo): Core 0.8835 (>=0.70), Sales.Module 0.8893 (>=0.80),
+    Inventory.Module 0.8547 (>=0.72) — PASS.
+B4. Suite E2E mock (sin env): 49/49 en 3m28s; los full-stack retornan en silencio (~0 s en
+    trx — prueba del gating).
+B5. E2E full-stack gated (E2E_POSTGRES_CONNECTION local): smoke 1/1, venta 1/1, caja+cierre
+    1/1 (con 3-4 corridas verdes por clase durante el cierre de flakes). Teardown en todas:
+    0 DBs pos_e2e, settings restaurado, sin procesos huerfanos.
+B6. Verificadores independientes por slice + final: T2 PASS 6/6; T3+T3b PASS-W; T4 PASS-W;
+    T5 inicial FAIL (flake) → T5b/T5c verdes; T6 PASS-W; final PASS WITH WARNINGS (4/5
+    requisitos + 1 partial CI-runtime; 11/13 escenarios compliant + 2 partials CI-runtime;
+    0 FAIL). Reporte: verify-report.md del change.
+
+C. HOOKS Y GGA
+
+core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push opt-in no ejecutado
+(sin push).
+
+D. LIMITACIONES CONOCIDAS
+
+D1. El job `wpf-e2e` aun NO se ejecuto en GitHub: sus dos escenarios quedan PARTIAL hasta el
+    proximo push a V0.15 (provisioning de PostgreSQL copiado del job backend verde; schema
+    del workflow validado por GitHub en el push).
+D2. El sidecar de recuperacion solo se activa en la proxima corrida GATED; una corrida local
+    sin E2E_POSTGRES_CONNECTION no recupera un settings strandead (por diseno).
+D3. Flake UIA residual mitigado por UiaRetry (presupuesto acotado); la suite del runner queda
+    cubierta por el job con timeout de 30 min.
+D4. Residuales aceptados con rationale: PerformantDataGrid sin AutomationPeer (diseno
+    anti-OOM; historial verificado por busqueda+totales), reentrancy UIA-only de
+    ConfirmPickupAsync (no alcanzable por input fisico), ventana de carrera del BCV job
+    (asentamiento+alineacion), fallbacks de dialogos transitorios (evidencia
+    servidor-autoritativa), warning pre-existente Access Denied de comprobantes en
+    ProgramData (corroborado en warn.log) y ruido pre-existente de crash.log
+    (OnClosingShutdown, 406 entradas desde 2026-09-19, ajeno a esta feature).
+
+E. ROLLBACK
+
+E1. Quitar el job `wpf-e2e` de ci.yml y revertir fixtures/tests desactiva el Nivel B; la
+    suite mock existente sigue corriendo sin env.
+E2. El unico cambio de producto es el guard test-only del mutex (env E2E_SKIP_SINGLE_INSTANCE)
+    y atributos AutomationId en vistas; revertirlos no altera comportamiento de usuario.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS — 0 CRITICAL; 4/5 requisitos (1 partial por
+    CI-runtime), 11/13 escenarios compliant + 2 partials CI-runtime, 0 UNTESTED, 0 FAILING.
+    Reporte en el change (verify-report.md).
+
+G. CIERRE DE RESIDUALES (2026-10-04)
+
+G1. CERRADOS: overflow de ParseFindTimeout pineado (T4); consumidores reales de FindTimeout
+    (venta/caja); flake del boton "Si" (T5b, id estable + espera acotada); flake
+    SendInput/Win32(5) (T5c, clasificacion transitoria + commit UIA-first sin doble alta);
+    sidecar persistente del settings con recuperacion tras kill duro (simulado end-to-end:
+    sentinel → smoke verde → settings byte-igual al sentinel; estado de maquina restaurado);
+    hallazgo de precedencia de settings documentado (design D6 + fixture).
+G2. ACEPTADOS (rationale en D4). Categorizacion verificada por el verificador final; flags
+    atendidos (tasks.md reconciliado 100%, state.yaml a verified).
+
+Commits: f61d306 (plan), 6fdde9e, 0313f04, 4bc5df7, b333602, ac00e38 + commit de cierre de
+este ANEXO (git log / L10 del tracker ODD).
+================================================================================
+
 G. REMEDIACIÓN DE RESIDUALES Y CAMBIO DE ALCANCE (2026-10-04)
 
 G1. Heurística de miles es-VE: ambos `TryParseDecimal` (ruta tabular y espejo OCR; cuerpos

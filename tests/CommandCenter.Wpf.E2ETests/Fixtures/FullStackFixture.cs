@@ -117,6 +117,16 @@ public sealed class FullStackFixture : IDisposable
 
     public string ClientSettingsPath { get; }
 
+    /// <summary>
+    /// 8.148-T7: sidecar persistente con el estado ORIGINAL del settings del cliente. Si el
+    /// testhost muere entre la neutralización y el teardown (kill duro), la próxima corrida
+    /// restaura el estado real del equipo antes de tocar nada (RecoverStrandedClientSettings).
+    /// </summary>
+    private string ClientSettingsBackupPath => ClientSettingsPath + ".e2e-backup";
+
+    /// <summary>Snapshot serializable del estado original del settings (existed/content).</summary>
+    private sealed record ClientSettingsSnapshot(bool Existed, string? Content);
+
     /// <summary>Credenciales efectivas para la UI real: usuario semilla con la clave ya rotada.</summary>
     public string AdminUsername => SeedUsername;
 
@@ -162,6 +172,7 @@ public sealed class FullStackFixture : IDisposable
 
         try
         {
+            RecoverStrandedClientSettings();
             await CreateDatabaseAsync(cancellationToken);
             StartBackend();
             await WaitForBackendHealthyAsync(cancellationToken);
@@ -450,6 +461,12 @@ public sealed class FullStackFixture : IDisposable
         ClientSettingsExistedBefore = File.Exists(ClientSettingsPath);
         ClientSettingsOriginalContent = ClientSettingsExistedBefore ? File.ReadAllText(ClientSettingsPath) : null;
 
+        // 8.148-T7: sidecar persistente con el estado original — si el testhost muere entre la
+        // neutralización y el teardown, la próxima corrida restaura el settings real del equipo.
+        File.WriteAllText(
+            ClientSettingsBackupPath,
+            JsonSerializer.Serialize(new ClientSettingsSnapshot(ClientSettingsExistedBefore, ClientSettingsOriginalContent)));
+
         // 8.148-T2 (ajuste de campo): se ESCRIBE un settings persistido con la dirección del harness
         // en lugar de borrarlo. La lógica del cliente (App.xaml.cs:157-161) honra la dirección
         // persistida cuando NO es la default; esa precedencia es determinística y no depende del
@@ -580,10 +597,49 @@ public sealed class FullStackFixture : IDisposable
 
                 ClientSettingsRestored = !File.Exists(ClientSettingsPath);
             }
+
+            // 8.148-T7: el estado quedó consistente — el sidecar de recuperación ya no es necesario.
+            File.Delete(ClientSettingsBackupPath);
         }
         catch (Exception ex)
         {
             _teardownErrors.Add($"restore client settings: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 8.148-T7: recupera un kill duro de una corrida anterior. Si existe el sidecar, restaura el
+    /// estado original del settings (o lo elimina si originalmente no existía) y borra el sidecar
+    /// ANTES de que la corrida actual neutralice nada. Un fallo aquí se acumula como error de
+    /// teardown en vez de romper el arranque.
+    /// </summary>
+    private void RecoverStrandedClientSettings()
+    {
+        try
+        {
+            if (!File.Exists(ClientSettingsBackupPath))
+            {
+                return;
+            }
+
+            var snapshot = JsonSerializer.Deserialize<ClientSettingsSnapshot>(File.ReadAllText(ClientSettingsBackupPath));
+            if (snapshot is not null)
+            {
+                if (snapshot.Existed)
+                {
+                    File.WriteAllText(ClientSettingsPath, snapshot.Content ?? string.Empty);
+                }
+                else if (File.Exists(ClientSettingsPath))
+                {
+                    File.Delete(ClientSettingsPath);
+                }
+            }
+
+            File.Delete(ClientSettingsBackupPath);
+        }
+        catch (Exception ex)
+        {
+            _teardownErrors.Add($"recover client settings: {ex.Message}");
         }
     }
 

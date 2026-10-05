@@ -7,7 +7,13 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: proposed
+phase: verified
+apply:
+  slice: 6/6
+  branch: V0.15
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-04-wpf-e2e-full-stack/verify-report.md
+verify_note: "4/5 requisitos (1 partial CI-runtime), 11/13 escenarios compliant + 2 partials CI-runtime, 0 UNTESTED, 0 FAILING; build 0/0; suite 1770/1770; mock E2E 49/49; gated smoke/sale/cash 1/1; cobertura PASS"
 artifacts:
   exploration: openspec/changes/2026-10-04-wpf-e2e-full-stack/exploration.md
   proposal: openspec/changes/2026-10-04-wpf-e2e-full-stack/proposal.md
@@ -30,4 +36,4 @@ decisions:
   flows: complete sale + history; cash drawer lifecycle; daily closure totals
   mock-mode: --e2e mock suite preserved
   ci: blocking wpf-e2e job (windows-2025 + PostgreSQL)
-next: sdd-apply
+next: push/pr/merge (decisión del mantenedor; el job wpf-e2e se prueba en el push) + sdd-archive
