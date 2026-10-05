@@ -54,6 +54,6 @@ Chain strategy: stacked-to-main
 
 ## Phase 5: CI + Closure
 
-- [ ] 5.1 `.github/workflows/ci.yml`: blocking `wpf-e2e` job (windows-2025): checkout, .NET setup, restore/build, start PostgreSQL + create `pos_e2e_ci` DB, run the E2E project with `E2E_POSTGRES_CONNECTION` (+ `GITHUB_ACTIONS` implied), upload artifacts on failure, `timeout-minutes: 30`.
+- [x] 5.1 `.github/workflows/ci.yml`: blocking `wpf-e2e` job (windows-2025): checkout, .NET setup, restore/build, start PostgreSQL only (the fixture derives/creates/drops its own `pos_e2e_<run>` database per D2 — no `pos_test`/`pos_e2e_ci` creation), run the E2E project with `E2E_POSTGRES_CONNECTION` (+ `GITHUB_ACTIONS` implied), upload artifacts on failure, `timeout-minutes: 30`.
 - [ ] 5.2 `dotnet build CommandCenter.slnx -c Release` 0/0; full main suite green; E2E suite green locally (mock + full-stack with env).
 - [ ] 5.3 Independent verification per slice + final; ANEXO 8.148 in `docs/reporte.txt`; note gating behavior and rollback.
