@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -6,19 +7,26 @@ using System.Threading;
 namespace CommandCenter.Wpf.E2ETests.Fixtures;
 
 /// <summary>
-/// Reintentos acotados EXCLUSIVAMENTE para fallas transitorias de transporte de UI Automation
-/// (<see cref="COMException"/>, por ejemplo el timeout 0x80131505 que aparece bajo carga).
+/// Reintentos acotados EXCLUSIVAMENTE para fallas transitorias de transporte de UI Automation:
+/// <see cref="COMException"/> (por ejemplo el timeout 0x80131505 que aparece bajo carga) y
+/// <see cref="Win32Exception"/> con <see cref="Win32Exception.NativeErrorCode"/> ERROR_ACCESS_DENIED
+/// (5), la denegación de <c>SendInput</c> por una carrera de foco/inyección de entrada.
 /// </summary>
 /// <remarks>
 /// La política es de transporte, nunca de aserción: <b>NUNCA</b> se debe envolver una aserción con
 /// este helper ni usarlo para re-evaluar un resultado lógico. Un valor devuelto por la operación se
-/// retorna tal cual (el fallo lo decide la aserción del test); cualquier excepción que no sea
-/// <see cref="COMException"/> se propaga de inmediato sin reintentar; al agotar el presupuesto de
-/// intentos se propaga la ÚLTIMA falla COM observada, sin enmascararla. No usar este helper para
-/// reintentar un test completo.
+/// retorna tal cual (el fallo lo decide la aserción del test); cualquier excepción que no sea una de
+/// las DOS fallas transitorias de transporte (<see cref="COMException"/> o
+/// <see cref="Win32Exception"/> con código 5) se propaga de inmediato sin reintentar; al agotar el
+/// presupuesto de intentos se propaga la ÚLTIMA falla transitoria observada, sin enmascararla. No
+/// usar este helper para reintentar un test completo.
 /// </remarks>
 public static class UiaRetry
 {
+    // ERROR_ACCESS_DENIED: código nativo con el que SendInput reporta la denegación de inyección
+    // de entrada (teclado/mouse) cuando una carrera de foco/UIPI la bloquea.
+    private const int ErrorAccessDenied = 5;
+
     /// <summary>Intentos máximos por defecto para una operación UIA (D7: ≤4).</summary>
     public const int DefaultAttempts = 4;
 
@@ -32,7 +40,9 @@ public static class UiaRetry
     public static readonly TimeSpan DefaultFindTimeout = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// Ejecuta <paramref name="operation"/> reintentando solo ante <see cref="COMException"/> de UI Automation.
+    /// Ejecuta <paramref name="operation"/> reintentando solo ante fallas transitorias de transporte
+    /// de UI Automation (<see cref="COMException"/> o <see cref="Win32Exception"/> con
+    /// <see cref="Win32Exception.NativeErrorCode"/> ERROR_ACCESS_DENIED).
     /// </summary>
     public static T? RetryUia<T>(Func<T?> operation, int attempts = DefaultAttempts, TimeSpan? backoff = null)
     {
@@ -51,7 +61,7 @@ public static class UiaRetry
             {
                 return operation();
             }
-            catch (COMException) when (attempt < attempts)
+            catch (Exception exception) when (attempt < attempts && IsTransientTransportFault(exception))
             {
                 // Falla transitoria de transporte: se agota el presupuesto y, en el último intento,
                 // la excepción se propaga SIN capturarla (preserva la falla y su stack original).
@@ -59,6 +69,16 @@ public static class UiaRetry
             }
         }
     }
+
+    /// <summary>
+    /// Clasifica una falla como transitoria de TRANSPORTE UIA: el <see cref="COMException"/> de los
+    /// timeouts de UI Automation o el <see cref="Win32Exception"/> con código nativo 5
+    /// (ERROR_ACCESS_DENIED) que reporta <c>SendInput</c> cuando una carrera de foco/UIPI deniega la
+    /// inyección de entrada. Cualquier otro código nativo es un fallo real y no se reintenta.
+    /// </summary>
+    private static bool IsTransientTransportFault(Exception exception)
+        => exception is COMException
+           || (exception is Win32Exception win32 && win32.NativeErrorCode == ErrorAccessDenied);
 
     /// <summary>
     /// Sobrecarga void de <see cref="RetryUia{T}"/> para operaciones sin valor de retorno

@@ -8,6 +8,7 @@ using FlaUI.Core.Definitions;
 using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
+using FlaUI.UIA3;
 using Xunit;
 
 namespace CommandCenter.Wpf.E2ETests.Tests;
@@ -281,8 +282,12 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
     }
 
     /// <summary>
-    /// POS: escribe el SKU exacto en el buscador y agrega el producto con Enter sobre la primera
-    /// sugerencia (<c>SearchKeyboardBehavior</c>). Devuelve el total Bs.S que muestra el resumen.
+    /// POS: escribe el SKU exacto en el buscador y agrega el producto commiteando la primera
+    /// sugerencia de forma UIA-first: un click real sobre el ítem del popup dispara el
+    /// <c>PreviewMouseLeftButtonDown</c> del template (AddSelectedSuggestionCommand). El Enter del
+    /// behavior queda solo como respaldo cuando el ítem no es accionable por UIA. Se despacha UN
+    /// único commit por espera: despachado el click, nunca se pulsa Enter (el alta no se duplica).
+    /// Devuelve el total Bs.S que muestra el resumen.
     /// </summary>
     private decimal AddFixtureProductToCart(Window window, string sku, string productName, TimeSpan findTimeout)
     {
@@ -293,9 +298,12 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
         // La búsqueda por SKU exacto devuelve una única sugerencia (el producto del fixture).
         searchInput.Text = sku;
 
-        // Interacción real: con la sugerencia cargada, Enter agrega la PRIMERA (SelectedItem ??
-        // Items[0]); si la lista aún no llegó, el atajo es un no-op. Se reintenta hasta que la fila
-        // del carrito aparezca (tras agregar, la lista se limpia y el carrito queda visible).
+        // Un solo commit por espera: una vez despachada la interacción que agrega el producto
+        // (click UIA o Enter de respaldo), solo se observa su efecto (la fila del carrito) dentro
+        // del presupuesto; nunca se re-despacha, por lo que el alta no puede duplicarse.
+        bool commitDispatched = false;
+        using var automation = new UIA3Automation();
+
         var cartRow = Retry.WhileNull(
             () => UiaRetry.RetryUia(() =>
             {
@@ -309,15 +317,55 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
                     }
                 }
 
-                // Si la sugerencia es visible en el árbol UIA se selecciona explícitamente; el
-                // Enter del behavior agrega SelectedItem ?? Items[0].
-                var suggestion = window.FindFirstDescendant(cf => cf.ByAutomationId("Pos_SuggestionsList"))?
+                if (commitDispatched)
+                {
+                    return null;
+                }
+
+                var suggestionsList = FindSuggestionsList(window, automation);
+                if (suggestionsList == null)
+                {
+                    // La búsqueda todavía no expuso el popup: no hay nada que commitear aún.
+                    return null;
+                }
+
+                var suggestion = suggestionsList
                     .FindAllChildren(cf => cf.ByControlType(ControlType.ListItem))
                     .FirstOrDefault();
-                (suggestion?.AsListBoxItem())?.Select();
+                if (suggestion != null)
+                {
+                    // UIA-first: el click real sobre el ítem dispara el PreviewMouseLeftButtonDown
+                    // del template -> AddSelectedSuggestionCommand. El peer WPF del ListBoxItem no
+                    // implementa InvokePattern (solo SelectionItem/ScrollItem), así que el click es
+                    // la interacción de usuario equivalente. Select() solo deja SelectedItem listo
+                    // (no commitea: OnSelectedSuggestionChanged es un no-op).
+                    bool clicked = false;
+                    try
+                    {
+                        suggestion.AsListBoxItem().Select();
+                        suggestion.Click();
+                        clicked = true;
+                    }
+                    catch (FlaUI.Core.Exceptions.ElementNotAvailableException)
+                    {
+                        // La lista se refrescó entre el find y el click: sin input despachado.
+                    }
+                    catch (FlaUI.Core.Exceptions.NoClickablePointException)
+                    {
+                        // Ítem sin punto clickeable (animación/reflow del popup): sin input despachado.
+                    }
 
-                // SendInput va a la ventana en primer plano: se activa la app antes del Enter
-                // (best-effort; el testhost puede haber recuperado el foco).
+                    if (clicked)
+                    {
+                        commitDispatched = true;
+                        return null;
+                    }
+                }
+
+                // Respaldo por teclado: la lista está abierta pero su ítem no es accionable por UIA
+                // (o el click no despachó input). El Enter del behavior agrega SelectedItem ??
+                // Items[0]; el Win32Exception(5) de SendInput lo reintenta UiaRetry como falla
+                // transitoria de foco/inyección.
                 try
                 {
                     window.SetForeground();
@@ -329,13 +377,14 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
 
                 searchInput.Focus();
                 Keyboard.Press(VirtualKeyShort.RETURN);
+                commitDispatched = true;
                 return null;
             }),
             findTimeout);
 
         Assert.True(
             cartRow.Result != null,
-            $"El producto '{productName}' no apareció en el carrito tras el Enter sobre la sugerencia. " +
+            $"El producto '{productName}' no apareció en el carrito tras commitear la sugerencia. " +
             $"Buscador='{searchInput.Text}'. {DescribeSuggestions(window)} {DescribeUi(window)}");
 
         // El total se actualiza por binding: se espera a que el texto deje de ser 0.
@@ -352,6 +401,46 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
             $"El total Bs.S del carrito no se actualizó tras agregar el producto. {DescribeUi(window)}");
 
         return cartTotal.Result!.Value;
+    }
+
+    /// <summary>
+    /// Lista de sugerencias del POS localizable por UIA. El popup de WPF vive en su propia ventana
+    /// (PopupRoot), así que puede no ser descendiente de la principal: se busca primero bajo la
+    /// ventana y, si no está, entre los hijos de nivel superior del proceso (mismo criterio que los
+    /// diálogos del harness). Se ignora una lista fuera de pantalla (popup residual de otra
+    /// búsqueda).
+    /// </summary>
+    private static AutomationElement? FindSuggestionsList(Window window, UIA3Automation automation)
+    {
+        var list = window.FindFirstDescendant(cf => cf.ByAutomationId("Pos_SuggestionsList"));
+        if (list != null && !IsOffscreenSafe(list))
+        {
+            return list;
+        }
+
+        int processId = window.Properties.ProcessId.ValueOrDefault;
+        foreach (var topLevel in automation.GetDesktop().FindAllChildren(cf => cf.ByProcessId(processId)))
+        {
+            list = topLevel.FindFirstDescendant(cf => cf.ByAutomationId("Pos_SuggestionsList"));
+            if (list != null && !IsOffscreenSafe(list))
+            {
+                return list;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsOffscreenSafe(AutomationElement element)
+    {
+        try
+        {
+            return element.IsOffscreen;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
     }
 
     /// <summary>

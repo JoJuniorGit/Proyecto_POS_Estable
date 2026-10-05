@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using CommandCenter.Wpf.E2ETests.Fixtures;
 using Xunit;
@@ -7,13 +8,18 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 
 /// <summary>
 /// Política de reintentos UIA (S4 / D7): solo fallas transitorias de transporte
-/// (<see cref="COMException"/>), acotada por presupuesto de intentos, sin enmascarar el resultado
-/// lógico de la operación ni propagar de más. Son tests puros (sin fixture ni app) y no están gated.
+/// (<see cref="COMException"/> y <see cref="Win32Exception"/> con ERROR_ACCESS_DENIED), acotada por
+/// presupuesto de intentos, sin enmascarar el resultado lógico de la operación ni propagar de más.
+/// Son tests puros (sin fixture ni app) y no están gated.
 /// </summary>
 public class UiaRetryTests
 {
     // COR_E_TIMEOUT: HRESULT del timeout de UI Automation reportado en las corridas flaky.
     private const int TransientUiaTimeoutHResult = unchecked((int)0x80131505);
+
+    // ERROR_ACCESS_DENIED: código nativo que devuelve SendInput cuando una carrera de foco/UIPI
+    // deniega la inyección de entrada (teclado o mouse) en las corridas gated.
+    private const int ErrorAccessDenied = 5;
 
     [Fact]
     public void RetryUia_TransientComFaultsThenSuccess_ReturnsSuccessAfterRetries()
@@ -60,6 +66,77 @@ public class UiaRetryTests
 
         Assert.Equal(4, invocations);
         Assert.Same(lastFault, thrown);
+    }
+
+    [Fact]
+    public void RetryUia_TransientWin32AccessDeniedThenSuccess_ReturnsSuccessAfterRetries()
+    {
+        var invocations = 0;
+
+        var result = UiaRetry.RetryUia(
+            () =>
+            {
+                invocations++;
+                if (invocations < 3)
+                {
+                    throw CreateTransientInputDenialFault();
+                }
+
+                return "recovered";
+            },
+            attempts: 4,
+            backoff: TimeSpan.Zero);
+
+        Assert.Equal(3, invocations);
+        Assert.Equal("recovered", result);
+    }
+
+    [Fact]
+    public void RetryUia_PersistentWin32AccessDenied_ThrowsTheLastFaultAfterExactlyTheAttemptBudget()
+    {
+        var invocations = 0;
+        Win32Exception? lastFault = null;
+
+        var thrown = Assert.Throws<Win32Exception>(() =>
+        {
+            _ = UiaRetry.RetryUia<string?>(
+                () =>
+                {
+                    invocations++;
+                    var fault = CreateTransientInputDenialFault();
+                    lastFault = fault;
+                    throw fault;
+                },
+                attempts: 4,
+                backoff: TimeSpan.Zero);
+        });
+
+        Assert.Equal(4, invocations);
+        Assert.Same(lastFault, thrown);
+        Assert.Equal(ErrorAccessDenied, thrown.NativeErrorCode);
+    }
+
+    [Fact]
+    public void RetryUia_Win32ExceptionWithDifferentErrorCode_PropagatesOnTheFirstAttemptWithoutRetry()
+    {
+        var invocations = 0;
+        var fault = new Win32Exception(2, "Fallo de entrada no transitorio (simulado).");
+
+        var thrown = Assert.Throws<Win32Exception>(() =>
+        {
+            _ = UiaRetry.RetryUia<string?>(
+                () =>
+                {
+                    invocations++;
+                    throw fault;
+                },
+                attempts: 4,
+                backoff: TimeSpan.Zero);
+        });
+
+        Assert.Equal(1, invocations);
+        Assert.Same(fault, thrown);
+        Assert.Equal(2, thrown.NativeErrorCode);
     }
 
     [Fact]
@@ -190,5 +267,10 @@ public class UiaRetryTests
     private static COMException CreateTransientFault()
     {
         return new COMException("Timeout transitorio de UI Automation (simulado).", TransientUiaTimeoutHResult);
+    }
+
+    private static Win32Exception CreateTransientInputDenialFault()
+    {
+        return new Win32Exception(ErrorAccessDenied, "Acceso denegado simulado de SendInput.");
     }
 }

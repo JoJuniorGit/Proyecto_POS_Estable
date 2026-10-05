@@ -320,6 +320,7 @@
                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
                                    HorizontalAlignment="Center"/>
                         <TextBlock Text="{Binding TotalExpectedBsS, StringFormat=Bs.S {0:N2}}"
+                                   AutomationProperties.AutomationId="DailyClosure_ExpectedTotalText"
                                    FontSize="20" FontWeight="Bold"
                                    HorizontalAlignment="Center"
                                    Foreground="#5E35B1"
@@ -342,6 +343,7 @@
                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
                                    HorizontalAlignment="Center"/>
                         <TextBlock Text="{Binding TotalActualBsS, StringFormat=Bs.S {0:N2}}"
+                                   AutomationProperties.AutomationId="DailyClosure_ActualTotalText"
                                    FontSize="20" FontWeight="Bold"
                                    HorizontalAlignment="Center"
                                    Foreground="#1E293B"
@@ -375,6 +377,7 @@
                                 Margin="0,4,0,0"
                                 HorizontalAlignment="Center">
                             <TextBlock Text="{Binding DifferenceStatusLabel}"
+                                       AutomationProperties.AutomationId="DailyClosure_DifferenceStatusLabel"
                                        FontSize="11"
                                        FontWeight="Bold"
                                        Foreground="{Binding DifferenceStatusColor}"/>
@@ -452,6 +455,7 @@
 
             <!-- Confirm Closure Button -->
             <Button Command="{Binding ConfirmClosureCommand}"
+                    AutomationProperties.AutomationId="DailyClosure_ConfirmButton"
                     MinWidth="230"
                     Height="46"
                     Padding="20,0"
