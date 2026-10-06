@@ -33,4 +33,4 @@ decisions:
   clean-02: log via ClientStateLogger + re-sync from server + IDialogService notification; no silent catches
   rdd: off (clone-local)
   branch: V0.15
-next: push/pr/merge (decisión del mantenedor) + sdd-archive
+next: push/pr/merge (decisión del mantenedor)
