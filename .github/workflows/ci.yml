@@ -231,6 +231,9 @@ jobs:
         # si la variable faltara (S5), de modo que este job nunca queda en silent-skip.
         env:
           E2E_POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=root"
+          # 8.148 D6: knob de timeout para el runner CI (mas lento en frio que local); el default
+          # de 10 s resulto insuficiente en corridas iniciales (flakes de timing en esperas de UI).
+          E2E_FIND_TIMEOUT_SECONDS: "45"
         run: dotnet test tests/CommandCenter.Wpf.E2ETests/CommandCenter.Wpf.E2ETests.csproj --no-build --configuration Release --logger "trx;LogFileName=wpf-e2e.trx" --results-directory ./TestResults/E2E
 
       # if-no-files-found por defecto (warn): tolera la ausencia de logs si el fallo fue temprano.
