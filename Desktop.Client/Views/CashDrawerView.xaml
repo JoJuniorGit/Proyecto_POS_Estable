@@ -112,7 +112,7 @@
                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
                         <TextBlock Text="EFECTIVO ESPERADO EN CAJA" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" Opacity="0.8"/>
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                            <TextBlock Text="{Binding FormattedBalanceBsS}" FontSize="38" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                            <TextBlock Text="{Binding FormattedBalanceBsS}" AutomationProperties.AutomationId="CashDrawer_BalanceText" FontSize="38" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                             <TextBlock Text="Bs.S" FontSize="16" FontWeight="Bold" VerticalAlignment="Bottom" Margin="6,0,0,8" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                         </StackPanel>
                         <TextBlock Text="{Binding FormattedBalanceUsd}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,2,0,0"/>
@@ -131,7 +131,7 @@
                         <materialDesign:PackIcon Kind="ArrowDownThick" Width="18" Height="18" Foreground="#27AE60" VerticalAlignment="Center"/>
                         <TextBlock Text="TOTAL INGRESOS" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="6,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock Text="{Binding FormattedTotalIncomeBsS}" FontSize="22" FontWeight="Bold" Foreground="#27AE60" Margin="0,8,0,0"/>
+                    <TextBlock Text="{Binding FormattedTotalIncomeBsS}" AutomationProperties.AutomationId="CashDrawer_TotalIncomeText" FontSize="22" FontWeight="Bold" Foreground="#27AE60" Margin="0,8,0,0"/>
                     <TextBlock Text="Acumulado en sesión" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,2,0,0"/>
                 </StackPanel>
             </Border>

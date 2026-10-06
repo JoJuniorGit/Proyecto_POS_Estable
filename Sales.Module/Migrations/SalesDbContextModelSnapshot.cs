@@ -442,7 +442,8 @@ namespace Sales.Module.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ClosureDate");
+                    b.HasIndex("ClosureDate")
+                        .IsUnique();
 
                     b.ToTable("DailyClosures");
                 });

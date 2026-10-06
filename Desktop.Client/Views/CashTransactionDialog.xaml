@@ -17,6 +17,7 @@
 
         <!-- Amount (Integer Only using Behavior) -->
         <TextBox x:Name="AmountBox"
+                 AutomationProperties.AutomationId="CashTransaction_AmountInput"
                  b:IntegerTextBoxBehavior.IsIntegerOnly="True"
                  materialDesign:HintAssist.Hint="Amount"
                  materialDesign:HintAssist.IsFloating="True"
@@ -26,6 +27,7 @@
 
         <!-- Description (Reason) -->
         <TextBox x:Name="ReasonBox"
+                 AutomationProperties.AutomationId="CashTransaction_ReasonInput"
                  materialDesign:HintAssist.Hint="Reason / Description (Max 40 chars)"
                  materialDesign:HintAssist.HelperText="Máximo 40 caracteres"
                  materialDesign:HintAssist.IsFloating="True"
@@ -51,6 +53,7 @@
                     Margin="0,0,8,0"/>
             
             <Button Content="CONFIRM"
+                    AutomationProperties.AutomationId="CashTransaction_ConfirmButton"
                     Click="Confirm_Click"
                     Style="{StaticResource MaterialDesignFlatButton}"
                     Foreground="{DynamicResource PrimaryHueMidBrush}"/>

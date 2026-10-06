@@ -20,16 +20,24 @@ export async function getSale(saleId) {
 
 /**
  * Agrega un producto a la venta.
+ * 8.149 (SRE-02): el backend exige Idempotency-Key; api.js reutiliza la MISMA clave en su
+ * reintento interno de POSTs con clave, de modo que un microcorte no duplica el item.
  * @param {number} saleId
  * @param {number} productId
  * @param {number} quantity
  * @param {number} exchangeRate
+ * @param {string} [idempotencyKey]
  */
-export async function addItemToSale(saleId, productId, quantity, exchangeRate) {
+export async function addItemToSale(saleId, productId, quantity, exchangeRate, idempotencyKey = null) {
+  const key = idempotencyKey || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `add-item-${saleId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`);
   return await api.post(`/api/sales/${saleId}/items`, {
     productId,
     quantity,
     exchangeRate,
+  }, {
+    headers: {
+      'Idempotency-Key': key,
+    },
   });
 }
 

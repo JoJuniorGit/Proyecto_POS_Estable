@@ -65,6 +65,7 @@
                             Visibility="Collapsed" />
                     
                     <Button x:Name="BtnYes"
+                            AutomationProperties.AutomationId="CustomDialog_ConfirmButton"
                             Content="Sí" 
                             IsDefault="True"
                             Click="BtnYes_Click"

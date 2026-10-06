@@ -318,15 +318,33 @@ public class SalesServiceUnitTests
             Id = 99,
             Name = "Adelanto de Efectivo",
             IsCashAdvance = true,
-            IsActive = true
+            IsActive = true,
+            PriceUSD = 10m,
+            PriceRetailUSD = 10m
         };
 
         inventoryMock.Setup(i => i.GetSaleProductByIdAsync(99)).ReturnsAsync(advProduct);
+        inventoryMock.Setup(i => i.GetSaleProductsByIdsAsync(It.IsAny<System.Collections.Generic.IEnumerable<int>>()))
+            .ReturnsAsync(new List<SaleProductInfoDto> { advProduct });
         inventoryMock.Setup(i => i.GetTodayExchangeRateAsync()).ReturnsAsync(50m);
 
         var sale = await service.StartSaleAsync();
-        var itemAdded = await service.AddItemAsync(sale.Id, 99, 1, 50m, customUnitPriceUsd: 10m, customUnitPriceLocal: 500m);
-        Assert.NotNull(itemAdded);
+
+        // 8.149 (SEC-02): AddItemAsync ya rechaza adelantos; el flujo legítimo
+        // (CashAdvanceCoordinator → CreateCashAdvanceSaleAsync) crea el SaleItem directamente.
+        var saleEntity = await context.Sales.Include(s => s.Items).FirstAsync(s => s.Id == sale.Id);
+        saleEntity.Items.Add(new SaleItem
+        {
+            ProductId = 99,
+            ProductName = "Adelanto de Efectivo",
+            Quantity = 1m,
+            UnitPrice = 10m,
+            UnitPriceBsS = 500m,
+            Subtotal = 10m,
+            SubtotalBsS = 500m,
+            IsCustomPrice = true
+        });
+        await context.SaveChangesAsync();
 
         var payments = new List<PaymentInfo>
         {
@@ -340,7 +358,12 @@ public class SalesServiceUnitTests
         Assert.NotNull(completed);
         Assert.Equal(SaleStatus.Completed, completed.Status);
 
-        // Verify that stock is not deducted for cash advance products
+        // Verify that stock is not deducted for cash advance products (skip spec-mandated, REQ-ADB-11)
+        inventoryMock.Verify(i => i.UpdateStockBatchAsync(
+            It.IsAny<System.Collections.Generic.IEnumerable<StockDeductionRequest>>(),
+            It.IsAny<string?>(),
+            It.IsAny<bool>(),
+            It.IsAny<System.Threading.CancellationToken>()), Times.Never);
         inventoryMock.Verify(i => i.UpdateStockAsync(99, It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
 

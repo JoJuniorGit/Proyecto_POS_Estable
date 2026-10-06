@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
 using Core.DTOs;
+using Core.Logging;
 using Desktop.Client.Helpers;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
@@ -18,6 +19,10 @@ namespace Desktop.Client.ViewModels;
 /// </summary>
 public partial class CartViewModel : ObservableObject, System.IDisposable
 {
+    // 8.149 / CLEAN-02: mensajes exactos del spec para el resultado del rollback de cantidades.
+    private const string QuantityRollbackMessage = "No se pudo actualizar la cantidad. Se restauró el valor del servidor.";
+    private const string QuantityStaleWarningMessage = "No se pudo actualizar la cantidad y no se pudo restaurar el estado. Verifique el carrito antes de cobrar.";
+
     private readonly ISalesService _salesService;
     private readonly IExchangeRateService _exchangeRateService;
     private readonly IDialogService? _dialogService;
@@ -55,9 +60,10 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                     var updated = await _salesService.GetSaleAsync(CurrentSale.Id);
                     CurrentSale = updated;
                 }
-                catch
+                catch (System.Exception ex)
                 {
-                    // Ignore transient network errors during background refresh
+                    // Best-effort: refresco de fondo; se registra para diagnóstico sin interrumpir el flujo.
+                    ClientStateLogger.LogError($"Fallo al refrescar la venta en espera #{CurrentSale?.Id}: {ex.Message}", nameof(CartViewModel));
                 }
             }
         });
@@ -149,6 +155,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
         catch (System.Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al actualizar la lista de precios de la venta #{CurrentSale?.Id}: {ex.Message}", nameof(CartViewModel));
             if (_dialogService != null) _dialogService.ShowWarning("Lista de Precios", ex.Message);
         }
     }
@@ -221,8 +228,9 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                 _recoveryStore?.Clear();
             }
         }
-        catch
+        catch (System.Exception ex)
         {
+            ClientStateLogger.LogError($"No se pudo persistir el snapshot de recuperación del carrito: {ex.Message}", nameof(CartViewModel));
         }
     }
 
@@ -291,9 +299,10 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             var updated = await _salesService.GetSaleAsync(CurrentSale!.Id);
             _dispatcherInvoker.Invoke(() => CurrentSale = updated);
         }
-        catch
+        catch (System.Exception ex)
         {
-            // Ignorar errores de red transitorios (misma semántica que el código previo).
+            // Best-effort: misma semántica que antes (ignorar error transitorio), ahora registrado.
+            ClientStateLogger.LogError($"No se pudo refrescar la venta en espera #{CurrentSale?.Id} desde el servidor: {ex.Message}", nameof(CartViewModel));
         }
     }
 
@@ -310,6 +319,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
         catch (System.Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al incrementar la cantidad del item {vm.Id}: {ex.Message}", nameof(CartViewModel));
             if (_dialogService != null) _dialogService.ShowWarning("Error", ex.Message);
         }
     }
@@ -333,6 +343,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
         catch (System.Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al decrementar la cantidad del item {vm.Id}: {ex.Message}", nameof(CartViewModel));
             if (_dialogService != null) _dialogService.ShowWarning("Error", ex.Message);
         }
     }
@@ -347,7 +358,34 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
         catch (System.Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al remover el item {vm.Id} de la venta: {ex.Message}", nameof(CartViewModel));
             if (_dialogService != null) _dialogService.ShowError("Error", $"Error removing item: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 8.149 / CLEAN-02: re-sincroniza el carrito desde el servidor tras un fallo de commit.
+    /// Devuelve true si se restauró el estado autoritativo; false si la re-sincronización también
+    /// falló (el operador debe ser advertido de que el estado puede estar stale).
+    /// </summary>
+    private async Task<bool> TryRestoreAuthoritativeCartAsync()
+    {
+        try
+        {
+            if (CurrentSale == null)
+            {
+                ClientStateLogger.LogError("No se pudo restaurar el estado del carrito: no hay venta activa.", nameof(CartViewModel));
+                return false;
+            }
+
+            var refreshed = await _salesService.GetSaleAsync(CurrentSale.Id);
+            _dispatcherInvoker.Invoke(() => CurrentSale = refreshed);
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            ClientStateLogger.LogError($"No se pudo restaurar el estado del carrito desde el servidor: {ex.Message}", nameof(CartViewModel));
+            return false;
         }
     }
 
@@ -367,27 +405,17 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             }
 
             var updated = await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, itemId, newQty, _exchangeRateService.CurrentRate);
-            
-            var existingVm = CartItems.FirstOrDefault(i => i.Id == itemId);
-            if (existingVm != null)
-            {
-                var updatedItem = updated.Items.FirstOrDefault(i => i.Id == itemId);
-                if (updatedItem != null)
-                {
-                    existingVm.Model.Quantity = updatedItem.Quantity;
-                    existingVm.Model.Subtotal = updatedItem.Subtotal;
-                    existingVm.Model.UnitPriceBsS = updatedItem.UnitPriceBsS;
-                    existingVm.Model.SubtotalBsS = updatedItem.SubtotalBsS;
-                    existingVm.NotifyRecalculation();
-                }
-            }
 
-            _currentSale = updated;
-            RecalculateTotals();
+            // 8.149 / CLEAN-02: sincronizar por el setter para que UpdateCollection reconstruya las líneas
+            // desde la respuesta autoritativa y PersistRecoveryState quede coherente con la colección.
+            CurrentSale = updated;
         }
         catch (System.Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[CartViewModel] CommitItemQuantityAsync error: {ex.Message}");
+            ClientStateLogger.LogError($"Fallo al actualizar la cantidad del item {itemId}: {ex.Message}", nameof(CartViewModel));
+
+            bool restored = await TryRestoreAuthoritativeCartAsync();
+            _dialogService?.ShowError("Error", restored ? QuantityRollbackMessage : QuantityStaleWarningMessage);
         }
     }
 
@@ -408,7 +436,10 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
         catch (System.Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[CartViewModel] FlushAllQuantitiesAsync error: {ex.Message}");
+            ClientStateLogger.LogError($"Fallo al sincronizar las cantidades pendientes del carrito: {ex.Message}", nameof(CartViewModel));
+
+            bool restored = await TryRestoreAuthoritativeCartAsync();
+            _dialogService?.ShowError("Error", restored ? QuantityRollbackMessage : QuantityStaleWarningMessage);
         }
     }
 

@@ -35,13 +35,13 @@ public partial class InventoryService
             var productsData = await _context.Products
                 .AsNoTracking()
                 .Where(p => productIds.Contains(p.Id))
-                .Select(p => new
+                .Select(p => new StockDeductionProductInfo
                 {
-                    p.Id,
-                    p.Name,
-                    p.SKU,
-                    p.IsCashAdvance,
-                    p.ConversionFactor,
+                    Id = p.Id,
+                    Name = p.Name,
+                    SKU = p.SKU,
+                    IsCashAdvance = p.IsCashAdvance,
+                    ConversionFactor = p.ConversionFactor,
                     ParentId = p.ParentProductId,
                     ParentIsStockShared = p.ParentProduct != null && p.ParentProduct.IsStockShared,
                     ParentName = p.ParentProduct != null ? p.ParentProduct.Name : null,
@@ -49,89 +49,63 @@ public partial class InventoryService
                 })
                 .ToDictionaryAsync(p => p.Id, cancellationToken);
 
-            var movements = new List<StockMovement>();
-            var skusToInvalidate = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // 8.149-T1 (SRE-01): resolver + consolidar ANTES de tocar stock: una deducción por
+            // (target, razón, venta) con la cantidad sumada, ordenada ascendente por ProductId, para
+            // que lotes concurrentes adquieran los row locks en la misma secuencia y sin perder los
+            // totales por producto del comportamiento legado (cualquier orden de entrada).
+            var plan = StockDeductionConsolidator.ResolveAndConsolidate(itemList, productsData);
+            if (plan.Deductions.Count == 0) return;
 
-            // 8I-M4: se recopila el detalle de cada ítem para construir los movimientos DESPUÉS de
-            // la relectura batch (antes: una relectura AsNoTracking por ítem = 2 queries por producto).
-            var pendingMovements = new List<(int TargetProductId, decimal QuantityChange, string Reason, int? SaleId)>();
             var updatedTargetIds = new HashSet<int>();
 
-            foreach (var item in itemList)
+            foreach (var deduction in plan.Deductions)
             {
-                if (!productsData.TryGetValue(item.ProductId, out var productData))
-                {
-                    throw new KeyNotFoundException($"Producto {item.ProductId} no encontrado");
-                }
-
-                if (productData.IsCashAdvance)
-                {
-                    throw new InvalidOperationException($"El producto '{productData.Name}' es un servicio de adelanto de efectivo y no maneja inventario físico.");
-                }
-
-                int targetProductId = item.ProductId;
-                decimal effectiveQuantityChange = item.QuantityChange;
-                string movementReason = item.Reason;
-
-                if (productData.ParentId.HasValue && productData.ParentIsStockShared)
-                {
-                    targetProductId = productData.ParentId.Value;
-                    decimal factor = productData.ConversionFactor > 0 ? productData.ConversionFactor : 1.0000m;
-                    effectiveQuantityChange = ApplyConversion(item.QuantityChange, factor, item.QuantityChange < 0);
-                    movementReason = $"Variante: {productData.Name} (SKU: {productData.SKU}, Factor: {factor:G29}) | {item.Reason}";
-                }
-
                 if (_context.Database.IsRelational())
                 {
-                    if (effectiveQuantityChange < 0 && !allowNegativeStock)
+                    if (deduction.QuantityChange < 0 && !allowNegativeStock)
                     {
                         // Conditional decrement preventing negative stock
                         int rows = await _context.Products
-                            .Where(p => p.Id == targetProductId && (p.StockQuantity + effectiveQuantityChange) >= 0)
+                            .Where(p => p.Id == deduction.TargetProductId && (p.StockQuantity + deduction.QuantityChange) >= 0)
                             .ExecuteUpdateAsync(setters => setters
-                                .SetProperty(p => p.StockQuantity, p => p.StockQuantity + effectiveQuantityChange)
+                                .SetProperty(p => p.StockQuantity, p => p.StockQuantity + deduction.QuantityChange)
                                 .SetProperty(p => p.UpdatedAt, DateTime.UtcNow), cancellationToken);
 
                         if (rows == 0)
                         {
-                            var targetProd = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == targetProductId, cancellationToken);
-                            if (targetProd == null) throw new KeyNotFoundException($"Producto {targetProductId} no encontrado");
-                            throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(effectiveQuantityChange)}.");
+                            var targetProd = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == deduction.TargetProductId, cancellationToken);
+                            if (targetProd == null) throw new KeyNotFoundException($"Producto {deduction.TargetProductId} no encontrado");
+                            throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(deduction.QuantityChange)}.");
                         }
                     }
                     else
                     {
                         // Unconditional increment or sale deduction allowing negative stock
                         int rows = await _context.Products
-                            .Where(p => p.Id == targetProductId)
+                            .Where(p => p.Id == deduction.TargetProductId)
                             .ExecuteUpdateAsync(setters => setters
-                                .SetProperty(p => p.StockQuantity, p => p.StockQuantity + effectiveQuantityChange)
+                                .SetProperty(p => p.StockQuantity, p => p.StockQuantity + deduction.QuantityChange)
                                 .SetProperty(p => p.UpdatedAt, DateTime.UtcNow), cancellationToken);
 
-                        if (rows == 0) throw new KeyNotFoundException($"Producto {targetProductId} no encontrado");
+                        if (rows == 0) throw new KeyNotFoundException($"Producto {deduction.TargetProductId} no encontrado");
                     }
 
-                    updatedTargetIds.Add(targetProductId);
+                    updatedTargetIds.Add(deduction.TargetProductId);
                 }
                 else
                 {
                     // In-Memory Database execution for unit tests
-                    var targetProd = await _context.Products.FindAsync(new object[] { targetProductId }, cancellationToken);
-                    if (targetProd == null) throw new KeyNotFoundException($"Producto {targetProductId} no encontrado");
+                    var targetProd = await _context.Products.FindAsync(new object[] { deduction.TargetProductId }, cancellationToken);
+                    if (targetProd == null) throw new KeyNotFoundException($"Producto {deduction.TargetProductId} no encontrado");
 
-                    if (effectiveQuantityChange < 0 && !allowNegativeStock && (targetProd.StockQuantity + effectiveQuantityChange) < 0)
+                    if (deduction.QuantityChange < 0 && !allowNegativeStock && (targetProd.StockQuantity + deduction.QuantityChange) < 0)
                     {
-                        throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(effectiveQuantityChange)}.");
+                        throw new InvalidOperationException($"Stock insuficiente para el producto '{targetProd.Name}' (SKU: {targetProd.SKU}). Stock actual: {targetProd.StockQuantity}, deducción requerida: {Math.Abs(deduction.QuantityChange)}.");
                     }
 
-                    targetProd.StockQuantity += effectiveQuantityChange;
+                    targetProd.StockQuantity += deduction.QuantityChange;
                     targetProd.UpdatedAt = DateTime.UtcNow;
                 }
-
-                pendingMovements.Add((targetProductId, effectiveQuantityChange, movementReason, item.SaleId));
-
-                if (!string.IsNullOrWhiteSpace(productData.SKU)) skusToInvalidate.Add(productData.SKU);
-                if (!string.IsNullOrWhiteSpace(productData.ParentSKU)) skusToInvalidate.Add(productData.ParentSKU);
             }
 
             // 8I-M4: NewStockLevel se resuelve con UNA relectura batch (WHERE Id IN ...) en lugar
@@ -151,27 +125,28 @@ public partial class InventoryService
                 }
             }
 
-            foreach (var (targetId, quantityChange, movementReason, saleId) in pendingMovements)
+            var movements = new List<StockMovement>();
+            foreach (var deduction in plan.Deductions)
             {
                 decimal stockAfter;
                 if (_context.Database.IsRelational())
                 {
-                    stockAfter = stockByProductId.TryGetValue(targetId, out var s) ? s : 0m;
+                    stockAfter = stockByProductId.TryGetValue(deduction.TargetProductId, out var s) ? s : 0m;
                 }
                 else
                 {
-                    var inMemoryTarget = await _context.Products.FindAsync(new object[] { targetId }, cancellationToken);
+                    var inMemoryTarget = await _context.Products.FindAsync(new object[] { deduction.TargetProductId }, cancellationToken);
                     stockAfter = inMemoryTarget?.StockQuantity ?? 0m;
                 }
 
                 movements.Add(new StockMovement
                 {
-                    ProductId = targetId,
-                    QuantityChange = quantityChange,
+                    ProductId = deduction.TargetProductId,
+                    QuantityChange = deduction.QuantityChange,
                     NewStockLevel = stockAfter,
-                    Reason = movementReason,
+                    Reason = deduction.Reason,
                     // 8.16-H03: idempotencia estructurada por SaleId (si el caller lo provee).
-                    SaleId = saleId,
+                    SaleId = deduction.SaleId,
                     MovementDate = DateTime.UtcNow,
                     UserId = _currentUserService?.UserId ?? userId
                 });
@@ -185,7 +160,7 @@ public partial class InventoryService
                 await tx.CommitAsync(cancellationToken);
             }
 
-            foreach (var sku in skusToInvalidate)
+            foreach (var sku in plan.SkusToInvalidate)
             {
                 InvalidateProductSkuCache(sku);
             }

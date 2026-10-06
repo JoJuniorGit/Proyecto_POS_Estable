@@ -26,7 +26,15 @@ public class WpfAppFixture : IDisposable
         Automation = new UIA3Automation();
     }
 
-    public Window Launch(string? appPath = null)
+    /// <summary>
+    /// Lanza Desktop.Client.exe. Por defecto conserva el modo mock (<c>--e2e</c>); el harness
+    /// full-stack pasa <paramref name="arguments"/> vacío y variables de entorno por proceso
+    /// (p. ej. <c>BackendSettings__BaseAddress</c>) sin tocar el comportamiento existente.
+    /// </summary>
+    public Window Launch(
+        string? appPath = null,
+        IReadOnlyDictionary<string, string>? environment = null,
+        string arguments = "--e2e")
     {
         TerminateLaunchedApps();
 
@@ -53,8 +61,17 @@ public class WpfAppFixture : IDisposable
         var processStartInfo = new ProcessStartInfo(appPath)
         {
             WorkingDirectory = Path.GetDirectoryName(appPath),
-            Arguments = "--e2e"
+            Arguments = arguments
         };
+
+        if (environment != null)
+        {
+            // ProcessStartInfo.Environment hereda el entorno actual y aplica overrides por proceso.
+            foreach (var variable in environment)
+            {
+                processStartInfo.Environment[variable.Key] = variable.Value;
+            }
+        }
 
         var app = Application.Launch(processStartInfo);
         _launchedApps.Add(app);

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Backend.API.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -67,7 +68,8 @@ public partial class SalesController
 
         string requestPath = $"/api/sales/{id}/deliveries";
         string bodyJson = GetActorUserId() + "|" + JsonSerializer.Serialize(request);
-        var resolved = await ResolveIdempotencyAsync(
+        var resolved = await _idempotencyResolver.ResolveAsync(
+            this,
             requestPath,
             bodyJson,
             missingKeyMessage: "El encabezado Idempotency-Key es obligatorio para registrar una entrega parcial.",
@@ -113,9 +115,9 @@ public partial class SalesController
         {
             return this.ApiBadRequest(ex.Message);
         }
-        catch (DbUpdateException ex) when (IsIdempotencyUniqueViolation(ex))
+        catch (DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
         {
-            return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash);
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash);
         }
     }
 }

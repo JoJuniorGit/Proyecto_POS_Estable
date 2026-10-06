@@ -106,6 +106,8 @@ public class DailyClosureControllerTests
                 }, "TestAuth"))
             }
         };
+        // 8.149 (SRE-02): POST /api/dailyclosure exige Idempotency-Key.
+        controller.ControllerContext.HttpContext.Request.Headers["Idempotency-Key"] = "CLOSURE-CTRL-" + System.Guid.NewGuid().ToString("N");
 
         var request = new CreateClosureRequest
         {
@@ -146,6 +148,8 @@ public class DailyClosureControllerTests
                 }, "TestAuth"))
             }
         };
+        // 8.149 (SRE-02): POST /api/dailyclosure exige Idempotency-Key.
+        controller.ControllerContext.HttpContext.Request.Headers["Idempotency-Key"] = "CLOSURE-CTRL-" + System.Guid.NewGuid().ToString("N");
 
         var request = new CreateClosureRequest
         {
@@ -184,6 +188,8 @@ public class DailyClosureControllerTests
                 }, "TestAuth"))
             }
         };
+        // 8.149 (SRE-02): POST /api/dailyclosure exige Idempotency-Key.
+        controller.ControllerContext.HttpContext.Request.Headers["Idempotency-Key"] = "CLOSURE-CTRL-" + System.Guid.NewGuid().ToString("N");
 
         var request = new CloseShiftRequest
         {

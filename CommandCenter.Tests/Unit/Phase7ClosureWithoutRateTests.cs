@@ -49,10 +49,10 @@ public class Phase7ClosureWithoutRateTests
 
     private static void AttachUser(ControllerBase controller, ClaimsPrincipal user)
     {
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext { User = user }
-        };
+        var httpContext = new DefaultHttpContext { User = user };
+        // 8.149 (SRE-02): POST /api/dailyclosure exige Idempotency-Key.
+        httpContext.Request.Headers["Idempotency-Key"] = "PHASE7-CLOSURE-" + Guid.NewGuid().ToString("N");
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
     }
 
     [Fact]

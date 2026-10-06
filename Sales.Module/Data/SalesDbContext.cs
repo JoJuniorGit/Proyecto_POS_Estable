@@ -262,7 +262,8 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<DailyClosure>().Property(dc => dc.TotalExpectedBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<DailyClosure>().Property(dc => dc.TotalActualBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<DailyClosure>().Property(dc => dc.TotalDifferenceBsS).HasColumnType("decimal(18,2)");
-        modelBuilder.Entity<DailyClosure>().HasIndex(dc => dc.ClosureDate);
+        // 8.149 (SRE-02): un único cierre por fecha (guard transaccional + índice único).
+        modelBuilder.Entity<DailyClosure>().HasIndex(dc => dc.ClosureDate).IsUnique();
 
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.ExpectedAmountBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.ActualAmountBsS).HasColumnType("decimal(18,2)");

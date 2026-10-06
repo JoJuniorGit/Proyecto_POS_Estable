@@ -177,6 +177,7 @@
                                 </Grid.ColumnDefinitions>
                                 <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,2,0"/>
                                 <TextBox Grid.Column="1"
+                                         AutomationProperties.AutomationId="SalesHistory_SearchInput"
                                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                          materialDesign:HintAssist.Hint="N° de factura, cliente o cajero..."
                                          materialDesign:TextFieldAssist.HasClearButton="True"
@@ -705,7 +706,9 @@
                 <!-- Total del Período -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
                     <TextBlock Text="Total del Período:" Foreground="#64748B" FontSize="13" FontWeight="SemiBold" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding TotalBsSForThePeriod, StringFormat='{}Bs.S {0:N2}'}" Foreground="#5E35B1" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"/>
+                    <TextBlock Text="{Binding TotalBsSForThePeriod, StringFormat='{}Bs.S {0:N2}'}" 
+                               AutomationProperties.AutomationId="SalesHistory_PeriodTotal"
+                               Foreground="#5E35B1" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"/>
                 </StackPanel>
 
                 <!-- Barra de Paginación Avanzada -->
@@ -719,7 +722,8 @@
                         Effect="{StaticResource EnterpriseCardShadow}">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <!-- Resumen -->
-                        <TextBlock Text="{Binding PageSummary}" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,14,0" Foreground="#475569"/>
+                        <TextBlock AutomationProperties.AutomationId="SalesHistory_PageSummary"
+                                   Text="{Binding PageSummary}" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,14,0" Foreground="#475569"/>
 
                         <!-- Botón Primera Página (<<) -->
                         <Button Command="{Binding FirstPageCommand}" 

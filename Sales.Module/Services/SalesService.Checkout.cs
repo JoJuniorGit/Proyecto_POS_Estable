@@ -103,14 +103,6 @@ public partial class SalesService
                 sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
                 await RecalculateTotalAsync(sale);
 
-                // 8.7-B2: Acotar el ajuste de redondeo a un límite operacional (refuerzo del [Range]).
-                if (Math.Abs(roundingAdjustment) > 1000m)
-                {
-                    throw new InvalidOperationException($"Rechazo Defensivo: el ajuste de redondeo ({roundingAdjustment:F2}) excede el límite operacional de ±1000.");
-                }
-
-                sale.RoundingAdjustment = roundingAdjustment;
-
             decimal existingPaidUsd = sale.Payments.Sum(p => p.Amount);
             decimal newPaymentsPaidUsd = payments != null 
                 ? payments.Sum(p => p.Amount > 0 ? p.Amount : (p.AmountLocal > 0 && exchangeRate > 0 ? Math.Round(p.AmountLocal / exchangeRate, 2, MidpointRounding.AwayFromZero) : 0m)) 
@@ -279,7 +271,12 @@ public partial class SalesService
             sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
             await RecalculateTotalAsync(sale);
             sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
-            sale.RoundingAdjustment = roundingAdjustment;
+
+            // 8.149 (SEC-01): `roundingAdjustment` queda en la firma por compatibilidad del contrato (API/WPF),
+            // pero se ignora: el ajuste se recalcula contra los pagos persistidos, espejo exacto del checkout-preview.
+            decimal totalPaidBsS = sale.Payments.Sum(p => p.AmountBsS);
+            decimal remainingUsd = Math.Round(sale.TotalUSD - sale.Payments.Sum(p => p.Amount), 2, MidpointRounding.AwayFromZero);
+            sale.RoundingAdjustment = remainingUsd <= 0.01m ? PricingCalculator.RoundToDigital(totalPaidBsS - sale.TotalBsS) : 0m;
 
             // Synchronous Stock Deduction inside Transaction (H-SAL-2 / H-INV-1 / A1)
             var productsDict = new Dictionary<int, SaleProductInfoDto>();

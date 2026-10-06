@@ -68,7 +68,14 @@ public class CashDrawerService : ICashDrawerService
             ExchangeRate = exchangeRate
         };
 
-        var response = await _httpClient.PostAsJsonAsync("api/cashdrawer/transaction", request);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/cashdrawer/transaction")
+        {
+            Content = JsonContent.Create(request)
+        };
+        // 8.149 (SRE-02): el backend exige Idempotency-Key; el retry del ResilienceHandler reenvia el
+        // MISMO request, por lo que la clave se mantiene estable dentro del intento logico.
+        httpRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        var response = await _httpClient.SendAsync(httpRequest);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<CashTransactionDto>())!;
     }

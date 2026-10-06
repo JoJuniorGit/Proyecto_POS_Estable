@@ -347,7 +347,7 @@ public partial class PriceListTests
     }
 
     [Fact]
-    public async Task AddSaleItem_WhenCashAdvanceProduct_AllowsCustomPriceWithoutExplicitAuthorization()
+    public async Task AddSaleItem_WhenCashAdvanceProduct_ThrowsExactGuardMessage()
     {
         using var context = GetInMemoryDbContext();
         var product = new Product { Id = 313, Name = "Adelanto Efectivo", PriceUSD = 1m, IsCashAdvance = true };
@@ -359,11 +359,14 @@ public partial class PriceListTests
 
         var service = new SalesService(context, mockInv.Object, Mock.Of<IMediator>(), Mock.Of<ICashDrawerService>(), Mock.Of<ISystemSettingsService>());
 
-        var result = await service.AddItemAsync(1, 313, 1m, 40m, customUnitPriceUsd: 0.50m);
+        // 8.149 (SEC-02): el adelanto ya no se agrega por el flujo de ítems de venta, ni con precio custom.
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.AddItemAsync(1, 313, 1m, 40m, customUnitPriceUsd: 0.50m));
 
-        var item = Assert.Single(result.Items);
-        Assert.Equal(0.50m, item.UnitPrice);
-        Assert.True(item.IsCustomPrice);
+        Assert.Equal("Los productos de adelanto de efectivo no pueden agregarse ni modificarse en una venta; use el flujo de adelanto de efectivo.", ex.Message);
+
+        var persisted = await context.Sales.Include(s => s.Items).AsNoTracking().FirstAsync(s => s.Id == 1);
+        Assert.Empty(persisted.Items);
     }
 
     private InventoryDbContext GetInMemoryInventoryDbContext()

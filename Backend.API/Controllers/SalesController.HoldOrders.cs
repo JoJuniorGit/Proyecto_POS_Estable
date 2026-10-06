@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Backend.API.Services;
 using Core.DTOs;
 using Sales.Module.DTOs;
 using System.Threading;
@@ -20,7 +21,7 @@ public partial class SalesController
         string requestPath = $"/api/sales/{id}/hold";
         string bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
 
-        var resolved = await ResolveIdempotencyAsync(requestPath, bodyJson);
+        var resolved = await _idempotencyResolver.ResolveAsync(this, requestPath, bodyJson);
         if (resolved.ShouldStop) return resolved.BlockingResult!;
 
         try
@@ -32,9 +33,9 @@ public partial class SalesController
             }
             return Ok(sale);
         }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.Message.Contains("IX_IdempotentRequests") || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"))
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
         {
-            return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash);
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash);
         }
     }
 
@@ -75,7 +76,7 @@ public partial class SalesController
         string requestPath = $"/api/sales/{id}/payments";
         string bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
 
-        var resolved = await ResolveIdempotencyAsync(requestPath, bodyJson);
+        var resolved = await _idempotencyResolver.ResolveAsync(this, requestPath, bodyJson);
         if (resolved.ShouldStop) return resolved.BlockingResult!;
 
         try
@@ -87,9 +88,9 @@ public partial class SalesController
             }
             return Ok(sale);
         }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.Message.Contains("IX_IdempotentRequests") || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"))
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
         {
-            return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash);
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash);
         }
     }
 
@@ -107,7 +108,7 @@ public partial class SalesController
         string requestPath = $"/api/sales/{id}/payments/batch";
         string bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
 
-        var resolved = await ResolveIdempotencyAsync(requestPath, bodyJson);
+        var resolved = await _idempotencyResolver.ResolveAsync(this, requestPath, bodyJson);
         if (resolved.ShouldStop) return resolved.BlockingResult!;
 
         try
@@ -119,9 +120,9 @@ public partial class SalesController
             }
             return Ok(sale);
         }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.Message.Contains("IX_IdempotentRequests") || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505"))
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
         {
-            return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash);
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash);
         }
     }
 

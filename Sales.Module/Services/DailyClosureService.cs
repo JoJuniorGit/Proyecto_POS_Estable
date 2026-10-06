@@ -18,6 +18,9 @@ public partial class DailyClosureService : IDailyClosureService
 {
     private const int UnattributedChangeMethodId = 0;
 
+    // 8.149 (SRE-02): mensaje exacto del conflicto de fecha duplicada (guard + índice único).
+    public const string DuplicateClosureDateMessage = "Ya existe un cierre para esta fecha.";
+
     private readonly SalesDbContext _context;
     private readonly ITodayExchangeRateProvider _rateProvider;
     private readonly ICashDrawerService _cashDrawerService;
@@ -194,6 +197,16 @@ public partial class DailyClosureService : IDailyClosureService
 
         try
         {
+            // 8.149 (SRE-02): guard intra-transacción contra un segundo cierre para la misma
+            // fecha; el índice único de ClosureDate es la defensa de último recurso ante carreras.
+            bool closureDateTaken = await _context.DailyClosures
+                .AsNoTracking()
+                .AnyAsync(dc => dc.ClosureDate == command.ClosureDateUtc, cancellationToken);
+            if (closureDateTaken)
+            {
+                throw new InvalidOperationException(DuplicateClosureDateMessage);
+            }
+
             var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(command.ClosureDateUtc, cancellationToken);
             var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
 

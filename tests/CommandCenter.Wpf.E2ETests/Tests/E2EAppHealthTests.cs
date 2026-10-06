@@ -33,8 +33,8 @@ public class E2EAppHealthTests : IClassFixture<WpfAppFixture>
 
         // El badge de tasa del header muestra "Tasa: 50,00 Bs/$" (o "50.00" según cultura).
         var rateText = Retry.WhileNull(
-            () => window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Text))
-                .FirstOrDefault(e => (e.Name ?? string.Empty).StartsWith("Tasa", StringComparison.Ordinal)),
+            () => UiaRetry.RetryUia(() => window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Text))
+                .FirstOrDefault(e => (e.Name ?? string.Empty).StartsWith("Tasa", StringComparison.Ordinal))),
             TimeSpan.FromSeconds(10));
         Assert.NotNull(rateText.Result);
         Assert.Contains("50", rateText.Result!.Name);
@@ -106,7 +106,7 @@ public class E2EAppHealthTests : IClassFixture<WpfAppFixture>
             if (navId == "Nav_BtnSupplierInvoices")
             {
                 var title = Retry.WhileNull(
-                    () => window.FindFirstDescendant(cf => cf.ByAutomationId("SupplierInvoice_Title")),
+                    () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId("SupplierInvoice_Title"))),
                     TimeSpan.FromSeconds(5));
                 if (title.Result == null)
                 {

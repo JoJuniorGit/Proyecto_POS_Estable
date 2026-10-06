@@ -1,0 +1,39 @@
+change: 2026-10-04-wpf-e2e-full-stack
+store: openspec
+scope: e2e-testing-infrastructure
+created: 2026-10-04
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: verified
+apply:
+  slice: 6/6
+  branch: V0.15
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-04-wpf-e2e-full-stack/verify-report.md
+verify_note: "4/5 requisitos (1 partial CI-runtime), 11/13 escenarios compliant + 2 partials CI-runtime, 0 UNTESTED, 0 FAILING; build 0/0; suite 1770/1770; mock E2E 49/49; gated smoke/sale/cash 1/1; cobertura PASS"
+artifacts:
+  exploration: openspec/changes/2026-10-04-wpf-e2e-full-stack/exploration.md
+  proposal: openspec/changes/2026-10-04-wpf-e2e-full-stack/proposal.md
+  specs:
+    - openspec/changes/2026-10-04-wpf-e2e-full-stack/specs/wpf-e2e-full-stack/spec.md
+    - openspec/changes/2026-10-04-wpf-e2e-full-stack/specs/wpf-e2e-stability/spec.md
+    - openspec/changes/2026-10-04-wpf-e2e-full-stack/specs/ci-pipeline/spec.md
+  design: openspec/changes/2026-10-04-wpf-e2e-full-stack/design.md
+  tasks: openspec/changes/2026-10-04-wpf-e2e-full-stack/tasks.md
+decisions:
+  confirmed: 2026-10-04
+  level: full-stack-real (backend process + real PostgreSQL + client without --e2e)
+  port-strategy: free-port probe + ASPNETCORE_URLS + process-scoped BackendSettings__BaseAddress
+  db-isolation: pos_e2e_<run> derived from E2E_POSTGRES_CONNECTION (Npgsql create/drop)
+  gating: silent-return local without env; fail-closed under GITHUB_ACTIONS
+  admin-bootstrap: seed password env + forced change-password rotation via real API
+  fixture-seed: rate + test product via real API (payment methods/customer backend-seeded)
+  client-settings: backup/delete/restore of %LocalAppData%/ProyectoPOS/client_settings.json
+  uia-stability: bounded COMException retry helper + E2E_FIND_TIMEOUT_SECONDS (default 10s); assertions never retried
+  flows: complete sale + history; cash drawer lifecycle; daily closure totals
+  mock-mode: --e2e mock suite preserved
+  ci: blocking wpf-e2e job (windows-2025 + PostgreSQL)
+next: push/pr/merge (decisión del mantenedor; el job wpf-e2e se prueba en el push)

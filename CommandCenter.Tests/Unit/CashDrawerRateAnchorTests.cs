@@ -78,7 +78,7 @@ public class CashDrawerRateAnchorTests
         IInventoryService inventory)
     {
         var coordinator = new CashAdvanceCoordinator(salesDb, new Mock<ISalesService>().Object, cashDrawer, settings);
-        return new CashDrawerController(
+        var controller = new CashDrawerController(
             cashDrawer,
             settings,
             inventory,
@@ -86,6 +86,13 @@ public class CashDrawerRateAnchorTests
             new Mock<ICurrentUserService>().Object,
             new TimeZoneProvider(settings),
             coordinator);
+
+        // 8.149 (SRE-02): POST transaction exige Idempotency-Key.
+        var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        httpContext.Request.Headers["Idempotency-Key"] = "RATE-ANCHOR-" + Guid.NewGuid().ToString("N");
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        return controller;
     }
 
     private static void SeedOfficialRate(InventoryDbContext inventoryDb)

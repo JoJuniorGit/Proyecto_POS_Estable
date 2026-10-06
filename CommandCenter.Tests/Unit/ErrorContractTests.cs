@@ -541,6 +541,8 @@ public class ErrorContractTests
         {
             HttpContext = new DefaultHttpContext { User = AdminUser() }
         };
+        // 8.149 (SRE-02): POST /api/dailyclosure exige Idempotency-Key.
+        controller.ControllerContext.HttpContext.Request.Headers["Idempotency-Key"] = "ERRCONTRACT-CLOSURE-999";
 
         var request = new CreateClosureRequest
         {

@@ -70,6 +70,52 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <Style x:Key="CartRemoveButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="MinWidth" Value="40"/>
+            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="#FFF1F2"/>
+            <Setter Property="Foreground" Value="#991B1B"/>
+            <Setter Property="BorderBrush" Value="#FECACA"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FEE2E2"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#B91C1C"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FEE2E2"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#991B1B"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderThickness" Value="2"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FECACA"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#991B1B"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <UserControl.InputBindings>
@@ -258,6 +304,7 @@
 
                     <!-- Order Table -->
                     <DataGrid x:Name="CartGrid"
+                              AutomationProperties.AutomationId="Pos_CartGrid"
                               ItemsSource="{Binding Cart.CartItems}" 
                               SelectedItem="{Binding Cart.SelectedSaleItem, Mode=TwoWay}"
                               AutoGenerateColumns="False" 
@@ -268,6 +315,7 @@
                               VirtualizingStackPanel.VirtualizationMode="Recycling"
                               VirtualizingPanel.ScrollUnit="Pixel"
                               FrozenColumnCount="1"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
                               ScrollViewer.IsDeferredScrollingEnabled="False"
                               BorderThickness="0"
                               Background="Transparent"
@@ -293,26 +341,7 @@
                         </DataGrid.Style>
 
                         <DataGrid.Columns>
-                            <!-- 8.143: el eliminar va primero y con FrozenColumnCount=1: queda fijo al extremo
-                                 izquierdo y visible siempre, aunque el carrito tenga scroll horizontal. -->
-                            <DataGridTemplateColumn Width="46">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Style="{DynamicResource MaterialDesignToolButton}"
-                                                Padding="0"
-                                                Width="28" Height="28"
-                                                ToolTip="Eliminar producto"
-                                                HorizontalAlignment="Left" VerticalAlignment="Center"
-                                                Margin="6,0,0,0"
-                                                Command="{Binding Data.Cart.RemoveItemCommand, Source={StaticResource Proxy}}"
-                                                CommandParameter="{Binding}">
-                                            <materialDesign:PackIcon Kind="TrashCanOutline" Width="16" Height="16" Foreground="#94A3B8"/>
-                                        </Button>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-
-                            <DataGridTemplateColumn Header="Producto" Width="*" MinWidth="120" MaxWidth="350">
+                            <DataGridTemplateColumn Header="Producto" Width="3*" MinWidth="100">
                                 <DataGridTemplateColumn.HeaderTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
@@ -320,18 +349,29 @@
                                 </DataGridTemplateColumn.HeaderTemplate>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,2">
-                                             <TextBlock Text="{Binding DisplayProductName}" FontWeight="Medium" VerticalAlignment="Center"/>
-                                            <Border Margin="6,0,0,0" Padding="4,1" CornerRadius="3" Background="#10B981"
+                                        <Grid VerticalAlignment="Center" Margin="0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding DisplayProductName}"
+                                                       FontWeight="Medium"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding DisplayProductName}"
+                                                       AutomationProperties.Name="{Binding DisplayProductName}"
+                                                       AutomationProperties.HelpText="Nombre completo del producto."/>
+                                            <Border Grid.Column="1" Margin="6,0,0,0" Padding="4,1" CornerRadius="3" Background="#10B981"
                                                     Visibility="{Binding IsWholesaleApplied, Converter={StaticResource BoolToVis}}">
                                                 <TextBlock Text="Mayorista" Foreground="White" FontSize="10" FontWeight="Bold"/>
                                             </Border>
-                                        </StackPanel>
+                                        </Grid>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
                             
-                            <DataGridTemplateColumn Header="Cant." Width="Auto" MinWidth="80">
+                            <DataGridTemplateColumn Header="Cant." Width="*" MinWidth="64">
                                 <DataGridTemplateColumn.HeaderTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
@@ -348,7 +388,11 @@
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"
                                                    FontWeight="Bold"
-                                                   Typography.NumeralAlignment="Tabular"/>
+                                                   Typography.NumeralAlignment="Tabular"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding QuantityDisplay}"
+                                                   AutomationProperties.Name="{Binding QuantityDisplay, StringFormat='{}Cantidad {0}'}"
+                                                   AutomationProperties.HelpText="Cantidad completa del producto."/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                                 <DataGridTemplateColumn.CellEditingTemplate>
@@ -364,7 +408,7 @@
                                 </DataGridTemplateColumn.CellEditingTemplate>
                             </DataGridTemplateColumn>
 
-                            <DataGridTemplateColumn Header="Precio" IsReadOnly="True" Width="Auto" MinWidth="110" MaxWidth="160">
+                            <DataGridTemplateColumn Header="Precio" IsReadOnly="True" Width="2*" MinWidth="90">
                                 <DataGridTemplateColumn.HeaderTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
@@ -378,15 +422,19 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding UnitPriceBsS, StringFormat='{}{0:N2}'}" 
-                                                   FontWeight="Bold" FontSize="14" 
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                                   FontWeight="Bold" FontSize="14"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
                                                    Typography.NumeralAlignment="Tabular"
-                                                   Margin="0,2"/>
+                                                   Margin="0,2"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding UnitPriceBsS, StringFormat='{}{0:N2} Bs.S por unidad'}"
+                                                   AutomationProperties.Name="{Binding UnitPriceBsS, StringFormat='{}{0:N2} Bs.S por unidad'}"
+                                                   AutomationProperties.HelpText="Precio unitario completo en bolívares."/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
-                            <DataGridTemplateColumn Header="Total" IsReadOnly="True" Width="Auto" MinWidth="110" MaxWidth="160">
+                            <DataGridTemplateColumn Header="Total" IsReadOnly="True" Width="2*" MinWidth="90">
                                 <DataGridTemplateColumn.HeaderTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
@@ -402,9 +450,43 @@
                                         <TextBlock Text="{Binding SubtotalBsS, StringFormat='{}{0:N2}'}" 
                                                    FontWeight="Bold" FontSize="15" 
                                                    Foreground="{DynamicResource PrimaryHueMidBrush}" 
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
                                                    Typography.NumeralAlignment="Tabular"
-                                                   Margin="0,2"/>
+                                                   Margin="0,2"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding SubtotalBsS, StringFormat='{}{0:N2} Bs.S en total'}"
+                                                   AutomationProperties.Name="{Binding SubtotalBsS, StringFormat='{}{0:N2} Bs.S en total'}"
+                                                   AutomationProperties.HelpText="Total completo de la línea en bolívares."/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- The fixed end column reserves room for the button, right margin, and DataGridCell insets. -->
+                            <DataGridTemplateColumn Width="64">
+                                <DataGridTemplateColumn.CellStyle>
+                                    <Style TargetType="{x:Type DataGridCell}" BasedOn="{StaticResource MaterialDesignDataGridCell}">
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                    </Style>
+                                </DataGridTemplateColumn.CellStyle>
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource CartRemoveButtonStyle}"
+                                            ToolTip="{Binding DisplayProductName, StringFormat='{}Eliminar {0} del carrito'}"
+                                            AutomationProperties.AutomationId="Pos_RemoveCartItemButton"
+                                            AutomationProperties.Name="{Binding DisplayProductName, StringFormat='{}Eliminar {0} del carrito'}"
+                                            AutomationProperties.HelpText="Quita este producto de la venta actual."
+                                            HorizontalAlignment="Right" VerticalAlignment="Center"
+                                            Margin="8, 4, 0, 4"
+                                            Height="26"
+                                            Command="{Binding Data.Cart.RemoveItemCommand, Source={StaticResource Proxy}}"
+                                            CommandParameter="{Binding}">
+                                        <materialDesign:PackIcon Kind="TrashCanOutline"
+                                                                Width="13" Height="13"
+                                                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                Foreground="#991B1B"/>
+                                        </Button>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
@@ -586,6 +668,7 @@
                                     
                                     <TextBlock Grid.Row="0" Grid.Column="1" 
                                                Text="{Binding Cart.TotalAmountLocal, StringFormat='Bs.S {0:N2}'}" 
+                                               AutomationProperties.AutomationId="Pos_TotalAmountText"
                                                FontWeight="Heavy" 
                                                FontSize="28" 
                                                Foreground="#5E35B1" 
@@ -665,6 +748,7 @@
                     
                     <!-- Bottom-right Gear Icon (Opens Side Drawer) -->
                     <Button Grid.Row="1"
+                            AutomationProperties.AutomationId="Pos_OpenMenuButton"
                             Style="{DynamicResource MaterialDesignIconButton}"
                             Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
                             CommandParameter="{x:Static Dock.Right}"
@@ -685,6 +769,7 @@
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <materialDesign:PackIcon Kind="CurrencyUsd" Width="15" Height="15" VerticalAlignment="Center" Foreground="#166534" Margin="0,0,4,0"/>
                             <TextBlock Text="{Binding CurrentExchangeRate, StringFormat='{}Tasa: {0:N2} Bs/$'}" 
+                                       AutomationProperties.AutomationId="Pos_ExchangeRateText"
                                        FontWeight="Bold" FontSize="12" Foreground="#166534" VerticalAlignment="Center"
                                        Typography.NumeralAlignment="Tabular"/>
                         </StackPanel>

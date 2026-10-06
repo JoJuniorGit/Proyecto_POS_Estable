@@ -9,6 +9,7 @@ using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Moq;
 using Xunit;
 using static CommandCenter.Tests.Unit.ClientHttpContractGuard;
 
@@ -67,6 +68,57 @@ public class ClientHttpContractTests
         var requests = await CaptureAsync<SalesService>(c => new SalesService(c), s => s.AddItemAsync(42, 5, 2m, 36.5m));
 
         AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/sales/42/items", typeof(SalesController), nameof(SalesController.AddItemAsync));
+    }
+
+    [Fact]
+    public async Task Sales_AddItemAsync_SendsNonEmptyIdempotencyKey()
+    {
+        var requests = await CaptureAsync<SalesService>(c => new SalesService(c), s => s.AddItemAsync(42, 5, 2m, 36.5m));
+
+        var request = Assert.Single(requests);
+        AssertRequest(request, HttpMethod.Post, "/api/sales/42/items", typeof(SalesController), nameof(SalesController.AddItemAsync));
+        Assert.False(
+            string.IsNullOrWhiteSpace(request.GetHeaderValue("Idempotency-Key")),
+            "POST /api/sales/{id}/items debe enviar una Idempotency-Key no vacia (8.149/SRE-02).");
+    }
+
+    [Fact]
+    public async Task Sales_AddItemAsync_GeneratesFreshIdempotencyKeyPerLogicalCall()
+    {
+        var first = Assert.Single(await CaptureAsync<SalesService>(c => new SalesService(c), s => s.AddItemAsync(42, 5, 2m, 36.5m)));
+        var second = Assert.Single(await CaptureAsync<SalesService>(c => new SalesService(c), s => s.AddItemAsync(42, 5, 2m, 36.5m)));
+
+        var firstKey = first.GetHeaderValue("Idempotency-Key");
+        var secondKey = second.GetHeaderValue("Idempotency-Key");
+        Assert.False(
+            string.IsNullOrWhiteSpace(firstKey),
+            "POST /api/sales/{id}/items debe enviar una Idempotency-Key no vacia (8.149/SRE-02).");
+        Assert.False(
+            string.IsNullOrWhiteSpace(secondKey),
+            "POST /api/sales/{id}/items debe enviar una Idempotency-Key no vacia (8.149/SRE-02).");
+        Assert.NotEqual(firstKey, secondKey);
+    }
+
+    [Fact]
+    public async Task Sales_AddItemAsync_TransientRetryReusesSameIdempotencyKey()
+    {
+        var inner = new CapturingHandler("{\"id\":42,\"items\":[]}", HttpStatusCode.ServiceUnavailable);
+        var resilience = new ResilienceHandler(new Mock<IHealthPollingService>().Object)
+        {
+            InnerHandler = inner
+        };
+        using var client = new HttpClient(resilience) { BaseAddress = new Uri("http://localhost:5000/") };
+        var service = new SalesService(client);
+
+        var sale = await service.AddItemAsync(42, 5, 2m, 36.5m);
+
+        Assert.Equal(42, sale.Id);
+        Assert.Equal(2, inner.Requests.Count);
+        var firstKey = inner.Requests[0].GetHeaderValue("Idempotency-Key");
+        Assert.False(
+            string.IsNullOrWhiteSpace(firstKey),
+            "POST /api/sales/{id}/items debe enviar una Idempotency-Key no vacia (8.149/SRE-02).");
+        Assert.Equal(firstKey, inner.Requests[1].GetHeaderValue("Idempotency-Key"));
     }
 
     [Fact]
@@ -452,6 +504,41 @@ public class ClientHttpContractTests
     }
 
     [Fact]
+    public async Task CashDrawer_AddTransactionAsync_SendsNonEmptyIdempotencyKey()
+    {
+        var requests = await CaptureAsync<CashDrawerService>(
+            c => new CashDrawerService(c),
+            s => s.AddTransactionAsync(5, 10m, CashTransactionType.Income, CashTransactionSource.ManualAdjustment, "Ajuste", 36.5m));
+
+        var request = Assert.Single(requests);
+        AssertRequest(request, HttpMethod.Post, "/api/cashdrawer/transaction", typeof(CashDrawerController), nameof(CashDrawerController.AddTransactionAsync));
+        Assert.False(
+            string.IsNullOrWhiteSpace(request.GetHeaderValue("Idempotency-Key")),
+            "POST /api/cashdrawer/transaction debe enviar una Idempotency-Key no vacia (8.149/SRE-02).");
+    }
+
+    [Fact]
+    public async Task CashDrawer_AddTransactionAsync_GeneratesFreshIdempotencyKeyPerLogicalCall()
+    {
+        var first = Assert.Single(await CaptureAsync<CashDrawerService>(
+            c => new CashDrawerService(c),
+            s => s.AddTransactionAsync(5, 10m, CashTransactionType.Income, CashTransactionSource.ManualAdjustment, "Ajuste", 36.5m)));
+        var second = Assert.Single(await CaptureAsync<CashDrawerService>(
+            c => new CashDrawerService(c),
+            s => s.AddTransactionAsync(5, 10m, CashTransactionType.Income, CashTransactionSource.ManualAdjustment, "Ajuste", 36.5m)));
+
+        var firstKey = first.GetHeaderValue("Idempotency-Key");
+        var secondKey = second.GetHeaderValue("Idempotency-Key");
+        Assert.False(
+            string.IsNullOrWhiteSpace(firstKey),
+            "POST /api/cashdrawer/transaction debe enviar una Idempotency-Key no vacia (8.149/SRE-02).");
+        Assert.False(
+            string.IsNullOrWhiteSpace(secondKey),
+            "POST /api/cashdrawer/transaction debe enviar una Idempotency-Key no vacia (8.149/SRE-02).");
+        Assert.NotEqual(firstKey, secondKey);
+    }
+
+    [Fact]
     public async Task CashDrawer_GetAdvanceCommissionAsync_SendsOnlyBindableIsTransfer()
     {
         var requests = await CaptureAsync<CashDrawerService>(c => new CashDrawerService(c), s => s.GetAdvanceCommissionAsync(true));
@@ -594,6 +681,41 @@ public class ClientHttpContractTests
             s => s.CreateClosureAsync(new CreateClosureRequest { ClosureDate = new DateTime(2026, 9, 19, 0, 0, 0, DateTimeKind.Utc) }));
 
         AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/dailyclosure", typeof(DailyClosureController), nameof(DailyClosureController.CreateClosureAsync));
+    }
+
+    [Fact]
+    public async Task DailyClosure_CreateClosureAsync_SendsNonEmptyIdempotencyKey()
+    {
+        var requests = await CaptureAsync<DailyClosureClientService>(
+            c => new DailyClosureClientService(c),
+            s => s.CreateClosureAsync(new CreateClosureRequest { ClosureDate = new DateTime(2026, 9, 19, 0, 0, 0, DateTimeKind.Utc) }));
+
+        var request = Assert.Single(requests);
+        AssertRequest(request, HttpMethod.Post, "/api/dailyclosure", typeof(DailyClosureController), nameof(DailyClosureController.CreateClosureAsync));
+        Assert.False(
+            string.IsNullOrWhiteSpace(request.GetHeaderValue("Idempotency-Key")),
+            "POST /api/dailyclosure debe enviar una Idempotency-Key no vacia (8.149/SRE-02).");
+    }
+
+    [Fact]
+    public async Task DailyClosure_CreateClosureAsync_GeneratesFreshIdempotencyKeyPerLogicalCall()
+    {
+        var first = Assert.Single(await CaptureAsync<DailyClosureClientService>(
+            c => new DailyClosureClientService(c),
+            s => s.CreateClosureAsync(new CreateClosureRequest { ClosureDate = new DateTime(2026, 9, 19, 0, 0, 0, DateTimeKind.Utc) })));
+        var second = Assert.Single(await CaptureAsync<DailyClosureClientService>(
+            c => new DailyClosureClientService(c),
+            s => s.CreateClosureAsync(new CreateClosureRequest { ClosureDate = new DateTime(2026, 9, 19, 0, 0, 0, DateTimeKind.Utc) })));
+
+        var firstKey = first.GetHeaderValue("Idempotency-Key");
+        var secondKey = second.GetHeaderValue("Idempotency-Key");
+        Assert.False(
+            string.IsNullOrWhiteSpace(firstKey),
+            "POST /api/dailyclosure debe enviar una Idempotency-Key no vacia (8.149/SRE-02).");
+        Assert.False(
+            string.IsNullOrWhiteSpace(secondKey),
+            "POST /api/dailyclosure debe enviar una Idempotency-Key no vacia (8.149/SRE-02).");
+        Assert.NotEqual(firstKey, secondKey);
     }
 
     // ── HealthPollingService ───────────────────────────────────────────────
@@ -1270,15 +1392,26 @@ internal static class ClientHttpContractGuard
             || underlying == typeof(Guid);
     }
 
-    public sealed record CapturedRequest(HttpMethod Method, Uri Uri);
+    public sealed record CapturedRequest(HttpMethod Method, Uri Uri, IReadOnlyDictionary<string, IEnumerable<string>> Headers)
+    {
+        /// <summary>Primer valor del header solicitado; null si la peticion no lo lleva.</summary>
+        public string? GetHeaderValue(string name) =>
+            Headers.TryGetValue(name, out var values) ? values.FirstOrDefault() : null;
+    }
 
     public sealed class CapturingHandler : HttpMessageHandler
     {
         private readonly object _sync = new();
         private readonly List<CapturedRequest> _requests = new();
         private readonly string _payload;
+        private readonly HttpStatusCode _firstStatus;
+        private int _invocations;
 
-        public CapturingHandler(string payload = "{}") => _payload = payload;
+        public CapturingHandler(string payload = "{}", HttpStatusCode firstStatus = HttpStatusCode.OK)
+        {
+            _payload = payload;
+            _firstStatus = firstStatus;
+        }
 
         public IReadOnlyList<CapturedRequest> Requests
         {
@@ -1318,15 +1451,25 @@ internal static class ClientHttpContractGuard
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            HttpResponseMessage response;
+
             lock (_sync)
             {
-                _requests.Add(new CapturedRequest(request.Method, request.RequestUri!));
+                _requests.Add(new CapturedRequest(
+                    request.Method,
+                    request.RequestUri!,
+                    request.Headers.ToDictionary(
+                        header => header.Key,
+                        header => (IEnumerable<string>)header.Value.ToArray(),
+                        StringComparer.OrdinalIgnoreCase)));
+                _invocations++;
+                response = new HttpResponseMessage(_invocations == 1 ? _firstStatus : HttpStatusCode.OK)
+                {
+                    Content = new StringContent(_payload, Encoding.UTF8, "application/json")
+                };
             }
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(_payload, Encoding.UTF8, "application/json")
-            });
+            return Task.FromResult(response);
         }
     }
 }
