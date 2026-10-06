@@ -7,7 +7,13 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: proposed
+phase: verified
+apply:
+  slices: 6/6 (T1-T6) + T7 closure
+  branch: V0.15
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-05-audit-critical-remediation/verify-report.md
+verify_note: "18/19 escenarios COMPLIANT + 1 PARTIAL (deriva de centimos preview vs persistido, registrada); 9/9 requisitos; build 0/0; suite 1814/1814; cobertura Core 0.8835/Sales 0.8911/Inventory 0.8558; web 308/308; E2E gated smoke/venta/cierre 1/1"
 artifacts:
   exploration: openspec/changes/2026-10-05-audit-critical-remediation/exploration.md
   proposal: openspec/changes/2026-10-05-audit-critical-remediation/proposal.md
@@ -27,4 +33,4 @@ decisions:
   clean-02: log via ClientStateLogger + re-sync from server + IDialogService notification; no silent catches
   rdd: off (clone-local)
   branch: V0.15
-next: sdd-apply
+next: push/pr/merge (decisión del mantenedor) + sdd-archive

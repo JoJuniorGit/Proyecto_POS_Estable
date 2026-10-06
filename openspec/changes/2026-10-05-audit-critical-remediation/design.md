@@ -41,6 +41,8 @@ Five verified critical defects. Fixes respect existing canonical specs: `api-dto
 - `ResilienceHandler.cs:68-73` unchanged (keyed POSTs already retryable).
 - **Tests**: missing key 400; replay no-duplicate (items/transaction/closure); 422 mismatch; second closure for same date rejected; cancel replay success.
 
+**Implementation note (2026-10-05, recorded deviation)**: the resolver is constructed per-controller from already-injected services instead of being DI-registered (parent-approved Option 2 to keep the write blast radius within the delegated surfaces); see tracker L7.
+
 ## D5 — CLEAN-02: cart commit resilience
 
 - `CommitItemQuantityAsync` catch (`:388-391`): `ClientStateLogger.LogError(...)`; re-sync via `_salesService.GetSaleAsync(CurrentSale.Id)` restoring authoritative quantities; success → `_dialogService.ShowError("Error", "No se pudo actualizar la cantidad. Se restauró el valor del servidor.")`; re-sync failure → log + `ShowError` with `"No se pudo actualizar la cantidad y no se pudo restaurar el estado. Verifique el carrito antes de cobrar."`.

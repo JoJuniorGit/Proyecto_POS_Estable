@@ -29,36 +29,36 @@ Chained PRs recommended: Yes
 
 ## Phase 1: Deterministic Stock Deduction (SRE-01)
 
-- [ ] 1.1 Pure helper `StockDeductionConsolidator.ResolveAndConsolidate` (resolve target + conversion; group by `(target, reason, saleId)`; order by target asc) — RED tests: reversed-order invariance, consolidation, totals.
-- [ ] 1.2 `UpdateStockBatchAsync` uses the helper before the update loop; one update + one movement per group.
-- [ ] 1.3 Regression: `Phase3PerformanceRemediationTests` + `ProductVariantsTests.IndependentPricing` green.
+- [x] 1.1 Pure helper `StockDeductionConsolidator.ResolveAndConsolidate` (resolve target + conversion; group by `(target, reason, saleId)`; order by target asc) — RED tests: reversed-order invariance, consolidation, totals.
+- [x] 1.2 `UpdateStockBatchAsync` uses the helper before the update loop; one update + one movement per group.
+- [x] 1.3 Regression: `Phase3PerformanceRemediationTests` + `ProductVariantsTests.IndependentPricing` green.
 
 ## Phase 2: Server-Authoritative Rounding (SEC-01)
 
-- [ ] 2.1 `CompleteSaleAsync`: drop the ±1000 guard and both client-value assignments; recompute after payments attach (formula mirrors preview).
-- [ ] 2.2 RED tests: injected `RoundingAdjustment = 250` discarded; partial payment → 0; preview == persisted for same data.
-- [ ] 2.3 Update any test asserting the removed defensive rejection.
+- [x] 2.1 `CompleteSaleAsync`: drop the ±1000 guard and both client-value assignments; recompute after payments attach (formula mirrors preview).
+- [x] 2.2 RED tests: injected `RoundingAdjustment = 250` discarded; partial payment → 0; preview == persisted for same data.
+- [x] 2.3 Update any test asserting the removed defensive rejection.
 
 ## Phase 3: Cash-Advance Price Guard (SEC-02)
 
-- [ ] 3.1 Guard in `AddItemAsync` and `UpdateSaleItemsAsync` with the exact message; RED tests: no item added / no mutation.
-- [ ] 3.2 Regression: coordinator flow (`CreateCashAdvanceSaleAsync`) unaffected.
+- [x] 3.1 Guard in `AddItemAsync` and `UpdateSaleItemsAsync` with the exact message; RED tests: no item added / no mutation.
+- [x] 3.2 Regression: coordinator flow (`CreateCashAdvanceSaleAsync`) unaffected.
 
 ## Phase 4: Idempotency (SRE-02)
 
-- [ ] 4.1 Extract `ResolveIdempotencyAsync` into `IdempotencyRequestResolver`; existing complete/hold/deliveries behavior unchanged (regression tests).
-- [ ] 4.2 Required key on POST items / cash transaction / daily closure with replay + 422 semantics; RED tests per endpoint.
-- [ ] 4.3 Idempotent cancel: already-cancelled → success (no 409); RED test.
-- [ ] 4.4 Closure duplicate guard + unique `ClosureDate` index migration (Down drops it); RED tests: second closure rejected.
-- [ ] 4.5 WPF + Web clients send `Idempotency-Key` on the three operations (fresh GUID / stable-per-attempt); tests.
+- [x] 4.1 Extract `ResolveIdempotencyAsync` into `IdempotencyRequestResolver`; existing complete/hold/deliveries behavior unchanged (regression tests).
+- [x] 4.2 Required key on POST items / cash transaction / daily closure with replay + 422 semantics; RED tests per endpoint.
+- [x] 4.3 Idempotent cancel: already-cancelled → success (no 409); RED test.
+- [x] 4.4 Closure duplicate guard + unique `ClosureDate` index migration (Down drops it); RED tests: second closure rejected.
+- [x] 4.5 WPF + Web clients send `Idempotency-Key` on the three operations (fresh GUID / stable-per-attempt); tests.
 
 ## Phase 5: Cart Commit Resilience (CLEAN-02)
 
-- [ ] 5.1 `CommitItemQuantityAsync` + `FlushAllQuantitiesAsync`: log + server re-sync + exact operator messages; success-path setter hardening.
-- [ ] 5.2 Best-effort catches log via `ClientStateLogger.LogError` (no empty catches).
-- [ ] 5.3 New `CartCommitResilienceTests`: rollback message, flush, re-sync-failure warning.
+- [x] 5.1 `CommitItemQuantityAsync` + `FlushAllQuantitiesAsync`: log + server re-sync + exact operator messages; success-path setter hardening.
+- [x] 5.2 Best-effort catches log via `ClientStateLogger.LogError` (no empty catches).
+- [x] 5.3 New `CartCommitResilienceTests`: rollback message, flush, re-sync-failure warning.
 
 ## Phase 6: Closure
 
-- [ ] 6.1 Build 0/0; full suite green; coverage thresholds; focused filters per work unit.
-- [ ] 6.2 Independent verification per work unit + final; ANEXO 8.149 in `docs/reporte.txt`; tracker close.
+- [x] 6.1 Build 0/0; full suite green; coverage thresholds; focused filters per work unit.
+- [x] 6.2 Independent verification per work unit + final; ANEXO 8.149 in `docs/reporte.txt`; tracker close.
