@@ -6,6 +6,7 @@ using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
 using System.Threading.Tasks;
 using Backend.API.Attributes;
+using Backend.API.Services;
 
 namespace Backend.API.Controllers;
 
@@ -110,7 +111,8 @@ public partial class SalesController
 
         string requestPath = $"/api/sales/{id}/complete";
         var bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
-        var resolved = await ResolveIdempotencyAsync(
+        var resolved = await _idempotencyResolver.ResolveAsync(
+            this,
             requestPath,
             bodyJson,
             missingKeyMessage: "El encabezado Idempotency-Key es obligatorio para completar una venta.",
@@ -142,9 +144,9 @@ public partial class SalesController
 
             return Ok(realId);
         }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IsIdempotencyUniqueViolation(ex))
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
         {
-            return await HandleIdempotencyCollisionAsync(ex, requestPath, resolved.Key, resolved.PayloadHash, parseNumericBodyAsInvoice: true);
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash, parseNumericBodyAsInvoice: true);
         }
     }
 
@@ -161,13 +163,6 @@ public partial class SalesController
             ?.Where(p => p != null)
             .Select(p => new PaymentInfo(p.PaymentMethodId, p.Amount, p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal, p.ReferenceNumber))
             ?? System.Linq.Enumerable.Empty<PaymentInfo>();
-    }
-
-    private static bool IsIdempotencyUniqueViolation(Microsoft.EntityFrameworkCore.DbUpdateException ex)
-    {
-        return ex.Message.Contains("IX_IdempotentRequests")
-            || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true
-            || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505");
     }
 
     [NonAction]

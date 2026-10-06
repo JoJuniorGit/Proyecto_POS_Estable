@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Core.DTOs;
 using Core.Interfaces;
 using Backend.API.Attributes;
+using Backend.API.Services;
 
 namespace Backend.API.Controllers;
 
@@ -26,6 +27,8 @@ public class CashDrawerController : ControllerBase
     private readonly ICurrentUserService _currentUserService;
     private readonly ITimeZoneProvider _timeZoneProvider;
     private readonly Sales.Module.Services.CashAdvanceCoordinator _cashAdvanceCoordinator;
+    // 8.149 (SRE-02): clave obligatoria + replay para POST transaction.
+    private readonly IdempotencyRequestResolver _idempotencyResolver;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public CashDrawerController(
@@ -35,7 +38,8 @@ public class CashDrawerController : ControllerBase
         IUserService userService,
         ICurrentUserService currentUserService,
         ITimeZoneProvider timeZoneProvider,
-        Sales.Module.Services.CashAdvanceCoordinator cashAdvanceCoordinator)
+        Sales.Module.Services.CashAdvanceCoordinator cashAdvanceCoordinator,
+        IIdempotencyService? idempotencyService = null)
     {
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
@@ -44,6 +48,7 @@ public class CashDrawerController : ControllerBase
         _currentUserService = currentUserService;
         _timeZoneProvider = timeZoneProvider;
         _cashAdvanceCoordinator = cashAdvanceCoordinator;
+        _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
     [HttpGet("active-session")]
@@ -158,24 +163,45 @@ public class CashDrawerController : ControllerBase
             return this.ApiBadRequest("La tasa de cambio (ExchangeRate) debe ser mayor a cero.");
         }
 
-        decimal anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, referenceId: request.SessionId, cancellationToken: cancellationToken);
-        decimal amountUsd = Math.Round(request.AmountLocal / anchoredRate, 2, MidpointRounding.AwayFromZero);
-        
-        var transaction = await _cashDrawerService.AddTransactionAsync(
-            request.SessionId,
-            request.Type,
-            request.Source,
-            request.AmountLocal,
-            amountUsd,
-            anchoredRate,
-            request.Description,
-            null,
-            true,
-            null,
-            cancellationToken);
+        // 8.149 (SRE-02): clave obligatoria + replay/422 antes del anclaje de tasa y del servicio.
+        string requestPath = "/api/cashdrawer/transaction";
+        string bodyJson = _idempotencyResolver.GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var resolved = await _idempotencyResolver.ResolveAsync(this, requestPath, bodyJson);
+        if (resolved.ShouldStop) return resolved.BlockingResult!;
 
-        var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
-        return Ok(MapLocalTime(transaction, tz));
+        try
+        {
+            decimal anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, referenceId: request.SessionId, cancellationToken: cancellationToken);
+            decimal amountUsd = Math.Round(request.AmountLocal / anchoredRate, 2, MidpointRounding.AwayFromZero);
+
+            var transaction = await _cashDrawerService.AddTransactionAsync(
+                request.SessionId,
+                request.Type,
+                request.Source,
+                request.AmountLocal,
+                amountUsd,
+                anchoredRate,
+                request.Description,
+                null,
+                true,
+                null,
+                cancellationToken);
+
+            var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
+            var mapped = MapLocalTime(transaction, tz);
+            await _idempotencyResolver.RegisterSuccessAsync(resolved, requestPath, System.Text.Json.JsonSerializer.Serialize(mapped), cancellationToken);
+
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "MISS";
+            }
+
+            return Ok(mapped);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash);
+        }
     }
 
     [NonAction]

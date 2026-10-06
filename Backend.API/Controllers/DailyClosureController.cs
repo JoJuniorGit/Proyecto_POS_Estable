@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Backend.API.Attributes;
+using Backend.API.Services;
 
 namespace Backend.API.Controllers;
 
@@ -19,13 +20,17 @@ public class DailyClosureController : ControllerBase
 {
     private readonly IDailyClosureService _closureService;
     private readonly ICurrentUserService _currentUserService;
+    // 8.149 (SRE-02): clave obligatoria + replay para POST /api/dailyclosure.
+    private readonly IdempotencyRequestResolver _idempotencyResolver;
 
     public DailyClosureController(
         IDailyClosureService closureService,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IIdempotencyService? idempotencyService = null)
     {
         _closureService = closureService;
         _currentUserService = currentUserService;
+        _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
     [HttpGet("expected-totals")]
@@ -59,13 +64,19 @@ public class DailyClosureController : ControllerBase
             return this.ApiBadRequest(validationError);
         }
 
-        return await ExecuteCreateClosureAsync(request, cancellationToken);
+        // 8.149 (SRE-02): clave obligatoria + replay/422 antes de resolver fecha/tasa y persistir.
+        string requestPath = "/api/dailyclosure";
+        string bodyJson = _idempotencyResolver.GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var resolved = await _idempotencyResolver.ResolveAsync(this, requestPath, bodyJson);
+        if (resolved.ShouldStop) return resolved.BlockingResult!;
+
+        return await ExecuteCreateClosureAsync(request, cancellationToken, resolved, requestPath);
     }
 
     [NonAction]
     public Task<ActionResult> CreateClosure(CreateClosureRequest request, CancellationToken cancellationToken) => CreateClosureAsync(request, cancellationToken);
 
-    private async Task<ActionResult> ExecuteCreateClosureAsync(CreateClosureRequest request, CancellationToken cancellationToken)
+    private async Task<ActionResult> ExecuteCreateClosureAsync(CreateClosureRequest request, CancellationToken cancellationToken, IdempotencyResolution? idempotency = null, string? requestPath = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -84,7 +95,21 @@ public class DailyClosureController : ControllerBase
 
             var result = await _closureService.CreateClosureFromCommandAsync(command, cancellationToken);
 
+            if (idempotency.HasValue && requestPath != null)
+            {
+                await _idempotencyResolver.RegisterSuccessAsync(idempotency.Value, requestPath, System.Text.Json.JsonSerializer.Serialize(result), cancellationToken);
+            }
+
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "MISS";
+            }
+
             return Ok(result);
+        }
+        catch (InvalidOperationException ex) when (ex.Message == Sales.Module.Services.DailyClosureService.DuplicateClosureDateMessage)
+        {
+            return this.ApiConflict(ex.Message);
         }
         catch (InvalidOperationException ex)
         {
@@ -94,10 +119,26 @@ public class DailyClosureController : ControllerBase
         {
             return this.ApiBadRequest(ex.Message);
         }
+        catch (DbUpdateException ex) when (IsClosureDateUniqueViolation(ex))
+        {
+            // Carrera entre el guard serializable y el índice único: mismo conflicto explícito.
+            return this.ApiConflict(Sales.Module.Services.DailyClosureService.DuplicateClosureDateMessage);
+        }
+        catch (DbUpdateException ex) when (idempotency.HasValue && IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath!, idempotency.Value.Key, idempotency.Value.PayloadHash);
+        }
         catch (DbUpdateException)
         {
             return this.ApiConflict("Conflicto de concurrencia al registrar el cierre diario. Es posible que ya se haya ejecutado otro cierre en paralelo.");
         }
+    }
+
+    private static bool IsClosureDateUniqueViolation(DbUpdateException ex)
+    {
+        string combined = ex.Message + "|" + (ex.InnerException?.Message ?? "");
+        return combined.Contains("IX_DailyClosures_ClosureDate", StringComparison.Ordinal)
+            || combined.Contains("DailyClosures.ClosureDate", StringComparison.Ordinal);
     }
 
     private string ResolveUserId()

@@ -194,6 +194,8 @@ public class SecurityHardeningSprint2Tests
                 }, "TestAuth"))
             }
         };
+        // 8.149 (SRE-02): POST /api/dailyclosure exige Idempotency-Key.
+        controller.ControllerContext.HttpContext.Request.Headers["Idempotency-Key"] = "SPRINT2-CLOSURE-999";
 
         var request = new CreateClosureRequest
         {

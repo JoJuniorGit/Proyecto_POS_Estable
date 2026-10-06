@@ -409,8 +409,11 @@ public partial class SalesService : ISalesService
         EnsureHoldClaimAccess(sale, actingUserId);
         if (sale.Status == SaleStatus.Completed) 
             throw new InvalidOperationException("No se puede anular una venta que ya ha sido completada.");
+        // 8.149 (SRE-02): anulación idempotente — una venta ya anulada retorna éxito sin
+        // repetir efectos (status, claim y notificación quedan intactos). Los demás
+        // precondiciones (abonos, entrega) se conservan para ventas no anuladas.
         if (sale.Status == SaleStatus.Cancelled) 
-            throw new InvalidOperationException("La venta ya se encuentra anulada.");
+            return;
         if (sale.Payments != null && sale.Payments.Any()) 
             throw new InvalidOperationException("No se puede anular un pedido que posee abonos acumulados. Reembolse o reversa los abonos antes de anular.");
         if (sale.DeliveryStatus == SaleDeliveryStatus.Delivered && sale.PickupDate.HasValue) 

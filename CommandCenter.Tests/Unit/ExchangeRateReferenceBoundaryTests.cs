@@ -139,6 +139,11 @@ public class ExchangeRateReferenceBoundaryTests
         var coordinator = new CashAdvanceCoordinator(salesDb, mockSalesService.Object, mockCashDrawer.Object, mockSettings.Object);
         var controller = ControllerFactory.CreateCashDrawerController(mockCashDrawer.Object, mockSettings.Object, salesDb, new Mock<ICurrentUserService>().Object, inventoryDb, coordinator);
 
+        // 8.149 (SRE-02): POST transaction exige Idempotency-Key.
+        var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext();
+        httpContext.Request.Headers["Idempotency-Key"] = "RATE-REFERENCE-" + Guid.NewGuid().ToString("N");
+        controller.ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = httpContext };
+
         var result = await controller.AddTransaction(new AddTransactionRequest
         {
             SessionId = 1,

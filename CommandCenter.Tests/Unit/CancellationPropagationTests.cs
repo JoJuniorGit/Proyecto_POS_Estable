@@ -33,8 +33,13 @@ public class CancellationPropagationTests
         new Claim(ClaimTypes.Role, "Admin")
     }, "TestAuth"));
 
-    private static ControllerContext HttpContextOf(ClaimsPrincipal user) =>
-        new() { HttpContext = new DefaultHttpContext { User = user } };
+    private static ControllerContext HttpContextOf(ClaimsPrincipal user)
+    {
+        var httpContext = new DefaultHttpContext { User = user };
+        // 8.149 (SRE-02): POST transaction exige Idempotency-Key.
+        httpContext.Request.Headers["Idempotency-Key"] = "CANCELLATION-" + Guid.NewGuid().ToString("N");
+        return new ControllerContext { HttpContext = httpContext };
+    }
 
     private static void AssertTokenIsLastParameter(MethodInfo method)
     {

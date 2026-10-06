@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Backend.API.Services;
 using Core.DTOs;
 using Core.Logging;
 using Sales.Module.DTOs;
@@ -18,6 +19,8 @@ public partial class SalesController : ControllerBase
     private readonly ISalesService _salesService;
     private readonly Core.Interfaces.ICurrentUserService _currentUserService;
     private readonly Core.Interfaces.IIdempotencyService? _idempotencyService;
+    // 8.149 (SRE-02): resolutor compartido extraído del método privado histórico.
+    private readonly IdempotencyRequestResolver _idempotencyResolver;
 
     public SalesController(
         ISalesService salesService, 
@@ -27,6 +30,7 @@ public partial class SalesController : ControllerBase
         _salesService = salesService;
         _currentUserService = currentUserService;
         _idempotencyService = idempotencyService;
+        _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
     [HttpPost("start")]
@@ -134,8 +138,28 @@ public partial class SalesController : ControllerBase
             return this.ApiForbidden("Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor.");
         }
 
-        var sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized, GetActorUserId(), cancellationToken);
-        return Ok(sale);
+        // 8.149 (SRE-02): clave obligatoria + replay/422 antes de tocar la venta.
+        string requestPath = $"/api/sales/{id}/items";
+        string bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var resolved = await _idempotencyResolver.ResolveAsync(this, requestPath, bodyJson);
+        if (resolved.ShouldStop) return resolved.BlockingResult!;
+
+        try
+        {
+            var sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized, GetActorUserId(), cancellationToken);
+            await _idempotencyResolver.RegisterSuccessAsync(resolved, requestPath, System.Text.Json.JsonSerializer.Serialize(sale), cancellationToken);
+
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "MISS";
+            }
+
+            return Ok(sale);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash);
+        }
     }
 
     [NonAction]
@@ -192,80 +216,6 @@ public partial class SalesController : ControllerBase
 
     [NonAction]
     public Task<ActionResult<SaleDto>> UpdateExchangeRate(int id, [FromQuery] string exchangeRate) => UpdateExchangeRateAsync(id, exchangeRate);
-
-    private async Task<(bool ShouldStop, ActionResult? BlockingResult, string? Key, byte[]? PayloadHash)> ResolveIdempotencyAsync(string requestPath, string bodyJson, string missingKeyMessage = "El encabezado Idempotency-Key es obligatorio para esta operación.", bool parseNumericBodyAsInvoice = false)
-    {
-        string? idempotencyKey = Request?.Headers["Idempotency-Key"].ToString();
-        if (string.IsNullOrWhiteSpace(idempotencyKey))
-        {
-            return (true, this.ApiBadRequest(missingKeyMessage), null, null);
-        }
-
-        idempotencyKey = idempotencyKey.Trim();
-
-        if (_idempotencyService == null)
-        {
-            return (false, null, idempotencyKey, null);
-        }
-
-        if (!_idempotencyService.ValidateKeyFormat(idempotencyKey, out var formatError))
-        {
-            return (true, this.ApiBadRequest(formatError), null, null);
-        }
-
-        var bodyBytes = System.Text.Encoding.UTF8.GetBytes(bodyJson);
-        var payloadHash = _idempotencyService.ComputePayloadHash(Request?.Method ?? "POST", requestPath, bodyBytes);
-
-        var checkResult = await _idempotencyService.CheckAsync(idempotencyKey, requestPath, payloadHash, GetActorUserId(), HttpContext?.RequestAborted ?? default);
-        if (checkResult.IsReplay)
-        {
-            if (Response?.Headers != null)
-            {
-                Response.Headers["X-Cache-Lookup"] = "HIT";
-            }
-            if (parseNumericBodyAsInvoice && int.TryParse(checkResult.StoredResponseBody, out int cachedInvoice))
-            {
-                return (true, Ok(cachedInvoice), null, null);
-            }
-            return (true, Content(checkResult.StoredResponseBody ?? "", "application/json"), null, null);
-        }
-
-        if (checkResult.IsMismatch)
-        {
-            var clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-            AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={idempotencyKey}, Path={requestPath}, IP={clientIp}, Timestamp={System.DateTime.UtcNow:O}");
-            return (true, this.ApiUnprocessableEntity("La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido."), null, null);
-        }
-
-        return (false, null, idempotencyKey, payloadHash);
-    }
-
-    private async Task<ActionResult> HandleIdempotencyCollisionAsync(Microsoft.EntityFrameworkCore.DbUpdateException ex, string requestPath, string? key, byte[]? payloadHash, bool parseNumericBodyAsInvoice = false)
-    {
-        if (_idempotencyService is Sales.Module.Services.IdempotencyService idService && !string.IsNullOrWhiteSpace(key) && payloadHash != null)
-        {
-            var collisionResult = await idService.HandleConcurrentCollisionAsync(key, requestPath, payloadHash, GetActorUserId(), HttpContext?.RequestAborted ?? default);
-            if (collisionResult.IsReplay)
-            {
-                if (Response?.Headers != null)
-                {
-                    Response.Headers["X-Cache-Lookup"] = "HIT";
-                }
-                if (parseNumericBodyAsInvoice && int.TryParse(collisionResult.StoredResponseBody, out int cachedInvoice))
-                {
-                    return Ok(cachedInvoice);
-                }
-                return Content(collisionResult.StoredResponseBody ?? "", "application/json");
-            }
-            if (collisionResult.IsMismatch)
-            {
-                var clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-                AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={key}, Path={requestPath}, IP={clientIp}, Timestamp={System.DateTime.UtcNow:O}");
-                return this.ApiUnprocessableEntity("La clave de idempotencia ya fue utilizada para una transacción diferente con otro contenido.");
-            }
-        }
-        return this.ApiConflict("Operación concurrente en progreso para esta clave de idempotencia.");
-    }
 
     internal static decimal ParseRateInvariant(string? raw)
     {
