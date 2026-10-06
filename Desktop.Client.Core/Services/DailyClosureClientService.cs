@@ -24,7 +24,14 @@ public class DailyClosureClientService : IDailyClosureClientService
 
     public async Task<DailyClosureDto> CreateClosureAsync(CreateClosureRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync("api/dailyclosure", request);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/dailyclosure")
+        {
+            Content = JsonContent.Create(request)
+        };
+        // 8.149 (SRE-02): el backend exige Idempotency-Key; el retry del ResilienceHandler reenvia el
+        // MISMO request, por lo que la clave se mantiene estable dentro del intento logico.
+        httpRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        var response = await _httpClient.SendAsync(httpRequest);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<DailyClosureDto>() ?? new();
     }

@@ -72,7 +72,14 @@ public class SalesService : ISalesService
     public async Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUSD = null, decimal? customUnitPriceBsS = null)
     {
         var _request = new { ProductId = productId, Quantity = quantity, ExchangeRate = exchangeRate, CustomUnitPriceUSD = customUnitPriceUSD, CustomUnitPriceBsS = customUnitPriceBsS };
-        var _response = await _httpClient.PostAsJsonAsync($"api/sales/{saleId}/items", _request);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{saleId}/items")
+        {
+            Content = JsonContent.Create(_request)
+        };
+        // 8.149 (SRE-02): el backend exige Idempotency-Key; el retry del ResilienceHandler reenvia el
+        // MISMO request, por lo que la clave se mantiene estable dentro del intento logico.
+        httpRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
+        var _response = await _httpClient.SendAsync(httpRequest);
         if (!_response.IsSuccessStatusCode)
         {
             var err = await _response.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>();

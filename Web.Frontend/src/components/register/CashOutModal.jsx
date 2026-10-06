@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Modal from '../ui/Modal';
 import { ArrowUpRight, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '../../services/api';
 import { formatBsS } from '../../utils/formatters';
+import { createCheckoutKeyHolder } from '../../utils/idempotency';
 import './RegisterModals.css';
 
 export default function CashOutModal({ isOpen, onClose, sessionId, availableCashBsS, exchangeRate, user, onSuccess }) {
@@ -10,8 +11,15 @@ export default function CashOutModal({ isOpen, onClose, sessionId, availableCash
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // 8.149 (SRE-02): clave estable mientras dura el intento de transaccion; se resetea al
+  // cerrar el modal para que la proxima transaccion genere una clave nueva.
+  const cashKeyHolderRef = useRef(null);
+  if (!cashKeyHolderRef.current) {
+    cashKeyHolderRef.current = createCheckoutKeyHolder();
+  }
 
   const handleClose = () => {
+    cashKeyHolderRef.current.reset();
     setAmountBsS('');
     setReason('');
     setError('');
@@ -62,6 +70,10 @@ export default function CashOutModal({ isOpen, onClose, sessionId, availableCash
         source: 6, // CashOut
         description: formattedDescription,
         exchangeRate: exchangeRate || 1
+      }, {
+        headers: {
+          'Idempotency-Key': cashKeyHolderRef.current.getOrCreateKey(),
+        },
       });
 
       handleClose();
