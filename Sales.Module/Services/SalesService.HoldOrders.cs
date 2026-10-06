@@ -335,7 +335,13 @@ public partial class SalesService
                     && adjustedQty >= minWholesaleQty;
                 decimal effectivePrice = isWholesale ? wholesalePrice : retailPrice;
 
-                if (!product.IsCashAdvance && reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice && !isPriceOverrideAuthorized)
+                // 8.149 (SEC-02): rechazo antes de la lógica de precio, con cualquier precio enviado.
+                if (product.IsCashAdvance)
+                {
+                    throw new InvalidOperationException(CashAdvanceSaleItemRejectionMessage);
+                }
+
+                if (reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice && !isPriceOverrideAuthorized)
                 {
                     throw new UnauthorizedAccessException($"Modificación de precio no autorizada para el producto '{productName}'. Se requiere autorización de Administrador o Supervisor.");
                 }

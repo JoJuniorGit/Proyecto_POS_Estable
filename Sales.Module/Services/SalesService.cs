@@ -32,6 +32,9 @@ public partial class SalesService : ISalesService
     private readonly Sales.Module.Receipts.IReceiptPrintQueue? _receiptPrintQueue;
     private readonly Sales.Module.Interfaces.IHoldOrderNotifier? _holdOrderNotifier;
     private const string DefaultCustomerCacheKey = "default_customer_cache";
+    // 8.149 (SEC-02): mensaje único para ambos puntos de mutación de ítems de venta
+    // (AddItemAsync y UpdateSaleItemsAsync). El adelanto de efectivo solo entra por CreateCashAdvanceSaleAsync.
+    private const string CashAdvanceSaleItemRejectionMessage = "Los productos de adelanto de efectivo no pueden agregarse ni modificarse en una venta; use el flujo de adelanto de efectivo.";
 
     public SalesService(
         SalesDbContext context,
@@ -202,7 +205,14 @@ public partial class SalesService : ISalesService
         }
 
         EnsureProductAvailableForSale(product);
-        EnsurePriceOverrideAllowed(product, customUnitPriceUsd, customUnitPriceLocal, isPriceOverrideAuthorized);
+
+        // 8.149 (SEC-02): rechazo temprano, antes de cualquier lógica de precio.
+        if (product?.IsCashAdvance == true)
+        {
+            throw new InvalidOperationException(CashAdvanceSaleItemRejectionMessage);
+        }
+
+        EnsurePriceOverrideAllowed(customUnitPriceUsd, customUnitPriceLocal, isPriceOverrideAuthorized);
         EnsureCustomPricesNonNegative(customUnitPriceUsd, customUnitPriceLocal);
 
         quantity = ValidateAndAdjustQuantity(product, quantity);
@@ -239,10 +249,9 @@ public partial class SalesService : ISalesService
         }
     }
 
-    private static void EnsurePriceOverrideAllowed(SaleProductInfoDto? product, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, bool isPriceOverrideAuthorized)
+    private static void EnsurePriceOverrideAllowed(decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, bool isPriceOverrideAuthorized)
     {
-        bool isCashAdvance = product?.IsCashAdvance == true;
-        if ((customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue) && !isPriceOverrideAuthorized && !isCashAdvance)
+        if ((customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue) && !isPriceOverrideAuthorized)
         {
             throw new UnauthorizedAccessException("Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor.");
         }
