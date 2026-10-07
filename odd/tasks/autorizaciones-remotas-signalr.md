@@ -1,0 +1,70 @@
+# Hub de Autorizaciones Remotas en Tiempo Real (Paso 4)
+
+Objetivo: desplegar la orquestación de autorizaciones remotas del Paso 4 (`docs/Ideas.txt` L153-191) con el alcance ampliado del mantenedor (condición de carrera, fallback local, auditoría inmutable): hub SignalR + token efímero 60 s single-use + resolución race-safe + expiración + autorización local por credenciales + auditoría append-only; clientes Web y WPF. Branch: V0.15. Entrega: ask-on-risk → cadena stacked-to-main (cacheada). SDD: `openspec/changes/2026-10-07-remote-authorization-hub/`. RDD: off (clone-local + global, verificado 2026-10-07). Tests: `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj` · `npm test` (Web.Frontend) · build `dotnet build CommandCenter.slnx -c Release`. ANEXO: 8.150.
+
+## Specs
+
+- **S1 — Bloqueo activo y emisión**: cuando el cajero detona una acción protegida, la UI de la terminal se bloquea en el estado exacto "Esperando autorización remota..."; el frontend emite el evento al `AuthorizationHub` con el contexto de la operación (ID Transacción, Cajero, Tipo de Permiso, Monto/Contexto).
+- **S2 — Notificación enriquecida (push)**: todos los usuarios activos con rol Admin o Manager conectados (Web y WPF) reciben un Toast/Modal emergente detallado; ejemplo de referencia: "Cajero 01 solicita aplicar 20% de descuento a Factura #445".
+- **S3 — Resolución y token efímero**: al pulsar "Aprobar", el backend genera un token efímero firmado (mini-JWT), válido por 60 segundos, restringido únicamente a esa transacción específica; el token viaja de vuelta a la terminal del cajero, desbloquea la UI y la acción se ejecuta.
+- **S4 — Condición de carrera**: la primera respuesta (Aprobar/Rechazar) cierra el caso; un segundo administrador recibe exactamente "Esta solicitud ya fue resuelta por [Nombre Admin]" (implementación: "Esta solicitud ya fue resuelta por {resolverName}.").
+- **S5 — Fallback (offline/timeout)**: pasados 60 segundos sin respuesta remota la solicitud se marca "Expirada"; la pantalla de espera incluye el botón "Autorización Local" para que un supervisor ingrese sus credenciales en el teclado del cajero y se salte la red.
+- **S6 — Auditoría estricta**: registro inmutable en tabla de operaciones asociando Acción, Cajero que ejecutó, ID del Administrador que autorizó (remoto o local) y Timestamp; append-only + trigger Postgres que rechaza UPDATE/DELETE.
+- **S7 — Efecto dominó**: la capa es genérica (registro de tipos de permiso + hub + token + auditoría) para que mermas (Paso 5) y créditos (Paso 11) la consuman de forma nativa, sin mecanismos de aprobación independientes ("parches").
+- **S8 — Clientes**: Web + WPF, ambos como solicitantes y como resolutores (decisión del mantenedor, L2).
+- **S9 — Fallback local con credenciales reales** (supuesto: no existe concepto de PIN en el sistema): se validan usuario+contraseña del supervisor (rol Admin/Manager) reutilizando la política de lockout del login.
+- **S10 — Acciones protegidas v1**: `ManualPriceOverride` (precio manual en AddItem; Web + WPF — Web gana la acción de precio manual como paridad, es nueva) y `SaleCancellation` (gate backend para no elevados; UI Web; WPF no tiene flujo de anulación) — comportamiento de anulación para cajeros marcado como **flagged**.
+- **S11 — Rechazo remoto**: "Rechazar" desbloquea la terminal con el resultado del rechazo y el motivo opcional.
+- **S12 — Token single-use y binding de contexto** (endurecimiento derivado): consumo atómico único + hash canónico del payload de la operación (producto/cantidad/precios para precio manual; venta para anulación); reuso, expiración o mismatch → sin ejecución y sin mutación.
+
+## Tasks
+
+| ID | Specs | Route | Descripción | Estado / commit |
+|----|-------|-------|-------------|-----------------|
+| T1 | S6 | delegated (writer) | Capa de datos: entidades Core + enums, DbSets/índices en `SalesDbContext`, migración + trigger append-only (guard Npgsql) + tests | pendiente |
+| T2 | S4, S5, S6, S12 | delegated (writer) | Máquina de estados `Sales.Module`: create/dedupe, resolve atómico, local-resolve con lockout, expiración, consumo single-use, auditoría | pendiente |
+| T3 | S3, S11 | delegated (writer) | `AuthorizationTokenService` + canonicalizer + `AuthorizationCoordinator` + notifier SignalR | pendiente |
+| T4 | S1, S2, S4 | delegated (writer) | `AuthorizationHub` + `AuthorizationsController` (REST pair) + mapping/DI + integración de grupos y push | pendiente |
+| T5 | S3, S10 | delegated (writer) | Acciones protegidas: AddItem con token + 403 ProblemDetails extendido; gate de anulación (flagged) | pendiente |
+| T6 | S5 | delegated (writer) | `AuthorizationExpiryJob` (barrido 5 s) + config 60/60 + push de expiración | pendiente |
+| T7 | S1, S5 | delegated (writer) | Web core: `authorizationHub.js` + wait state + modal de espera + formulario local + retry con token + expiración/rechazo | pendiente |
+| T8 | S2, S10 | delegated (writer) | Web: notificaciones admin (aprobar/rechazar + carrera) + acción "Precio manual" + integración de anulación | pendiente |
+| T9 | S1, S5 | delegated (writer) | WPF core: `AuthorizationHubService` + diálogo de espera + diálogo local + retry con token | pendiente |
+| T10 | S2, S10 | delegated (writer) | WPF: notificaciones admin + carrera + integración en `PosViewModel.Orders` + ciclo de vida/dispose | pendiente |
+| T11 | S1-S12 | delegated (verify) + inline | Verificación final + ANEXO 8.150 + cierre del tracker (+E2E gated si el entorno lo permite) | pendiente |
+
+Estrategia de entrega: `ask-on-risk` → cadena **stacked-to-main** cacheada (misma política de la cadena V0.15). Commits `feat(8.150)` por work unit.
+
+## Log
+
+- L1 (2026-10-07) — Pedido del usuario, verbatim:
+
+> Orquestación de Alertas y Autorizaciones Remotas en Tiempo Real (SignalR)
+>
+> Objetivo:
+> Desplegar un sistema de escalamiento de privilegios dinámico. Permitir a los administradores autorizar o rechazar operaciones críticas de caja (descuentos excepcionales, créditos vencidos, anulaciones) de forma remota, emitiendo tokens efímeros mediante WebSockets, garantizando la fluidez operativa (cero desplazamientos físicos) y una auditoría criptográfica inmutable.
+>
+> Criterios de Aceptación (Flujo Principal):
+>
+> Bloqueo Activo y Emisión: Cuando el cajero detona una acción protegida, la UI de la terminal debe bloquearse en un estado: "Esperando autorización remota...". El frontend emitirá un evento al AuthorizationHub con el contexto de la operación (ID Transacción, Cajero, Tipo de Permiso, Monto/Contexto).
+>
+> Notificación Enriquecida (Push): Todos los usuarios activos con rol Admin o Manager recibirán un Toast o Modal emergente detallado (ej. "Cajero 01 solicita aplicar 20% de descuento a Factura #445").
+>
+> Resolución y Token Efímero: Al pulsar "Aprobar", el backend generará un token efímero (OTP o mini-JWT) firmado, válido por 60 segundos y restringido únicamente a esa transacción específica. Este token viaja de vuelta a la terminal del cajero para desbloquear la UI y ejecutar la acción.
+>
+> Criterios de Aceptación (Manejo de Excepciones y Concurrencia - Ampliación):
+> 4. Prevención de Condición de Carrera: Si hay múltiples administradores activos, la primera respuesta (Aprobar/Rechazar) cierra el caso. Si un segundo administrador intenta responder, el sistema le notificará: "Esta solicitud ya fue resuelta por [Nombre Admin]".
+> 5. Mecanismo de Fallback (Offline/Timeout):
+>
+> Si pasan 60 segundos sin respuesta remota, la solicitud se marca como "Expirada".
+>
+> La pantalla de espera en la caja debe incluir un botón de "Autorización Local", que permita a un supervisor acercarse físicamente, ingresar su PIN/Credenciales en el teclado del cajero y saltarse la red.
+>
+> Auditoría Estricta: La base de datos debe almacenar un registro inmutable en la tabla de operaciones asociando: Acción, Cajero que ejecutó, ID del Administrador que autorizó (remoto o local) y Timestamp.
+>
+> Justificación Arquitectónica (Efecto Dominó):
+> Depende de la infraestructura de control de sesiones (Paso 3). Al implementar esta capa ahora, los futuros módulos de mermas de inventario (Paso 5) y otorgamiento de créditos (Paso 11) consumirán este hub de autorización de forma nativa, evitando desarrollar mecanismos de aprobación independientes ("parches") para cada nuevo módulo.
+
+- L2 (2026-10-07) — Pregunta de alcance resuelta por el mantenedor: respuesta "3" → **ambos clientes (Web + WPF)**, tanto solicitantes como resolutores remotos.
+- L3 (2026-10-07) — Exploración read-only (explorador + spot-checks del orquestador). Hallazgos clave: (a) Paso 3 está **parcial** (revocación por `security_stamp` sí; `UserSessions`/kick/usuarios activos/logout push no) — no bloquea: push por grupos de rol y degradación a expiración + fallback local; (b) el backend ya expone el gancho `isPriceOverrideAuthorized` en `ISalesService.AddItemAsync` (`Sales.Module/Interfaces/ISalesService.cs:15`; controller `SalesController.cs:127-163`), lo que hace la integración quirúrgica; (c) no existen descuentos ni créditos (Pasos 9/11 futuros consumirán la capa); (d) único hub actual `ExchangeRateHub`; (e) Web no tiene UI de precio manual (se agrega como paridad, flagged); WPF no tiene flujo de anulación; (f) `AuthorizationAudits` + trigger Npgsql-guarded; RDD off verificado. Decisiones completas en `design.md`; supuestos flagged: gate de anulación, precio manual Web, credenciales locales (no PIN).
+- L4 (2026-10-07) — Plan SDD creado: `proposal.md`, `design.md` (D1-D9), `specs/remote-authorization` + `specs/remote-authorization-clients`, `tasks.md` (11 work units), `state.yaml`, y este tracker. Próximo: T1 (capa de datos) delegado a writer con verificación independiente.

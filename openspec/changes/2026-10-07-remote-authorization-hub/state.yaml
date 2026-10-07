@@ -1,0 +1,37 @@
+change: 2026-10-07-remote-authorization-hub
+store: openspec
+scope: remote-authorization-paso-4
+created: 2026-10-07
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: proposed
+apply:
+  slices: 0/11 (T1-T11)
+  branch: V0.15
+verify: pending
+artifacts:
+  exploration: openspec/changes/2026-10-07-remote-authorization-hub/exploration.md
+  proposal: openspec/changes/2026-10-07-remote-authorization-hub/proposal.md
+  specs:
+    - openspec/changes/2026-10-07-remote-authorization-hub/specs/remote-authorization/spec.md
+    - openspec/changes/2026-10-07-remote-authorization-hub/specs/remote-authorization-clients/spec.md
+  design: openspec/changes/2026-10-07-remote-authorization-hub/design.md
+  tasks: openspec/changes/2026-10-07-remote-authorization-hub/tasks.md
+decisions:
+  scope: clients Web + WPF (maintainer answer "3", tracker L2)
+  dependency: Paso 3 partial (SecurityStamp revocation only) — non-blocking; no online admin degrades to expiry + local fallback
+  storage: Core entities mapped by SalesDbContext; no new module; no FKs (snapshot names for audit immutability)
+  token: mini-JWT aud pos:authorization, 60 s from resolution, single-use atomic consume, canonical payload-hash binding
+  race: atomic ExecuteUpdate WHERE Status=Pending; exact message "Esta solicitud ya fue resuelta por {resolverName}."
+  local-fallback: REST local-resolve with real supervisor credentials + login lockout (no PIN concept exists)
+  expiry: 60 s lazy + 5 s sweep job; audited + pushed
+  audit: append-only table + Npgsql-guarded UPDATE/DELETE trigger
+  protected-v1: ManualPriceOverride (Web + WPF) and SaleCancellation gate (backend + Web UI; WPF has no cancel flow)
+  flagged: cancellation gating (behavior change), Web manual-price parity (net-new), local credentials fallback
+  rdd: off (clone-local + global, verified 2026-10-07)
+  branch: V0.15
+  anexo: "8.150"
+next: T1 data layer
