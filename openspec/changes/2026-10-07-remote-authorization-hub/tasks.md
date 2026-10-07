@@ -23,7 +23,7 @@ Chained PRs recommended: Yes
 | 2. Domain state machine (T2) | `--filter "FullyQualifiedName~AuthorizationService"` | Revert service; no schema |
 | 3. Token + coordinator + notifier (T3) | `--filter "FullyQualifiedName~AuthorizationToken\|~AuthorizationCoordinator"` | Revert services; no schema |
 | 4. Hub + REST (T4) | `--filter "FullyQualifiedName~AuthorizationHub\|~AuthorizationsController"` | Unmap hub/endpoints; revert DI |
-| 5. Protected actions (T5) | `--filter "FullyQualifiedName~ProtectedAction\|~PriceOverride"\|~Cancel"` | Revert gates to current 403/roles |
+| 5. Protected action — AddItem token path (T5) | `--filter "FullyQualifiedName~ProtectedAction\|~PriceOverride"` | Revert gate to current 403/roles |
 | 6. Expiry job (T6) | `--filter "FullyQualifiedName~AuthorizationExpiry"` | Unregister job |
 | 7. Web core — hub client + wait flow (T7) | `npm test` (Web.Frontend) | Revert web services/components |
 | 8. Web — admin notifications + parity (T8) | `npm test` (Web.Frontend) | Revert web components |
@@ -58,10 +58,10 @@ Chained PRs recommended: Yes
 - [ ] 4.2 `AuthorizationsController`: `POST /api/authorizations`, `GET /{id}` (requester/elevated; token recovery never extends window), `POST /{id}/resolve`, `POST /{id}/local-resolve` — RED: integration tests.
 - [ ] 4.3 Hub push integration: `AuthorizationRequested` to elevated group; `AuthorizationResolved` to requester group; REST fallback parity.
 
-## Phase 5: Protected actions (T5, S3/S10)
+## Phase 5: Protected action — AddItem token path (T5, S3/S10)
 
 - [ ] 5.1 AddItem token path (`X-Authorization-Token` → consume → existing `isPriceOverrideAuthorized` hook) + 403 ProblemDetails extensions before idempotency — RED tests: valid token adds; missing/reused/mismatched → 403 no mutation; replay after success unaffected.
-- [ ] 5.2 Cancel gate for non-elevated (action `SaleCancellation`, exact message + extensions) — RED tests; flagged behavior change. WPF has no cancel UI (Web + backend only).
+- ~~5.2 Cancel gate for non-elevated~~ — VETADO por el mantenedor (tracker L6): la anulación conserva el comportamiento actual para cajeros; el valor de enum queda reservado para un futuro consumidor.
 
 ## Phase 6: Expiry job (T6, S5)
 
@@ -70,9 +70,9 @@ Chained PRs recommended: Yes
 ## Phase 7: Web client (T7/T8, S1/S2/S5/S8)
 
 - [ ] 7.1 `src/services/authorizationHub.js`: connection `/hubs/authorization` (cookie), auto-reconnect, invoke + REST fallback, status recovery — RED: `node --test`.
-- [ ] 7.2 Wait flow module + `AuthorizationWaitModal` (exact "Esperando autorización remota...", countdown, "Autorización Local", cancel) + supervisor credential form + retry with `X-Authorization-Token` + rejection/expiry outcomes — RED tests (structural where the runner has no DOM).
+- [ ] 7.2 Wait flow module + `AuthorizationWaitModal` (exact "Esperando autorización remota...", countdown, "Autorización Local", cancel) + supervisor credential form + retry with `X-Authorization-Token` + rejection/expiry outcomes — infrastructure for future protected actions (no Web-side trigger in v1; validated with simulated refusals) — RED tests (structural where the runner has no DOM).
 - [ ] 7.3 `AuthorizationNotifications` for Admin/Manager: approve/reject + reason, race message exact, close-on-resolved — RED tests.
-- [ ] 7.4 "Precio manual" add action (parity) + cancel integration via 403 interception (`api.js` propagates ProblemDetails extensions) — RED tests.
+- [ ] 7.4 403 interception (ProblemDetails extensions propagation in `api.js`/sales flows) + `salesApi.addItemToSale` optional token header — RED tests. ("Precio manual" web y anulación: VETADOS, L6.)
 
 ## Phase 8: WPF client (T9/T10, S1/S2/S5)
 
@@ -89,4 +89,4 @@ Chained PRs recommended: Yes
 
 - ODD tracker: `odd/tasks/autorizaciones-remotas-signalr.md` (statuses, evidence, log).
 - RED→GREEN per task; evidence recorded in the tracker; commits `feat(8.150)` per task.
-- Flagged items (may be vetoed before their task): cancellation gating, Web manual-price parity, local fallback via real credentials.
+- Maintainer decisions (L6, 2026-10-07): cancellation gating VETOED (no behavior change for cashiers); Web manual-price UI VETOED (no Web-side trigger in v1); local fallback via real credentials CONFIRMED.

@@ -2,7 +2,9 @@
 
 ## ADDED Requirements
 
-### Requirement: Blocking wait state in the cashier terminal (Web + WPF)
+### Requirement: Blocking wait state in the cashier terminal (WPF v1; Web infrastructure)
+
+(Scope note, tracker L6: the Web manual-price UI is vetoed, so v1 has no Web-side trigger; the Web wait flow remains specified as infrastructure for future protected actions and is validated with simulated refusals.)
 
 When the backend refuses a protected action with `authorizationRequired`, the terminal MUST block the operation into the state "Esperando autorización remota...", showing the operation context and a live countdown to `expiresAt`, MUST offer a "Autorización Local" action, MUST allow cancelling the operation, and MUST resume the protected action automatically upon approval using the delivered token.
 
@@ -79,16 +81,11 @@ A rejection MUST unlock the wait state with "Solicitud rechazada." plus the reas
 - THEN the explicit error is shown and the terminal keeps waiting
 - AND repeated failures count toward lockout
 
-### Requirement: Web manual price parity
+#### Scenario: Zero-trust refusal starts the flow (capability)
 
-The Web terminal MUST offer adding an item with a manual price (parity with WPF), exercising the protected-action path for non-elevated users and the direct path for elevated users.
-
-#### Scenario: Zero-trust refusal opens the flow on Web
-
-- GIVEN a Cashier entering a manual price in the Web terminal
-- WHEN the backend refuses with `authorizationRequired`
+- GIVEN a terminal action refused with `authorizationRequired` (WPF custom price in v1; simulated refusals in Web tests)
+- WHEN the refusal reaches the client
 - THEN the wait flow starts instead of a dead-end error
-- AND an Admin/Manager adding a manual price proceeds directly
 
 ### Requirement: WPF hub lifecycle and thread affinity
 

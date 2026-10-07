@@ -42,7 +42,7 @@ Elevation rule centralized: `Admin`/`Manager` = elevated; `Driver` blocked from 
 ## D5 — Protected-action contract (v1)
 
 - `ManualPriceOverride` — `SalesController.AddItemAsync` (`:127-163`): custom price + non-elevated → read `X-Authorization-Token`; absent/invalid/reused → 403 ProblemDetails (existing message) **plus extensions** `authorizationRequired=true`, `authorizationAction="ManualPriceOverride"`; valid → coordinator consume → `isAuthorized=true` → proceeds through the existing `isPriceOverrideAuthorized` hook. Elevated unchanged. The token check stays before idempotency resolution (current order); an idempotent replay of an eventually-successful attempt never re-checks the token. Consumption precedes execution: a downstream failure burns the token (fail-closed, documented).
-- `SaleCancellation` — `SalesController.HoldOrders.cs` cancel endpoint: non-elevated → same token requirement (action `SaleCancellation`, context = sale id); 403 message "Anulación no autorizada. Se requiere autorización de un Administrador o Supervisor." + extensions. Elevated unchanged. **Flagged behavior change** for cashiers.
+- `SaleCancellation` — **vetoed by the maintainer (tracker L6)**: sale cancellation keeps its current behavior for cashiers; the enum value stays reserved for a future consumer. No gate is implemented in v1.
 - Registry is the enum + coordinator switch: Pasos 5/11 add an action type and one consume call — no new approval mechanism.
 
 ## D6 — Expiry
@@ -54,7 +54,7 @@ Elevation rule centralized: `Admin`/`Manager` = elevated; `Driver` blocked from 
 
 ## D7 — Clients
 
-- **Web**: `src/services/authorizationHub.js` (second connection, cookie auth, auto-reconnect, invoke + REST fallback); `AuthorizationWaitModal` (blocking, exact "Esperando autorización remota...", countdown, "Autorización Local" + supervisor form, "Cancelar"); `AuthorizationNotifications` mounted for Admin/Manager (approve/reject + optional reason); `salesApi.addItemToSale` optional `X-Authorization-Token` + cancel call; 403 interception via ProblemDetails extensions (`api.js` must propagate them); minimal **"Precio manual"** add action (net-new parity with WPF — flagged).
+- **Web**: `src/services/authorizationHub.js` (second connection, cookie auth, auto-reconnect, invoke + REST fallback); `AuthorizationWaitModal` (blocking, exact "Esperando autorización remota...", countdown, "Autorización Local" + supervisor form, "Cancelar") as infrastructure for future protected actions (the net-new "Precio manual" web UI is vetoed — tracker L6 — so there is no Web-side trigger in v1); `AuthorizationNotifications` mounted for Admin/Manager (approve/reject + optional reason); `salesApi.addItemToSale` optional `X-Authorization-Token`; 403 interception via ProblemDetails extensions (`api.js` must propagate them).
 - **WPF**: `AuthorizationHubService` (`HubConnection` with `access_token` per `ExchangeRateService` pattern, `IDisposable`, events/`WeakReferenceMessenger`); wait dialog + local dialog + admin notification dialog; integration at `PosViewModel.Orders.cs:131` (custom-price catch → wait flow → retry with token); dispatcher marshalling and teardown dispose per the WPF discipline skill.
 - Reconnect robustness: `GET /api/authorizations/{id}` recovery on hub reconnect; push loss degrades to countdown expiry.
 - Notification template (faithful to the user's example "Cajero 01 solicita aplicar 20% de descuento a Factura #445"): "El cajero {cashier} solicita autorización para {acción} en la Factura #{saleId}. {detalle}".

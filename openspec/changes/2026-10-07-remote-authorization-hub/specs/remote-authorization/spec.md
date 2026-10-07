@@ -140,9 +140,9 @@ Every terminal transition (Approved/Rejected/Expired) MUST append exactly one `A
 - WHEN an UPDATE or DELETE is attempted directly in SQL
 - THEN the database trigger raises an exception and the row is unchanged
 
-### Requirement: Protected action enforcement (ManualPriceOverride and SaleCancellation)
+### Requirement: Protected action enforcement (ManualPriceOverride)
 
-POST `/api/sales/{id}/items` MUST accept `X-Authorization-Token` for non-elevated users when a custom unit price is present: a valid token MUST be consumed and the item added with the custom price through the existing `isPriceOverrideAuthorized` hook. Absence, reuse, expiry or mismatch MUST return 403 ProblemDetails with `authorizationRequired=true` and `authorizationAction="ManualPriceOverride"` and MUST NOT mutate the sale. POST `/api/sales/{id}/cancel` MUST apply the same contract for non-elevated users with action `SaleCancellation` and message "Anulación no autorizada. Se requiere autorización de un Administrador o Supervisor." Elevated users MUST keep current behavior. The token check stays before idempotency resolution; an idempotent replay of a successful attempt never re-checks the token. A protected operation that fails after consumption MUST NOT restore the token (fail-closed).
+POST `/api/sales/{id}/items` MUST accept `X-Authorization-Token` for non-elevated users when a custom unit price is present: a valid token MUST be consumed and the item added with the custom price through the existing `isPriceOverrideAuthorized` hook. Absence, reuse, expiry or mismatch MUST return 403 ProblemDetails with `authorizationRequired=true` and `authorizationAction="ManualPriceOverride"` and MUST NOT mutate the sale. Elevated users MUST keep current behavior. The token check stays before idempotency resolution; an idempotent replay of a successful attempt never re-checks the token. A protected operation that fails after consumption MUST NOT restore the token (fail-closed). Sale cancellation is explicitly OUT of v1 (maintainer veto, tracker L6): cashiers keep the current behavior.
 
 #### Scenario: Price override succeeds with a valid token
 
@@ -157,15 +157,8 @@ POST `/api/sales/{id}/items` MUST accept `X-Authorization-Token` for non-elevate
 - THEN it returns 403 with `authorizationRequired=true` and `authorizationAction="ManualPriceOverride"`
 - AND the sale is not mutated
 
-#### Scenario: Cancellation requires authorization for cashiers
-
-- GIVEN a Cashier cancelling a sale without a token
-- WHEN the request runs
-- THEN it returns 403 with `authorizationAction="SaleCancellation"` and the explicit message
-- AND with a valid consumed token the cancellation proceeds
-
 #### Scenario: Elevated users are unaffected
 
 - GIVEN an Admin or Manager
-- WHEN a custom price add or a cancellation runs
+- WHEN a custom price add runs
 - THEN it proceeds without any authorization token

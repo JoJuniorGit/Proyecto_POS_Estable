@@ -29,8 +29,8 @@ decisions:
   local-fallback: REST local-resolve with real supervisor credentials + login lockout (no PIN concept exists)
   expiry: 60 s lazy + 5 s sweep job; audited + pushed
   audit: append-only table + Npgsql-guarded UPDATE/DELETE trigger
-  protected-v1: ManualPriceOverride (Web + WPF) and SaleCancellation gate (backend + Web UI; WPF has no cancel flow)
-  flagged: cancellation gating (behavior change), Web manual-price parity (net-new), local credentials fallback
+  protected-v1: ManualPriceOverride only (AddItem; WPF trigger + backend gate); SaleCancellation VETOED (no gate, behavior unchanged); Web manual-price UI VETOED
+  vetoes: maintainer L6 2026-10-07 — cancellation gating and web manual-price UI out of v1; local credentials fallback confirmed
   rdd: off (clone-local + global, verified 2026-10-07)
   branch: V0.15
   anexo: "8.150"
