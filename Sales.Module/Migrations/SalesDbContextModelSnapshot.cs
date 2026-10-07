@@ -26,6 +26,138 @@ namespace Sales.Module.Migrations
 
             modelBuilder.HasSequence<int>("paymentmethod_displayorder_seq");
 
+            modelBuilder.Entity("Core.Entities.AuthorizationAudit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActionType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContextJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestedByName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("RequestedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RequestId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResolvedByName")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("ResolvedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ResolutionMode")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SaleId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Terminal")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestId")
+                        .HasDatabaseName("IX_AuthorizationAudits_RequestId");
+
+                    b.ToTable("AuthorizationAudits");
+                });
+
+            modelBuilder.Entity("Core.Entities.AuthorizationRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActionType")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ContextHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ContextJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestedByName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("RequestedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ResolutionMode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ResolutionReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResolvedByName")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("ResolvedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SaleId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Terminal")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestedByUserId", "SaleId", "ActionType")
+                        .IsUnique()
+                        .HasDatabaseName("IX_AuthorizationRequests_PendingDedupe")
+                        .HasFilter("\"Status\" = 0");
+
+                    b.HasIndex("Status", "ExpiresAt")
+                        .HasDatabaseName("IX_AuthorizationRequests_Status_ExpiresAt");
+
+                    b.ToTable("AuthorizationRequests");
+                });
+
             modelBuilder.Entity("Core.Entities.Customer", b =>
                 {
                     b.Property<int>("Id")
