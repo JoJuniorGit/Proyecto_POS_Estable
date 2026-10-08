@@ -148,7 +148,7 @@ public interface ISalesService
     SaleDto? CurrentSale { get; }
     Task<SaleDto> GetSaleAsync(int saleId);
     Task<SaleDto> StartSaleAsync(int? cashierId = null);
-    Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceBsS = null);
+    Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceBsS = null, string? authorizationToken = null);
     Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate);
     Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate);
     Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate);
