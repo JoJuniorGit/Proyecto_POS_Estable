@@ -142,6 +142,8 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
 
     public async Task<AuthorizationConsumeResult> ConsumeAsync(
         string rawToken,
+        int saleId,
+        int? actingUserId,
         ManualPriceOverrideContext operation,
         CancellationToken cancellationToken = default)
     {
@@ -153,13 +155,20 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
             return new AuthorizationConsumeResult(AuthorizationConsumeStatus.InvalidToken, "El token de autorización no es válido o ya expiró.");
         }
 
+        if (actingUserId is null)
+        {
+            return new AuthorizationConsumeResult(AuthorizationConsumeStatus.WrongUser);
+        }
+
         var contextHash = AuthorizationContextCanonicalizer.ComputeManualPriceOverrideHash(operation);
 
+        // El binding se valida contra la venta y el usuario REALES de la peticion: derivarlos de
+        // las claims del token los volvia circulares (el token se emitio desde la misma fila).
         var result = await _authorizationService.TryConsumeAsync(
             claims.RequestId,
-            claims.CashierUserId,
-            claims.ActionType,
-            claims.SaleId,
+            actingUserId.Value,
+            AuthorizationActionType.ManualPriceOverride,
+            saleId,
             contextHash,
             cancellationToken);
 

@@ -37,6 +37,8 @@ public interface IAuthorizationCoordinator
 
     Task<AuthorizationConsumeResult> ConsumeAsync(
         string rawToken,
+        int saleId,
+        int? actingUserId,
         ManualPriceOverrideContext operation,
         CancellationToken cancellationToken = default);
 

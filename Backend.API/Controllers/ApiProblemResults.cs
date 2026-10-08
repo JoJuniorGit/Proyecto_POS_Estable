@@ -21,6 +21,27 @@ public static class ApiProblemResults
             StatusCode = StatusCodes.Status403Forbidden
         };
 
+    /// <summary>
+    /// 8.150 (T5, design D5): 403 con extensiones ProblemDetails para el contrato del gate de
+    /// acciones protegidas (authorizationRequired / authorizationAction). Las firmas existentes
+    /// quedan intactas.
+    /// </summary>
+    public static ObjectResult ApiForbidden(this ControllerBase controller, string? message, System.Collections.Generic.IReadOnlyDictionary<string, object?> extensions, string? detail = null)
+    {
+        System.ArgumentNullException.ThrowIfNull(extensions);
+
+        var pd = ProblemDetails(controller, StatusCodes.Status403Forbidden, "Forbidden", message ?? "Acceso denegado.", detail);
+        foreach (var extension in extensions)
+        {
+            pd.Extensions[extension.Key] = extension.Value;
+        }
+
+        return new ObjectResult(pd)
+        {
+            StatusCode = StatusCodes.Status403Forbidden
+        };
+    }
+
     public static ObjectResult ApiPasswordChangeRequired(this ControllerBase controller, string? message = null, string? detail = null)
     {
         var pd = ProblemDetails(controller, StatusCodes.Status403Forbidden, "Forbidden", message ?? "Debe cambiar su contraseña antes de continuar.", detail);

@@ -605,7 +605,7 @@ public class AuthorizationCoordinatorTests
         var created = await stack.Coordinator.CreateAsync(Contract(), 70, "Cajero 70", UserRole.Cashier);
         await stack.Coordinator.ResolveAsync(created.Request!.Id, 2, "Admin Uno", approved: true);
         var token = stack.Notifier.ResolvedNotifications.Single().Token!;
-        Assert.Equal(AuthorizationConsumeStatus.Consumed, (await stack.Coordinator.ConsumeAsync(token, Operation())).Status);
+        Assert.Equal(AuthorizationConsumeStatus.Consumed, (await stack.Coordinator.ConsumeAsync(token, 445, 70, Operation())).Status);
 
         var status = await stack.Coordinator.GetStatusAsync(created.Request.Id, 70, false);
 
@@ -661,7 +661,7 @@ public class AuthorizationCoordinatorTests
         service.Setup(s => s.TryConsumeAsync(7, 70, AuthorizationActionType.ManualPriceOverride, 445, expectedHash, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.Consumed));
 
-        var result = await coordinator.ConsumeAsync(token, operation);
+        var result = await coordinator.ConsumeAsync(token, 445, 70, operation);
 
         Assert.Equal(AuthorizationConsumeStatus.Consumed, result.Status);
         service.Verify(s => s.TryConsumeAsync(7, 70, AuthorizationActionType.ManualPriceOverride, 445, expectedHash, It.IsAny<CancellationToken>()), Times.Once);
@@ -685,7 +685,7 @@ public class AuthorizationCoordinatorTests
         service.Setup(s => s.TryConsumeAsync(7, 70, AuthorizationActionType.ManualPriceOverride, 445, retryHash, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.ContextMismatch));
 
-        var result = await coordinator.ConsumeAsync(token, retry);
+        var result = await coordinator.ConsumeAsync(token, 445, 70, retry);
 
         Assert.Equal(AuthorizationConsumeStatus.ContextMismatch, result.Status);
         service.Verify(s => s.TryConsumeAsync(7, 70, AuthorizationActionType.ManualPriceOverride, 445, retryHash, It.IsAny<CancellationToken>()), Times.Once);
@@ -699,9 +699,52 @@ public class AuthorizationCoordinatorTests
         using var db = TestDatabaseFactory.CreateSalesDbContext();
         var coordinator = new AuthorizationCoordinator(service.Object, CreateTokenService(), notifier.Object, db);
 
-        var result = await coordinator.ConsumeAsync("not-a-token", Operation());
+        var result = await coordinator.ConsumeAsync("not-a-token", 445, 70, Operation());
 
         Assert.Equal(AuthorizationConsumeStatus.InvalidToken, result.Status);
+        service.Verify(s => s.TryConsumeAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<AuthorizationActionType>(), It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ConsumeAsync_ActualSaleId_IsBoundToTheRequestNotTheClaims()
+    {
+        // El hash de contexto no cubre la venta: el binding debe usar la venta REAL de la
+        // peticion para que un token aprobado para otra venta no pueda consumirse aqui.
+        var service = new Mock<IAuthorizationService>();
+        var notifier = new Mock<IAuthorizationNotifier>();
+        var tokenService = CreateTokenService();
+        using var db = TestDatabaseFactory.CreateSalesDbContext();
+        var coordinator = new AuthorizationCoordinator(service.Object, tokenService, notifier.Object, db);
+
+        var operation = Operation();
+        var expectedHash = AuthorizationContextCanonicalizer.ComputeManualPriceOverrideHash(operation);
+        var token = tokenService.Issue(70, 7, AuthorizationActionType.ManualPriceOverride, 445, expectedHash, UtcNowSeconds());
+
+        service.Setup(s => s.TryConsumeAsync(7, 70, AuthorizationActionType.ManualPriceOverride, 999, expectedHash, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.WrongSale));
+
+        var result = await coordinator.ConsumeAsync(token, saleId: 999, actingUserId: 70, operation);
+
+        Assert.Equal(AuthorizationConsumeStatus.WrongSale, result.Status);
+        service.Verify(s => s.TryConsumeAsync(7, 70, AuthorizationActionType.ManualPriceOverride, 999, expectedHash, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ConsumeAsync_MissingActingUser_ReturnsWrongUserWithoutServiceCall()
+    {
+        var service = new Mock<IAuthorizationService>();
+        var notifier = new Mock<IAuthorizationNotifier>();
+        var tokenService = CreateTokenService();
+        using var db = TestDatabaseFactory.CreateSalesDbContext();
+        var coordinator = new AuthorizationCoordinator(service.Object, tokenService, notifier.Object, db);
+
+        var operation = Operation();
+        var hash = AuthorizationContextCanonicalizer.ComputeManualPriceOverrideHash(operation);
+        var token = tokenService.Issue(70, 7, AuthorizationActionType.ManualPriceOverride, 445, hash, UtcNowSeconds());
+
+        var result = await coordinator.ConsumeAsync(token, 445, actingUserId: null, operation);
+
+        Assert.Equal(AuthorizationConsumeStatus.WrongUser, result.Status);
         service.Verify(s => s.TryConsumeAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<AuthorizationActionType>(), It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -767,10 +810,10 @@ public class AuthorizationCoordinatorTests
         Assert.Equal(created.Request.Id, claims!.RequestId);
         Assert.Equal(70, claims.CashierUserId);
 
-        var consumed = await stack.Coordinator.ConsumeAsync(notification.Token!, Operation());
+        var consumed = await stack.Coordinator.ConsumeAsync(notification.Token!, 445, 70, Operation());
         Assert.Equal(AuthorizationConsumeStatus.Consumed, consumed.Status);
 
-        var second = await stack.Coordinator.ConsumeAsync(notification.Token!, Operation());
+        var second = await stack.Coordinator.ConsumeAsync(notification.Token!, 445, 70, Operation());
         Assert.Equal(AuthorizationConsumeStatus.AlreadyConsumed, second.Status);
     }
 
@@ -784,11 +827,11 @@ public class AuthorizationCoordinatorTests
         await stack.Coordinator.ResolveAsync(created.Request!.Id, 2, "Admin Uno", approved: true);
         var token = stack.Notifier.ResolvedNotifications.Single().Token!;
 
-        var mismatch = await stack.Coordinator.ConsumeAsync(token, Operation(productId: 11));
+        var mismatch = await stack.Coordinator.ConsumeAsync(token, 445, 70, Operation(productId: 11));
 
         Assert.Equal(AuthorizationConsumeStatus.ContextMismatch, mismatch.Status);
 
-        var consumed = await stack.Coordinator.ConsumeAsync(token, Operation());
+        var consumed = await stack.Coordinator.ConsumeAsync(token, 445, 70, Operation());
 
         Assert.Equal(AuthorizationConsumeStatus.Consumed, consumed.Status);
     }
