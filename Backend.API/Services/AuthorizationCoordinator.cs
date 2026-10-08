@@ -124,6 +124,13 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
             ? IssueToken(result.Request)
             : null;
 
+        if (result.Outcome == LocalResolveOutcome.Resolved && result.Request is not null && token is not null)
+        {
+            // D4 (gap T3): la resolucion local tambien cierra los modales elevados y entrega el
+            // token a la terminal solicitante; el notifier hace el split usuario/elevados.
+            await _notifier.NotifyResolvedAsync(result.Request, token, cancellationToken);
+        }
+
         return new LocalAuthorizationResult(
             result.Outcome,
             result.Request,
@@ -191,6 +198,48 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
         bool viewerIsElevated,
         CancellationToken cancellationToken = default)
         => _authorizationService.GetAsync(requestId, viewerUserId, viewerIsElevated, cancellationToken);
+
+    public async Task<AuthorizationStatusResult?> GetStatusAsync(
+        int requestId,
+        int viewerUserId,
+        bool viewerIsElevated,
+        CancellationToken cancellationToken = default)
+    {
+        var request = await _authorizationService.GetAsync(requestId, viewerUserId, viewerIsElevated, cancellationToken);
+        if (request is null)
+        {
+            return null;
+        }
+
+        return new AuthorizationStatusResult(request, TryRecoverToken(request, viewerUserId, viewerIsElevated));
+    }
+
+    private string? TryRecoverToken(AuthorizationRequestDto request, int viewerUserId, bool viewerIsElevated)
+    {
+        // La entrega del token esta restringida al solicitante (design D3): los elevados ven el
+        // estado pero jamas el token. La reemision reutiliza ResolvedAt como ancla, de modo que la
+        // ventana siempre expira en resolvedAt + TTL y no puede extenderse.
+        if (viewerIsElevated || request.RequestedByUserId != viewerUserId)
+        {
+            return null;
+        }
+
+        if (request.Status != AuthorizationStatus.Approved || request.ConsumedAt.HasValue || !request.ResolvedAt.HasValue)
+        {
+            return null;
+        }
+
+        var resolvedAtUtc = request.ResolvedAt.Value.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(request.ResolvedAt.Value, DateTimeKind.Utc)
+            : request.ResolvedAt.Value.ToUniversalTime();
+
+        if (DateTime.UtcNow > resolvedAtUtc.Add(_tokenTtl))
+        {
+            return null;
+        }
+
+        return IssueToken(request);
+    }
 
     private string IssueToken(AuthorizationRequestDto request)
     {

@@ -47,6 +47,18 @@ public interface IAuthorizationCoordinator
         int viewerUserId,
         bool viewerIsElevated,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// D3/D4: estado visible para el GET REST. Cuando el viewer es el solicitante, la solicitud
+    /// esta Approved, sin consumir y dentro de la ventana del token, reemite el token anclado a
+    /// <c>ResolvedAt</c> (misma ventana, nunca extendida). Para elevados u otros viewers el token
+    /// viaja null.
+    /// </summary>
+    Task<AuthorizationStatusResult?> GetStatusAsync(
+        int requestId,
+        int viewerUserId,
+        bool viewerIsElevated,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -68,6 +80,12 @@ public enum AuthorizationConsumeStatus
 }
 
 public sealed record AuthorizationConsumeResult(AuthorizationConsumeStatus Status, string? Message = null);
+
+/// <summary>
+/// 8.150 (T4): estado + token recuperable expuestos por el GET REST. El token solo se completa
+/// para el solicitante dentro de la ventana de recuperacion.
+/// </summary>
+public sealed record AuthorizationStatusResult(AuthorizationRequestDto Request, string? Token = null);
 
 public sealed record LocalAuthorizationResult(
     LocalResolveOutcome Outcome,

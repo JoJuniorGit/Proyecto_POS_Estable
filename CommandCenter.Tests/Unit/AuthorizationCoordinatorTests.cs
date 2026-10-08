@@ -475,6 +475,7 @@ public class AuthorizationCoordinatorTests
         Assert.Equal(2, result.SupervisorUserId);
         Assert.Equal("Supervisora Ana", result.SupervisorName);
         Assert.NotNull(result.Token);
+        notifier.Verify(n => n.NotifyResolvedAsync(resolved, result.Token, It.IsAny<CancellationToken>()), Times.Once);
 
         var claims = tokenService.Validate(result.Token);
         Assert.NotNull(claims);
@@ -498,6 +499,148 @@ public class AuthorizationCoordinatorTests
         Assert.Equal(LocalResolveOutcome.InvalidCredentials, result.Outcome);
         Assert.Equal("Credenciales inválidas o sin privilegios para autorizar.", result.Message);
         Assert.Null(result.Token);
+        notifier.Verify(n => n.NotifyResolvedAsync(It.IsAny<AuthorizationRequestDto>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResolveLocalAsync_EndToEnd_NotifiesRequesterWithIssuedToken()
+    {
+        using var stack = new SqliteStack();
+        stack.Db.Users.Add(new User
+        {
+            Id = 80,
+            Cedula = "V-00000080",
+            Name = "Supervisora Ana",
+            Username = "usuario80",
+            FullName = "Supervisora Ana",
+            Role = UserRole.Admin,
+            PasswordHash = Core.Security.PasswordHasher.HashPassword("SuperClave123!")
+        });
+        await stack.Db.SaveChangesAsync();
+        var created = await stack.Coordinator.CreateAsync(Contract(), 70, "Cajero 70", UserRole.Cashier);
+
+        var result = await stack.Coordinator.ResolveLocalAsync(created.Request!.Id, "usuario80", "SuperClave123!", reason: "En sitio");
+
+        Assert.Equal(LocalResolveOutcome.Resolved, result.Outcome);
+        Assert.NotNull(result.Token);
+        var notification = Assert.Single(stack.Notifier.ResolvedNotifications);
+        Assert.Equal(created.Request.Id, notification.Request.Id);
+        Assert.Equal(result.Token, notification.Token);
+
+        var claims = stack.TokenService.Validate(notification.Token);
+        Assert.NotNull(claims);
+        Assert.Equal(created.Request.Id, claims!.RequestId);
+        Assert.Equal(70, claims.CashierUserId);
+        Assert.Equal(AuthorizationStatus.Approved, (await stack.Db.AuthorizationRequests.AsNoTracking().SingleAsync(row => row.Id == created.Request.Id)).Status);
+    }
+
+    // ---------------------------------------------------------------- recuperacion de token
+
+    [Fact]
+    public async Task GetStatusAsync_ApprovedWithinWindow_ReturnsTokenOnlyForRequester()
+    {
+        using var stack = new SqliteStack();
+        await stack.SeedSaleAsync(445, cashierId: 70);
+        var created = await stack.Coordinator.CreateAsync(Contract(), 70, "Cajero 70", UserRole.Cashier);
+        await stack.Coordinator.ResolveAsync(created.Request!.Id, 2, "Admin Uno", approved: true);
+
+        var asRequester = await stack.Coordinator.GetStatusAsync(created.Request.Id, viewerUserId: 70, viewerIsElevated: false);
+        var asElevated = await stack.Coordinator.GetStatusAsync(created.Request.Id, viewerUserId: 2, viewerIsElevated: true);
+        var asOtherCashier = await stack.Coordinator.GetStatusAsync(created.Request.Id, viewerUserId: 71, viewerIsElevated: false);
+
+        Assert.NotNull(asRequester);
+        Assert.Equal(AuthorizationStatus.Approved, asRequester!.Request.Status);
+        Assert.NotNull(asRequester.Token);
+        var claims = stack.TokenService.Validate(asRequester.Token);
+        Assert.NotNull(claims);
+        Assert.Equal(created.Request.Id, claims!.RequestId);
+        Assert.Equal(70, claims.CashierUserId);
+
+        Assert.NotNull(asElevated);
+        Assert.Null(asElevated!.Token);
+        Assert.Null(asOtherCashier);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_RecoveredToken_ReissuesSameWindowWithoutExtension()
+    {
+        using var stack = new SqliteStack();
+        var created = await stack.Coordinator.CreateAsync(Contract(), 70, "Cajero 70", UserRole.Cashier);
+        await stack.Coordinator.ResolveAsync(created.Request!.Id, 2, "Admin Uno", approved: true);
+        var row = await stack.Db.AuthorizationRequests.SingleAsync(candidate => candidate.Id == created.Request.Id);
+        var windowStart = row.ResolvedAt!.Value.AddSeconds(-55);
+        row.ResolvedAt = windowStart;
+        await stack.Db.SaveChangesAsync();
+
+        var status = await stack.Coordinator.GetStatusAsync(created.Request.Id, 70, false);
+
+        Assert.NotNull(status);
+        Assert.NotNull(status!.Token);
+        var claims = stack.TokenService.Validate(status.Token);
+        Assert.NotNull(claims);
+        Assert.Equal(windowStart.AddSeconds(60), claims!.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_AfterTokenWindow_DoesNotReturnToken()
+    {
+        using var stack = new SqliteStack();
+        var created = await stack.Coordinator.CreateAsync(Contract(), 70, "Cajero 70", UserRole.Cashier);
+        await stack.Coordinator.ResolveAsync(created.Request!.Id, 2, "Admin Uno", approved: true);
+        var row = await stack.Db.AuthorizationRequests.SingleAsync(candidate => candidate.Id == created.Request.Id);
+        row.ResolvedAt = row.ResolvedAt!.Value.AddSeconds(-61);
+        await stack.Db.SaveChangesAsync();
+
+        var status = await stack.Coordinator.GetStatusAsync(created.Request.Id, 70, false);
+
+        Assert.NotNull(status);
+        Assert.Equal(AuthorizationStatus.Approved, status!.Request.Status);
+        Assert.Null(status.Token);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_ConsumedApproval_DoesNotReturnToken()
+    {
+        using var stack = new SqliteStack();
+        var created = await stack.Coordinator.CreateAsync(Contract(), 70, "Cajero 70", UserRole.Cashier);
+        await stack.Coordinator.ResolveAsync(created.Request!.Id, 2, "Admin Uno", approved: true);
+        var token = stack.Notifier.ResolvedNotifications.Single().Token!;
+        Assert.Equal(AuthorizationConsumeStatus.Consumed, (await stack.Coordinator.ConsumeAsync(token, Operation())).Status);
+
+        var status = await stack.Coordinator.GetStatusAsync(created.Request.Id, 70, false);
+
+        Assert.NotNull(status);
+        Assert.NotNull(status!.Request.ConsumedAt);
+        Assert.Null(status.Token);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_RejectedRequest_DoesNotReturnToken()
+    {
+        using var stack = new SqliteStack();
+        var created = await stack.Coordinator.CreateAsync(Contract(), 70, "Cajero 70", UserRole.Cashier);
+        await stack.Coordinator.ResolveAsync(created.Request!.Id, 2, "Admin Uno", approved: false, reason: "No aprobado");
+
+        var status = await stack.Coordinator.GetStatusAsync(created.Request.Id, 70, false);
+
+        Assert.NotNull(status);
+        Assert.Equal(AuthorizationStatus.Rejected, status!.Request.Status);
+        Assert.Null(status.Token);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_NotFound_ReturnsNull()
+    {
+        using var db = TestDatabaseFactory.CreateSalesDbContext();
+        var coordinator = new AuthorizationCoordinator(
+            new Mock<IAuthorizationService>().Object,
+            CreateTokenService(),
+            new Mock<IAuthorizationNotifier>().Object,
+            db);
+
+        var status = await coordinator.GetStatusAsync(99999, 70, false);
+
+        Assert.Null(status);
     }
 
     // ---------------------------------------------------------------- consumo

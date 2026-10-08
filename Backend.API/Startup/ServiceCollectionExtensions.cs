@@ -66,6 +66,26 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IHoldOrderNotifier, Backend.API.Services.SignalRHoldOrderNotifier>();
+        // 8.150-T4 (design D6): fuente unica de los tiempos de autorizaciones remotas. El mismo
+        // TTL se inyecta en el token service, el coordinator y el servicio de estado, de modo que
+        // la ventana de consumo no pueda divergir de la expiracion del token.
+        var authorizationRequestTimeout = TimeSpan.FromSeconds(builder.Configuration.GetValue<int?>("Authorization:RequestTimeoutSeconds") ?? 60);
+        var authorizationTokenTtl = TimeSpan.FromSeconds(builder.Configuration.GetValue<int?>("Authorization:TokenTtlSeconds") ?? 60);
+        builder.Services.AddScoped<Sales.Module.Interfaces.IAuthorizationService>(sp =>
+            new Sales.Module.Services.AuthorizationService(
+                sp.GetRequiredService<Sales.Module.Data.SalesDbContext>(),
+                authorizationRequestTimeout,
+                authorizationTokenTtl));
+        builder.Services.AddScoped<Backend.API.Services.IAuthorizationTokenService>(sp =>
+            new Backend.API.Services.AuthorizationTokenService(builder.Configuration, authorizationTokenTtl));
+        builder.Services.AddScoped<Sales.Module.Interfaces.IAuthorizationNotifier, Backend.API.Services.SignalRAuthorizationNotifier>();
+        builder.Services.AddScoped<Backend.API.Services.IAuthorizationCoordinator>(sp =>
+            new Backend.API.Services.AuthorizationCoordinator(
+                sp.GetRequiredService<Sales.Module.Interfaces.IAuthorizationService>(),
+                sp.GetRequiredService<Backend.API.Services.IAuthorizationTokenService>(),
+                sp.GetRequiredService<Sales.Module.Interfaces.IAuthorizationNotifier>(),
+                sp.GetRequiredService<Sales.Module.Data.SalesDbContext>(),
+                authorizationTokenTtl));
         builder.Services.AddScoped<Sales.Module.Interfaces.IDailyClosureService, Sales.Module.Services.DailyClosureService>();
         builder.Services.AddScoped<Core.Interfaces.ITodayExchangeRateProvider, Backend.API.Services.TodayExchangeRateProvider>();
         var idempotencyTtlHours = builder.Configuration.GetValue<double?>("Idempotency:TtlHours") ?? 24.0;

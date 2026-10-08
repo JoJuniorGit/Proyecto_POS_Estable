@@ -956,4 +956,156 @@ public class AuthorizationServiceTests
 
         Assert.Null(result);
     }
+
+    // ---------------------------------------------------------------- W1: carrera de creacion
+
+    /// <summary>
+    /// W1 (8.150): ejecuta un callback antes del primer SaveChangesAsync para forzar el
+    /// escenario "otra terminal inserto la Pending entre el pre-chequeo y el INSERT".
+    /// </summary>
+    private sealed class ConflictInjectingSalesDbContext : SalesDbContext
+    {
+        private readonly Func<SalesDbContext, CancellationToken, Task> _beforeFirstSave;
+        private bool _injected;
+
+        public ConflictInjectingSalesDbContext(
+            DbContextOptions<SalesDbContext> options,
+            Func<SalesDbContext, CancellationToken, Task> beforeFirstSave)
+            : base(options)
+        {
+            _beforeFirstSave = beforeFirstSave;
+        }
+
+        public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (!_injected)
+            {
+                _injected = true;
+                await _beforeFirstSave(this, cancellationToken);
+            }
+
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private static AuthorizationRequest BuildWinnerRequest(int userId, int? saleId)
+    {
+        var now = DateTime.UtcNow;
+        return new AuthorizationRequest
+        {
+            ActionType = AuthorizationActionType.ManualPriceOverride,
+            SaleId = saleId,
+            RequestedByUserId = userId,
+            RequestedByName = $"Cajero {userId}",
+            Terminal = "Caja-02",
+            Status = AuthorizationStatus.Pending,
+            ContextJson = """{"productId":10,"quantity":2,"customUnitPriceUsd":9.99}""",
+            ContextHash = HashA,
+            CreatedAt = now,
+            ExpiresAt = now.AddSeconds(60)
+        };
+    }
+
+    [Fact]
+    public async Task CreateAsync_ConcurrentDuplicateInsert_TranslatesUniqueViolationToDeduplicated()
+    {
+        const int userId = 970;
+        const int saleId = 9970;
+        var databaseName = $"file:auth-dedupe-{Guid.NewGuid():N}?mode=memory&cache=shared";
+        using var connection = new SqliteConnection($"Data Source={databaseName}");
+        await connection.OpenAsync();
+
+        ConflictInjectingSalesDbContext? raceContext = null;
+        raceContext = new ConflictInjectingSalesDbContext(
+            new DbContextOptionsBuilder<SalesDbContext>().UseSqlite(connection).Options,
+            async (context, cancellationToken) =>
+            {
+                // La transaccion del perdedor aun no escribio: se revierte para liberar los locks
+                // de SQLite y el ganador se comitea desde otra conexion a la misma base compartida.
+                var ambient = context.Database.CurrentTransaction;
+                if (ambient is not null)
+                {
+                    await ambient.RollbackAsync(cancellationToken);
+                    await ambient.DisposeAsync();
+                }
+
+                await using var winnerConnection = new SqliteConnection($"Data Source={databaseName}");
+                await winnerConnection.OpenAsync(cancellationToken);
+                await using var winnerContext = new SalesDbContext(
+                    new DbContextOptionsBuilder<SalesDbContext>().UseSqlite(winnerConnection).Options);
+                winnerContext.AuthorizationRequests.Add(BuildWinnerRequest(userId, saleId));
+                await winnerContext.SaveChangesAsync(cancellationToken);
+            });
+        await using var scope = raceContext;
+        await raceContext.Database.EnsureCreatedAsync();
+
+        var service = CreateService(raceContext);
+        var result = await service.CreateAsync(Command(userId: userId, saleId: saleId));
+
+        Assert.Equal(CreateAuthorizationOutcome.Deduplicated, result.Outcome);
+        Assert.NotNull(result.Request);
+        Assert.Equal(AuthorizationStatus.Pending, result.Request!.Status);
+        Assert.Equal("Caja-02", result.Request.Terminal);
+        Assert.InRange(result.Request.RemainingLifetimeSeconds, 58, 61);
+
+        var persisted = await raceContext.AuthorizationRequests.AsNoTracking().SingleAsync();
+        Assert.Equal(AuthorizationStatus.Pending, persisted.Status);
+        Assert.Equal("Caja-02", persisted.Terminal);
+    }
+
+    [Fact]
+    public async Task CreateAsync_OtherUniqueViolation_IsNotTranslatedAndPropagates()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+        using var raceContext = new ConflictInjectingSalesDbContext(
+            new DbContextOptionsBuilder<SalesDbContext>().UseSqlite(connection).Options,
+            (_, _) => throw new DbUpdateException(
+                "SQLite Error 19: 'UNIQUE constraint failed: index 'IX_Customers_CedulaOrRif''.",
+                new Microsoft.Data.Sqlite.SqliteException(
+                    "SQLite Error 19: 'UNIQUE constraint failed: index 'IX_Customers_CedulaOrRif''.",
+                    19)));
+        raceContext.Database.EnsureCreated();
+
+        var service = CreateService(raceContext);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => service.CreateAsync(Command(userId: 971)));
+        Assert.Equal(0, await raceContext.AuthorizationRequests.CountAsync());
+    }
+
+    [Fact]
+    public async Task CreateAsync_ConcurrentPostgresCreates_OneCreatedAndOneDeduplicated()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        var userId = Random.Shared.Next(800_000, 899_999);
+        var saleId = Random.Shared.Next(800_000, 899_999);
+
+        using var firstContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
+        using var secondContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
+        if (firstContext is null || secondContext is null) return;
+
+        var firstService = CreateService(firstContext);
+        var secondService = CreateService(secondContext);
+
+        var results = await Task.WhenAll(
+            firstService.CreateAsync(Command(userId: userId, saleId: saleId)),
+            secondService.CreateAsync(Command(userId: userId, saleId: saleId)));
+
+        Assert.Equal(1, results.Count(result => result.Outcome == CreateAuthorizationOutcome.Created));
+        Assert.Equal(1, results.Count(result => result.Outcome == CreateAuthorizationOutcome.Deduplicated));
+        Assert.NotNull(results[0].Request);
+        Assert.Equal(results[0].Request!.Id, results[1].Request!.Id);
+
+        using var verificationContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
+        if (verificationContext is null) return;
+        var pending = await verificationContext.AuthorizationRequests.AsNoTracking()
+            .Where(row => row.RequestedByUserId == userId && row.SaleId == saleId && row.Status == AuthorizationStatus.Pending)
+            .ToListAsync();
+        Assert.Single(pending);
+        await verificationContext.AuthorizationRequests
+            .Where(row => row.RequestedByUserId == userId)
+            .ExecuteDeleteAsync();
+    }
 }

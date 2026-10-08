@@ -20,6 +20,12 @@ public class AuthorizationService : IAuthorizationService
 {
     private const int MaxContextJsonBytes = 4096;
 
+    // W1: el indice unico parcial de dedupe y las dos formas de nombrarlo que exponen los
+    // proveedores (Npgsql: constraint/indice; SQLite: columnas, nunca el nombre del indice).
+    private const string PendingDedupeIndexName = "IX_AuthorizationRequests_PendingDedupe";
+    private const string SqlitePendingDedupeViolation =
+        "UNIQUE constraint failed: AuthorizationRequests.RequestedByUserId, AuthorizationRequests.SaleId, AuthorizationRequests.ActionType";
+
     private static readonly string _dummyPasswordHash = PasswordHasher.HashPassword("dummy-8.150-local");
 
     private readonly SalesDbContext _db;
@@ -79,66 +85,91 @@ public class AuthorizationService : IAuthorizationService
 
         var now = UtcNowSeconds();
         CreateAuthorizationResult result = null!;
+        DbUpdateException? pendingDedupeConflict = null;
 
-        await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            // La estrategia de reintento vuelve a ejecutar el lambda: se descarta el tracker
-            // para no duplicar inserciones de intentos previos.
-            _db.ChangeTracker.Clear();
-
-            await using var transaction = _db.Database.IsRelational()
-                ? await _db.Database.BeginTransactionAsync(cancellationToken)
-                : null;
-
-            var existing = await FindPendingRequestAsync(request, cancellationToken);
-            if (existing != null && existing.ExpiresAt > now)
+            try
             {
-                result = new CreateAuthorizationResult(CreateAuthorizationOutcome.Deduplicated, ToDto(existing, now));
-                if (transaction != null)
+                await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
                 {
-                    await transaction.CommitAsync(cancellationToken);
-                }
+                    cancellationToken.ThrowIfCancellationRequested();
+                    // La estrategia de reintento vuelve a ejecutar el lambda: se descarta el tracker
+                    // para no duplicar inserciones de intentos previos.
+                    _db.ChangeTracker.Clear();
 
-                return;
+                    await using var transaction = _db.Database.IsRelational()
+                        ? await _db.Database.BeginTransactionAsync(cancellationToken)
+                        : null;
+
+                    var existing = await FindPendingRequestAsync(request, cancellationToken);
+                    if (existing != null && existing.ExpiresAt > now)
+                    {
+                        result = new CreateAuthorizationResult(CreateAuthorizationOutcome.Deduplicated, ToDto(existing, now));
+                        if (transaction != null)
+                        {
+                            await transaction.CommitAsync(cancellationToken);
+                        }
+
+                        return;
+                    }
+
+                    if (existing != null)
+                    {
+                        // Dedupe contra una Pending ya vencida: se cierra como Expired (con auditoria)
+                        // y se emite una solicitud nueva; devolverla con lifetime 0 bloquearia la terminal.
+                        if (await ClaimExpiryAsync(existing.Id, now, cancellationToken) == 1)
+                        {
+                            _db.AuthorizationAudits.Add(BuildAudit(existing, AuthorizationStatus.Expired, null, null, null, null, now));
+                        }
+                    }
+
+                    var entity = new AuthorizationRequest
+                    {
+                        ActionType = request.ActionType,
+                        SaleId = request.SaleId,
+                        RequestedByUserId = request.RequestedByUserId,
+                        RequestedByName = request.RequestedByName,
+                        Terminal = request.Terminal,
+                        Status = AuthorizationStatus.Pending,
+                        ContextJson = request.ContextJson,
+                        ContextHash = request.ContextHash,
+                        CreatedAt = now,
+                        ExpiresAt = now.Add(_requestTimeout)
+                    };
+
+                    _db.AuthorizationRequests.Add(entity);
+                    await _db.SaveChangesAsync(cancellationToken);
+
+                    if (transaction != null)
+                    {
+                        await transaction.CommitAsync(cancellationToken);
+                    }
+
+                    result = new CreateAuthorizationResult(CreateAuthorizationOutcome.Created, ToDto(entity, now));
+                });
+
+                return result;
             }
-
-            if (existing != null)
+            catch (DbUpdateException ex) when (IsPendingDedupeUniqueViolation(ex))
             {
-                // Dedupe contra una Pending ya vencida: se cierra como Expired (con auditoria)
-                // y se emite una solicitud nueva; devolverla con lifetime 0 bloquearia la terminal.
-                if (await ClaimExpiryAsync(existing.Id, now, cancellationToken) == 1)
+                // W1: otra terminal gano la carrera de dedupe entre el pre-chequeo y el INSERT.
+                // La transaccion se revirtio al desenrollar; se relee la Pending ganadora y se
+                // devuelve como dedupe. Si desaparecio (resuelta o expirada en el interin), un
+                // unico reintento deja que el pre-chequeo vuelva a decidir. Cualquier otro
+                // DbUpdateException no coincide con el filtro y se propaga.
+                pendingDedupeConflict = ex;
+                _db.ChangeTracker.Clear();
+
+                var winner = await FindPendingRequestAsync(request, cancellationToken);
+                if (winner is not null)
                 {
-                    _db.AuthorizationAudits.Add(BuildAudit(existing, AuthorizationStatus.Expired, null, null, null, null, now));
+                    return new CreateAuthorizationResult(CreateAuthorizationOutcome.Deduplicated, ToDto(winner, UtcNowSeconds()));
                 }
             }
+        }
 
-            var entity = new AuthorizationRequest
-            {
-                ActionType = request.ActionType,
-                SaleId = request.SaleId,
-                RequestedByUserId = request.RequestedByUserId,
-                RequestedByName = request.RequestedByName,
-                Terminal = request.Terminal,
-                Status = AuthorizationStatus.Pending,
-                ContextJson = request.ContextJson,
-                ContextHash = request.ContextHash,
-                CreatedAt = now,
-                ExpiresAt = now.Add(_requestTimeout)
-            };
-
-            _db.AuthorizationRequests.Add(entity);
-            await _db.SaveChangesAsync(cancellationToken);
-
-            if (transaction != null)
-            {
-                await transaction.CommitAsync(cancellationToken);
-            }
-
-            result = new CreateAuthorizationResult(CreateAuthorizationOutcome.Created, ToDto(entity, now));
-        });
-
-        return result;
+        throw (Exception?)pendingDedupeConflict ?? new InvalidOperationException("No se pudo resolver la creación concurrente de la solicitud de autorización.");
     }
 
     public async Task<ResolveAuthorizationResult> ResolveAsync(
@@ -561,6 +592,27 @@ public class AuthorizationService : IAuthorizationService
 
         return await query.FirstOrDefaultAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// W1: identifica la violacion del indice unico parcial de dedupe sin tragarse ninguna otra
+    /// violacion de unicidad (el mensaje/constraint de otros indices no coincide).
+    /// </summary>
+    private static bool IsPendingDedupeUniqueViolation(DbUpdateException ex)
+    {
+        if (ex.InnerException is Npgsql.PostgresException pg)
+        {
+            return pg.SqlState == "23505"
+                && (string.Equals(pg.ConstraintName, PendingDedupeIndexName, StringComparison.Ordinal)
+                    || NamesPendingDedupe(pg.Message));
+        }
+
+        // SQLite (tests deterministas) nombra la violacion por columnas, no por el indice parcial.
+        return NamesPendingDedupe(ex.InnerException?.Message) || NamesPendingDedupe(ex.Message);
+    }
+
+    private static bool NamesPendingDedupe(string? message)
+        => message?.Contains(PendingDedupeIndexName, StringComparison.Ordinal) == true
+            || message?.Contains(SqlitePendingDedupeViolation, StringComparison.Ordinal) == true;
 
     private async Task<User?> FindUserAsync(string searchInput, CancellationToken cancellationToken)
     {
