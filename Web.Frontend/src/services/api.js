@@ -258,6 +258,14 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
     this.body = body;
+    // 8.150 (T8, design D5/D7): extensiones ProblemDetails del gate de acciones protegidas.
+    // Aditivas: los flujos 401/403 existentes conservan su manejo y forma.
+    const extensions = body && typeof body === 'object' ? body : null;
+    this.authorizationRequired = extensions?.authorizationRequired === true
+      || extensions?.AuthorizationRequired === true;
+    this.authorizationAction = typeof extensions?.authorizationAction === 'string'
+      ? extensions.authorizationAction
+      : (typeof extensions?.AuthorizationAction === 'string' ? extensions.AuthorizationAction : null);
   }
 }
 
