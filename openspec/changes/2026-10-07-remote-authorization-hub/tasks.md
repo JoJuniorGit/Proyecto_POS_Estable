@@ -69,10 +69,10 @@ Chained PRs recommended: Yes
 
 ## Phase 7: Web client (T7/T8, S1/S2/S5/S8)
 
-- [ ] 7.1 `src/services/authorizationHub.js`: connection `/hubs/authorization` (cookie), auto-reconnect, invoke + REST fallback, status recovery — RED: `node --test`.
-- [ ] 7.2 Wait flow module + `AuthorizationWaitModal` (exact "Esperando autorización remota...", countdown, "Autorización Local", cancel) + supervisor credential form + retry with `X-Authorization-Token` + rejection/expiry outcomes — infrastructure for future protected actions (no Web-side trigger in v1; validated with simulated refusals) — RED tests (structural where the runner has no DOM).
-- [ ] 7.3 `AuthorizationNotifications` for Admin/Manager: approve/reject + reason, race message exact, close-on-resolved — RED tests.
-- [ ] 7.4 403 interception (ProblemDetails extensions propagation in `api.js`/sales flows) + `salesApi.addItemToSale` optional token header — RED tests. ("Precio manual" web y anulación: VETADOS, L6.)
+- [x] 7.1 `src/services/authorizationHub.js`: connection `/hubs/authorization` (cookie), auto-reconnect, invoke + REST fallback, status recovery — RED: `node --test`. (Hecho y verificado en T7.)
+- [x] 7.2 Wait flow module + `AuthorizationWaitModal` (exact "Esperando autorización remota...", countdown, "Autorización Local", cancel) + supervisor credential form + retry with `X-Authorization-Token` + rejection/expiry outcomes — infrastructure for future protected actions (no Web-side trigger in v1; validated with simulated refusals) — RED tests (structural where the runner has no DOM). (W1/W2 corregidos y verificados post-verificación.)
+- [x] 7.3 `AuthorizationNotifications` for Admin/Manager: approve/reject + reason, race message exact, close-on-resolved — RED tests. (Hecho y verificado en T8; aviso de carrera a todos los admins = superset benigno aceptado.)
+- [x] 7.4 403 interception (ProblemDetails extensions propagation in `api.js`/sales flows) + `salesApi.addItemToSale` optional token header — RED tests. (Token header T7; extensiones ApiError T8. "Precio manual" web y anulación: VETADOS, L6.)
 
 ## Phase 8: WPF client (T9/T10, S1/S2/S5)
 
