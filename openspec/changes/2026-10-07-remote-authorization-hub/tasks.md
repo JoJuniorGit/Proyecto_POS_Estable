@@ -50,7 +50,7 @@ Chained PRs recommended: Yes
 - [ ] 3.1 `AuthorizationTokenService` (issue/validate; audience `pos:authorization`; claims sub/jti/act/sal/ctx; exp = resolvedAt + 60 s) — RED tests.
 - [ ] 3.2 `AuthorizationContextCanonicalizer` (determinism; identical at create and consume; display fields excluded) — RED tests.
 - [ ] 3.3 `AuthorizationCoordinator` (create/resolve/local/consume + token issue + push orchestration) — RED tests with mocked notifier.
-- [ ] 3.4 `IAuthorizationNotifier` + `SignalRAuthorizationNotifier` (groups `user:{id}`, `role:elevated`; events `AuthorizationRequested/Resolved/Expired`).
+- [ ] 3.4 `IAuthorizationNotifier` (interfaz). La implementación `SignalRAuthorizationNotifier` (grupos `user:{id}`, `role:elevated`; eventos `AuthorizationRequested/Resolved/Expired`) viaja a T4 junto con el hub.
 
 ## Phase 4: Transport (T4, S1/S2/S4)
 
