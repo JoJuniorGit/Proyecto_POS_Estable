@@ -14,9 +14,6 @@ namespace Sales.Module.Services;
 
 public class AuthService : IAuthService
 {
-    private const int MaxFailedAttempts = 5;
-    private const int LockoutMinutes = 15;
-
     private static readonly string _dummyPasswordHash = PasswordHasher.HashPassword("dummy-ooac0f8b");
 
     private readonly SalesDbContext _db;
@@ -56,19 +53,13 @@ public class AuthService : IAuthService
             return new AuthenticationResult(AuthenticationOutcome.InvalidCredentials);
         }
 
-        if (user.LockoutEndUtc.HasValue)
+        if (LoginLockoutPolicy.IsLockedOut(user, DateTime.UtcNow))
         {
-            if (user.LockoutEndUtc.Value > DateTime.UtcNow)
-            {
-                AppLogger.LogWarn($"[AUTH] Intento de acceso a cuenta bloqueada: Usuario '{obfCedula}'. Bloqueada hasta {user.LockoutEndUtc.Value:O}.");
-                return new AuthenticationResult(AuthenticationOutcome.InvalidCredentials);
-            }
-            else
-            {
-                user.AccessFailedCount = 0;
-                user.LockoutEndUtc = null;
-            }
+            AppLogger.LogWarn($"[AUTH] Intento de acceso a cuenta bloqueada: Usuario '{obfCedula}'. Bloqueada hasta {user.LockoutEndUtc!.Value:O}.");
+            return new AuthenticationResult(AuthenticationOutcome.InvalidCredentials);
         }
+
+        LoginLockoutPolicy.ClearExpiredLockout(user, DateTime.UtcNow);
 
         if (!user.IsActive)
         {
@@ -86,22 +77,16 @@ public class AuthService : IAuthService
 
         if (!passwordMatches)
         {
-            user.AccessFailedCount++;
-            if (user.AccessFailedCount >= MaxFailedAttempts && (!user.LockoutEndUtc.HasValue || user.LockoutEndUtc.Value <= DateTime.UtcNow))
+            if (LoginLockoutPolicy.RegisterFailedAttempt(user, DateTime.UtcNow))
             {
-                user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(LockoutMinutes);
-                AppLogger.LogWarn($"[AUTH] Usuario '{obfCedula}' alcanzó 5 intentos fallidos. Cuenta bloqueada por 15 minutos.");
+                AppLogger.LogWarn($"[AUTH] Usuario '{obfCedula}' alcanzó {LoginLockoutPolicy.MaxFailedAttempts} intentos fallidos. Cuenta bloqueada por {LoginLockoutPolicy.LockoutMinutes} minutos.");
             }
             await _db.SaveChangesAsync(cancellationToken);
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{obfCedula}': Contraseña incorrecta (Intento {user.AccessFailedCount}/5).");
+            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{obfCedula}': Contraseña incorrecta (Intento {user.AccessFailedCount}/{LoginLockoutPolicy.MaxFailedAttempts}).");
             return new AuthenticationResult(AuthenticationOutcome.InvalidCredentials);
         }
 
-        if (user.AccessFailedCount > 0 || user.LockoutEndUtc.HasValue)
-        {
-            user.AccessFailedCount = 0;
-            user.LockoutEndUtc = null;
-        }
+        LoginLockoutPolicy.ResetOnSuccess(user);
         user.LastLoginUtc = DateTime.UtcNow;
         if (string.IsNullOrWhiteSpace(user.SecurityStamp))
         {
@@ -126,19 +111,13 @@ public class AuthService : IAuthService
             return new PasswordChangeResult(PasswordChangeOutcome.InvalidCredentials);
         }
 
-        if (user.LockoutEndUtc.HasValue)
+        if (LoginLockoutPolicy.IsLockedOut(user, DateTime.UtcNow))
         {
-            if (user.LockoutEndUtc.Value > DateTime.UtcNow)
-            {
-                AppLogger.LogWarn($"[AUTH] Intento de cambio de contraseña denegado: Usuario '{ObfuscateCedula(user.Username)}' bloqueado temporalmente.");
-                return new PasswordChangeResult(PasswordChangeOutcome.InvalidCredentials);
-            }
-            else
-            {
-                user.AccessFailedCount = 0;
-                user.LockoutEndUtc = null;
-            }
+            AppLogger.LogWarn($"[AUTH] Intento de cambio de contraseña denegado: Usuario '{ObfuscateCedula(user.Username)}' bloqueado temporalmente.");
+            return new PasswordChangeResult(PasswordChangeOutcome.InvalidCredentials);
         }
+
+        LoginLockoutPolicy.ClearExpiredLockout(user, DateTime.UtcNow);
 
         if (!user.IsActive)
         {
@@ -147,14 +126,12 @@ public class AuthService : IAuthService
 
         if (!PasswordHasher.VerifyPassword(currentPassword, user.PasswordHash))
         {
-            user.AccessFailedCount++;
-            if (user.AccessFailedCount >= MaxFailedAttempts && (!user.LockoutEndUtc.HasValue || user.LockoutEndUtc.Value <= DateTime.UtcNow))
+            if (LoginLockoutPolicy.RegisterFailedAttempt(user, DateTime.UtcNow))
             {
-                user.LockoutEndUtc = DateTime.UtcNow.AddMinutes(LockoutMinutes);
-                AppLogger.LogSecurityAudit($"[ACCOUNT_LOCKED] Usuario={ObfuscateCedula(user.Username)} bloqueado por 15 min tras fallos en change-password.");
+                AppLogger.LogSecurityAudit($"[ACCOUNT_LOCKED] Usuario={ObfuscateCedula(user.Username)} bloqueado por {LoginLockoutPolicy.LockoutMinutes} min tras fallos en change-password.");
             }
             await _db.SaveChangesAsync(cancellationToken);
-            AppLogger.LogStart($"[AUTH] Intento fallido en change-password para Usuario '{ObfuscateCedula(user.Username)}': Contraseña incorrecta (Intento {user.AccessFailedCount}/5).");
+            AppLogger.LogStart($"[AUTH] Intento fallido en change-password para Usuario '{ObfuscateCedula(user.Username)}': Contraseña incorrecta (Intento {user.AccessFailedCount}/{LoginLockoutPolicy.MaxFailedAttempts}).");
             return new PasswordChangeResult(PasswordChangeOutcome.InvalidCredentials);
         }
 
