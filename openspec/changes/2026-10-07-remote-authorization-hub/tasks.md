@@ -76,8 +76,8 @@ Chained PRs recommended: Yes
 
 ## Phase 8: WPF client (T9/T10, S1/S2/S5)
 
-- [ ] 8.1 `AuthorizationHubService` (access_token query per `ExchangeRateService`; `IDisposable`; events/`WeakReferenceMessenger`) — RED tests.
-- [ ] 8.2 Wait dialog + local authorization dialog + retry with token (`SalesService.AddItemAsync` gains optional token header) — RED VM tests (countdown, unlock, error paths).
+- [x] 8.1 `AuthorizationHubService` (access_token query per `ExchangeRateService`; `IDisposable`; events/`WeakReferenceMessenger`) — RED tests. (Hecho y verificado en T9.)
+- [x] 8.2 Wait dialog + local authorization dialog + retry with token (`SalesService.AddItemAsync` gains optional token header) — RED VM tests (countdown, unlock, error paths). (Hecho y verificado en T9; higiene de lifecycle tests corregida.)
 - [ ] 8.3 Admin notification dialog + race handling + `PosViewModel.Orders.cs` custom-price integration + dispatcher/dispose lifecycle — RED tests.
 
 ## Phase 9: Closure (T11)
