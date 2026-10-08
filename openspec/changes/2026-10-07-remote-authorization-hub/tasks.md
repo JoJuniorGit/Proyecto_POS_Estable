@@ -65,7 +65,7 @@ Chained PRs recommended: Yes
 
 ## Phase 6: Expiry job (T6, S5)
 
-- [ ] 6.1 `AuthorizationExpiryJob` (5 s sweep; precedent `ReservationExpiryJob`) + `Authorization:RequestTimeoutSeconds`/`TokenTtlSeconds` defaults 60 + push — RED tests on service interplay.
+- [x] 6.1 `AuthorizationExpiryJob` (barrido configurable, default 5 s, primer tick inmediato; precedente `ReservationExpiryJob`) + registro hosted + push vía coordinator — RED tests deterministas (TCS); verificación independiente PASS.
 
 ## Phase 7: Web client (T7/T8, S1/S2/S5/S8)
 
