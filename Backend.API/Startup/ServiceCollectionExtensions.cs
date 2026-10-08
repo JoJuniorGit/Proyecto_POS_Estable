@@ -86,6 +86,10 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<Sales.Module.Interfaces.IAuthorizationNotifier>(),
                 sp.GetRequiredService<Sales.Module.Data.SalesDbContext>(),
                 authorizationTokenTtl));
+        // 8.150-T6 (design D6): barrido periodico de expiraciones. El job solo notifica
+        // (ExpireStaleAsync audita y hace push); intervalo Authorization:ExpirySweepSeconds,
+        // default 5 s.
+        builder.Services.AddHostedService<Backend.API.Jobs.AuthorizationExpiryJob>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IDailyClosureService, Sales.Module.Services.DailyClosureService>();
         builder.Services.AddScoped<Core.Interfaces.ITodayExchangeRateProvider, Backend.API.Services.TodayExchangeRateProvider>();
         var idempotencyTtlHours = builder.Configuration.GetValue<double?>("Idempotency:TtlHours") ?? 24.0;
