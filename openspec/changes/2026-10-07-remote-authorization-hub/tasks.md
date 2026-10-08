@@ -60,7 +60,7 @@ Chained PRs recommended: Yes
 
 ## Phase 5: Protected action — AddItem token path (T5, S3/S10)
 
-- [ ] 5.1 AddItem token path (`X-Authorization-Token` → consume → existing `isPriceOverrideAuthorized` hook) + 403 ProblemDetails extensions before idempotency — RED tests: valid token adds; missing/reused/mismatched → 403 no mutation; replay after success unaffected.
+- [x] 5.1 AddItem token path (`X-Authorization-Token` → consume → existing `isPriceOverrideAuthorized` hook) + 403 ProblemDetails extensions before idempotency — RED tests: valid token adds; missing/reused/mismatched → 403 no mutation; replay after success unaffected. (Corrección post-verificación: binding de venta/usuario no circular, L10.)
 - ~~5.2 Cancel gate for non-elevated~~ — VETADO por el mantenedor (tracker L6): la anulación conserva el comportamiento actual para cajeros; el valor de enum queda reservado para un futuro consumidor.
 
 ## Phase 6: Expiry job (T6, S5)

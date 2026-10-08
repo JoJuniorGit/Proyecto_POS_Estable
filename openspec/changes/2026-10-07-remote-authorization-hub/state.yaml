@@ -7,9 +7,9 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: proposed
+phase: applying
 apply:
-  slices: 0/11 (T1-T11)
+  slices: 5/11 (T1-T5)
   branch: V0.15
 verify: pending
 artifacts:
