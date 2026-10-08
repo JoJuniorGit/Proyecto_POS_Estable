@@ -1,0 +1,1 @@
+function e(e=null){let t=null,n=()=>{let t=e||(typeof crypto<`u`&&crypto.randomUUID?crypto.randomUUID.bind(crypto):null);return t?t():`checkout-${Date.now()}-${Math.random().toString(36).substring(2,9)}`};return{getOrCreateKey(){return t||=n(),t},reset(){t=null}}}export{e as t};

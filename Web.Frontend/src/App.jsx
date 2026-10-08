@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ExchangeRateProvider, useExchangeRate } from './context/ExchangeRateContext';
 import { CurrencyFormatProvider } from './context/CurrencyFormatContext';
 import { CartProvider, useCart } from './context/CartContext';
+import { AuthorizationProvider, useAuthorization } from './components/authorization/AuthorizationProvider';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
 import CheckoutModal from './components/checkout/CheckoutModal';
@@ -40,6 +41,7 @@ function getInitialView() {
 
 function MainApp() {
   const { isAuthenticated, user } = useAuth();
+  const { isWaitOpen, cancelWait } = useAuthorization();
   const [currentView, setCurrentView] = useState(getInitialView);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isHoldModalOpen, setIsHoldModalOpen] = useState(false);
@@ -122,9 +124,14 @@ function MainApp() {
     setCompletedInvoice(null);
   }, []);
 
-  const isExternalModalOpen = isCheckoutOpen || isHoldModalOpen || Boolean(completedInvoice) || Boolean(completedHoldSuccess);
+  const isExternalModalOpen = isCheckoutOpen || isHoldModalOpen || Boolean(completedInvoice) || Boolean(completedHoldSuccess) || isWaitOpen;
 
   const handleCloseExternalModal = () => {
+    // 8.150 (T7): la espera de autorizacion bloquea la terminal; ESC la cancela como el boton.
+    if (isWaitOpen) {
+      cancelWait();
+      return true;
+    }
     if (isCheckoutOpen) {
       if (checkoutRef.current) {
         const closed = checkoutRef.current.requestClose();
@@ -269,7 +276,9 @@ export default function App() {
       <ExchangeRateProvider>
         <CurrencyFormatProvider>
           <CartProvider>
-            <MainApp />
+            <AuthorizationProvider>
+              <MainApp />
+            </AuthorizationProvider>
           </CartProvider>
         </CurrencyFormatProvider>
       </ExchangeRateProvider>
