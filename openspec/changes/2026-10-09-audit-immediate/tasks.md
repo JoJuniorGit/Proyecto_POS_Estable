@@ -7,7 +7,7 @@
 | Estimated lines | ~450-550 |
 | Budget risk | Medium-High |
 | Chained PRs | Yes (continúa la cadena V0.15) |
-| Split | 3 unidades + cierre |
+| Split | 3 unidades + T2b + cierre |
 | Delivery | ask-on-risk |
 | Chain | stacked-to-main (cached) |
 
@@ -21,29 +21,35 @@
 | 4. Verificación + cierre (T4) | suite completa + cobertura | Revertir docs |
 
 ## T1 (S1) — SEC-05: ocultar campos sensibles de `User` en serialización
-- [ ] 1.1 `[System.Text.Json.Serialization.JsonIgnore]` en `PasswordHash` y `SecurityStamp` (`Core/Entities/User.cs`).
-- [ ] 1.2 Test de serialización STJ: el JSON no contiene los valores ni los nombres de esas propiedades; el resto de campos sí (nuevo `CommandCenter.Tests/Unit/UserSerializationTests.cs`).
-- [ ] 1.3 Build 0/0 + focused + suite; commit `fix(8.153)`.
+
+- [x] 1.1 `[System.Text.Json.Serialization.JsonIgnore]` en `PasswordHash` y `SecurityStamp` (`Core/Entities/User.cs`).
+- [x] 1.2 Test de serialización STJ (`CommandCenter.Tests/Unit/UserSerializationTests.cs`; valor y nombre ausentes; otros campos presentes) — RED 1F→GREEN 2/2.
+- [x] 1.3 Build 0/0 + focused + suite 2129/2129; commit `596a3ff`.
 
 ## T2 (S2 backend) — SEC-06: endpoint ciego + rechazo sin cifras
-- [ ] 2.1 `GET /api/cashdrawer/current-balance` → `[Authorize(Roles = "Admin,Manager")]`.
-- [ ] 2.2 Rechazo del adelanto por efectivo insuficiente sin cifras: mensaje exacto `"Saldo de efectivo en caja insuficiente para el monto solicitado."` (guard intacto).
-- [ ] 2.3 Tests: cashier → 403 en el endpoint; Admin/Manager → 200; el rechazo del adelanto no contiene "Disponible"/cifras. Tests existentes por prefijo ("Saldo de efectivo en caja insuficiente") verificados sin ajustes o ajustados y reportados.
-- [ ] 2.4 Build 0/0 + focused + suite; evidencia RED/GREEN; commit `fix(8.153)` (lo hace el padre).
+
+- [x] 2.1 `GET /api/cashdrawer/current-balance` → `[Authorize(Roles = "Admin,Manager")]`.
+- [x] 2.2 Rechazo del adelanto por efectivo insuficiente sin cifras: mensaje exacto `"Saldo de efectivo en caja insuficiente para el monto solicitado."` (guard intacto).
+- [x] 2.3 Tests: reflexión del atributo (Admin,Manager) + route/query; mensaje sin "Disponible"/cifras; tests existentes por prefijo verificados (sin ajustes). RED 2F→GREEN.
+- [x] 2.4 Build 0/0 + focused 52/52 + suite 2132/2132; commit `a5935bd`.
+- [x] 2.5 T2b (post-verificación, W1): rechazo del vuelto sin "Disponible" (`CashDrawerService.RecordSaleChangeAsync`); test extendido (RED 1F→GREEN); suite 2144/2144; commit `7062553`.
 
 ## T3 (S2 cliente WPF) — SEC-06: cajero ciego en Caja y adelantos
-- [ ] 3.1 `CashDrawerViewModel.CanViewTheoreticalBalance` (Admin||Manager; fail-closed sin sesión); `LoadSessionAsync` no fetchea para no-supervisores y muestra "—"/vacío; `ProcessCashAdvanceAsync` pasa `null` al diálogo.
-- [ ] 3.2 `IDialogService.ShowCashAdvanceRegisterDialogAsync(..., decimal? availableCashLocal)` + impl WPF + `CashAdvanceRegisterViewModel` nullable (`AvailableCashDisplay`, tope solo con valor) + XAML.
-- [ ] 3.3 Tests nuevos (cajero ciego: sin fetch, "—", diálogo sin tope; supervisor sin cambios) + tests existentes ajustados (sesión Admin en closure/format; firma nullable en mocks/fakes) reportados nombradamente.
-- [ ] 3.4 Build 0/0 + focused + suite; evidencia RED/GREEN; commit `fix(8.153)` (lo hace el padre).
+
+- [x] 3.1 `CashDrawerViewModel.CanViewTheoreticalBalance` (fail-closed); fetch condicional; "—"/vacío; `null` al diálogo.
+- [x] 3.2 `IDialogService.ShowCashAdvanceRegisterDialogAsync(..., decimal?)` + impl WPF + `CashAdvanceRegisterViewModel` nullable (`AvailableCashDisplay`, topo solo con valor) + XAML.
+- [x] 3.3 12 tests nuevos (`CashDrawerBlindBalanceTests`) + 4 archivos de tests ajustados reportados (sesión Admin / firma nullable).
+- [x] 3.4 Build 0/0 + focused 24/24 + suite 2144/2144; commit `3e3b811`.
 
 ## T4 (S1-S3) — Verificación + cierre
-- [ ] 4.1 Verificador independiente: authz del endpoint, mensaje enmascarado, blinds del cliente, tests ajustados auditados.
-- [ ] 4.2 Refutación SRE-05 documentada (resolver + tests + cliente + atributo inexistente); cross-ref SRE-04 (8.152).
-- [ ] 4.3 Suite completa + cobertura + build 0/0.
-- [ ] 4.4 `verify-report.md` + ANEXO 8.153 + cierre del tracker + commit `docs(8.153)`.
+
+- [x] 4.1 Verificador independiente: PASS WITH WARNINGS; 7/8 COMPLIANT + BCB-05 PARTIAL (W2); W1 detectada y cerrada por T2b.
+- [x] 4.2 Refutación SRE-05 replicada (resolver + tests + cliente + atributo inexistente); cross-ref SRE-04 (8.152).
+- [x] 4.3 Suite 2144/2144 + cobertura Core 0.8886 / Sales 0.8962 / Inventory 0.8558 (exit 0) + build 0/0.
+- [x] 4.4 `verify-report.md` + ANEXO 8.153 + cierre del tracker + commit `docs(8.153)`.
 
 ## Notes
+
 - Tracker: `odd/tasks/auditoria-fase-inmediata.md`.
-- El enmascaramiento del mensaje del adelanto (2.2) es extensión justificada del hallazgo (cierra el sondeo del saldo); reversible independiente.
+- El enmascaramiento de mensajes (adelanto + vuelto) es extensión justificada del hallazgo (cierra el sondeo del saldo); reversible por separado.
 - Los writers NO commitean; el padre commitea por unidad.
