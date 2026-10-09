@@ -79,6 +79,38 @@ public partial class WpfDialogService
         return resultAmount;
     }
 
+    /// <summary>
+    /// 8.151 (W4, R8/design D7): captura de precio manual (USD/Bs.S) para el alta de un producto
+    /// normal. La moneda omitida se deriva dentro del ViewModel con la tasa recibida.
+    /// </summary>
+    public ManualPriceDialogResult? ShowManualPriceDialog(decimal exchangeRate)
+    {
+        if (Application.Current == null) return null;
+
+        var viewModel = new ManualPriceDialogViewModel(exchangeRate);
+        ManualPriceDialogResult? result = null;
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var dialog = new ManualPriceDialog
+            {
+                DataContext = viewModel,
+                Owner = Application.Current.MainWindow,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                result = viewModel.Result;
+            }
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return result;
+    }
+
     public bool ShowSuccessDialog(string message, string? secondaryActionLabel = null)
     {
         if (Application.Current == null) return false;
