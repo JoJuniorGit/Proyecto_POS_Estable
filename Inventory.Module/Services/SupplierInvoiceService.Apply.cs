@@ -79,7 +79,58 @@ public partial class SupplierInvoiceService
                 }
 
                 var confirmationsByLineId = request.Lines.ToDictionary(confirmation => confirmation.LineId);
-                foreach (var line in SupplierInvoiceApplyOrdering.OrderForApply(invoice.Lines))
+                var orderedLines = SupplierInvoiceApplyOrdering.OrderForApply(invoice.Lines);
+
+                // 8.155 (REQ-AIO-01): precargas batch antes del loop. La re-lectura individual del
+                // retry xmin sobre entidad fresca se conserva (spec supplier-invoice-apply L64-73).
+                var applicableLines = orderedLines
+                    .Where(line => confirmationsByLineId.TryGetValue(line.Id, out var confirmation)
+                        && confirmation.IsApproved
+                        && line.Status != SupplierInvoiceLineStatus.Conflict)
+                    .ToList();
+
+                var applicableProductIds = applicableLines
+                    .Where(line => line.ResolvedProductId is not null)
+                    .Select(line => line.ResolvedProductId!.Value)
+                    .Distinct()
+                    .ToList();
+
+                var productsById = new Dictionary<int, Product>();
+                if (applicableProductIds.Count > 0)
+                {
+                    productsById = await _context.Products
+                        .Where(product => !product.IsDeleted && applicableProductIds.Contains(product.Id))
+                        .ToDictionaryAsync(product => product.Id, cancellationToken);
+                }
+
+                // 8.155 (REQ-AIO-02): alias existentes del proveedor para los códigos candidatos en
+                // UNA lectura trackeada; el upsert se resuelve en memoria y se persiste con el
+                // guardado final (una sola escritura), sin cambios para el flujo de creación.
+                var candidateAliasCodes = applicableLines
+                    .Where(line => !string.IsNullOrWhiteSpace(line.SupplierCode))
+                    .Select(line => line.SupplierCode!.Trim())
+                    .Distinct()
+                    .ToList();
+
+                var aliasesByCode = new Dictionary<string, SupplierProductCode>();
+                if (candidateAliasCodes.Count > 0)
+                {
+                    // Orden por Id + TryAdd: si el arnés no aplica el índice único, gana el alias de
+                    // menor Id, igual que el FirstOrDefaultAsync del upsert por línea previo.
+                    var existingAliases = await _context.SupplierProductCodes
+                        .Where(alias => alias.SupplierId == invoice.SupplierId
+                            && alias.Code != null
+                            && candidateAliasCodes.Contains(alias.Code))
+                        .OrderBy(alias => alias.Id)
+                        .ToListAsync(cancellationToken);
+                    foreach (var alias in existingAliases)
+                    {
+                        aliasesByCode.TryAdd(alias.Code!, alias);
+                    }
+                }
+
+                var aliasPlan = new Dictionary<string, int>();
+                foreach (var line in orderedLines)
                 {
                     if (!confirmationsByLineId.TryGetValue(line.Id, out var confirmation))
                     {
@@ -102,17 +153,37 @@ public partial class SupplierInvoiceService
                     }
 
                     ApplyCorrections(line, invoice, confirmation);
-                    await ApplyApprovedLineAsync(invoice.Id, line, productId, confirmation, cancellationToken);
+                    if (!productsById.TryGetValue(productId, out var product))
+                    {
+                        throw new KeyNotFoundException($"Product {productId} was not found or has been deleted.");
+                    }
+
+                    await ApplyApprovedLineAsync(invoice.Id, line, product, confirmation, cancellationToken);
                     if (!string.IsNullOrWhiteSpace(line.SupplierCode))
                     {
                         // 8.146-S5/D8: aprendizaje de alias dentro de la misma transacción;
                         // el rollback del confirm no deja cambios de alias.
-                        await UpsertSupplierProductCodeAsync(
-                            invoice.SupplierId,
-                            line.SupplierCode,
-                            productId,
-                            cancellationToken);
-                        await _context.SaveChangesAsync(cancellationToken);
+                        aliasPlan[line.SupplierCode.Trim()] = productId;
+                    }
+                }
+
+                foreach (var aliasPlanEntry in aliasPlan)
+                {
+                    if (aliasesByCode.TryGetValue(aliasPlanEntry.Key, out var alias))
+                    {
+                        if (alias.ProductId != aliasPlanEntry.Value)
+                        {
+                            alias.ProductId = aliasPlanEntry.Value;
+                        }
+                    }
+                    else
+                    {
+                        _context.SupplierProductCodes.Add(new SupplierProductCode
+                        {
+                            SupplierId = invoice.SupplierId,
+                            Code = aliasPlanEntry.Key,
+                            ProductId = aliasPlanEntry.Value
+                        });
                     }
                 }
 
@@ -141,15 +212,23 @@ public partial class SupplierInvoiceService
     private async Task ApplyApprovedLineAsync(
         int invoiceId,
         SupplierInvoiceLine line,
-        int productId,
+        Product product,
         ConfirmLineDto confirmation,
         CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var product = await _context.Products
-                .FirstOrDefaultAsync(candidate => candidate.Id == productId && !candidate.IsDeleted, cancellationToken)
-                ?? throw new KeyNotFoundException($"Product {productId} was not found or has been deleted.");
+            if (attempt > 0)
+            {
+                // 8.144/8.155: el retry xmin re-lee la entidad fresca dentro de la transacción;
+                // la precarga batch solo alimenta el intento inicial.
+                var retryProductId = product.Id;
+                product = await _context.Products
+                    .FirstOrDefaultAsync(
+                        candidate => candidate.Id == retryProductId && !candidate.IsDeleted,
+                        cancellationToken)
+                    ?? throw new KeyNotFoundException($"Product {retryProductId} was not found or has been deleted.");
+            }
 
             var retailMargin = confirmation.MarginRetailOverride ?? product.ProfitMarginRetail;
             var wholesaleMargin = product.HasWholesale
