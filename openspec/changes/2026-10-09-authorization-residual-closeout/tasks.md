@@ -38,9 +38,9 @@
 
 ## Phase 3: WPF closeout (W3)
 
-- [ ] 3.1 `AuthorizationHubService.Reconnected` event + notification queue reconciliation via `GetStatusAsync` (resolved/expired/cancelled); tests with fake hub.
-- [ ] 3.2 `cancelWait` fires the server cancel (best-effort); `Cancelled` closure handling in the notification VM; tests.
-- [ ] 3.3 Countdown floor + own-resolved pruning + initial focus capture on the notification dialog; tests where headless-possible.
+- [x] 3.1 `AuthorizationHubService.Reconnected` event + notification queue reconciliation via `GetStatusAsync` (resolved/expired/cancelled); tests with fake hub.
+- [x] 3.2 `cancelWait` fires the server cancel (best-effort); `Cancelled` closure handling in the notification VM; tests.
+- [x] 3.3 Countdown floor + own-resolved pruning + initial focus capture on the notification dialog; tests where headless-possible.
 
 ## Phase 4: WPF manual-price trigger (W4)
 
