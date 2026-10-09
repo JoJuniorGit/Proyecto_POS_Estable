@@ -34,52 +34,105 @@ public partial class SupplierInvoiceService
         return threshold;
     }
 
-    private async Task<ProductMatch> MatchProductAsync(
+    /// <summary>
+    /// 8.155/PEF-01 (REQ-SIB-01): precarga única por stage de los caminos exactos del matching.
+    /// Las claves son los valores ya normalizados por <c>ValidateAndNormalizeLines</c>
+    /// (<c>OptionalColumn</c>: trim o null), exactamente los mismos que se usan como predicado
+    /// en cada consulta; una línea por barcode/supplierCode se resuelve luego en memoria.
+    /// </summary>
+    private async Task<MatchLookups> LoadMatchLookupsAsync(
         int supplierId,
-        StageLineDto line,
-        double similarityThreshold,
+        IReadOnlyList<StageLineDto> lines,
         CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(line.Barcode))
-        {
-            var barcodeProduct = await _context.Products
-                .AsNoTracking()
-                .Where(product => !product.IsDeleted && product.SKU == line.Barcode)
-                .OrderBy(product => product.Id)
-                .FirstOrDefaultAsync(cancellationToken);
+        var barcodes = lines
+            .Select(line => line.Barcode)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var supplierCodes = lines
+            .Select(line => line.SupplierCode)
+            .OfType<string>()
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
 
-            if (barcodeProduct is not null)
+        // "Primer producto por Id" para duplicados: se ordena por Id y se conserva el primero por
+        // clave con TryAdd. Los índices únicos filtrados de producción no se aplican en arneses
+        // InMemory, así que el desempate debe ser explícito aquí.
+        var productsByBarcode = new Dictionary<string, Product>(StringComparer.Ordinal);
+        if (barcodes.Length > 0)
+        {
+            var barcodeProducts = await _context.Products
+                .AsNoTracking()
+                .Where(product => !product.IsDeleted && barcodes.Contains(product.SKU))
+                .OrderBy(product => product.Id)
+                .ToListAsync(cancellationToken);
+
+            foreach (var product in barcodeProducts)
             {
-                return new ProductMatch(barcodeProduct, MatchMethod.Barcode);
+                productsByBarcode.TryAdd(product.SKU, product);
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(line.SupplierCode))
+        var productsBySupplierCode = new Dictionary<string, Product>(StringComparer.Ordinal);
+        if (supplierCodes.Length > 0)
         {
-            var supplierCodeProduct = await (
+            var supplierCodeProducts = await (
                     from supplierCode in _context.SupplierProductCodes.AsNoTracking()
                     join product in _context.Products.AsNoTracking()
                         on supplierCode.ProductId equals product.Id
                     where supplierCode.SupplierId == supplierId
-                        && supplierCode.Code == line.SupplierCode
+                        && supplierCodes.Contains(supplierCode.Code)
                         && !product.IsDeleted
                     orderby product.Id
-                    select product)
-                .FirstOrDefaultAsync(cancellationToken);
+                    select new { supplierCode.Code, Product = product })
+                .ToListAsync(cancellationToken);
 
-            if (supplierCodeProduct is not null)
+            foreach (var entry in supplierCodeProducts)
             {
-                return new ProductMatch(supplierCodeProduct, MatchMethod.SupplierCode);
+                if (entry.Code is not null)
+                {
+                    productsBySupplierCode.TryAdd(entry.Code, entry.Product);
+                }
             }
         }
 
-        if (string.IsNullOrWhiteSpace(line.Name))
+        return new MatchLookups(productsByBarcode, productsBySupplierCode);
+    }
+
+    /// <summary>
+    /// Prioridad barcode > supplierCode sobre los diccionarios precargados; null cuando no hay
+    /// match exacto y corresponde evaluar el fallback fuzzy.
+    /// </summary>
+    private static ProductMatch? TryResolveExactMatch(MatchLookups lookups, StageLineDto line)
+    {
+        if (line.Barcode is not null
+            && lookups.ProductsByBarcode.TryGetValue(line.Barcode, out var barcodeProduct))
+        {
+            return new ProductMatch(barcodeProduct, MatchMethod.Barcode);
+        }
+
+        if (line.SupplierCode is not null
+            && lookups.ProductsBySupplierCode.TryGetValue(line.SupplierCode, out var supplierCodeProduct))
+        {
+            return new ProductMatch(supplierCodeProduct, MatchMethod.SupplierCode);
+        }
+
+        return null;
+    }
+
+    private async Task<ProductMatch> FallbackFuzzyMatchAsync(
+        string? productName,
+        double similarityThreshold,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(productName))
         {
             return new ProductMatch(null, MatchMethod.None);
         }
 
         var candidates = await _similaritySearch.FindCandidatesAsync(
-            line.Name,
+            productName,
             similarityThreshold,
             cancellationToken);
         var eligibleCandidates = candidates
@@ -178,11 +231,19 @@ public partial class SupplierInvoiceService
     private static decimal? ClampOcrConfidence(decimal? confidence) =>
         confidence is null ? null : Math.Clamp(confidence.Value, 0m, 100m);
 
+    private sealed record MatchLookups(
+        Dictionary<string, Product> ProductsByBarcode,
+        Dictionary<string, Product> ProductsBySupplierCode);
+
     private sealed record ProductMatch(Product? Product, MatchMethod Method);
 }
 
 public sealed class PostgresSupplierProductSimilaritySearch : ISupplierProductSimilaritySearch
 {
+    // 8.155/PEF-01 (REQ-SIB-02): cota del scan trigram. El orden (similitud desc, Id asc) se
+    // aplica antes del Take, por lo que el ganador de la selección no cambia.
+    private const int MaxSimilarityCandidates = 100;
+
     private readonly InventoryDbContext _context;
 
     public PostgresSupplierProductSimilaritySearch(InventoryDbContext context)
@@ -218,6 +279,7 @@ public sealed class PostgresSupplierProductSimilaritySearch : ISupplierProductSi
             .Where(candidate => candidate.Similarity >= minimumSimilarity)
             .OrderByDescending(candidate => candidate.Similarity)
             .ThenBy(candidate => candidate.Id)
+            .Take(MaxSimilarityCandidates)
             .Select(candidate => new SupplierProductSimilarityCandidate(candidate.Id, candidate.Similarity))
             .ToListAsync(cancellationToken);
     }

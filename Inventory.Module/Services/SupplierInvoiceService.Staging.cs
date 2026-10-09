@@ -28,6 +28,9 @@ public partial class SupplierInvoiceService
         }
 
         var similarityThreshold = await ReadSimilarityThresholdAsync(cancellationToken);
+        // 8.155/PEF-01 (REQ-SIB-01): los lookups exactos se precargan una sola vez por stage;
+        // el loop resuelve barcode/supplierCode en memoria y solo cae a fuzzy sin match exacto.
+        var matchLookups = await LoadMatchLookupsAsync(supplier.Id, lines, cancellationToken);
 
         var invoice = new SupplierInvoice
         {
@@ -42,7 +45,8 @@ public partial class SupplierInvoiceService
             var unitCostUsd = currency == CurrencyCodes.Usd
                 ? line.UnitCostDocument
                 : Core.Helpers.PricingCalculator.ToUSD(line.UnitCostDocument, appliedRate);
-            var match = await MatchProductAsync(supplier.Id, line, similarityThreshold, cancellationToken);
+            var match = TryResolveExactMatch(matchLookups, line)
+                ?? await FallbackFuzzyMatchAsync(line.Name, similarityThreshold, cancellationToken);
             invoice.Lines.Add(CreateStagedLine(line, match, unitCostUsd, request.OcrSourced));
         }
 
