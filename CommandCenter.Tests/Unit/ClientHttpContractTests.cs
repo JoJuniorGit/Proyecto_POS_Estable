@@ -556,6 +556,30 @@ public class ClientHttpContractTests
         AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/cashdrawer/cash-advance", typeof(CashDrawerController), nameof(CashDrawerController.ProcessCashAdvanceAsync));
     }
 
+    [Fact]
+    public async Task CashDrawer_ProcessCashAdvanceAsync_OmitsCashierIdentityFromBody()
+    {
+        // 8.154 (SEC-03): la identidad del adelanto la resuelve el backend desde el token; el cliente
+        // WPF no debe enviar CashierId ni UserName. El body capturado es la evidencia (la firma sola no
+        // detecta un serializado hardcodeado).
+        var requests = await CaptureAsync<CashDrawerService>(
+            c => new CashDrawerService(c),
+            s => s.ProcessCashAdvanceAsync(5, 100m, 2, "Pago Movil", false, 36.5m));
+
+        var request = Assert.Single(requests);
+        AssertRequest(request, HttpMethod.Post, "/api/cashdrawer/cash-advance", typeof(CashDrawerController), nameof(CashDrawerController.ProcessCashAdvanceAsync));
+        Assert.False(string.IsNullOrWhiteSpace(request.Body), "La peticion de adelanto debe llevar body.");
+        Assert.DoesNotContain("cashierId", request.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("userName", request.Body!, StringComparison.OrdinalIgnoreCase);
+        // Pin positivo: una poda excesiva del body tambien rompe el contrato del endpoint.
+        Assert.Contains("sessionId", request.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("requestedAmountLocal", request.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("paymentMethodId", request.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("paymentMethodName", request.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("isTransfer", request.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("exchangeRate", request.Body!, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ── SettingsService ────────────────────────────────────────────────────
 
     [Fact]
@@ -1394,6 +1418,10 @@ internal static class ClientHttpContractGuard
 
     public sealed record CapturedRequest(HttpMethod Method, Uri Uri, IReadOnlyDictionary<string, IEnumerable<string>> Headers)
     {
+        /// <summary>Body enviado (texto plano); null si la peticion no tenia contenido. Se captura para
+        /// poder pinear contratos de contenido (8.154/SEC-03) y no solo ruta/metodo/query.</summary>
+        public string? Body { get; init; }
+
         /// <summary>Primer valor del header solicitado; null si la peticion no lo lleva.</summary>
         public string? GetHeaderValue(string name) =>
             Headers.TryGetValue(name, out var values) ? values.FirstOrDefault() : null;
@@ -1449,8 +1477,14 @@ internal static class ClientHttpContractGuard
             }
         }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            // 8.154 (SEC-03): capturar el body permite pinear el contrato de contenido del cliente
+            // (p. ej. que el adelanto no envie identidad) ademas de ruta/metodo/headers.
+            var body = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+
             HttpResponseMessage response;
 
             lock (_sync)
@@ -1461,7 +1495,10 @@ internal static class ClientHttpContractGuard
                     request.Headers.ToDictionary(
                         header => header.Key,
                         header => (IEnumerable<string>)header.Value.ToArray(),
-                        StringComparer.OrdinalIgnoreCase)));
+                        StringComparer.OrdinalIgnoreCase))
+                {
+                    Body = body
+                });
                 _invocations++;
                 response = new HttpResponseMessage(_invocations == 1 ? _firstStatus : HttpStatusCode.OK)
                 {
@@ -1469,7 +1506,7 @@ internal static class ClientHttpContractGuard
                 };
             }
 
-            return Task.FromResult(response);
+            return response;
         }
     }
 }

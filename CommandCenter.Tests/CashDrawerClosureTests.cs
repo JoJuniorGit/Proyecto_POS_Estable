@@ -164,9 +164,7 @@ public class CashDrawerClosureTests
             int paymentMethodId,
             string paymentMethodName,
             bool isTransfer,
-            decimal exchangeRate,
-            int? cashierId = null,
-            string? userName = null)
+            decimal exchangeRate)
         {
             throw new NotImplementedException();
         }

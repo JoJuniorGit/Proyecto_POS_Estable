@@ -7,12 +7,10 @@ namespace Desktop.Client.Services;
 public class CashDrawerService : ICashDrawerService
 {
     private readonly HttpClient _httpClient;
-    private readonly UserSession? _userSession;
 
-    public CashDrawerService(HttpClient httpClient, UserSession? userSession = null)
+    public CashDrawerService(HttpClient httpClient)
     {
         _httpClient = httpClient;
-        _userSession = userSession;
     }
 
     public async Task<CashDrawerSessionDto?> GetActiveSessionAsync()
@@ -101,13 +99,10 @@ public class CashDrawerService : ICashDrawerService
         int paymentMethodId,
         string paymentMethodName,
         bool isTransfer,
-        decimal exchangeRate,
-        int? cashierId = null,
-        string? userName = null)
+        decimal exchangeRate)
     {
-        var activeCashierId = cashierId ?? _userSession?.CurrentUser?.Id;
-        var activeUserName = userName ?? _userSession?.CurrentUser?.Name ?? _userSession?.CurrentUser?.Cedula ?? "Usuario";
-
+        // 8.154 (SEC-03): la identidad del adelanto la resuelve el backend desde el token JWT;
+        // el cliente solo envia los datos del movimiento.
         var request = new
         {
             SessionId = sessionId,
@@ -115,9 +110,7 @@ public class CashDrawerService : ICashDrawerService
             PaymentMethodId = paymentMethodId,
             PaymentMethodName = paymentMethodName,
             IsTransfer = isTransfer,
-            ExchangeRate = exchangeRate,
-            CashierId = activeCashierId,
-            UserName = activeUserName
+            ExchangeRate = exchangeRate
         };
 
         var response = await _httpClient.PostAsJsonAsync("api/cashdrawer/cash-advance", request);
