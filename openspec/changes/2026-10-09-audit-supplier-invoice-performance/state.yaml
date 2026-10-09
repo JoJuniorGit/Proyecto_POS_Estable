@@ -1,0 +1,26 @@
+change: 2026-10-09-audit-supplier-invoice-performance
+store: openspec
+scope: audit-supplier-invoice-perf-8.155
+created: 2026-10-09
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: planned
+apply:
+  slices: 0/2 (T1, T2)
+  branch: V0.15
+verify: pending
+artifacts:
+  proposal: openspec/changes/2026-10-09-audit-supplier-invoice-performance/proposal.md
+  specs:
+    - openspec/changes/2026-10-09-audit-supplier-invoice-performance/specs/staging-batch/spec.md
+    - openspec/changes/2026-10-09-audit-supplier-invoice-performance/specs/apply-io/spec.md
+  tasks: openspec/changes/2026-10-09-audit-supplier-invoice-performance/tasks.md
+decisions:
+  perf01: batch prefetch (barcode SKU + supplierCode join) con primer-por-Id; fuzzy solo para no-emparejadas; Take acotado en candidatos trigram
+  perf02: parcial-por-diseño — la spec supplier-invoice-apply (L64-73) exige retry xmin sobre entidad fresca; se bajan lecturas (2 totales) y saves (≤N+2) conservando el savepoint por línea; el save único queda como recomendación G1 (rediseño con retry de operación completa)
+  rdd: off (clone-local + global)
+  branch: V0.15
+next: T1 (writer staging) → T2 (writer apply) → T3 (verificación + ANEXO 8.155)
