@@ -452,5 +452,119 @@ public partial class WpfDialogService
 
         return System.Threading.Tasks.Task.CompletedTask;
     }
+
+    /// <summary>
+    /// 8.150 (T10, design D7): flujo de espera bloqueante del cajero para una accion protegida.
+    /// Construye el ViewModel con la dependencia inyectada, dispara StartCommand ANTES de
+    /// ShowDialog (contrato T9), abre el dialogo y mapea la fase final a un resultado tipado. Un
+    /// fallo de creacion degrada a Failed con mensaje visible (residual T9 cubierto por T10).
+    /// </summary>
+    public async System.Threading.Tasks.Task<AuthorizationWaitResult?> ShowAuthorizationWaitAsync(
+        AuthorizationRequestContext context,
+        Func<string, System.Threading.Tasks.Task> retry)
+    {
+        if (Application.Current == null || _authorizationHubService == null || context == null || retry == null)
+        {
+            return null;
+        }
+
+        var viewModel = new AuthorizationWaitViewModel(_authorizationHubService, context, retry, _dispatcherInvoker);
+        try
+        {
+            await viewModel.StartCommand.ExecuteAsync(null);
+        }
+        catch (Exception ex)
+        {
+            viewModel.Dispose();
+            return new AuthorizationWaitResult(
+                AuthorizationWaitOutcome.Failed,
+                string.IsNullOrWhiteSpace(ex.Message) ? AuthorizationWaitViewModel.ExecutionFailedMessage : ex.Message);
+        }
+
+        if (viewModel.Phase != AuthorizationWaitPhase.Waiting)
+        {
+            viewModel.Dispose();
+            return new AuthorizationWaitResult(
+                AuthorizationWaitOutcome.Failed,
+                AuthorizationWaitViewModel.ExecutionFailedMessage);
+        }
+
+        bool? dialogResult = null;
+        // Cancel() del VM vuelve a Idle ANTES de cerrar; se retiene la ultima fase no-idle para
+        // mapear Rejected/Expired despues de que ShowDialog retorne.
+        var lastNonIdlePhase = AuthorizationWaitPhase.Idle;
+        void OnPhaseChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(AuthorizationWaitViewModel.Phase)
+                && viewModel.Phase != AuthorizationWaitPhase.Idle)
+            {
+                lastNonIdlePhase = viewModel.Phase;
+            }
+        }
+
+        viewModel.PropertyChanged += OnPhaseChanged;
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var dialog = new AuthorizationWaitDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+            dialogResult = dialog.ShowDialog();
+        };
+
+        try
+        {
+            if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+            else Application.Current.Dispatcher.Invoke(openDialog);
+        }
+        finally
+        {
+            viewModel.PropertyChanged -= OnPhaseChanged;
+        }
+
+        if (dialogResult == true)
+        {
+            return new AuthorizationWaitResult(AuthorizationWaitOutcome.Granted);
+        }
+
+        return lastNonIdlePhase switch
+        {
+            AuthorizationWaitPhase.Rejected => new AuthorizationWaitResult(
+                AuthorizationWaitOutcome.Rejected, null, viewModel.RejectionReason),
+            AuthorizationWaitPhase.Expired => new AuthorizationWaitResult(AuthorizationWaitOutcome.Expired),
+            _ => new AuthorizationWaitResult(AuthorizationWaitOutcome.Cancelled)
+        };
+    }
+
+    /// <summary>
+    /// 8.150 (T10, design D7): modal interrumpente de notificaciones admin bindeado a la cola del
+    /// ViewModel singleton. No lo dispone: el ciclo de vida pertenece a la sesion.
+    /// </summary>
+    public System.Threading.Tasks.Task ShowAuthorizationNotificationAsync(AuthorizationNotificationViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (Application.Current == null)
+        {
+            return System.Threading.Tasks.Task.CompletedTask;
+        }
+
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var dialog = new AuthorizationNotificationDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+            dialog.ShowDialog();
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.CompletedTask;
+    }
 }
 

@@ -130,6 +130,12 @@ public partial class PosViewModel
             {
                 Cart.CurrentSale = await _salesService.AddItemAsync(Cart.CurrentSale.Id, value.Id, 1, CurrentExchangeRate, customPriceUsd, customPriceLocal);
             }
+            catch (AuthorizationRequiredException)
+            {
+                // 8.150 (T10, design D5/D7): el gate zero-trust rechazo el precio manual; el POS
+                // arranca el flujo de espera bloqueante y reintenta con el token aprobado.
+                await RunAuthorizationWaitFlowAsync(value, customPriceUsd, customPriceLocal);
+            }
             catch (Exception ex)
             {
                 if (_dialogService != null) _dialogService.ShowError("Error", $"Error adding item: {ex.Message}");
@@ -142,6 +148,70 @@ public partial class PosViewModel
                 Suggestions.Clear();
                 HasSuggestions = false;
             }
+        }
+    }
+
+    /// <summary>
+    /// 8.150 (T10, design D7): arranca el dialogo de espera desde un alta con precio manual
+    /// rechazada por el gate y traduce el desenlace a feedback del operador. El retry reejecuta
+    /// AddItemAsync con el token aprobado; si la creacion del flujo falla, el POS queda usable con
+    /// error visible (residual T9).
+    /// </summary>
+    private async Task RunAuthorizationWaitFlowAsync(ProductQuickInfoDto product, decimal? customPriceUsd, decimal? customPriceLocal)
+    {
+        var dialogService = _dialogService;
+        var sale = Cart.CurrentSale;
+        if (dialogService == null || sale == null)
+        {
+            return;
+        }
+
+        var context = new AuthorizationRequestContext
+        {
+            SaleId = sale.Id,
+            ProductId = product.Id,
+            ProductName = product.Name,
+            Quantity = 1m,
+            CustomUnitPriceUsd = customPriceUsd,
+            CustomUnitPriceLocal = customPriceLocal,
+            Terminal = Environment.MachineName
+        };
+
+        AuthorizationWaitResult? result;
+        try
+        {
+            result = await dialogService.ShowAuthorizationWaitAsync(context, async token =>
+            {
+                var updatedSale = await _salesService.AddItemAsync(
+                    sale.Id, product.Id, 1m, CurrentExchangeRate, customPriceUsd, customPriceLocal, token);
+                Cart.CurrentSale = updatedSale;
+            });
+        }
+        catch (Exception ex)
+        {
+            dialogService.ShowError("Autorización", string.IsNullOrWhiteSpace(ex.Message)
+                ? "No se pudo iniciar la autorización remota."
+                : $"No se pudo iniciar la autorización remota: {ex.Message}");
+            return;
+        }
+
+        switch (result?.Outcome)
+        {
+            case AuthorizationWaitOutcome.Rejected:
+                dialogService.ShowError("Autorización", string.IsNullOrWhiteSpace(result.RejectionReason)
+                    ? AuthorizationWaitViewModel.RejectedMessage
+                    : $"{AuthorizationWaitViewModel.RejectedMessage} {result.RejectionReason}");
+                break;
+
+            case AuthorizationWaitOutcome.Expired:
+                dialogService.ShowWarning("Autorización", AuthorizationWaitViewModel.ExpiredMessage);
+                break;
+
+            case AuthorizationWaitOutcome.Failed:
+                dialogService.ShowError("Autorización", string.IsNullOrWhiteSpace(result.Message)
+                    ? "No se pudo iniciar la autorización remota."
+                    : result.Message);
+                break;
         }
     }
 

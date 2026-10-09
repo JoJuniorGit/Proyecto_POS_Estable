@@ -87,7 +87,30 @@ public class SalesService : ISalesService
         var _response = await _httpClient.SendAsync(httpRequest);
         if (!_response.IsSuccessStatusCode)
         {
-            var err = await _response.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>();
+            var errorBody = await _response.Content.ReadAsStringAsync();
+            // 8.150 (T10, design D5/D7): el 403 del gate ManualPriceOverride llega como
+            // ProblemDetails con extensiones; se traduce a una excepcion dedicada para que el POS
+            // arranque el flujo de espera sin inspeccionar strings. El resto de los errores
+            // conserva el contrato de mensaje historico (message/Message/fallback) y tolera
+            // bodies no JSON sin romper el camino de error.
+            if (_response.StatusCode == System.Net.HttpStatusCode.Forbidden &&
+                ApiErrorParser.TryGetAuthorizationRequirement(errorBody, out var authorizationAction))
+            {
+                throw new AuthorizationRequiredException(
+                    ApiErrorParser.FromBody(errorBody, "Failed to add item."),
+                    authorizationAction);
+            }
+
+            System.Text.Json.Nodes.JsonObject? err = null;
+            try
+            {
+                err = System.Text.Json.Nodes.JsonNode.Parse(errorBody) as System.Text.Json.Nodes.JsonObject;
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Body no JSON: se aplica el mismo fallback del contrato de error.
+            }
+
             var msg = err?["message"]?.ToString() ?? err?["Message"]?.ToString() ?? "Failed to add item.";
             throw new System.InvalidOperationException(msg);
         }
