@@ -1,0 +1,28 @@
+change: 2026-10-09-audit-immediate
+store: openspec
+scope: audit-immediate-8.153
+created: 2026-10-09
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: planned
+apply:
+  slices: 0/3 (T1 inline, T2 writer, T3 writer)
+  branch: V0.15
+verify: pending
+artifacts:
+  proposal: openspec/changes/2026-10-09-audit-immediate/proposal.md
+  specs:
+    - openspec/changes/2026-10-09-audit-immediate/specs/user-sensitive-serialization/spec.md
+    - openspec/changes/2026-10-09-audit-immediate/specs/blind-current-balance/spec.md
+  tasks: openspec/changes/2026-10-09-audit-immediate/tasks.md
+decisions:
+  alcance: fase inmediata de la matriz de la auditoría (SEC-05, SEC-06); SRE-04 refutado en 8.152 y SRE-05 refutado aquí con evidencia; los 17 abiertos restantes se ejecutan por tramos
+  sre-05: refutado (complete ya exige Idempotency-Key vía resolver desde 'mandatory idempotency'; 400/HIT/422 pinados por tests; el atributo [RequireIdempotencyKey] no existe en el repo)
+  sec-06-extension: enmascarar el mensaje 'Disponible: {saldo}' del rechazo de adelanto (necesario para el propósito del arqueo ciego; reversible independiente)
+  sec-06-ux: el cajero deja de ver el efectivo esperado ('—') y el tope local del adelanto pasa a servidor para no-supervisores
+  rdd: off (clone-local + global)
+  branch: V0.15
+next: T1 (inline) → T2 (writer) → T3 (writer) → T4 (verificación + ANEXO 8.153)
