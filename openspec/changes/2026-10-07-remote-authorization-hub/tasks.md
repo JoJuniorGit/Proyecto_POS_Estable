@@ -78,7 +78,7 @@ Chained PRs recommended: Yes
 
 - [x] 8.1 `AuthorizationHubService` (access_token query per `ExchangeRateService`; `IDisposable`; events/`WeakReferenceMessenger`) — RED tests. (Hecho y verificado en T9.)
 - [x] 8.2 Wait dialog + local authorization dialog + retry with token (`SalesService.AddItemAsync` gains optional token header) — RED VM tests (countdown, unlock, error paths). (Hecho y verificado en T9; higiene de lifecycle tests corregida.)
-- [ ] 8.3 Admin notification dialog + race handling + `PosViewModel.Orders.cs` custom-price integration + dispatcher/dispose lifecycle — RED tests.
+- [x] 8.3 Admin notification dialog + race handling + `PosViewModel.Orders.cs` custom-price integration + dispatcher/dispose lifecycle — RED tests. (Hecho; hallazgo bloqueante de orden aviso/cola corregido test-first y re-verificado.)
 
 ## Phase 9: Closure (T11)
 
