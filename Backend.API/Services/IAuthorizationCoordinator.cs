@@ -61,6 +61,15 @@ public interface IAuthorizationCoordinator
         int viewerUserId,
         bool viewerIsElevated,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 8.151 (W1, design D4): cancelacion del solicitante; en exito cierra los modales con
+    /// AuthorizationResolved (status Cancelled, sin token) para solicitante y elevados.
+    /// </summary>
+    Task<CancelAuthorizationResult> CancelAsync(
+        int requestId,
+        int requesterUserId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

@@ -201,7 +201,7 @@ public class AuthorizationService : IAuthorizationService
                 return;
             }
 
-            if (request.Status is AuthorizationStatus.Approved or AuthorizationStatus.Rejected)
+            if (request.Status is AuthorizationStatus.Approved or AuthorizationStatus.Rejected or AuthorizationStatus.Cancelled)
             {
                 result = AlreadyResolvedResult(request, now);
                 return;
@@ -226,12 +226,17 @@ public class AuthorizationService : IAuthorizationService
                     {
                         await transaction.CommitAsync(cancellationToken);
                     }
+
+                    result = new ResolveAuthorizationResult(
+                        ResolveAuthorizationOutcome.Expired,
+                        ToDto(request, now) with { Status = AuthorizationStatus.Expired, ResolvedAt = now },
+                        AuthorizationMessages.RequestExpired);
+                    return;
                 }
 
-                result = new ResolveAuthorizationResult(
-                    ResolveAuthorizationOutcome.Expired,
-                    ToDto(request, now) with { Status = AuthorizationStatus.Expired, ResolvedAt = now },
-                    AuthorizationMessages.RequestExpired);
+                // W1 (8.151, design D3): el claim perdio (una resolucion concurrente gano); se
+                // re-lee antes de clasificar para no reportar Expired sobre una fila ya resuelta.
+                result = await MapCurrentResolveAsync(requestId, now, cancellationToken);
                 return;
             }
 
@@ -295,7 +300,7 @@ public class AuthorizationService : IAuthorizationService
                 return;
             }
 
-            if (request.Status is AuthorizationStatus.Approved or AuthorizationStatus.Rejected)
+            if (request.Status is AuthorizationStatus.Approved or AuthorizationStatus.Rejected or AuthorizationStatus.Cancelled)
             {
                 result = new LocalResolveResult(
                     LocalResolveOutcome.AlreadyResolved,
@@ -323,12 +328,16 @@ public class AuthorizationService : IAuthorizationService
                     {
                         await transaction.CommitAsync(cancellationToken);
                     }
+
+                    result = new LocalResolveResult(
+                        LocalResolveOutcome.Expired,
+                        ToDto(request, now) with { Status = AuthorizationStatus.Expired, ResolvedAt = now },
+                        Message: AuthorizationMessages.RequestExpired);
+                    return;
                 }
 
-                result = new LocalResolveResult(
-                    LocalResolveOutcome.Expired,
-                    ToDto(request, now) with { Status = AuthorizationStatus.Expired, ResolvedAt = now },
-                    Message: AuthorizationMessages.RequestExpired);
+                // W1 (8.151, design D3): misma re-lectura que la resolucion remota.
+                result = await MapCurrentLocalAsync(requestId, now, cancellationToken);
                 return;
             }
 
@@ -463,65 +472,57 @@ public class AuthorizationService : IAuthorizationService
         CancellationToken cancellationToken = default)
     {
         var now = UtcNowSeconds();
-        var request = await LoadRequestAsync(requestId, cancellationToken);
-        if (request == null)
-        {
-            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.NotFound);
-        }
-
-        if (request.Status != AuthorizationStatus.Approved)
-        {
-            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.NotApproved);
-        }
-
-        if (request.ConsumedAt.HasValue)
-        {
-            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.AlreadyConsumed);
-        }
-
-        if (request.RequestedByUserId != userId)
-        {
-            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.WrongUser);
-        }
-
-        if (request.ActionType != actionType)
-        {
-            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.WrongAction);
-        }
-
-        if (request.SaleId != saleId)
-        {
-            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.WrongSale);
-        }
-
-        if (!string.Equals(request.ContextHash, contextHash, StringComparison.Ordinal))
-        {
-            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.ContextMismatch);
-        }
-
         var tokenFloor = now.Subtract(_tokenTtl);
-        if (!request.ResolvedAt.HasValue || request.ResolvedAt.Value < tokenFloor)
-        {
-            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.TokenExpired);
-        }
 
-        var claimed = await _db.AuthorizationRequests
+        // W1 (8.151, design D2): el claim lleva TODAS las condiciones de binding en el WHERE;
+        // validar en una pre-lectura y reclamar despues abria una ventana TOCTOU.
+        var claim = _db.AuthorizationRequests
             .Where(candidate => candidate.Id == requestId
                 && candidate.Status == AuthorizationStatus.Approved
                 && candidate.ConsumedAt == null
                 && candidate.RequestedByUserId == userId
-                && candidate.ResolvedAt >= tokenFloor)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(candidate => candidate.ConsumedAt, now), cancellationToken);
+                && candidate.ActionType == actionType
+                && candidate.ContextHash == contextHash
+                && candidate.ResolvedAt >= tokenFloor);
+
+        // Comparacion explicita contra NULL (el operador SQL = no matchea NULL = NULL).
+        claim = saleId.HasValue
+            ? claim.Where(candidate => candidate.SaleId == saleId.Value)
+            : claim.Where(candidate => candidate.SaleId == null);
+
+        var claimed = await claim.ExecuteUpdateAsync(
+            setters => setters.SetProperty(candidate => candidate.ConsumedAt, now),
+            cancellationToken);
 
         if (claimed == 1)
         {
             return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.Consumed);
         }
 
+        return await ClassifyConsumeFailureAsync(requestId, userId, actionType, saleId, contextHash, cancellationToken);
+    }
+
+    /// <summary>
+    /// W1 (8.151, design D2): con 0 filas reclamadas la unica salida es una lectura de
+    /// clasificacion; preserva los outcomes precisos del contrato de consumo.
+    /// </summary>
+    private async Task<ConsumeAuthorizationResult> ClassifyConsumeFailureAsync(
+        int requestId,
+        int userId,
+        AuthorizationActionType actionType,
+        int? saleId,
+        string contextHash,
+        CancellationToken cancellationToken)
+    {
         var current = await LoadRequestAsync(requestId, cancellationToken);
         if (current == null)
         {
             return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.NotFound);
+        }
+
+        if (current.Status != AuthorizationStatus.Approved)
+        {
+            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.NotApproved);
         }
 
         if (current.ConsumedAt.HasValue)
@@ -529,9 +530,27 @@ public class AuthorizationService : IAuthorizationService
             return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.AlreadyConsumed);
         }
 
-        return current.Status != AuthorizationStatus.Approved
-            ? new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.NotApproved)
-            : new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.TokenExpired);
+        if (current.RequestedByUserId != userId)
+        {
+            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.WrongUser);
+        }
+
+        if (current.ActionType != actionType)
+        {
+            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.WrongAction);
+        }
+
+        if (current.SaleId != saleId)
+        {
+            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.WrongSale);
+        }
+
+        if (!string.Equals(current.ContextHash, contextHash, StringComparison.Ordinal))
+        {
+            return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.ContextMismatch);
+        }
+
+        return new ConsumeAuthorizationResult(ConsumeAuthorizationOutcome.TokenExpired);
     }
 
     public async Task<AuthorizationRequestDto?> GetAsync(
@@ -547,6 +566,101 @@ public class AuthorizationService : IAuthorizationService
         }
 
         return ToDto(request, UtcNowSeconds());
+    }
+
+    public async Task<CancelAuthorizationResult> CancelAsync(
+        int requestId,
+        int requesterUserId,
+        CancellationToken cancellationToken = default)
+    {
+        CancelAuthorizationResult result = null!;
+
+        await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _db.ChangeTracker.Clear();
+
+            var now = UtcNowSeconds();
+            await using var transaction = _db.Database.IsRelational()
+                ? await _db.Database.BeginTransactionAsync(cancellationToken)
+                : null;
+
+            var request = await LoadRequestAsync(requestId, cancellationToken);
+            if (request == null)
+            {
+                result = new CancelAuthorizationResult(CancelAuthorizationOutcome.NotFound, Message: AuthorizationMessages.RequestNotFound);
+                return;
+            }
+
+            if (request.RequestedByUserId != requesterUserId)
+            {
+                result = new CancelAuthorizationResult(
+                    CancelAuthorizationOutcome.Forbidden,
+                    ToDto(request, now),
+                    AuthorizationMessages.CancelRequesterOnly);
+                return;
+            }
+
+            if (request.Status is AuthorizationStatus.Approved or AuthorizationStatus.Rejected or AuthorizationStatus.Cancelled)
+            {
+                result = new CancelAuthorizationResult(
+                    CancelAuthorizationOutcome.AlreadyResolved,
+                    ToDto(request, now),
+                    AuthorizationMessages.AlreadyResolvedBy(request.ResolvedByName ?? "otro usuario"));
+                return;
+            }
+
+            if (request.Status == AuthorizationStatus.Expired)
+            {
+                result = new CancelAuthorizationResult(
+                    CancelAuthorizationOutcome.Expired,
+                    ToDto(request, now),
+                    AuthorizationMessages.RequestExpired);
+                return;
+            }
+
+            if (now >= request.ExpiresAt)
+            {
+                if (await ClaimExpiryAsync(request.Id, now, cancellationToken) == 1)
+                {
+                    _db.AuthorizationAudits.Add(BuildAudit(request, AuthorizationStatus.Expired, null, null, null, null, now));
+                    await _db.SaveChangesAsync(cancellationToken);
+                    if (transaction != null)
+                    {
+                        await transaction.CommitAsync(cancellationToken);
+                    }
+
+                    result = new CancelAuthorizationResult(
+                        CancelAuthorizationOutcome.Expired,
+                        ToDto(request, now) with { Status = AuthorizationStatus.Expired, ResolvedAt = now },
+                        AuthorizationMessages.RequestExpired);
+                    return;
+                }
+
+                result = await MapCurrentCancelAsync(requestId, requesterUserId, now, cancellationToken);
+                return;
+            }
+
+            var claimed = await ClaimCancellationAsync(request.Id, requesterUserId, now, cancellationToken);
+            if (claimed == 1)
+            {
+                _db.AuthorizationAudits.Add(BuildAudit(request, AuthorizationStatus.Cancelled, null, null, null, null, now));
+                await _db.SaveChangesAsync(cancellationToken);
+                if (transaction != null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                }
+
+                result = new CancelAuthorizationResult(
+                    CancelAuthorizationOutcome.Cancelled,
+                    ToDto(request, now) with { Status = AuthorizationStatus.Cancelled, ResolvedAt = now });
+                return;
+            }
+
+            result = await MapCurrentCancelAsync(requestId, requesterUserId, now, cancellationToken);
+        });
+
+        return result;
     }
 
     private async Task<bool> CanRequestForSaleAsync(CreateAuthorizationRequestDto request, CancellationToken cancellationToken)
@@ -657,6 +771,23 @@ public class AuthorizationService : IAuthorizationService
                 .SetProperty(candidate => candidate.Status, AuthorizationStatus.Expired)
                 .SetProperty(candidate => candidate.ResolvedAt, now), cancellationToken);
 
+    /// <summary>
+    /// 8.151 (W1, design D4): transicion atomica Pending -> Cancelled restringida al solicitante;
+    /// la auditoria con resolver nulo la agrega el llamador solo cuando este UPDATE afecta 1 fila.
+    /// </summary>
+    private Task<int> ClaimCancellationAsync(
+        int requestId,
+        int requesterUserId,
+        DateTime now,
+        CancellationToken cancellationToken)
+        => _db.AuthorizationRequests
+            .Where(candidate => candidate.Id == requestId
+                && candidate.Status == AuthorizationStatus.Pending
+                && candidate.RequestedByUserId == requesterUserId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(candidate => candidate.Status, AuthorizationStatus.Cancelled)
+                .SetProperty(candidate => candidate.ResolvedAt, now), cancellationToken);
+
     private static AuthorizationAudit BuildAudit(
         AuthorizationRequest request,
         AuthorizationStatus status,
@@ -697,7 +828,7 @@ public class AuthorizationService : IAuthorizationService
             return new ResolveAuthorizationResult(ResolveAuthorizationOutcome.NotFound, Message: AuthorizationMessages.RequestNotFound);
         }
 
-        if (current.Status is AuthorizationStatus.Approved or AuthorizationStatus.Rejected)
+        if (current.Status is AuthorizationStatus.Approved or AuthorizationStatus.Rejected or AuthorizationStatus.Cancelled)
         {
             return AlreadyResolvedResult(current, now);
         }
@@ -721,7 +852,7 @@ public class AuthorizationService : IAuthorizationService
             return new LocalResolveResult(LocalResolveOutcome.NotFound, Message: AuthorizationMessages.RequestNotFound);
         }
 
-        if (current.Status is AuthorizationStatus.Approved or AuthorizationStatus.Rejected)
+        if (current.Status is AuthorizationStatus.Approved or AuthorizationStatus.Rejected or AuthorizationStatus.Cancelled)
         {
             return new LocalResolveResult(
                 LocalResolveOutcome.AlreadyResolved,
@@ -741,6 +872,49 @@ public class AuthorizationService : IAuthorizationService
             LocalResolveOutcome.AlreadyResolved,
             ToDto(current, now),
             Message: AuthorizationMessages.AlreadyResolvedBy(current.ResolvedByName ?? "otro usuario"));
+    }
+
+    /// <summary>
+    /// 8.151 (W1, design D4): clasifica un claim de cancelacion perdido (resolucion o
+    /// cancelacion concurrente ganadora) preservando los outcomes del contrato.
+    /// </summary>
+    private async Task<CancelAuthorizationResult> MapCurrentCancelAsync(
+        int requestId,
+        int requesterUserId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var current = await LoadRequestAsync(requestId, cancellationToken);
+        if (current == null)
+        {
+            return new CancelAuthorizationResult(CancelAuthorizationOutcome.NotFound, Message: AuthorizationMessages.RequestNotFound);
+        }
+
+        if (current.RequestedByUserId != requesterUserId)
+        {
+            return new CancelAuthorizationResult(CancelAuthorizationOutcome.Forbidden, ToDto(current, now), AuthorizationMessages.CancelRequesterOnly);
+        }
+
+        if (current.Status is AuthorizationStatus.Approved or AuthorizationStatus.Rejected or AuthorizationStatus.Cancelled)
+        {
+            return new CancelAuthorizationResult(
+                CancelAuthorizationOutcome.AlreadyResolved,
+                ToDto(current, now),
+                AuthorizationMessages.AlreadyResolvedBy(current.ResolvedByName ?? "otro usuario"));
+        }
+
+        if (current.Status == AuthorizationStatus.Expired || now >= current.ExpiresAt)
+        {
+            return new CancelAuthorizationResult(
+                CancelAuthorizationOutcome.Expired,
+                ToDto(current, now) with { Status = AuthorizationStatus.Expired },
+                AuthorizationMessages.RequestExpired);
+        }
+
+        return new CancelAuthorizationResult(
+            CancelAuthorizationOutcome.AlreadyResolved,
+            ToDto(current, now),
+            AuthorizationMessages.AlreadyResolvedBy(current.ResolvedByName ?? "otro usuario"));
     }
 
     private static AuthorizationRequestDto ToDto(AuthorizationRequest request, DateTime now)

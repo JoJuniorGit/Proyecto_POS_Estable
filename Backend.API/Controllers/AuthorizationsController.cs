@@ -145,6 +145,31 @@ public class AuthorizationsController : ControllerBase
         };
     }
 
+    [HttpPost("{id:int}/cancel")]
+    public async Task<IActionResult> CancelAsync(int id, CancellationToken cancellationToken = default)
+    {
+        if (!TryReadIdentity(out var identity))
+        {
+            return this.ApiUnauthorized("No autorizado.");
+        }
+
+        var result = await _coordinator.CancelAsync(id, identity.UserId, cancellationToken);
+
+        return result.Outcome switch
+        {
+            CancelAuthorizationOutcome.Cancelled => Ok(new
+            {
+                requestId = result.Request!.Id,
+                status = result.Request.Status.ToString(),
+                resolvedAt = result.Request.ResolvedAt
+            }),
+            CancelAuthorizationOutcome.AlreadyResolved => this.ApiConflict(result.Message),
+            CancelAuthorizationOutcome.Expired => this.ApiConflict(result.Message),
+            CancelAuthorizationOutcome.Forbidden => this.ApiForbidden(result.Message),
+            _ => this.ApiNotFound(result.Message)
+        };
+    }
+
     [HttpPost("{id:int}/local-resolve")]
     public async Task<IActionResult> ResolveLocalAsync(
         int id,

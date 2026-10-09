@@ -256,6 +256,73 @@ public class AuthorizationPersistenceTests
     }
 
     [Fact]
+    public void MigrationScript_PendingDedupeNullSafe_RecreatesIndexWithNullsNotDistinct()
+    {
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseNpgsql("Host=localhost;Database=pending_dedupe_null_safe;Username=postgres;Password=postgres")
+            .Options;
+        using var context = new SalesDbContext(options);
+
+        var migrations = context.GetService<IMigrationsAssembly>();
+        Assert.Contains("20261010120000_PendingDedupeNullSafe", migrations.Migrations.Keys);
+
+        var script = context.GetService<IMigrator>().GenerateScript(
+            fromMigration: "20261007120000_AddRemoteAuthorizationHubDataLayer",
+            toMigration: "20261010120000_PendingDedupeNullSafe");
+
+        Assert.Contains("DROP INDEX IF EXISTS \"IX_AuthorizationRequests_PendingDedupe\"", script);
+        Assert.Contains("NULLS NOT DISTINCT", script);
+        Assert.Contains("WHERE \"Status\" = 0", script);
+    }
+
+    [Fact]
+    [Trait("Category", "RequiresDocker")]
+    public async Task PostgreSql_NullSalePendingDuplicates_AreRejectedByNullSafeDedupeIndex()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return;
+        }
+
+        var databaseName = $"pos_authorization_nullsafe_{Guid.NewGuid():N}";
+        var testConnectionString = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Database = databaseName
+        }.ConnectionString;
+        var adminConnectionString = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Database = "postgres"
+        }.ConnectionString;
+
+        await CreateDatabaseAsync(adminConnectionString, databaseName);
+        try
+        {
+            var options = new DbContextOptionsBuilder<SalesDbContext>()
+                .UseNpgsql(testConnectionString)
+                .Options;
+            await using var context = new SalesDbContext(options);
+            await context.Database.MigrateAsync();
+
+            context.Set<AuthorizationRequest>().Add(CreatePendingRequest(saleId: null));
+            await context.SaveChangesAsync();
+
+            context.ChangeTracker.Clear();
+            context.Set<AuthorizationRequest>().Add(CreatePendingRequest(saleId: null));
+            var duplicate = await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+            var error = Assert.IsType<PostgresException>(duplicate.InnerException);
+            Assert.Equal("23505", error.SqlState);
+            Assert.Equal("IX_AuthorizationRequests_PendingDedupe", error.ConstraintName);
+
+            Assert.Equal(1, await context.Set<AuthorizationRequest>().CountAsync(row => row.SaleId == null));
+        }
+        finally
+        {
+            await DropDatabaseAsync(adminConnectionString, databaseName);
+        }
+    }
+
+    [Fact]
     [Trait("Category", "RequiresDocker")]
     public async Task PostgreSql_AppendOnlyTrigger_RejectsAuditMutation_AndKeepsRow()
     {

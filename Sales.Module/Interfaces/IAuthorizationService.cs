@@ -45,4 +45,14 @@ public interface IAuthorizationService
         int viewerUserId,
         bool viewerIsElevated,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 8.151 (W1, design D4): cancelacion exclusiva del solicitante. La transicion
+    /// Pending -> Cancelled es atomica, audita con resolver nulo y nunca pisa una resolucion
+    /// terminal previa (Approved/Rejected/Expired/Cancelled).
+    /// </summary>
+    Task<CancelAuthorizationResult> CancelAsync(
+        int requestId,
+        int requesterUserId,
+        CancellationToken cancellationToken = default);
 }

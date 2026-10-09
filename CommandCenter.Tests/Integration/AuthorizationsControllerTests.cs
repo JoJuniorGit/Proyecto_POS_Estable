@@ -319,6 +319,114 @@ public class AuthorizationsControllerTests
         Assert.Equal(AuthorizationMessages.RequestNotFound, problem.Detail);
     }
 
+    // ---------------------------------------------------------------- W1 (8.151): cancelacion
+
+    [Fact]
+    public async Task Cancel_AsRequester_ReturnsCancelledStatusAndSingleAudit()
+    {
+        await using var app = await ControllerTestApplication.CreateAsync();
+        using var cashier = app.CreateClient(70, UserRole.Cashier, "Cajero 70");
+        var requestId = await CreateRequestAsync(cashier);
+
+        using var response = await cashier.PostAsync($"/api/authorizations/{requestId}/cancel", content: null);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(requestId, body.GetProperty("requestId").GetInt32());
+        Assert.Equal("Cancelled", body.GetProperty("status").GetString());
+        Assert.NotEqual(JsonValueKind.Null, body.GetProperty("resolvedAt").ValueKind);
+
+        var persisted = await app.Db.AuthorizationRequests.AsNoTracking().SingleAsync(row => row.Id == requestId);
+        Assert.Equal(AuthorizationStatus.Cancelled, persisted.Status);
+        Assert.NotNull(persisted.ResolvedAt);
+        Assert.Null(persisted.ResolutionMode);
+
+        var audit = await app.Db.AuthorizationAudits.AsNoTracking().SingleAsync(row => row.RequestId == requestId);
+        Assert.Equal(AuthorizationStatus.Cancelled, audit.Status);
+        Assert.Null(audit.ResolutionMode);
+        Assert.Null(audit.ResolvedByUserId);
+        Assert.Null(audit.ResolvedByName);
+    }
+
+    [Fact]
+    public async Task Cancel_AsOtherCashier_ReturnsForbiddenWithExactMessage()
+    {
+        await using var app = await ControllerTestApplication.CreateAsync();
+        using var cashier = app.CreateClient(70, UserRole.Cashier, "Cajero 70");
+        using var otherCashier = app.CreateClient(71, UserRole.Cashier, "Cajero 71");
+        var requestId = await CreateRequestAsync(cashier);
+
+        using var response = await otherCashier.PostAsync($"/api/authorizations/{requestId}/cancel", content: null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var problem = await ReadProblemAsync(response);
+        Assert.Equal("Solo el solicitante puede cancelar la solicitud.", problem.Detail);
+        Assert.Equal(AuthorizationStatus.Pending, (await app.Db.AuthorizationRequests.AsNoTracking().SingleAsync(row => row.Id == requestId)).Status);
+        Assert.Equal(0, await app.Db.AuthorizationAudits.CountAsync(row => row.RequestId == requestId));
+    }
+
+    [Fact]
+    public async Task Cancel_AfterApproval_ReturnsConflictWithRaceMessage()
+    {
+        await using var app = await ControllerTestApplication.CreateAsync();
+        using var cashier = app.CreateClient(70, UserRole.Cashier, "Cajero 70");
+        using var admin = app.CreateClient(2, UserRole.Admin, "Admin Uno");
+        var requestId = await CreateRequestAsync(cashier);
+        using var resolveResponse = await admin.PostAsJsonAsync(
+            $"/api/authorizations/{requestId}/resolve",
+            new { approved = true, reason = "Aprobado remoto" });
+        Assert.Equal(HttpStatusCode.OK, resolveResponse.StatusCode);
+
+        using var response = await cashier.PostAsync($"/api/authorizations/{requestId}/cancel", content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await ReadProblemAsync(response);
+        Assert.Equal("Esta solicitud ya fue resuelta por Admin Uno.", problem.Detail);
+        Assert.Equal(1, await app.Db.AuthorizationAudits.CountAsync(row => row.RequestId == requestId));
+    }
+
+    [Fact]
+    public async Task Cancel_ExpiredRequest_ReturnsConflictWithExpiredMessage()
+    {
+        await using var app = await ControllerTestApplication.CreateAsync();
+        using var cashier = app.CreateClient(70, UserRole.Cashier, "Cajero 70");
+        var requestId = await CreateRequestAsync(cashier);
+        var row = await app.Db.AuthorizationRequests.SingleAsync(candidate => candidate.Id == requestId);
+        row.ExpiresAt = DateTime.UtcNow.AddSeconds(-5);
+        await app.Db.SaveChangesAsync();
+
+        using var response = await cashier.PostAsync($"/api/authorizations/{requestId}/cancel", content: null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var problem = await ReadProblemAsync(response);
+        Assert.Equal(AuthorizationMessages.RequestExpired, problem.Detail);
+        Assert.Equal(AuthorizationStatus.Expired, (await app.Db.AuthorizationRequests.AsNoTracking().SingleAsync(row => row.Id == requestId)).Status);
+    }
+
+    [Fact]
+    public async Task Cancel_NotFound_Returns404()
+    {
+        await using var app = await ControllerTestApplication.CreateAsync();
+        using var cashier = app.CreateClient(70, UserRole.Cashier, "Cajero 70");
+
+        using var response = await cashier.PostAsync("/api/authorizations/99999/cancel", content: null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var problem = await ReadProblemAsync(response);
+        Assert.Equal(AuthorizationMessages.RequestNotFound, problem.Detail);
+    }
+
+    [Fact]
+    public async Task Cancel_Unauthenticated_Returns401()
+    {
+        await using var app = await ControllerTestApplication.CreateAsync();
+        using var anonymous = app.CreateAnonymousClient();
+
+        using var response = await anonymous.PostAsync("/api/authorizations/99999/cancel", content: null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     // ---------------------------------------------------------------- fallback local
 
     [Fact]

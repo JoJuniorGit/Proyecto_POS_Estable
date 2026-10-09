@@ -15,6 +15,9 @@ public static class AuthorizationMessages
     public const string ContextTooLarge = "El contexto de la operación excede el límite de 4 KB.";
     public const string RequestNotFound = "La solicitud de autorización no existe.";
 
+    // 8.151 (W1, design D4): la cancelacion es un privilegio exclusivo del solicitante.
+    public const string CancelRequesterOnly = "Solo el solicitante puede cancelar la solicitud.";
+
     public static string AlreadyResolvedBy(string resolverName) =>
         $"Esta solicitud ya fue resuelta por {resolverName}.";
 }
@@ -113,3 +116,19 @@ public enum ConsumeAuthorizationOutcome
 }
 
 public sealed record ConsumeAuthorizationResult(ConsumeAuthorizationOutcome Outcome, string? Message = null);
+
+// 8.151 (W1, design D4): desenlaces de la cancelacion del solicitante. La transicion
+// Pending -> Cancelled es atomica y solo el dueno de la solicitud puede reclamarla.
+public enum CancelAuthorizationOutcome
+{
+    Cancelled,
+    AlreadyResolved,
+    Expired,
+    NotFound,
+    Forbidden
+}
+
+public sealed record CancelAuthorizationResult(
+    CancelAuthorizationOutcome Outcome,
+    AuthorizationRequestDto? Request = null,
+    string? Message = null);
