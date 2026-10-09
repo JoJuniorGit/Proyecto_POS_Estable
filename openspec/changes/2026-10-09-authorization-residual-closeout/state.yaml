@@ -1,0 +1,37 @@
+change: 2026-10-09-authorization-residual-closeout
+store: openspec
+scope: authorization-residual-closeout
+created: 2026-10-09
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: proposed
+apply:
+  slices: 0/5 (W1-W5)
+  branch: V0.15
+verify: pending
+artifacts:
+  proposal: openspec/changes/2026-10-09-authorization-residual-closeout/proposal.md
+  design: openspec/changes/2026-10-09-authorization-residual-closeout/design.md
+  specs:
+    - openspec/changes/2026-10-09-authorization-residual-closeout/specs/remote-authorization/spec.md
+    - openspec/changes/2026-10-09-authorization-residual-closeout/specs/remote-authorization-clients/spec.md
+  tasks: openspec/changes/2026-10-09-authorization-residual-closeout/tasks.md
+decisions:
+  d1-null-dedupe: new additive migration recreating the pending index with NULLS NOT DISTINCT (Npgsql); original migration immutable
+  r1-atomic-claim: binding conditions inside the consume UPDATE WHERE; classification read only on 0 rows
+  r2-expiry-loser: re-read before classifying Expired
+  d4b-cancellation: Status.Cancelled=4 (no migration), requester-only endpoint, audited, elevated closure push
+  d3-w3-settlement: reducer outcome + promise settlement on rejection/expiry (modal stays for acknowledgment)
+  d4a-wpf-reconnect: hub Reconnected event + queue reconciliation via GetStatusAsync
+  d4c-d4d: floor countdown; own-resolved pruning (web + WPF)
+  d2-websockets: gated WPF-E2E hub test asserts the real WebSockets transport
+  d5-put: pinned as deliberate scope (role-based 403, no token flow)
+  d6-wpf-trigger: disparador "Precio manual" para producto normal en el POS WPF (cierra D6/G1)
+  e2: stays cancelled (stash@{0})
+  rdd: off (clone-local + global)
+  branch: V0.15
+  anexo: "8.151"
+next: W1 backend closeout
