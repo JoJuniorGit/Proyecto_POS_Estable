@@ -1,0 +1,28 @@
+change: 2026-10-09-audit-advance-invoice-hardening
+store: openspec
+scope: audit-advance-invoice-8.154
+created: 2026-10-09
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: planned
+apply:
+  slices: 0/3 (T1, T2, T3)
+  branch: V0.15
+verify: pending
+artifacts:
+  proposal: openspec/changes/2026-10-09-audit-advance-invoice-hardening/proposal.md
+  specs:
+    - openspec/changes/2026-10-09-audit-advance-invoice-hardening/specs/cash-advance-identity-anchor/spec.md
+    - openspec/changes/2026-10-09-audit-advance-invoice-hardening/specs/supplier-invoice-apply-ordering/spec.md
+  tasks: openspec/changes/2026-10-09-audit-advance-invoice-hardening/tasks.md
+decisions:
+  alcance: SEC-03 + SEC-04 (adelantos) + SRE-01 en facturas; SEC-07 y PERF/CLEAN quedan para tramos siguientes
+  sec03: identidad solo desde el token (401 sin sesión / 403 inexistente); contrato sin CashierId/UserName (compatible con clientes viejos: miembros extra ignorados por STJ)
+  sec04: anclaje A5 antes del coordinador (la venta ya anclaba en SalesService.CashAdvance; comisión/movimientos usaban la tasa cruda)
+  sre01: helper puro SupplierInvoiceApplyOrdering.OrderForApply (asc por ResolvedProductId, nulls primero, tie-break Id) — precedente StockDeductionConsolidator
+  rdd: off (clone-local + global)
+  branch: V0.15
+next: T1 (writer backend) → T2 (writer WPF) → T3 (writer facturas) → T4 (verificación + ANEXO 8.154)
