@@ -382,7 +382,9 @@ public class CashDrawerService : ICashDrawerService
         decimal available = currentBalanceDb + pendingCashIncomeBsS;
         if (available < changeBsS)
         {
-            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para registrar el vuelto de la venta #{saleId}. Disponible: {MoneyFormat.N2(available)} Bs.S, Vuelto requerido: {MoneyFormat.N2(changeBsS)} Bs.S.");
+            // 8.153 (SEC-06): sin exponer el efectivo disponible (arqueo ciego); el vuelto requerido
+            // es dato del propio operador que completa la venta.
+            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para registrar el vuelto de la venta #{saleId}. Vuelto requerido: {MoneyFormat.N2(changeBsS)} Bs.S.");
         }
 
         var changeTx = new CashTransaction

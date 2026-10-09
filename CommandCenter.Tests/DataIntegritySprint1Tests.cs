@@ -236,6 +236,9 @@ public class DataIntegritySprint1Tests
                 cashPaymentMethodId: 1));
 
         Assert.Contains("Saldo de efectivo en caja insuficiente", ex.Message);
+        // 8.153 (SEC-06): el rechazo del vuelto no debe revelar el efectivo disponible (arqueo ciego).
+        Assert.DoesNotContain("Disponible", ex.Message);
+        Assert.Contains("Vuelto requerido", ex.Message);
         Assert.Empty(await salesDb.CashTransactions.Where(t => t.Type == CashTransactionType.Expense).ToListAsync());
     }
 
