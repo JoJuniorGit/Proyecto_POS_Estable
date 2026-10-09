@@ -7,11 +7,13 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: proposed
+phase: verified
 apply:
-  slices: 4/5 (W1-W4)
+  slices: 5/5 (W1-W5) + cierre R12
   branch: V0.15
-verify: pending
+verify: pass
+verify_report: openspec/changes/2026-10-09-authorization-residual-closeout/verify-report.md
+verify_note: "12/12 R1-R12 cerrados; build 0/0; suite 2109/2109 con Postgres real; cobertura Core 0.8868/Sales 0.9055/Inventory 0.8587 (exit 0); web 373/373 + lint 0; WebSockets gated 1/1 re-ejecutado; PUT pin 10/10; W4/W5 verificacion por spot-check del orquestador (corrida del verificador independiente interrumpida por el mantenedor)"
 artifacts:
   proposal: openspec/changes/2026-10-09-authorization-residual-closeout/proposal.md
   design: openspec/changes/2026-10-09-authorization-residual-closeout/design.md
@@ -34,4 +36,4 @@ decisions:
   rdd: off (clone-local + global)
   branch: V0.15
   anexo: "8.151"
-next: W1 backend closeout
+next: push/pr/merge + sdd-archive (decisión del mantenedor)

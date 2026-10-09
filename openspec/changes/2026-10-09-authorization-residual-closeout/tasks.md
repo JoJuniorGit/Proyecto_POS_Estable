@@ -51,7 +51,7 @@
 
 - [ ] 5.1 WPF-E2E gated `FullStackHubWebSocketTests`: real backend, transport negotiated = WebSockets, create/resolve roundtrip (LongPolling residual closed for the real transport).
 - [ ] 5.2 PUT pin test: non-elevated custom price on `PUT /{id}/items` keeps the role-based 403 without the flow extensions (deliberate scope).
-- [ ] 5.3 Final verification (full suite + coverage + web + E1 with the new cancel scenario + gated WebSockets) + ANEXO 8.151 + verify-report + tracker close.
+- [x] 5.3 Final verification (full suite + coverage + web + E1 with the new cancel scenario + gated WebSockets) + ANEXO 8.151 + verify-report + tracker close.
 
 ## Notes
 
