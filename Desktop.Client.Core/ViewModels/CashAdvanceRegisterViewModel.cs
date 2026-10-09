@@ -21,7 +21,7 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
     public bool DialogResult { get; private set; }
 
     [ObservableProperty]
-    private decimal _availableCashLocal;
+    private decimal? _availableCashLocal;
 
     [ObservableProperty]
     private decimal _requestedAmountBsS;
@@ -40,7 +40,7 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
 
     public ObservableCollection<PaymentMethodDto> ElectronicPaymentMethods { get; } = new();
 
-    public CashAdvanceRegisterViewModel(List<PaymentMethodDto> paymentMethods, decimal availableCashLocal, decimal exchangeRate = 1.0m, ICashDrawerService? cashDrawer = null)
+    public CashAdvanceRegisterViewModel(List<PaymentMethodDto> paymentMethods, decimal? availableCashLocal, decimal exchangeRate = 1.0m, ICashDrawerService? cashDrawer = null)
     {
         _cashDrawerService = cashDrawer;
         AvailableCashLocal = availableCashLocal;
@@ -66,6 +66,12 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
          SelectedPaymentMethod.Name.Contains("Pago Móvil", StringComparison.OrdinalIgnoreCase) ||
          SelectedPaymentMethod.Name.Contains("Pago Movil", StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// 8.153 (SEC-06): representación neutra del efectivo disponible cuando no es visible para el
+    /// operador (no-supervisores); con valor conserva el formato N0 que muestra el diálogo.
+    /// </summary>
+    public string AvailableCashDisplay => AvailableCashLocal is decimal available ? MoneyFormat.N0(available) : "—";
+
     public decimal? CommissionAmountBsS => CommissionPercentage is decimal percentage
         ? Math.Round(RequestedAmountBsS * (percentage / 100.0m), 2, MidpointRounding.AwayFromZero)
         : null;
@@ -78,7 +84,13 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
         ? total / ExchangeRate
         : null;
 
-    public bool CanConfirm => RequestedAmountBsS > 0 && RequestedAmountBsS <= AvailableCashLocal && SelectedPaymentMethod != null && CommissionPercentage > 0 && string.IsNullOrEmpty(ErrorMessage);
+    // 8.153 (SEC-06): el tope local se aplica solo cuando el efectivo disponible es visible
+    // (supervisores); con null el rechazo definitivo proviene del servidor.
+    public bool CanConfirm => RequestedAmountBsS > 0
+        && (AvailableCashLocal is not decimal cap || RequestedAmountBsS <= cap)
+        && SelectedPaymentMethod != null
+        && CommissionPercentage > 0
+        && string.IsNullOrEmpty(ErrorMessage);
 
     public async Task RefreshCommissionAsync(CancellationToken cancellationToken = default)
     {
@@ -144,9 +156,9 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
         {
             ErrorMessage = "Ingrese un monto mayor a cero.";
         }
-        else if (RequestedAmountBsS > AvailableCashLocal)
+        else if (AvailableCashLocal is decimal availableCap && RequestedAmountBsS > availableCap)
         {
-            ErrorMessage = $"El monto supera el efectivo en caja ({MoneyFormat.N2(AvailableCashLocal)} Bs.S).";
+            ErrorMessage = $"El monto supera el efectivo en caja ({MoneyFormat.N2(availableCap)} Bs.S).";
         }
         else if (SelectedPaymentMethod == null)
         {

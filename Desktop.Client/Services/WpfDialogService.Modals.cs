@@ -254,7 +254,7 @@ public partial class WpfDialogService
 
     public async System.Threading.Tasks.Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(
         System.Collections.Generic.List<PaymentMethodDto> paymentMethods, 
-        decimal availableCashLocal)
+        decimal? availableCashLocal)
     {
         if (Application.Current == null) 
             return null;
