@@ -44,8 +44,8 @@
 
 ## Phase 4: WPF manual-price trigger (W4)
 
-- [ ] 4.1 "Precio manual" affordance in the product-suggestion flow + USD/Bs input dialog (validation; Bs derived from rate when omitted); VM/dialog tests.
-- [ ] 4.2 PosViewModel wiring: manual-price add routes through the existing `AddItemAsync` (gate/wait flow for cashiers; direct for elevated); tests.
+- [x] 4.1 "Precio manual" affordance in the product-suggestion flow + USD/Bs input dialog (validation; Bs derived from rate when omitted); VM/dialog tests.
+- [x] 4.2 PosViewModel wiring: manual-price add routes through the existing `AddItemAsync` (gate/wait flow for cashiers; direct for elevated); tests.
 
 ## Phase 5: Extras + closure (W5)
 
