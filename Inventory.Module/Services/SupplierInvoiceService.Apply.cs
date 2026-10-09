@@ -158,7 +158,9 @@ public partial class SupplierInvoiceService
                         throw new KeyNotFoundException($"Product {productId} was not found or has been deleted.");
                     }
 
-                    await ApplyApprovedLineAsync(invoice.Id, line, product, confirmation, cancellationToken);
+                    // 8.155/W1: el retry puede re-leer una instancia fresca del producto; el caché de
+                    // precarga debe reflejarla para líneas posteriores que compartan el producto.
+                    productsById[productId] = await ApplyApprovedLineAsync(invoice.Id, line, product, confirmation, cancellationToken);
                     if (!string.IsNullOrWhiteSpace(line.SupplierCode))
                     {
                         // 8.146-S5/D8: aprendizaje de alias dentro de la misma transacción;
@@ -209,7 +211,7 @@ public partial class SupplierInvoiceService
         });
     }
 
-    private async Task ApplyApprovedLineAsync(
+    private async Task<Product> ApplyApprovedLineAsync(
         int invoiceId,
         SupplierInvoiceLine line,
         Product product,
@@ -260,7 +262,7 @@ public partial class SupplierInvoiceService
             try
             {
                 await _context.SaveChangesAsync(cancellationToken);
-                return;
+                return product;
             }
             catch (DbUpdateConcurrencyException exception) when (
                 attempt == 0 && exception.Entries.Any(entry => entry.Entity is Product))
@@ -275,6 +277,8 @@ public partial class SupplierInvoiceService
                 _context.Entry(product).State = EntityState.Detached;
             }
         }
+
+        throw new InvalidOperationException("8.155/W1: el bucle de retry del apply salió sin resultado.");
     }
 
     private static void ValidateApprovedLine(SupplierInvoiceLine line, ConfirmLineDto confirmation)

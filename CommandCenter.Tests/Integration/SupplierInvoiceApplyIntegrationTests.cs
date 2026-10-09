@@ -364,6 +364,72 @@ public class SupplierInvoiceApplyIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task ConfirmAsync_AfterXminRetryWithSharedProduct_AppliesAllLinesOnFreshInstance()
+    {
+        // 8.155/W1: dos líneas aprobadas resuelven al MISMO producto y la primera sufre un conflicto
+        // xmin. Tras el retry, el caché de precarga debe quedarse con la instancia fresca; si
+        // conserva la detachada, la segunda línea rompe el confirm (INSERT duplicado del producto).
+        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return;
+        }
+
+        await TestSchemaBootstrap.EnsureSharedSchemaAsync(connectionString);
+        var suffix = Guid.NewGuid().ToString("N");
+        var sku = $"APPLY-SHARED-{suffix}";
+        var normalizedSupplierName = $"APPLY SHARED PRODUCT SUPPLIER {suffix}";
+        var invoiceId = 0;
+        var productId = 0;
+
+        try
+        {
+            await using var context = CreatePostgresContext(connectionString);
+            var product = CreateProduct(sku, 4m, 6m, 20m);
+            var firstLine = CreateLine(product, 1m, 7m);
+            var secondLine = CreateLine(product, 2m, 8m);
+            var invoice = await AddInvoiceAsync(context, normalizedSupplierName, firstLine, secondLine);
+            var lines = invoice.Lines.OrderBy(line => line.Id).ToList();
+            invoiceId = invoice.Id;
+            productId = product.Id;
+
+            var concurrentUpdateCount = 0;
+            var currentUser = new Mock<ICurrentUserService>();
+            currentUser.SetupGet(user => user.UserId).Returns(() =>
+            {
+                if (Interlocked.Exchange(ref concurrentUpdateCount, 1) == 0)
+                {
+                    using var concurrentContext = CreatePostgresContext(connectionString);
+                    var concurrentProduct = concurrentContext.Products.Single(candidate => candidate.Id == productId);
+                    concurrentProduct.Description = "Concurrent catalog edit (shared product)";
+                    concurrentContext.SaveChanges();
+                }
+
+                return "supplier-invoice-shared-product-user";
+            });
+            var service = CreateService(context, currentUser.Object);
+
+            var result = await service.ConfirmAsync(invoiceId, new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(lines[0].Id, true, null, null),
+                new ConfirmLineDto(lines[1].Id, true, null, null)
+            }));
+
+            Assert.Equal(nameof(SupplierInvoiceStatus.Applied), result.Status);
+            Assert.Equal(1, concurrentUpdateCount);
+            await using var verificationContext = CreatePostgresContext(connectionString);
+            var savedProduct = await verificationContext.Products.AsNoTracking().SingleAsync(candidate => candidate.Id == productId);
+            Assert.Equal("Concurrent catalog edit (shared product)", savedProduct.Description);
+            Assert.Equal(6m + 1m + 2m, savedProduct.StockQuantity);
+            Assert.Equal(2, await verificationContext.StockMovements.CountAsync(movement => movement.ProductId == productId));
+        }
+        finally
+        {
+            await RemovePostgresTestRowsAsync(connectionString, sku, normalizedSupplierName, productId, invoiceId);
+        }
+    }
+
     private static SupplierInvoiceService CreateService(
         InventoryDbContext context,
         ICurrentUserService? currentUser = null)
