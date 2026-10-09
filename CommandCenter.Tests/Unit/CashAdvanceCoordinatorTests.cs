@@ -224,6 +224,36 @@ public class CashAdvanceCoordinatorTests
     }
 
     [Fact]
+    public async Task ProcessAsync_InsufficientCash_ThrowsMaskedMessageWithoutFigures()
+    {
+        using var context = GetInMemoryDbContext();
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+
+        var (coordinator, drawerService) = CreateCoordinator(context, settingsMock.Object);
+        var session = await drawerService.OpenSessionAsync(500m, 50.0m);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            coordinator.ProcessAsync(
+                sessionId: session.Id,
+                requestedAmountLocal: 1000m,
+                paymentMethodId: 2,
+                paymentMethodName: "Transferencia",
+                isTransfer: true,
+                exchangeRate: 50.0m
+            ));
+
+        Assert.Equal("Saldo de efectivo en caja insuficiente para el monto solicitado.", ex.Message);
+        Assert.DoesNotContain("Disponible", ex.Message);
+        Assert.DoesNotContain("500", ex.Message);
+
+        var balance = await drawerService.GetCurrentBalanceLocalAsync(session.Id);
+        Assert.Equal(500m, balance);
+        Assert.Equal(0, await context.Sales.CountAsync());
+    }
+
+    [Fact]
     public async Task ProcessAsync_DecimalAmountThrows()
     {
         using var context = GetInMemoryDbContext();

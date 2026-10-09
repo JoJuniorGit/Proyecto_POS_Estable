@@ -124,7 +124,7 @@ public class CashDrawerController : ControllerBase
     public Task<ActionResult<CashDrawerSessionResponseDto>> CloseSession(CloseSessionRequest request, CancellationToken cancellationToken) => CloseSessionAsync(request, cancellationToken);
 
     [HttpGet("current-balance")]
-    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<decimal>> GetCurrentBalanceAsync([FromQuery] int sessionId, CancellationToken cancellationToken)
     {
         var balance = await _cashDrawerService.GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
