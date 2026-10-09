@@ -7,11 +7,13 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: applying
+phase: verified
 apply:
-  slices: 10/11 (T1-T10)
+  slices: 11/11 (T1-T11) + E1 E2E full-stack
   branch: V0.15
-verify: pending
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-07-remote-authorization-hub/verify-report.md
+verify_note: "11/12 COMPLIANT + 1 PARTIAL (E2 UI WPF cancelado por el mantenedor); build 0/0; suite 2038/2038 con Postgres real; E1 E2E full-stack 6/6 (~34 s, sin fugas); cobertura Core 0.8624/Sales 0.8844/Inventory 0.8342; web 361/361 + lint 0; smoke WPF full-stack bloqueado por entorno/UIA (no regresion, la app arranca fuera de FlaUI; CI lo cubre); fix de assert del trigger f290384"
 artifacts:
   exploration: openspec/changes/2026-10-07-remote-authorization-hub/exploration.md
   proposal: openspec/changes/2026-10-07-remote-authorization-hub/proposal.md
@@ -32,6 +34,7 @@ decisions:
   protected-v1: ManualPriceOverride only (AddItem; WPF trigger + backend gate); SaleCancellation VETOED (no gate, behavior unchanged); Web manual-price UI VETOED
   vetoes: maintainer L6 2026-10-07 — cancellation gating and web manual-price UI out of v1; local credentials fallback confirmed
   rdd: off (clone-local + global, verified 2026-10-07)
+  e2e: E1 full-stack Postgres+SignalR+HTTP gated 6/6; E2 UI WPF cancelado por el mantenedor (WIP en stash@{0}); smoke E2E WPF bloqueado por entorno/UIA (no regresion)
   branch: V0.15
   anexo: "8.150"
-next: T1 data layer
+next: push/pr/merge + sdd-archive (decisión del mantenedor)

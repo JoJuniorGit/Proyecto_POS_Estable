@@ -82,8 +82,8 @@ Chained PRs recommended: Yes
 
 ## Phase 9: Closure (T11)
 
-- [ ] 9.1 Full verification: build 0/0; full suite; coverage gates Core .70 / Sales .80 / Inventory .72; `npm test` + lint; gated E2E if the environment allows; independent verifiers per work unit + final.
-- [ ] 9.2 ANEXO 8.150 in `docs/reporte.txt` + verify-report + tracker close; push/PR/merge decision to the maintainer; sdd-archive after merge.
+- [x] 9.1 Full verification: build 0/0; suite 2038/2038 con Postgres real; coverage Core .8624 / Sales .8844 / Inventory .8342 (exit 0); web 361/361 + lint 0; E1 E2E full-stack 6/6 gated; verificación final independiente PASS WITH WARNINGS (11/12 COMPLIANT + 1 PARTIAL por E2 cancelado); smoke WPF full-stack bloqueado por entorno/UIA (no regresión; CI lo cubre).
+- [x] 9.2 ANEXO 8.150 + verify-report.md + tracker cerrado; push/PR/merge: decisión del mantenedor; sdd-archive después del merge.
 
 ## Notes
 
