@@ -30,6 +30,4 @@ public class CashAdvanceRequest
     public string PaymentMethodName { get; set; } = string.Empty;
     public bool IsTransfer { get; set; }
     public decimal ExchangeRate { get; set; }
-    public int? CashierId { get; set; }
-    public string? UserName { get; set; }
 }

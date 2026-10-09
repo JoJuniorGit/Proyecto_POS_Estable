@@ -337,19 +337,18 @@ public class CashDrawerController : ControllerBase
     [HttpPost("cash-advance")]
     public async Task<ActionResult<CashAdvanceResultDto>> ProcessCashAdvanceAsync([FromBody] CashAdvanceRequest request, CancellationToken cancellationToken)
     {
-        int? cashierId = null;
-        if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int parsedAuthId))
+        if (_currentUserService.UserId == null || !int.TryParse(_currentUserService.UserId, out int authUserId))
         {
-            cashierId = parsedAuthId;
-        }
-        else
-        {
-            cashierId = request.CashierId;
+            return this.ApiUnauthorized("Sesión inválida.");
         }
 
-        string userName = !string.IsNullOrWhiteSpace(request.UserName)
-            ? request.UserName
-            : (cashierId.HasValue ? (await _userService.GetUserNameByIdAsync(cashierId.Value, cancellationToken)) ?? "Usuario" : "Usuario");
+        var user = await _userService.GetUserAsync(authUserId, cancellationToken)
+            ?? throw new UnauthorizedAccessException("Usuario no encontrado.");
+        int cashierId = user.Id;
+        string userName = user.Name;
+
+        // 8.154 (SEC-04): anclar la tasa antes del coordinador para que comisión y movimientos usen la tasa anclada.
+        decimal anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, referenceId: request.SessionId, cancellationToken: cancellationToken);
 
         var result = await _cashAdvanceCoordinator.ProcessAsync(
             request.SessionId,
@@ -357,7 +356,7 @@ public class CashDrawerController : ControllerBase
             request.PaymentMethodId,
             request.PaymentMethodName,
             request.IsTransfer,
-            request.ExchangeRate,
+            anchoredRate,
             cashierId,
             userName,
             cancellationToken);

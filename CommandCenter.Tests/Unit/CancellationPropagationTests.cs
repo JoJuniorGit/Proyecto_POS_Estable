@@ -214,9 +214,17 @@ public class CancellationPropagationTests
                 It.IsAny<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?>()))
             .ReturnsAsync((SaleDto)null!);
 
+        // 8.154 (SEC-03): el guard de identidad exige UserId en sesión + usuario resuelto.
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns("1");
+
+        var userService = new Mock<IUserService>();
+        userService.Setup(s => s.GetUserAsync(1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserDto { Id = 1, Name = "Admin" });
+
         var coordinator = new CashAdvanceCoordinator(salesDb, sales.Object, drawerService.Object, settings.Object);
         var controller = ControllerFactory.CreateCashDrawerController(
-            drawerService.Object, settings.Object, salesDb, Mock.Of<ICurrentUserService>(), inventoryDb, coordinator);
+            drawerService.Object, settings.Object, salesDb, currentUser.Object, inventoryDb, coordinator, userService.Object);
         controller.ControllerContext = HttpContextOf(AdminUser());
 
         using var cts = new CancellationTokenSource();
@@ -226,8 +234,7 @@ public class CancellationPropagationTests
             RequestedAmountLocal = 100m,
             PaymentMethodId = 1,
             PaymentMethodName = "Efectivo Bs.S",
-            ExchangeRate = 50m,
-            UserName = "Admin"
+            ExchangeRate = 50m
         }, cts.Token);
 
         Assert.IsType<OkObjectResult>(result.Result);
