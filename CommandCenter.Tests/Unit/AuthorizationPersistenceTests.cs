@@ -314,7 +314,7 @@ public class AuthorizationPersistenceTests
             var persistedAudit = await context.Set<AuthorizationAudit>()
                 .AsNoTracking()
                 .SingleAsync(candidate => candidate.Id == audit.Id);
-            Assert.Null(persistedAudit.Reason);
+            Assert.Equal("Precio acordado", persistedAudit.Reason);
             Assert.Equal(AuthorizationStatus.Approved, persistedAudit.Status);
             Assert.Equal("Admin Uno", persistedAudit.ResolvedByName);
             Assert.Equal(FixedUtc.AddSeconds(10), persistedAudit.ResolvedAt);
