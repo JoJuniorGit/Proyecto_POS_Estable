@@ -27,7 +27,11 @@ public partial class SalesController
         var sale = await _salesService.GetSaleAsync(id, cancellationToken);
         if (sale == null) return this.ApiNotFound($"Venta #{id} no encontrada.");
 
-        decimal rate = request.ExchangeRate > 0 ? request.ExchangeRate : sale.AppliedRate;
+        // 8.152 (SEC-08): con tasa del cliente se aplica el MISMO anclaje del completar venta
+        // (el ArgumentException del rechazo ±100% fluye al middleware global -> 400).
+        decimal rate = request.ExchangeRate > 0
+            ? await _salesService.ResolveCheckoutRateAsync(id, request.ExchangeRate, cancellationToken)
+            : sale.AppliedRate;
         if (rate <= 0) return this.ApiBadRequest("Tasa de cambio inválida.");
 
         decimal totalUsd = sale.TotalUSD;

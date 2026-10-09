@@ -54,6 +54,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
 
         mockSalesService.Setup(s => s.GetSaleAsync(42)).ReturnsAsync(saleDto);
 
+        // 8.152 (SEC-08): el preview ancla la tasa vía ISalesService.ResolveCheckoutRateAsync;
+        // passthrough explícito porque Moq devolvería 0m (guard 400) sin este setup.
+        mockSalesService
+            .Setup(s => s.ResolveCheckoutRateAsync(42, It.IsAny<decimal>(), It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync((int _, decimal clientRate, System.Threading.CancellationToken _) => clientRate);
+
         var controller = new SalesController(mockSalesService.Object, mockCurrentUserService.Object, null);
         controller.ControllerContext = new ControllerContext
         {
@@ -233,6 +239,11 @@ public class Phase4FinancialIntegrityAndPreviewTests
             Items = new List<SaleItemDto>()
         });
 
+        // 8.152 (SEC-08): passthrough del resolver anclado para conservar la semántica previa.
+        mockSalesService
+            .Setup(s => s.ResolveCheckoutRateAsync(42, It.IsAny<decimal>(), It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync((int _, decimal clientRate, System.Threading.CancellationToken _) => clientRate);
+
         var controller = new SalesController(mockSalesService.Object, mockCurrentUserService.Object, null);
         controller.ControllerContext = new ControllerContext
         {
@@ -286,5 +297,148 @@ public class Phase4FinancialIntegrityAndPreviewTests
         var savedSale = await context.Sales.AsNoTracking().FirstAsync(s => s.Id == sale.Id);
         Assert.Equal(0.50m, preview.RoundingAdjustment);
         Assert.Equal(preview.RoundingAdjustment, savedSale.RoundingAdjustment);
+    }
+
+    // 8.152 (SEC-08, REQ-CPR-01/02): con desvío > tolerancia el preview calcula TODOS los totales
+    // con la tasa BCV anclada por el resolver compartido (servicio real + BCV 50; cliente envía 60).
+    [Fact]
+    public async Task SalesController_GetCheckoutPreview_AnchorsClientRateToBcv_WhenDeviationExceedsTolerance()
+    {
+        // Arrange
+        using var context = CreateInMemoryContext();
+        var inventory = new Mock<IInventoryService>();
+        inventory.Setup(i => i.GetTodayExchangeRateAsync(It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync(50m);
+        var settings = new Mock<ISystemSettingsService>();
+        settings.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
+
+        context.Sales.Add(new Sale
+        {
+            Id = 42,
+            TotalUSD = 100m,
+            Subtotal = 100m,
+            AppliedRate = 50m,
+            TotalBsS = 5000m,
+            SubtotalBsS = 5000m,
+            Status = SaleStatus.Pending,
+            Items = new List<SaleItem>()
+        });
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(
+            context,
+            inventory.Object,
+            new Mock<IMediator>().Object,
+            new Mock<ICashDrawerService>().Object,
+            settings.Object);
+        var controller = new SalesController(service, new Mock<ICurrentUserService>().Object, null);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+        };
+
+        var previewRequest = new CheckoutPreviewRequest
+        {
+            ExchangeRate = 60m,
+            Payments = new List<SalePaymentDto>
+            {
+                new SalePaymentDto { PaymentMethodId = 1, Amount = 100m }
+            }
+        };
+
+        // Act
+        var actionResult = await controller.GetCheckoutPreview(42, previewRequest);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var preview = Assert.IsType<CheckoutPreviewResponse>(okResult.Value);
+        Assert.Equal(5000m, preview.TotalBsS);     // 100 USD * 50 (BCV anclada), no 100 * 60
+        Assert.Equal(5000m, preview.TotalPaidBsS); // el pago USD se convierte con la tasa anclada
+        Assert.True(preview.IsFullyPaid);
+    }
+
+    // 8.152 (SEC-08, REQ-CPR-01/02): el rechazo ≥ ±100% fluye desde ResolveCheckoutRateAsync
+    // (servicio real) y el controller NO lo captura: el middleware global lo mapea a 400.
+    [Fact]
+    public async Task SalesController_GetCheckoutPreview_PropagatesRateRejection_WhenDeviationReachesOneHundredPercent()
+    {
+        // Arrange
+        using var context = CreateInMemoryContext();
+        var inventory = new Mock<IInventoryService>();
+        inventory.Setup(i => i.GetTodayExchangeRateAsync(It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync(50m);
+        var settings = new Mock<ISystemSettingsService>();
+        settings.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
+
+        context.Sales.Add(new Sale
+        {
+            Id = 43,
+            TotalUSD = 100m,
+            Subtotal = 100m,
+            AppliedRate = 50m,
+            TotalBsS = 5000m,
+            SubtotalBsS = 5000m,
+            Status = SaleStatus.Pending,
+            Items = new List<SaleItem>()
+        });
+        await context.SaveChangesAsync();
+
+        var service = new SalesService(
+            context,
+            inventory.Object,
+            new Mock<IMediator>().Object,
+            new Mock<ICashDrawerService>().Object,
+            settings.Object);
+        var controller = new SalesController(service, new Mock<ICurrentUserService>().Object, null);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+        };
+
+        var previewRequest = new CheckoutPreviewRequest { ExchangeRate = 120m };
+
+        // Act
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => controller.GetCheckoutPreview(43, previewRequest));
+
+        // Assert: mensaje exacto del rechazo (el middleware global responde 400 ProblemDetails).
+        Assert.Equal(
+            "La tasa de cambio 120 fue rechazada: excede ±100% de la tasa BCV oficial (50). Contacte al supervisor.",
+            ex.Message);
+    }
+
+    // 8.152 (SEC-08, REQ-CPR-01 punto 2): sin tasa del cliente el preview conserva el fallback a
+    // sale.AppliedRate y NO invoca el resolver.
+    [Fact]
+    public async Task SalesController_GetCheckoutPreview_WithoutClientRate_UsesAppliedRateAndSkipsResolver()
+    {
+        // Arrange
+        var mockSalesService = new Mock<ISalesService>();
+        var mockCurrentUserService = new Mock<ICurrentUserService>();
+
+        mockSalesService.Setup(s => s.GetSaleAsync(42)).ReturnsAsync(new SaleDto
+        {
+            Id = 42,
+            TotalUSD = 100m,
+            AppliedRate = 50m,
+            Items = new List<SaleItemDto>()
+        });
+
+        var controller = new SalesController(mockSalesService.Object, mockCurrentUserService.Object, null);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+        };
+
+        // Act
+        var actionResult = await controller.GetCheckoutPreview(42, new CheckoutPreviewRequest { ExchangeRate = 0m });
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
+        var preview = Assert.IsType<CheckoutPreviewResponse>(okResult.Value);
+        Assert.Equal(5000m, preview.TotalBsS);
+        mockSalesService.Verify(
+            s => s.ResolveCheckoutRateAsync(It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<System.Threading.CancellationToken>()),
+            Times.Never);
     }
 }
