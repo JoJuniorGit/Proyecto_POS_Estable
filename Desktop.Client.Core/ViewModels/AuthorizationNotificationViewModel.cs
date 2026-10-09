@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
@@ -55,14 +56,31 @@ public partial class AuthorizationNotificationViewModel : ObservableObject, IDis
     public const string FallbackResolverName = "otro usuario";
     public const string DefaultActionLabel = "una acción protegida";
     public const string ManualPriceOverrideActionLabel = "modificar el precio manual";
+    public const string CancelledNoticeMessage = "Solicitud cancelada por el cajero.";
+
+    /// <summary>8.151 (W3, R7/design D4d): tope del set own-resolved, espejo de MAX_OWN_RESOLVED_IDS (W2).</summary>
+    public const int MaxOwnResolvedRequestIds = 50;
 
     internal static readonly TimeSpan CountdownInterval = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>8.151 (W3, R7/design D4d): conserva solo los ids mas recientes; espejo de pruneOwnResolvedIds (W2).</summary>
+    public static void PruneOwnResolvedRequestIds(List<int> ids, int maxSize = MaxOwnResolvedRequestIds)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        if (ids.Count > maxSize)
+        {
+            ids.RemoveRange(0, ids.Count - maxSize);
+        }
+    }
 
     private readonly IAuthorizationHubService _hubService;
     private readonly IDispatcherInvoker _dispatcherInvoker;
     private readonly IAuthorizationCountdownTimer _countdownTimer;
     private readonly Func<DateTimeOffset> _utcNow;
-    private readonly HashSet<int> _ownResolvedRequestIds = new();
+
+    // Lista ordenada: la poda conserva los ids mas recientes igual que el Set de JS (W2).
+    private readonly List<int> _ownResolvedRequestIds = new();
 
     private int _pendingResolutionRequestId;
     private int _isActive;
@@ -140,6 +158,7 @@ public partial class AuthorizationNotificationViewModel : ObservableObject, IDis
         _hubService.AuthorizationRequested += OnRequested;
         _hubService.AuthorizationResolved += OnResolved;
         _hubService.AuthorizationExpired += OnExpired;
+        _hubService.Reconnected += OnReconnected;
     }
 
     /// <summary>8.150 (T10): desactiva la escucha y descarta la cola (p. ej. logout o cambio de rol).</summary>
@@ -153,6 +172,7 @@ public partial class AuthorizationNotificationViewModel : ObservableObject, IDis
         _hubService.AuthorizationRequested -= OnRequested;
         _hubService.AuthorizationResolved -= OnResolved;
         _hubService.AuthorizationExpired -= OnExpired;
+        _hubService.Reconnected -= OnReconnected;
 
         _countdownTimer.Stop();
         PendingRequests.Clear();
@@ -274,6 +294,7 @@ public partial class AuthorizationNotificationViewModel : ObservableObject, IDis
             // Guard de resolucion propia (paridad Web ownResolvedRef): si el push del hub llega
             // despues de la respuesta, no debe mostrarse el aviso de carrera al propio resolutor.
             _ownResolvedRequestIds.Add(requestId);
+            PruneOwnResolvedRequestIds(_ownResolvedRequestIds);
             RemoveRequest(requestId);
         }
         catch (AuthorizationHubException ex) when (ex.StatusCode is 409 or 404)
@@ -349,8 +370,14 @@ public partial class AuthorizationNotificationViewModel : ObservableObject, IDis
         }
 
         var requestId = payload.RequestId;
-        var isOwnResolution = Volatile.Read(ref _pendingResolutionRequestId) == requestId
-            || _ownResolvedRequestIds.Remove(requestId);
+        var ownResolvedIndex = _ownResolvedRequestIds.IndexOf(requestId);
+        var isOwnResolution = Volatile.Read(ref _pendingResolutionRequestId) == requestId || ownResolvedIndex >= 0;
+        if (ownResolvedIndex >= 0)
+        {
+            // Consumo del eco propio: la entrada no se acumula (W2/W3, design D4d).
+            _ownResolvedRequestIds.RemoveAt(ownResolvedIndex);
+        }
+
         if (!PendingRequests.Any(item => item.RequestId == requestId))
         {
             return;
@@ -361,7 +388,11 @@ public partial class AuthorizationNotificationViewModel : ObservableObject, IDis
         // cierre (si el aviso se asigna despues, el mensaje de carrera/expired nunca se muestra).
         if (!isOwnResolution)
         {
-            Notice = BuildAlreadyResolvedMessage(payload.ResolvedByName);
+            // 8.151 (W3, R4-client): la cancelacion del cajero cierra con su nota exacta, jamas
+            // con el mensaje de carrera, aunque el payload traiga resolvedByName.
+            Notice = string.Equals(payload.Status, "Cancelled", StringComparison.OrdinalIgnoreCase)
+                ? CancelledNoticeMessage
+                : BuildAlreadyResolvedMessage(payload.ResolvedByName);
         }
         RemoveRequest(requestId);
     }
@@ -383,6 +414,83 @@ public partial class AuthorizationNotificationViewModel : ObservableObject, IDis
 
         Notice = ExpiredNoticeMessage;
         RemoveRequest(payload.RequestId);
+    }
+
+    private void OnReconnected(object? sender, EventArgs e)
+        => _dispatcherInvoker.BeginInvoke(
+            () => ReconcileQueueAsync().SafeFireAndForget("AuthorizationNotificationViewModel.ReconcileQueue"));
+
+    /// <summary>
+    /// 8.151 (W3, R6/design D4a): en cada reconexion re-sincroniza la cola completa por REST para
+    /// cerrar los modales obsoletos (resuelto/expirado/cancelado) que se perdieron con el socket caido.
+    /// </summary>
+    private async Task ReconcileQueueAsync()
+    {
+        if (Volatile.Read(ref _isDisposed) != 0 || Volatile.Read(ref _isActive) == 0)
+        {
+            return;
+        }
+
+        var requestIds = PendingRequests.Select(item => item.RequestId).ToArray();
+        foreach (var requestId in requestIds)
+        {
+            if (Volatile.Read(ref _isDisposed) != 0 || Volatile.Read(ref _isActive) == 0)
+            {
+                return;
+            }
+
+            AuthorizationStatusInfo? status;
+            try
+            {
+                status = await _hubService.GetStatusAsync(requestId).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Best-effort: un fallo de red deja la solicitud en cola para el proximo reconnect.
+                continue;
+            }
+
+            if (Volatile.Read(ref _isDisposed) != 0 || Volatile.Read(ref _isActive) == 0)
+            {
+                return;
+            }
+
+            _dispatcherInvoker.BeginInvoke(() => ApplyReconciledStatus(requestId, status));
+        }
+    }
+
+    private void ApplyReconciledStatus(int requestId, AuthorizationStatusInfo? status)
+    {
+        if (Volatile.Read(ref _isDisposed) != 0 || Volatile.Read(ref _isActive) == 0)
+        {
+            return;
+        }
+
+        // 404/estado ausente: la solicitud ya no existe; se cierra como expirada (paridad Web W2).
+        if (status is null)
+        {
+            ApplyExpired(new AuthorizationExpiredPayload { RequestId = requestId, Status = "Expired" });
+            return;
+        }
+
+        if (string.Equals(status.Status, "Approved", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status.Status, "Rejected", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status.Status, "Cancelled", StringComparison.OrdinalIgnoreCase))
+        {
+            ApplyResolved(new AuthorizationResolvedPayload
+            {
+                RequestId = requestId,
+                Status = status.Status,
+                ResolvedByName = status.ResolvedByName
+            });
+            return;
+        }
+
+        if (string.Equals(status.Status, "Expired", StringComparison.OrdinalIgnoreCase)
+            || (status.ExpiresAt.HasValue && status.ExpiresAt.Value <= _utcNow()))
+        {
+            ApplyExpired(new AuthorizationExpiredPayload { RequestId = requestId, Status = "Expired" });
+        }
     }
 
     private void OnCountdownTick()
@@ -413,9 +521,15 @@ public partial class AuthorizationNotificationViewModel : ObservableObject, IDis
         }
 
         var expiresAt = PendingRequests[0].ExpiresAt;
-        RemainingSeconds = expiresAt.HasValue
-            ? Math.Max(0, (int)Math.Ceiling((expiresAt.Value - _utcNow()).TotalSeconds))
-            : 0;
+        if (!expiresAt.HasValue)
+        {
+            RemainingSeconds = 0;
+            return;
+        }
+
+        // 8.151 (W3, R7/design D4c): piso, nunca techo: el display no muestra 00:01 con <1s vivo.
+        var remaining = (expiresAt.Value - _utcNow()).TotalSeconds;
+        RemainingSeconds = remaining <= 0 ? 0 : (int)Math.Floor(remaining);
     }
 
     /// <summary>8.150 (T10): la expiracion local retira la solicitud vencida con el aviso breve.</summary>

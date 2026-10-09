@@ -31,6 +31,7 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
     private readonly HubConnection? _hubConnection;
     private int _isDisposed;
     private int _signalRStartInProgress;
+    private int _hasConnectedBefore;
 
     public AuthorizationHubService(HttpClient httpClient, UserSession? userSession = null, bool enableRealtime = true)
     {
@@ -74,6 +75,7 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
             _hubConnection.Reconnected += _ =>
             {
                 ClientStateLogger.LogInfo("[SIGNALR] Hub de autorizaciones restablecido.", nameof(AuthorizationHubService));
+                RaiseReconnected();
                 return Task.CompletedTask;
             };
 
@@ -93,6 +95,7 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
     public event EventHandler<AuthorizationRequestedPayload>? AuthorizationRequested;
     public event EventHandler<AuthorizationResolvedPayload>? AuthorizationResolved;
     public event EventHandler<AuthorizationExpiredPayload>? AuthorizationExpired;
+    public event EventHandler? Reconnected;
 
     /// <summary>8.150 (T9): misma politica TOFU que ExchangeRateService para el token del hub.</summary>
     public static Func<Task<string?>> CreateAccessTokenProvider(Uri hubUri, UserSession? userSession)
@@ -195,6 +198,19 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
         return new AuthorizationResolveInfo(restResult.Status, restResult.ResolvedByName, restResult.Reason);
     }
 
+    public async Task CancelRequestAsync(int requestId)
+    {
+        EnsureNotDisposed();
+
+        // 8.151 (W3, R4-client): el hub no expone cancelacion; el retiro va por el REST del W1
+        // (200/409/404/403) y los llamadores best-effort ignoran el rechazo.
+        using var response = await _httpClient.PostAsync($"api/authorizations/{requestId}/cancel", content: null).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw await CreateRestExceptionAsync(response).ConfigureAwait(false);
+        }
+    }
+
     public async Task<AuthorizationStatusInfo?> GetStatusAsync(int requestId)
     {
         EnsureNotDisposed();
@@ -282,6 +298,14 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
 
                     await _hubConnection.StartAsync().ConfigureAwait(false);
                     ClientStateLogger.LogInfo("[SIGNALR] Hub de autorizaciones conectado.", nameof(AuthorizationHubService));
+
+                    // 8.151 (W3, R6/design D4a): un arranque manual exitoso tras una conexion previa
+                    // (p. ej. SessionChanged) tambien es una reconexion y debe reconciliar la cola.
+                    if (Interlocked.Exchange(ref _hasConnectedBefore, 1) == 1)
+                    {
+                        RaiseReconnected();
+                    }
+
                     return;
                 }
                 catch (Exception ex)
@@ -336,6 +360,23 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
         catch (Exception ex)
         {
             ClientStateLogger.LogWarning($"[SIGNALR] Un suscriptor de {typeof(T).Name} fallo: {ex.Message}", nameof(AuthorizationHubService));
+        }
+    }
+
+    private void RaiseReconnected()
+    {
+        if (Volatile.Read(ref _isDisposed) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            Reconnected?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            ClientStateLogger.LogWarning($"[SIGNALR] Un suscriptor de Reconnected fallo: {ex.Message}", nameof(AuthorizationHubService));
         }
     }
 
