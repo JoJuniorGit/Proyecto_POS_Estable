@@ -9,7 +9,7 @@ preflight:
   chain_strategy: stacked-to-main
 phase: proposed
 apply:
-  slices: 0/5 (W1-W5)
+  slices: 1/5 (W1)
   branch: V0.15
 verify: pending
 artifacts:

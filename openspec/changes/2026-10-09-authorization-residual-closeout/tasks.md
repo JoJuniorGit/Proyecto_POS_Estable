@@ -23,11 +23,11 @@
 
 ## Phase 1: Backend closeout (W1)
 
-- [ ] 1.1 New migration: pending partial unique index recreated as `NULLS NOT DISTINCT` (Npgsql-guarded); Down restores the previous definition; Postgres-gated test: duplicate `(user, NULL, action)` Pending rejected with 23505 and translated to `Deduplicated`.
-- [ ] 1.2 `TryConsumeAsync`: binding (action/sale/context) included in the atomic claim WHERE; post-`0-row` classification read preserves precise outcomes; tests for tampered/mismatched claims.
-- [ ] 1.3 Lazy-expiry loser re-reads before classifying `Expired`; test pins the concurrent-approval interleave.
-- [ ] 1.4 Cancellation: `AuthorizationStatus.Cancelled`; `CancelAsync` (atomic, requester-only, audited); coordinator push (Cancelled closure, no token); REST `POST /api/authorizations/{id}/cancel`; E1 scenario (cancel → Cancelled + audit + elevated closure; cannot cancel after approval/other requester).
-- [ ] 1.5 Spec qualifications landing in code where applicable (missing-key 400 precedes 403 on retry).
+- [x] 1.1 New migration: pending partial unique index recreated as `NULLS NOT DISTINCT` (Npgsql-guarded); Down restores the previous definition; Postgres-gated test: duplicate `(user, NULL, action)` Pending rejected with 23505 and translated to `Deduplicated`.
+- [x] 1.2 `TryConsumeAsync`: binding (action/sale/context) included in the atomic claim WHERE; post-`0-row` classification read preserves precise outcomes; tests for tampered/mismatched claims.
+- [x] 1.3 Lazy-expiry loser re-reads before classifying `Expired`; test pins the concurrent-approval interleave (+ cancelled interleave, corrected post-verification).
+- [x] 1.4 Cancellation: `AuthorizationStatus.Cancelled`; `CancelAsync` (atomic, requester-only, audited); coordinator push (Cancelled closure, no token); REST `POST /api/authorizations/{id}/cancel`; E1 scenario (cancel → Cancelled + audit + elevated closure; cannot cancel after approval/other requester).
+- [x] 1.5 Spec qualifications landing in code where applicable (missing-key 400 precedes 403 on retry — pinned in E1).
 
 ## Phase 2: Web closeout (W2)
 
