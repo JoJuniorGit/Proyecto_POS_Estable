@@ -31,10 +31,10 @@
 
 ## Phase 2: Web closeout (W2)
 
-- [ ] 2.1 Reducer settles the caller promise on rejection/expiry (`{ ok:false, outcome, reason }`); provider wiring; reducer tests pin the semantics and the cancel-vs-rejection distinction.
-- [ ] 2.2 `cancelWait` fires the server cancel (best-effort, non-blocking); test with fake client.
-- [ ] 2.3 Admin notifications: `Cancelled` status closes with "Solicitud cancelada por el cajero." (never the race message); tests.
-- [ ] 2.4 Countdown floor + own-resolved pruning; tests.
+- [x] 2.1 Reducer settles the caller promise on rejection/expiry (`{ ok:false, outcome, reason }`); provider wiring; reducer tests pin the semantics and the cancel-vs-rejection distinction.
+- [x] 2.2 `cancelWait` fires the server cancel (best-effort, non-blocking); test with fake client.
+- [x] 2.3 Admin notifications: `Cancelled` status closes with "Solicitud cancelada por el cajero." (never the race message); tests.
+- [x] 2.4 Countdown floor + own-resolved pruning; tests.
 
 ## Phase 3: WPF closeout (W3)
 

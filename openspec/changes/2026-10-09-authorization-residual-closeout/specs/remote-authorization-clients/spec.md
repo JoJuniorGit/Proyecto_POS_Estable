@@ -45,10 +45,11 @@ The WPF POS MUST offer adding a NORMAL product with a manual price (USD and/or B
 
 ### Requirement: Wait-state settlement on rejection/expiry (web infrastructure)
 
-The web wait flow's caller promise MUST settle with a distinguishable outcome on rejection/expiry (`{ ok: false, outcome: 'rejected' | 'expired', reason }`) while the acknowledgment modal stays available to the operator; rejection and manual cancel MUST be distinguishable to the caller.
+The web wait flow's caller promise MUST settle with a distinguishable outcome: on **rejection** it MUST settle immediately with `{ ok:false, outcome:'rejected', reason }` (no retry is offered); on **expiry** the promise MUST remain pending while "Reintentar" can start a new request, and MUST settle with `{ ok:false, outcome:'expired' }` if the operator dismisses the expired modal without retrying; a manual cancel MUST settle `{ ok:false, cancelled:true }`. Rejection, expiry and manual cancel MUST be distinguishable to the caller.
 
 #### Scenario: Caller learns the rejection without waiting for manual close
 
 - GIVEN a web wait flow in progress
 - WHEN a rejection arrives
 - THEN the caller promise settles with the rejected outcome and reason
+- AND the acknowledgment modal stays available to the operator
