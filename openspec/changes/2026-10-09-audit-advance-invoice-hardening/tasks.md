@@ -22,30 +22,30 @@
 
 ## T1 (S1+S2) — Backend: identidad del token + tasa anclada en adelantos
 
-- [ ] 1.1 `ProcessCashAdvanceAsync`: guard `UserId` → 401 `"Sesión inválida."`; `GetUserAsync` → 403 `"Usuario no encontrado."`; `cashierId/userName` desde el usuario del token. Se elimina el fallback al body.
-- [ ] 1.2 `CashAdvanceRequest`: eliminar `CashierId` y `UserName`.
-- [ ] 1.3 Anclaje: `anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, referenceId: request.SessionId, cancellationToken)` antes de `_cashAdvanceCoordinator.ProcessAsync(...)`.
-- [ ] 1.4 Tests (RED→GREEN): identidad desde el token (body con nombre/cashier falsos es ignorado), 401 sin sesión, 403 usuario inexistente; anclaje (dentro/fuera de tolerancia, rechazo ±100% con mensaje exacto, fail-open). Ajustes de tests existentes reportados (`CancellationPropagationTests`).
-- [ ] 1.5 Build 0/0 + focused + suite; evidencia RED/GREEN; commit `fix(8.154)` (lo hace el padre).
+- [x] 1.1 Guard de identidad exacto (401 "Sesión inválida." / 403 "Usuario no encontrado."; identidad desde `GetUserAsync` del token). Fallback al body eliminado.
+- [x] 1.2 `CashAdvanceRequest` sin `CashierId`/`UserName`.
+- [x] 1.3 `anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, referenceId: request.SessionId, cancellationToken)` antes del coordinador.
+- [x] 1.4 Tests: identidad token vs body, 401×2, 403, pin DTO/STJ; anclaje 4 escenarios. RED 10F→GREEN 33/33; ajustes reportados (CancellationPropagationTests, ControllerFactory, helper RateAnchor).
+- [x] 1.5 Build 0/0 + focused + suite 2155/2155; commit `d7616ac`.
 
 ## T2 (S1 cliente WPF) — El cliente deja de enviar identidad
 
-- [ ] 2.1 `ICashDrawerService.ProcessCashAdvanceAsync` sin `cashierId`/`userName`; `CashDrawerService` no incluye `CashierId`/`UserName` en el body; `CashDrawerViewModel` deja de pasarlos.
-- [ ] 2.2 Tests: contrato HTTP pincha body sin identidad; mocks/fakes ajustados reportados; suite verde.
-- [ ] 2.3 Build 0/0 + focused + suite; commit `fix(8.154)` (lo hace el padre).
+- [x] 2.1 Firma del servicio sin `cashierId`/`userName`; body sin `CashierId`/`UserName`; VM sin los locals; `_userSession` eliminado (sin lecturas ni llamadores).
+- [x] 2.2 Pin de body real (arnés `CapturedRequest.Body` extendido) con negativos/positivos; `MockClientCashDrawerService` ajustado (reportado). RED con `"cashierId":null` serializado → GREEN 111/111; suite 2156/2156.
+- [x] 2.3 Build 0/0; commit `68e9c6c`.
 
 ## T3 (S3) — Facturas de proveedor: orden determinista
 
-- [ ] 3.1 Helper puro `SupplierInvoiceApplyOrdering.OrderForApply` (archivo propio; asc por `ResolvedProductId`, nulls primero, tie-break `Id`).
-- [ ] 3.2 `Apply.cs:82` usa el helper (mismo conjunto de efectos).
-- [ ] 3.3 Tests puros (orden, nulls, ties, determinismo con entrada invertida) + regresión de `ConfirmAsync` con líneas desordenadas.
-- [ ] 3.4 Build 0/0 + focused + suite; evidencia RED/GREEN; commit `fix(8.154)` (lo hace el padre).
+- [x] 3.1 Helper puro `SupplierInvoiceApplyOrdering.OrderForApply` (archivo propio; asc `ResolvedProductId`, nulls primero, tie-break `Id`).
+- [x] 3.2 `Apply.cs:82` usa el helper (única línea; mismos efectos).
+- [x] 3.3 5 tests puros + regresión con orden descendente; RED 4F (stub sin orden) → GREEN 31/31; sin tests existentes tocados.
+- [x] 3.4 Build 0/0 + suite 2162/2162; commit `359e50f`.
 
 ## T4 (S1-S3) — Verificación + cierre
 
-- [ ] 4.1 Verificador independiente: identidad del token, anclaje por escenarios, orden del helper, tests ajustados auditados.
-- [ ] 4.2 Suite completa + cobertura + build 0/0.
-- [ ] 4.3 `verify-report.md` + ANEXO 8.154 + cierre del tracker + commit `docs(8.154)`.
+- [x] 4.1 Verificador independiente: 5/5 requisitos COMPLIANT; focused reproducidos (33/33, 111/111, 31/31); ajustes auditados sin enmascaramiento; W1 (Web envía campos muertos) + INFOs I1-I5.
+- [x] 4.2 Suite 2162/2162 + cobertura Core 0.8886 / Sales 0.8962 / Inventory 0.8559 (exit 0) + build 0/0.
+- [x] 4.3 `verify-report.md` + ANEXO 8.154 + cierre del tracker + commit `docs(8.154)`.
 
 ## Notes
 

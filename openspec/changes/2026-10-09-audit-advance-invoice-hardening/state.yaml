@@ -7,22 +7,25 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: planned
+phase: verified
 apply:
-  slices: 0/3 (T1, T2, T3)
+  slices: 3/3 (T1 d7616ac, T2 68e9c6c, T3 359e50f)
   branch: V0.15
-verify: pending
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-09-audit-advance-invoice-hardening/verify-report.md
+verify_note: "5/5 requisitos COMPLIANT (REQ-CAI-01/02/03, REQ-SIA-01/02); build 0/0; suite 2162/2162; cobertura Core 0.8886/Sales 0.8962/Inventory 0.8559 (exit 0); W1 registrado (Web React sigue enviando cashierId/userName en el body del adelanto — sin impacto, limpieza pendiente G1); INFOs I1-I5 en el ANEXO 8.154"
 artifacts:
   proposal: openspec/changes/2026-10-09-audit-advance-invoice-hardening/proposal.md
   specs:
     - openspec/changes/2026-10-09-audit-advance-invoice-hardening/specs/cash-advance-identity-anchor/spec.md
     - openspec/changes/2026-10-09-audit-advance-invoice-hardening/specs/supplier-invoice-apply-ordering/spec.md
   tasks: openspec/changes/2026-10-09-audit-advance-invoice-hardening/tasks.md
+  verify_report: openspec/changes/2026-10-09-audit-advance-invoice-hardening/verify-report.md
 decisions:
-  alcance: SEC-03 + SEC-04 (adelantos) + SRE-01 en facturas; SEC-07 y PERF/CLEAN quedan para tramos siguientes
-  sec03: identidad solo desde el token (401 sin sesión / 403 inexistente); contrato sin CashierId/UserName (compatible con clientes viejos: miembros extra ignorados por STJ)
-  sec04: anclaje A5 antes del coordinador (la venta ya anclaba en SalesService.CashAdvance; comisión/movimientos usaban la tasa cruda)
-  sre01: helper puro SupplierInvoiceApplyOrdering.OrderForApply (asc por ResolvedProductId, nulls primero, tie-break Id) — precedente StockDeductionConsolidator
+  sec03: identidad SOLO desde el token (401/403); contrato sin CashierId/UserName; WPF limpio; Web pendiente de limpieza (sin impacto)
+  sec04: anclaje A5 antes del coordinador; privado intacto
+  sre01: helper puro SupplierInvoiceApplyOrdering.OrderForApply; efectos idénticos; solo orden de locks cambia (no ejercitado contra PostgreSQL en la suite)
   rdd: off (clone-local + global)
   branch: V0.15
-next: T1 (writer backend) → T2 (writer WPF) → T3 (writer facturas) → T4 (verificación + ANEXO 8.154)
+  anexo: "8.154"
+next: push/pr/merge (decisión del mantenedor) + 8.155 (PERF-01/02) cuando lo autorice

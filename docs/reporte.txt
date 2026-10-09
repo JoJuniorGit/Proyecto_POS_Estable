@@ -12847,3 +12847,94 @@ H1. Cadena 8.153 en V0.15: 2e536fb (plan) + 596a3ff (T1) + a5935bd (T2) +
     3e3b811 (T3) + 7062553 (T2b) + commit de cierre de este ANEXO (git log /
     L6 del tracker ODD).
 ================================================================================
+
+================================================================================
+ANEXO 8.154 — HARDENING DE ADELANTOS Y FACTURAS DE PROVEEDOR (SEC-03, SEC-04, SRE-01) — 2026-10-09
+================================================================================
+Change SDD: openspec/changes/2026-10-09-audit-advance-invoice-hardening/
+(proposal, 2 specs, tasks, state, verify-report). Tramo 2 del roadmap de la
+auditoria re-emitida (autorizado: "Procede con el tramo 8.154").
+
+A. ALCANCE Y ENTREGA
+
+A1. Verificacion previa: SEC-03 CONFIRMADO (fallback al body + UserName aceptado);
+    SEC-04 CONFIRMADO (tasa cruda al coordinador; la venta anclaba en
+    SalesService.CashAdvance.cs:98 pero comision/movimientos envelope usaban la
+    tasa del cliente); SRE-01-facturas CONFIRMADO (Apply.cs:82 ordenaba por Id
+    de linea).
+A2. T1 — d7616ac (SEC-03/04 backend): guard exacto de identidad (401 "Sesion
+    invalida." / 403 "Usuario no encontrado." via middleware; cashierId/userName
+    desde GetUserAsync del token); CashAdvanceRequest sin CashierId/UserName
+    (clientes viejos: STJ ignora desconocidos — 200 sin efecto); anchoredRate =
+    ResolveAnchoredRateAsync(request.ExchangeRate, request.SessionId, ct) antes
+    del coordinador (semantica A5 intacta: tolerancia/BCV/rechazo +/-100%/
+    fail-open). 11 tests nuevos; RED 10F -> GREEN 33/33.
+A3. T2 — 68e9c6c (SEC-03 cliente WPF): ICashDrawerService/CashDrawerService sin
+    cashierId/userName (body solo con los 6 campos del movimiento); VM sin los
+    locals; _userSession del servicio eliminado (sin lecturas ni llamadores).
+    Pin de body real (arnes extendido con CapturedRequest.Body): RED con
+    "cashierId":null serializado -> GREEN 111/111.
+A4. T3 — 359e50f (SRE-01): helper puro SupplierInvoiceApplyOrdering.OrderForApply
+    (asc por ResolvedProductId, nulls primero, tie-break Id; precedente
+    StockDeductionConsolidator) cableado en Apply.cs:82; mismos efectos, solo
+    cambia el orden de bloqueos. RED 4F (stub sin orden) -> GREEN 31/31.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2162/2162, 0 fallas, 0 omitidas (base 2144 + 11 T1 + 1 T2 +
+    6 T3).
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0): Core
+    0.8886 (>=0.70), Sales.Module 0.8962 (>=0.80), Inventory.Module 0.8559
+    (>=0.72).
+B4. Verificacion independiente (read-only): PASS WITH WARNINGS — REQ-CAI-01/02/03
+    y REQ-SIA-01/02 COMPLIANT; focused reproducidos exactos (33/33, 111/111,
+    31/31); tests ajustados auditados sin enmascaramiento. W1: el cliente Web
+    React (CashAdvanceModal.jsx) sigue enviando cashierId/userName — sin impacto
+    (el servidor los ignora; la identidad sale del token), limpieza pendiente
+    (G1; incluye regenerar el bundle wwwroot). INFOs: I1 (403 solo unit+estatico),
+    I2 (orden de locks probado por insercion de movimientos en EF InMemory, no
+    PostgreSQL), I3 (assert del rechazo por Contains("excede"); literal exacto
+    verificado estaticamente), I4 (seam de identidad solido), I5 (logs A5 dicen
+    "txn manual" tambien para adelantos — cosmetico).
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. El mapeo 401/403 del middleware quedo pinado por unit tests de la excepcion/
+    resultado, sin test HTTP de pipeline.
+D2. El beneficio de SRE-01 (orden de locks) no se ejercita contra PostgreSQL real
+    en la suite (InMemory observa el orden de insercion de movimientos).
+D3. RED de T1-T3 no re-verificable read-only; GREEN reproducido por el
+    verificador con conteos exactos.
+D4. La suite no corre el E2E WPF gated (corre como Admin; sin regresion esperada).
+
+E. ROLLBACK
+
+E1. Revertir d7616ac + 68e9c6c + 359e50f restaura el comportamiento previo;
+    cambios aditivos/limpieza, sin migraciones ni reescrituras de datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS — 5/5 requisitos COMPLIANT; W1
+    (limpieza web) registrado. Reporte en el change (verify-report.md).
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. (W1) Limpiar Web.Frontend/src/components/register/CashAdvanceModal.jsx
+    (quitar cashierId/userName del body) + regenerar el bundle
+    Backend.API/wwwroot — sin urgencia de seguridad (el guard del token manda).
+G2. (I1) Caso HTTP gated para el 403 del middleware en el adelanto.
+G3. Roadmap restante: 8.155 PERF-01/02; 8.156 PERF-04/05 + CLEAN-05; 8.157 SEC-07;
+    8.158 SRE-03 + CLEAN-03; 8.159 CLEAN-01/04 + PERF-03.
+
+H. COMMITS
+
+H1. Cadena 8.154 en V0.15: 0318fe3 (plan) + d7616ac (T1) + 68e9c6c (T2) +
+    359e50f (T3) + commit de cierre de este ANEXO (git log / L5 del tracker
+    ODD).
+================================================================================
