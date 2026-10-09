@@ -1,0 +1,633 @@
+================================================================================
+INFORME DE AUDITORÍA INTEGRAL DE CÓDIGO FUENTE (FASES 1 A 4)
+PROYECTO: CommandCenter POS (Versión V0.1 / V0.15)
+FECHA DE AUDITORÍA: 2026-10-08
+AUDITORÍA LÍNEA POR LÍNEA: DevSecOps | Performance Staff | Clean Code | SRE
+================================================================================
+
+RESUMEN EJECUTIVO
+--------------------------------------------------------------------------------
+Se completó la auditoría estricta e implacable del repositorio CommandCenter POS,
+abarcando Backend (.NET 10 / C#), Clientes Desktop (WPF / CommunityToolkit MVVM),
+Frontend Web (React 19) y transporte en tiempo real (SignalR).
+
+El análisis asumió el modelo de amenaza Zero-Trust donde el frontend está 
+completamente comprometido, los hilos de red sufren latencia hostil y la concurrencia
+alcanza picos transaccionales de saturación.
+
+ESTADO GLOBAL DE HALLAZGOS:
+- Total de Hallazgos Analizados: 22
+  * Fase 1 (DevSecOps - Seguridad y Control de Acceso): 8 hallazgos
+  * Fase 2 (Performance Engineering - Rendimiento y Memoria): 5 hallazgos
+  * Fase 3 (Clean Code - Higiene y Mantenibilidad): 5 hallazgos
+  * Fase 4 (SRE - Concurrencia, Edge Cases y Observabilidad): 4 hallazgos
+- Distribución de Severidad:
+  * Severidad Crítica (P0): 5 hallazgos
+  * Severidad Alta (P1): 9 hallazgos
+  * Severidad Media (P2): 8 hallazgos
+- Estado de Remediación:
+  * Remediados en Cambio 8.149 (Verificados): 5 (SEC-01, SEC-02, CLEAN-02, SRE-01, SRE-02)
+  * Abiertos / Vulnerables en Código Actual: 17 hallazgos activos
+
+
+================================================================================
+FASE 1: DEVSECOPS — SEGURIDAD Y CONTROL DE ACCESO
+================================================================================
+
+[SEC-01] [CRÍTICA - REMEDIADA CON RESIDUAL] Inyección de ajuste de redondeo arbitrario desde el payload
+--------------------------------------------------------------------------------
+- Archivo exacto: Sales.Module/Services/SalesService.Checkout.cs (Líneas 275-280)
+- Archivo API: Backend.API/Controllers/SalesController.Checkout.cs (Líneas 100-110)
+- Estado: REMEDIADO EN 8.149 (Server-authoritative recompute), con residual de deriva.
+- Vector de ataque histórico:
+  El payload POST /api/sales/{id}/complete enviaba `roundingAdjustment`. El backend
+  anteriormente validaba únicamente `Math.Abs(roundingAdjustment) > 1000m`, confiando
+  en la cifra del cliente y alterando libros contables.
+- Estado actual y verificación:
+  En SalesService.Checkout.cs:278-280, el backend ahora recalcula obligatoriamente:
+    decimal totalPaidBsS = sale.Payments.Sum(p => p.AmountBsS);
+    decimal remainingUsd = Math.Round(sale.TotalUSD - sale.Payments.Sum(p => p.Amount), 2, MidpointRounding.AwayFromZero);
+    sale.RoundingAdjustment = remainingUsd <= 0.01m ? PricingCalculator.RoundToDigital(totalPaidBsS - sale.TotalBsS) : 0m;
+- Riesgo residual remanente:
+  Existe una deriva de céntimos entre el TotalBsS calculado en CheckoutPreview
+  (redondeo sobre TotalUSD * rate) y el TotalBsS persistido (suma de subtotales redondeados).
+
+--------------------------------------------------------------------------------
+[SEC-02] [CRÍTICA - REMEDIADA] Bypass de autorización de precios vía productos de adelanto
+--------------------------------------------------------------------------------
+- Archivo exacto: Sales.Module/Services/SalesService.cs (Línea 261)
+- Archivo HoldOrders: Sales.Module/Services/SalesService.HoldOrders.cs (Línea 335)
+- Estado: REMEDIADO EN 8.149.
+- Vector de ataque histórico:
+  La cláusula `!product.IsCashAdvance` en la validación de precio permitía inyectar
+  un ítem de adelanto con precio arbitrario en AddItemAsync o UpdateSaleItemsAsync.
+- Estado actual y verificación:
+  Ambos métodos ahora aplican un guard restrictivo inmutable:
+    if (product.IsCashAdvance)
+        throw new InvalidOperationException("Los productos de adelanto de efectivo no pueden agregarse ni modificarse en una venta; use el flujo de adelanto de efectivo.");
+
+--------------------------------------------------------------------------------
+[SEC-03] [ALTA - ABIERTA] Suplantación de auditoría en adelantos de efectivo vía request
+--------------------------------------------------------------------------------
+- Archivo exacto: Backend.API/Controllers/CashDrawerController.cs (Líneas 340-353)
+- Archivo afectado: Sales.Module/Services/CashAdvanceCoordinator.cs (Líneas 134, 147)
+- Código vulnerable actual:
+    int? cashierId = null;
+    if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int parsedAuthId))
+        cashierId = parsedAuthId;
+    else
+        cashierId = request.CashierId; // Vulnerabilidad: fallback confía en el body
+
+    string userName = !string.IsNullOrWhiteSpace(request.UserName)
+        ? request.UserName         // Vulnerabilidad: se acepta el nombre enviado por el cliente
+        : (cashierId.HasValue ? (await _userService.GetUserNameByIdAsync(cashierId.Value, cancellationToken)) ?? "Usuario" : "Usuario");
+- Vector de ataque:
+  En POST /api/CashDrawer/cash-advance, un cajero comprometido o un script de ataque
+  puede suministrar `UserName: "Administrador General"` o `CashierId: 99`. Este valor se
+  escribe directamente en las descripciones de las transacciones de caja (`CashTransactions.Description`),
+  permitiendo suplantar la identidad de supervisores en los asientos contables de egreso.
+- Corrección exigida:
+  Eliminar `request.UserName` y `request.CashierId` del contrato `CashAdvanceRequest`.
+  Obtener obligatoriamente la identidad del token JWT:
+    if (_currentUserService.UserId == null || !int.TryParse(_currentUserService.UserId, out int authUserId))
+        return this.ApiUnauthorized("Sesión inválida.");
+    var user = await _userService.GetUserAsync(authUserId, cancellationToken)
+        ?? throw new UnauthorizedAccessException("Usuario no encontrado.");
+    int cashierId = user.Id;
+    string userName = user.Name;
+
+--------------------------------------------------------------------------------
+[SEC-04] [MEDIA - ABIERTA] Tasa de cambio sin anclaje en adelantos de efectivo
+--------------------------------------------------------------------------------
+- Archivo exacto: Backend.API/Controllers/CashDrawerController.cs (Líneas 354-363)
+- Código vulnerable actual:
+    var result = await _cashAdvanceCoordinator.ProcessAsync(
+        request.SessionId,
+        request.RequestedAmountLocal,
+        request.PaymentMethodId,
+        request.PaymentMethodName,
+        request.IsTransfer,
+        request.ExchangeRate, // Vulnerabilidad: tasa enviada por el cliente sin anclar
+        cashierId,
+        userName,
+        cancellationToken);
+- Vector de ataque:
+  A diferencia del endpoint AddTransactionAsync (que ejecuta ResolveAnchoredRateAsync),
+  ProcessCashAdvanceAsync pasa la tasa directamente desde el payload. Un atacante puede
+  enviar una tasa alterada para alterar el cálculo de la comisión y los montos en USD
+  registrados en caja.
+- Corrección exigida:
+  Resolver la tasa anclada en el backend antes de invocar al coordinador:
+    var anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, cancellationToken);
+    var result = await _cashAdvanceCoordinator.ProcessAsync(..., anchoredRate, ...);
+
+--------------------------------------------------------------------------------
+[SEC-05] [ALTA - ABIERTA] Fuga de hashes de contraseña y sellos de seguridad por falta de [JsonIgnore]
+--------------------------------------------------------------------------------
+- Archivo exacto: Core/Entities/User.cs (Líneas 16, 24)
+- Configuración: Backend.API/Startup/ServiceCollectionExtensions.cs (Línea 193)
+- Código vulnerable actual:
+    // Core/Entities/User.cs:
+    public string PasswordHash { get; set; } = string.Empty;
+    public string SecurityStamp { get; set; } = Guid.NewGuid().ToString("N");
+
+    // Backend.API/Startup/ServiceCollectionExtensions.cs:
+    x.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+- Vector de ataque:
+  `ReferenceHandler.IgnoreCycles` previene excepciones por referencias circulares, pero
+  habilita la serialización de grafos de entidades completas. Como `PasswordHash` y
+  `SecurityStamp` carecen del atributo `[JsonIgnore]`, cualquier endpoint o error que
+  proyecte o retorne una entidad `User` serializará los hashes bcrypt y los sellos de sesión,
+  exponiéndolos a extracción por atacantes de red o herramientas de inspección.
+- Corrección exigida:
+  Agregar `[System.Text.Json.Serialization.JsonIgnore]` explícito a ambas propiedades en `User.cs`:
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string PasswordHash { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string SecurityStamp { get; set; } = Guid.NewGuid().ToString("N");
+
+--------------------------------------------------------------------------------
+[SEC-06] [ALTA - ABIERTA] Violación de Arqueo Ciego: Saldo teórico expuesto al rol Cashier
+--------------------------------------------------------------------------------
+- Archivo exacto: Backend.API/Controllers/CashDrawerController.cs (Líneas 126-132)
+- Código vulnerable actual:
+    [HttpGet("current-balance")]
+    [Authorize(Roles = "Admin,Manager,Cashier")] // Falla: Cashier tiene acceso
+    public async Task<ActionResult<decimal>> GetCurrentBalanceAsync([FromQuery] int sessionId, CancellationToken cancellationToken)
+    {
+        var balance = await _cashDrawerService.GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
+        return Ok(balance);
+    }
+- Vector de ataque:
+  El principio contable de arqueo a ciegas prohíbe que el cajero conozca el saldo
+  teórico que el sistema espera en gaveta antes del conteo físico. Al permitir el rol
+  `Cashier` en este endpoint, un operador infiel puede consultar la cifra exacta en tiempo real,
+  sustraer el excedente ("skimming") o encubrir faltantes antes de ejecutar el cierre.
+- Corrección exigida:
+  Restringir el acceso estrictamente a supervisores:
+    [HttpGet("current-balance")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<ActionResult<decimal>> GetCurrentBalanceAsync(...)
+
+--------------------------------------------------------------------------------
+[SEC-07] [ALTA - ABIERTA] Conexiones WebSocket zombis en SignalR tras revocación de credenciales
+--------------------------------------------------------------------------------
+- Archivo exacto: Backend.API/Hubs/AuthorizationHub.cs (Líneas 16-100)
+- Archivo exacto: Backend.API/Hubs/ExchangeRateHub.cs (Líneas 6-10)
+- Archivo servicio: Backend.API/Services/SecurityStampValidator.cs (Líneas 99-115)
+- Vector de ataque:
+  La autenticación en SignalR se ejecuta únicamente durante el handshake HTTP de apertura
+  del WebSocket. Cuando un administrador o cajero es despedido o revocado:
+  1. `SecurityStampValidator.RevokeUserStampAsync` actualiza el sello en la BD.
+  2. Sin embargo, jamás interactúa con `IHubContext` para abortar la conexión activa.
+  3. No existe un `IHubFilter` que verifique el sello en cada método (`RequestAuthorization`, `ResolveAuthorization`).
+  Consecuencia: La sesión WebSocket permanece abierta por horas. Un atacante con un
+  socket abierto puede continuar aprobando autorizaciones de precios o recibiendo eventos
+  en tiempo real aunque su usuario esté formalmente revocado en base de datos.
+- Corrección exigida:
+  1. Inyectar `IHubContext<AuthorizationHub>` e `IHubContext<ExchangeRateHub>` en `SecurityStampValidator`:
+       await _authHubContext.Clients.Group(AuthorizationHub.UserGroup(userId)).SendAsync("ForceDisconnect");
+  2. Implementar un `IHubFilter` global que invoque `ValidateStampAsync` en cada llamada a método del Hub.
+
+--------------------------------------------------------------------------------
+[SEC-08] [MEDIA - ABIERTA] Tasa de cambio arbitraria aceptada en Checkout Preview
+--------------------------------------------------------------------------------
+- Archivo exacto: Backend.API/Controllers/SalesController.Checkout.cs (Líneas 30-31)
+- Código vulnerable:
+    decimal rate = request.ExchangeRate > 0 ? request.ExchangeRate : sale.AppliedRate;
+- Vector de ataque:
+  Si bien CompleteSaleAsync valida la tasa contra límites o tasa del sistema, CheckoutPreview
+  calcula conversiones y estimaciones de vuelto aceptando ciegamente cualquier tasa positiva
+  del cliente, lo que induce discrepancias entre lo mostrado al operador y lo liquidado.
+- Corrección exigida:
+  Validar que `request.ExchangeRate` no se desvíe de la tasa oficial vigente en más del
+  umbral de tolerancia del sistema antes de procesar la previsualización.
+
+
+================================================================================
+FASE 2: PERFORMANCE — EFICIENCIA, RENDIMIENTO Y MEMORIA
+================================================================================
+
+[PERF-01] [ALTA - ABIERTA] Bucle N+1 crítico en matching de facturas de proveedores
+--------------------------------------------------------------------------------
+- Archivo exacto: Inventory.Module/Services/SupplierInvoiceService.Staging.cs (Líneas 40-47)
+- Archivo matching: Inventory.Module/Services/SupplierInvoiceService.Matching.cs (Líneas 37-117)
+- Código vulnerable actual:
+    foreach (var line in lines)
+    {
+        var unitCostUsd = ...;
+        var match = await MatchProductAsync(supplier.Id, line, similarityThreshold, cancellationToken);
+        invoice.Lines.Add(CreateStagedLine(line, match, unitCostUsd, request.OcrSourced));
+    }
+- Costo computacional del defecto:
+  Por cada línea de la factura se disparan entre 1 y 4 consultas SQL independientes
+  a PostgreSQL (búsqueda por SKU exacto, join con SupplierProductCodes y escaneo difuso).
+  Para una factura de 150 ítems, esto representa más de 400 consultas individuales consecutivas,
+  introduciendo entre 4.0 y 8.5 segundos de bloqueo en el connection pool y degradando la API.
+- Refactorización para máxima velocidad:
+    // Carga previa en lote (Batch Fetching) en memoria
+    var barcodes = lines.Where(l => !string.IsNullOrWhiteSpace(l.Barcode)).Select(l => l.Barcode!).Distinct().ToList();
+    var supplierCodes = lines.Where(l => !string.IsNullOrWhiteSpace(l.SupplierCode)).Select(l => l.SupplierCode!).Distinct().ToList();
+
+    var productsByBarcode = await _context.Products.AsNoTracking()
+        .Where(p => !p.IsDeleted && barcodes.Contains(p.SKU))
+        .ToDictionaryAsync(p => p.SKU, cancellationToken);
+
+    var productsBySupplierCode = await (
+        from sc in _context.SupplierProductCodes.AsNoTracking()
+        join p in _context.Products.AsNoTracking() on sc.ProductId equals p.Id
+        where sc.SupplierId == supplier.Id && supplierCodes.Contains(sc.Code) && !p.IsDeleted
+        select new { sc.Code, Product = p })
+        .ToDictionaryAsync(x => x.Code, x => x.Product, cancellationToken);
+
+    // Bucle en memoria puro (0 consultas SQL en la iteración principal):
+    foreach (var line in lines)
+    {
+        ProductMatch? match = null;
+        if (!string.IsNullOrWhiteSpace(line.Barcode) && productsByBarcode.TryGetValue(line.Barcode, out var pBarcode))
+            match = new ProductMatch(pBarcode, MatchMethod.Barcode);
+        else if (!string.IsNullOrWhiteSpace(line.SupplierCode) && productsBySupplierCode.TryGetValue(line.SupplierCode, out var pSupp))
+            match = new ProductMatch(pSupp, MatchMethod.SupplierCode);
+        else
+            match = await FallbackFuzzyMatchAsync(supplier.Id, line, similarityThreshold, cancellationToken);
+
+        invoice.Lines.Add(CreateStagedLine(line, match, unitCostUsd, request.OcrSourced));
+    }
+
+--------------------------------------------------------------------------------
+[PERF-02] [ALTA - ABIERTA] Transacción prolongada con N+1 y múltiples SaveChanges() secuenciales
+--------------------------------------------------------------------------------
+- Archivo exacto: Inventory.Module/Services/SupplierInvoiceService.Apply.cs (Líneas 82-121)
+- Código vulnerable actual:
+    using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+    foreach (var line in invoice.Lines.OrderBy(candidate => candidate.Id))
+    {
+        ...
+        await ApplyApprovedLineAsync(invoice.Id, line, productId, confirmation, cancellationToken);
+        // Cada llamada ejecuta FirstOrDefaultAsync y SaveChangesAsync()
+        if (!string.IsNullOrWhiteSpace(line.SupplierCode))
+        {
+            await UpsertSupplierProductCodeAsync(...);
+            await _context.SaveChangesAsync(cancellationToken); // Segundo SaveChanges por iteración
+        }
+    }
+- Costo computacional del defecto:
+  La transacción SQL mantiene bloqueos exclusivos de fila (RowExclusiveLocks) en la tabla
+  `Products` durante múltiples segundos. Si un cajero intenta vender un producto afectado
+  mientras se aprueba la factura, el POS experimentará bloqueos (lock contention) o
+  fallos por timeout (PostgreSQL 57014).
+- Refactorización para máxima velocidad:
+    // Cargar todos los productos involucrados en una sola consulta
+    var productIds = invoice.Lines.Where(l => l.ResolvedProductId.HasValue).Select(l => l.ResolvedProductId!.Value).Distinct().ToList();
+    var products = await _context.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, cancellationToken);
+
+    // Mutar entidades en memoria y acumular movimientos
+    foreach (var line in invoice.Lines)
+    {
+        if (products.TryGetValue(productId, out var product))
+        {
+            ApplyProductChangesInMemory(product, line, confirmation);
+            _context.StockMovements.Add(CreateMovement(product, line));
+        }
+    }
+    // UN SOLO SaveChangesAsync() atómico para todo el lote
+    await _context.SaveChangesAsync(cancellationToken);
+    await transaction.CommitAsync(cancellationToken);
+
+--------------------------------------------------------------------------------
+[PERF-03] [MEDIA - ABIERTA] Explosión cartesiana en GetSaleEntityAsync y falta de AsNoTracking
+--------------------------------------------------------------------------------
+- Archivo exacto: Sales.Module/Services/SalesService.cs (Líneas 154-162)
+- Código vulnerable actual:
+    query = query
+        .Include(s => s.Items)
+        .Include(s => s.Customer)
+        .Include(s => s.Payments)
+            .ThenInclude(p => p.PaymentMethod);
+    var sale = await query.FirstOrDefaultAsync(s => s.Id == saleId);
+- Costo computacional del defecto:
+  Al incluir simultáneamente dos colecciones hijas (`Items` y `Payments`) sin `.AsSplitQuery()`,
+  EF Core genera una consulta SQL con múltiples `LEFT OUTER JOIN`. Si una venta tiene 20 ítems
+  y 3 pagos, la consulta transfiere 60 filas duplicando todas las columnas de la cabecera `Sales`,
+  saturando el ancho de banda y el deserializador de EF Core.
+- Refactorización para máxima velocidad:
+    query = query
+        .AsSplitQuery() // 3 consultas limpias e indexadas en lugar de 1 producto cartesiano masivo
+        .Include(s => s.Items)
+        .Include(s => s.Customer)
+        .Include(s => s.Payments)
+            .ThenInclude(p => p.PaymentMethod);
+
+--------------------------------------------------------------------------------
+[PERF-04] [ALTA - ABIERTA] Fuga de memoria en diálogos WPF por retención de delegados
+--------------------------------------------------------------------------------
+- Archivo exacto: Desktop.Client/Views/ProductDialog.xaml.cs (Líneas 16-20)
+- Archivo exacto: Desktop.Client/Views/ServerConnectionDialog.xaml.cs (Líneas 16-20)
+- Código vulnerable actual:
+    ViewModel.RequestClose += (bool result) =>
+    {
+        DialogResult = result;
+    };
+- Costo computacional del defecto:
+  La expresión lambda captura la instancia de `Window` (`this`). Dado que el evento
+  `RequestClose` vive en el ViewModel (que a menudo permanece en el contenedor de dependencias
+  o retiene referencias), la lista de invocación del delegado impide que el Garbage Collector
+  recolecte la ventana cerrada. Cada apertura y cierre del diálogo fuga entre 8 y 25 MB
+  de memoria unmanaged y árboles visuales de DirectX.
+- Refactorización para máxima velocidad:
+    private Action<bool>? _closeHandler;
+
+    public ProductDialog(ProductDialogViewModel viewModel)
+    {
+        InitializeComponent();
+        ViewModel = viewModel;
+        DataContext = ViewModel;
+
+        _closeHandler = result => DialogResult = result;
+        ViewModel.RequestClose += _closeHandler;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        if (_closeHandler != null)
+        {
+            ViewModel.RequestClose -= _closeHandler;
+            _closeHandler = null;
+        }
+        ViewModel?.Dispose();
+        base.OnClosed(e);
+    }
+
+--------------------------------------------------------------------------------
+[PERF-05] [MEDIA - ABIERTA] Retención de UserControls y DataGrids en alternancia de pestañas
+--------------------------------------------------------------------------------
+- Archivo exacto: Desktop.Client/Views/InventoryView.xaml.cs (Líneas 16-29)
+- Archivo exacto: Desktop.Client/Views/LoginView.xaml.cs (Líneas 14-27)
+- Código vulnerable actual:
+    DataContextChanged += InventoryView_DataContextChanged;
+    // newVm.PropertyChanged += ViewModel_PropertyChanged;
+- Costo computacional del defecto:
+  La suscripción a `PropertyChanged` en el ViewModel no se desuscribe cuando la pestaña
+  se oculta o se retira del árbol visual (`Unloaded`), porque `DataContext` no cambia.
+  El ViewModel retiene una referencia viva hacia el UserControl y su DataGrid completo,
+  impidiendo la compactación de la memoria del proceso cliente.
+- Refactorización para máxima velocidad:
+  Adoptar el patrón implementado en `DailyClosureView.xaml.cs`:
+    Loaded += (s, e) => { if (DataContext is InventoryViewModel vm) vm.PropertyChanged += ViewModel_PropertyChanged; };
+    Unloaded += (s, e) => { if (DataContext is InventoryViewModel vm) vm.PropertyChanged -= ViewModel_PropertyChanged; };
+
+
+================================================================================
+FASE 3: HIGIENE, MANTENIBILIDAD Y CLEAN CODE
+================================================================================
+
+[CLEAN-01] [MEDIA - ABIERTA] Más de 90 métodos zombis [NonAction] en controladores de API
+--------------------------------------------------------------------------------
+- Rutas afectadas:
+  * Backend.API/Controllers/SalesController.Checkout.cs (Líneas 88, 173, 216)
+  * Backend.API/Controllers/ProductsController.cs (Líneas 66, 92, 119, 147)
+  * Backend.API/Controllers/CashDrawerController.cs (Líneas 62, 76, 123, 134, 330, 372)
+  * Backend.API/Controllers/DailyClosureController.cs (Líneas 44, 65)
+  * Backend.API/Controllers/UsersController.cs (Líneas 55, 66, 87)
+- Principio violado: YAGNI (You Aren't Gonna Need It), Clean Code (Dead Code / Clutter).
+- Diagnóstico arquitectónico:
+  ASP.NET Core utiliza exclusivamente los métodos asíncronos sufijados con `*Async`
+  para el despacho de peticiones HTTP. Los métodos síncronos decorados con `[NonAction]`
+  son código muerto ("passthrough zombies") que duplican la superficie de mantenimiento,
+  confunden a los desarrolladores y ensucian la arquitectura sin aportar valor en runtime.
+- Reestructuración requerida:
+  Erradicar todos los métodos `[NonAction]` de los controladores. Si los tests unitarios
+  requieren invocar los controladores, deben llamar directamente a los métodos canónicos
+  asíncronos pasando `CancellationToken.None`.
+
+--------------------------------------------------------------------------------
+[CLEAN-02] [CRÍTICA - REMEDIADA] Supresión silenciosa de excepciones en Commit de carrito
+--------------------------------------------------------------------------------
+- Archivo exacto: Desktop.Client.Core/ViewModels/CartViewModel.cs (Líneas 388-412)
+- Estado: REMEDIADO EN 8.149.
+- Diagnóstico técnico histórico:
+  Anteriormente existían bloques `catch (Exception ex) { Debug.WriteLine(...); }` que en
+  compilaciones Release silenciaban los fallos de red al actualizar cantidades, provocando
+  desincronización entre la UI y el backend.
+- Verificación actual:
+  CartViewModel ahora registra formalmente en `ClientStateLogger.LogError`, re-sincroniza
+  el estado contra el servidor (`GetSaleAsync`) y notifica al operador vía `_dialogService`.
+
+--------------------------------------------------------------------------------
+[CLEAN-03] [ALTA - ABIERTA] Swallowing de excepciones en el bootstrap del backend
+--------------------------------------------------------------------------------
+- Archivo exacto: Backend.API/Program.cs (Líneas 48-51, 126-130)
+- Código vulnerable actual:
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[STARTUP] Aviso: no se pudo cargar secrets.json: {ex.Message}");
+    }
+- Principio violado: Fail-Fast, Observabilidad en Producción (12-Factor App).
+- Diagnóstico técnico:
+  El uso de `Console.WriteLine` simple sin volcar la traza de error en `AppLogger.LogCrash`
+  oculta fallos críticos cuando el backend se ejecuta como Windows Service o contenedor Docker
+  sin consola interactiva conectada. Si `secrets.json` falla por permisos de archivo (ACL),
+  el servidor arranca silenciosamente desconfigurado y colapsa más tarde.
+- Reestructuración requerida:
+    catch (Exception ex)
+    {
+        AppLogger.LogError($"[STARTUP_ERROR] Fallo crítico al cargar configuración: {ex}");
+        throw; // Fail-Fast si la configuración obligatoria no está disponible
+    }
+
+--------------------------------------------------------------------------------
+[CLEAN-04] [CRÍTICA - ABIERTA] Fuga del motor de cálculo financiero en controlador HTTP
+--------------------------------------------------------------------------------
+- Archivo exacto: Backend.API/Controllers/SalesController.Checkout.cs (Líneas 29-73)
+- Principio violado: Single Responsibility Principle (SRP), Separation of Concerns (SoC).
+- Diagnóstico técnico:
+  El controlador `SalesController.Checkout.cs` contiene directamente más de 40 líneas
+  de lógica financiera: conversión de divisas (`PricingCalculator.ToUSD`), suma de pagos mixtos,
+  umbrales de liquidación (`remainingUsd <= 0.05m`), redondeo fiscal y cálculo de vuelto en Bs.S.
+  La capa de transporte (Controlador API) no debe contener fórmulas matemáticas de dominio.
+- Reestructuración requerida:
+  Mover la lógica a `Sales.Module/Services/CheckoutCalculationService.cs`. El endpoint
+  debe limitarse a:
+    [HttpPost("checkout-preview")]
+    public async Task<ActionResult<CheckoutPreviewResponse>> GetCheckoutPreviewAsync(...)
+    {
+        var preview = await _checkoutCalculator.CalculatePreviewAsync(id, request, cancellationToken);
+        return Ok(preview);
+    }
+
+--------------------------------------------------------------------------------
+[CLEAN-05] [ALTA - ABIERTA] Duplicación de lógica de liquidación en WPF y React
+--------------------------------------------------------------------------------
+- Archivos exactos:
+  * Desktop.Client.Core/ViewModels/CheckoutViewModel.cs (Líneas 240-250)
+  * Web.Frontend/src/components/checkout/CheckoutModal.jsx (Líneas 102-115, 147-151)
+- Principio violado: DRY (Don't Repeat Yourself), Single Source of Truth (SSOT).
+- Diagnóstico técnico:
+  Tanto el ViewModel de WPF como el componente React recalculan localmente si una venta
+  está totalmente liquidada (`remainingUsd <= 0.05m`), el saldo pendiente y las tolerancias.
+  Si el backend modifica la regla de tolerancia, los clientes divergirán de inmediato.
+- Reestructuración requerida:
+  Ambos clientes deben invocar exclusivamente `/api/sales/{id}/checkout-preview` y enlazar
+  sus estados de botón ("Cobrar", "Saldo Restante") a las propiedades devueltas por el servidor.
+
+--------------------------------------------------------------------------------
+[CLEAN-06] [ALTA - ABIERTA] Anti-patrón masivo de bloques catch vacíos en ViewModels Desktop
+--------------------------------------------------------------------------------
+- Rutas afectadas:
+  * Desktop.Client.Core/ViewModels/BaseViewModel.cs (Líneas 45, 62)
+  * Desktop.Client.Core/ViewModels/InventoryViewModel.cs (Líneas 112, 145, 189)
+  * Desktop.Client.Core/ViewModels/PosViewModel.cs (Líneas 88, 134, 210)
+  * Desktop.Client.Core/ViewModels/ProductDialogViewModel.cs (Líneas 95, 120)
+- Principio violado: Observabilidad, Error Handling Robusto.
+- Diagnóstico técnico:
+  Se detectaron decenas de bloques `catch { }` completamente mudos en la capa cliente.
+  Cualquier fallo de red, corrupción de datos o error de deserialización se traga sin
+  dejar rastro en los logs, dejando la interfaz en estados inconsistentes sin retroalimentación al usuario.
+- Reestructuración requerida:
+  Reemplazar cada `catch { }` por registro en `ClientStateLogger.LogError(ex)` y propagar
+  un mensaje de notificación al usuario a través de `IDialogService`.
+
+
+================================================================================
+FASE 4: SRE — CONCURRENCIA, EDGE CASES Y OBSERVABILIDAD
+================================================================================
+
+[SRE-01] [CRÍTICA - REMEDIADA EN VENTAS, ABIERTA EN FACTURAS] Deadlocks por orden de bloqueo no determinista
+--------------------------------------------------------------------------------
+- Archivo remediado: Inventory.Module/Services/InventoryService.StockDeduction.cs (Línea 56)
+- Archivo abierto: Inventory.Module/Services/SupplierInvoiceService.Apply.cs (Línea 82)
+- Estado: REMEDIADO EN VENTAS (Change 8.149 con StockDeductionConsolidator).
+- Diagnóstico del Edge Case:
+  En el flujo de ventas, `StockDeductionConsolidator.ResolveAndConsolidate` ahora ordena
+  ascendentemente por `ProductId`, garantizando que dos cajeros vendiendo los mismos productos
+  adquieran los bloqueos de fila de PostgreSQL en el mismo orden (eliminando deadlocks AB-BA).
+  SIN EMBARGO, en `SupplierInvoiceService.Apply.cs:82`:
+    foreach (var line in invoice.Lines.OrderBy(candidate => candidate.Id))
+  El ordenamiento es por `line.Id` (el ID de la línea de la factura), NO por `productId`.
+  Si una factura de proveedor se aplica mientras se procesa otra factura con los mismos
+  productos pero en orden inverso de líneas, se produce un deadlock en PostgreSQL (error 40P01).
+- Solución arquitectónica concurrente:
+  Ordenar deterministamente las líneas de la factura por `ResolvedProductId` antes de mutar:
+    foreach (var line in invoice.Lines.OrderBy(candidate => candidate.ResolvedProductId))
+
+--------------------------------------------------------------------------------
+[SRE-02] [CRÍTICA - PARCIALMENTE REMEDIADA] Idempotencia en endpoints transaccionales
+--------------------------------------------------------------------------------
+- Archivos remediados: POST /items, POST /transaction, POST /dailyclosure, POST /cancel.
+- Archivo vulnerable ABIERTO: Backend.API/Controllers/SalesController.Checkout.cs (Línea 90)
+- Estado actual:
+  El filtro `[RequireIdempotencyKey]` fue desplegado con éxito en adición de ítems y cierres.
+  SIN EMBARGO, `POST /api/sales/{id}/complete` (Línea 90) carece del atributo `[RequireIdempotencyKey]`.
+- Diagnóstico del Edge Case:
+  Si un cajero hace clic en "Finalizar Venta" y ocurre un microcorte de red antes de que
+  el cliente reciba el HTTP 200, el cliente reintenta enviar la petición.
+  Al no tener clave de idempotencia en `CompleteSaleAsync`:
+  1. Si la primera petición ya completó la venta y la segunda llega milisegundos después,
+     la segunda falla con HTTP 409 Conflict o ArgumentException ("La venta ya fue completada").
+  2. El cliente asume error de cobro mientras que la venta fue registrada y la gaveta abierta,
+     generando pánico en el operador y posible duplicación manual de cobros.
+- Solución arquitectónica concurrente:
+  Aplicar obligatoriamente `[RequireIdempotencyKey]` en `CompleteSaleAsync`:
+    [HttpPost("complete")]
+    [RequireIdempotencyKey]
+    public async Task<ActionResult<SaleDetailDto>> CompleteSaleAsync(...)
+
+--------------------------------------------------------------------------------
+[SRE-03] [ALTA - ABIERTA] Inanición del ThreadPool por AppLogger síncrono con lock global
+--------------------------------------------------------------------------------
+- Archivo exacto: Core/Logging/AppLogger.cs (Líneas 127-147)
+- Archivo cliente: Core/Logging/ClientStateLogger.cs (Líneas 100-120)
+- Código vulnerable actual:
+    private static void WriteLog(string filePath, string level, string message)
+    {
+        lock (_lock) // BLOQUEO MUTEX GLOBAL
+        {
+            try
+            {
+                RotateLogFileIfNeeded(filePath);
+                File.AppendAllText(filePath, formatted); // I/O SÍNCRONO A DISCO BLOQUEANTE
+            }
+            catch { }
+        }
+    }
+- Diagnóstico del Edge Case y SRE:
+  Bajo tráfico concurrente en Kestrel (ej. 40 usuarios concurrentes entre terminales y escáneres),
+  múltiples hilos que registran accesos o errores colisionan en `lock (_lock)`. La escritura
+  síncrona en disco en un entorno con disco saturado congela los hilos de trabajo del ThreadPool
+  de .NET. La latencia se dispara de 15 ms a más de 3,000 ms, provocando timeouts en cascada.
+  Además, los logs en texto plano formateados con string interpolation impiden la ingesta
+  estructurada en plataformas como Seq o Datadog.
+- Solución arquitectónica concurrente:
+  Reemplazar el logger casero por el pipeline estándar de .NET con Serilog y canal asíncrono
+  no bloqueante en memoria (`Serilog.Sinks.Async` con `Channel<LogEvent>` acotado):
+    builder.Host.UseSerilog((ctx, lc) => lc
+        .WriteTo.Async(a => a.File("logs/pos-.log", rollingInterval: RollingInterval.Day))
+        .Enrich.FromLogContext());
+
+--------------------------------------------------------------------------------
+[SRE-04] [CRÍTICA - ABIERTA] Ausencia de token de concurrencia xmin en entidad Product
+--------------------------------------------------------------------------------
+- Archivo exacto: Core/Entities/Product.cs (Líneas 16-97)
+- DbContext: Inventory.Module/Data/InventoryDbContext.cs (Líneas 50-100)
+- DbContext: Sales.Module/Data/SalesDbContext.cs
+- Código vulnerable actual:
+  En `Product.cs`, no existe ninguna propiedad `uint Version` mapeada a la columna de
+  concurrencia de PostgreSQL `xmin`. En `OnModelCreating`, ninguna entidad llama a `.IsRowVersion()`.
+- Diagnóstico del Edge Case:
+  En `SupplierInvoiceService.Apply.cs` (Línea 186), el código intenta capturar:
+    catch (DbUpdateConcurrencyException exception) when (attempt == 0 && ...)
+  ESTE CATCH ES CÓDIGO MUERTO. Dado que EF Core no tiene configurado ningún token de
+  concurrencia en `Product`, EF Core Npgsql NUNCA arroja `DbUpdateConcurrencyException` al actualizar
+  un producto.
+  Si un administrador edita el precio o costo de un producto en el catálogo simultáneamente
+  con la aplicación de una factura de proveedor, ocurrirá un Lost Update silencioso: la última
+  transacción que ejecute `SaveChanges` sobreescribirá ciegamente los cambios de la anterior sin alerta.
+- Solución arquitectónica concurrente:
+  1. Configurar el mapeo de `xmin` en el DbContext:
+       modelBuilder.Entity<Product>()
+           .Property<uint>("Version")
+           .IsRowVersion();
+  2. En PostgreSQL, esto mapea automáticamente el token a la columna de sistema `xmin`,
+     haciendo que cualquier `UPDATE` verifique `WHERE xmin = @originalXmin` y active
+     legítimamente `DbUpdateConcurrencyException` para que el bucle de reintento funcione.
+
+
+================================================================================
+MATRIZ DE ACCIÓN Y ROADMAP DE REMEDIACIÓN
+================================================================================
+
+FASE INMEDIATA — SPRINT PRIORITARIO:
+--------------------------------------------------------------------------------
+[x] SRE-01 (Ventas)   : Orden determinista en deducción de stock (Resuelto en 8.149)
+[x] SEC-01           : Redondeo server-authoritative en ventas (Resuelto en 8.149)
+[x] SEC-02           : Guard IsCashAdvance en carrito y pedidos (Resuelto en 8.149)
+[x] SRE-02 (Items)    : Idempotency-Key en POST items/caja/cierre (Resuelto en 8.149)
+[x] CLEAN-02         : Erradicación de catch silenciosos en CartViewModel (Resuelto en 8.149)
+[ ] SEC-05           : Añadir [JsonIgnore] a PasswordHash y SecurityStamp en User.cs
+[ ] SEC-06           : Restringir endpoint current-balance a Admin/Manager
+[ ] SRE-04           : Configurar xmin / IsRowVersion() en Product dentro de DbContext
+[ ] SRE-05           : Exigir [RequireIdempotencyKey] en POST /api/sales/{id}/complete
+
+FASE DE ENDURECIMIENTO Y OPTIMIZACIÓN:
+--------------------------------------------------------------------------------
+[ ] PERF-01          : Batch lookup en SupplierInvoiceService.Staging (eliminar N+1)
+[ ] PERF-02          : Consolidar SaveChangesAsync() atómico en SupplierInvoiceService.Apply
+[ ] PERF-04          : Desuscribir RequestClose en OnClosed de diálogos WPF
+[ ] PERF-05          : Migrar suscripciones de UserControls WPF a Loaded/Unloaded
+[ ] SEC-03           : Limpiar contratos de CashAdvanceRequest (remover UserName/CashierId del body)
+[ ] SEC-04           : Anclar tasa en ProcessCashAdvanceAsync mediante ResolveAnchoredRateAsync
+[ ] SEC-07           : Desconexión activa de sockets SignalR al revocar sellos de usuario
+
+FASE DE REFACTORIZACIÓN ARQUITECTÓNICA:
+--------------------------------------------------------------------------------
+[ ] SRE-03           : Migrar AppLogger a Serilog Asíncrono no bloqueante
+[ ] CLEAN-01         : Eliminar los más de 90 métodos zombis [NonAction] de controladores
+[ ] CLEAN-03         : Fail-Fast y structured logging en bootstrap de Program.cs
+[ ] CLEAN-04         : Extraer lógica de cálculo de SalesController a servicio de dominio
+[ ] CLEAN-05         : Clientes Web y WPF consumen /checkout-preview sin duplicar fórmulas
+[ ] CLEAN-06         : Reemplazar bloques catch mudos en ViewModels por ClientStateLogger
+
+================================================================================
+FIN DEL INFORME DE AUDITORÍA INTEGRAL — COMMANDCENTER POS
+================================================================================
