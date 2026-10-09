@@ -17,30 +17,30 @@
 |---|---|---|
 | 1. SEC-08 backend (T1) | `--filter "FullyQualifiedName~Phase4FinancialIntegrityAndPreview\|FullyQualifiedName~FinancialRobustness\|FullyQualifiedName~CheckoutPreviewRateAnchor"` | Revertir los archivos backend + tests |
 | 2. CLEAN-06 WPF (T2) | `--filter "FullyQualifiedName~ViewModelCatchLogging\|~InventoryViewModel\|~ProductDialog"` | Revertir los archivos WPF + tests |
-| 3. Verificación + cierre (T3) | suite completa + cobertura (`dotnet test --collect:"XPlat Code Coverage"` + `python scripts/check-coverage.py <cobertura.xml>`, invocación de ANEXOS previos) | Revertir docs |
+| 3. Verificación + cierre (T3) | suite completa + cobertura (coverage.runsettings + `python scripts/check-coverage.py <cobertura.xml>`) | Revertir docs |
 
 ## T1 (S1) — Anclaje de tasa en checkout-preview (SEC-08)
 
-- [ ] 1.1 RED observable (service-level + controller-level) antes de implementar.
-- [ ] 1.2 `ResolveCheckoutRateAsync` público en `ISalesService` + delegación en el resolver privado (contextLabel "CheckoutPreview"); firma/semántica del privado intacta.
-- [ ] 1.3 Preview usa el resolver con `ExchangeRate > 0`; fallback `sale.AppliedRate` intacto; guard 400 intacto.
-- [ ] 1.4 Tests: dentro de tolerancia / ancla a BCV / rechazo ±100% con mensaje exacto / sin BCV fail-open / tolerancia configurable / ajuste de tests existentes (reportado nombradamente).
-- [ ] 1.5 Build 0/0 + focused + suite completa; evidencia RED/GREEN; commit `fix(8.152)` (lo hace el padre).
+- [x] 1.1 RED observable antes de implementar (11 fallas en el filtro focal).
+- [x] 1.2 `ResolveCheckoutRateAsync` público en `ISalesService` + delegación en el resolver privado (contextLabel "CheckoutPreview"); firma/semántica del privado intacta (verificado por diff).
+- [x] 1.3 Preview usa el resolver con `ExchangeRate > 0`; fallback `sale.AppliedRate` intacto; guard 400 intacto; sin catch de `ArgumentException`.
+- [x] 1.4 Tests: tolerancia/techo/ancla/rechazo×2/fail-open×2/tolerancia configurable/cancelación + 3 controller-level; ajuste de 2 tests existentes (passthrough) reportado nombradamente.
+- [x] 1.5 Build 0/0 + focused 37/37 + suite 2121/2121; commit `b2e283a`.
 
 ## T2 (S2) — Observabilidad de catches en ViewModels (CLEAN-06)
 
-- [ ] 2.1 RED observable (tests de logging por archivo) antes de implementar.
-- [ ] 2.2 BaseViewModel: L74/L91 → log; OCE y swallows tipados permanecen (razón documentada).
-- [ ] 2.3 InventoryViewModel.cs L205/L302/L380 + InventoryViewModel.Operations.cs L32/L59/L80/L128/L153/L189/L228/L250 → log; notificaciones existentes intactas.
-- [ ] 2.4 ProductDialogViewModel L249: `Debug.WriteLine` → `ClientStateLogger.LogError` + `_dialogService?.ShowWarning(...)`.
-- [ ] 2.5 PosViewModel sin cambios (conforme; documentado). Build 0/0 + focused + suite completa; evidencia RED/GREEN; commit `fix(8.152)` (lo hace el padre).
+- [x] 2.1 RED observable (5 fallas / 6 tests) antes de implementar.
+- [x] 2.2 BaseViewModel: L75/L92 → log; OCE y swallows tipados permanecen (razón documentada).
+- [x] 2.3 InventoryViewModel.cs L206/L304/L383 + InventoryViewModel.Operations.cs (8 sitios) → log; notificaciones existentes intactas.
+- [x] 2.4 ProductDialogViewModel L249-252: `Debug.WriteLine` → `ClientStateLogger.LogError` + `_dialogService?.ShowWarning("Error de Metadatos", "No se pudieron cargar los datos auxiliares del producto. Verifique la conexión.")`; fallback intacto.
+- [x] 2.5 PosViewModel sin cambios (conforme; documentado). Build 0/0 + focused 6/6 + suite 2127/2127; commit `0ddaa62`.
 
 ## T3 (S1-S3) — Verificación independiente + cierre
 
-- [ ] 3.1 Verificador independiente por unidad (read-only): evidencia por archivo/línea; réplica de la enumeración de catches y de los escenarios de tasa; tests existentes ajustados audita­dos.
-- [ ] 3.2 Refutación SRE-04 documentada (evidencia pineada; spot-check `ProductConcurrencyTokenTests`).
-- [ ] 3.3 Suite completa + cobertura (Core ≥0.70, Sales ≥0.80, Inventory ≥0.72) + build 0/0.
-- [ ] 3.4 `verify-report.md` + ANEXO 8.152 en `docs/reporte.txt` + cierre del tracker ODD + commit `docs(8.152)`.
+- [x] 3.1 Verificador independiente read-only: PASS WITH WARNINGS; 4/4 requisitos COMPLIANT; enumeración de catches y escenarios de tasa replicados; tests ajustados auditados.
+- [x] 3.2 Refutación SRE-04 confirmada (config + migraciones + `ProductConcurrencyTokenTests`; gated sin Postgres registrado como W2).
+- [x] 3.3 Suite 2127/2127 + cobertura Core 0.8868 / Sales 0.8962 / Inventory 0.8558 (exit 0) + build 0/0.
+- [x] 3.4 `verify-report.md` + ANEXO 8.152 + cierre del tracker ODD + commit `docs(8.152)`.
 
 ## Notes
 

@@ -12623,3 +12623,113 @@ H1. Cadena 8.151 en V0.15: a944952 (plan) + W1 7fa0d6c + W2 387bcf3 +
     W3 3eae78e + W4 93c72ea + W5 a33a8a7 + commits docs de tracker +
     commit de cierre de este ANEXO (git log / L8 del tracker ODD).
 ================================================================================
+
+================================================================================
+ANEXO 8.152 — HALLAZGOS NUEVOS DE LA AUDITORIA INTEGRAL RE-EMITIDA (SEC-08, CLEAN-06; SRE-04 REFUTADO) — 2026-10-09
+================================================================================
+Change SDD: openspec/changes/2026-10-09-audit-new-findings/ (proposal, 2 specs,
+tasks, state, verify-report). Fuente: docs/auditoria_integral_fases_1_4.txt
+re-emitida 2026-10-08 (commit e51a86a), que agrega 3 hallazgos nuevos respecto
+de la version 2026-10-05 y mantiene 17 abiertos ya conocidos (roadmap fases 2/3
+del ANEXO 8.149), fuera del alcance de este change. Alcance autorizado por el
+mantenedor: corregir los hallazgos nuevos (L1 del tracker ODD).
+
+A. ALCANCE Y ENTREGA
+
+A1. Verificacion previa estatica de los 3 hallazgos nuevos: SEC-08 CONFIRMADO
+    (SalesController.Checkout.cs:30 aceptaba cualquier tasa positiva del
+    cliente en el preview; el completar venta ya ancla); CLEAN-06 CONFIRMADO
+    con referencias de linea con drift (14 sitios operativos reales en los 4
+    archivos nombrados; PosViewModel ya conforme; swallows tipados de ciclo de
+    vida fuera del hallazgo); SRE-04 REFUTADO (InventoryDbContext.cs:122-131
+    ya configura xmin como concurrency token de Product en Npgsql; migraciones
+    20260906171036/20260908152110; ProductConcurrencyTokenTests; el catch de
+    SupplierInvoiceService.Apply.cs:186 no es codigo muerto).
+A2. T1 — b2e283a (SEC-08): nuevo ISalesService.ResolveCheckoutRateAsync
+    (delegacion exacta al resolver privado compartido con contextLabel
+    "CheckoutPreview"; cancelacion observada al entrar; firma del privado SIN
+    cambios); el checkout-preview usa el resolver SOLO con ExchangeRate > 0
+    (fallback sale.AppliedRate y guard 400 intactos); el ArgumentException del
+    rechazo +/-100% fluye al middleware global -> 400 ProblemDetails. Sin
+    cambios en clientes.
+A3. T2 — 0ddaa62 (CLEAN-06): 14 catches operativos con ClientStateLogger.
+    LogError (contexto + ex.Message): BaseViewModel 2 (L75/L92; solo log por
+    ser caminos de fondo), InventoryViewModel.cs 3 (Refresh/LoadData/Merge),
+    Operations 8 y ProductDialogViewModel 1 (Debug.WriteLine -> log +
+    ShowWarning("Error de Metadatos", "No se pudieron cargar los datos
+    auxiliares del producto. Verifique la conexion.")). Swallows tipados de
+    ciclo de vida (ObjectDisposed/Aggregate/OperationCanceled/SemaphoreFull)
+    preservados por diseno.
+A4. S3 — sin cambio de codigo: refutacion documentada con evidencia pineada y
+    spot-check del test de modelo (2/2 casos aplicables).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2127/2127, 0 fallas, 0 omitidas (baseline 8.151: 2109;
+    +12 T1 y +6 T2).
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8868 (>=0.70), Sales.Module 0.8962 (>=0.80), Inventory.Module
+    0.8558 (>=0.72).
+B4. Verificacion independiente (read-only): PASS WITH WARNINGS — REQ-CPR-01
+    COMPLIANT, REQ-CPR-02 COMPLIANT, REQ-VMEO-01 COMPLIANT, REQ-VMEO-02
+    COMPLIANT, S3 COMPLIANT. W1: catch operativo pre-existente en
+    VerifySkuAsync (ProductDialogViewModel:337) fuera de los 14 sitios del
+    plan (loguea; notifica inline), observacion aceptada sin regresion. W2:
+    el gated de conflicto stale de ProductConcurrencyTokenTests retorna
+    temprano sin TEST_POSTGRES_CONNECTION (patron pre-existente del repo); la
+    refutacion de SRE-04 se sostiene por config + migraciones + tests de
+    modelo + corridas con Postgres real de 8.150/8.151.
+B5. Spot-check del padre: filtro focal CheckoutPreviewRateAnchor re-ejecutado
+    9/9 + revision estructural de los diffs T1/T2 contra las specs.
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. El resolver privado compartido no recibe CancellationToken (limitacion
+    pre-existente); el metodo publico observa cancelacion solo al entrar.
+D2. RED de T1/T2 divulgado no re-ejecutable desde los commits (impl+tests
+    juntos); aritmetica consistente (11F -> 37/37; 5F -> 6/6).
+D3. El passthrough Moq de los 2 tests ajustados de Phase4 usa
+    ExchangeRate == AppliedRate; el wiring real queda cubierto por los tests
+    dedicados.
+D4. El gated de conflicto stale de Product no se re-ejecuto sin Postgres en el
+    entorno de verificacion (W2).
+D5. El duplicado untracked auditoria_integral_fases_1_4.txt en la raiz (hash
+    identico a docs/) queda sin commitear (artefacto del mantenedor).
+
+E. ROLLBACK
+
+E1. Revertir b2e283a y 0ddaa62 restaura el comportamiento previo: cambios
+    aditivos (metodo publico nuevo, logs, una advertencia de dialogo); sin
+    migraciones ni reescrituras de datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS — REQ-CPR-01/02 y
+    REQ-VMEO-01/02 COMPLIANT; S3 confirmado. Reporte en el change
+    (verify-report.md).
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. Los 17 abiertos ya conocidos (fases 2/3 del ANEXO 8.149) siguen como
+    roadmap del mantenedor. La matriz de la auditoria re-emitida lista SEC-05,
+    SEC-06, SRE-04 (refutado aqui) y SRE-05 (= parte abierta de SRE-02:
+    RequireIdempotencyKey en POST complete) en la fase inmediata.
+G2. La auditoria re-emitida amplio SEC-07 al AuthorizationHub de 8.150
+    (desconexion forzosa de sockets + IHubFilter): sigue abierto, fuera del
+    alcance de 8.152.
+G3. W1 (fuera de alcance): unificar el contrato de notificacion de
+    VerifySkuAsync (inline -> IDialogService) si se decide tocarlo en un
+    change futuro.
+
+H. COMMITS
+
+H1. Cadena 8.152 en V0.15: e51a86a (plan + auditoria re-emitida) + b2e283a
+    (T1) + 0ddaa62 (T2) + commit de cierre de este ANEXO (git log / L4 del
+    tracker ODD).
+================================================================================
