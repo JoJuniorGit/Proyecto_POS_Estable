@@ -46,6 +46,49 @@ public class SupplierInvoiceApplyTests
     }
 
     [Fact]
+    public async Task ConfirmAsync_DescendingProductOrder_AppliesIdenticalEffectsInAscendingLockOrder()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var lowerProduct = CreateProduct("APPLY-ORDER-LOW", 2m, 10m, 15m);
+        var higherProduct = CreateProduct("APPLY-ORDER-HIGH", 5m, 20m, 25m);
+        // Productos persistidos primero para fijar sus Ids; la primera línea apunta al de Id mayor
+        // (inserción descendente por ResolvedProductId: el orden AB-BA que origina el hallazgo).
+        context.Products.AddRange(lowerProduct, higherProduct);
+        await context.SaveChangesAsync();
+        var invoice = await AddInvoiceAsync(
+            context,
+            CreateLine(higherProduct, 3m, 11m),
+            CreateLine(lowerProduct, 7m, 6m));
+        var lines = invoice.Lines.OrderBy(line => line.Id).ToArray();
+        Assert.True(lines[0].ResolvedProductId > lines[1].ResolvedProductId);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(lines[0].Id, true, null, null),
+            new ConfirmLineDto(lines[1].Id, true, null, null)
+        }));
+
+        var savedLower = await context.Products.SingleAsync(product => product.Id == lowerProduct.Id);
+        var savedHigher = await context.Products.SingleAsync(product => product.Id == higherProduct.Id);
+        Assert.Equal(6m, savedLower.CostPriceUSD);
+        Assert.Equal(17m, savedLower.StockQuantity);
+        Assert.Equal(11m, savedHigher.CostPriceUSD);
+        Assert.Equal(23m, savedHigher.StockQuantity);
+
+        var movements = await context.StockMovements.OrderBy(movement => movement.Id).ToListAsync();
+        Assert.Equal(2, movements.Count);
+        Assert.Contains(movements, movement => movement.ProductId == lowerProduct.Id && movement.QuantityChange == 7m);
+        Assert.Contains(movements, movement => movement.ProductId == higherProduct.Id && movement.QuantityChange == 3m);
+        // Solo cambia el orden de locks: el primer movimiento es el del producto de Id menor.
+        Assert.Equal(lowerProduct.Id, movements[0].ProductId);
+        Assert.Equal(higherProduct.Id, movements[1].ProductId);
+
+        var savedInvoice = await context.SupplierInvoices.SingleAsync(candidate => candidate.Id == invoice.Id);
+        Assert.Equal(SupplierInvoiceStatus.Applied, savedInvoice.Status);
+    }
+
+    [Fact]
     public async Task ConfirmAsync_UsesRetailMarginUnlessIndependentWholesaleIsEnabled()
     {
         using var context = TestDatabaseFactory.CreateInventoryDbContext();

@@ -79,7 +79,7 @@ public partial class SupplierInvoiceService
                 }
 
                 var confirmationsByLineId = request.Lines.ToDictionary(confirmation => confirmation.LineId);
-                foreach (var line in invoice.Lines.OrderBy(candidate => candidate.Id))
+                foreach (var line in SupplierInvoiceApplyOrdering.OrderForApply(invoice.Lines))
                 {
                     if (!confirmationsByLineId.TryGetValue(line.Id, out var confirmation))
                     {
