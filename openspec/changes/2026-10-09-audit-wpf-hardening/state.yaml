@@ -1,0 +1,28 @@
+change: 2026-10-09-audit-wpf-hardening
+store: openspec
+scope: audit-wpf-hardening-8.156
+created: 2026-10-09
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: planned
+apply:
+  slices: 0/2 (T1, T2)
+  branch: V0.15
+verify: pending
+artifacts:
+  proposal: openspec/changes/2026-10-09-audit-wpf-hardening/proposal.md
+  specs:
+    - openspec/changes/2026-10-09-audit-wpf-hardening/specs/wpf-view-lifecycle/spec.md
+    - openspec/changes/2026-10-09-audit-wpf-hardening/specs/wpf-checkout-preview/spec.md
+  tasks: openspec/changes/2026-10-09-audit-wpf-hardening/tasks.md
+decisions:
+  perf04: delegado almacenado + desuscripción en OnClosed (sin lambdas vivas)
+  perf05: patrón DailyClosureView (Loaded/Unloaded + DC changed, _boundViewModel); LoginView no dispone el VM
+  clean05: WPF consume /checkout-preview con gate espejo de computeCheckoutGate (firma fresca + versión monotónica; fail-closed sin validación canónica; rounding del servidor a CompleteSale); WPF tenía 0 implementación del preview
+  web: sin cambios — ya conforme desde 8.5-WEB1 (computeCheckoutGate + tests), documentado en el ANEXO
+  rdd: off (clone-local + global)
+  branch: V0.15
+next: T1 (writer vistas) → T2 (writer checkout) → T3 (verificación + ANEXO 8.156)
