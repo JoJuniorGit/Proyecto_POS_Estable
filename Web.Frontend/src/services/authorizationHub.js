@@ -184,6 +184,18 @@ export function createAuthorizationHubClient({
     return apiGet(`/api/authorizations/${requestId}`);
   }
 
+  // 8.151 (W2, R4-client): retiro del solicitante por REST (el hub no expone metodo de
+  // cancelacion). El backend responde 200 {requestId,status,resolvedAt}, 409 carrera/expirada,
+  // 403 solo-solicitante o 404; los llamadores best-effort ignoran el rechazo.
+  async function cancelRequest(requestId) {
+    const body = await apiPost(`/api/authorizations/${requestId}/cancel`);
+    return {
+      success: true,
+      status: body?.status ?? null,
+      resolvedAt: body?.resolvedAt ?? null,
+    };
+  }
+
   function on(eventName, handler) {
     if (!eventHandlers.has(eventName)) eventHandlers.set(eventName, new Set());
     eventHandlers.get(eventName).add(handler);
@@ -212,6 +224,7 @@ export function createAuthorizationHubClient({
     resolveAuthorization,
     localResolve,
     getStatus,
+    cancelRequest,
     on,
     off,
     onReconnected,

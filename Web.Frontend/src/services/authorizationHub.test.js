@@ -311,6 +311,44 @@ describe('authorizationHub resolveAuthorization and localResolve', () => {
   });
 });
 
+describe('authorizationHub cancelRequest', () => {
+  it('14. posts the requester-only cancel route by REST and normalizes the result', async () => {
+    const { client, calls } = buildClient({
+      postResponse: async () => ({
+        requestId: 7,
+        status: 'Cancelled',
+        resolvedAt: '2026-10-09T12:00:00.000Z',
+      }),
+    });
+
+    const result = await client.cancelRequest(7);
+
+    assert.strictEqual(calls.posts.length, 1);
+    assert.strictEqual(calls.posts[0].endpoint, '/api/authorizations/7/cancel');
+    assert.strictEqual(calls.posts[0].body, undefined);
+    assert.deepStrictEqual(result, {
+      success: true,
+      status: 'Cancelled',
+      resolvedAt: '2026-10-09T12:00:00.000Z',
+    });
+  });
+
+  it('15. surfaces the 409 race/expired problem details without masking them', async () => {
+    const { client } = buildClient({
+      postResponse: async () => {
+        throw new ApiError('La solicitud expiró; debe generarse una nueva.', 409, {
+          message: 'La solicitud expiró; debe generarse una nueva.',
+        });
+      },
+    });
+
+    await assert.rejects(
+      () => client.cancelRequest(7),
+      (error) => error instanceof ApiError && error.status === 409
+    );
+  });
+});
+
 describe('authorizationHub event wiring', () => {
   it('11. subscribes events on connect and unsubscribes cleanly', async () => {
     const { client, connection } = buildClient();

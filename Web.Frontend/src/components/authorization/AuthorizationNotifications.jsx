@@ -17,11 +17,23 @@ export const AUTHORIZATION_NOTIFICATION_STRINGS = Object.freeze({
   terminal: 'Terminal',
   remaining: 'Tiempo restante',
   expired: 'Solicitud expirada.',
+  cancelled: 'Solicitud cancelada por el cajero.',
   pendingCount: 'solicitudes pendientes',
   dismiss: 'Cerrar',
   resolveFailed: 'No se pudo resolver la solicitud de autorización.',
   fallbackCashier: 'otro usuario',
 });
+
+// 8.151 (W2, R7/design D4d): los ids resueltos por esta terminal solo tapan el eco de la
+// resolucion propia hasta que el push llega; se consumen con el push y se acotan para que el
+// ref no crezca sin limite durante sesiones largas.
+export const MAX_OWN_RESOLVED_IDS = 50;
+
+export function pruneOwnResolvedIds(ids, maxSize = MAX_OWN_RESOLVED_IDS) {
+  const entries = [...ids];
+  if (entries.length <= maxSize) return new Set(entries);
+  return new Set(entries.slice(entries.length - maxSize));
+}
 
 export const AUTHORIZATION_ACTION_LABELS = Object.freeze({
   ManualPriceOverride: 'modificar el precio manual',
@@ -99,6 +111,13 @@ export function applyAuthorizationResolvedEvent(queue, payload, { isOwnResolutio
   const nextQueue = removeAuthorizationNotification(queue, requestId);
 
   if (!wasQueued || isOwnResolution) return { queue: nextQueue, notice: null };
+
+  // 8.151 (W2, R4/design D4): la cancelacion del solicitante cierra con su nota exacta y
+  // jamas con el mensaje de carrera, aunque el payload traiga un resolvedByName.
+  if (payload?.status === 'Cancelled') {
+    return { queue: nextQueue, notice: AUTHORIZATION_NOTIFICATION_STRINGS.cancelled };
+  }
+
   return { queue: nextQueue, notice: buildAlreadyResolvedMessage(payload?.resolvedByName) };
 }
 
@@ -305,10 +324,13 @@ export default function AuthorizationNotifications({ onOpenChange = null }) {
   }, [commitQueue]);
 
   const handleResolved = useCallback((payload) => {
-    const isOwnResolution = pendingResolutionRef.current === payload?.requestId
-      || ownResolvedRef.current.has(payload?.requestId);
+    const requestId = payload?.requestId;
+    const isOwnResolution = pendingResolutionRef.current === requestId
+      || ownResolvedRef.current.has(requestId);
     const result = applyAuthorizationResolvedEvent(queueRef.current, payload, { isOwnResolution });
     commitQueue(result.queue);
+    // 8.151 (W2, R7/D4d): el eco consumio el id propio; la entrada no se acumula.
+    if (requestId != null) ownResolvedRef.current.delete(requestId);
     if (result.notice) setNotice(result.notice);
   }, [commitQueue]);
 
@@ -328,7 +350,7 @@ export default function AuthorizationNotifications({ onOpenChange = null }) {
         continue;
       }
 
-      if (status?.status === 'Approved' || status?.status === 'Rejected') {
+      if (status?.status === 'Approved' || status?.status === 'Rejected' || status?.status === 'Cancelled') {
         handleResolved({
           requestId: item.requestId,
           status: status.status,
@@ -399,6 +421,7 @@ export default function AuthorizationNotifications({ onOpenChange = null }) {
     try {
       await authorizationHub.resolveAuthorization(requestId, approved, reason);
       ownResolvedRef.current.add(requestId);
+      ownResolvedRef.current = pruneOwnResolvedIds(ownResolvedRef.current);
       commitQueue((current) => removeAuthorizationNotification(current, requestId));
     } catch (err) {
       if (err?.status === 409 || err?.status === 404) {
