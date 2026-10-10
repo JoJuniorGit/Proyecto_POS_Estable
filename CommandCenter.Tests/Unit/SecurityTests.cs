@@ -208,6 +208,8 @@ public class SecurityTests
         var unauthorizedResult = result.Result as UnauthorizedObjectResult;
         Assert.NotNull(unauthorizedResult);
 
+        await AppLogger.FlushAsync();
+
         if (File.Exists(AppLogger.StartLogPath))
         {
             using var stream = new FileStream(AppLogger.StartLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -361,9 +363,12 @@ public class SecurityTests
         });
 
         await middleware.InvokeAsync(context);
+        await AppLogger.FlushAsync();
 
         Assert.True(File.Exists(logFile));
-        var logContent = await File.ReadAllTextAsync(logFile);
+        using var logStream = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var logReader = new StreamReader(logStream);
+        var logContent = await logReader.ReadToEndAsync();
 
         Assert.Contains("IP=192.168.1.100", logContent);
         Assert.Contains("METHOD=DELETE", logContent);

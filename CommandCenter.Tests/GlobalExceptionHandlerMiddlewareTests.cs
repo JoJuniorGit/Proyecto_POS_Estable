@@ -38,6 +38,7 @@ public class GlobalExceptionHandlerMiddlewareTests
         var doc = JsonDocument.Parse(jsonText);
 
         Assert.Equal("DatabaseConnectionError", doc.RootElement.GetProperty("error").GetString());
+        await AppLogger.FlushAsync();
         Assert.True(File.Exists(AppLogger.DbErrorsLogPath));
     }
 
@@ -310,6 +311,7 @@ public class GlobalExceptionHandlerMiddlewareTests
 
         Assert.Equal("DatabaseConnectionError", doc.RootElement.GetProperty("error").GetString());
         Assert.Contains("comunicación", doc.RootElement.GetProperty("message").GetString());
+        await AppLogger.FlushAsync();
         Assert.True(File.Exists(AppLogger.DbErrorsLogPath));
     }
 

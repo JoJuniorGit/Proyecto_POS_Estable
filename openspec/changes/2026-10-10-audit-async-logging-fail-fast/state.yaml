@@ -1,0 +1,30 @@
+change: 2026-10-10-audit-async-logging-fail-fast
+store: openspec
+scope: audit-async-logging-fail-fast-8.158
+created: 2026-10-10
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: verified
+apply:
+  slices: 2/2 (T1 14ae597, T2 a3ab349; hardening 0d99c2c)
+  branch: V0.15
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-10-audit-async-logging-fail-fast/verify-report.md
+verify_note: "8/8 requisitos COMPLIANT (REQ-AL-01..05 + REQ-BF-01..03); W1 (saturación sin test determinista, por inspección) y W2 (ProcessExit best-effort) + I1-I3 registrados; suite CON Postgres 2221/2221; cobertura Core 0.8701/Sales 0.8882/Inventory 0.8378 (exit 0)"
+artifacts:
+  proposal: openspec/changes/2026-10-10-audit-async-logging-fail-fast/proposal.md
+  specs:
+    - openspec/changes/2026-10-10-audit-async-logging-fail-fast/specs/async-logging/spec.md
+    - openspec/changes/2026-10-10-audit-async-logging-fail-fast/specs/bootstrap-fail-fast/spec.md
+  tasks: openspec/changes/2026-10-10-audit-async-logging-fail-fast/tasks.md
+decisions:
+  sre03: canal acotado (4096) + consumidor LongRunning por logger + FlushAsync (marcador FIFO/TCS) + drenaje ProcessExit; API y contrato de archivos intactos; Serilog NO adoptado (desviación documentada D1; G-follow-up)
+  clean03: secrets.json -> LogCrash + throw (fail-fast); .env -> LogWarn sin throw (opcional dev, desviación documentada D2); Console.WriteLine=0
+  tests: flush en sitios de lectura inmediata; polling de 3 s se mantiene
+  rdd: off (clone-local + global)
+  branch: V0.15
+  anexo: "8.158"
+next: push/pr/merge (decisión del mantenedor); roadmap de la auditoría re-emitida CERRADO con 8.158

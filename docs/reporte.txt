@@ -13316,3 +13316,115 @@ H1. Cadena 8.159 en V0.15: 5ce8b86 (plan) + d52a70f (T1) + e4c2401 (T2) +
     aaa01ce (T3) + 11ef283 (T4) + commit de cierre de este ANEXO (git log /
     L6 del tracker ODD).
 ================================================================================
+
+================================================================================
+ANEXO 8.158 - LOGGING ASINCRONO NO BLOQUEANTE (SRE-03) + FAIL-FAST EN BOOTSTRAP (CLEAN-03) - 2026-10-10
+================================================================================
+Change SDD: openspec/changes/2026-10-10-audit-async-logging-fail-fast/ (proposal,
+2 specs, tasks, state, verify-report). Tramo FINAL del roadmap (autorizado:
+"arranco el 8.158 y terminamos el roadmap."). Con este ANEXO queda cerrada la
+matriz completa de la auditoria re-emitida.
+
+A. ALCANCE Y ENTREGA
+
+A1. Verificacion previa: SRE-03 CONFIRMADO (AppLogger.WriteLog L127-147 y
+    ClientStateLogger.WriteLog L99-120 con lock global + File.AppendAllText
+    sincrono en el camino de request; sin Serilog en ningun csproj; contrato de
+    archivos externo consumido por installer/README/INSTALLATION y tests).
+    CLEAN-03 CONFIRMADO con matiz (L48-51 secrets.json OBLIGATORIO con
+    Console.WriteLine sin traza; L126-130 .env de Desarrollo OPCIONAL; la cola
+    ya hacia LogCrash+throw en el catch fatal externo).
+A2. T1 - 14ae597 (SRE-03): nuevo Core/Logging/AsyncLogSink.cs (canal acotado
+    4096, FullMode.Wait, SingleReader; productores SOLO TryWrite + contador
+    atomico de descartes; UN consumidor LongRunning por proceso compartido por
+    ambos loggers, FIFO global; rotacion 10 MB/5 movida al consumidor; linea
+    [LOGGER] de descartes; FlushAsync con marcador FIFO/TCS timeout 5 s;
+    drenaje ProcessExit 2 s). AppLogger 148->104, ClientStateLogger 121->77;
+    API publica intacta (solo +FlushAsync); rutas/formatos byte a byte
+    (verificado contra 18936e1). Desviacion documentada D1: Serilog NO
+    adoptado (dependencias nuevas + artefactos externos del installer; la
+    esencia SRE -no bloqueo, canal acotado, sin lock- implementada completa;
+    G1). Enmienda de spec REQ-AL-02: consumidor UNICO por proceso (no uno por
+    logger). RED 5x CS0117 -> GREEN; focused 85/85.
+A3. T2 - a3ab349 (CLEAN-03): secrets.json -> LogCrash(ex,
+    "Backend.API.Program.SecretsBootstrap") + throw (fail-fast con traza);
+    .env -> LogWarn sin throw (desviacion documentada D2: camino opcional de
+    Desarrollo; el audit pedia throw generico); Console.WriteLine = 0.
+A4. 0d99c2c (hardening de tests): 4 lecturas inmediatas de log endurecidas a
+    FileShare.ReadWrite (el consumidor asincrono puede escribir desde clases
+    de test en paralelo; File.ReadAllText con FileShare.Read podia lanzar
+    IOException transitoria).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CON PostgreSQL real (pos_test recreada): 2221/2221, 0
+    fallas, 0 omitidas (2216 base + 5 nuevos de AsyncLoggingTests; sin tests
+    perdidos).
+B3. Cobertura CON Postgres (coverage.runsettings + scripts/check-coverage.py,
+    exit 0): Core 0.8701 (>=0.70), Sales.Module 0.8882 (>=0.80),
+    Inventory.Module 0.8378 (>=0.72). Nota: ~2 pts por debajo del tramo 8.159
+    sin cambios de codigo en Sales/Inventory (variacion de medicion); Core
+    ademas carga las ramas nuevas no cubiertas del sink. Umbrales con margen.
+B4. Verificacion independiente (read-only): PASS WITH WARNINGS - REQ-AL-01..05
+    y REQ-BF-01..03 COMPLIANT (8/8). Evidencia clave: productores sin lock ni
+    I/O; consumidor unico FIFO con try/catch por entrada; orden del contador de
+    descartes (Volatile.Read + Interlocked.Exchange + aviso antes de la
+    siguiente entrada); formatos comparados byte a byte contra 18936e1; API
+    publica diff = solo +FlushAsync; grep independiente: toda lectura de
+    contenido es flush-gated + FileShare.ReadWrite o polling 3 s; fail-fast de
+    secrets con traza + throw; Console.WriteLine = 0. W1: la linea [LOGGER] de
+    saturacion no tiene test determinista (verificada por inspeccion). W2:
+    drenaje ProcessExit best-effort por diseno (kill no gestionado puede
+    perder la cola). I1: escenarios de fallo de REQ-BF-01/02 verificados
+    estaticamente (sin harness runtime). I2: lectura negativa preexistente sin
+    flush (ViewModelCatchLoggingTests:89; benigna). I3: el aviso de descartes
+    se difiere al siguiente volcado (match con spec).
+B5. git status limpio en 0d99c2c.
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. W1/W2/I1-I3 arriba; sin otras limitaciones del tramo.
+D2. Desviaciones documentadas: D1 (Serilog como G1) y D2 (.env sin throw).
+
+E. ROLLBACK
+
+E1. Revertir 14ae597 + a3ab349 + 0d99c2c restaura el logger sincrono con lock
+    y el bootstrap con Console.WriteLine; sin migraciones ni reescrituras de
+    datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS - 8/8 requisitos COMPLIANT;
+    W1/W2 + I1-I3 registrados. Reporte en el change (verify-report.md).
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. (D1) Evaluar en un tramo propio la migracion a Serilog con structured
+    logging (dependencias nuevas + posible cambio de artefactos externos
+    consumidos por installer/docs; requiere su propio assessment de entrega).
+G2. (W1) Test determinista del camino de saturacion del canal (harness con
+    capacidad reducida via seam interno) si se desea blindar el contador de
+    descartes.
+G3. Roadmap: MATRIZ COMPLETA CERRADA con este tramo. Resumen: 5 remediados en
+    8.149 + 8.152 (SEC-08/CLEAN-06) + 8.153 (SEC-05/06) + 8.154 (SEC-03/04/
+    SRE-01) + 8.155 (PERF-01/02) + 8.156 (PERF-04/05/CLEAN-05) + 8.157
+    (SEC-07) + 8.159 (CLEAN-01/04) + 8.158 (SRE-03/CLEAN-03); refutados con
+    evidencia: SRE-04, SRE-05, PERF-03; desviaciones documentadas: PERF-02
+    (parcial por spec canonico supplier-invoice-apply L64-73), SEC-01
+    (residual de centimos), D1 (Serilog) y D2 (.env sin throw).
+G4. Pendiente del mantenedor: push/PR/merge de la cadena V0.15 completa
+    (8.152 -> 8.158; estrategia stacked-to-main cacheada).
+
+H. COMMITS
+
+H1. Cadena 8.158 en V0.15: ad93536 (plan) + 14ae597 (T1) + a3ab349 (T2) +
+    0d99c2c (tests) + commit de cierre de este ANEXO (git log / L5 del
+    tracker ODD).
+================================================================================
+
