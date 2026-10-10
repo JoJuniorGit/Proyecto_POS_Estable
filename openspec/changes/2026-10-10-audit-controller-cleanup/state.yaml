@@ -1,0 +1,28 @@
+change: 2026-10-10-audit-controller-cleanup
+store: openspec
+scope: audit-controller-cleanup-8.159
+created: 2026-10-10
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: planned
+apply:
+  slices: 0/4 (T1 CLEAN-04, T3/T4 CLEAN-01 A/B, T2 PERF-03)
+  branch: V0.15
+verify: pending
+artifacts:
+  proposal: openspec/changes/2026-10-10-audit-controller-cleanup/proposal.md
+  specs:
+    - openspec/changes/2026-10-10-audit-controller-cleanup/specs/checkout-calculation-service/spec.md
+    - openspec/changes/2026-10-10-audit-controller-cleanup/specs/remove-nonaction-wrappers/spec.md
+  tasks: openspec/changes/2026-10-10-audit-controller-cleanup/tasks.md
+decisions:
+  clean04: CheckoutCalculationService (fetch+anclaje+matemática); endpoint delega; ctor opcional; tests de preview construyen el servicio real; errores preservados (KeyNotFound→404 real; ArgumentException→400)
+  clean01: eliminación por grupos A(37)/B(56); call sites → *Async; CancellationPropagationTests migra su lista; RED compile-level divulgado
+  perf03: REFUTADO (AsSplitQuery desde 148e6a3 + asNoTracking param + History ya con AsNoTracking); residual AsNoTracking en el primer fetch de ConfirmPickup
+  alcance: 8.158 (SRE-03/CLEAN-03) queda pendiente y fuera de este tramo
+  rdd: off (clone-local + global)
+  branch: V0.15
+next: T1 (writer CLEAN-04) → T2 (inline PERF-03) → T3 (writer grupo A) → T4 (writer grupo B) → T5 (verificación + ANEXO 8.159)
