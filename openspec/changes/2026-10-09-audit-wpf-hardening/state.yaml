@@ -7,22 +7,27 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: planned
+phase: verified
 apply:
-  slices: 0/2 (T1, T2)
+  slices: 3/3 (T1 28e32da, T2 1540a27, T2b 0427309)
   branch: V0.15
-verify: pending
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-09-audit-wpf-hardening/verify-report.md
+verify_note: "10/10 requisitos COMPLIANT (REQ-WVL-01/02/03, REQ-WCP-01..05); W1 (mock E2E sin checkout-preview) y W2 (sin test del call-path) cerrados por T2b con RED->GREEN; I2 (checkbox custodia) corregido; I1 documentado (asignacion, no suscripcion); suite CON Postgres 2178 -> 2180 tras T2b; cobertura 0.8886/0.9057/0.8621 (exit 0); web intacto"
 artifacts:
   proposal: openspec/changes/2026-10-09-audit-wpf-hardening/proposal.md
   specs:
     - openspec/changes/2026-10-09-audit-wpf-hardening/specs/wpf-view-lifecycle/spec.md
     - openspec/changes/2026-10-09-audit-wpf-hardening/specs/wpf-checkout-preview/spec.md
   tasks: openspec/changes/2026-10-09-audit-wpf-hardening/tasks.md
+  verify_report: openspec/changes/2026-10-09-audit-wpf-hardening/verify-report.md
 decisions:
-  perf04: delegado almacenado + desuscripción en OnClosed (sin lambdas vivas)
-  perf05: patrón DailyClosureView (Loaded/Unloaded + DC changed, _boundViewModel); LoginView no dispone el VM
-  clean05: WPF consume /checkout-preview con gate espejo de computeCheckoutGate (firma fresca + versión monotónica; fail-closed sin validación canónica; rounding del servidor a CompleteSale); WPF tenía 0 implementación del preview
-  web: sin cambios — ya conforme desde 8.5-WEB1 (computeCheckoutGate + tests), documentado en el ANEXO
+  perf04: delegado almacenado + desuscripcion en OnClosed (ProductDialog/ServerConnectionDialog/CreateInvoiceProductDialog); Variant dialogs no tocados (asignacion sobre VM local, no es la clase)
+  perf05: patron DailyClosureView en InventoryView/LoginView; LoginView no dispone el singleton
+  clean05: WPF consume /checkout-preview con gate espejo de computeCheckoutGate (firma fresca + version monotonica; fail-closed canonico; rounding del servidor a CompleteSale; override por preview.IsFullyPaid)
+  web: sin cambios (ya conforme 8.5-WEB1)
+  w1-mock: el mock E2E sirve checkout-preview con contrato canonico + test; w2: test del call-path del rounding; i2: checkbox custodia con IsEnabled=IsCustodyAllowed
   rdd: off (clone-local + global)
   branch: V0.15
-next: T1 (writer vistas) → T2 (writer checkout) → T3 (verificación + ANEXO 8.156)
+  anexo: "8.156"
+next: push/pr/merge (decisión del mantenedor) + 8.157 (SEC-07 SignalR) cuando lo autorice

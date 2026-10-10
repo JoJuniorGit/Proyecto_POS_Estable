@@ -13023,3 +13023,96 @@ H1. Cadena 8.155 en V0.15: 5f206c3 (plan) + 5267c0e (T1) + 83190b3 (T2) +
     f4ede27 (T2b) + commit de cierre de este ANEXO (git log / L6 del tracker
     ODD).
 ================================================================================
+
+================================================================================
+ANEXO 8.156 — HARDENING WPF (PERF-04/05) + CHECKOUT WPF SERVER-AUTHORITATIVE (CLEAN-05) — 2026-10-09
+================================================================================
+Change SDD: openspec/changes/2026-10-09-audit-wpf-hardening/ (proposal, 2 specs,
+tasks, state, verify-report). Tramo 4 del roadmap (autorizado: "sigue con 8.156").
+
+A. ALCANCE Y ENTREGA
+
+A1. Verificacion previa: PERF-04 CONFIRMADO (lambdas vivas en RequestClose de
+    ProductDialog/ServerConnectionDialog); PERF-05 CONFIRMADO (hook solo por
+    DataContextChanged sin Unloaded; patron correcto en DailyClosureView);
+    CLEAN-05-WPF CONFIRMADO (el VM calculaba todo local; el cliente WPF no tenia
+    GetCheckoutPreviewAsync) y el Web YA conforme (8.5-WEB1: computeCheckoutGate +
+    tests, rounding del servidor a completeSale).
+A2. T1 — 28e32da (PERF-04/05): delegado almacenado + desuscripcion en OnClosed en
+    ProductDialog/ServerConnectionDialog (+ CreateInvoiceProductDialog por la misma
+    clase); InventoryView/LoginView con el patron DailyClosureView (hook/unhook
+    idempotente; LoginView no dispone el singleton).
+A3. T2 — 1540a27 (CLEAN-05 WPF): cliente GetCheckoutPreviewAsync + DTO + pin de
+    contrato; gate espejo de computeCheckoutGate (firma fresca con version
+    monotonica en exito Y fallo, fail-closed con mensaje canonico exacto,
+    RoundingAdjustment del servidor a CompleteSale, override por preview.IsFullyPaid,
+    RemainingBalance* del preview cuando fresco, seam PendingPreview). RED 3F
+    (redondeo local, fallo ignorado, firma estanca) -> GREEN.
+A4. T2b — 0427309 (W1/W2/I2 de verificacion): el mock E2E sirve checkout-preview
+    con el contrato canonico (antes {} -> boton de cobro deshabilitado en modo
+    --e2e; RED->GREEN con test dedicado); test del call-path FinalizeSale ->
+    CompleteSaleAsync con el rounding del servidor; checkbox de custodia con
+    IsEnabled=IsCustodyAllowed (paridad con el web).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite CON PostgreSQL real (verificacion T3): 2178/2178; tras T2b: 2180/2180,
+    0 fallas, 0 omitidas.
+B3. Cobertura CON Postgres (post-T2b; coverage.runsettings + check-coverage.py,
+    exit 0): Core 0.8886 (>=0.70), Sales.Module 0.9057 (>=0.80), Inventory.Module
+    0.8621 (>=0.72).
+B4. Verificacion independiente (read-only): PASS WITH WARNINGS — REQ-WVL-01/02/03
+    y REQ-WCP-01..05 COMPLIANT; ajustes de CheckoutUxTests auditados sin
+    enmascaramiento (mock espejo derivado del request); W1/W2/I2 atendidos por T2b;
+    I1 documentado (Variant dialogs usan ASIGNACION sobre VM local -> ciclo
+    colectable, no la clase PERF-04); I3 limitaciones registradas.
+B5. Web intacto: git diff del change sobre Web.Frontend = vacio (conformidad
+    8.5-WEB1 documentada; sin bundle).
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. Las vistas WPF no tienen test unitario en el harness (code-behind sin seam;
+    E2E gated como cobertura runtime del repo) — excepcion test-first divulgada.
+D2. GetCheckoutPreviewAsync sin CancellationToken (patron de lecturas del cliente);
+    la firma del preview se recomputa por getter (costo menor, correctitud intacta);
+    fetch sin cancelacion del anterior (la version monotonica descarta respuestas
+    viejas en exito y fallo).
+D3. E2E full-stack y modo --e2e no ejecutados en esta verificacion (gated / UI
+    desktop); W1 quedo cubierto por test unitario del mock.
+D4. I1: los dialogos de variantes conservan asignacion con VM local (documentado;
+    uniformar es opcional, G2).
+
+E. ROLLBACK
+
+E1. Revertir 28e32da + 1540a27 + 0427309 restaura el comportamiento previo
+    (vistas, cliente/VM del checkout, mock); sin migraciones ni reescrituras de
+    datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS — 10/10 requisitos COMPLIANT;
+    W1/W2/I2 cerrados por T2b; I1/I3 documentados. Reporte en el change
+    (verify-report.md).
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. (D3) Agregar un E2E UI mockeado que complete una venta en modo --e2e (el mock
+    hoy responde el preview; un flujo de UI que finalice lo pinearia de punta a
+    punta).
+G2. (I1/D4) Uniformar opcionalmente los dialogos de variantes al patron de campo
+    + desuscripcion (hoy: asignacion con VM local, sin retencion cruzada).
+G3. Roadmap restante: 8.157 SEC-07 (SignalR); 8.158 SRE-03 + CLEAN-03; 8.159
+    CLEAN-01/04 + PERF-03.
+
+H. COMMITS
+
+H1. Cadena 8.156 en V0.15: 36ca38d (plan) + 28e32da (T1) + 1540a27 (T2) +
+    0427309 (T2b) + commit de cierre de este ANEXO (git log / L6 del tracker
+    ODD).
+================================================================================
