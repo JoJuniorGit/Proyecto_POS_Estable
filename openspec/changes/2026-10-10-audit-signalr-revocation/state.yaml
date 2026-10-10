@@ -1,0 +1,33 @@
+change: 2026-10-10-audit-signalr-revocation
+store: openspec
+scope: audit-signalr-revocation-8.157
+created: 2026-10-10
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: verified
+apply:
+  slices: 3/3 (T1 53731df, T2 2bac982, T3 2c79b5c)
+  branch: V0.15
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-10-audit-signalr-revocation/verify-report.md
+verify_note: "6/6 requisitos COMPLIANT (REQ-HREV-01/02/03, REQ-HFC-01/02/03); mensajes del filtro byte a byte vs middleware; DI del filtro comprobada; fail-soft real; suite CON Postgres 2207/2207; cobertura 0.8886/0.9057/0.8621 (exit 0); web 379/379 + lint 0; bundle consistente; F1 (trazabilidad T3) y F2 (binding WPF sin test runtime, divulgado) registrados; F3-F5 INFOs"
+artifacts:
+  proposal: openspec/changes/2026-10-10-audit-signalr-revocation/proposal.md
+  specs:
+    - openspec/changes/2026-10-10-audit-signalr-revocation/specs/hub-revocation/spec.md
+    - openspec/changes/2026-10-10-audit-signalr-revocation/specs/hub-clients-force-disconnect/spec.md
+  tasks: openspec/changes/2026-10-10-audit-signalr-revocation/tasks.md
+  verify_report: openspec/changes/2026-10-10-audit-signalr-revocation/verify-report.md
+decisions:
+  push: ForceDisconnect sin payload a grupos user:{id} de ambos hubs; IHubContexts opcionales; fail-soft
+  caminos: 6 (ChangePassword, ResetTemporaryPassword [ampliación del padre, misma clase], UpdateUser-cred, SoftDelete, Reactivate, HardDelete) + Logout vía RevokeUserStampAsync
+  filtro: StampValidationHubFilter global (connect+invoke, forceImmediate, Abort+HubException con mensajes exactos del middleware)
+  clientes: WPF stop+evento una vez (seams internal); Web stop+release+pos_unauthorized existente; connectionFactory inyectable
+  f2: binding WPF sin test runtime (limitación divulgada; G1)
+  rdd: off (clone-local + global)
+  branch: V0.15
+  anexo: "8.157"
+next: push/pr/merge (decisión del mantenedor) + 8.158 (SRE-03 + CLEAN-03) cuando lo autorice

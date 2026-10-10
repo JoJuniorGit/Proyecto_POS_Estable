@@ -64,7 +64,7 @@ function createFakeConnection() {
 
 function buildClient(options = {}) {
   const connection = options.connection ?? createFakeConnection();
-  const calls = { factory: [], posts: [], gets: [] };
+  const calls = { factory: [], posts: [], gets: [], warnings: [] };
   const client = createAuthorizationHubClient({
     connectionFactory: (spec) => {
       calls.factory.push(spec);
@@ -79,10 +79,12 @@ function buildClient(options = {}) {
       return options.getResponse ? options.getResponse(endpoint) : {};
     },
     getBaseUrlFn: () => 'http://test.local',
-    logger: { warn: () => {} },
+    logger: options.logger ?? { warn: (message) => calls.warnings.push(message) },
   });
   return { client, connection, calls };
 }
+
+const flushMicrotasks = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
 describe('authorizationHub payload builder', () => {
   it('1. maps only the hub request contract fields', () => {
@@ -391,5 +393,44 @@ describe('authorizationHub event wiring', () => {
       resolved: 'AuthorizationResolved',
       expired: 'AuthorizationExpired',
     });
+  });
+});
+
+describe('authorizationHub ForceDisconnect', () => {
+  it('16. stops the hub once and notifies with the existing session-expired event', async () => {
+    const { client, connection, calls } = buildClient();
+    const dispatched = [];
+    globalThis.window = { dispatchEvent: (event) => dispatched.push(event) };
+    try {
+      await client.connect();
+      await client.connect();
+      assert.strictEqual(connection.handlerCount('ForceDisconnect'), 1, 're-connect must not duplicate the internal handler');
+
+      connection.emit('ForceDisconnect');
+      await flushMicrotasks();
+
+      assert.strictEqual(connection.stops, 1);
+      assert.strictEqual(calls.warnings.length, 1);
+      assert.match(calls.warnings[0], /^\[AuthorizationHub\] Sesión revocada por el servidor/);
+      assert.strictEqual(dispatched.length, 1);
+      assert.strictEqual(dispatched[0].type, 'pos_unauthorized');
+      assert.strictEqual(client.isConnected(), false);
+    } finally {
+      delete globalThis.window;
+    }
+  });
+
+  it('17. a later connect rebuilds the socket instead of returning the stopped connection', async () => {
+    const { client, connection, calls } = buildClient();
+
+    await client.connect();
+    connection.emit('ForceDisconnect');
+    await flushMicrotasks();
+    assert.strictEqual(connection.stops, 1);
+
+    await client.connect();
+
+    assert.strictEqual(calls.factory.length, 2, 'the stopped connection must not be reused');
+    assert.strictEqual(connection.starts, 2);
   });
 });

@@ -7,6 +7,10 @@ using Core.Helpers;
 using Core.Logging;
 using Microsoft.AspNetCore.SignalR.Client;
 
+// 8.157 (SEC-07): exposicion minima de los seams internos de ForceDisconnect al ensamblado de
+// pruebas (mismo patron del ANEXO 8.75 en SecurityStampValidator, Backend.API).
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("CommandCenter.Tests")]
+
 namespace Desktop.Client.Services;
 
 /// <summary>
@@ -23,6 +27,9 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
     public const string ResolvedEvent = "AuthorizationResolved";
     public const string ExpiredEvent = "AuthorizationExpired";
 
+    /// <summary>8.157 (SEC-07): push de revocacion de sesion; el evento llega sin payload (T1).</summary>
+    public const string ForceDisconnectEvent = "ForceDisconnect";
+
     private const int SignalRMaxAttempts = 5;
     private const int SignalRRetryDelayMs = 5000;
 
@@ -32,6 +39,7 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
     private int _isDisposed;
     private int _signalRStartInProgress;
     private int _hasConnectedBefore;
+    private int _forceDisconnectRaised;
 
     public AuthorizationHubService(HttpClient httpClient, UserSession? userSession = null, bool enableRealtime = true)
     {
@@ -82,6 +90,14 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
             _hubConnection.On<AuthorizationRequestedPayload>(RequestedEvent, payload => RaiseEvent(AuthorizationRequested, payload));
             _hubConnection.On<AuthorizationResolvedPayload>(ResolvedEvent, payload => RaiseEvent(AuthorizationResolved, payload));
             _hubConnection.On<AuthorizationExpiredPayload>(ExpiredEvent, payload => RaiseEvent(AuthorizationExpired, payload));
+
+            // 8.157 (SEC-07): push de revocacion; el stop explicito corta el auto-reconnect y
+            // ForceDisconnected notifica una unica vez a la UI.
+            _hubConnection.On(ForceDisconnectEvent, () =>
+            {
+                ClientStateLogger.LogWarning("[SIGNALR] Sesión revocada por el servidor; cerrando hub de autorizaciones.", nameof(AuthorizationHubService));
+                StopAfterForceDisconnectAsync().SafeFireAndForget("AuthorizationHubService.ForceDisconnect");
+            });
         }
 
         if (_userSession != null)
@@ -96,6 +112,9 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
     public event EventHandler<AuthorizationResolvedPayload>? AuthorizationResolved;
     public event EventHandler<AuthorizationExpiredPayload>? AuthorizationExpired;
     public event EventHandler? Reconnected;
+
+    /// <summary>8.157 (SEC-07): el servidor revoco la sesion; el socket quedo detenido y la UI debe cerrar sesion.</summary>
+    public event EventHandler? ForceDisconnected;
 
     /// <summary>8.150 (T9): misma politica TOFU que ExchangeRateService para el token del hub.</summary>
     public static Func<Task<string?>> CreateAccessTokenProvider(Uri hubUri, UserSession? userSession)
@@ -377,6 +396,71 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
         catch (Exception ex)
         {
             ClientStateLogger.LogWarning($"[SIGNALR] Un suscriptor de Reconnected fallo: {ex.Message}", nameof(AuthorizationHubService));
+        }
+    }
+
+    /// <summary>
+    /// 8.157 (SEC-07): reaccion al push de revocacion. Detiene el socket si sigue vivo (StopAsync
+    /// corta el auto-reconnect: el hub no se reabre solo) y eleva ForceDisconnected una vez.
+    /// Expuesto internal para pruebas (InternalsVisibleTo).
+    /// </summary>
+    internal async Task StopAfterForceDisconnectAsync(CancellationToken cancellationToken = default)
+    {
+        if (_hubConnection is { } connection)
+        {
+            var stopError = await TryStopHubForRevocationAsync(connection.State, () => connection.StopAsync(cancellationToken)).ConfigureAwait(false);
+            if (stopError is not null)
+            {
+                ClientStateLogger.LogWarning($"[SIGNALR] Fallo al detener el hub de autorizaciones tras la revocación: {stopError.Message}", nameof(AuthorizationHubService));
+            }
+        }
+
+        RaiseForceDisconnected();
+    }
+
+    /// <summary>
+    /// 8.157 (SEC-07): detiene el hub si no esta ya desconectado; devuelve la excepcion de stop o
+    /// null (fail-soft: un stop fallido no impide la notificacion). Expuesto internal para pruebas.
+    /// </summary>
+    internal static async Task<Exception?> TryStopHubForRevocationAsync(HubConnectionState state, Func<Task> stopAsync)
+    {
+        ArgumentNullException.ThrowIfNull(stopAsync);
+
+        if (state == HubConnectionState.Disconnected)
+        {
+            return null;
+        }
+
+        try
+        {
+            await stopAsync().ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    private void RaiseForceDisconnected()
+    {
+        if (Volatile.Read(ref _isDisposed) != 0)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _forceDisconnectRaised, 1, 0) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            ForceDisconnected?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            ClientStateLogger.LogWarning($"[SIGNALR] Un suscriptor de ForceDisconnected fallo: {ex.Message}", nameof(AuthorizationHubService));
         }
     }
 

@@ -94,7 +94,11 @@ public class UsersController : ControllerBase
             var (user, credentialsOrRoleChanged) = await _userService.UpdateUserAsync(id, dto, GetCurrentUserId(), cancellationToken);
             if (credentialsOrRoleChanged)
             {
-                _stampValidator?.InvalidateUserStamp(user.Id);
+                // 8.157 (SEC-07): invalida caché del sello + expulsa los sockets activos del usuario.
+                if (_stampValidator != null)
+                {
+                    await _stampValidator.InvalidateUserSessionsAsync(user.Id);
+                }
                 AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Cedula}, Reason=UserUpdated");
             }
             return Ok(user);
@@ -122,7 +126,11 @@ public class UsersController : ControllerBase
         try
         {
             await _userService.SoftDeleteUserAsync(id, GetCurrentUserId(), cancellationToken);
-            _stampValidator?.InvalidateUserStamp(id);
+            // 8.157 (SEC-07): invalida caché del sello + expulsa los sockets activos del usuario.
+            if (_stampValidator != null)
+            {
+                await _stampValidator.InvalidateUserSessionsAsync(id);
+            }
             AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Reason=UserDeactivated");
             return Ok(new { Message = "Usuario desactivado exitosamente." });
         }
@@ -145,7 +153,11 @@ public class UsersController : ControllerBase
         try
         {
             await _userService.ReactivateUserAsync(id, cancellationToken);
-            _stampValidator?.InvalidateUserStamp(id);
+            // 8.157 (SEC-07): invalida caché del sello + expulsa los sockets activos del usuario.
+            if (_stampValidator != null)
+            {
+                await _stampValidator.InvalidateUserSessionsAsync(id);
+            }
             AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Reason=UserReactivated");
             return Ok(new { Message = "Usuario reactivado exitosamente." });
         }
@@ -164,7 +176,11 @@ public class UsersController : ControllerBase
         try
         {
             await _userService.HardDeleteUserAsync(id, GetCurrentUserId(), cancellationToken);
-            _stampValidator?.InvalidateUserStamp(id);
+            // 8.157 (SEC-07): invalida caché del sello + expulsa los sockets activos del usuario.
+            if (_stampValidator != null)
+            {
+                await _stampValidator.InvalidateUserSessionsAsync(id);
+            }
             AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Reason=UserPermanentlyDeleted");
             return Ok(new { Message = "Usuario eliminado permanentemente." });
         }
@@ -210,7 +226,9 @@ public class UsersController : ControllerBase
         try
         {
             var res = await _userService.ResetTemporaryPasswordAsync(id, GetCurrentUserId(), cancellationToken);
-            _stampValidator?.InvalidateUserStamp(id);
+            // 8.157 (SEC-07): el reset regenera el sello (misma clase que ChangePassword); además de
+            // invalidar la caché, cierra las sesiones SignalR activas del usuario.
+            if (_stampValidator != null) await _stampValidator.InvalidateUserSessionsAsync(id);
             var adminId = GetCurrentUserId();
             AppLogger.LogSecurityAudit($"[TEMP_PASSWORD_RESET] TargetUserId={id}, ResetBy={adminId}, Timestamp={DateTime.UtcNow:O}");
             return Ok(res);

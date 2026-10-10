@@ -186,7 +186,8 @@ public class Phase3AuthenticationAndPolicyTests
         Assert.False(updatedUser.MustChangePassword);
         Assert.NotEqual(initialStamp, updatedUser.SecurityStamp);
         Assert.True(PasswordHasher.VerifyPassword("NewStrong#Password2026", updatedUser.PasswordHash));
-        stampValidatorMock.Verify(s => s.InvalidateUserStamp(11), Times.Once);
+        // 8.157 (SEC-07): el contrato pasó de invalidar solo la caché a invalidar + desconectar sesiones.
+        stampValidatorMock.Verify(s => s.InvalidateUserSessionsAsync(11), Times.Once);
     }
 
     [Fact]
@@ -259,7 +260,8 @@ public class Phase3AuthenticationAndPolicyTests
         Assert.True(updatedUser.MustChangePassword);
         Assert.NotEqual(initialStamp, updatedUser.SecurityStamp);
         Assert.True(PasswordHasher.VerifyPassword(response.TemporaryPassword, updatedUser.PasswordHash));
-        stampValidatorMock.Verify(s => s.InvalidateUserStamp(25), Times.Once);
+        // 8.157 (SEC-07): mismo contrato nuevo que ChangePassword (reset regenera sello → desconecta).
+        stampValidatorMock.Verify(s => s.InvalidateUserSessionsAsync(25), Times.Once);
     }
 
     [Fact]

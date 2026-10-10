@@ -6,6 +6,8 @@ using Inventory.Module.Services.Ocr;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.SignalR;
+using Backend.API.Hubs;
 using Backend.API.Services;
 
 namespace Backend.API.Startup;
@@ -109,7 +111,9 @@ public static class ServiceCollectionExtensions
 
         builder.Services.AddHttpClient<BcvScraperService>();
         builder.Services.AddHostedService<Backend.API.Services.CacheMetricsLoggerService>();
-        builder.Services.AddSignalR();
+        // 8.157 (SEC-07): filtro global de hubs que revalida el sello de seguridad por conexión e
+        // invocación (rechaza reconexiones automáticas con tokens revocados).
+        builder.Services.AddSignalR(options => options.AddFilter<StampValidationHubFilter>());
 
         builder.Services.Configure<Core.Configuration.SystemSettingsOptions>(builder.Configuration.GetSection(Core.Configuration.SystemSettingsOptions.SectionName));
 

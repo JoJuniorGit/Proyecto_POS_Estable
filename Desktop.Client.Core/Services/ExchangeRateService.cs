@@ -31,12 +31,19 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
     private DateTime? _lastUpdated;
     private int _isDisposed;
     private int _signalRStartInProgress;
+    private int _forceDisconnectRaised;
 
     private const int SignalRMaxAttempts = 5;
     private const int SignalRRetryDelayMs = 5000;
 
+    /// <summary>8.157 (SEC-07): push de revocacion de sesion; el evento llega sin payload (T1).</summary>
+    public const string ForceDisconnectEvent = "ForceDisconnect";
+
     public DateTime? LastUpdated => _lastUpdated;
     public bool IsRateOutdated => _lastUpdated == null || (DateTime.UtcNow - _lastUpdated.Value.ToUniversalTime()) > TimeSpan.FromHours(24);
+
+    /// <summary>8.157 (SEC-07): el servidor revoco la sesion; el socket quedo detenido y la UI debe cerrar sesion.</summary>
+    public event EventHandler? ForceDisconnected;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -125,6 +132,14 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
                     CurrencyDisplay.SetFromSetting(format);
                     WeakReferenceMessenger.Default.Send(new CurrencyFormatChangedMessage());
                 });
+            });
+
+            // 8.157 (SEC-07): push de revocacion; el stop explicito corta el auto-reconnect y
+            // ForceDisconnected notifica una unica vez a la UI.
+            _hubConnection.On(ForceDisconnectEvent, () =>
+            {
+                ClientStateLogger.LogWarning("[SIGNALR] Sesión revocada por el servidor; cerrando conexión de tasa en tiempo real.", nameof(ExchangeRateService));
+                StopAfterForceDisconnectAsync().SafeFireAndForget("ExchangeRateService.ForceDisconnect");
             });
         }
 
@@ -300,6 +315,71 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         finally
         {
             Interlocked.Exchange(ref _signalRStartInProgress, 0);
+        }
+    }
+
+    /// <summary>
+    /// 8.157 (SEC-07): reaccion al push de revocacion. Detiene la conexion si sigue viva (StopAsync
+    /// corta el auto-reconnect: el socket no revive solo) y eleva ForceDisconnected una vez.
+    /// Expuesto internal para pruebas (InternalsVisibleTo).
+    /// </summary>
+    internal async Task StopAfterForceDisconnectAsync(CancellationToken cancellationToken = default)
+    {
+        if (_hubConnection is { } connection)
+        {
+            var stopError = await TryStopHubForRevocationAsync(connection.State, () => connection.StopAsync(cancellationToken)).ConfigureAwait(false);
+            if (stopError is not null)
+            {
+                ClientStateLogger.LogWarning($"[SIGNALR] Fallo al detener la conexión de tasa en tiempo real tras la revocación: {stopError.Message}", nameof(ExchangeRateService));
+            }
+        }
+
+        RaiseForceDisconnected();
+    }
+
+    /// <summary>
+    /// 8.157 (SEC-07): detiene la conexion si no esta ya desconectada; devuelve la excepcion de stop
+    /// o null (fail-soft: un stop fallido no impide la notificacion). Expuesto internal para pruebas.
+    /// </summary>
+    internal static async Task<Exception?> TryStopHubForRevocationAsync(HubConnectionState state, Func<Task> stopAsync)
+    {
+        ArgumentNullException.ThrowIfNull(stopAsync);
+
+        if (state == HubConnectionState.Disconnected)
+        {
+            return null;
+        }
+
+        try
+        {
+            await stopAsync().ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    private void RaiseForceDisconnected()
+    {
+        if (Volatile.Read(ref _isDisposed) != 0)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _forceDisconnectRaised, 1, 0) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            ForceDisconnected?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            ClientStateLogger.LogWarning($"[SIGNALR] Un suscriptor de ForceDisconnected fallo: {ex.Message}", nameof(ExchangeRateService));
         }
     }
 

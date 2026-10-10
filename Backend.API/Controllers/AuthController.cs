@@ -141,7 +141,11 @@ public class AuthController : ControllerBase
             return this.ApiBadRequest(result.PolicyError);
         }
 
-        _stampValidator?.InvalidateUserStamp(result.UserId);
+        // 8.157 (SEC-07): además de invalidar la caché del sello, expulsa los sockets activos.
+        if (_stampValidator != null)
+        {
+            await _stampValidator.InvalidateUserSessionsAsync(result.UserId);
+        }
 
         if (Response?.Cookies != null)
         {
