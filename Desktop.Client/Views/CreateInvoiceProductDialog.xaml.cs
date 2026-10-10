@@ -8,20 +8,30 @@ namespace Desktop.Client.Views
     {
         public CreateInvoiceProductDialogViewModel ViewModel { get; }
 
+        private Action<bool>? _closeHandler;
+
         public CreateInvoiceProductDialog(CreateInvoiceProductDialogViewModel viewModel)
         {
             InitializeComponent();
             ViewModel = viewModel;
             DataContext = ViewModel;
 
-            ViewModel.RequestClose += (bool result) =>
+            // 8.156 (PERF-04): delegado almacenado y desuscrito en OnClosed (sin lambda viva).
+            _closeHandler = result =>
             {
                 DialogResult = result;
             };
+            ViewModel.RequestClose += _closeHandler;
         }
 
         protected override void OnClosed(EventArgs e)
         {
+            if (_closeHandler != null)
+            {
+                ViewModel.RequestClose -= _closeHandler;
+                _closeHandler = null;
+            }
+
             ViewModel?.Dispose();
             base.OnClosed(e);
         }

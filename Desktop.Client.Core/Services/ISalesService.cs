@@ -104,6 +104,22 @@ public class SalePaymentDto
     }
 }
 
+/// <summary>8.156 (CLEAN-05): respuesta canónica de /api/sales/{id}/checkout-preview — redondeo
+/// fiscal, saldo, vuelto y estado de pago total calculados por el servidor (espejo del web).</summary>
+public class CheckoutPreviewClientDto
+{
+    public decimal TotalUSD { get; set; }
+    public decimal TotalBsS { get; set; }
+    public decimal TotalPaidUSD { get; set; }
+    public decimal TotalPaidBsS { get; set; }
+    public decimal RemainingBalanceUSD { get; set; }
+    public decimal RemainingBalanceBsS { get; set; }
+    public decimal RoundingAdjustment { get; set; }
+    public decimal ChangeDueUSD { get; set; }
+    public decimal ChangeDueBsS { get; set; }
+    public bool IsFullyPaid { get; set; }
+}
+
 public class SaleHistoryDto
 {
     public int Id { get; set; }
@@ -154,6 +170,7 @@ public interface ISalesService
     Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate);
     Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType);
     Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<SalePaymentDto> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<CheckoutPreviewClientDto> GetCheckoutPreviewAsync(int saleId, decimal exchangeRate, IEnumerable<SalePaymentDto> payments);
     Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate = null, System.DateTime? endDate = null, string? search = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleHistoryDto> GetSaleHistoryDetailAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> HoldSaleAsync(int saleId, HoldSaleRequestDto request);

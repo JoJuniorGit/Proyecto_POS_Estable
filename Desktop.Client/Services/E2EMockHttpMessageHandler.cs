@@ -407,6 +407,11 @@ public class E2EMockHttpMessageHandler : HttpMessageHandler
 
                 return Json(Array.Empty<object>());
 
+            // 8.156 (CLEAN-05/W1): el gate del checkout exige /checkout-preview fresco; antes este
+            // path caía al default {} y el botón de cobro quedaba deshabilitado en modo --e2e.
+            case "checkout-preview":
+                return Json(BuildCheckoutPreview(body));
+
             default:
                 return Json(new { });
         }
@@ -546,6 +551,66 @@ public class E2EMockHttpMessageHandler : HttpMessageHandler
                 payments = Array.Empty<object>()
             };
         }
+    }
+
+    /// <summary>
+    /// 8.156 (CLEAN-05/W1): preview canónico del mock — mismo contrato del servidor real
+    /// (redondeo, saldo, vuelto, isFullyPaid) derivado de los pagos del request y de la venta mock.
+    /// </summary>
+    private object BuildCheckoutPreview(string body)
+    {
+        var request = DeserializePreviewRequest(body);
+        lock (_gate)
+        {
+            decimal rate = _sale.AppliedRate > 0m ? _sale.AppliedRate : 1m;
+            decimal totalUsd = Round2(_sale.Items.Sum(i => i.Quantity * i.UnitPrice));
+            decimal totalBsS = Round2(_sale.Items.Sum(i => i.Quantity * Ceil2(i.UnitPrice * rate)));
+            decimal paidUsd = Round2(request.Payments.Sum(p => p.Amount));
+            decimal paidBsS = Round2(request.Payments.Sum(p => p.AmountBsS > 0m ? p.AmountBsS : p.AmountLocal));
+            decimal remainingUsd = Math.Max(0m, totalUsd - paidUsd);
+            decimal remainingBsS = Math.Max(0m, totalBsS - paidBsS);
+            bool isFullyPaid = remainingUsd <= 0.05m;
+            decimal roundingAdjustment = remainingUsd <= 0.01m ? Round2(paidBsS - totalBsS) : 0m;
+
+            return new
+            {
+                totalUSD = totalUsd,
+                totalBsS,
+                totalPaidUSD = paidUsd,
+                totalPaidBsS = paidBsS,
+                remainingBalanceUSD = remainingUsd,
+                remainingBalanceBsS = remainingBsS,
+                roundingAdjustment,
+                changeDueUSD = 0m,
+                changeDueBsS = 0m,
+                isFullyPaid
+            };
+        }
+    }
+
+    private static MockCheckoutPreviewRequest DeserializePreviewRequest(string body)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<MockCheckoutPreviewRequest>(body, JsonOptions)
+                ?? new MockCheckoutPreviewRequest();
+        }
+        catch
+        {
+            return new MockCheckoutPreviewRequest();
+        }
+    }
+
+    private sealed class MockCheckoutPreviewRequest
+    {
+        public List<MockCheckoutPreviewPayment> Payments { get; set; } = new();
+    }
+
+    private sealed class MockCheckoutPreviewPayment
+    {
+        public decimal Amount { get; set; }
+        public decimal AmountBsS { get; set; }
+        public decimal AmountLocal { get; set; }
     }
 
     // ── Caja ─────────────────────────────────────────────────────────────────────────────────

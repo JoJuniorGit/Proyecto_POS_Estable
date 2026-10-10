@@ -175,6 +175,7 @@
                 <!-- Mercancía en Custodia (Pendiente por Retirar) Option -->
                 <CheckBox Content="Mercancía en Custodia (Pendiente por Retirar)"
                           IsChecked="{Binding IsPendingPickup}"
+                          IsEnabled="{Binding IsCustodyAllowed}"
                           Margin="0,10,0,0"
                           FontWeight="Bold"
                           Foreground="#F59E0B"
