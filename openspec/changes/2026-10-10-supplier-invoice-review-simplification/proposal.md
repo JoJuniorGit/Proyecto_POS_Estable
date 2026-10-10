@@ -33,6 +33,6 @@ Fuera de alcance: persistencia del número de factura; cambios en la ruta tabula
 
 ## Entrega y riesgos
 
-- Estrategia: `ask-on-risk` → `stacked-to-main` (cacheada). Forecast ~350–550 líneas. Unidades: backend (T1) / desktop (T2) / cierre (T3).
+- Estrategia: `ask-on-risk` → `stacked-to-main` (cacheada). Forecast ~350–550 líneas. Unidad: implementación atómica (contrato DTO compartido backend⇄Desktop; el build debe quedar verde por commit) + cierre.
 - Riesgo principal: contrato `OcrExtractionResultDto` (mitigado: Desktop es el único consumidor y co-despliega; tests de endpoint/cliente se actualizan en las mismas unidades).
 - RDD: off (clone-local) → verificación por focused + suite completa + cobertura.

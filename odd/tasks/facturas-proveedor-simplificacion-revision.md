@@ -17,9 +17,8 @@ Fuente: pedido del usuario, verbatim (L1). Supuestos marcados.
 | ID | Specs | Route | Descripción | Estado / commit |
 |----|-------|-------|-------------|-----------------|
 | Plan | S1-S5 | inline | Tracker + artefactos SDD + commit de planificación | hecho — commit de planificación (hash se registra al cerrar T1) |
-| T1 | S2, S4 | delegated (writer) | Backend: `DetectInvoiceNumber` best-effort + retiro de previews (DTO/servicio/comentario de frontera) + tests | pendiente |
-| T2 | S1, S2, S3 | delegated (writer) | Desktop: panel "N.º de factura", retiro de previews/zoom/converter, columnas de margen fuera + tests | pendiente |
-| T3 | S5 | inline (+ acciones delegadas) | Verificación final (suite completa + cobertura), verify-report, ANEXO 8.160, cierre | pendiente |
+| T1 | S1-S4 | delegated (writer) | Implementación única: backend (detección número + retiro de previews) + Desktop (panel "N.º de factura", retiro preview/zoom/converter, columnas de margen fuera) + tests | pendiente |
+| T2 | S5 | inline (+ acciones delegadas) | Verificación final (suite completa + cobertura), verify-report, ANEXO 8.160, cierre | pendiente |
 
 Estrategia de entrega: `ask-on-risk` → cadena stacked-to-main cacheada (política vigente de la cadena V0.15). Forecast ~350–550 líneas autoradas.
 
@@ -35,3 +34,4 @@ Estrategia de entrega: `ask-on-risk` → cadena stacked-to-main cacheada (polít
   - S3 con alcance Desktop: solo se retiran las columnas; el prefill del margen (producto) y su uso en confirm/apply quedan intactos → sin migraciones.
   - La ruta tabular (xlsx/csv/xml) no tiene número de factura en el archivo → sin panel para origen no-OCR; la ruta no cambia.
   - La spec 8.147-S5/S6 (revisión lado a lado con imagen) queda parcialmente reemplazada por decisión del mantenedor: el panel de número la sustituye.
+  - Partición atómica: `OcrExtractionResultDto` es contrato compartido backend⇄Desktop; el retiro de `PreviewPagesBase64` rompe la compilación de ambos lados → UNA sola unidad de implementación (build verde por commit; sin slices con build rojo).
