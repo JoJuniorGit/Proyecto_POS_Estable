@@ -46,7 +46,40 @@ public interface IDialogService
 
     /// <summary>Cierra el dialogo modal actual devolviendo un resultado (sustituye DialogHost.CloseDialogCommand).</summary>
     void CloseCurrentModal(object? result = null);
+
+    /// <summary>
+    /// 8.150 (T10, design D7): flujo de espera bloqueante del cajero para una accion protegida. La
+    /// implementacion WPF construye el <c>AuthorizationWaitViewModel</c>, dispara StartCommand
+    /// antes de ShowDialog, reintenta la operacion con el token aprobado y mapea la fase final a
+    /// un resultado. La implementacion por defecto (stubs headless) equivale a cancelado.
+    /// </summary>
+    Task<AuthorizationWaitResult?> ShowAuthorizationWaitAsync(
+        AuthorizationRequestContext context,
+        Func<string, Task> retry) => Task.FromResult<AuthorizationWaitResult?>(null);
+
+    /// <summary>
+    /// 8.150 (T10, design D7): modal interrumpente de notificaciones admin (aprobar/rechazar,
+    /// motivo opcional, badge de cola y aviso de carrera/expiracion). No dispone el ViewModel:
+    /// su ciclo de vida pertenece a la sesion.
+    /// </summary>
+    Task ShowAuthorizationNotificationAsync(ViewModels.AuthorizationNotificationViewModel viewModel) => Task.CompletedTask;
 }
+
+/// <summary>8.150 (T10): desenlace del dialogo de espera del cajero.</summary>
+public enum AuthorizationWaitOutcome
+{
+    Granted,
+    Rejected,
+    Expired,
+    Cancelled,
+    Failed
+}
+
+/// <summary>8.150 (T10): resultado del flujo de espera para el consumidor del POS.</summary>
+public sealed record AuthorizationWaitResult(
+    AuthorizationWaitOutcome Outcome,
+    string? Message = null,
+    string? RejectionReason = null);
 
 public class PartialDeliveryDialogResult
 {

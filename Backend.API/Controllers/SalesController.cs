@@ -16,20 +16,36 @@ namespace Backend.API.Controllers;
 [Route("api/[controller]")]
 public partial class SalesController : ControllerBase
 {
+    private const string PriceOverrideForbiddenMessage = "Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor.";
+    private const string AuthorizationTokenHeader = "X-Authorization-Token";
+
+    // 8.150 (T5, design D5): extensiones exactas del contrato 403 del gate de precio manual.
+    private static readonly System.Collections.Generic.IReadOnlyDictionary<string, object?> ManualPriceOverrideExtensions =
+        new System.Collections.Generic.Dictionary<string, object?>
+        {
+            ["authorizationRequired"] = true,
+            ["authorizationAction"] = "ManualPriceOverride"
+        };
+
     private readonly ISalesService _salesService;
     private readonly Core.Interfaces.ICurrentUserService _currentUserService;
     private readonly Core.Interfaces.IIdempotencyService? _idempotencyService;
+    // 8.150 (T5, design D5): consumo del token efimero para acciones protegidas. Opcional para
+    // preservar la construccion directa historica de tests; si falta, el gate falla cerrado.
+    private readonly IAuthorizationCoordinator? _authorizationCoordinator;
     // 8.149 (SRE-02): resolutor compartido extraído del método privado histórico.
     private readonly IdempotencyRequestResolver _idempotencyResolver;
 
     public SalesController(
         ISalesService salesService, 
         Core.Interfaces.ICurrentUserService currentUserService,
-        Core.Interfaces.IIdempotencyService? idempotencyService = null)
+        Core.Interfaces.IIdempotencyService? idempotencyService = null,
+        IAuthorizationCoordinator? authorizationCoordinator = null)
     {
         _salesService = salesService;
         _currentUserService = currentUserService;
         _idempotencyService = idempotencyService;
+        _authorizationCoordinator = authorizationCoordinator;
         _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
@@ -133,9 +149,53 @@ public partial class SalesController : ControllerBase
         }
 
         bool isAuthorized = User.IsInRole("Admin") || User.IsInRole("Manager");
-        if ((request.CustomUnitPriceUsd.HasValue || request.CustomUnitPriceLocal.HasValue) && !isAuthorized)
+        bool hasCustomPrice = request.CustomUnitPriceUsd.HasValue || request.CustomUnitPriceLocal.HasValue;
+
+        // 8.150 (T5, design D5): el precio manual de un usuario no elevado exige un token
+        // efimero single-use. El gate corre ANTES de la idempotencia para todos los rechazos:
+        // sin token, token invalido/reusado/expirado o contexto distinto no hay mutacion ni
+        // efecto de idempotencia. Un token ausente y sin precio custom se ignora.
+        if (hasCustomPrice && !isAuthorized)
         {
-            return this.ApiForbidden("Modificación de precios no autorizada. Se requiere rol de Administrador o Supervisor.");
+            string? authorizationToken = Request.Headers.TryGetValue(AuthorizationTokenHeader, out var headerValues)
+                ? headerValues.ToString()
+                : null;
+
+            if (string.IsNullOrWhiteSpace(authorizationToken) || _authorizationCoordinator is null)
+            {
+                return this.ApiForbidden(PriceOverrideForbiddenMessage, ManualPriceOverrideExtensions);
+            }
+
+            var operation = new ManualPriceOverrideContext
+            {
+                ProductId = request.ProductId,
+                Quantity = request.Quantity,
+                CustomUnitPriceUsd = request.CustomUnitPriceUsd,
+                CustomUnitPriceLocal = request.CustomUnitPriceLocal
+            };
+
+            var consume = await _authorizationCoordinator.ConsumeAsync(authorizationToken, id, GetActorUserId(), operation, cancellationToken);
+
+            if (consume.Status == AuthorizationConsumeStatus.Consumed)
+            {
+                isAuthorized = true;
+            }
+            else if (consume.Status == AuthorizationConsumeStatus.AlreadyConsumed)
+            {
+                // D5: con el token ya consumido, un reintento con la misma clave debe replicar
+                // la respuesta almacenada (HIT) en vez de fallar; un MISS devuelve el 403 sin
+                // ejecutar. La idempotencia se resuelve una sola vez por peticion.
+                string replayPath = $"/api/sales/{id}/items";
+                string replayBodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+                var replay = await _idempotencyResolver.ResolveAsync(this, replayPath, replayBodyJson);
+                if (replay.ShouldStop) return replay.BlockingResult!;
+
+                return this.ApiForbidden(PriceOverrideForbiddenMessage, ManualPriceOverrideExtensions);
+            }
+            else
+            {
+                return this.ApiForbidden(PriceOverrideForbiddenMessage, ManualPriceOverrideExtensions);
+            }
         }
 
         // 8.149 (SRE-02): clave obligatoria + replay/422 antes de tocar la venta.

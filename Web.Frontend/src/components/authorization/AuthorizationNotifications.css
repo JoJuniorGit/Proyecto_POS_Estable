@@ -1,0 +1,240 @@
+/* AuthorizationNotifications.css - 8.150 T8: notificaciones admin (tokens POS, claro/oscuro) */
+
+.an-overlay {
+  z-index: 1400;
+}
+
+.an-container {
+  max-width: 480px;
+  width: 92%;
+  margin: auto;
+  padding: 1.75rem 1.5rem;
+  text-align: center;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
+}
+
+.an-icon-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.an-icon-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--warning-light);
+  color: var(--warning);
+}
+
+.an-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+  color: var(--text-primary);
+}
+
+.an-queue-badge {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.an-message {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.45;
+  margin: 0 0 1rem;
+  color: var(--text-primary);
+}
+
+.an-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: left;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.an-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+
+.an-meta-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+}
+
+.an-meta-value {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+}
+
+.an-countdown {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.an-error {
+  background-color: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.9rem;
+  text-align: left;
+  margin-bottom: 1rem;
+}
+
+.an-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: left;
+  margin-bottom: 1.25rem;
+}
+
+.an-field-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.an-input {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.an-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.an-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.an-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  color: var(--text-on-accent);
+}
+
+.an-btn-approve {
+  background-color: var(--success);
+}
+
+.an-btn-approve:hover:not(:disabled) {
+  background-color: var(--success);
+  filter: brightness(0.95);
+}
+
+.an-btn-reject {
+  background-color: var(--danger);
+}
+
+.an-btn-reject:hover:not(:disabled) {
+  background-color: var(--danger);
+  filter: brightness(0.95);
+}
+
+.an-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.an-spinner {
+  width: 32px;
+  height: 32px;
+  margin: 0.5rem auto 0;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary-color);
+  animation: anSpin 0.9s linear infinite;
+}
+
+.an-notice {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1500;
+  max-width: 360px;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--warning);
+  background-color: var(--warning-light);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
+}
+
+.an-notice-message {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.an-notice-dismiss {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.an-notice-dismiss:hover {
+  color: var(--text-primary);
+}
+
+@keyframes anSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

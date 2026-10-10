@@ -1,0 +1,169 @@
+<Window x:Class="Desktop.Client.Views.AuthorizationWaitDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+        xmlns:converters="clr-namespace:Desktop.Client.Converters"
+        mc:Ignorable="d"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Auto"
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        Title="Autorización requerida" Height="480" Width="540"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:StringToVisibilityConverter x:Key="StringToVis"/>
+    </Window.Resources>
+
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Estado + countdown -->
+        <StackPanel Grid.Row="0">
+            <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Kind="ShieldAlert" Width="28" Height="28" VerticalAlignment="Center"
+                                         Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                <TextBlock Text="{Binding StatusMessage}" Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
+                           FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0"
+                        Visibility="{Binding IsWaiting, Converter={StaticResource BoolToVis}}">
+                <materialDesign:PackIcon Kind="Timer" Width="18" Height="18" Foreground="#64748B" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding RemainingTimeDisplay}" FontWeight="Bold" FontSize="18" Margin="8,0,0,0"
+                           VerticalAlignment="Center" Foreground="#0F766E"/>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Contexto de la operacion -->
+        <Border Grid.Row="1" Background="{DynamicResource MaterialDesignCardBackground}"
+                BorderBrush="{DynamicResource PrimaryHueLightBrush}" BorderThickness="1" CornerRadius="6"
+                Padding="14,12" Margin="0,16,0,0">
+            <StackPanel>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Factura" Foreground="#64748B"/>
+                    <TextBlock Grid.Column="1" Text="{Binding SaleNumberDisplay}" FontWeight="SemiBold"/>
+                </Grid>
+                <Grid Margin="0,0,0,6" Visibility="{Binding ProductDisplay, Converter={StaticResource StringToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Producto" Foreground="#64748B"/>
+                    <TextBlock Grid.Column="1" Text="{Binding ProductDisplay}" FontWeight="SemiBold"/>
+                </Grid>
+                <Grid Margin="0,0,0,6" Visibility="{Binding CustomPriceUsdDisplay, Converter={StaticResource StringToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Precio USD" Foreground="#64748B"/>
+                    <TextBlock Grid.Column="1" Text="{Binding CustomPriceUsdDisplay}" FontWeight="SemiBold"/>
+                </Grid>
+                <Grid Visibility="{Binding CustomPriceLocalDisplay, Converter={StaticResource StringToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Precio Bs.S" Foreground="#64748B"/>
+                    <TextBlock Grid.Column="1" Text="{Binding CustomPriceLocalDisplay}" FontWeight="SemiBold"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Contenido por fase -->
+        <Grid Grid.Row="2" Margin="0,18,0,0">
+            <StackPanel Visibility="{Binding ShowWaitingPanel, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="La operación permanece bloqueada hasta la respuesta remota o la autorización local de un supervisor."
+                           TextWrapping="Wrap" Foreground="#475569"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+                    <Button Content="{x:Static vm:AuthorizationWaitViewModel.LocalAuthorizationMessage}"
+                            Command="{Binding OpenLocalAuthorizationCommand}"
+                            Style="{DynamicResource MaterialDesignOutlinedButton}" Margin="0,0,12,0" TabIndex="1"/>
+                    <Button Content="{x:Static vm:AuthorizationWaitViewModel.CancelMessage}"
+                            Command="{Binding CancelCommand}"
+                            Style="{DynamicResource MaterialDesignFlatButton}" TabIndex="2"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Visibility="{Binding ShowLocalFormPanel, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{x:Static vm:AuthorizationWaitViewModel.LocalAuthorizationMessage}"
+                           FontWeight="Bold" Margin="0,0,0,10"/>
+                <TextBox Text="{Binding LocalUsername, UpdateSourceTrigger=PropertyChanged}"
+                         materialDesign:HintAssist.Hint="{x:Static vm:AuthorizationWaitViewModel.UsernameLabel}"
+                         materialDesign:HintAssist.IsFloating="True"
+                         Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                         Margin="0,0,0,14" TabIndex="1"/>
+                <PasswordBox x:Name="LocalPasswordBox"
+                             materialDesign:HintAssist.Hint="{x:Static vm:AuthorizationWaitViewModel.PasswordLabel}"
+                             Style="{DynamicResource MaterialDesignOutlinedPasswordBox}"
+                             PasswordChanged="LocalPasswordBox_PasswordChanged" TabIndex="2"/>
+                <TextBlock Text="{Binding LocalError}" Foreground="#DC2626" TextWrapping="Wrap" Margin="2,8,0,0"
+                           Visibility="{Binding LocalError, Converter={StaticResource StringToVis}}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+                    <Button Content="{x:Static vm:AuthorizationWaitViewModel.AuthorizeMessage}"
+                            Command="{Binding SubmitLocalAuthorizationCommand}"
+                            Style="{DynamicResource MaterialDesignRaisedButton}" Margin="0,0,12,0" TabIndex="3"/>
+                    <Button Content="{x:Static vm:AuthorizationWaitViewModel.CancelMessage}"
+                            Command="{Binding CloseLocalFormCommand}"
+                            Style="{DynamicResource MaterialDesignFlatButton}" TabIndex="4"/>
+                </StackPanel>
+                <ProgressBar IsIndeterminate="True" Height="4" Margin="0,12,0,0"
+                             Visibility="{Binding IsSubmittingLocal, Converter={StaticResource BoolToVis}}"/>
+            </StackPanel>
+
+            <StackPanel Visibility="{Binding IsRejected, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding RejectionReason}" TextWrapping="Wrap" Foreground="#B91C1C"
+                           Visibility="{Binding RejectionReason, Converter={StaticResource StringToVis}}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+                    <Button Content="{x:Static vm:AuthorizationWaitViewModel.CancelMessage}"
+                            Command="{Binding CancelCommand}"
+                            Style="{DynamicResource MaterialDesignFlatButton}"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Visibility="{Binding IsExpired, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding RetryError}" TextWrapping="Wrap" Foreground="#DC2626"
+                           Visibility="{Binding RetryError, Converter={StaticResource StringToVis}}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+                    <Button Content="{x:Static vm:AuthorizationWaitViewModel.RetryMessage}"
+                            Command="{Binding RetryCommand}"
+                            Style="{DynamicResource MaterialDesignRaisedButton}" Margin="0,0,12,0"/>
+                    <Button Content="{x:Static vm:AuthorizationWaitViewModel.CancelMessage}"
+                            Command="{Binding CancelCommand}"
+                            Style="{DynamicResource MaterialDesignFlatButton}"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Visibility="{Binding ShowRetryExecutionPanel, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding RetryError}" TextWrapping="Wrap" Foreground="#DC2626"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+                    <Button Content="{x:Static vm:AuthorizationWaitViewModel.RetryMessage}"
+                            Command="{Binding RetryExecutionCommand}"
+                            Style="{DynamicResource MaterialDesignRaisedButton}" Margin="0,0,12,0"/>
+                    <Button Content="{x:Static vm:AuthorizationWaitViewModel.CancelMessage}"
+                            Command="{Binding CancelCommand}"
+                            Style="{DynamicResource MaterialDesignFlatButton}"/>
+                </StackPanel>
+            </StackPanel>
+
+            <ProgressBar IsIndeterminate="True" Height="4" VerticalAlignment="Top" Margin="0,12,0,0"
+                         Visibility="{Binding ShowExecutionProgress, Converter={StaticResource BoolToVis}}"/>
+        </Grid>
+    </Grid>
+</Window>

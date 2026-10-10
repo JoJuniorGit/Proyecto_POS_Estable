@@ -1,0 +1,191 @@
+/* AuthorizationWaitModal.css - 8.150 T7: modal bloqueante de espera (tokens POS, claro/oscuro) */
+
+.awm-overlay {
+  z-index: 1300;
+}
+
+.awm-container {
+  max-width: 460px;
+  width: 92%;
+  margin: auto;
+  padding: 1.75rem 1.5rem;
+  text-align: center;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-lg);
+}
+
+.awm-icon-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.awm-icon-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--warning-light);
+  color: var(--warning);
+}
+
+.awm-icon-circle.awm-icon-danger {
+  background-color: var(--danger-light);
+  color: var(--danger);
+}
+
+.awm-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+  color: var(--text-primary);
+}
+
+.awm-countdown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.awm-countdown-value {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.awm-context {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: left;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.awm-context-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.9rem;
+}
+
+.awm-context-label {
+  color: var(--text-muted);
+}
+
+.awm-context-value {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: right;
+}
+
+.awm-reason {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin: 0 0 1.25rem;
+}
+
+.awm-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.awm-actions-stacked {
+  flex-direction: column;
+}
+
+.awm-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.awm-btn-local {
+  background-color: var(--primary-color);
+  color: var(--text-on-accent);
+  border: none;
+}
+
+.awm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.awm-local-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.awm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: left;
+}
+
+.awm-field-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.awm-input {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.awm-input:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.awm-error {
+  background-color: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.awm-spinner {
+  width: 32px;
+  height: 32px;
+  margin: 0.5rem auto 0;
+  border-radius: 50%;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary-color);
+  animation: awmSpin 0.9s linear infinite;
+}
+
+@keyframes awmSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

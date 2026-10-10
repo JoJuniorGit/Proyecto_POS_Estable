@@ -12374,3 +12374,140 @@ G2. Fase 3 (medios/refactor): SRE-03 (logger sincrono con lock global), CLEAN-01
 Commits: e779bbe (plan) + 17f86f4, 13fb59a, d1f5c57, 92e980c, 036f6e6, 8445bcc + commit de
 cierre de este ANEXO (git log / L9 del tracker ODD).
 ================================================================================
+
+================================================================================
+ANEXO 8.150 - HUB DE AUTORIZACIONES REMOTAS EN TIEMPO REAL (PASO 4)
+================================================================================
+(2026-10-09)
+
+A. ALCANCE
+
+A1. Change SDD: openspec/changes/2026-10-07-remote-authorization-hub/ (proposal,
+    design D1-D9, specs remote-authorization + remote-authorization-clients,
+    tasks de 11 work units, state). Tracker ODD:
+    odd/tasks/autorizaciones-remotas-signalr.md (S1-S12, log L1-L16).
+A2. Alcance funcional entregado: hub SignalR /hubs/authorization + par REST
+    (/api/authorizations: create / status+recovery / resolve / local-resolve);
+    token efimero mini-JWT de 60 s single-use atado a solicitante/accion/venta/
+    hash canonico de contexto; resolucion race-safe (primera respuesta gana,
+    mensaje exacto); expiracion 60 s (perezosa + job de barrido configurable con
+    push); fallback local con credenciales reales del supervisor + lockout
+    compartido con el login; auditoria append-only con trigger Postgres que
+    rechaza UPDATE/DELETE; gate ManualPriceOverride en AddItem (403
+    ProblemDetails extendido authorizationRequired/authorizationAction,
+    replay-aware, single-use); cliente Web (hub client + flujo de espera como
+    infraestructura + notificaciones admin con aprobar/rechazar y mensaje de
+    carrera) y cliente WPF (hub service con access_token, dialogo de espera
+    bloqueante con autorizacion local, notificaciones admin, integracion real
+    en PosViewModel.Orders con retry y token).
+A3. Decisiones del mantenedor (L6): VETADOS el gate de anulacion y la UI web de
+    precio manual; CONFIRMADO el fallback local por credenciales (el sistema no
+    tiene concepto de PIN). Ejecucion autorizada por tramos: T2-T5, T6, T7-T8,
+    T9-T10, T11 + E2E.
+A4. Work units: T1 capa de datos; T2 maquina de estados; T3 token +
+    canonicalizer + coordinator; T4 hub + REST + notifier + DI; T5 gate AddItem;
+    T6 job de expiracion; T7 web core; T8 web admin; T9 WPF core; T10 WPF admin +
+    integracion POS; T11 verificacion final + cierre. Extra autorizado: E1 E2E
+    full-stack gated (6 escenarios).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CON Postgres real (TEST_POSTGRES_CONNECTION): 2038/2038,
+    0 omitidos (2m13s) - incluye los 6 escenarios E2E full-stack y los tests
+    Postgres-gated. Sin el env: 2038/2038 con los gated saltando temprano.
+B3. E2E full-stack de autorizaciones (Postgres real + SignalR real + HTTP real +
+    JWT real; DB aislada por escenario pos_e2e_<scenario>_<guid> creada,
+    migrada y sembrada por el arranque real, dropeada WITH (FORCE); fugas 0):
+    6/6 (~34 s):
+    - HappyFullJourney: hub -> push enriquecido a elevados -> aprobacion ->
+      token -> AddItem con token -> item con precio manual -> ConsumedAt ->
+      1 sola fila de auditoria (Remote).
+    - Race: dos admins concurrentes; exactamente uno gana; el perdedor recibe
+      "Esta solicitud ya fue resuelta por {nombre}."; 1 resolucion y 1 fila.
+    - LocalFallback: credenciales reales (password incorrecta cuenta lockout,
+      sin auditoria; exito con token consumido y auditoria modo Local).
+    - Expiry: backdate + barrido del JOB REAL hospedado + push + auditoria con
+      resolver nulo (no vacuo: el GET de estado no expira perezosamente).
+    - AuditImmutability: UPDATE y DELETE crudos -> PostgresException P0001
+      (append-only) y fila intacta. Cierra el residual de T1.
+    - TokenBinding: token de la venta A rechazado en la venta B (contrato 403,
+      sin mutacion, sin quemar) y luego exitoso en A.
+B4. Cobertura: Core 0.8624 (>=0.70), Sales.Module 0.8844 (>=0.80),
+    Inventory.Module 0.8342 (>=0.72) - check-coverage.py exit 0.
+B5. Web: npm test 361/361; npm run lint 0 hallazgos; build ok (bundle
+    Backend.API/wwwroot regenerado y versionado por work unit, convencion del
+    repo).
+B6. Verificadores independientes por work unit (T1-T10 + E1): todos PASS o PASS
+    WITH WARNINGS, 0 bloqueantes, con spot-checks del orquestador. Correcciones
+    post-verificacion aplicadas y re-verificadas: T2 W2 (mensaje de lockout no
+    divulgante), T5 binding circular venta/usuario -> valores reales de la
+    peticion (+ test cross-venta), T7 W1/W2 (guard de ejecucion unica y recovery
+    en retry), T10 orden aviso-cola (el mensaje exacto de carrera se perdia en
+    el caso de una sola solicitud; fix test-first + 3 regresiones), T11 assert
+    del test de trigger (esperaba Reason nulo contra fixture "Precio acordado";
+    latente desde T1, habria roto CI - commit f290384).
+B7. Matriz final: 11/12 requisitos COMPLIANT + 1 PARTIAL (notificacion admin WPF
+    verificada a nivel contratos/VM/backend; su E2E de UI fue CANCELADO por el
+    mantenedor y el WIP quedo en stash@{0}); S7 (capa generica para Pasos 5/11)
+    cumplido estructuralmente.
+B8. Smoke E2E WPF full-stack: NO PASO en este entorno ("Login_SubmitButton no
+    esta presente", sonda UIA sin retry en TestHelper.cs:73). Discriminado como
+    entorno/harness y NO regresion: la app arranca a "INICIO DE SESION" fuera de
+    FlaUI con el mismo binario Release; LoginView sin cambios en la cadena
+    8.150; el job wpf-e2e de CI (windows-2025) lo cubre.
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push). Push/PR/merge: decision del mantenedor.
+
+D. LIMITACIONES CONOCIDAS
+
+D1. (user, NULL, action) concurrente: el indice unico parcial no cubre NULL; la
+    dedupe secuencial y el manejo de colision son del servicio (T1/T2 R3).
+D2. Tests de hub solo LongPolling (TestServer sin WebSockets).
+D3. Provider web sin runner DOM: W3 (el rechazo no resuelve la promesa del
+    caller) queda para el primer consumidor web real; sin disparador web en v1
+    (veto L6) el flujo de espera web es infraestructura.
+D4. WPF: sin reconciliacion de cola de notificaciones en reconnect (degrada al
+    mensaje de carrera al actuar); cancel deja la solicitud Pending hasta
+    expirar; countdown por techo; ownResolvedRequestIds sin poda.
+D5. PUT /{id}/items conserva su gate por roles sin flujo de autorizacion (fuera
+    de alcance v1, documentado en T5).
+D6. Alcanzabilidad v1: no hay UI que dispare una operacion protegida EXITOSA
+    (web veto L6; WPF solo el camino de adelanto, que SEC-02 rechaza despues de
+    la aprobacion). El gate se ejercita por API/E2E; recomendacion G1.
+D7. E2 (E2E UI WPF de notificaciones admin) cancelado por el mantenedor; WIP en
+    stash@{0} ("E2 WPF E2E cancelado (WIP) 2026-10-09").
+
+E. ROLLBACK
+
+E1. Revertir los work units en orden inverso; la migracion 20261007120000 Down
+    dropea trigger/funcion/indices/tablas; los cambios de clientes son aditivos
+    (componentes/servicios nuevos; el gate revierte al 403/roles previo). Sin
+    reescrituras de datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS - 0 CRITICAL; 11/12 requisitos
+    COMPLIANT + 1 PARTIAL (E2 cancelado); reporte en el change
+    (verify-report.md). Cobertura sobre umbrales; E2E full-stack verde.
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. Agregar un disparador WPF de precio manual para producto normal, de modo que
+    el gate sea alcanzable por cajeros en produccion (D6).
+G2. Endurecer la sonda UIA de login del harness E2E con retry (flake B8).
+G3. Reconciliacion de cola WPF en reconnect (D4) y resolucion de promesa en
+    rechazo del provider web (D3) cuando exista consumidor real.
+
+H. COMMITS
+
+H1. Cadena 8.150 en V0.15: 0da2c57 (plan) + 56829e4 (vetoes) + T1 570c5e5/
+    d862053 + T2 1579c38/83865d9 + T3 889b19a/33b65c1 + T4 541124d/25d1393 +
+    c864e12 + T5 a0c19c0/0639c7f + T6 75ce3a2/87b0e76 + T7 a7e6770/d237f04 +
+    T8 a9ce2c2/394c54e + T9 4e9e5f1/a7ac40a + T10 4bc1e25/184c87e + E1 c372d3b +
+    fix final f290384 + commit de cierre de este ANEXO (git log / L16 del
+    tracker ODD).
+================================================================================

@@ -212,6 +212,21 @@ public partial class App : Application
             return new ExchangeRateService(httpClient, sp.GetRequiredService<IDispatcherInvoker>(), sp.GetRequiredService<UserSession>(), enableRealtime: !isE2E);
         });
 
+        // 8.150 (T10, design D7): hub de autorizaciones + cola de notificaciones admin. En E2E no
+        // se abre el SignalR real (misma politica de ExchangeRateService); el par REST sigue vivo.
+        ConfigureClient(builder.Services.AddHttpClient("AuthorizationApi", client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
+        builder.Services.AddSingleton<IAuthorizationHubService>(sp =>
+        {
+            var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthorizationApi");
+            return new AuthorizationHubService(httpClient, sp.GetRequiredService<UserSession>(), enableRealtime: !isE2E);
+        });
+
+        builder.Services.AddSingleton<AuthorizationNotificationViewModel>();
+
         ConfigureClient(builder.Services.AddHttpClient<IUserService, UserService>(client =>
         {
             client.BaseAddress = baseAddressUri;

@@ -26,6 +26,8 @@ public class SalesDbContext : DbContext
     public DbSet<ClosureDetail> ClosureDetails { get; set; } = null!;
     public DbSet<OutboxMessage> OutboxMessages { get; set; } = null!;
     public DbSet<IdempotentRequest> IdempotentRequests { get; set; } = null!;
+    public DbSet<AuthorizationRequest> AuthorizationRequests { get; set; } = null!;
+    public DbSet<AuthorizationAudit> AuthorizationAudits { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -373,6 +375,32 @@ modelBuilder.Entity<User>().HasData(
 
             entity.Property(e => e.ResponseBody)
                 .IsRequired();
+        });
+
+        // 8.150 (T1): hub de autorizaciones remotas (design D1). Sin FK ni navegaciones:
+        // los nombres quedan snapshoteados y las ediciones/bajas de usuarios no reescriben
+        // la auditoria ni bloquean su eliminacion.
+        modelBuilder.Entity<AuthorizationRequest>(entity =>
+        {
+            // Dedupe atomico: una unica Pending por (cajero, venta, accion); el filtro usa
+            // el valor 0 de AuthorizationStatus.Pending (convencion int de SaleStatus).
+            entity.HasIndex(request => new { request.RequestedByUserId, request.SaleId, request.ActionType })
+                .IsUnique()
+                .HasFilter("\"Status\" = 0")
+                .HasDatabaseName("IX_AuthorizationRequests_PendingDedupe");
+
+            entity.HasIndex(request => new { request.Status, request.ExpiresAt })
+                .HasDatabaseName("IX_AuthorizationRequests_Status_ExpiresAt");
+
+            entity.Property(request => request.ContextHash)
+                .HasMaxLength(64)
+                .IsRequired();
+        });
+
+        modelBuilder.Entity<AuthorizationAudit>(entity =>
+        {
+            entity.HasIndex(audit => audit.RequestId)
+                .HasDatabaseName("IX_AuthorizationAudits_RequestId");
         });
     }
 }

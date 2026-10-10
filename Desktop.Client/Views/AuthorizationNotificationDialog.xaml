@@ -1,0 +1,128 @@
+<Window x:Class="Desktop.Client.Views.AuthorizationNotificationDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+        xmlns:converters="clr-namespace:Desktop.Client.Converters"
+        mc:Ignorable="d"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Auto"
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        Title="Solicitud de autorización" Height="540" Width="580"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False"
+        Closing="OnWindowClosing" Loaded="OnDialogLoaded">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:StringToVisibilityConverter x:Key="StringToVis"/>
+    </Window.Resources>
+
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Encabezado: icono, titulo y badge de cola -->
+        <StackPanel Grid.Row="0">
+            <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Kind="ShieldAlert" Width="28" Height="28" VerticalAlignment="Center"
+                                         Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                <TextBlock Text="{x:Static vm:AuthorizationNotificationViewModel.TitleMessage}"
+                           Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
+                           FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Border Background="#FEF3C7" CornerRadius="12" Padding="10,4" HorizontalAlignment="Left" Margin="0,10,0,0"
+                    Visibility="{Binding ShowQueueBadge, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding QueueBadgeText}" FontWeight="SemiBold" Foreground="#92400E"/>
+            </Border>
+        </StackPanel>
+
+        <!-- Solicitud actual enriquecida -->
+        <Border Grid.Row="1" Background="{DynamicResource MaterialDesignCardBackground}"
+                BorderBrush="{DynamicResource PrimaryHueLightBrush}" BorderThickness="1" CornerRadius="6"
+                Padding="14,12" Margin="0,16,0,0">
+            <StackPanel>
+                <TextBlock Text="{Binding CurrentMessage}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+
+                <Grid Margin="0,10,0,0" Visibility="{Binding CurrentTerminalDisplay, Converter={StaticResource StringToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{x:Static vm:AuthorizationNotificationViewModel.TerminalLabel}" Foreground="#64748B"/>
+                    <TextBlock Grid.Column="1" Text="{Binding CurrentTerminalDisplay}" FontWeight="SemiBold"/>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0"
+                            Visibility="{Binding HasPendingNotifications, Converter={StaticResource BoolToVis}}">
+                    <materialDesign:PackIcon Kind="Timer" Width="18" Height="18" Foreground="#64748B" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding RemainingTimeDisplay}" FontWeight="Bold" FontSize="18" Margin="8,0,0,0"
+                               VerticalAlignment="Center" Foreground="#0F766E"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Aviso de carrera (mensaje exacto) o expiracion -->
+        <Border Grid.Row="2" Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="6"
+                Padding="12,10" Margin="0,14,0,0"
+                Visibility="{Binding Notice, Converter={StaticResource StringToVis}}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="{x:Static vm:AuthorizationNotificationViewModel.DismissMessage}"
+                        Command="{Binding DismissNoticeCommand}"
+                        Style="{DynamicResource MaterialDesignFlatButton}" Margin="8,0,0,0" TabIndex="4"/>
+                <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" Foreground="#B91C1C" VerticalAlignment="Center"/>
+            </DockPanel>
+        </Border>
+
+        <!-- Motivo opcional del rechazo -->
+        <StackPanel Grid.Row="3" Margin="0,16,0,0"
+                    Visibility="{Binding ShowResolutionPanel, Converter={StaticResource BoolToVis}}">
+            <TextBox Text="{Binding Reason, UpdateSourceTrigger=PropertyChanged}"
+                     materialDesign:HintAssist.Hint="{x:Static vm:AuthorizationNotificationViewModel.ReasonLabel}"
+                     materialDesign:HintAssist.IsFloating="True"
+                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                     TabIndex="1"/>
+            <TextBlock Text="{Binding ResolveError}" Foreground="#DC2626" TextWrapping="Wrap" Margin="2,8,0,0"
+                       Visibility="{Binding ResolveError, Converter={StaticResource StringToVis}}"/>
+        </StackPanel>
+
+        <!-- Acciones de resolucion -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0"
+                    Visibility="{Binding ShowResolutionPanel, Converter={StaticResource BoolToVis}}">
+            <Button Content="{x:Static vm:AuthorizationNotificationViewModel.ApproveMessage}"
+                    Command="{Binding ApproveCommand}"
+                    Style="{DynamicResource MaterialDesignRaisedButton}" Margin="0,0,12,0" TabIndex="2"/>
+            <Button Content="{x:Static vm:AuthorizationNotificationViewModel.RejectMessage}"
+                    Command="{Binding RejectCommand}"
+                    Style="{DynamicResource MaterialDesignOutlinedButton}" TabIndex="3"/>
+        </StackPanel>
+
+        <ProgressBar Grid.Row="5" IsIndeterminate="True" Height="4" Margin="0,14,0,0"
+                     Visibility="{Binding IsSubmitting, Converter={StaticResource BoolToVis}}"/>
+
+        <TextBlock Grid.Row="6" Text="La solicitud permanece visible hasta ser resuelta por un administrador o gerente."
+                   TextWrapping="Wrap" Foreground="#475569" Margin="0,14,0,0"
+                   Visibility="{Binding ShowResolutionPanel, Converter={StaticResource BoolToVis}}"/>
+
+        <!-- Cierre del aviso cuando la cola quedo vacia -->
+        <Button Grid.Row="7" Content="{x:Static vm:AuthorizationNotificationViewModel.DismissMessage}"
+                Command="{Binding DismissNoticeCommand}"
+                Style="{DynamicResource MaterialDesignFlatButton}"
+                HorizontalAlignment="Right" Margin="0,18,0,0" TabIndex="5"
+                Visibility="{Binding ShowDismissButton, Converter={StaticResource BoolToVis}}"/>
+    </Grid>
+</Window>

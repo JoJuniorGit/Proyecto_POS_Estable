@@ -87,6 +87,7 @@ public static class PipelineExtensions
 
         app.MapControllers().RequireRateLimiting("GeneralApiRateLimit");
         app.MapHub<ExchangeRateHub>("/hubs/exchange-rate").RequireAuthorization();
+        app.MapHub<AuthorizationHub>("/hubs/authorization").RequireAuthorization();
 
         // Fallback SPA routing with strict API 404 segregation (H-API-16)
         app.MapFallback(async context =>

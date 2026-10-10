@@ -39,11 +39,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly SupplierInvoiceViewModel? _supplierInvoiceViewModel;
     private readonly DailyClosureViewModel? _dailyClosureViewModel;
     private readonly UsersManagementViewModel? _usersManagementViewModel;
+    private readonly AuthorizationNotificationViewModel? _authorizationNotificationViewModel;
 
     private readonly IHealthPollingService? _healthPollingService;
     private readonly IExchangeRateService? _exchangeRateService;
     private readonly IDialogService? _dialogService;
     private int _disposed;
+    private int _notificationDialogOpen;
 
     public MainViewModel(
         UserSession? userSession,
@@ -62,7 +64,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IHealthPollingService? healthPollingService = null,
         IDialogService? dialogService = null,
         IExchangeRateService? exchangeRateService = null,
-        SupplierInvoiceViewModel? supplierInvoiceViewModel = null)
+        SupplierInvoiceViewModel? supplierInvoiceViewModel = null,
+        AuthorizationNotificationViewModel? authorizationNotificationViewModel = null)
     {
         UserSession = userSession;
         _loginViewModel = loginViewModel;
@@ -78,6 +81,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _supplierInvoiceViewModel = supplierInvoiceViewModel;
         _dailyClosureViewModel = dailyClosureViewModel;
         _usersManagementViewModel = usersManagementViewModel;
+        _authorizationNotificationViewModel = authorizationNotificationViewModel;
         _healthPollingService = healthPollingService;
         _dialogService = dialogService;
         _exchangeRateService = exchangeRateService;
@@ -85,6 +89,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (_healthPollingService != null) _healthPollingService.OnHealthRecovered += OnHealthRecovered;
         if (_loginViewModel != null) _loginViewModel.LoginSuccess += OnLoginSuccess;
         if (UserSession != null) UserSession.SessionChanged += OnSessionChanged;
+        if (_authorizationNotificationViewModel != null)
+        {
+            _authorizationNotificationViewModel.StateChanged += OnAuthorizationNotificationStateChanged;
+        }
 
         if (UserSession != null && !UserSession.IsLoggedIn)
         {
@@ -100,6 +108,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 _posViewModel.InitializeForSessionAsync().SafeFireAndForget("MainViewModel.InitialPosInit");
             }
         }
+
+        // 8.150 (T10): la sesion restaurada en el arranque tambien debe activar el canal de
+        // notificaciones admin si el rol es elevado.
+        SyncAuthorizationNotificationSession();
     }
 
     private void OnHealthRecovered(object? sender, System.EventArgs e)
@@ -126,6 +138,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             UserSession.SessionChanged -= OnSessionChanged;
         }
+        if (_authorizationNotificationViewModel != null)
+        {
+            _authorizationNotificationViewModel.StateChanged -= OnAuthorizationNotificationStateChanged;
+        }
 
         // Disponer los ViewModels hijo que implementan IDisposable (cancela sus CTSes y
         // libera las suscripciones a eventos globales). El contenedor DI invoca este Dispose
@@ -144,7 +160,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _importProductsViewModel,
             _supplierInvoiceViewModel,
             _dailyClosureViewModel,
-            _usersManagementViewModel
+            _usersManagementViewModel,
+            _authorizationNotificationViewModel
         };
 
         foreach (var vm in viewModels)
@@ -182,6 +199,74 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Title = "INICIO DE SESIÓN";
             CurrentViewModel = _loginViewModel ?? new object();
             _posViewModel?.ResetSession();
+        }
+
+        // 8.150 (T10, spec WPF hub lifecycle): el canal de notificaciones admin solo vive en
+        // sesiones Admin/Manager; cualquier otro cambio de sesion lo desactiva y descarta la cola.
+        SyncAuthorizationNotificationSession();
+    }
+
+    /// <summary>
+    /// 8.150 (T10, design D7): el canal de notificaciones admin solo vive en sesiones Admin/Manager.
+    /// Cualquier otra sesion lo desactiva y descarta la cola; al activarse con pendientes, el modal
+    /// se abre en el hilo de UI a traves de IDialogService (mockeable).
+    /// </summary>
+    private void SyncAuthorizationNotificationSession()
+    {
+        var notificationViewModel = _authorizationNotificationViewModel;
+        if (notificationViewModel == null)
+        {
+            return;
+        }
+
+        var isElevated = UserSession?.IsLoggedIn == true && (UserSession.IsAdmin || UserSession.IsManager);
+        if (!isElevated)
+        {
+            notificationViewModel.Deactivate();
+            return;
+        }
+
+        notificationViewModel.Activate();
+        TryShowAuthorizationNotificationDialog();
+    }
+
+    private void OnAuthorizationNotificationStateChanged(object? sender, EventArgs e)
+        => TryShowAuthorizationNotificationDialog();
+
+    private void TryShowAuthorizationNotificationDialog()
+    {
+        var notificationViewModel = _authorizationNotificationViewModel;
+        if (notificationViewModel == null || _dialogService == null || !notificationViewModel.HasPendingNotifications)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _notificationDialogOpen, 1, 0) != 0)
+        {
+            return;
+        }
+
+        ShowAuthorizationNotificationDialogAsync(notificationViewModel)
+            .SafeFireAndForget("MainViewModel.ShowAuthorizationNotificationDialog");
+    }
+
+    private async Task ShowAuthorizationNotificationDialogAsync(AuthorizationNotificationViewModel notificationViewModel)
+    {
+        try
+        {
+            // La implementacion WPF bloquea en ShowDialog hasta que la cola quede vacia o el
+            // aviso se disponga; el flag evita reentradas mientras el modal esta abierto.
+            await _dialogService!.ShowAuthorizationNotificationAsync(notificationViewModel);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.ClientStateLogger.LogWarning(
+                $"[AUTH] No se pudo mostrar la notificacion de autorizacion: {ex.Message}",
+                nameof(MainViewModel));
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _notificationDialogOpen, 0);
         }
     }
 

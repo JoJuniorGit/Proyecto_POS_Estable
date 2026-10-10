@@ -3,6 +3,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ExchangeRateProvider, useExchangeRate } from './context/ExchangeRateContext';
 import { CurrencyFormatProvider } from './context/CurrencyFormatContext';
 import { CartProvider, useCart } from './context/CartContext';
+import { AuthorizationProvider, useAuthorization } from './components/authorization/AuthorizationProvider';
+import AuthorizationNotifications from './components/authorization/AuthorizationNotifications';
 import Layout from './components/layout/Layout';
 import LoginPage from './pages/LoginPage';
 import CheckoutModal from './components/checkout/CheckoutModal';
@@ -12,7 +14,7 @@ import FullScreenLoader from './components/ui/FullScreenLoader';
 import SaleRecoveryModal from './components/pos/SaleRecoveryModal';
 import { useShutdownGuard } from './hooks/useShutdownGuard';
 import { hasOpenModals } from './utils/modalRegistry';
-import { isValidView, resolveAccessibleView } from './navigation/roleViews';
+import { isValidView, normalizeRole, resolveAccessibleView } from './navigation/roleViews';
 import AccessDenied from './navigation/AccessDenied';
 
 // 8.6-M5: code splitting — cada página se carga como chunk propio (React.lazy).
@@ -40,11 +42,13 @@ function getInitialView() {
 
 function MainApp() {
   const { isAuthenticated, user } = useAuth();
+  const { isWaitOpen, cancelWait } = useAuthorization();
   const [currentView, setCurrentView] = useState(getInitialView);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isHoldModalOpen, setIsHoldModalOpen] = useState(false);
   const [completedInvoice, setCompletedInvoice] = useState(null);
   const [completedHoldSuccess, setCompletedHoldSuccess] = useState(null);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const checkoutRef = useRef(null);
 
   const { exchangeRate, isRateOutdated } = useExchangeRate();
@@ -52,6 +56,9 @@ function MainApp() {
 
   const viewAccess = resolveAccessibleView(user?.role, currentView);
   const activeView = viewAccess.allowed ? currentView : viewAccess.view;
+  // 8.150 (T8): la cola de notificaciones solo existe para sesiones Admin/Manager.
+  const normalizedRole = normalizeRole(user?.role);
+  const isElevatedSession = normalizedRole === 'Admin' || normalizedRole === 'Manager';
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -122,9 +129,14 @@ function MainApp() {
     setCompletedInvoice(null);
   }, []);
 
-  const isExternalModalOpen = isCheckoutOpen || isHoldModalOpen || Boolean(completedInvoice) || Boolean(completedHoldSuccess);
+  const isExternalModalOpen = isCheckoutOpen || isHoldModalOpen || Boolean(completedInvoice) || Boolean(completedHoldSuccess) || isWaitOpen || isNotificationsOpen;
 
   const handleCloseExternalModal = () => {
+    // 8.150 (T7): la espera de autorizacion bloquea la terminal; ESC la cancela como el boton.
+    if (isWaitOpen) {
+      cancelWait();
+      return true;
+    }
     if (isCheckoutOpen) {
       if (checkoutRef.current) {
         const closed = checkoutRef.current.requestClose();
@@ -259,6 +271,11 @@ function MainApp() {
         onRecover={recoverPendingSale}
         onDiscard={discardPendingRecovery}
       />
+
+      {/* 8.150 (T8): aprobar/rechazar solicitudes remotas solo para Admin/Manager */}
+      {isElevatedSession && (
+        <AuthorizationNotifications onOpenChange={setIsNotificationsOpen} />
+      )}
     </Layout>
   );
 }
@@ -269,7 +286,9 @@ export default function App() {
       <ExchangeRateProvider>
         <CurrencyFormatProvider>
           <CartProvider>
-            <MainApp />
+            <AuthorizationProvider>
+              <MainApp />
+            </AuthorizationProvider>
           </CartProvider>
         </CurrencyFormatProvider>
       </ExchangeRateProvider>
