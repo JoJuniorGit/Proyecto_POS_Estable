@@ -47,7 +47,10 @@ try
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[STARTUP] Aviso: no se pudo cargar secrets.json: {ex.Message}");
+        // CLEAN-03 (8.158): fail-fast — un secrets.json presente pero ilegible (ACL/JSON inválido)
+        // deja al servidor desconfigurado en silencio; se vuelca la traza completa y se aborta el arranque.
+        AppLogger.LogCrash(ex, "Backend.API.Program.SecretsBootstrap");
+        throw;
     }
 
     // HTTPS (contexto seguro requerido por el escáner de cámara desde dispositivos de la red local).
@@ -125,8 +128,9 @@ try
         }
         catch (Exception ex)
         {
-            // 8B-B4: no dejar el catch vacío; registrar el fallo del recorrido de directorios.
-            Console.WriteLine($"[STARTUP] Aviso: no se pudo recorrer el directorio base en busca de configuracion: {ex.Message}");
+            // 8B-B4 / CLEAN-03 (8.158): no dejar el catch vacío; el .env es opcional en Desarrollo
+            // (appsettings ya cargó), así que se registra el aviso sin abortar el arranque.
+            AppLogger.LogWarn($"No se pudo recorrer el directorio base en busca de configuracion: {ex.Message}", "Backend.API.Program.DotEnvBootstrap");
         }
     }
 
