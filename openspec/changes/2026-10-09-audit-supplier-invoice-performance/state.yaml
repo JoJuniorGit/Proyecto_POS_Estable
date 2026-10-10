@@ -1,0 +1,32 @@
+change: 2026-10-09-audit-supplier-invoice-performance
+store: openspec
+scope: audit-supplier-invoice-perf-8.155
+created: 2026-10-09
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: verified
+apply:
+  slices: 3/3 (T1 5267c0e, T2 83190b3, T2b f4ede27)
+  branch: V0.15
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-09-audit-supplier-invoice-performance/verify-report.md
+verify_note: "6/6 requisitos COMPLIANT (REQ-SIB-01/02/03, REQ-AIO-01/02/03); W1 (cache detachado tras retry xmin) detectado por el verificador y cerrado por T2b con reproduccion real contra PostgreSQL local (RED attach-graph -> GREEN); suite CON Postgres 2172/2172; cobertura Core 0.8886/Sales 0.9057/Inventory 0.8621 (exit 0); PERF-02 parcial-por-diseno (spec supplier-invoice-apply L64-73, G1)"
+artifacts:
+  proposal: openspec/changes/2026-10-09-audit-supplier-invoice-performance/proposal.md
+  specs:
+    - openspec/changes/2026-10-09-audit-supplier-invoice-performance/specs/staging-batch/spec.md
+    - openspec/changes/2026-10-09-audit-supplier-invoice-performance/specs/apply-io/spec.md
+  tasks: openspec/changes/2026-10-09-audit-supplier-invoice-performance/tasks.md
+  verify_report: openspec/changes/2026-10-09-audit-supplier-invoice-performance/verify-report.md
+decisions:
+  perf01: batch prefetch (barcode SKU + supplierCode join) con primer-por-Id; fuzzy solo para no-emparejadas; Take(100) en candidatos trigram
+  perf02: parcial-por-diseno — retry xmin por linea conservado (spec); lecturas 2N+2→4 y saves 2N+1→N+1; save unico = G1 (rediseno con retry de operacion completa)
+  w1: cache de productos refrescado tras el retry (ApplyApprovedLineAsync devuelve el producto final); reproduccion real gated con Postgres local
+  w1-test: descartado el test no-gated con excepcion fabricada (EF no expone construccion de IUpdateEntry); reproduccion fiel = gated
+  rdd: off (clone-local + global)
+  branch: V0.15
+  anexo: "8.155"
+next: push/pr/merge (decisión del mantenedor) + 8.156 (PERF-04/05 + CLEAN-05) cuando lo autorice
