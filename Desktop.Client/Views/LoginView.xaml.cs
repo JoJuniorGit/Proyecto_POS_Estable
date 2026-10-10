@@ -8,21 +8,59 @@ namespace Desktop.Client.Views;
 
 public partial class LoginView : UserControl
 {
+    // PERF-05 (8.156): LoginView no dispone el LoginViewModel (singleton de DI, 8.149-W11);
+    // solo se desenganchan los eventos al desalojar la vista.
+    private LoginViewModel? _boundViewModel;
+
     public LoginView()
     {
         InitializeComponent();
-        DataContextChanged += LoginView_DataContextChanged;
+        DataContextChanged += OnDataContextChanged;
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
-    private void LoginView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        HookViewModel(DataContext as LoginViewModel);
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        UnhookViewModel();
+    }
+
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (e.OldValue is LoginViewModel oldVm)
         {
-            oldVm.PropertyChanged -= Vm_PropertyChanged;
+            if (ReferenceEquals(_boundViewModel, oldVm))
+            {
+                UnhookViewModel();
+            }
         }
+
         if (e.NewValue is LoginViewModel newVm)
         {
-            newVm.PropertyChanged += Vm_PropertyChanged;
+            HookViewModel(newVm);
+        }
+    }
+
+    private void HookViewModel(LoginViewModel? vm)
+    {
+        if (vm == null || ReferenceEquals(_boundViewModel, vm)) return;
+
+        UnhookViewModel();
+        _boundViewModel = vm;
+        _boundViewModel.PropertyChanged += Vm_PropertyChanged;
+    }
+
+    private void UnhookViewModel()
+    {
+        if (_boundViewModel != null)
+        {
+            _boundViewModel.PropertyChanged -= Vm_PropertyChanged;
+            _boundViewModel = null;
         }
     }
 

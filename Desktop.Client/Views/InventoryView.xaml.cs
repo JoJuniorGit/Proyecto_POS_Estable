@@ -9,22 +9,57 @@ namespace Desktop.Client.Views
     public partial class InventoryView : UserControl
     {
         private ScrollViewer? _dataGridScrollViewer;
+        private InventoryViewModel? _boundViewModel;
 
         public InventoryView()
         {
             InitializeComponent();
-            DataContextChanged += InventoryView_DataContextChanged;
+            DataContextChanged += OnDataContextChanged;
+            Loaded += OnLoaded;
+            Unloaded += OnUnloaded;
         }
 
-        private void InventoryView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        private void OnLoaded(object sender, RoutedEventArgs e)
+        {
+            HookViewModel(DataContext as InventoryViewModel);
+        }
+
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            UnhookViewModel();
+        }
+
+        private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
         {
             if (e.OldValue is InventoryViewModel oldVm)
             {
-                oldVm.PropertyChanged -= ViewModel_PropertyChanged;
+                if (ReferenceEquals(_boundViewModel, oldVm))
+                {
+                    UnhookViewModel();
+                }
             }
+
             if (e.NewValue is InventoryViewModel newVm)
             {
-                newVm.PropertyChanged += ViewModel_PropertyChanged;
+                HookViewModel(newVm);
+            }
+        }
+
+        private void HookViewModel(InventoryViewModel? vm)
+        {
+            if (vm == null || ReferenceEquals(_boundViewModel, vm)) return;
+
+            UnhookViewModel();
+            _boundViewModel = vm;
+            _boundViewModel.PropertyChanged += ViewModel_PropertyChanged;
+        }
+
+        private void UnhookViewModel()
+        {
+            if (_boundViewModel != null)
+            {
+                _boundViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+                _boundViewModel = null;
             }
         }
 
