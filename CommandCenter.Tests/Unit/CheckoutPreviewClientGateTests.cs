@@ -186,4 +186,31 @@ public class CheckoutPreviewClientGateTests
         Assert.False(vm.CanFinalize);
         Assert.Equal("El monto acumulado aún no cubre el 100% del total de la venta.", vm.ValidationHelperMessage);
     }
+
+    [Fact]
+    public async Task FinalizeSale_SendsServerRoundingAdjustment_ToCompleteSale()
+    {
+        // 8.156 (REQ-WCP-03, escenario Cobro normal): el call-path de finalización debe enviar el
+        // RoundingAdjustment del preview canónico (servidor), no el cálculo local.
+        var salesService = new Mock<ISalesService>();
+        SetupPreview(salesService);
+        salesService
+            .Setup(s => s.CompleteSaleAsync(
+                It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<IEnumerable<SalePaymentDto>>(),
+                It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<string?>(),
+                It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync(77);
+
+        var sale = new SaleDto { Id = 42, TotalUSD = 100m, AppliedRate = 50m, CustomerId = 1, CustomerName = "Maria Perez" };
+        var vm = CreateViewModel(salesService, sale);
+        AddCashPayment(vm, "5000.00");
+        await AwaitPreviewAsync(vm);
+
+        Assert.Equal(0.35m, vm.RoundingAdjustment);
+        await vm.FinalizeSaleCommand.ExecuteAsync(null);
+
+        salesService.Verify(s => s.CompleteSaleAsync(
+            42, 50m, It.IsAny<IEnumerable<SalePaymentDto>>(), 0.35m, null, false,
+            It.IsAny<string?>(), It.IsAny<System.Threading.CancellationToken>()), Times.Once);
+    }
 }
