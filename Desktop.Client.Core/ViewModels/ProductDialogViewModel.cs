@@ -248,7 +248,8 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ProductDialogViewModel] Error cargando metadatos: {ex.Message}");
+            ClientStateLogger.LogError($"Error al cargar los metadatos del producto: {ex.Message}", nameof(ProductDialogViewModel));
+            _dialogService?.ShowWarning("Error de Metadatos", "No se pudieron cargar los datos auxiliares del producto. Verifique la conexión.");
             ApplyParentProductsUpdate(new List<ProductDto>());
         }
         finally

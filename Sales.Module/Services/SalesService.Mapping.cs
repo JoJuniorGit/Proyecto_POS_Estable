@@ -94,6 +94,20 @@ public partial class SalesService
     }
 
     /// <summary>
+    /// 8.152 (SEC-08): resuelve la tasa efectiva del checkout-preview delegando en el resolver
+    /// compartido con contexto "CheckoutPreview" (misma semántica del completar venta). La
+    /// cancelación se observa al entrar; el resolver privado no recibe token (limitación
+    /// preexistente documentada).
+    /// </summary>
+    public async Task<decimal> ResolveCheckoutRateAsync(int saleId, decimal clientRate, System.Threading.CancellationToken cancellationToken = default)
+    {
+        // La cancelación se observa al entrar; el resolver privado no recibe token
+        // (limitación preexistente compartida con los demás flujos que lo invocan).
+        cancellationToken.ThrowIfCancellationRequested();
+        return await ResolveAnchoredRateAsync(clientRate, contextLabel: "CheckoutPreview", referenceId: saleId);
+    }
+
+    /// <summary>
     /// Ancla la tasa de cambio recibida del cliente a la tasa BCV del día (8.5-A5/8.6-B3).
     /// - Desvío ≤ tolerancia configurable (default 10%): se acepta la tasa recibida.
     /// - Desvío > tolerancia: se ANCLA la tasa BCV del día como tasa efectiva (audit).

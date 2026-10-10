@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Core.Logging;
 using Desktop.Client.Services;
 using System;
 using System.Threading;
@@ -73,7 +74,7 @@ public abstract class BaseViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is not FatalErrorException)
         {
-            /* Silenced: non-fatal UI exception handling */
+            ClientStateLogger.LogError($"Error no fatal al reanudar tras la recuperación: {ex.Message}", nameof(BaseViewModel));
         }
     }
 
@@ -90,7 +91,7 @@ public abstract class BaseViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is not FatalErrorException)
         {
-            /* Silenced: non-fatal UI exception handling */
+            ClientStateLogger.LogError($"Error no fatal al inicializar el ViewModel: {ex.Message}", nameof(BaseViewModel));
         }
     }
 

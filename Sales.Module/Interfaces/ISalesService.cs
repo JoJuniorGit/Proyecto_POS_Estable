@@ -19,6 +19,15 @@ public interface ISalesService
     Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task CancelSaleAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, System.Threading.CancellationToken cancellationToken = default, int? actingUserId = null);
+
+    /// <summary>
+    /// 8.152 (SEC-08): resuelve la tasa efectiva del checkout-preview con el MISMO anclaje del
+    /// completar venta: desvío ≤ tolerancia configurada (<c>RateDeviationTolerancePct</c>) → tasa
+    /// cliente redondeada al techo; desvío mayor a la tolerancia → tasa BCV del día; desvío
+    /// ≥ ±100% → ArgumentException de rechazo (el middleware global responde 400); sin BCV del
+    /// día → fail-open con la tasa cliente. Delega en el resolver compartido sin duplicar reglas.
+    /// </summary>
+    Task<decimal> ResolveCheckoutRateAsync(int saleId, decimal clientRate, System.Threading.CancellationToken cancellationToken = default);
     Task<DeliveryReceiptDto> DeliverPartialAsync(
         int saleId,
         IReadOnlyList<(int SaleItemId, decimal Quantity)> items,

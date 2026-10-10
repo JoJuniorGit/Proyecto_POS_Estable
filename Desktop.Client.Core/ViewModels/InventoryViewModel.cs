@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
 using Core.Entities;
+using Core.Logging;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using System;
@@ -204,6 +205,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al refrescar el catálogo: {ex.Message}", nameof(InventoryViewModel));
             _dialogService?.ShowError("Error de Actualización", $"No se pudo actualizar el catálogo: {ex.Message}");
         }
         finally
@@ -301,6 +303,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al cargar los productos: {ex.Message}", nameof(InventoryViewModel));
             _dialogService?.ShowError("Error de Carga", $"Error al cargar productos: {ex.Message}");
         }
         finally
@@ -379,6 +382,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al fusionar los cambios del catálogo: {ex.Message}", nameof(InventoryViewModel));
             _dialogService?.ShowError("Error de Catálogo", $"Error al actualizar catálogo: {ex.Message}");
         }
         finally

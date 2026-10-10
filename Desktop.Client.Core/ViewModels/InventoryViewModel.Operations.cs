@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.Input;
 using Core.Common;
 using Core.DTOs;
+using Core.Logging;
 using Desktop.Client.Services;
 using System;
 using System.Threading.Tasks;
@@ -31,6 +32,7 @@ public partial class InventoryViewModel
         }
         catch (Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al auto-guardar el producto {item.Id}: {ex.Message}", nameof(InventoryViewModel));
             _dialogService?.ShowWarning("Error de Auto-Guardado", $"Error al guardar automáticamente el producto {item.Id}: {ex.Message}");
         }
     }
@@ -58,6 +60,7 @@ public partial class InventoryViewModel
         }
         catch (Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al cambiar el estado del producto {item.Id}: {ex.Message}", nameof(InventoryViewModel));
             _dialogService?.ShowError("Error de Estado", $"Error al cambiar estado del producto: {ex.Message}");
         }
     }
@@ -79,6 +82,7 @@ public partial class InventoryViewModel
         }
         catch (Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al restaurar el producto {item.Id}: {ex.Message}", nameof(InventoryViewModel));
             _dialogService?.ShowError("Error al Restaurar", $"Error restaurando producto: {ex.Message}");
         }
     }
@@ -127,6 +131,7 @@ public partial class InventoryViewModel
             }
             catch (Exception ex)
             {
+                ClientStateLogger.LogError($"Fallo al eliminar el producto {item.Id}: {ex.Message}", nameof(InventoryViewModel));
                 _dialogService.ShowError("Error al Eliminar", $"Error al eliminar producto: {ex.Message}");
             }
         }
@@ -152,6 +157,7 @@ public partial class InventoryViewModel
             }
             catch (Exception ex)
             {
+                ClientStateLogger.LogError($"Fallo al agregar el producto: {ex.Message}", nameof(InventoryViewModel));
                 _dialogService.ShowError("Error al Agregar", $"Error al agregar producto: {ex.Message}");
             }
         }
@@ -188,6 +194,7 @@ public partial class InventoryViewModel
         }
         catch (Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al editar el producto {item.Id}: {ex.Message}", nameof(InventoryViewModel));
             _dialogService.ShowError("Error al Editar", $"Error al editar el producto: {ex.Message}");
         }
     }
@@ -227,6 +234,7 @@ public partial class InventoryViewModel
         }
         catch (Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al ajustar el stock del producto {item.Id}: {ex.Message}", nameof(InventoryViewModel));
             _dialogService.ShowError("Error al Ajustar Stock", $"Error al ajustar stock: {ex.Message}");
         }
     }
@@ -249,6 +257,7 @@ public partial class InventoryViewModel
         }
         catch (Exception ex)
         {
+            ClientStateLogger.LogError($"Fallo al escanear el código '{term}': {ex.Message}", nameof(InventoryViewModel));
             _dialogService?.ShowError("Error de Escaneo", $"Fallo en la lectura del código: {ex.Message}");
         }
         finally
