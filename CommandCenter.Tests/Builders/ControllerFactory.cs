@@ -21,12 +21,13 @@ public static class ControllerFactory
         SalesDbContext db,
         ICurrentUserService currentUserService,
         InventoryDbContext inventoryContext,
-        CashAdvanceCoordinator cashAdvanceCoordinator)
+        CashAdvanceCoordinator cashAdvanceCoordinator,
+        IUserService? userService = null)
         => new(
             cashDrawerService,
             settingsService,
             new InventoryService(inventoryContext),
-            new UserService(db),
+            userService ?? new UserService(db),
             currentUserService,
             new TimeZoneProvider(settingsService),
             cashAdvanceCoordinator);

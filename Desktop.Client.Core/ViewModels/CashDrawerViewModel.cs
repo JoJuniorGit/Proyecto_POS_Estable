@@ -438,8 +438,6 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             if (dialogRes is { } res && res.success)
             {
                 var rate = _exchangeRateService.CurrentRate;
-                var cashierId = _userSession?.CurrentUser?.Id;
-                var userName = _userSession?.CurrentUser?.Name ?? _userSession?.CurrentUser?.Cedula ?? "Usuario";
 
                 var advanceResult = await _cashDrawerService.ProcessCashAdvanceAsync(
                     ActiveSession.Id,
@@ -447,9 +445,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
                     res.paymentMethodId,
                     res.paymentMethodName,
                     res.isTransfer,
-                    rate,
-                    cashierId,
-                    userName);
+                    rate);
 
                 string invoiceInfo = advanceResult?.InvoiceNumber.HasValue == true
                     ? $" (Factura N° {advanceResult.InvoiceNumber.Value})"

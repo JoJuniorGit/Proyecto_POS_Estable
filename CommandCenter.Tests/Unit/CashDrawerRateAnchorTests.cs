@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using CommandCenter.Tests.Builders;
+using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
 using Core.Services;
@@ -31,6 +32,8 @@ public class CashDrawerRateAnchorTests
     private static Mock<ICashDrawerService> CreateCashDrawerMock(RateCapture capture)
     {
         var mock = new Mock<ICashDrawerService>();
+        mock.Setup(c => c.GetCurrentBalanceLocalAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1000m);
         mock.Setup(c => c.AddTransactionAsync(
                 It.IsAny<int>(), It.IsAny<CashTransactionType>(), It.IsAny<CashTransactionSource>(),
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<string>(),
@@ -71,19 +74,24 @@ public class CashDrawerRateAnchorTests
         Description = "AUD-13 rate anchor pin"
     };
 
+    // 8.154 (SEC-03): los escenarios de adelanto exigen sesión (UserId) y usuario resuelto;
+    // los defaults preservan el arnés A5 de AddTransaction (sin guard de identidad).
     private static CashDrawerController CreateController(
         ICashDrawerService cashDrawer,
         ISystemSettingsService settings,
         SalesDbContext salesDb,
-        IInventoryService inventory)
+        IInventoryService inventory,
+        ICurrentUserService? currentUser = null,
+        IUserService? userService = null,
+        ISalesService? salesService = null)
     {
-        var coordinator = new CashAdvanceCoordinator(salesDb, new Mock<ISalesService>().Object, cashDrawer, settings);
+        var coordinator = new CashAdvanceCoordinator(salesDb, salesService ?? new Mock<ISalesService>().Object, cashDrawer, settings);
         var controller = new CashDrawerController(
             cashDrawer,
             settings,
             inventory,
-            new UserService(salesDb),
-            new Mock<ICurrentUserService>().Object,
+            userService ?? new UserService(salesDb),
+            currentUser ?? new Mock<ICurrentUserService>().Object,
             new TimeZoneProvider(settings),
             coordinator);
 
@@ -101,6 +109,50 @@ public class CashDrawerRateAnchorTests
         inventoryDb.ExchangeRateHistory.Add(new ExchangeRateHistory { Date = today, Rate = OfficialRate, UpdatedAt = DateTime.UtcNow });
         inventoryDb.SaveChanges();
     }
+
+    private static Mock<ISystemSettingsService> CreateAdvanceSettingsMock(string? toleranceSetting = null)
+    {
+        var mock = new Mock<ISystemSettingsService>();
+        // Moq: el setup registrado al final gana; el específico de comisión va después del amplio.
+        mock.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync(toleranceSetting);
+        mock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct)).ReturnsAsync("5");
+        return mock;
+    }
+
+    private static Mock<ISalesService> CreateAdvanceSalesMock()
+    {
+        var mock = new Mock<ISalesService>();
+        mock.Setup(s => s.CreateCashAdvanceSaleAsync(
+                It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<int>(), It.IsAny<string>(),
+                It.IsAny<bool>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<string>(),
+                It.IsAny<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SaleDto)null!);
+        return mock;
+    }
+
+    private static (ICurrentUserService CurrentUser, IUserService UserService) CreateAdvanceIdentity()
+    {
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(u => u.UserId).Returns("7");
+
+        var userService = new Mock<IUserService>();
+        userService.Setup(s => s.GetUserAsync(7, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UserDto { Id = 7, Name = "Cajero A" });
+
+        return (currentUser.Object, userService.Object);
+    }
+
+    // 8.154 (SEC-04): el adelanto se ancla antes del coordinador; la tasa capturada por
+    // el AddTransactionAsync del envelope (Expense/Income) es la observable del anclaje.
+    private static CashAdvanceRequest CreateAdvanceRequest(decimal exchangeRate) => new()
+    {
+        SessionId = 1,
+        RequestedAmountLocal = 100m,
+        PaymentMethodId = 1,
+        PaymentMethodName = "Efectivo Bs.S",
+        IsTransfer = false,
+        ExchangeRate = exchangeRate
+    };
 
     [Fact]
     public async Task AddTransaction_WhenDeviationExceedsDefaultTolerance_AnchorsToOfficialRate()
@@ -219,5 +271,85 @@ public class CashDrawerRateAnchorTests
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(OfficialRate, capture.AppliedRate);
+    }
+
+    [Fact]
+    public async Task CashAdvance_WhenDeviationExceedsDefaultTolerance_AnchorsCoordinatorRateToOfficial()
+    {
+        using var salesDb = TestDatabaseFactory.CreateSalesDbContext();
+        using var inventoryDb = TestDatabaseFactory.CreateInventoryDbContext();
+        SeedOfficialRate(inventoryDb);
+
+        var capture = new RateCapture();
+        var cashDrawer = CreateCashDrawerMock(capture);
+        var (currentUser, userService) = CreateAdvanceIdentity();
+        var controller = CreateController(
+            cashDrawer.Object, CreateAdvanceSettingsMock().Object, salesDb, new InventoryService(inventoryDb),
+            currentUser, userService, CreateAdvanceSalesMock().Object);
+
+        var result = await controller.ProcessCashAdvance(CreateAdvanceRequest(67.00m), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(OfficialRate, capture.AppliedRate);
+    }
+
+    [Fact]
+    public async Task CashAdvance_WhenDeviationIsWithinDefaultTolerance_UsesClientRate()
+    {
+        using var salesDb = TestDatabaseFactory.CreateSalesDbContext();
+        using var inventoryDb = TestDatabaseFactory.CreateInventoryDbContext();
+        SeedOfficialRate(inventoryDb);
+
+        var capture = new RateCapture();
+        var cashDrawer = CreateCashDrawerMock(capture);
+        var (currentUser, userService) = CreateAdvanceIdentity();
+        var controller = CreateController(
+            cashDrawer.Object, CreateAdvanceSettingsMock().Object, salesDb, new InventoryService(inventoryDb),
+            currentUser, userService, CreateAdvanceSalesMock().Object);
+
+        var result = await controller.ProcessCashAdvance(CreateAdvanceRequest(63.50m), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(63.50m, capture.AppliedRate);
+    }
+
+    [Fact]
+    public async Task CashAdvance_WhenDeviationReachesOneHundredPercent_ThrowsArgumentExceptionWithoutEffects()
+    {
+        using var salesDb = TestDatabaseFactory.CreateSalesDbContext();
+        using var inventoryDb = TestDatabaseFactory.CreateInventoryDbContext();
+        SeedOfficialRate(inventoryDb);
+
+        var capture = new RateCapture();
+        var cashDrawer = CreateCashDrawerMock(capture);
+        var (currentUser, userService) = CreateAdvanceIdentity();
+        var controller = CreateController(
+            cashDrawer.Object, CreateAdvanceSettingsMock().Object, salesDb, new InventoryService(inventoryDb),
+            currentUser, userService, CreateAdvanceSalesMock().Object);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => controller.ProcessCashAdvance(CreateAdvanceRequest(120.00m), CancellationToken.None));
+
+        Assert.Contains("excede", ex.Message);
+        Assert.Null(capture.AppliedRate);
+    }
+
+    [Fact]
+    public async Task CashAdvance_WhenNoBcvRateForToday_FailsOpenWithRoundedClientRate()
+    {
+        using var salesDb = TestDatabaseFactory.CreateSalesDbContext();
+        using var inventoryDb = TestDatabaseFactory.CreateInventoryDbContext();
+
+        var capture = new RateCapture();
+        var cashDrawer = CreateCashDrawerMock(capture);
+        var (currentUser, userService) = CreateAdvanceIdentity();
+        var controller = CreateController(
+            cashDrawer.Object, CreateAdvanceSettingsMock().Object, salesDb, new InventoryService(inventoryDb),
+            currentUser, userService, CreateAdvanceSalesMock().Object);
+
+        var result = await controller.ProcessCashAdvance(CreateAdvanceRequest(80.463m), CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(80.47m, capture.AppliedRate);
     }
 }

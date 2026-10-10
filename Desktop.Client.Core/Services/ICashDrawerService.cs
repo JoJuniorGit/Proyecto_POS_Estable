@@ -54,9 +54,7 @@ public interface ICashDrawerService
         int paymentMethodId,
         string paymentMethodName,
         bool isTransfer,
-        decimal exchangeRate,
-        int? cashierId = null,
-        string? userName = null);
+        decimal exchangeRate);
 }
 
 public class CashTransactionDto
