@@ -263,7 +263,7 @@ public class ExchangeRateJobTests
             userMock.Object);
 
         // Act
-        var actionResult = await controller.GetToday();
+        var actionResult = await controller.GetTodayAsync();
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(actionResult);
@@ -331,7 +331,7 @@ public class ExchangeRateJobTests
             userMock.Object);
 
         // 1. Before job runs: GetToday returns yesterday's rate (800.00m) via fallback
-        var initialRes = Assert.IsType<OkObjectResult>(await controller.GetToday());
+        var initialRes = Assert.IsType<OkObjectResult>(await controller.GetTodayAsync());
         var initialVal = initialRes.Value?.GetType().GetProperty("Value")?.GetValue(initialRes.Value);
         Assert.Equal(800.00m, initialVal);
 
@@ -339,7 +339,7 @@ public class ExchangeRateJobTests
         await job.SyncRateAsync(CancellationToken.None);
 
         // 3. After job runs: GetToday immediately returns today's updated rate (806.50m)
-        var updatedRes = Assert.IsType<OkObjectResult>(await controller.GetToday());
+        var updatedRes = Assert.IsType<OkObjectResult>(await controller.GetTodayAsync());
         var updatedVal = updatedRes.Value?.GetType().GetProperty("Value")?.GetValue(updatedRes.Value);
         Assert.Equal(806.50m, updatedVal);
     }
@@ -448,7 +448,7 @@ public class ExchangeRateJobTests
             userMock.Object);
 
         // Act - GetToday
-        var todayResult = Assert.IsType<OkObjectResult>(await controller.GetToday());
+        var todayResult = Assert.IsType<OkObjectResult>(await controller.GetTodayAsync());
         var todayVal = todayResult.Value;
         var updatedAtLocalProp = todayVal?.GetType().GetProperty("UpdatedAtLocal")?.GetValue(todayVal);
         Assert.NotNull(updatedAtLocalProp);
@@ -456,7 +456,7 @@ public class ExchangeRateJobTests
         Assert.Equal(new DateTime(2026, 9, 4, 23, 55, 0), todayLocalTime);
 
         // Act - GetHistory
-        var historyResult = Assert.IsType<OkObjectResult>(await controller.GetHistory());
+        var historyResult = Assert.IsType<OkObjectResult>(await controller.GetHistoryAsync());
         var historyEnumerable = Assert.IsAssignableFrom<IEnumerable<object>>(historyResult.Value);
         var firstItem = historyEnumerable.First();
         var historyLocalProp = firstItem.GetType().GetProperty("UpdatedAtLocal")?.GetValue(firstItem);

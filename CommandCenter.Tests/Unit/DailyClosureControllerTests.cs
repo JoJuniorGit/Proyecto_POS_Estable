@@ -58,7 +58,7 @@ public class DailyClosureControllerTests
     {
         var controller = CreateController();
 
-        var actionResult = await controller.GetExpectedTotals(default, CancellationToken.None);
+        var actionResult = await controller.GetExpectedTotalsAsync(default, CancellationToken.None);
 
         var objectResult = Assert.IsType<BadRequestObjectResult>(actionResult.Result);
         Assert.Equal(400, objectResult.StatusCode);
@@ -75,7 +75,7 @@ public class DailyClosureControllerTests
 
         var controller = CreateController(closureService);
 
-        var actionResult = await controller.GetExpectedTotals(new DateTime(2026, 9, 15, 0, 0, 0, DateTimeKind.Utc), CancellationToken.None);
+        var actionResult = await controller.GetExpectedTotalsAsync(new DateTime(2026, 9, 15, 0, 0, 0, DateTimeKind.Utc), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(actionResult.Result);
     }
@@ -118,7 +118,7 @@ public class DailyClosureControllerTests
             }
         };
 
-        var result = await controller.CreateClosure(request, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(request, CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result);
         mockClosure.Verify(c => c.CreateClosureFromCommandAsync(
@@ -159,7 +159,7 @@ public class DailyClosureControllerTests
             }
         };
 
-        var result = await controller.CreateClosure(request, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(request, CancellationToken.None);
 
         var conflict = Assert.IsType<ConflictObjectResult>(result);
         Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);

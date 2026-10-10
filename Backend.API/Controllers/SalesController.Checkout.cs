@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Core.Helpers;
 using Core.Logging;
 using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
@@ -24,74 +23,12 @@ public partial class SalesController
             return this.ApiForbidden("Acceso denegado: no tiene permisos para consultar esta venta.");
         }
 
-        var sale = await _salesService.GetSaleAsync(id, cancellationToken);
-        if (sale == null) return this.ApiNotFound($"Venta #{id} no encontrada.");
-
-        // 8.152 (SEC-08): con tasa del cliente se aplica el MISMO anclaje del completar venta
-        // (el ArgumentException del rechazo ±100% fluye al middleware global -> 400).
-        decimal rate = request.ExchangeRate > 0
-            ? await _salesService.ResolveCheckoutRateAsync(id, request.ExchangeRate, cancellationToken)
-            : sale.AppliedRate;
-        if (rate <= 0) return this.ApiBadRequest("Tasa de cambio inválida.");
-
-        decimal totalUsd = sale.TotalUSD;
-        decimal totalBsS = PricingCalculator.RoundToDigital(totalUsd * rate);
-
-        decimal totalPaidUsd = 0m;
-        decimal totalPaidBsS = 0m;
-
-        if (request.Payments != null)
-        {
-            foreach (var p in request.Payments)
-            {
-                decimal pUsd = p.Amount;
-                decimal pBsS = p.AmountBsS > 0 ? p.AmountBsS : p.AmountLocal;
-
-                if (pUsd <= 0 && pBsS > 0 && rate > 0)
-                {
-                    pUsd = PricingCalculator.ToUSD(pBsS, rate, decimals: 4);
-                }
-                else if (pBsS <= 0 && pUsd > 0 && rate > 0)
-                {
-                    pBsS = PricingCalculator.ToBsS(pUsd, rate);
-                }
-
-                totalPaidUsd += PricingCalculator.RoundToDigital(pUsd);
-                totalPaidBsS += PricingCalculator.RoundToDigital(pBsS);
-            }
-        }
-
-        decimal remainingUsd = Math.Max(0m, totalUsd - totalPaidUsd);
-        decimal remainingBsS = Math.Max(0m, totalBsS - totalPaidBsS);
-
-        bool isFullyPaid = remainingUsd <= 0.05m;
-        decimal roundingAdjustment = remainingUsd <= 0.01m ? PricingCalculator.RoundToDigital(totalPaidBsS - totalBsS) : 0m;
-
-        decimal changeUsd = 0m;
-        decimal changeBsS = 0m;
-        if (totalPaidUsd > totalUsd + 0.05m)
-        {
-            changeUsd = PricingCalculator.RoundToDigital(totalPaidUsd - totalUsd);
-            changeBsS = PricingCalculator.ToBsS(changeUsd, rate);
-        }
-
-        return Ok(new CheckoutPreviewResponse
-        {
-            TotalUSD = totalUsd,
-            TotalBsS = totalBsS,
-            TotalPaidUSD = totalPaidUsd,
-            TotalPaidBsS = totalPaidBsS,
-            RemainingBalanceUSD = remainingUsd,
-            RemainingBalanceBsS = remainingBsS,
-            RoundingAdjustment = roundingAdjustment,
-            ChangeDueUSD = changeUsd,
-            ChangeDueBsS = changeBsS,
-            IsFullyPaid = isFullyPaid
-        });
+        // 8.159-T1 (CLEAN-04, REQ-CHC-01): el cálculo financiero vive en el servicio de dominio;
+        // el endpoint solo autoriza y delega (missing → 404 y tasa inválida → 400 los mapea el
+        // middleware de dominio con los mismos mensajes del comportamiento histórico).
+        var preview = await _checkoutCalculator!.CalculatePreviewAsync(id, request, cancellationToken);
+        return Ok(preview);
     }
-
-    [NonAction]
-    public Task<ActionResult<CheckoutPreviewResponse>> GetCheckoutPreview(int id, [FromBody] CheckoutPreviewRequest request) => GetCheckoutPreviewAsync(id, request);
 
     [RequireSecurityStampValidation]
     [HttpPost("{id}/complete")]
@@ -169,9 +106,6 @@ public partial class SalesController
             ?? System.Linq.Enumerable.Empty<PaymentInfo>();
     }
 
-    [NonAction]
-    public Task<ActionResult> CompleteSale(int id, [FromBody] CompleteSaleRequest request) => CompleteSaleAsync(id, request);
-
     [HttpGet("idempotency/stats")]
     [Authorize(Roles = "Admin")]
     public ActionResult GetIdempotencyStats()
@@ -212,9 +146,6 @@ public partial class SalesController
         }
     }
 
-    [NonAction]
-    public Task<ActionResult<SaleHistoryDto>> ConfirmPickup(int id) => ConfirmPickupAsync(id);
-
     [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpGet("pending-pickups")]
     public async Task<ActionResult<System.Collections.Generic.IEnumerable<PendingPickupDto>>> GetPendingPickupsAsync([FromQuery] int limit = 200, [FromQuery] int offset = 0, System.Threading.CancellationToken cancellationToken = default)
@@ -227,7 +158,4 @@ public partial class SalesController
         Response.Headers.Append("X-Total-Count", totalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
         return Ok(pending);
     }
-
-    [NonAction]
-    public Task<ActionResult<System.Collections.Generic.IEnumerable<PendingPickupDto>>> GetPendingPickups([FromQuery] int limit = 200, [FromQuery] int offset = 0) => GetPendingPickupsAsync(limit, offset);
 }

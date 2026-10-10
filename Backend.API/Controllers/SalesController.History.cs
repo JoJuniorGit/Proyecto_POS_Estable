@@ -26,10 +26,6 @@ public partial class SalesController
         return Ok(new { Items = items, TotalCount = totalCount });
     }
 
-    [NonAction]
-    public Task<ActionResult> GetHistory(int page = 1, int pageSize = 20, System.DateTime? startDate = null, System.DateTime? endDate = null, string? search = null)
-        => GetHistoryAsync(page, pageSize, startDate, endDate, search);
-
     [HttpGet("{id}/history-detail")]
     public async Task<ActionResult> GetHistoryDetailAsync(int id, CancellationToken cancellationToken = default)
     {
@@ -49,9 +45,6 @@ public partial class SalesController
         }
     }
 
-    [NonAction]
-    public Task<ActionResult> GetHistoryDetail(int id) => GetHistoryDetailAsync(id);
-
     [HttpPut("{id}/price-list")]
     public async Task<ActionResult<SaleDto>> UpdatePriceListAsync(int id, [FromBody] UpdatePriceListRequestDto request, CancellationToken cancellationToken = default)
     {
@@ -70,7 +63,4 @@ public partial class SalesController
             return this.ApiNotFound(ex.Message);
         }
     }
-
-    [NonAction]
-    public Task<ActionResult<SaleDto>> UpdatePriceList(int id, [FromBody] UpdatePriceListRequestDto request) => UpdatePriceListAsync(id, request);
 }

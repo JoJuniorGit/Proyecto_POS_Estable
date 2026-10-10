@@ -16,7 +16,9 @@ public partial class SalesService
     public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         // 8.9-M17: una sola consulta; se mapea el DTO desde la entidad ya cargada (sin doble fetch).
+        // 8.159 (PERF-03 residual): este fetch es solo de validación (la entidad no se muta aquí).
         var sale = await _context.Sales
+            .AsNoTracking()
             .AsSplitQuery()
             .Include(s => s.Customer)
             .Include(s => s.Cashier)

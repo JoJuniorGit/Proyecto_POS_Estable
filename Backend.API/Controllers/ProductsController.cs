@@ -63,9 +63,6 @@ public partial class ProductsController : ControllerBase
         return dto;
     }
 
-    [NonAction]
-    public Task<ActionResult<ProductDto>> GetById(int id) => GetByIdAsync(id);
-
     [HttpPost]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<ProductDto>> CreateAsync([FromBody] CreateProductDto request, CancellationToken cancellationToken = default)
@@ -88,9 +85,6 @@ public partial class ProductsController : ControllerBase
             return this.ApiForbidden("No tiene permisos para realizar esta operación.");
         }
     }
-
-    [NonAction]
-    public Task<ActionResult<ProductDto>> Create(CreateProductDto request) => CreateAsync(request);
 
     [HttpPut("{id}")]
     [Authorize(Roles = "Admin,Manager")]
@@ -115,9 +109,6 @@ public partial class ProductsController : ControllerBase
             return this.ApiNotFound($"Producto con ID {id} no encontrado.");
         }
     }
-
-    [NonAction]
-    public Task<IActionResult> Update(int id, [FromBody] UpdateProductDto request) => UpdateAsync(id, request);
 
     private List<Core.DTOs.ProductDto> MaskCostsForCurrentRole(List<Core.DTOs.ProductDto> items)
     {
@@ -144,9 +135,6 @@ public partial class ProductsController : ControllerBase
         }
     }
 
-    [NonAction]
-    public Task<IActionResult> SetStatus(int id, [FromBody] StatusUpdateDto dto) => SetStatusAsync(id, dto);
-
     [HttpPost("{id}/restore")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> RestoreAsync(int id, CancellationToken cancellationToken = default)
@@ -166,9 +154,6 @@ public partial class ProductsController : ControllerBase
         }
     }
 
-    [NonAction]
-    public Task<IActionResult> Restore(int id) => RestoreAsync(id);
-
     [HttpDelete("{id}")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> DeleteAsync(int id, [FromQuery] bool hardDelete = false, CancellationToken cancellationToken = default)
@@ -187,9 +172,6 @@ public partial class ProductsController : ControllerBase
             return this.ApiForbidden("No tiene permisos para realizar esta operación.");
         }
     }
-
-    [NonAction]
-    public Task<IActionResult> Delete(int id, [FromQuery] bool hardDelete = false) => DeleteAsync(id, hardDelete);
 
     [HttpPost("{id}/adjust-stock")]
     [Authorize(Roles = "Admin,Manager")]
@@ -218,9 +200,6 @@ public partial class ProductsController : ControllerBase
             return this.ApiForbidden("No tiene permisos para realizar esta operación.");
         }
     }
-
-    [NonAction]
-    public Task<IActionResult> AdjustStock(int id, [FromBody] DTOs.AdjustStockDto dto) => AdjustStockAsync(id, dto);
 
     private ProductDto MaskProductDto(ProductDto item) => item.MaskCosts();
 
@@ -273,9 +252,6 @@ public partial class ProductsController : ControllerBase
         return info;
     }
 
-    [NonAction]
-    public Task<ActionResult<Core.DTOs.ProductQuickInfoDto>> GetQuickInfo(string sku) => GetQuickInfoAsync(sku);
-
     [HttpGet("suggestions")]
     public async Task<ActionResult<List<Core.DTOs.ProductQuickInfoDto>>> GetSuggestionsAsync([FromQuery] string filter, [FromQuery] bool activeOnly = true, System.Threading.CancellationToken token = default)
     {
@@ -293,7 +269,4 @@ public partial class ProductsController : ControllerBase
         
         return Ok(results);
     }
-
-    [NonAction]
-    public Task<ActionResult<List<Core.DTOs.ProductQuickInfoDto>>> GetSuggestions([FromQuery] string filter, [FromQuery] bool activeOnly = true, System.Threading.CancellationToken token = default) => GetSuggestionsAsync(filter, activeOnly, token);
 }

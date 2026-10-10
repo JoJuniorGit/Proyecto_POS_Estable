@@ -402,7 +402,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
         };
 
         // Primer intento: MISS
-        var actionResult = await controller.CompleteSale(1, requestDto);
+        var actionResult = await controller.CompleteSaleAsync(1, requestDto);
         var okResult = Assert.IsType<OkObjectResult>(actionResult);
         Assert.Equal(777, okResult.Value);
         Assert.Equal("MISS", httpContext.Response.Headers["X-Cache-Lookup"].ToString());
@@ -415,7 +415,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
         replayContext.Response.Body = new MemoryStream();
         controller.ControllerContext = new ControllerContext { HttpContext = replayContext };
 
-        var replayResult = await controller.CompleteSale(1, requestDto);
+        var replayResult = await controller.CompleteSaleAsync(1, requestDto);
         var replayOk = Assert.IsType<OkObjectResult>(replayResult);
         Assert.Equal(777, replayOk.Value);
         Assert.Equal("HIT", replayContext.Response.Headers["X-Cache-Lookup"].ToString());
@@ -472,7 +472,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
             ExchangeRate = 45.0m,
             Payments = new List<SalePaymentDto> { new SalePaymentDto { PaymentMethodId = 1, Amount = 10, AmountBsS = 450 } }
         };
-        await controller.CompleteSale(1, req1);
+        await controller.CompleteSaleAsync(1, req1);
 
         // Mismo Idempotency-Key pero con Payload modificado (ExchangeRate = 50.0m)
         var httpContext2 = new DefaultHttpContext();
@@ -487,7 +487,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
             Payments = new List<SalePaymentDto> { new SalePaymentDto { PaymentMethodId = 1, Amount = 10, AmountBsS = 500 } }
         };
 
-        var response = await controller.CompleteSale(1, req2);
+        var response = await controller.CompleteSaleAsync(1, req2);
         var statusResult = Assert.IsType<ObjectResult>(response);
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, statusResult.StatusCode);
     }
@@ -508,7 +508,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
         var req = new CompleteSaleRequest { ExchangeRate = 45.0m, Payments = new List<SalePaymentDto>() };
-        var response = await controller.CompleteSale(1, req);
+        var response = await controller.CompleteSaleAsync(1, req);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(response);
         Assert.NotNull(badRequest.Value);
@@ -729,7 +729,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
         // Primer intento: MISS → se registra y se llama al servicio
-        var first = Assert.IsType<OkObjectResult>((await controller.AddPayment(5, paymentReq)).Result);
+        var first = Assert.IsType<OkObjectResult>((await controller.AddPaymentAsync(5, paymentReq)).Result);
         Assert.Equal("MISS", httpContext.Response.Headers["X-Cache-Lookup"].ToString());
 
         // Segundo intento con la misma clave: replay HIT, sin volver a llamar al servicio
@@ -740,7 +740,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
         replayContext.Response.Body = new MemoryStream();
         controller.ControllerContext = new ControllerContext { HttpContext = replayContext };
 
-        await controller.AddPayment(5, paymentReq);
+        await controller.AddPaymentAsync(5, paymentReq);
         Assert.Equal("HIT", replayContext.Response.Headers["X-Cache-Lookup"].ToString());
 
         mockSalesService.Verify(s => s.AddPaymentToHoldSaleAsync(
@@ -771,7 +771,7 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
         var request = new HoldSaleRequestDto { CustomerId = 7, ExchangeRate = 50m };
 
-        var result = await controller.HoldSale(3, request);
+        var result = await controller.HoldSaleAsync(3, request);
         Assert.IsType<BadRequestObjectResult>(result.Result);
         mockSalesService.Verify(s => s.HoldSaleAsync(3, request, null, null), Times.Never);
     }

@@ -172,7 +172,7 @@ public class MutationalEndpointsIdempotencyTests
         var controller = CreateSalesController(context, salesService);
         AttachHttpContext(controller, ItemsPath, idempotencyKey: null);
 
-        var result = await controller.AddItem(1, CreateItemRequest());
+        var result = await controller.AddItemAsync(1, CreateItemRequest());
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Contains("Idempotency-Key", GetProblemMessage(badRequest.Value));
@@ -192,14 +192,14 @@ public class MutationalEndpointsIdempotencyTests
         var controller = CreateSalesController(context, salesService);
 
         AttachHttpContext(controller, ItemsPath, "ITEMS-REPLAY-001");
-        var first = await controller.AddItem(1, CreateItemRequest());
+        var first = await controller.AddItemAsync(1, CreateItemRequest());
         Assert.IsType<OkObjectResult>(first.Result);
         Assert.Equal("MISS", GetCacheLookup(controller));
         Assert.Equal(1, await context.IdempotentRequests.CountAsync());
 
         // Retry tras microcorte: mismo key y payload → replay sin segunda mutación.
         AttachHttpContext(controller, ItemsPath, "ITEMS-REPLAY-001");
-        var replay = await controller.AddItem(1, CreateItemRequest());
+        var replay = await controller.AddItemAsync(1, CreateItemRequest());
 
         var content = Assert.IsType<ContentResult>(replay.Result);
         Assert.Equal("HIT", GetCacheLookup(controller));
@@ -221,10 +221,10 @@ public class MutationalEndpointsIdempotencyTests
         var controller = CreateSalesController(context, salesService);
 
         AttachHttpContext(controller, ItemsPath, "ITEMS-MISMATCH-001");
-        await controller.AddItem(1, CreateItemRequest(quantity: 2m));
+        await controller.AddItemAsync(1, CreateItemRequest(quantity: 2m));
 
         AttachHttpContext(controller, ItemsPath, "ITEMS-MISMATCH-001");
-        var mismatch = await controller.AddItem(1, CreateItemRequest(quantity: 3m));
+        var mismatch = await controller.AddItemAsync(1, CreateItemRequest(quantity: 3m));
 
         var objectResult = Assert.IsType<ObjectResult>(mismatch.Result);
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, objectResult.StatusCode);
@@ -247,7 +247,7 @@ public class MutationalEndpointsIdempotencyTests
             salesDb, inventoryDb, new CashDrawerService(salesDb), CreateSettingsMock().Object, new IdempotencyService(salesDb));
         AttachHttpContext(controller, TransactionPath, idempotencyKey: null);
 
-        var result = await controller.AddTransaction(CreateTransactionRequest(), CancellationToken.None);
+        var result = await controller.AddTransactionAsync(CreateTransactionRequest(), CancellationToken.None);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Contains("Idempotency-Key", GetProblemMessage(badRequest.Value));
@@ -263,12 +263,12 @@ public class MutationalEndpointsIdempotencyTests
             salesDb, inventoryDb, new CashDrawerService(salesDb), CreateSettingsMock().Object, new IdempotencyService(salesDb));
 
         AttachHttpContext(controller, TransactionPath, "TXN-REPLAY-001");
-        var first = await controller.AddTransaction(CreateTransactionRequest(), CancellationToken.None);
+        var first = await controller.AddTransactionAsync(CreateTransactionRequest(), CancellationToken.None);
         Assert.IsType<OkObjectResult>(first.Result);
         Assert.Equal("MISS", GetCacheLookup(controller));
 
         AttachHttpContext(controller, TransactionPath, "TXN-REPLAY-001");
-        var replay = await controller.AddTransaction(CreateTransactionRequest(), CancellationToken.None);
+        var replay = await controller.AddTransactionAsync(CreateTransactionRequest(), CancellationToken.None);
 
         var content = Assert.IsType<ContentResult>(replay.Result);
         Assert.Equal("HIT", GetCacheLookup(controller));
@@ -290,13 +290,13 @@ public class MutationalEndpointsIdempotencyTests
             salesDb, inventoryDb, new CashDrawerService(salesDb), CreateSettingsMock().Object, new IdempotencyService(salesDb));
 
         AttachHttpContext(controller, TransactionPath, "TXN-MISMATCH-001");
-        await controller.AddTransaction(CreateTransactionRequest(), CancellationToken.None);
+        await controller.AddTransactionAsync(CreateTransactionRequest(), CancellationToken.None);
 
         var differentPayload = CreateTransactionRequest();
         differentPayload.AmountLocal = 999m;
 
         AttachHttpContext(controller, TransactionPath, "TXN-MISMATCH-001");
-        var mismatch = await controller.AddTransaction(differentPayload, CancellationToken.None);
+        var mismatch = await controller.AddTransactionAsync(differentPayload, CancellationToken.None);
 
         var objectResult = Assert.IsType<ObjectResult>(mismatch.Result);
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, objectResult.StatusCode);
@@ -315,7 +315,7 @@ public class MutationalEndpointsIdempotencyTests
         var controller = CreateDailyClosureController(closureService.Object, new IdempotencyService(context));
         AttachHttpContext(controller, ClosurePath, idempotencyKey: null);
 
-        var result = await controller.CreateClosure(CreateClosureRequest(), CancellationToken.None);
+        var result = await controller.CreateClosureAsync(CreateClosureRequest(), CancellationToken.None);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Contains("Idempotency-Key", GetProblemMessage(badRequest.Value));
@@ -332,13 +332,13 @@ public class MutationalEndpointsIdempotencyTests
         var controller = CreateDailyClosureController(closureService.Object, new IdempotencyService(context));
 
         AttachHttpContext(controller, ClosurePath, "CLOSURE-REPLAY-001");
-        var first = await controller.CreateClosure(CreateClosureRequest(), CancellationToken.None);
+        var first = await controller.CreateClosureAsync(CreateClosureRequest(), CancellationToken.None);
         Assert.IsType<OkObjectResult>(first);
         Assert.Equal("MISS", GetCacheLookup(controller));
         Assert.Equal(1, await context.IdempotentRequests.CountAsync());
 
         AttachHttpContext(controller, ClosurePath, "CLOSURE-REPLAY-001");
-        var replay = await controller.CreateClosure(CreateClosureRequest(), CancellationToken.None);
+        var replay = await controller.CreateClosureAsync(CreateClosureRequest(), CancellationToken.None);
 
         var content = Assert.IsType<ContentResult>(replay);
         Assert.Equal("HIT", GetCacheLookup(controller));
@@ -360,10 +360,10 @@ public class MutationalEndpointsIdempotencyTests
         var controller = CreateDailyClosureController(closureService.Object, new IdempotencyService(context));
 
         AttachHttpContext(controller, ClosurePath, "CLOSURE-MISMATCH-001");
-        await controller.CreateClosure(CreateClosureRequest(actualAmount: 1000m), CancellationToken.None);
+        await controller.CreateClosureAsync(CreateClosureRequest(actualAmount: 1000m), CancellationToken.None);
 
         AttachHttpContext(controller, ClosurePath, "CLOSURE-MISMATCH-001");
-        var mismatch = await controller.CreateClosure(CreateClosureRequest(actualAmount: 555m), CancellationToken.None);
+        var mismatch = await controller.CreateClosureAsync(CreateClosureRequest(actualAmount: 555m), CancellationToken.None);
 
         var objectResult = Assert.IsType<ObjectResult>(mismatch);
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, objectResult.StatusCode);
@@ -380,7 +380,7 @@ public class MutationalEndpointsIdempotencyTests
         var controller = CreateDailyClosureController(closureService.Object, new IdempotencyService(context));
 
         AttachHttpContext(controller, ClosurePath, "CLOSURE-DUP-001");
-        var result = await controller.CreateClosure(CreateClosureRequest(), CancellationToken.None);
+        var result = await controller.CreateClosureAsync(CreateClosureRequest(), CancellationToken.None);
 
         var conflict = Assert.IsType<ConflictObjectResult>(result);
         Assert.Equal(StatusCodes.Status409Conflict, conflict.StatusCode);

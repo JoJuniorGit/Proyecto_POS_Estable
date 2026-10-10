@@ -13221,3 +13221,98 @@ H1. Cadena 8.157 en V0.15: 91dbca9 (plan) + 53731df (T1) + 2bac982 (T2) +
     2c79b5c (T3 + bundle) + commit de cierre de este ANEXO (git log / L6 del
     tracker ODD).
 ================================================================================
+
+================================================================================
+ANEXO 8.159 — LIMPIEZA DE CONTROLADORES (CLEAN-01) + CALCULO DE COBRO (CLEAN-04) + PERF-03 — 2026-10-10
+================================================================================
+Change SDD: openspec/changes/2026-10-10-audit-controller-cleanup/ (proposal,
+2 specs, tasks, state, verify-report). Tramo 6 del roadmap (autorizado:
+"Procede con 8.159"). El tramo 8.158 (SRE-03/CLEAN-03) queda pendiente.
+
+A. ALCANCE Y ENTREGA
+
+A1. Verificacion previa: CLEAN-04 CONFIRMADO (~55 lineas de matematica en el
+    endpoint; el ApiNotFound era inalcanzable: GetSaleAsync lanza
+    KeyNotFoundException -> 404 real); CLEAN-01 CONFIRMADO (93 wrappers en 19
+    archivos; ~245 usos en tests con triage); PERF-03 REFUTADO (AsSplitQuery
+    desde 148e6a3 + asNoTracking param + History ya con AsNoTracking).
+A2. T1 — d52a70f (CLEAN-04): nuevo ICheckoutCalculationService +
+    CheckoutCalculationService con la matematica VERBATIM (fetch + anclaje
+    SEC-08 + formulas/umbrales espejo); el endpoint queda auth + delegacion +
+    Ok; DI scoped; ctor con param opcional (precedente 8.149/8.150); errores
+    preservados (missing -> KeyNotFoundException 404 real; rate<=0 ->
+    ArgumentException("Tasa de cambio invalida.") 400 por dominio; rechazo
+    +/-100% y anclaje intactos). 5 constructores de tests ajustados (reportados)
+    + 9 tests nuevos del servicio; RED compile-level -> GREEN.
+A3. T2 — e4c2401 (PERF-03 residual): AsNoTracking en el primer fetch de
+    ConfirmPickupAsync (solo validacion); evidencia de refutacion completa.
+A4. T3 — aaa01ce (CLEAN-01 grupo A): 37 wrappers eliminados (Auth/Users/
+    PaymentMethods/Settings/ExchangeRate/Health/Receipts/Reservations) + 72
+    call sites migrados en 17 archivos de test (RED: 72 CS1061).
+A5. T4 — 11ef283 (CLEAN-01 grupo B): 56 wrappers eliminados (CashDrawer/
+    DailyClosure/Products x3/Sales x7) + 114 call sites migrados en 22
+    archivos (RED: 114 errores); CancellationPropagationTests lista los
+    *Async; [NonAction] = 0 global.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CON PostgreSQL real: 2216/2216, 0 fallas, 0 omitidas
+    (2207 base + 9 nuevos del servicio; sin tests perdidos: Assert/[Fact]
+    netos 0 en los 39 archivos migrados).
+B3. Cobertura CON Postgres (coverage.runsettings + scripts/check-coverage.py,
+    exit 0): Core 0.8886 (>=0.70), Sales.Module 0.9065 (>=0.80),
+    Inventory.Module 0.8621 (>=0.72).
+B4. Verificacion independiente (read-only): PASS WITH WARNINGS — REQ-CHC-01/02
+    y REQ-NAC-01/02 COMPLIANT + S3 COMPLIANT; comparacion mecanica del
+    servicio vs endpoint pre-extraccion (solo id->saleId y el throw de
+    ArgumentException); diffs de controladores con 0 lineas agregadas;
+    equivalencia 1:1 de los 39 archivos de tests (0 mismatches). W1: REDs
+    72/114 no reproducibles (estados transitorios nunca versionados;
+    corroboracion estatica exacta). W2: el mapeo 404/400 del preview no tiene
+    test HTTP (preexistente; cadena middleware verificada estatica). I1-I5.
+B5. Web/bundle sin cambios en el tramo; git status limpio en 11ef283.
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. W1: los RED compile-level no son re-ejecutables (commits atomicos);
+    corroborados por conteo estatico de call lines removidas.
+D2. W2: sin test HTTP del 404/400 del preview (recomendacion G1).
+D3. Focused filters no re-ejecutados por el verificador (la suite completa los
+    supersede); la suite del verificador corrio en Debug (build Release 0/0
+    verificado aparte).
+
+E. ROLLBACK
+
+E1. Revertir d52a70f + e4c2401 + aaa01ce + 11ef283 restaura el comportamiento
+    previo (el endpoint recupera su matematica inline y los wrappers vuelven);
+    sin migraciones ni reescrituras de datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS — 3/3 requisitos COMPLIANT;
+    W1/W2 registrados; INFOs I1-I5. Reporte en el change (verify-report.md).
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. (W2) Agregar un test HTTP (pipeline real) del 404/400 del
+    checkout-preview (missing -> 404 con mensaje del dominio; rate invalida ->
+    400 con "Tasa de cambio invalida.").
+G2. Roadmap restante: SOLO el tramo 8.158 (SRE-03: logger asincrono con canal
+    no bloqueante; CLEAN-03: bootstrap fail-fast con structured logging en
+    Program.cs). Con el, queda cerrada la matriz completa de la auditoria
+    re-emitida (5 remediados en 8.149 + 8.152/8.153/8.154/8.155/8.156/8.157/
+    8.159 + refutados SRE-04/SRE-05/PERF-03; SEC-01 residual de centimos
+    permanece como desviacion documentada).
+
+H. COMMITS
+
+H1. Cadena 8.159 en V0.15: 5ce8b86 (plan) + d52a70f (T1) + e4c2401 (T2) +
+    aaa01ce (T3) + 11ef283 (T4) + commit de cierre de este ANEXO (git log /
+    L6 del tracker ODD).
+================================================================================

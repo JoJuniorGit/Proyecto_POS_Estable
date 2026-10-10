@@ -157,7 +157,7 @@ public class ResidualRemediationLote26Tests
         var controller = CreateSalesController(mockSalesService);
         var request = new CompleteSaleRequest { ExchangeRate = 45m, Payments = null! };
 
-        var response = await controller.CompleteSale(1, request);
+        var response = await controller.CompleteSaleAsync(1, request);
 
         var ok = Assert.IsType<OkObjectResult>(response);
         Assert.Equal(321, ok.Value);
@@ -193,7 +193,7 @@ public class ResidualRemediationLote26Tests
             Payments = new List<SalePaymentDto> { null! }
         };
 
-        var response = await controller.CompleteSale(1, request);
+        var response = await controller.CompleteSaleAsync(1, request);
 
         Assert.IsType<OkObjectResult>(response);
         Assert.NotNull(capturedPayments);
@@ -221,7 +221,7 @@ public class ResidualRemediationLote26Tests
         var controller = CreateSalesController(mockSalesService);
         var request = new CompleteSaleRequest { ExchangeRate = 45m, Payments = null! };
 
-        var exception = await Record.ExceptionAsync(() => controller.CompleteSale(1, request));
+        var exception = await Record.ExceptionAsync(() => controller.CompleteSaleAsync(1, request));
 
         Assert.IsType<InvalidOperationException>(exception);
     }
@@ -290,7 +290,7 @@ public class ResidualRemediationLote26Tests
             }
         };
 
-        var result = await controller.CreateClosure(request, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(request, CancellationToken.None);
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badRequest.Value);

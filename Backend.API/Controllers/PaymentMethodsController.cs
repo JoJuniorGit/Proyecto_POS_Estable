@@ -24,18 +24,12 @@ public class PaymentMethodsController : ControllerBase
         return Ok(methods);
     }
 
-    [NonAction]
-    public Task<IActionResult> GetActiveMethods() => GetActiveMethodsAsync();
-
     [HttpGet]
     public async Task<IActionResult> GetAllMethodsAsync(CancellationToken cancellationToken = default)
     {
         var methods = await _paymentService.GetAllAsync(cancellationToken);
         return Ok(methods);
     }
-
-    [NonAction]
-    public Task<IActionResult> GetAllMethods() => GetAllMethodsAsync();
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetMethodAsync(int id, CancellationToken cancellationToken = default)
@@ -50,9 +44,6 @@ public class PaymentMethodsController : ControllerBase
             return this.ApiNotFound("Método de pago no encontrado.");
         }
     }
-
-    [NonAction]
-    public Task<IActionResult> GetMethod(int id) => GetMethodAsync(id);
 
     [HttpPost]
     [Authorize(Roles = "Admin")]
@@ -73,9 +64,6 @@ public class PaymentMethodsController : ControllerBase
         var created = await _paymentService.CreateAsync(methodDto, cancellationToken);
         return CreatedAtAction(nameof(GetMethodAsync), new { id = created.Id }, created);
     }
-
-    [NonAction]
-    public Task<IActionResult> CreateMethod(CreatePaymentMethodDto dto) => CreateMethodAsync(dto);
 
     [HttpPut("{id}")]
     [Authorize(Roles = "Admin")]
@@ -108,9 +96,6 @@ public class PaymentMethodsController : ControllerBase
         }
     }
 
-    [NonAction]
-    public Task<IActionResult> UpdateMethod(int id, UpdatePaymentMethodDto dto) => UpdateMethodAsync(id, dto);
-
     [HttpDelete("{id}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteMethodAsync(int id, CancellationToken cancellationToken = default)
@@ -125,7 +110,4 @@ public class PaymentMethodsController : ControllerBase
             return this.ApiNotFound(ex.Message);
         }
     }
-
-    [NonAction]
-    public Task<IActionResult> DeleteMethod(int id) => DeleteMethodAsync(id);
 }

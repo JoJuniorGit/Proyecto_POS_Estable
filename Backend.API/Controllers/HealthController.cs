@@ -78,9 +78,6 @@ public class HealthController : ControllerBase
         }
     }
 
-    [NonAction]
-    public Task<IActionResult> CheckHealth(CancellationToken cancellationToken = default) => CheckHealthAsync(cancellationToken);
-
     [HttpGet("api/health/metrics")]
     [Authorize(Roles = "Admin,Manager")]
     public IActionResult GetMetrics()
@@ -138,9 +135,6 @@ public class HealthController : ControllerBase
             Timestamp = DateTime.UtcNow.ToString("o")
         });
     }
-
-    [NonAction]
-    public Task<IActionResult> GetDetails(CancellationToken cancellationToken = default) => GetDetailsAsync(cancellationToken);
 
     private DateTime? ResolveCertificateExpiry()
     {

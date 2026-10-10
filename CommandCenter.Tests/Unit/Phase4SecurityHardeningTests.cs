@@ -65,7 +65,7 @@ public class Phase4SecurityHardeningTests
         // 4 failed attempts
         for (int i = 0; i < 4; i++)
         {
-            var res = await controller.Login(new LoginRequest { Cedula = "V-12345678", Password = "WrongPassword" });
+            var res = await controller.LoginAsync(new LoginRequest { Cedula = "V-12345678", Password = "WrongPassword" });
             Assert.IsType<UnauthorizedObjectResult>(res.Result);
         }
 
@@ -74,7 +74,7 @@ public class Phase4SecurityHardeningTests
         Assert.Null(checkUser.LockoutEndUtc);
 
         // 5th failed attempt -> locks account
-        var fifthRes = await controller.Login(new LoginRequest { Cedula = "V-12345678", Password = "WrongPassword" });
+        var fifthRes = await controller.LoginAsync(new LoginRequest { Cedula = "V-12345678", Password = "WrongPassword" });
         Assert.IsType<UnauthorizedObjectResult>(fifthRes.Result);
 
         checkUser = await db.Users.FindAsync(1);
@@ -84,7 +84,7 @@ public class Phase4SecurityHardeningTests
 
         // 6th attempt (even with correct password) -> 401 genérico (anti-enumeración 8B-M3,
         // no se revela que la cuenta está bloqueada)
-        var lockedRes = await controller.Login(new LoginRequest { Cedula = "V-12345678", Password = "CorrectPassword123!" });
+        var lockedRes = await controller.LoginAsync(new LoginRequest { Cedula = "V-12345678", Password = "CorrectPassword123!" });
         Assert.IsType<UnauthorizedObjectResult>(lockedRes.Result);
     }
 
@@ -112,7 +112,7 @@ public class Phase4SecurityHardeningTests
 
         var controller = new AuthController(new AuthService(db), tokenService, stampValidator: validator);
 
-        var okRes = await controller.Login(new LoginRequest { Cedula = "V-87654321", Password = "CorrectPassword123!" });
+        var okRes = await controller.LoginAsync(new LoginRequest { Cedula = "V-87654321", Password = "CorrectPassword123!" });
         Assert.IsType<OkObjectResult>(okRes.Result);
 
         var checkUser = await db.Users.FindAsync(2);

@@ -70,7 +70,4 @@ public class ReceiptsController : ControllerBase
         var document = _renderer.Render(context, MoneyFormat.ParseFormat(currencyFormat));
         return File(document.Bytes!, "application/pdf", document.FileName);
     }
-
-    [NonAction]
-    public Task<IActionResult> GetReceipt(int saleId, CancellationToken cancellationToken) => GetReceiptAsync(saleId, cancellationToken);
 }

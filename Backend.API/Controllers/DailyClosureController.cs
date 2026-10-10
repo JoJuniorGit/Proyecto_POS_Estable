@@ -46,9 +46,6 @@ public class DailyClosureController : ControllerBase
         return Ok(totals);
     }
 
-    [NonAction]
-    public Task<ActionResult<List<ExpectedTotalDto>>> GetExpectedTotals(DateTime dateUtc, CancellationToken cancellationToken) => GetExpectedTotalsAsync(dateUtc, cancellationToken);
-
     [RequireSecurityStampValidation]
     [HttpPost]
     public async Task<ActionResult> CreateClosureAsync([FromBody] CreateClosureRequest request, CancellationToken cancellationToken)
@@ -72,9 +69,6 @@ public class DailyClosureController : ControllerBase
 
         return await ExecuteCreateClosureAsync(request, cancellationToken, resolved, requestPath);
     }
-
-    [NonAction]
-    public Task<ActionResult> CreateClosure(CreateClosureRequest request, CancellationToken cancellationToken) => CreateClosureAsync(request, cancellationToken);
 
     private async Task<ActionResult> ExecuteCreateClosureAsync(CreateClosureRequest request, CancellationToken cancellationToken, IdempotencyResolution? idempotency = null, string? requestPath = null)
     {
@@ -178,9 +172,6 @@ public class DailyClosureController : ControllerBase
         if (closure == null) return NotFound();
         return Ok(closure);
     }
-
-    [NonAction]
-    public Task<ActionResult<DailyClosureResponseDto>> GetClosure(int id, CancellationToken cancellationToken) => GetClosureAsync(id, cancellationToken);
 
     private static DateTime ResolveClosureDate(DateTime requestDate, string userId, bool isAdmin)
     {

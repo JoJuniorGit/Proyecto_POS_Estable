@@ -21,18 +21,12 @@ public partial class ProductsController
         return Ok(MaskCostsForCurrentRole(variants));
     }
 
-    [NonAction]
-    public Task<ActionResult<List<Core.DTOs.ProductDto>>> GetVariants(int id) => GetVariantsAsync(id);
-
     [HttpGet("parents")]
     public async Task<ActionResult<List<Core.DTOs.ProductDto>>> GetParentsAsync(CancellationToken token = default)
     {
         var parents = await _inventoryService.GetParentProductsAsync(token);
         return Ok(MaskCostsForCurrentRole(parents));
     }
-
-    [NonAction]
-    public Task<ActionResult<List<Core.DTOs.ProductDto>>> GetParents() => GetParentsAsync();
 
     [HttpGet("{parentId}/candidate-variants")]
     [Authorize(Roles = "Admin,Manager")]
@@ -54,14 +48,6 @@ public partial class ProductsController
         var result = await _inventoryService.GetCandidateVariantsPagedAsync(parentId, filter, page, pageSize, token);
         return Ok(result);
     }
-
-    [NonAction]
-    public Task<ActionResult<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>>> GetCandidateVariants(
-        int parentId,
-        [FromQuery] string? filter = null,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20,
-        CancellationToken token = default) => GetCandidateVariantsAsync(parentId, filter, page, pageSize, token);
 
     [HttpPost("{parentId}/link-variants")]
     [Authorize(Roles = "Admin,Manager")]
@@ -100,12 +86,6 @@ public partial class ProductsController
         }
     }
 
-    [NonAction]
-    public Task<ActionResult<List<Core.DTOs.ProductDto>>> LinkVariantsBatch(
-        int parentId,
-        [FromBody] List<int> productIds,
-        CancellationToken token = default) => LinkVariantsBatchAsync(parentId, productIds, token);
-
     [HttpPost("{parentId}/unlink-variant/{variantId}")]
     [Authorize(Roles = "Admin,Manager")]
     [ProducesResponseType(typeof(Core.DTOs.ProductDto), StatusCodes.Status200OK)]
@@ -142,10 +122,4 @@ public partial class ProductsController
             return this.ApiForbidden(unEx.Message);
         }
     }
-
-    [NonAction]
-    public Task<ActionResult<Core.DTOs.ProductDto>> UnlinkVariant(
-        int parentId,
-        int variantId,
-        CancellationToken token = default) => UnlinkVariantAsync(parentId, variantId, token);
 }

@@ -30,7 +30,7 @@ public class AllowNegativeStockSettingsTests
         mockUser.Setup(u => u.CanMutateSettings).Returns(true);
         var controller = ControllerFactory.CreateSettingsController(db, mockUser.Object, new SystemSettingsService(db));
 
-        var result = await controller.GetAllowNegativeStock();
+        var result = await controller.GetAllowNegativeStockAsync();
 
         var ok = Assert.IsType<OkObjectResult>(result);
         var dto = Assert.IsType<Backend.API.Controllers.AllowNegativeStockResponseDto>(ok.Value);
@@ -45,9 +45,9 @@ public class AllowNegativeStockSettingsTests
         mockUser.Setup(u => u.CanMutateSettings).Returns(true);
         var controller = ControllerFactory.CreateSettingsController(db, mockUser.Object, new SystemSettingsService(db));
 
-        await controller.SetAllowNegativeStock(new SetAllowNegativeStockRequest { Allowed = true });
+        await controller.SetAllowNegativeStockAsync(new SetAllowNegativeStockRequest { Allowed = true });
 
-        var result = await controller.GetAllowNegativeStock();
+        var result = await controller.GetAllowNegativeStockAsync();
         var ok = Assert.IsType<OkObjectResult>(result);
         var dto = Assert.IsType<Backend.API.Controllers.AllowNegativeStockResponseDto>(ok.Value);
         Assert.True(dto.Allowed);
@@ -61,7 +61,7 @@ public class AllowNegativeStockSettingsTests
         mockUser.Setup(u => u.CanMutateSettings).Returns(false);
         var controller = ControllerFactory.CreateSettingsController(db, mockUser.Object, new SystemSettingsService(db));
 
-        var result = await controller.SetAllowNegativeStock(new SetAllowNegativeStockRequest { Allowed = true });
+        var result = await controller.SetAllowNegativeStockAsync(new SetAllowNegativeStockRequest { Allowed = true });
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(Microsoft.AspNetCore.Http.StatusCodes.Status403Forbidden, objectResult.StatusCode);

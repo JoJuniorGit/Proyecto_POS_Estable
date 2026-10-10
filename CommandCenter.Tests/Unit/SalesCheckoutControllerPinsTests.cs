@@ -61,7 +61,7 @@ public class SalesCheckoutControllerPinsTests
             }
         };
 
-        var response = await controller.CompleteSale(1, request);
+        var response = await controller.CompleteSaleAsync(1, request);
 
         var ok = Assert.IsType<OkObjectResult>(response);
         Assert.Equal(515, ok.Value);
@@ -86,7 +86,7 @@ public class SalesCheckoutControllerPinsTests
             Payments = new List<SalePaymentDto>()
         };
 
-        await controller.CompleteSale(1, request);
+        await controller.CompleteSaleAsync(1, request);
 
         Assert.Equal(7, capturedCashierId);
     }
@@ -99,7 +99,7 @@ public class SalesCheckoutControllerPinsTests
         controller.ControllerContext.HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
             new[] { new Claim(ClaimTypes.Role, "Driver") }, "TestAuth"));
 
-        var response = await controller.CompleteSale(1, new CompleteSaleRequest { ExchangeRate = 45m });
+        var response = await controller.CompleteSaleAsync(1, new CompleteSaleRequest { ExchangeRate = 45m });
 
         var forbidden = Assert.IsType<ObjectResult>(response);
         Assert.Equal(StatusCodes.Status403Forbidden, forbidden.StatusCode);

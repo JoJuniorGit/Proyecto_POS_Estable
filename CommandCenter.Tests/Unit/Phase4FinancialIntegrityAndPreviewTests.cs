@@ -60,7 +60,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
             .Setup(s => s.ResolveCheckoutRateAsync(42, It.IsAny<decimal>(), It.IsAny<System.Threading.CancellationToken>()))
             .ReturnsAsync((int _, decimal clientRate, System.Threading.CancellationToken _) => clientRate);
 
-        var controller = new SalesController(mockSalesService.Object, mockCurrentUserService.Object, null);
+        var controller = new SalesController(
+            mockSalesService.Object,
+            mockCurrentUserService.Object,
+            null,
+            null,
+            new CheckoutCalculationService(mockSalesService.Object));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
@@ -83,7 +88,7 @@ public class Phase4FinancialIntegrityAndPreviewTests
         };
 
         // Act
-        var actionResult = await controller.GetCheckoutPreview(42, previewRequest);
+        var actionResult = await controller.GetCheckoutPreviewAsync(42, previewRequest);
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
@@ -244,7 +249,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
             .Setup(s => s.ResolveCheckoutRateAsync(42, It.IsAny<decimal>(), It.IsAny<System.Threading.CancellationToken>()))
             .ReturnsAsync((int _, decimal clientRate, System.Threading.CancellationToken _) => clientRate);
 
-        var controller = new SalesController(mockSalesService.Object, mockCurrentUserService.Object, null);
+        var controller = new SalesController(
+            mockSalesService.Object,
+            mockCurrentUserService.Object,
+            null,
+            null,
+            new CheckoutCalculationService(mockSalesService.Object));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
@@ -260,7 +270,7 @@ public class Phase4FinancialIntegrityAndPreviewTests
             }
         };
 
-        var previewResult = await controller.GetCheckoutPreview(42, previewRequest);
+        var previewResult = await controller.GetCheckoutPreviewAsync(42, previewRequest);
         var previewOk = Assert.IsType<OkObjectResult>(previewResult.Result);
         var preview = Assert.IsType<CheckoutPreviewResponse>(previewOk.Value);
 
@@ -331,7 +341,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
             new Mock<IMediator>().Object,
             new Mock<ICashDrawerService>().Object,
             settings.Object);
-        var controller = new SalesController(service, new Mock<ICurrentUserService>().Object, null);
+        var controller = new SalesController(
+            service,
+            new Mock<ICurrentUserService>().Object,
+            null,
+            null,
+            new CheckoutCalculationService(service));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
@@ -347,7 +362,7 @@ public class Phase4FinancialIntegrityAndPreviewTests
         };
 
         // Act
-        var actionResult = await controller.GetCheckoutPreview(42, previewRequest);
+        var actionResult = await controller.GetCheckoutPreviewAsync(42, previewRequest);
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
@@ -389,7 +404,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
             new Mock<IMediator>().Object,
             new Mock<ICashDrawerService>().Object,
             settings.Object);
-        var controller = new SalesController(service, new Mock<ICurrentUserService>().Object, null);
+        var controller = new SalesController(
+            service,
+            new Mock<ICurrentUserService>().Object,
+            null,
+            null,
+            new CheckoutCalculationService(service));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
@@ -399,7 +419,7 @@ public class Phase4FinancialIntegrityAndPreviewTests
 
         // Act
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => controller.GetCheckoutPreview(43, previewRequest));
+            () => controller.GetCheckoutPreviewAsync(43, previewRequest));
 
         // Assert: mensaje exacto del rechazo (el middleware global responde 400 ProblemDetails).
         Assert.Equal(
@@ -424,14 +444,19 @@ public class Phase4FinancialIntegrityAndPreviewTests
             Items = new List<SaleItemDto>()
         });
 
-        var controller = new SalesController(mockSalesService.Object, mockCurrentUserService.Object, null);
+        var controller = new SalesController(
+            mockSalesService.Object,
+            mockCurrentUserService.Object,
+            null,
+            null,
+            new CheckoutCalculationService(mockSalesService.Object));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
         };
 
         // Act
-        var actionResult = await controller.GetCheckoutPreview(42, new CheckoutPreviewRequest { ExchangeRate = 0m });
+        var actionResult = await controller.GetCheckoutPreviewAsync(42, new CheckoutPreviewRequest { ExchangeRate = 0m });
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);

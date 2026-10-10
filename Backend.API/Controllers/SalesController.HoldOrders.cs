@@ -39,9 +39,6 @@ public partial class SalesController
         }
     }
 
-    [NonAction]
-    public Task<ActionResult<SaleDto>> HoldSale(int id, [FromBody] HoldSaleRequestDto request) => HoldSaleAsync(id, request);
-
     [HttpPut("{id}/items")]
     public async Task<ActionResult<SaleDto>> UpdateSaleItemsAsync(int id, [FromBody] UpdateSaleItemsRequestDto request, CancellationToken cancellationToken = default)
     {
@@ -61,9 +58,6 @@ public partial class SalesController
             return this.ApiForbidden(ex.Message);
         }
     }
-
-    [NonAction]
-    public Task<ActionResult<SaleDto>> UpdateSaleItems(int id, [FromBody] UpdateSaleItemsRequestDto request) => UpdateSaleItemsAsync(id, request);
 
     [HttpPost("{id}/payments")]
     public async Task<ActionResult<SaleDto>> AddPaymentAsync(int id, [FromBody] AddPaymentRequestDto request, CancellationToken cancellationToken = default)
@@ -94,9 +88,6 @@ public partial class SalesController
         }
     }
 
-    [NonAction]
-    public Task<ActionResult<SaleDto>> AddPayment(int id, [FromBody] AddPaymentRequestDto request) => AddPaymentAsync(id, request);
-
     [HttpPost("{id}/payments/batch")]
     public async Task<ActionResult<SaleDto>> AddPaymentsBatchAsync(int id, [FromBody] System.Collections.Generic.List<AddPaymentRequestDto> request, CancellationToken cancellationToken = default)
     {
@@ -126,9 +117,6 @@ public partial class SalesController
         }
     }
 
-    [NonAction]
-    public Task<ActionResult<SaleDto>> AddPaymentsBatch(int id, [FromBody] System.Collections.Generic.List<AddPaymentRequestDto> request) => AddPaymentsBatchAsync(id, request);
-
     [HttpGet("pending")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSalesAsync([FromQuery] int limit = 200, [FromQuery] int offset = 0, CancellationToken cancellationToken = default)
@@ -140,9 +128,6 @@ public partial class SalesController
         Response.Headers.Append("X-Total-Count", totalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
         return Ok(pending);
     }
-
-    [NonAction]
-    public Task<ActionResult<System.Collections.Generic.IEnumerable<SaleDto>>> GetPendingSales([FromQuery] int limit = 200, [FromQuery] int offset = 0) => GetPendingSalesAsync(limit, offset);
 
     [HttpPost("{id}/cancel")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
@@ -156,7 +141,4 @@ public partial class SalesController
         await _salesService.CancelSaleAsync(id, GetActorUserId(), cancellationToken);
         return Ok(new { message = $"Pedido #{id} anulado exitosamente." });
     }
-
-    [NonAction]
-    public Task<IActionResult> CancelSale(int id) => CancelSaleAsync(id);
 }

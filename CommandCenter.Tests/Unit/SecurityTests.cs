@@ -176,7 +176,7 @@ public class SecurityTests
             Description = "Ingreso manual no autorizado"
         };
 
-        var actionResult = await controller.AddTransaction(request, CancellationToken.None);
+        var actionResult = await controller.AddTransactionAsync(request, CancellationToken.None);
         var objResult = actionResult.Result as ObjectResult;
 
         Assert.NotNull(objResult);
@@ -204,7 +204,7 @@ public class SecurityTests
         var mockTokenService = new Mock<ITokenService>();
         var controller = new AuthController(new AuthService(db), mockTokenService.Object);
 
-        var result = await controller.Login(new LoginRequest { Cedula = "V-12345678", Password = testPassword });
+        var result = await controller.LoginAsync(new LoginRequest { Cedula = "V-12345678", Password = testPassword });
         var unauthorizedResult = result.Result as UnauthorizedObjectResult;
         Assert.NotNull(unauthorizedResult);
 

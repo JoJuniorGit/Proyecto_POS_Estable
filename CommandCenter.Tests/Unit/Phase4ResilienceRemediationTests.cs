@@ -104,7 +104,7 @@ public class Phase4ResilienceRemediationTests
         };
 
         // Act
-        var result = await controller.UpdateUser(1, updateDto);
+        var result = await controller.UpdateUserAsync(1, updateDto);
 
         // Assert
         var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);

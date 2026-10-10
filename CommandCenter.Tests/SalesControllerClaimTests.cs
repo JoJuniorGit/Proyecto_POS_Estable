@@ -67,7 +67,7 @@ public class SalesControllerClaimTests
         var controller = new SalesController(mockSales.Object, mockUser.Object);
         AttachUser(controller, CreateUser("7", "Cashier"));
 
-        var result = await controller.ClaimSale(1, new ClaimSaleRequest { Action = "Checkout" });
+        var result = await controller.ClaimSaleAsync(1, new ClaimSaleRequest { Action = "Checkout" });
 
         var conflict = Assert.IsType<ConflictObjectResult>(result.Result);
         Assert.Equal(409, conflict.StatusCode);
@@ -88,7 +88,7 @@ public class SalesControllerClaimTests
         var controller = new SalesController(mockSales.Object, mockUser.Object);
         AttachUser(controller, CreateUser("7", "Cashier"));
 
-        var result = await controller.ClaimSale(1, new ClaimSaleRequest { Action = "None" });
+        var result = await controller.ClaimSaleAsync(1, new ClaimSaleRequest { Action = "None" });
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Equal(400, badRequest.StatusCode);
@@ -109,7 +109,7 @@ public class SalesControllerClaimTests
         var controller = new SalesController(mockSales.Object, mockUser.Object);
         AttachUser(controller, CreateUser("7", "Cashier"));
 
-        var result = await controller.ClaimSale(1, new ClaimSaleRequest { Action = "1" });
+        var result = await controller.ClaimSaleAsync(1, new ClaimSaleRequest { Action = "1" });
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.Equal(400, badRequest.StatusCode);
@@ -130,7 +130,7 @@ public class SalesControllerClaimTests
         var controller = new SalesController(mockSales.Object, mockUser.Object);
         AttachUser(controller, CreateUser("7", "Cashier"));
 
-        var result = await controller.ReleaseSale(1, force: true);
+        var result = await controller.ReleaseSaleAsync(1, force: true);
 
         var forbidden = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(403, forbidden.StatusCode);
@@ -154,7 +154,7 @@ public class SalesControllerClaimTests
         var controller = new SalesController(mockSales.Object, mockUser.Object);
         AttachUser(controller, CreateUser("1", "Admin"));
 
-        var result = await controller.ReleaseSale(1, force: true);
+        var result = await controller.ReleaseSaleAsync(1, force: true);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var sale = Assert.IsType<SaleDto>(ok.Value);

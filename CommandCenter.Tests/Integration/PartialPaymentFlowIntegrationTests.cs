@@ -186,13 +186,13 @@ public class PartialPaymentFlowIntegrationTests
 
         // Primer intento: se aplica el abono → MISS
         controller.ControllerContext = CreatePaymentHttpContext(key);
-        var first = await controller.AddPayment(saleDto.Id, paymentReq);
+        var first = await controller.AddPaymentAsync(saleDto.Id, paymentReq);
         Assert.IsType<OkObjectResult>(first.Result);
         Assert.Equal("MISS", controller.Response.Headers["X-Cache-Lookup"].ToString());
 
         // Retry con la misma clave: replica → HIT, sin re-aplicar el abono
         controller.ControllerContext = CreatePaymentHttpContext(key);
-        var second = await controller.AddPayment(saleDto.Id, paymentReq);
+        var second = await controller.AddPaymentAsync(saleDto.Id, paymentReq);
         Assert.IsType<ContentResult>(second.Result);
         Assert.Equal("HIT", controller.Response.Headers["X-Cache-Lookup"].ToString());
 
