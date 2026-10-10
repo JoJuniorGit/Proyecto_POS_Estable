@@ -1,5 +1,6 @@
 import * as signalR from '@microsoft/signalr';
 import { ApiError, api, getBaseUrl } from './api';
+import { FORCE_DISCONNECT_EVENT, notifySessionRevoked } from './signalr';
 
 // 8.150 (T7, design D7): segundo hub del cliente web para autorizaciones remotas.
 // Cookie auth, auto-reconnect e invoke + fallback REST (mismo par que expone el backend).
@@ -66,6 +67,24 @@ export function createAuthorizationHubClient({
     });
   }
 
+  // 8.157 (SEC-07, REQ-HFC-02): push de revocación del servidor. El stop explícito corta el
+  // auto-reconnect y la conexión se libera para que un connect() posterior reconstruya el
+  // socket (esta conexión revocada no se reanima). La notificación reutiliza el CustomEvent
+  // de sesión expirada que api.js emite ante 401 y que AuthContext ya consume.
+  function attachForceDisconnectHandler() {
+    const conn = connection;
+    conn.on(FORCE_DISCONNECT_EVENT, () => {
+      logger.warn('[AuthorizationHub] Sesión revocada por el servidor; cerrando conexión del hub de autorizaciones.');
+      Promise.resolve()
+        .then(() => conn.stop())
+        .catch(() => {})
+        .finally(() => {
+          if (connection === conn) connection = null;
+          notifySessionRevoked();
+        });
+    });
+  }
+
   async function connect() {
     if (connection) return connection;
 
@@ -77,6 +96,7 @@ export function createAuthorizationHubClient({
 
     attachEventHandlers();
     attachReconnectHandler();
+    attachForceDisconnectHandler();
 
     try {
       await connection.start();
