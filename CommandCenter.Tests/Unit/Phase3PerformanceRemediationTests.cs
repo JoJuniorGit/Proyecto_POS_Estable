@@ -51,19 +51,19 @@ public class Phase3PerformanceRemediationTests
         var controller = ControllerFactory.CreateExchangeRateController(context, mockUser.Object);
 
         // Act & Assert 1: Custom limit = 5
-        var result5 = await controller.GetHistory(limit: 5) as OkObjectResult;
+        var result5 = await controller.GetHistoryAsync(limit: 5) as OkObjectResult;
         Assert.NotNull(result5);
         var items5 = Assert.IsAssignableFrom<System.Collections.IEnumerable>(result5.Value).Cast<object>().ToList();
         Assert.Equal(5, items5.Count);
 
         // Act & Assert 2: Negative limit clamps to 1
-        var resultNeg = await controller.GetHistory(limit: -5) as OkObjectResult;
+        var resultNeg = await controller.GetHistoryAsync(limit: -5) as OkObjectResult;
         Assert.NotNull(resultNeg);
         var itemsNeg = Assert.IsAssignableFrom<System.Collections.IEnumerable>(resultNeg.Value).Cast<object>().ToList();
         Assert.Single(itemsNeg);
 
         // Act & Assert 3: Limit > 365 clamps to 365 (in this case returns all 15 records since 15 < 365)
-        var resultOver = await controller.GetHistory(limit: 500) as OkObjectResult;
+        var resultOver = await controller.GetHistoryAsync(limit: 500) as OkObjectResult;
         Assert.NotNull(resultOver);
         var itemsOver = Assert.IsAssignableFrom<System.Collections.IEnumerable>(resultOver.Value).Cast<object>().ToList();
         Assert.Equal(15, itemsOver.Count);
@@ -168,7 +168,7 @@ public class Phase3PerformanceRemediationTests
         var request = new UpsertExchangeRateRequest { Value = 804.63001m };
 
         // Act
-        var result = await controller.UpsertRate(request, writeService.Object) as OkObjectResult;
+        var result = await controller.UpsertRateAsync(request, writeService.Object) as OkObjectResult;
 
         // Assert
         Assert.NotNull(result);

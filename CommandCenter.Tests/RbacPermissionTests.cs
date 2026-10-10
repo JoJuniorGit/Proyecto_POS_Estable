@@ -137,7 +137,7 @@ public class RbacPermissionTests
         var product = await SeedStockedProductAsync(db);
         var controller = CreateReservationsController(db, "user-42", UserRole.Cashier);
 
-        var result = await controller.ReserveStock(new ReserveStockDto
+        var result = await controller.ReserveStockAsync(new ReserveStockDto
         {
             ProductId = product.Id,
             Quantity = 3m,
@@ -161,7 +161,7 @@ public class RbacPermissionTests
         var product = await SeedStockedProductAsync(db);
 
         var ownerController = CreateReservationsController(db, "user-42", UserRole.Cashier);
-        var reserveResult = await ownerController.ReserveStock(new ReserveStockDto
+        var reserveResult = await ownerController.ReserveStockAsync(new ReserveStockDto
         {
             ProductId = product.Id,
             Quantity = 3m,
@@ -173,11 +173,11 @@ public class RbacPermissionTests
         // Usuario distinto NO debe confirmar ni cancelar la reserva ajena.
         var intruderController = CreateReservationsController(db, "user-99", UserRole.Cashier);
 
-        var confirmResult = await intruderController.ConfirmReservation(reservationId, new ConfirmReservationDto { Reason = "Retiro" });
+        var confirmResult = await intruderController.ConfirmReservationAsync(reservationId, new ConfirmReservationDto { Reason = "Retiro" });
         var forbidConfirm = Assert.IsType<ObjectResult>(confirmResult);
         Assert.Equal(StatusCodes.Status403Forbidden, forbidConfirm.StatusCode);
 
-        var cancelResult = await intruderController.CancelReservation(reservationId);
+        var cancelResult = await intruderController.CancelReservationAsync(reservationId);
         var forbidCancel = Assert.IsType<ObjectResult>(cancelResult);
         Assert.Equal(StatusCodes.Status403Forbidden, forbidCancel.StatusCode);
 
@@ -186,7 +186,7 @@ public class RbacPermissionTests
 
         // El propietario sí puede confirmarla: la reserva se consume por completo
         // (fila eliminada) y el stock del producto baja en la cantidad reservada.
-        var ownerResult = await ownerController.ConfirmReservation(reservationId, new ConfirmReservationDto { Reason = "Retiro" });
+        var ownerResult = await ownerController.ConfirmReservationAsync(reservationId, new ConfirmReservationDto { Reason = "Retiro" });
         Assert.IsType<NoContentResult>(ownerResult);
         Assert.DoesNotContain(db.StockReservations, r => r.Id == reservationId);
         var productAfter = db.Products.Single(p => p.Id == product.Id);

@@ -159,7 +159,7 @@ public class SecurityHardeningSprint2Tests
         var controller = new ReservationsController(inventoryService);
 
         // Negative quantity must return BadRequest
-        var result = await controller.ReserveStock(new ReserveStockDto
+        var result = await controller.ReserveStockAsync(new ReserveStockDto
         {
             ProductId = 1,
             Quantity = -5m,

@@ -63,9 +63,6 @@ public class SettingsController : ControllerBase
         return Ok(new SettingValueResponseDto { Value = 0m, LastUpdated = null });
     }
 
-    [NonAction]
-    public Task<ActionResult> GetExchangeRate() => GetExchangeRateAsync();
-
     [HttpPost("exchange-rate")]
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult> SetExchangeRateAsync([FromBody] SetExchangeRateRequest request, CancellationToken cancellationToken = default)
@@ -89,18 +86,12 @@ public class SettingsController : ControllerBase
         return Ok(new SettingValueResponseDto { Value = roundedRate, LastUpdated = DateTime.UtcNow });
     }
 
-    [NonAction]
-    public Task<ActionResult> SetExchangeRate(SetExchangeRateRequest request) => SetExchangeRateAsync(request);
-
     [HttpGet("timezone")]
     public async Task<ActionResult> GetTimeZoneAsync(CancellationToken cancellationToken = default)
     {
         var tzId = await _timeZoneProvider.GetTimeZoneIdAsync(cancellationToken);
         return Ok(new TimeZoneSettingResponseDto { Id = tzId ?? string.Empty });
     }
-
-    [NonAction]
-    public Task<ActionResult> GetTimeZone() => GetTimeZoneAsync();
 
     [HttpPost("timezone")]
     [Authorize(Roles = "Admin")]
@@ -116,9 +107,6 @@ public class SettingsController : ControllerBase
         return Ok(new TimeZoneSettingResponseDto { Id = request.Id });
     }
 
-    [NonAction]
-    public Task<ActionResult> SetTimeZone(SetTimeZoneRequest request) => SetTimeZoneAsync(request);
-
     [HttpGet("currency-format")]
     public async Task<ActionResult> GetCurrencyFormatAsync(CancellationToken cancellationToken = default)
     {
@@ -131,9 +119,6 @@ public class SettingsController : ControllerBase
         }
         return Ok(new CurrencyFormatResponseDto { Format = format });
     }
-
-    [NonAction]
-    public Task<ActionResult> GetCurrencyFormat() => GetCurrencyFormatAsync();
 
     [HttpPut("currency-format")]
     [Authorize(Roles = "Admin")]
@@ -165,9 +150,6 @@ public class SettingsController : ControllerBase
         return Ok(new CurrencyFormatResponseDto { Format = normalizedFormat, LastUpdated = DateTime.UtcNow });
     }
 
-    [NonAction]
-    public Task<ActionResult> SetCurrencyFormat(SetCurrencyFormatRequest request) => SetCurrencyFormatAsync(request);
-
     [HttpGet("allow-negative-stock")]
     public async Task<ActionResult> GetAllowNegativeStockAsync(CancellationToken cancellationToken = default)
     {
@@ -175,9 +157,6 @@ public class SettingsController : ControllerBase
         var allowed = bool.TryParse(value, out var parsed) && parsed;
         return Ok(new AllowNegativeStockResponseDto { Allowed = allowed });
     }
-
-    [NonAction]
-    public Task<ActionResult> GetAllowNegativeStock() => GetAllowNegativeStockAsync();
 
     [HttpPut("allow-negative-stock")]
     [Authorize(Roles = "Admin")]
@@ -191,9 +170,6 @@ public class SettingsController : ControllerBase
         await _settingsService.SetSettingAsync(Core.Constants.SettingKeys.AllowNegativeStock, request.Allowed.ToString());
         return Ok(new AllowNegativeStockResponseDto { Allowed = request.Allowed });
     }
-
-    [NonAction]
-    public Task<ActionResult> SetAllowNegativeStock(SetAllowNegativeStockRequest request) => SetAllowNegativeStockAsync(request);
 }
 
 public class SetExchangeRateRequest

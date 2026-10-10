@@ -51,9 +51,6 @@ public class UsersController : ControllerBase
         return Ok(users);
     }
 
-    [NonAction]
-    public Task<ActionResult<IEnumerable<UserDto>>> GetUsers() => GetUsersAsync();
-
     [HttpGet("{id}")]
     public async Task<ActionResult<UserDto>> GetUserAsync(int id, CancellationToken cancellationToken = default)
     {
@@ -61,9 +58,6 @@ public class UsersController : ControllerBase
         if (user == null) return this.ApiNotFound("Usuario no encontrado.");
         return Ok(user);
     }
-
-    [NonAction]
-    public Task<ActionResult<UserDto>> GetUser(int id) => GetUserAsync(id);
 
     [HttpPost]
     public async Task<ActionResult<UserCreatedDto>> CreateUserAsync([FromBody] CreateUserDto dto, CancellationToken cancellationToken = default)
@@ -82,9 +76,6 @@ public class UsersController : ControllerBase
             return this.ApiBadRequest(ex.Message);
         }
     }
-
-    [NonAction]
-    public Task<ActionResult<UserCreatedDto>> CreateUser(CreateUserDto dto) => CreateUserAsync(dto);
 
     [HttpPut("{id}")]
     public async Task<ActionResult<UserDto>> UpdateUserAsync(int id, [FromBody] UpdateUserDto dto, CancellationToken cancellationToken = default)
@@ -117,9 +108,6 @@ public class UsersController : ControllerBase
         }
     }
 
-    [NonAction]
-    public Task<ActionResult<UserDto>> UpdateUser(int id, UpdateUserDto dto) => UpdateUserAsync(id, dto);
-
     [HttpDelete("{id}")]
     public async Task<ActionResult> SoftDeleteUserAsync(int id, CancellationToken cancellationToken = default)
     {
@@ -144,9 +132,6 @@ public class UsersController : ControllerBase
         }
     }
 
-    [NonAction]
-    public Task<ActionResult> SoftDeleteUser(int id) => SoftDeleteUserAsync(id);
-
     [HttpPost("{id}/reactivate")]
     public async Task<ActionResult> ReactivateUserAsync(int id, CancellationToken cancellationToken = default)
     {
@@ -166,9 +151,6 @@ public class UsersController : ControllerBase
             return this.ApiNotFound("Usuario no encontrado.");
         }
     }
-
-    [NonAction]
-    public Task<ActionResult> ReactivateUser(int id) => ReactivateUserAsync(id);
 
     [HttpDelete("{id}/permanent")]
     public async Task<ActionResult> HardDeleteUserAsync(int id, CancellationToken cancellationToken = default)
@@ -194,9 +176,6 @@ public class UsersController : ControllerBase
         }
     }
 
-    [NonAction]
-    public Task<ActionResult> HardDeleteUser(int id) => HardDeleteUserAsync(id);
-
     [HttpPost("{id}/unlock")]
     public async Task<ActionResult> UnlockUserAsync(int id, CancellationToken cancellationToken = default)
     {
@@ -216,9 +195,6 @@ public class UsersController : ControllerBase
             return this.ApiBadRequest(ex.Message);
         }
     }
-
-    [NonAction]
-    public Task<ActionResult> UnlockUser(int id) => UnlockUserAsync(id);
 
     [HttpPost("{id}/reset-temporary-password")]
     public async Task<ActionResult<ResetTemporaryPasswordResponseDto>> ResetTemporaryPasswordAsync(int id, CancellationToken cancellationToken = default)
@@ -242,7 +218,4 @@ public class UsersController : ControllerBase
             return this.ApiBadRequest(ex.Message);
         }
     }
-
-    [NonAction]
-    public Task<ActionResult<ResetTemporaryPasswordResponseDto>> ResetTemporaryPassword(int id) => ResetTemporaryPasswordAsync(id);
 }

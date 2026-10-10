@@ -85,9 +85,6 @@ public class AuthController : ControllerBase
         });
     }
 
-    [NonAction]
-    public Task<ActionResult<LoginResultDto>> Login(LoginRequest request) => LoginAsync(request);
-
     [AllowAnonymous]
     [HttpPost("logout")]
     public async Task<IActionResult> LogoutAsync(CancellationToken cancellationToken = default)
@@ -114,9 +111,6 @@ public class AuthController : ControllerBase
         }
         return Ok(new MessageResponseDto("Sesión cerrada correctamente."));
     }
-
-    [NonAction]
-    public Task<IActionResult> Logout() => LogoutAsync();
 
     [AllowAnonymous]
     [HttpPost("change-password")]
@@ -161,9 +155,6 @@ public class AuthController : ControllerBase
         return Ok(new MessageResponseDto("Contraseña actualizada correctamente. Inicie sesión con su nueva clave."));
     }
 
-    [NonAction]
-    public Task<IActionResult> ChangePassword(ChangePasswordRequest request) => ChangePasswordAsync(request);
-
     [Authorize]
     [HttpGet("me")]
     public async Task<ActionResult<UserDto>> GetMeAsync(CancellationToken cancellationToken = default)
@@ -183,9 +174,6 @@ public class AuthController : ControllerBase
 
         return Ok(user);
     }
-
-    [NonAction]
-    public Task<ActionResult<UserDto>> GetMe() => GetMeAsync();
 
     private static UserDto ToUserDto(Core.Entities.User user)
     {

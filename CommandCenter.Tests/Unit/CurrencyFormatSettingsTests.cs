@@ -37,7 +37,7 @@ public class CurrencyFormatSettingsTests
 
         var controller = ControllerFactory.CreateSettingsController(db, mockUserService.Object, new SystemSettingsService(db));
 
-        var result = await controller.GetCurrencyFormat();
+        var result = await controller.GetCurrencyFormatAsync();
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var formatProp = okResult.Value?.GetType().GetProperty("Format")?.GetValue(okResult.Value) as string;
@@ -61,7 +61,7 @@ public class CurrencyFormatSettingsTests
         var controller = ControllerFactory.CreateSettingsController(db, mockUserService.Object, new SystemSettingsService(db), mockHubContext.Object);
 
         var request = new SetCurrencyFormatRequest { Format = "Venezuelan" };
-        var result = await controller.SetCurrencyFormat(request);
+        var result = await controller.SetCurrencyFormatAsync(request);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var formatProp = okResult.Value?.GetType().GetProperty("Format")?.GetValue(okResult.Value) as string;
@@ -95,7 +95,7 @@ public class CurrencyFormatSettingsTests
         var controller = ControllerFactory.CreateSettingsController(db, mockUserService.Object, new SystemSettingsService(db), mockHubContext.Object);
 
         var request = new SetCurrencyFormatRequest { Format = "International" };
-        var result = await controller.SetCurrencyFormat(request);
+        var result = await controller.SetCurrencyFormatAsync(request);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var formatProp = okResult.Value?.GetType().GetProperty("Format")?.GetValue(okResult.Value) as string;
@@ -124,7 +124,7 @@ public class CurrencyFormatSettingsTests
         var controller = ControllerFactory.CreateSettingsController(db, mockUserService.Object, new SystemSettingsService(db));
 
         var request = new SetCurrencyFormatRequest { Format = invalidFormat };
-        var result = await controller.SetCurrencyFormat(request);
+        var result = await controller.SetCurrencyFormatAsync(request);
 
         Assert.IsType<BadRequestObjectResult>(result);
     }
@@ -139,7 +139,7 @@ public class CurrencyFormatSettingsTests
         var controller = ControllerFactory.CreateSettingsController(db, mockUserService.Object, new SystemSettingsService(db));
 
         var request = new SetCurrencyFormatRequest { Format = "International" };
-        var result = await controller.SetCurrencyFormat(request);
+        var result = await controller.SetCurrencyFormatAsync(request);
 
         var statusResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, statusResult.StatusCode);

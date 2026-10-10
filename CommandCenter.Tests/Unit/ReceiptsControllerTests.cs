@@ -99,7 +99,7 @@ public class ReceiptsControllerTests
         var controller = CreateController(db, currentUserServiceMock.Object);
         AttachUser(controller, "1");
 
-        var result = await controller.GetReceipt(42, CancellationToken.None);
+        var result = await controller.GetReceiptAsync(42, CancellationToken.None);
 
         var fileContentResult = Assert.IsType<FileContentResult>(result);
         Assert.Equal("application/pdf", fileContentResult.ContentType);
@@ -122,7 +122,7 @@ public class ReceiptsControllerTests
         var controller = CreateController(db, currentUserServiceMock.Object, "Venezuelan");
         AttachUser(controller, "1");
 
-        var result = await controller.GetReceipt(45, CancellationToken.None);
+        var result = await controller.GetReceiptAsync(45, CancellationToken.None);
 
         var fileContentResult = Assert.IsType<FileContentResult>(result);
         var content = Encoding.ASCII.GetString(fileContentResult.FileContents!);
@@ -144,7 +144,7 @@ public class ReceiptsControllerTests
         var controller = CreateController(db, currentUserServiceMock.Object, "International");
         AttachUser(controller, "1");
 
-        var result = await controller.GetReceipt(46, CancellationToken.None);
+        var result = await controller.GetReceiptAsync(46, CancellationToken.None);
 
         var fileContentResult = Assert.IsType<FileContentResult>(result);
         var content = Encoding.ASCII.GetString(fileContentResult.FileContents!);
@@ -173,7 +173,7 @@ public class ReceiptsControllerTests
         var controller = CreateController(db, currentUserServiceMock.Object);
         AttachUser(controller, "2", "Cashier");
 
-        var result = await controller.GetReceipt(43, CancellationToken.None);
+        var result = await controller.GetReceiptAsync(43, CancellationToken.None);
 
         var statusCodeResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(403, statusCodeResult.StatusCode);
@@ -199,7 +199,7 @@ public class ReceiptsControllerTests
         var controller = CreateController(db, currentUserServiceMock.Object);
         AttachUser(controller, "99", "Admin");
 
-        var result = await controller.GetReceipt(44, CancellationToken.None);
+        var result = await controller.GetReceiptAsync(44, CancellationToken.None);
 
         Assert.IsType<FileContentResult>(result);
     }
@@ -210,7 +210,7 @@ public class ReceiptsControllerTests
         using var db = CreateInMemorySalesDbContext();
         var controller = CreateController(db, new Moq.Mock<Core.Interfaces.ICurrentUserService>().Object);
 
-        var result = await controller.GetReceipt(999, CancellationToken.None);
+        var result = await controller.GetReceiptAsync(999, CancellationToken.None);
 
         var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
         Assert.Equal(404, notFoundResult.StatusCode);

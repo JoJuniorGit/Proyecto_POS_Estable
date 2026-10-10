@@ -61,7 +61,7 @@ public class Phase6ArchitecturalHygieneTests
         var controller = ControllerFactory.CreateSettingsController(db, currentUserServiceMock.Object, new SystemSettingsService(db));
 
         var request = new SetExchangeRateRequest { Value = 45.75m };
-        var result = await controller.SetExchangeRate(request);
+        var result = await controller.SetExchangeRateAsync(request);
 
         Assert.IsType<OkObjectResult>(result);
 
@@ -77,7 +77,7 @@ public class Phase6ArchitecturalHygieneTests
         Assert.Equal(45.75m, historyRecord.Rate);
 
         // Verify GetExchangeRate returns authoritative history rate
-        var getResult = await controller.GetExchangeRate();
+        var getResult = await controller.GetExchangeRateAsync();
         var okResult = Assert.IsType<OkObjectResult>(getResult);
         Assert.NotNull(okResult.Value);
     }

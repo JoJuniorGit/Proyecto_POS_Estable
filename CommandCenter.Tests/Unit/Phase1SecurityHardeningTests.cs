@@ -69,7 +69,7 @@ public class Phase1SecurityHardeningTests
         // Act: 4 failed attempts
         for (int i = 1; i <= 4; i++)
         {
-            var result = await controller.ChangePassword(new ChangePasswordRequest
+            var result = await controller.ChangePasswordAsync(new ChangePasswordRequest
             {
                 Cedula = "cajero1",
                 CurrentPassword = "WrongPassword!",
@@ -83,7 +83,7 @@ public class Phase1SecurityHardeningTests
         }
 
         // Act: 5th failed attempt -> locks account
-        var fifthResult = await controller.ChangePassword(new ChangePasswordRequest
+        var fifthResult = await controller.ChangePasswordAsync(new ChangePasswordRequest
         {
             Cedula = "cajero1",
             CurrentPassword = "WrongPassword!",
@@ -97,7 +97,7 @@ public class Phase1SecurityHardeningTests
         Assert.True(lockedUser.LockoutEndUtc.Value > DateTime.UtcNow);
 
         // Act: 6th attempt (even with right or wrong password) -> rejected with 401 genérico (8B-M3: sin revelar lockout)
-        var sixthResult = await controller.ChangePassword(new ChangePasswordRequest
+        var sixthResult = await controller.ChangePasswordAsync(new ChangePasswordRequest
         {
             Cedula = "cajero1",
             CurrentPassword = "CorrectPass123!",
@@ -133,7 +133,7 @@ public class Phase1SecurityHardeningTests
         var controller = new AuthController(new AuthService(context), tokenService, stampValidator: null);
 
         // Act: Successfully change password
-        var result = await controller.ChangePassword(new ChangePasswordRequest
+        var result = await controller.ChangePasswordAsync(new ChangePasswordRequest
         {
             Cedula = "cajero2",
             CurrentPassword = "CurrentPass123!",
@@ -171,7 +171,7 @@ public class Phase1SecurityHardeningTests
         var controller = ControllerFactory.CreateUsersController(context, stampValidator: null);
 
         // Act
-        var result = await controller.UnlockUser(12);
+        var result = await controller.UnlockUserAsync(12);
 
         // Assert
         Assert.IsType<OkObjectResult>(result);

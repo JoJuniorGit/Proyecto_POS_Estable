@@ -62,7 +62,7 @@ public class UserPasswordAndStockFormattingTests
             Password = "123" // < 4 chars
         };
 
-        var result = await controller.CreateUser(dto);
+        var result = await controller.CreateUserAsync(dto);
         Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
@@ -79,7 +79,7 @@ public class UserPasswordAndStockFormattingTests
             Password = "CustomPassword123!"
         };
 
-        var result = await controller.CreateUser(dto);
+        var result = await controller.CreateUserAsync(dto);
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
         var userDto = Assert.IsAssignableFrom<UserDto>(createdResult.Value);
 
@@ -102,7 +102,7 @@ public class UserPasswordAndStockFormattingTests
             Password = null
         };
 
-        var result = await controller.CreateUser(dto);
+        var result = await controller.CreateUserAsync(dto);
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
         var userDto = Assert.IsType<UserCreatedDto>(createdResult.Value);
 
@@ -143,7 +143,7 @@ public class UserPasswordAndStockFormattingTests
             Role = Core.Entities.UserRole.Admin
         };
 
-        var result = await controller.UpdateUser(10, updateDto);
+        var result = await controller.UpdateUserAsync(10, updateDto);
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
 
         var updatedUser = await context.Users.FindAsync(10);
@@ -183,7 +183,7 @@ public class UserPasswordAndStockFormattingTests
             IsActive = true
         };
 
-        var result = await controller.UpdateUser(11, updateDto);
+        var result = await controller.UpdateUserAsync(11, updateDto);
         Assert.IsType<OkObjectResult>(result.Result);
 
         var updatedUser = await context.Users.FindAsync(11);
@@ -219,7 +219,7 @@ public class UserPasswordAndStockFormattingTests
             IsActive = true
         };
 
-        var result = await controller.UpdateUser(12, updateDto);
+        var result = await controller.UpdateUserAsync(12, updateDto);
         Assert.IsType<BadRequestObjectResult>(result.Result);
     }
 
@@ -362,7 +362,7 @@ public class UserPasswordAndStockFormattingTests
             Password = "SecurePass2026!"
         };
 
-        var result = await controller.CreateUser(dto);
+        var result = await controller.CreateUserAsync(dto);
         var createdResult = Assert.IsType<CreatedAtActionResult>(result.Result);
         var userDto = Assert.IsAssignableFrom<UserDto>(createdResult.Value);
 
@@ -399,7 +399,7 @@ public class UserPasswordAndStockFormattingTests
             Password = "Password999"
         };
 
-        var result = await controller.CreateUser(dto);
+        var result = await controller.CreateUserAsync(dto);
         var badRequest = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.NotNull(badRequest.Value);
     }
@@ -433,7 +433,7 @@ public class UserPasswordAndStockFormattingTests
             Password = "ExactPassword123!"
         };
 
-        var result = await authController.Login(request);
+        var result = await authController.LoginAsync(request);
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         var loginResult = Assert.IsType<LoginResultDto>(okResult.Value);
         Assert.NotNull(loginResult.Token);
@@ -467,7 +467,7 @@ public class UserPasswordAndStockFormattingTests
             Password = "casesensitivepass1" // Lowercase mismatch
         };
 
-        var result = await authController.Login(request);
+        var result = await authController.LoginAsync(request);
         Assert.IsType<UnauthorizedObjectResult>(result.Result);
     }
 

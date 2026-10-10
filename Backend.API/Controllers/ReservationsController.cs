@@ -65,9 +65,6 @@ public class ReservationsController : ControllerBase
         }
     }
 
-    [NonAction]
-    public Task<IActionResult> ReserveStock(ReserveStockDto dto) => ReserveStockAsync(dto);
-
     [HttpPost("confirm/{id}")]
     public async Task<IActionResult> ConfirmReservationAsync(int id, [FromBody] ConfirmReservationDto dto, CancellationToken cancellationToken = default)
     {
@@ -97,9 +94,6 @@ public class ReservationsController : ControllerBase
         }
     }
 
-    [NonAction]
-    public Task<IActionResult> ConfirmReservation(int id, ConfirmReservationDto dto) => ConfirmReservationAsync(id, dto);
-
     [HttpPost("cancel/{id}")]
     public async Task<IActionResult> CancelReservationAsync(int id, CancellationToken cancellationToken = default)
     {
@@ -121,9 +115,6 @@ public class ReservationsController : ControllerBase
         await _inventoryService.CancelReservationAsync(id, cancellationToken);
         return NoContent();
     }
-
-    [NonAction]
-    public Task<IActionResult> CancelReservation(int id) => CancelReservationAsync(id);
 
     private string GetCurrentUserRef()
     {

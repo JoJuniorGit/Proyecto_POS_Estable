@@ -144,7 +144,7 @@ public class Phase3AuthenticationAndPolicyTests
             NewPassword = "weak" // No cumple política
         };
 
-        var result = await authController.ChangePassword(request);
+        var result = await authController.ChangePasswordAsync(request);
         var badReq = Assert.IsType<BadRequestObjectResult>(result);
         Assert.NotNull(badReq.Value);
     }
@@ -178,7 +178,7 @@ public class Phase3AuthenticationAndPolicyTests
             NewPassword = "NewStrong#Password2026"
         };
 
-        var result = await authController.ChangePassword(request);
+        var result = await authController.ChangePasswordAsync(request);
         Assert.IsType<OkObjectResult>(result);
 
         var updatedUser = await context.Users.FindAsync(11);
@@ -205,7 +205,7 @@ public class Phase3AuthenticationAndPolicyTests
             Role = UserRole.Cashier
         };
 
-        var actionResult = await usersController.CreateUser(createDto);
+        var actionResult = await usersController.CreateUserAsync(createDto);
         var createdResult = Assert.IsType<CreatedAtActionResult>(actionResult.Result);
         var createdUserDto = Assert.IsType<UserCreatedDto>(createdResult.Value);
 
@@ -245,7 +245,7 @@ public class Phase3AuthenticationAndPolicyTests
         var stampValidatorMock = new Mock<ISecurityStampValidator>();
         var usersController = ControllerFactory.CreateUsersController(context, _policyService, stampValidatorMock.Object);
 
-        var actionResult = await usersController.ResetTemporaryPassword(25);
+        var actionResult = await usersController.ResetTemporaryPasswordAsync(25);
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
         var response = Assert.IsType<ResetTemporaryPasswordResponseDto>(okResult.Value);
 
@@ -288,7 +288,7 @@ public class Phase3AuthenticationAndPolicyTests
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
 
-        var result = await controller.Login(new LoginRequest { Cedula = "V-50000001", Password = "TempPass#1234" });
+        var result = await controller.LoginAsync(new LoginRequest { Cedula = "V-50000001", Password = "TempPass#1234" });
 
         var objectResult = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);

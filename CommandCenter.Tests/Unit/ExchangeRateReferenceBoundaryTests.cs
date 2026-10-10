@@ -79,7 +79,7 @@ public class ExchangeRateReferenceBoundaryTests
 
         var controller = ControllerFactory.CreateExchangeRateController(context, new Mock<ICurrentUserService>().Object);
 
-        var result = await controller.GetToday() as OkObjectResult;
+        var result = await controller.GetTodayAsync() as OkObjectResult;
 
         Assert.NotNull(result);
         dynamic payload = result!.Value!;
@@ -169,7 +169,7 @@ public class ExchangeRateReferenceBoundaryTests
 
         var controller = ControllerFactory.CreateSettingsController(db, new Mock<ICurrentUserService>().Object, new SystemSettingsService(db));
 
-        var result = await controller.GetExchangeRate() as OkObjectResult;
+        var result = await controller.GetExchangeRateAsync() as OkObjectResult;
 
         Assert.NotNull(result);
         dynamic payload = result!.Value!;

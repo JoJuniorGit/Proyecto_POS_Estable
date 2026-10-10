@@ -108,7 +108,7 @@ public class AuthenticationTests
         await db.SaveChangesAsync();
 
         var controller = new AuthController(new AuthService(db), tokenService);
-        var response = await controller.Login(new LoginRequest
+        var response = await controller.LoginAsync(new LoginRequest
         {
             Cedula = "V-99999999",
             Password = rawPassword
@@ -142,7 +142,7 @@ public class AuthenticationTests
         await db.SaveChangesAsync();
 
         var controller = new AuthController(new AuthService(db), tokenService);
-        var response = await controller.Login(new LoginRequest
+        var response = await controller.LoginAsync(new LoginRequest
         {
             Cedula = "V-88888888",
             Password = "WrongPassword"
@@ -172,7 +172,7 @@ public class AuthenticationTests
         await db.SaveChangesAsync();
 
         var controller = new AuthController(new AuthService(db), tokenService);
-        var response = await controller.Login(new LoginRequest
+        var response = await controller.LoginAsync(new LoginRequest
         {
             Cedula = "V-77777777",
             Password = legacyPassword
@@ -202,7 +202,7 @@ public class AuthenticationTests
         await db.SaveChangesAsync();
 
         var controller = new AuthController(new AuthService(db), tokenService);
-        var response = await controller.Login(new LoginRequest
+        var response = await controller.LoginAsync(new LoginRequest
         {
             Cedula = "V-66666666",
             Password = "AnyRandomPassword123!"
@@ -292,7 +292,7 @@ public class AuthenticationTests
         var httpContext = new DefaultHttpContext();
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var response = await controller.Login(new LoginRequest
+        var response = await controller.LoginAsync(new LoginRequest
         {
             Cedula = "V-15151515",
             Password = rawPassword,
@@ -340,7 +340,7 @@ public class AuthenticationTests
         SetRequestScheme(httpContext, isHttps: true);
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var response = await controller.Login(new LoginRequest
+        var response = await controller.LoginAsync(new LoginRequest
         {
             Cedula = "V-17171717",
             Password = rawPassword,
@@ -378,7 +378,7 @@ public class AuthenticationTests
         var httpContext = new DefaultHttpContext();
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var response = await controller.Login(new LoginRequest
+        var response = await controller.LoginAsync(new LoginRequest
         {
             Cedula = "V-16161616",
             Password = rawPassword,
@@ -411,7 +411,7 @@ public class AuthenticationTests
         var httpContext = new DefaultHttpContext();
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var result = await controller.Logout();
+        var result = await controller.LogoutAsync();
         Assert.IsType<OkObjectResult>(result);
 
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
@@ -432,7 +432,7 @@ public class AuthenticationTests
         SetRequestScheme(httpContext, isHttps: true);
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var result = await controller.Logout();
+        var result = await controller.LogoutAsync();
         Assert.IsType<OkObjectResult>(result);
 
         var setCookieHeader = httpContext.Response.Headers["Set-Cookie"].ToString();
@@ -468,7 +468,7 @@ public class AuthenticationTests
         SetRequestScheme(httpContext, isHttps);
         controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
-        var result = await controller.ChangePassword(new ChangePasswordRequest
+        var result = await controller.ChangePasswordAsync(new ChangePasswordRequest
         {
             Cedula = "V-18181818",
             CurrentPassword = currentPassword,

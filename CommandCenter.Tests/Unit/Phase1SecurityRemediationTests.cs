@@ -114,7 +114,7 @@ public class Phase1SecurityRemediationTests
         var controller = new HealthController(salesProbe.Object, inventoryProbe.Object, config, env.Object, new Backend.API.Metrics.RequestMetricsRegistry());
 
         // Act
-        var result = await controller.CheckHealth();
+        var result = await controller.CheckHealthAsync();
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result);
@@ -144,7 +144,7 @@ public class Phase1SecurityRemediationTests
         var controller = new AuthController(new AuthService(db), tokenService);
 
         // Act: Non-existent user
-        var responseNonExistent = await controller.Login(new LoginRequest
+        var responseNonExistent = await controller.LoginAsync(new LoginRequest
         {
             Cedula = "V-00000000",
             Password = "SomePassword123!"

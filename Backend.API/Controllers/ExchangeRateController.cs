@@ -85,9 +85,6 @@ public class ExchangeRateController : ControllerBase
         return Ok(result);
     }
 
-    [NonAction]
-    public Task<ActionResult> GetToday(CancellationToken cancellationToken = default) => GetTodayAsync(cancellationToken);
-
     [HttpGet("history")]
     public async Task<ActionResult> GetHistoryAsync([FromQuery] int limit = 365, CancellationToken cancellationToken = default)
     {
@@ -113,9 +110,6 @@ public class ExchangeRateController : ControllerBase
 
         return Ok(result);
     }
-
-    [NonAction]
-    public Task<ActionResult> GetHistory(int limit = 365, CancellationToken cancellationToken = default) => GetHistoryAsync(limit, cancellationToken);
 
     [HttpPost]
     [Authorize(Roles = "Admin")]
@@ -147,9 +141,6 @@ public class ExchangeRateController : ControllerBase
 
         return Ok(new ExchangeRateTodayResponseDto { Value = roundedRate, Date = today, UpdatedAt = nowUtc, UpdatedAtLocal = nowLocal });
     }
-
-    [NonAction]
-    public Task<ActionResult> UpsertRate(UpsertExchangeRateRequest request, IExchangeRateWriteService? rateWriteService = null) => UpsertRateAsync(request, rateWriteService);
 
     [HttpPost("sync-bcv")]
     [Authorize(Roles = "Admin")]
@@ -213,9 +204,6 @@ public class ExchangeRateController : ControllerBase
 
         return Ok(new ExchangeRateTodayResponseDto { Value = roundedRate, Date = today, UpdatedAt = nowUtc, UpdatedAtLocal = nowLocal });
     }
-
-    [NonAction]
-    public Task<ActionResult> SyncBcv(Backend.API.Services.BcvScraperService scraperService, IExchangeRateWriteService? rateWriteService = null) => SyncBcvAsync(scraperService, rateWriteService);
 }
 
 public class UpsertExchangeRateRequest
