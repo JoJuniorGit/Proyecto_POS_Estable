@@ -14,7 +14,7 @@ public class AppLoggerTests
         await AppLogger.FlushAsync();
 
         Assert.True(File.Exists(AppLogger.StartLogPath));
-        var content = File.ReadAllText(AppLogger.StartLogPath);
+        var content = ReadLogFile(AppLogger.StartLogPath);
         Assert.Contains("[START]", content);
         Assert.Contains("Test startup message", content);
     }
@@ -34,9 +34,20 @@ public class AppLoggerTests
         await AppLogger.FlushAsync();
 
         Assert.True(File.Exists(AppLogger.CrashLogPath));
-        var content = File.ReadAllText(AppLogger.CrashLogPath);
+        var content = ReadLogFile(AppLogger.CrashLogPath);
         Assert.Contains("[CRASH]", content);
         Assert.Contains("UnitTest.Context", content);
         Assert.Contains("Test database connection exception", content);
+    }
+
+    /// <summary>
+    /// FileShare.ReadWrite: el consumidor asíncrono puede estar escribiendo otra entrada
+    /// en el mismo archivo (clases de test en paralelo) mientras se lee.
+    /// </summary>
+    private static string ReadLogFile(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 }

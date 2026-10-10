@@ -21,7 +21,10 @@ public class SelfHealingResilienceTests
         await ClientStateLogger.FlushAsync();
 
         Assert.True(File.Exists(ClientStateLogger.ResilienceLogPath));
-        var content = File.ReadAllText(ClientStateLogger.ResilienceLogPath);
+        // FileShare.ReadWrite: el consumidor asíncrono puede escribir otra entrada concurrente.
+        using var stream = new FileStream(ClientStateLogger.ResilienceLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        var content = reader.ReadToEnd();
         Assert.Contains("[WARNING]", content);
         Assert.Contains("Reintentando petición POST /api/sales", content);
         Assert.Contains("[AUDIT]", content);

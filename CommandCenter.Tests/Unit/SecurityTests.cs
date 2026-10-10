@@ -366,7 +366,9 @@ public class SecurityTests
         await AppLogger.FlushAsync();
 
         Assert.True(File.Exists(logFile));
-        var logContent = await File.ReadAllTextAsync(logFile);
+        using var logStream = new FileStream(logFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var logReader = new StreamReader(logStream);
+        var logContent = await logReader.ReadToEndAsync();
 
         Assert.Contains("IP=192.168.1.100", logContent);
         Assert.Contains("METHOD=DELETE", logContent);
