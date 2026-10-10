@@ -13116,3 +13116,108 @@ H1. Cadena 8.156 en V0.15: 36ca38d (plan) + 28e32da (T1) + 1540a27 (T2) +
     0427309 (T2b) + commit de cierre de este ANEXO (git log / L6 del tracker
     ODD).
 ================================================================================
+
+================================================================================
+ANEXO 8.157 — REVOCACION DE SESIONES SIGNALR (SEC-07) — 2026-10-10
+================================================================================
+Change SDD: openspec/changes/2026-10-10-audit-signalr-revocation/ (proposal,
+2 specs, tasks, state, verify-report). Tramo 5 del roadmap (autorizado: "haz
+8.157"). Cierra el hallazgo SEC-07: sockets zombis tras revocacion de
+credenciales + validacion de sello por invocacion.
+
+A. ALCANCE Y ENTREGA
+
+A1. Verificacion previa: push INEXISTENTE; sin IHubFilter; ExchangeRateHub sin
+    grupos; 6 caminos de revocacion (Logout rota sello; ChangePassword/
+    ResetTemporaryPassword/UpdateUser/SoftDelete/Reactivate/HardDelete solo
+    invalidaban cache); middleware de sellos (mensajes exactos a espejar);
+    registro AddSignalR/MapHub localizados; clientes WPF/Web con
+    WithAutomaticReconnect y sin manejo del evento.
+A2. T1 — 53731df (servidor): ExchangeRateHub gana grupo user:{id};
+    SecurityStampValidator con IHubContexts OPCIONALES +
+    DisconnectUserSessionsAsync (grupos de ambos hubs, evento exacto
+    "ForceDisconnect" sin payload, fail-soft con AppLogger.LogWarn) +
+    InvalidateUserSessionsAsync (cache+push) en los 6 caminos (ampliacion del
+    padre a ResetTemporaryPassword, misma clase, con enmienda del spec);
+    StampValidationHubFilter global (connect+invoke, forceImmediate true,
+    Abort+HubException con mensajes byte a byte del middleware) registrado en
+    AddSignalR. 15 tests nuevos (13 unit + 2 integracion opt-in); RED
+    compile-level -> GREEN 26/26; ajustes del padre por contrato viejo
+    (Phase3 L189/L262 -> InvalidateUserSessionsAsync, reportados).
+A3. T2 — 2bac982 (WPF): ambos servicios registran ForceDisconnect -> log +
+    StopAsync (sin auto-reconnect) + evento ForceDisconnected una vez (guard +
+    post-dispose suprimido); seams internal + InternalsVisibleTo (precedente
+    8.75). 12 tests nuevos; focused 54/54.
+A4. T3 — 2c79b5c (Web + bundle): handleForceDisconnect en signalr.js (off/on,
+    stop, libera la conexion modulo, notifica reutilizando el mecanismo
+    existente pos_unauthorized de api.js/AuthContext) y handler en
+    authorizationHub.js; connectionFactory inyectable aditivo para tests;
+    6 tests web nuevos; bundle regenerado (11 assets rehashed + index.html).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CON PostgreSQL real: 2207/2207, 0 fallas, 0 omitidas
+    (2180 base + 15 T1 + 12 T2).
+B3. Cobertura CON Postgres (coverage.runsettings + scripts/check-coverage.py,
+    exit 0): Core 0.8886 (>=0.70), Sales.Module 0.9057 (>=0.80),
+    Inventory.Module 0.8621 (>=0.72).
+B4. Web: npm test 379/379; npm run lint exit 0; bundle 11 rehashed +
+    index.html con "ForceDisconnect" y pos_unauthorized presentes en el chunk
+    de ExchangeRateContext y posSessionRevoked inexistente; 31/31 refs de
+    index.html existen.
+B5. Verificacion independiente (read-only): PASS WITH WARNINGS — REQ-HREV-01/02/03
+    y REQ-HFC-01/02/03 COMPLIANT; mensajes del filtro comparados byte a byte
+    contra el middleware; DI del filtro comprobada (scope por conexion via
+    HubFilterFactory); fail-soft real (hub que lanza no rompe el otro ni la
+    rotacion); ajustes de Phase3 auditados sin enmascaramiento. F1: el commit
+    de T3 se creo durante la verificacion (trazabilidad; estado final limpio).
+    F2: el binding WPF del handler no es observable en el harness unit
+    (enableRealtime:false; HubConnection sin ctor accesible) — la logica del
+    stop/evento si esta cubierta via seams. F3-F5: INFOs (anclaje del nombre
+    del evento entre tests WPF, one-shot por instancia, tracker hasta L4).
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. F2: la linea de binding On(ForceDisconnectEvent, ...) de los servicios WPF
+    se sostiene por inspeccion + contrato de consts; cerrarla requiere harness
+    de transporte SignalR fake o E2E.
+D2. E2E web (test:e2e) no corrido; bundle verificado estaticamente
+    (strings/hashes/integridad).
+D3. REDs de los writers no reproducibles read-only (GREEN observado en todos
+    los filtros y suites).
+
+E. ROLLBACK
+
+E1. Revertir 53731df + 2bac982 + 2c79b5c restaura el comportamiento previo
+    (el push desaparece, los clientes ignoran el evento, el filtro no valida);
+    el bundle de T3 se revierte con su commit; sin migraciones ni reescrituras
+    de datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS — 6/6 requisitos COMPLIANT;
+    F1/F2 registrados; F3-F5 INFOs. Reporte en el change (verify-report.md).
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. (F2) Si se quiere test runtime del binding WPF: introducir una factory de
+    HubConnection inyectable (patron web connectionFactory) o cubrir con el
+    harness E2E de WPF.
+G2. Roadmap restante: 8.158 SRE-03 (logger asincrono) + CLEAN-03 (bootstrap
+    fail-fast); 8.159 CLEAN-01 (93 NonAction) + CLEAN-04 (calculo de cobro) +
+    PERF-03 (AsNoTracking).
+G3. El evento se mantiene sin payload por contrato; si se quiere motivo
+    localizado, seria un delta de contrato server+clientes.
+
+H. COMMITS
+
+H1. Cadena 8.157 en V0.15: 91dbca9 (plan) + 53731df (T1) + 2bac982 (T2) +
+    2c79b5c (T3 + bundle) + commit de cierre de este ANEXO (git log / L6 del
+    tracker ODD).
+================================================================================
