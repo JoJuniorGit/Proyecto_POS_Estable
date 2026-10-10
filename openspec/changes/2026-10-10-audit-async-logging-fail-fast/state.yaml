@@ -27,4 +27,4 @@ decisions:
   rdd: off (clone-local + global)
   branch: V0.15
   anexo: "8.158"
-next: push/pr/merge (decisión del mantenedor); roadmap de la auditoría re-emitida CERRADO con 8.158
+next: entrega ejecutada 2026-10-10 (PRs #26/#36/#28-#35 -> main bbf1579; CI verde en V0.15 y main); roadmap de la auditoría re-emitida CERRADO
