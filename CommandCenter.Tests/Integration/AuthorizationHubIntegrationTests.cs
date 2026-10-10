@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -409,6 +410,107 @@ public class AuthorizationHubIntegrationTests
             Times.Once);
     }
 
+    // ---------------------------------------------------------------- filtro global de sello (8.157)
+
+    [Fact]
+    public async Task HubConnection_WithRevokedStamp_ReconnectIsRejectedByStampValidationFilter()
+    {
+        await using var app = await HubTestApplication.CreateAsync(enableStampValidation: true);
+        const string stamp = "stamp-vigente-8157";
+        SeedUser(app, 70, stamp);
+
+        // Sello vigente: conexión e invocación fluyen sin cambios de comportamiento.
+        await using var valid = app.CreateConnection(70, UserRole.Cashier, "Cajero 70", securityStamp: stamp);
+        await valid.StartAsync();
+        Assert.Equal(HubConnectionState.Connected, valid.State);
+        var validInvoke = await valid.InvokeAsync<JsonElement>("ResolveAuthorization", 8157, true, null);
+        Assert.False(validInvoke.GetProperty("success").GetBoolean());
+
+        // Revocación real: rota el sello e invalida la caché (sin IHubContexts el push es no-op).
+        await app.StampValidator!.RevokeUserStampAsync(70);
+
+        // La reconexión con el token viejo queda rechazada por el filtro global.
+        await using var revoked = app.CreateConnection(70, UserRole.Cashier, "Cajero 70", securityStamp: stamp);
+        var rejection = await StartAndAwaitRejectionAsync(revoked);
+
+        var hubException = Assert.IsType<HubException>(rejection);
+        // El cliente prefija el error del CloseMessage ("The server closed the connection with the
+        // following error: ..."); el mensaje canónico del middleware viaja embebido.
+        Assert.Contains(StampValidationHubFilter.InvalidStampMessage, hubException.Message);
+        Assert.NotEqual(HubConnectionState.Connected, revoked.State);
+    }
+
+    [Fact]
+    public async Task HubConnection_WithRevokedStamp_InvokeIsRejectedAndConnectionAborted()
+    {
+        await using var app = await HubTestApplication.CreateAsync(enableStampValidation: true);
+        const string stamp = "stamp-vigente-invoke-8157";
+        SeedUser(app, 70, stamp);
+
+        await using var connection = app.CreateConnection(70, UserRole.Cashier, "Cajero 70", securityStamp: stamp);
+        await connection.StartAsync();
+        Assert.Equal(HubConnectionState.Connected, connection.State);
+
+        // Invocación válida previa: garantiza que la validación de OnConnectedAsync del servidor
+        // ya terminó (el DbContext compartido del harness no tolera operaciones solapadas) y
+        // confirma que el filtro no altera el camino válido.
+        var validInvoke = await connection.InvokeAsync<JsonElement>("ResolveAuthorization", 8157, true, null);
+        Assert.False(validInvoke.GetProperty("success").GetBoolean());
+
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.Closed += _ => { closed.TrySetResult(); return Task.CompletedTask; };
+
+        await app.StampValidator!.RevokeUserStampAsync(70);
+
+        // Con la conexión viva, la invocación siguiente revalida el sello (forceImmediateCheck)
+        // y el filtro aborta: la invocación no puede completar con resultado.
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            connection.InvokeAsync<JsonElement>("ResolveAuthorization", 8157, true, null)
+                .WaitAsync(TimeSpan.FromSeconds(15)));
+
+        await closed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(HubConnectionState.Disconnected, connection.State);
+    }
+
+    private static void SeedUser(HubTestApplication app, int id, string securityStamp)
+    {
+        app.Db.Users.Add(new User
+        {
+            Id = id,
+            Cedula = $"V-{id:D8}",
+            Username = $"usuario{id}",
+            Name = $"Cajero {id}",
+            FullName = $"Cajero {id}",
+            Role = UserRole.Cashier,
+            IsActive = true,
+            SecurityStamp = securityStamp
+        });
+        app.Db.SaveChanges();
+    }
+
+    /// <summary>
+    /// Arranca la conexión y normaliza el rechazo del servidor: según el timing de LongPolling el
+    /// cierre puede observarse dentro de StartAsync o inmediatamente después vía el evento Closed.
+    /// </summary>
+    private static async Task<Exception> StartAndAwaitRejectionAsync(HubConnection connection)
+    {
+        var closed = new TaskCompletionSource<Exception?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.Closed += exception => { closed.TrySetResult(exception); return Task.CompletedTask; };
+
+        try
+        {
+            await connection.StartAsync();
+        }
+        catch (Exception startException)
+        {
+            return startException;
+        }
+
+        var closedException = await closed.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.NotNull(closedException);
+        return closedException!;
+    }
+
     // ---------------------------------------------------------------- infraestructura
 
     private sealed class HubTestApplication : IAsyncDisposable
@@ -420,21 +522,26 @@ public class AuthorizationHubIntegrationTests
 
         public AuthorizationTokenService TokenService { get; }
 
+        /// <summary>8.157: validador real (SQLite) cuando el filtro global está habilitado.</summary>
+        public SecurityStampValidator? StampValidator { get; }
+
         public TestServer Server => _application.GetTestServer();
 
         private HubTestApplication(
             SqliteConnection connection,
             WebApplication application,
             SalesDbContext db,
-            AuthorizationTokenService tokenService)
+            AuthorizationTokenService tokenService,
+            SecurityStampValidator? stampValidator)
         {
             _connection = connection;
             _application = application;
             Db = db;
             TokenService = tokenService;
+            StampValidator = stampValidator;
         }
 
-        public static async Task<HubTestApplication> CreateAsync()
+        public static async Task<HubTestApplication> CreateAsync(bool enableStampValidation = false)
         {
             var (db, connection) = TestDatabaseFactory.CreateSqliteSalesDbContext();
             var tokenService = new AuthorizationTokenService(
@@ -448,12 +555,26 @@ public class AuthorizationHubIntegrationTests
 
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Development" });
             builder.WebHost.UseTestServer();
-            builder.Services.AddSignalR(options => options.EnableDetailedErrors = true);
+            builder.Services.AddSignalR(options =>
+            {
+                options.EnableDetailedErrors = true;
+                if (enableStampValidation)
+                {
+                    options.AddFilter<StampValidationHubFilter>();
+                }
+            });
             builder.Services.AddAuthentication("TestAuth")
                 .AddScheme<AuthenticationSchemeOptions, HeaderAuthenticationHandler>("TestAuth", _ => { });
             builder.Services.AddAuthorization();
             builder.Services.AddSingleton(db);
             builder.Services.AddSingleton<IAuthorizationTokenService>(tokenService);
+
+            SecurityStampValidator? stampValidator = null;
+            if (enableStampValidation)
+            {
+                stampValidator = new SecurityStampValidator(db, new MemoryCache(new MemoryCacheOptions()));
+                builder.Services.AddSingleton<ISecurityStampValidator>(stampValidator);
+            }
             builder.Services.AddScoped<IAuthorizationService>(provider =>
                 new AuthorizationService(provider.GetRequiredService<SalesDbContext>(), TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60)));
             builder.Services.AddScoped<IAuthorizationNotifier, SignalRAuthorizationNotifier>();
@@ -470,23 +591,31 @@ public class AuthorizationHubIntegrationTests
             application.UseAuthorization();
             application.MapHub<AuthorizationHub>("/hubs/authorization").RequireAuthorization();
             await application.StartAsync();
-            return new HubTestApplication(connection, application, db, tokenService);
+            return new HubTestApplication(connection, application, db, tokenService, stampValidator);
         }
 
-        public HubConnection CreateConnection(int userId, UserRole role, string name)
-            => new HubConnectionBuilder()
+        public HubConnection CreateConnection(int userId, UserRole role, string name, string? securityStamp = null)
+        {
+            var headers = new Dictionary<string, string>
+            {
+                ["X-Test-User-Id"] = userId.ToString(CultureInfo.InvariantCulture),
+                ["X-Test-User-Role"] = role.ToString(),
+                ["X-Test-User-Name"] = name
+            };
+            if (!string.IsNullOrWhiteSpace(securityStamp))
+            {
+                headers["X-Test-User-Stamp"] = securityStamp;
+            }
+
+            return new HubConnectionBuilder()
                 .WithUrl(new Uri(Server.BaseAddress, "hubs/authorization"), options =>
                 {
                     options.Transports = HttpTransportType.LongPolling;
                     options.HttpMessageHandlerFactory = _ => Server.CreateHandler();
-                    options.Headers = new Dictionary<string, string>
-                    {
-                        ["X-Test-User-Id"] = userId.ToString(CultureInfo.InvariantCulture),
-                        ["X-Test-User-Role"] = role.ToString(),
-                        ["X-Test-User-Name"] = name
-                    };
+                    options.Headers = headers;
                 })
                 .Build();
+        }
 
         public async ValueTask DisposeAsync()
         {
@@ -516,12 +645,17 @@ public class AuthorizationHubIntegrationTests
             }
 
             var name = Request.Headers["X-Test-User-Name"].ToString();
-            var claims = new[]
+            var securityStamp = Request.Headers["X-Test-User-Stamp"].ToString();
+            var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, userId),
                 new Claim(ClaimTypes.Name, string.IsNullOrWhiteSpace(name) ? $"Usuario {userId}" : name),
                 new Claim(ClaimTypes.Role, role)
             };
+            if (!string.IsNullOrWhiteSpace(securityStamp))
+            {
+                claims.Add(new Claim("security_stamp", securityStamp));
+            }
             var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name));
             return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name)));
         }

@@ -9,7 +9,7 @@ Fuente: auditoría integral re-emitida, SEC-07: "1. Inyectar `IHubContext<Author
 - `ExchangeRateHub` MUST exponer `UserGroup(userId)` y agregar cada conexión a `user:{id}` en `OnConnectedAsync` (espejo de `AuthorizationHub`).
 - `ISecurityStampValidator` MUST exponer `Task InvalidateUserSessionsAsync(int userId)` = invalidar caché + push de desconexión.
 - `RevokeUserStampAsync` MUST rotar el sello, invalidar la caché y enviar `"ForceDisconnect"` (sin payload) a `Clients.Group(user:{id})` de **ambos** hubs vía `IHubContext<AuthorizationHub>?`/`IHubContext<ExchangeRateHub>?` (opcionales; ausentes ⇒ no-op).
-- Los 5 caminos que hoy solo invalidan caché (`ChangePassword`, `UpdateUser` con cambio de credenciales/rol, `SoftDelete`, `Reactivate`, `HardDelete`) MUST llamar `InvalidateUserSessionsAsync`.
+- Los 6 caminos que hoy solo invalidan caché (`ChangePassword`, `ResetTemporaryPassword` — ampliación post-T1: regenera el sello, misma clase —, `UpdateUser` con cambio de credenciales/rol, `SoftDelete`, `Reactivate`, `HardDelete`) MUST llamar `InvalidateUserSessionsAsync`.
 - El push MUST ser fail-soft: cualquier error se registra (`AppLogger.LogWarn`) y NO interrumpe la revocación.
 
 #### Scenario: Logout/revocación desconecta
