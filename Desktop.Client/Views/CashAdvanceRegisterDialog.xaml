@@ -33,7 +33,7 @@
                 <Grid>
                     <TextBlock Text="EFECTIVO DISPONIBLE:" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center" HorizontalAlignment="Left"/>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
-                        <TextBlock Text="{Binding AvailableCashLocal, StringFormat='{}{0:N0}'}" FontSize="18" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                        <TextBlock Text="{Binding AvailableCashDisplay}" FontSize="18" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                         <TextBlock Text=" Bs.S" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="2,0,0,2" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                     </StackPanel>
                 </Grid>

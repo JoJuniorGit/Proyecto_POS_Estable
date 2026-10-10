@@ -123,6 +123,12 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     public bool HasRecentIncomes => RecentIncomes.Count > 0;
     public bool IsAdmin => _userSession?.IsAdmin == true;
 
+    /// <summary>
+    /// 8.153 (SEC-06): arqueo ciego. Solo Admin/Manager ven el efectivo teórico de la caja; sin
+    /// sesión el permiso falla cerrado (mismo criterio que <see cref="IsAdmin"/>).
+    /// </summary>
+    public bool CanViewTheoreticalBalance => _userSession?.IsAdmin == true || _userSession?.IsManager == true;
+
 
     public CashDrawerViewModel(
         ICashDrawerService cashDrawerService, 
@@ -177,10 +183,20 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     {
         var rate = _exchangeRateService.CurrentRate;
         var balanceLocal = CurrentBalanceBsS;
-        // 8.143: los montos visibles honran el ajuste activo (Venezolano/Internacional) y se
-        // re-formatean al vuelo cuando el formato cambia.
-        FormattedBalanceBsS = CurrencyDisplay.Number(balanceLocal, 0);
-        FormattedBalanceUsd = CurrencyDisplay.Number(rate > 0 ? balanceLocal / rate : 0) + " $";
+        // 8.153 (SEC-06): los no-supervisores no ven el efectivo esperado; "—" evita un "0"
+        // engañoso. Ingresos/egresos y el resto de la vista quedan intactos.
+        if (CanViewTheoreticalBalance)
+        {
+            // 8.143: los montos visibles honran el ajuste activo (Venezolano/Internacional) y se
+            // re-formatean al vuelo cuando el formato cambia.
+            FormattedBalanceBsS = CurrencyDisplay.Number(balanceLocal, 0);
+            FormattedBalanceUsd = CurrencyDisplay.Number(rate > 0 ? balanceLocal / rate : 0) + " $";
+        }
+        else
+        {
+            FormattedBalanceBsS = "—";
+            FormattedBalanceUsd = string.Empty;
+        }
 
         if (ActiveSession != null && ActiveSession.Transactions != null)
         {
@@ -220,7 +236,10 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
 
             if (ActiveSession != null)
             {
-                CurrentBalanceBsS = await _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id);
+                // 8.153 (SEC-06): el fetch del saldo teórico existe solo para supervisores.
+                CurrentBalanceBsS = CanViewTheoreticalBalance
+                    ? await _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id)
+                    : 0;
                 RecentIncomes.Clear();
                 if (ActiveSession.Transactions != null)
                 {
@@ -409,7 +428,11 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
                     new Desktop.Client.Services.PaymentMethodDto { Id = FallbackMobilePaymentMethodId, Name = "Pago Móvil", IsCash = false, DisplayOrder = 3 }
                 };
 
-            var currentBalance = await _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id);
+            // 8.153 (SEC-06): sin permiso de supervisión el diálogo recibe null y opera sin tope
+            // local; el servidor sigue validando el efectivo disponible.
+            decimal? currentBalance = CanViewTheoreticalBalance
+                ? await _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id)
+                : null;
             var dialogRes = await _dialogService.ShowCashAdvanceRegisterDialogAsync(paymentMethods, currentBalance);
 
             if (dialogRes is { } res && res.success)

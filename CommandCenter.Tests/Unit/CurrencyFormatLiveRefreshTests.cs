@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
+using Core.Entities;
 using Core.Helpers;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
@@ -22,6 +23,15 @@ public class CurrencyFormatLiveRefreshTests
         var mock = new Mock<IExchangeRateService>();
         mock.Setup(e => e.CurrentRate).Returns(rate);
         return mock;
+    }
+
+    // 8.153 (SEC-06): el arqueo teórico solo se muestra a supervisores; la prueba de formateo
+    // en vivo del saldo necesita una sesión Admin para seguir ejercitando esos displays.
+    private static UserSession CreateAdminSession()
+    {
+        var session = new UserSession();
+        session.SetUser(new UserDto { Id = 1, Name = "Supervisor Test", Cedula = "V-1", Role = UserRole.Admin });
+        return session;
     }
 
     [Fact]
@@ -82,7 +92,7 @@ public class CurrencyFormatLiveRefreshTests
             .ReturnsAsync(new List<CashTransactionDto>());
         cashDrawer.Setup(s => s.GetCurrentBalanceLocalAsync(1)).ReturnsAsync(1300m);
 
-        var vm = new CashDrawerViewModel(cashDrawer.Object, CreateRateMock(50.00m).Object);
+        var vm = new CashDrawerViewModel(cashDrawer.Object, CreateRateMock(50.00m).Object, userSession: CreateAdminSession());
         try
         {
             await vm.LoadSessionAsync();

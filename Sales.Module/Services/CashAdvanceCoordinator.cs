@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Core.DTOs;
-using Core.Helpers;
 using Core.Interfaces;
 using Sales.Module.Data;
 using Sales.Module.Entities;
@@ -59,7 +58,7 @@ public class CashAdvanceCoordinator
 
         if (availableCash < roundedRequested)
         {
-            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente. Disponible: {MoneyFormat.N2(availableCash)} Bs.S, Requerido: {MoneyFormat.N2(roundedRequested)} Bs.S.");
+            throw new InvalidOperationException("Saldo de efectivo en caja insuficiente para el monto solicitado.");
         }
 
         var commissionPercentage = await ResolveCommissionPercentageAsync(isTransfer, cancellationToken);

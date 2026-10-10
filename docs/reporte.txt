@@ -12733,3 +12733,117 @@ H1. Cadena 8.152 en V0.15: e51a86a (plan + auditoria re-emitida) + b2e283a
     (T1) + 0ddaa62 (T2) + commit de cierre de este ANEXO (git log / L4 del
     tracker ODD).
 ================================================================================
+
+================================================================================
+ANEXO 8.153 — FASE INMEDIATA DE LA AUDITORIA INTEGRAL (SEC-05, SEC-06; SRE-04/SRE-05 REFUTADOS) — 2026-10-09
+================================================================================
+Change SDD: openspec/changes/2026-10-09-audit-immediate/ (proposal, 2 specs,
+tasks, state, verify-report). Ejecuta la FASE INMEDIATA de la matriz de
+docs/auditoria_integral_fases_1_4.txt (re-emitida 2026-10-08). Los 17 abiertos
+restantes siguen como roadmap por tramos (G4).
+
+A. ALCANCE Y ENTREGA
+
+A1. Verificacion previa: SRE-04 ya refutado en 8.152; SRE-05 REFUTADO (el
+    completar venta exige Idempotency-Key via IdempotencyRequestResolver desde
+    el change 'mandatory idempotency' 2c4be32: 400 sin clave / HIT en replay /
+    422 en mismatch, con tests en Phase1/Phase4/OutboxProcessor y cliente WPF
+    con clave; el atributo [RequireIdempotencyKey] que cita la auditoria no
+    existe en el repo). SEC-05 y SEC-06 CONFIRMADOS; SEC-06 con vector
+    adicional detectado: el rechazo de adelanto filtraba 'Disponible: {saldo}'
+    (sondeo del balance con un adelanto excesivo).
+A2. T1 — 596a3ff (SEC-05): [System.Text.Json.Serialization.JsonIgnore] en
+    PasswordHash y SecurityStamp de Core/Entities/User.cs + test de
+    serializacion STJ (UserSerializationTests: valor y nombre ausentes).
+A3. T2 — a5935bd (SEC-06 backend): current-balance restringido a
+    [Authorize(Roles = "Admin,Manager")]; el rechazo por efectivo insuficiente
+    del adelanto usa el mensaje exacto "Saldo de efectivo en caja insuficiente
+    para el monto solicitado." (sin cifras; guard intacto).
+A4. T3 — 3e3b811 (SEC-06 cliente WPF): arqueo ciego fail-closed
+    (CanViewTheoreticalBalance Admin/Manager; sin sesion -> false); el cajero no
+    fetchea el saldo (LoadSessionAsync / ProcessCashAdvance) y ve "—"/vacio;
+    dialogo de adelanto con decimal? availableCashLocal (tope local solo para
+    supervisores; el servidor valida; AvailableCashDisplay con "—").
+A5. T2b — 7062553 (post-verificacion, W1): el rechazo del VUELTO
+    (CashDrawerService.RecordSaleChangeAsync) tambien filtraba
+    'Disponible: {saldo}' y es alcanzable por el cajero al cobrar; el mensaje
+    queda "Saldo de efectivo en caja insuficiente para registrar el vuelto de
+    la venta #{saleId}. Vuelto requerido: X Bs.S." (sin el disponible),
+    test-first (RED 1F -> GREEN). El egreso (Admin-only) queda intacto.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2144/2144, 0 fallas, 0 omitidas (base 2129 + 3 T2 + 12 T3;
+    T2b modifica un test existente sin cambiar el total).
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8886 (>=0.70), Sales.Module 0.8962 (>=0.80), Inventory.Module
+    0.8558 (>=0.72).
+B4. Verificacion independiente (read-only): PASS WITH WARNINGS — REQ-USJ-01/02
+    COMPLIANT; REQ-BCB-01/02/03/04 COMPLIANT; REQ-BCB-05 PARTIAL (authz pinada
+    por reflexion del atributo; 403/200 no observado por HTTP — limitacion W2);
+    S3 COMPLIANT. W1 (filtracion del saldo por el vuelto) fue CERRADA por T2b
+    tras la verificacion (RED/GREEN + suite). INFOs: I1 (test positivo sin
+    Role), I2 (el 409 enmascarado llega al WPF como HttpRequestException
+    generica, sin fuga), I3 (binding HasError pre-existente roto en el
+    dialogo), I5 (security_stamp en claims JWT por diseno).
+B5. Spot-check del padre: filtro CashDrawerBlindBalance 12/12 re-ejecutado;
+    revision estructural de los diffs T1/T2/T3/T2b.
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. REQ-BCB-05: la authz del endpoint queda pinada por reflexion (atributo);
+    sin test HTTP que observe el 403/200 (harness WebApplicationFactory gated a
+    PostgreSQL real). Recomendacion G1.
+D2. El cliente WPF no muestra el texto enmascarado del servidor: el 409 del
+    adelanto llega como HttpRequestException generica (EnsureSuccessStatusCode);
+    no hay fuga de cifras. Recomendacion G2.
+D3. RED de T1-T3 no re-verificable read-only (impl+tests en el mismo commit);
+    aritmetica consistente (2129/2132/2144).
+D4. UX del cajero: deja de ver el efectivo esperado ('—') y el tope local del
+    adelanto pasa al servidor; consecuencia directa del arqueo ciego (vetable).
+D5. Residual observado: los movimientos visibles de la sesion (ingresos/
+    egresos/historial) permiten a un operador derivar aproximadamente el saldo
+    teorico; fuera del alcance del hallazgo (los movimientos son operativos).
+D6. E2E WPF gated no corrido (corre como Admin; sin regresion esperada).
+
+E. ROLLBACK
+
+E1. Revertir 596a3ff + a5935bd + 3e3b811 + 7062553 restaura el comportamiento
+    previo (cambios aditivos: atributos, restriccion de rol, mensajes
+    enmascarados, blinds del cliente); sin migraciones ni reescrituras de
+    datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS — 7/8 requisitos COMPLIANT +
+    1 PARTIAL (BCB-05 por limitacion W2); S3 confirmado; W1 cerrada
+    post-verificacion. Reporte en el change (verify-report.md).
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. (W2) Agregar un caso HTTP gated (Postgres real) que observe 403 con token
+    Cashier y 200 con Admin en current-balance.
+G2. (I2) Homologar el manejo de errores del cliente WPF: leer ProblemDetails
+    del 409 para mostrar el mensaje enmascarado en el dialogo de adelanto.
+G3. (I3) El binding HasError pre-existente en CashAdvanceRegisterDialog.xaml
+    nunca tuvo miembro en la VM (cosmetico).
+G4. Roadmap restante por tramos (indicativo en el proposal de 8.153): 8.154
+    SEC-03/04 + SRE-01 facturas; 8.155 PERF-01/02; 8.156 PERF-04/05 +
+    CLEAN-05; 8.157 SEC-07; 8.158 SRE-03 + CLEAN-03; 8.159 CLEAN-01/04 +
+    PERF-03.
+G5. La matriz de la auditoria queda: inmediata = cumplida (SRE-04/SRE-05
+    refutados + SEC-05/SEC-06 corregidos); endurecimiento y refactor siguen
+    abiertos segun G4.
+
+H. COMMITS
+
+H1. Cadena 8.153 en V0.15: 2e536fb (plan) + 596a3ff (T1) + a5935bd (T2) +
+    3e3b811 (T3) + 7062553 (T2b) + commit de cierre de este ANEXO (git log /
+    L6 del tracker ODD).
+================================================================================

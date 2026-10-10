@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
+using Core.DTOs;
+using Core.Entities;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +19,15 @@ namespace CommandCenter.Tests;
 
 public class CashDrawerClosureTests
 {
+    // 8.153 (SEC-06): el arqueo teórico solo es visible para supervisores; estas pruebas
+    // ejercitan el saldo del cliente con una sesión Admin para conservar su cobertura.
+    private static UserSession CreateAdminSession()
+    {
+        var session = new UserSession();
+        session.SetUser(new UserDto { Id = 1, Name = "Supervisor Test", Cedula = "V-1", Role = UserRole.Admin });
+        return session;
+    }
+
     private SalesDbContext GetInMemoryDbContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
@@ -175,7 +186,7 @@ public class CashDrawerClosureTests
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Income, Sales.Module.Entities.CashTransactionSource.CashIn, 500m, 10m, 50m, "Ingreso previo");
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro previo");
 
-        using var vm = new CashDrawerViewModel(clientService, rateService);
+        using var vm = new CashDrawerViewModel(clientService, rateService, userSession: CreateAdminSession());
         // El bus de mensajes es estático y compartido entre pruebas: otras clases difunden
         // ShiftClosedMessage/TimeZoneChangedMessage y dispararían RefreshAsync concurrente
         // sobre el mismo DbContext InMemory, pisando la carga bajo aserción.
@@ -225,7 +236,7 @@ public class CashDrawerClosureTests
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Income, Sales.Module.Entities.CashTransactionSource.CashIn, 500m, 10m, 50m, "Ingreso sesión 1");
         await serverService.AddTransactionAsync(session1.Id, Sales.Module.Entities.CashTransactionType.Expense, Sales.Module.Entities.CashTransactionSource.CashOut, 200m, 4m, 50m, "Retiro sesión 1");
 
-        using var vm = new CashDrawerViewModel(clientService, rateService);
+        using var vm = new CashDrawerViewModel(clientService, rateService, userSession: CreateAdminSession());
         // Mismo aislamiento del bus global que el test de cierre: evita RefreshAsync concurrente
         // disparado por mensajes de otras pruebas mientras se carga la sesión.
         WeakReferenceMessenger.Default.UnregisterAll(vm);

@@ -119,8 +119,8 @@ public class CashDrawerRbacAndPaymentMethodsTests
         });
 
         List<PaymentMethodDto>? capturedMethods = null;
-        dialog.Setup(d => d.ShowCashAdvanceRegisterDialogAsync(It.IsAny<List<PaymentMethodDto>>(), It.IsAny<decimal>()))
-            .Callback<List<PaymentMethodDto>, decimal>((methods, _) => capturedMethods = methods)
+        dialog.Setup(d => d.ShowCashAdvanceRegisterDialogAsync(It.IsAny<List<PaymentMethodDto>>(), It.IsAny<decimal?>()))
+            .Callback<List<PaymentMethodDto>, decimal?>((methods, _) => capturedMethods = methods)
             .ReturnsAsync(((bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?)null);
 
         using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, payments.Object, CreateSession(UserRole.Admin));
@@ -141,8 +141,8 @@ public class CashDrawerRbacAndPaymentMethodsTests
         var (cash, rate, dialog, _) = CreateMocks();
 
         List<PaymentMethodDto>? capturedMethods = null;
-        dialog.Setup(d => d.ShowCashAdvanceRegisterDialogAsync(It.IsAny<List<PaymentMethodDto>>(), It.IsAny<decimal>()))
-            .Callback<List<PaymentMethodDto>, decimal>((methods, _) => capturedMethods = methods)
+        dialog.Setup(d => d.ShowCashAdvanceRegisterDialogAsync(It.IsAny<List<PaymentMethodDto>>(), It.IsAny<decimal?>()))
+            .Callback<List<PaymentMethodDto>, decimal?>((methods, _) => capturedMethods = methods)
             .ReturnsAsync(((bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?)null);
 
         using var vm = new CashDrawerViewModel(cash.Object, rate.Object, dialog.Object, null, CreateSession(UserRole.Admin));
