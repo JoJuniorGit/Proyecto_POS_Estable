@@ -1,0 +1,29 @@
+change: 2026-10-10-audit-signalr-revocation
+store: openspec
+scope: audit-signalr-revocation-8.157
+created: 2026-10-10
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: planned
+apply:
+  slices: 0/3 (T1 servidor, T2 WPF, T3 Web+bundle)
+  branch: V0.15
+verify: pending
+artifacts:
+  proposal: openspec/changes/2026-10-10-audit-signalr-revocation/proposal.md
+  specs:
+    - openspec/changes/2026-10-10-audit-signalr-revocation/specs/hub-revocation/spec.md
+    - openspec/changes/2026-10-10-audit-signalr-revocation/specs/hub-clients-force-disconnect/spec.md
+  tasks: openspec/changes/2026-10-10-audit-signalr-revocation/tasks.md
+decisions:
+  d1: ExchangeRateHub gana grupo user:{id} en OnConnectedAsync (simetría con AuthorizationHub)
+  d2: IHubContexts opcionales en SecurityStampValidator → tests existentes compilan y push no-op sin hubs
+  d3: evento "ForceDisconnect" sin payload (snippet de la auditoría); texto local en clientes
+  d4: push fail-soft (AppLogger.LogWarn) — nunca rompe la revocación
+  d5: filtro con forceImmediateCheck true (ventana estricta 5s) en OnConnected y InvokeMethod
+  rdd: off (clone-local + global)
+  branch: V0.15
+next: T1 (writer servidor) → T2 (writer WPF) → T3 (writer Web+bundle) → T4 (verificación + ANEXO 8.157)
