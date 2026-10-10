@@ -8,9 +8,10 @@ namespace CommandCenter.Tests;
 public class AppLoggerTests
 {
     [Fact]
-    public void LogStart_CreatesStartLogFile_WithTimestampedContent()
+    public async Task LogStart_CreatesStartLogFile_WithTimestampedContent()
     {
         AppLogger.LogStart("Test startup message");
+        await AppLogger.FlushAsync();
 
         Assert.True(File.Exists(AppLogger.StartLogPath));
         var content = File.ReadAllText(AppLogger.StartLogPath);
@@ -19,7 +20,7 @@ public class AppLoggerTests
     }
 
     [Fact]
-    public void LogCrash_CreatesCrashLogFile_WithExceptionDetails()
+    public async Task LogCrash_CreatesCrashLogFile_WithExceptionDetails()
     {
         try
         {
@@ -29,6 +30,8 @@ public class AppLoggerTests
         {
             AppLogger.LogCrash(ex, "UnitTest.Context");
         }
+
+        await AppLogger.FlushAsync();
 
         Assert.True(File.Exists(AppLogger.CrashLogPath));
         var content = File.ReadAllText(AppLogger.CrashLogPath);

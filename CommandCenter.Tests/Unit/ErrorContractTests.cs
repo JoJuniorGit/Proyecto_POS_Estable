@@ -705,6 +705,7 @@ public class ErrorContractTests
         var logBefore = File.Exists(AppLogger.WarnLogPath) ? new FileInfo(AppLogger.WarnLogPath).Length : 0;
 
         await service.WriteClosedClosureReceiptsAsync(ShiftReportMapper.MapClosure(closure));
+        await AppLogger.FlushAsync();
 
         var logAfter = File.Exists(AppLogger.WarnLogPath) ? new FileInfo(AppLogger.WarnLogPath).Length : 0;
 

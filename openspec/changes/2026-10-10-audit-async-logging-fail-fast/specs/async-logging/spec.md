@@ -18,7 +18,7 @@ Desviación documentada (D1, ver proposal): se implementa la ESENCIA SRE — can
 
 ### Requirement: REQ-AL-02 — Consumidor único y resiliente
 
-Cada logger MUST tener UN consumidor dedicado (`TaskCreationOptions.LongRunning`) que escribe a disco con la rotación existente (10 MB / 5 archivos). El consumidor MUST: preservar el orden FIFO por archivo; capturar toda excepción por entrada (el logger jamás lanza); y, si el contador de descartes es > 0, registrar una línea `[LOGGER]` de descartes en el siguiente volcado y resetearlo. `AppLogger.LogDbError` MUST seguir escribiendo en `db-errors.log` Y `crash.log` (dos entradas).
+Ambos loggers MUST publicar sus entradas a UN consumidor dedicado ÚNICO por proceso (`TaskCreationOptions.LongRunning`, un solo hilo fuera del ThreadPool compartido por ambos loggers — FIFO global) que escribe a disco con la rotación existente (10 MB / 5 archivos). El consumidor MUST: preservar el orden FIFO por archivo; capturar toda excepción por entrada (el logger jamás lanza); y, si el contador de descartes es > 0, registrar una línea `[LOGGER]` de descartes en el siguiente volcado y resetearlo. `AppLogger.LogDbError` MUST seguir escribiendo en `db-errors.log` Y `crash.log` (dos entradas).
 
 #### Scenario: Excepción de disco
 

@@ -1,11 +1,11 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace Core.Logging;
 
 public static class AppLogger
 {
-    private static readonly object _lock = new object();
     private static readonly string _logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
 
     static AppLogger()
@@ -25,6 +25,11 @@ public static class AppLogger
     public static string DbErrorsLogPath => Path.Combine(_logsDir, "db-errors.log");
     public static string SecurityAuditLogPath => Path.Combine(_logsDir, "security-audit.log");
     public static string WarnLogPath => Path.Combine(_logsDir, "warn.log");
+
+    /// <summary>
+    /// Aguarda a que todas las entradas encoladas hasta este punto estén escritas en disco.
+    /// </summary>
+    public static Task FlushAsync() => AsyncLogSink.FlushAsync();
 
     public static void LogStart(string message)
     {
@@ -90,59 +95,10 @@ public static class AppLogger
         WriteLog(CrashLogPath, "CRASH", msg);
     }
 
-    private const long MaxFileSizeBytes = 10 * 1024 * 1024; // 10 MB
-    private const int MaxArchiveFiles = 5;
-
-    private static void RotateLogFileIfNeeded(string filePath)
-    {
-        try
-        {
-            var fileInfo = new FileInfo(filePath);
-            if (!fileInfo.Exists || fileInfo.Length < MaxFileSizeBytes)
-            {
-                return;
-            }
-
-            string oldestArchive = $"{filePath}.{MaxArchiveFiles}";
-            if (File.Exists(oldestArchive))
-            {
-                File.Delete(oldestArchive);
-            }
-
-            for (int i = MaxArchiveFiles - 1; i >= 1; i--)
-            {
-                string source = $"{filePath}.{i}";
-                string destination = $"{filePath}.{i + 1}";
-                if (File.Exists(source))
-                {
-                    File.Move(source, destination, true);
-                }
-            }
-
-            File.Move(filePath, $"{filePath}.1", true);
-        }
-        catch { }
-    }
-
     private static void WriteLog(string filePath, string level, string message)
     {
-        lock (_lock)
-        {
-            try
-            {
-                var dir = Path.GetDirectoryName(filePath);
-                if (dir != null && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-
-                RotateLogFileIfNeeded(filePath);
-
-                var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-                var formatted = $"[{timestamp}] [{level}] {message}\n----------------------------------------\n";
-                File.AppendAllText(filePath, formatted);
-            }
-            catch { }
-        }
+        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+        var formatted = $"[{timestamp}] [{level}] {message}\n----------------------------------------\n";
+        AsyncLogSink.Enqueue(filePath, formatted);
     }
 }

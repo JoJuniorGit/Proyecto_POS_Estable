@@ -1,11 +1,11 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace Core.Logging;
 
 public static class ClientStateLogger
 {
-    private static readonly object _lock = new object();
     private static readonly string _logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
 
     static ClientStateLogger()
@@ -21,6 +21,11 @@ public static class ClientStateLogger
     }
 
     public static string ResilienceLogPath => Path.Combine(_logsDir, "client-resilience.log");
+
+    /// <summary>
+    /// Aguarda a que todas las entradas encoladas hasta este punto estén escritas en disco.
+    /// </summary>
+    public static Task FlushAsync() => AsyncLogSink.FlushAsync();
 
     public static void LogRetry(int attempt, int maxAttempts, string requestUri, string method)
     {
@@ -62,60 +67,11 @@ public static class ClientStateLogger
         WriteLog("ERROR", origin, message);
     }
 
-    private const long MaxFileSizeBytes = 10 * 1024 * 1024; // 10 MB
-    private const int MaxArchiveFiles = 5;
-
-    private static void RotateLogFileIfNeeded(string filePath)
-    {
-        try
-        {
-            var fileInfo = new FileInfo(filePath);
-            if (!fileInfo.Exists || fileInfo.Length < MaxFileSizeBytes)
-            {
-                return;
-            }
-
-            string oldestArchive = $"{filePath}.{MaxArchiveFiles}";
-            if (File.Exists(oldestArchive))
-            {
-                File.Delete(oldestArchive);
-            }
-
-            for (int i = MaxArchiveFiles - 1; i >= 1; i--)
-            {
-                string source = $"{filePath}.{i}";
-                string destination = $"{filePath}.{i + 1}";
-                if (File.Exists(source))
-                {
-                    File.Move(source, destination, true);
-                }
-            }
-
-            File.Move(filePath, $"{filePath}.1", true);
-        }
-        catch { }
-    }
-
     private static void WriteLog(string level, string origin, string message)
     {
-        lock (_lock)
-        {
-            try
-            {
-                var dir = Path.GetDirectoryName(ResilienceLogPath);
-                if (dir != null && !Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-
-                RotateLogFileIfNeeded(ResilienceLogPath);
-
-                // ISO 8601 Timestamp format
-                var isoTimestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-                var formatted = $"[{isoTimestamp}] [{level}] [{origin}] {message}\n";
-                File.AppendAllText(ResilienceLogPath, formatted);
-            }
-            catch { }
-        }
+        // ISO 8601 Timestamp format
+        var isoTimestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+        var formatted = $"[{isoTimestamp}] [{level}] [{origin}] {message}\n";
+        AsyncLogSink.Enqueue(ResilienceLogPath, formatted);
     }
 }

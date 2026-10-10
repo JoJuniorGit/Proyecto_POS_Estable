@@ -14,10 +14,11 @@ namespace CommandCenter.Tests;
 public class SelfHealingResilienceTests
 {
     [Fact]
-    public void ClientStateLogger_WritesFormattedLogsToDisk()
+    public async Task ClientStateLogger_WritesFormattedLogsToDisk()
     {
         ClientStateLogger.LogRetry(2, 3, "/api/sales", "POST");
         ClientStateLogger.LogAuditSuppressedReplay("Cerrar Venta");
+        await ClientStateLogger.FlushAsync();
 
         Assert.True(File.Exists(ClientStateLogger.ResilienceLogPath));
         var content = File.ReadAllText(ClientStateLogger.ResilienceLogPath);
