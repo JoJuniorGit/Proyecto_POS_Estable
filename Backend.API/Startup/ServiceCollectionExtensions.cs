@@ -63,6 +63,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IUserService, Sales.Module.Services.UserService>();
         builder.Services.AddScoped<Core.Interfaces.IAuthService, Sales.Module.Services.AuthService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.ISalesService, Sales.Module.Services.SalesService>();
+        // 8.159-T1 (CLEAN-04, REQ-CHC-01): cálculo del checkout-preview extraído del controlador.
+        builder.Services.AddScoped<Sales.Module.Interfaces.ICheckoutCalculationService, Sales.Module.Services.CheckoutCalculationService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.ICashDrawerService, Sales.Module.Services.CashDrawerService>();
         builder.Services.AddScoped<Sales.Module.Services.CashAdvanceCoordinator>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();

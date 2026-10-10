@@ -60,7 +60,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
             .Setup(s => s.ResolveCheckoutRateAsync(42, It.IsAny<decimal>(), It.IsAny<System.Threading.CancellationToken>()))
             .ReturnsAsync((int _, decimal clientRate, System.Threading.CancellationToken _) => clientRate);
 
-        var controller = new SalesController(mockSalesService.Object, mockCurrentUserService.Object, null);
+        var controller = new SalesController(
+            mockSalesService.Object,
+            mockCurrentUserService.Object,
+            null,
+            null,
+            new CheckoutCalculationService(mockSalesService.Object));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
@@ -244,7 +249,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
             .Setup(s => s.ResolveCheckoutRateAsync(42, It.IsAny<decimal>(), It.IsAny<System.Threading.CancellationToken>()))
             .ReturnsAsync((int _, decimal clientRate, System.Threading.CancellationToken _) => clientRate);
 
-        var controller = new SalesController(mockSalesService.Object, mockCurrentUserService.Object, null);
+        var controller = new SalesController(
+            mockSalesService.Object,
+            mockCurrentUserService.Object,
+            null,
+            null,
+            new CheckoutCalculationService(mockSalesService.Object));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
@@ -331,7 +341,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
             new Mock<IMediator>().Object,
             new Mock<ICashDrawerService>().Object,
             settings.Object);
-        var controller = new SalesController(service, new Mock<ICurrentUserService>().Object, null);
+        var controller = new SalesController(
+            service,
+            new Mock<ICurrentUserService>().Object,
+            null,
+            null,
+            new CheckoutCalculationService(service));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
@@ -389,7 +404,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
             new Mock<IMediator>().Object,
             new Mock<ICashDrawerService>().Object,
             settings.Object);
-        var controller = new SalesController(service, new Mock<ICurrentUserService>().Object, null);
+        var controller = new SalesController(
+            service,
+            new Mock<ICurrentUserService>().Object,
+            null,
+            null,
+            new CheckoutCalculationService(service));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
@@ -424,7 +444,12 @@ public class Phase4FinancialIntegrityAndPreviewTests
             Items = new List<SaleItemDto>()
         });
 
-        var controller = new SalesController(mockSalesService.Object, mockCurrentUserService.Object, null);
+        var controller = new SalesController(
+            mockSalesService.Object,
+            mockCurrentUserService.Object,
+            null,
+            null,
+            new CheckoutCalculationService(mockSalesService.Object));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()

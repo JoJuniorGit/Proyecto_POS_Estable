@@ -33,6 +33,10 @@ public partial class SalesController : ControllerBase
     // 8.150 (T5, design D5): consumo del token efimero para acciones protegidas. Opcional para
     // preservar la construccion directa historica de tests; si falta, el gate falla cerrado.
     private readonly IAuthorizationCoordinator? _authorizationCoordinator;
+    // 8.159 (CLEAN-04): cálculo del checkout-preview extraído del controlador a Sales.Module.
+    // Opcional para preservar la construccion directa historica de tests (precedente 8.149/8.150);
+    // el endpoint de preview lo consume y DI lo resuelve en produccion.
+    private readonly ICheckoutCalculationService? _checkoutCalculator;
     // 8.149 (SRE-02): resolutor compartido extraído del método privado histórico.
     private readonly IdempotencyRequestResolver _idempotencyResolver;
 
@@ -40,12 +44,14 @@ public partial class SalesController : ControllerBase
         ISalesService salesService, 
         Core.Interfaces.ICurrentUserService currentUserService,
         Core.Interfaces.IIdempotencyService? idempotencyService = null,
-        IAuthorizationCoordinator? authorizationCoordinator = null)
+        IAuthorizationCoordinator? authorizationCoordinator = null,
+        ICheckoutCalculationService? checkoutCalculationService = null)
     {
         _salesService = salesService;
         _currentUserService = currentUserService;
         _idempotencyService = idempotencyService;
         _authorizationCoordinator = authorizationCoordinator;
+        _checkoutCalculator = checkoutCalculationService;
         _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
