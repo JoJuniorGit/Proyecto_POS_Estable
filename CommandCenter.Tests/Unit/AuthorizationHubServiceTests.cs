@@ -11,6 +11,7 @@ using Backend.API.Hubs;
 using Backend.API.Services;
 using Desktop.Client.Services;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR.Client;
 using Sales.Module.DTOs;
 using Xunit;
 
@@ -487,5 +488,94 @@ public class AuthorizationHubServiceTests
 
         var request = Assert.IsType<HttpRequestMessage>(handler.LastRequest);
         Assert.False(request.Headers.Contains("X-Authorization-Token"));
+    }
+
+    // ── 8.157 (SEC-07): ForceDisconnect (revocación de sesión) ────────────
+
+    [Fact]
+    public void ForceDisconnectEvent_MatchesServerPushConstant()
+    {
+        Assert.Equal("ForceDisconnect", AuthorizationHubService.ForceDisconnectEvent);
+
+        // El push de T1 (SecurityStampValidator) usa el literal exacto sin payload; anclamos el
+        // contrato por reflexión para fallar si el servidor renombra el evento.
+        var serverConstant = typeof(SecurityStampValidator)
+            .GetField("ForceDisconnectEvent", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!
+            .GetRawConstantValue();
+
+        Assert.Equal(serverConstant, AuthorizationHubService.ForceDisconnectEvent);
+    }
+
+    [Fact]
+    public async Task StopAfterForceDisconnectAsync_RaisesForceDisconnectedOnceAndIsIdempotent()
+    {
+        using var service = CreateRestOnlyService(new StubHttpMessageHandler("{}"));
+        var raised = 0;
+        service.ForceDisconnected += (_, _) => raised++;
+
+        await service.StopAfterForceDisconnectAsync();
+        await service.StopAfterForceDisconnectAsync();
+        await service.StopAfterForceDisconnectAsync();
+
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public async Task StopAfterForceDisconnectAsync_AfterDispose_DoesNotRaise()
+    {
+        var service = CreateRestOnlyService(new StubHttpMessageHandler("{}"));
+        var raised = 0;
+        service.ForceDisconnected += (_, _) => raised++;
+
+        await service.DisposeAsync();
+        await service.StopAfterForceDisconnectAsync();
+
+        Assert.Equal(0, raised);
+    }
+
+    [Fact]
+    public async Task TryStopHubForRevocationAsync_ActiveState_InvokesStop()
+    {
+        var stopCalls = 0;
+
+        var stopError = await AuthorizationHubService.TryStopHubForRevocationAsync(
+            HubConnectionState.Connected,
+            () =>
+            {
+                stopCalls++;
+                return Task.CompletedTask;
+            });
+
+        Assert.Equal(1, stopCalls);
+        Assert.Null(stopError);
+    }
+
+    [Fact]
+    public async Task TryStopHubForRevocationAsync_DisconnectedState_SkipsStop()
+    {
+        var stopCalls = 0;
+
+        var stopError = await AuthorizationHubService.TryStopHubForRevocationAsync(
+            HubConnectionState.Disconnected,
+            () =>
+            {
+                stopCalls++;
+                return Task.CompletedTask;
+            });
+
+        Assert.Equal(0, stopCalls);
+        Assert.Null(stopError);
+    }
+
+    [Fact]
+    public async Task TryStopHubForRevocationAsync_StopThrows_ReturnsErrorFailSoft()
+    {
+        var expected = new InvalidOperationException("socket roto");
+
+        var stopError = await AuthorizationHubService.TryStopHubForRevocationAsync(
+            HubConnectionState.Reconnecting,
+            () => Task.FromException(expected));
+
+        Assert.Same(expected, stopError);
     }
 }
