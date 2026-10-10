@@ -12,6 +12,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 using ISalesService = Desktop.Client.Services.ISalesService;
+using SalePaymentDto = Desktop.Client.Services.SalePaymentDto;
 
 namespace CommandCenter.Tests;
 
@@ -33,8 +34,46 @@ public class CheckoutUxTests
         };
     }
 
+    /// <summary>8.156 (CLEAN-05): espejo mínimo del preview del servidor para derivar el gate desde
+    /// el escenario (el VM ya no decide la liquidación con aritmética local).</summary>
+    private void SetupPreviewMirror(SaleDto targetSale)
+    {
+        _mockSalesService
+            .Setup(s => s.GetCheckoutPreviewAsync(It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<IEnumerable<SalePaymentDto>>()))
+            .ReturnsAsync((int _, decimal rate, IEnumerable<SalePaymentDto> payments) => BuildPreview(targetSale, rate, payments));
+    }
+
+    private static CheckoutPreviewClientDto BuildPreview(SaleDto targetSale, decimal rate, IEnumerable<SalePaymentDto> payments)
+    {
+        var list = payments.ToList();
+        decimal totalUsd = targetSale.TotalUSD;
+        decimal totalBsS = System.Math.Round(totalUsd * rate, 2, System.MidpointRounding.AwayFromZero);
+        decimal paidUsd = list.Sum(p => System.Math.Round(p.Amount, 2, System.MidpointRounding.AwayFromZero));
+        decimal paidBsS = list.Sum(p => System.Math.Round(p.AmountBsS > 0m ? p.AmountBsS : p.AmountLocal, 2, System.MidpointRounding.AwayFromZero));
+        decimal remainingUsd = System.Math.Max(0m, totalUsd - paidUsd);
+
+        return new CheckoutPreviewClientDto
+        {
+            TotalUSD = totalUsd,
+            TotalBsS = totalBsS,
+            TotalPaidUSD = paidUsd,
+            TotalPaidBsS = paidBsS,
+            RemainingBalanceUSD = remainingUsd,
+            RemainingBalanceBsS = System.Math.Max(0m, totalBsS - paidBsS),
+            RoundingAdjustment = remainingUsd <= 0.01m ? paidBsS - totalBsS : 0m,
+            IsFullyPaid = remainingUsd <= 0.05m
+        };
+    }
+
+    /// <summary>Seam determinista (REQ-WCP-02): espera la última validación canónica disparada.</summary>
+    private static async Task AwaitPreviewAsync(CheckoutViewModel vm)
+    {
+        var pending = vm.PendingPreview;
+        if (pending != null) await pending;
+    }
+
     [Fact]
-    public void CanFinalize_NormalSale_NoPayments_ReturnsFalse()
+    public async Task CanFinalize_NormalSale_NoPayments_ReturnsFalse()
     {
         var sale = new SaleDto
         {
@@ -44,6 +83,7 @@ public class CheckoutUxTests
             CustomerName = "Consumidor Final"
         };
 
+        SetupPreviewMirror(sale);
         var vm = new CheckoutViewModel(
             sale: sale,
             availableMethods: _paymentMethods,
@@ -53,6 +93,7 @@ public class CheckoutUxTests
 
         // Aislamiento del bus global compartido entre pruebas (CartUpdatedMessage cambiaría TotalUSD).
         WeakReferenceMessenger.Default.UnregisterAll(vm);
+        await AwaitPreviewAsync(vm);
 
         Assert.False(vm.HasValidPayments);
         Assert.False(vm.IsFullLiquidation);
@@ -62,7 +103,7 @@ public class CheckoutUxTests
     }
 
     [Fact]
-    public void CanFinalize_NormalSale_PartialPayment_ReturnsFalse()
+    public async Task CanFinalize_NormalSale_PartialPayment_ReturnsFalse()
     {
         var sale = new SaleDto
         {
@@ -72,6 +113,7 @@ public class CheckoutUxTests
             CustomerName = "Consumidor Final"
         };
 
+        SetupPreviewMirror(sale);
         var vm = new CheckoutViewModel(
             sale: sale,
             availableMethods: _paymentMethods,
@@ -86,6 +128,7 @@ public class CheckoutUxTests
         vm.SelectedMethod = _paymentMethods[0];
         vm.AmountBsSText = "2500.00";
         vm.AddPaymentCommand.Execute(null);
+        await AwaitPreviewAsync(vm);
 
         Assert.True(vm.HasValidPayments);
         Assert.False(vm.IsFullLiquidation);
@@ -95,7 +138,7 @@ public class CheckoutUxTests
     }
 
     [Fact]
-    public void CanFinalize_NormalSale_FullPayment_ReturnsTrue()
+    public async Task CanFinalize_NormalSale_FullPayment_ReturnsTrue()
     {
         var sale = new SaleDto
         {
@@ -105,6 +148,7 @@ public class CheckoutUxTests
             CustomerName = "Consumidor Final"
         };
 
+        SetupPreviewMirror(sale);
         var vm = new CheckoutViewModel(
             sale: sale,
             availableMethods: _paymentMethods,
@@ -119,6 +163,7 @@ public class CheckoutUxTests
         vm.SelectedMethod = _paymentMethods[0];
         vm.AmountBsSText = "5000.00";
         vm.AddPaymentCommand.Execute(null);
+        await AwaitPreviewAsync(vm);
 
         Assert.True(vm.HasValidPayments);
         Assert.True(vm.IsFullLiquidation);
@@ -128,7 +173,7 @@ public class CheckoutUxTests
     }
 
     [Fact]
-    public void CanFinalize_OverrideSale_PartialPayment_ReturnsTrue_WithRegistrarAbonoLabel()
+    public async Task CanFinalize_OverrideSale_PartialPayment_ReturnsTrue_WithRegistrarAbonoLabel()
     {
         var onHoldSale = new SaleDto
         {
@@ -140,6 +185,7 @@ public class CheckoutUxTests
             CustomerName = "Carlos Gomez"
         };
 
+        SetupPreviewMirror(onHoldSale);
         var vm = new CheckoutViewModel(
             sale: onHoldSale,
             availableMethods: _paymentMethods,
@@ -155,6 +201,7 @@ public class CheckoutUxTests
         vm.SelectedMethod = _paymentMethods[0];
         vm.AmountBsSText = "1500.00";
         vm.AddPaymentCommand.Execute(null);
+        await AwaitPreviewAsync(vm);
 
         Assert.True(vm.IsOverrideMode);
         Assert.True(vm.HasValidPayments);
@@ -164,7 +211,7 @@ public class CheckoutUxTests
     }
 
     [Fact]
-    public void CanFinalize_OverrideSale_FullPayment_ReturnsTrue_WithLiquidarCuentaLabel()
+    public async Task CanFinalize_OverrideSale_FullPayment_ReturnsTrue_WithLiquidarCuentaLabel()
     {
         var onHoldSale = new SaleDto
         {
@@ -176,6 +223,7 @@ public class CheckoutUxTests
             CustomerName = "Carlos Gomez"
         };
 
+        SetupPreviewMirror(onHoldSale);
         var vm = new CheckoutViewModel(
             sale: onHoldSale,
             availableMethods: _paymentMethods,
@@ -191,6 +239,7 @@ public class CheckoutUxTests
         vm.SelectedMethod = _paymentMethods[0];
         vm.AmountBsSText = "5000.00";
         vm.AddPaymentCommand.Execute(null);
+        await AwaitPreviewAsync(vm);
 
         Assert.True(vm.IsOverrideMode);
         Assert.True(vm.HasValidPayments);
@@ -200,7 +249,7 @@ public class CheckoutUxTests
     }
 
     [Fact]
-    public void CanFinalize_CustodyWithoutIdentifiedCustomer_ReturnsFalse_WithAlertMessage()
+    public async Task CanFinalize_CustodyWithoutIdentifiedCustomer_ReturnsFalse_WithAlertMessage()
     {
         var sale = new SaleDto
         {
@@ -210,6 +259,7 @@ public class CheckoutUxTests
             CustomerName = "Consumidor Final"
         };
 
+        SetupPreviewMirror(sale);
         var vm = new CheckoutViewModel(
             sale: sale,
             availableMethods: _paymentMethods,
@@ -224,6 +274,7 @@ public class CheckoutUxTests
         vm.SelectedMethod = _paymentMethods[0];
         vm.AmountBsSText = "2500.00";
         vm.AddPaymentCommand.Execute(null);
+        await AwaitPreviewAsync(vm);
 
         Assert.True(vm.IsFullLiquidation);
 
@@ -237,7 +288,7 @@ public class CheckoutUxTests
     }
 
     [Fact]
-    public void CanFinalize_CustodyWithRealCustomer_ReturnsTrue_WithEnviarARetiroLabel()
+    public async Task CanFinalize_CustodyWithRealCustomer_ReturnsTrue_WithEnviarARetiroLabel()
     {
         var sale = new SaleDto
         {
@@ -247,6 +298,7 @@ public class CheckoutUxTests
             CustomerName = "Maria Perez"
         };
 
+        SetupPreviewMirror(sale);
         var vm = new CheckoutViewModel(
             sale: sale,
             availableMethods: _paymentMethods,
@@ -261,6 +313,7 @@ public class CheckoutUxTests
         vm.SelectedMethod = _paymentMethods[0];
         vm.AmountBsSText = "2500.00";
         vm.AddPaymentCommand.Execute(null);
+        await AwaitPreviewAsync(vm);
 
         // Check Pending Pickup
         vm.IsPendingPickup = true;
@@ -273,7 +326,7 @@ public class CheckoutUxTests
     }
 
     [Fact]
-    public void UpdateCustomer_PreservesExistingPaymentsAndRecalculatesCustody()
+    public async Task UpdateCustomer_PreservesExistingPaymentsAndRecalculatesCustody()
     {
         var sale = new SaleDto
         {
@@ -283,6 +336,7 @@ public class CheckoutUxTests
             CustomerName = "Consumidor Final"
         };
 
+        SetupPreviewMirror(sale);
         var vm = new CheckoutViewModel(
             sale: sale,
             availableMethods: _paymentMethods,
@@ -297,6 +351,7 @@ public class CheckoutUxTests
         vm.SelectedMethod = _paymentMethods[0];
         vm.AmountBsSText = "5000.00";
         vm.AddPaymentCommand.Execute(null);
+        await AwaitPreviewAsync(vm);
 
         vm.IsPendingPickup = true;
         Assert.False(vm.CanFinalize); // Blocked because default customer

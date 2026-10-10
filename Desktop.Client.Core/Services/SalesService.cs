@@ -188,6 +188,17 @@ public class SalesService : ISalesService
         return invoiceNumber;
     }
 
+    public async Task<CheckoutPreviewClientDto> GetCheckoutPreviewAsync(int saleId, decimal exchangeRate, IEnumerable<SalePaymentDto> payments)
+    {
+        // 8.156 (CLEAN-05): mismo body del web (exchangeRate + payments con amountLocal);
+        // la respuesta es la fuente canónica del redondeo fiscal y del estado de pago total.
+        var _request = new { ExchangeRate = exchangeRate, Payments = payments };
+        var _response = await _httpClient.PostAsJsonAsync($"api/sales/{saleId}/checkout-preview", _request);
+        _response.EnsureSuccessStatusCode();
+        return await _response.Content.ReadFromJsonAsync<CheckoutPreviewClientDto>()
+            ?? throw new System.Exception("Failed to load checkout preview.");
+    }
+
     public async Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate = null, System.DateTime? endDate = null, string? search = null, System.Threading.CancellationToken cancellationToken = default)
     {
         var _url = $"api/sales/history?page={page}&pageSize={pageSize}";

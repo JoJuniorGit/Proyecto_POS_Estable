@@ -165,6 +165,25 @@ public class ClientHttpContractTests
     }
 
     [Fact]
+    public async Task Sales_GetCheckoutPreviewAsync_TargetsCheckoutPreviewRoute()
+    {
+        var requests = await CaptureAsync<SalesService>(
+            c => new SalesService(c),
+            s => s.GetCheckoutPreviewAsync(42, 36.5m, new[] { new Desktop.Client.Services.SalePaymentDto(1, 10m, 365m, null) }));
+
+        var request = Assert.Single(requests);
+        AssertRequest(request, HttpMethod.Post, "/api/sales/42/checkout-preview", typeof(SalesController), nameof(SalesController.GetCheckoutPreviewAsync));
+
+        // 8.156 (CLEAN-05): el body del preview replica el contrato del web (camelCase;
+        // amountLocal viaja con el Bs.S del pago).
+        Assert.False(string.IsNullOrWhiteSpace(request.Body), "La peticion del preview debe llevar body.");
+        Assert.Contains("exchangeRate", request.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("payments", request.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("paymentMethodId", request.Body!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("amountLocal", request.Body!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Sales_GetSalesHistoryAsync_SendsOnlyBindableHistoryFilters()
     {
         var requests = await CaptureAsync<SalesService>(
