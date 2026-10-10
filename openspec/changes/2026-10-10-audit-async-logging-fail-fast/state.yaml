@@ -7,11 +7,13 @@ preflight:
   artifact_store: openspec
   delivery_strategy: ask-on-risk
   chain_strategy: stacked-to-main
-phase: proposed
+phase: verified
 apply:
-  slices: 0/2 (T1 SRE-03, T2 CLEAN-03)
+  slices: 2/2 (T1 14ae597, T2 a3ab349; hardening 0d99c2c)
   branch: V0.15
-verify: pending
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-10-audit-async-logging-fail-fast/verify-report.md
+verify_note: "8/8 requisitos COMPLIANT (REQ-AL-01..05 + REQ-BF-01..03); W1 (saturación sin test determinista, por inspección) y W2 (ProcessExit best-effort) + I1-I3 registrados; suite CON Postgres 2221/2221; cobertura Core 0.8701/Sales 0.8882/Inventory 0.8378 (exit 0)"
 artifacts:
   proposal: openspec/changes/2026-10-10-audit-async-logging-fail-fast/proposal.md
   specs:
@@ -25,4 +27,4 @@ decisions:
   rdd: off (clone-local + global)
   branch: V0.15
   anexo: "8.158"
-next: T1 delegado a writer (SRE-03) + T2 inline (CLEAN-03) + verificación + cierre
+next: push/pr/merge (decisión del mantenedor); roadmap de la auditoría re-emitida CERRADO con 8.158
