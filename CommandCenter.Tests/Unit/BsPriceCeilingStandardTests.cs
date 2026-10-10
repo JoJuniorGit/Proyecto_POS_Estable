@@ -132,7 +132,7 @@ public class BsPriceCeilingStandardTests
             PriceBsS = 681.19m
         };
 
-        var result = await controller.Create(request);
+        var result = await controller.CreateAsync(request);
 
         Assert.IsType<Microsoft.AspNetCore.Mvc.CreatedAtActionResult>(result.Result);
         Assert.NotNull(capturedDto);
@@ -223,7 +223,7 @@ public class BsPriceCeilingStandardTests
             PriceBsS = 681.19m
         };
 
-        var result = await controller.Update(1, request);
+        var result = await controller.UpdateAsync(1, request);
 
         Assert.IsType<Microsoft.AspNetCore.Mvc.NoContentResult>(result);
         Assert.NotNull(capturedDto);

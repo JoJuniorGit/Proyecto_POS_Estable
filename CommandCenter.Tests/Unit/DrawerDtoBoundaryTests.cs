@@ -247,13 +247,13 @@ public class DrawerDtoBoundaryTests
     {
         const BindingFlags publicInstance = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
-        Assert.Equal(typeof(CashDrawerSessionResponseDto), ActionBodyType(GetAction(nameof(CashDrawerController.GetActiveSession))));
-        Assert.Equal(typeof(CashDrawerSessionResponseDto), ActionBodyType(GetAction(nameof(CashDrawerController.OpenSession))));
-        Assert.Equal(typeof(CashDrawerSessionResponseDto), ActionBodyType(GetAction(nameof(CashDrawerController.CloseSession))));
-        Assert.Equal(typeof(CashTransactionResponseDto), ActionBodyType(GetAction(nameof(CashDrawerController.AddTransaction))));
-        Assert.Equal(typeof(CashAdvanceResultDto), ActionBodyType(GetAction(nameof(CashDrawerController.ProcessCashAdvance))));
+        Assert.Equal(typeof(CashDrawerSessionResponseDto), ActionBodyType(GetAction(nameof(CashDrawerController.GetActiveSessionAsync))));
+        Assert.Equal(typeof(CashDrawerSessionResponseDto), ActionBodyType(GetAction(nameof(CashDrawerController.OpenSessionAsync))));
+        Assert.Equal(typeof(CashDrawerSessionResponseDto), ActionBodyType(GetAction(nameof(CashDrawerController.CloseSessionAsync))));
+        Assert.Equal(typeof(CashTransactionResponseDto), ActionBodyType(GetAction(nameof(CashDrawerController.AddTransactionAsync))));
+        Assert.Equal(typeof(CashAdvanceResultDto), ActionBodyType(GetAction(nameof(CashDrawerController.ProcessCashAdvanceAsync))));
 
-        var historyBody = ActionBodyType(GetAction(nameof(CashDrawerController.GetHistory)));
+        var historyBody = ActionBodyType(GetAction(nameof(CashDrawerController.GetHistoryAsync)));
         Assert.Equal(typeof(CashTransactionResponseDto), historyBody.GetGenericArguments().Single());
 
         static MethodInfo GetAction(string name) => typeof(CashDrawerController)
@@ -299,7 +299,7 @@ public class DrawerDtoBoundaryTests
         var coordinator = new CashAdvanceCoordinator(salesDb, Mock.Of<ISalesService>(), service.Object, settings.Object);
         var controller = ControllerFactory.CreateCashDrawerController(service.Object, settings.Object, salesDb, new Mock<ICurrentUserService>().Object, inventoryDb, coordinator);
 
-        var found = await controller.GetActiveSession(CancellationToken.None);
+        var found = await controller.GetActiveSessionAsync(CancellationToken.None);
         var ok = Assert.IsType<OkObjectResult>(found.Result);
         var body = Assert.IsType<CashDrawerSessionResponseDto>(ok.Value);
         Assert.Equal(3, body.Id);
@@ -312,7 +312,7 @@ public class DrawerDtoBoundaryTests
         Assert.DoesNotContain("paymentMethod", PropertyNames(bodyNode));
 
         service.Setup(s => s.GetActiveSessionWithTransactionsAsync()).ReturnsAsync((CashDrawerSessionResponseDto?)null);
-        var empty = await controller.GetActiveSession(CancellationToken.None);
+        var empty = await controller.GetActiveSessionAsync(CancellationToken.None);
         var emptyOk = Assert.IsType<OkObjectResult>(empty.Result);
         Assert.Null(emptyOk.Value);
     }

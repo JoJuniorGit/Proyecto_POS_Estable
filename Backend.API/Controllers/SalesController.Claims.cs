@@ -70,9 +70,6 @@ public partial class SalesController
         }
     }
 
-    [NonAction]
-    public Task<ActionResult<SaleDto>> ClaimSale(int id, [FromBody] ClaimSaleRequest request) => ClaimSaleAsync(id, request);
-
     [HttpPost("{id}/release")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<SaleDto>> ReleaseSaleAsync(int id, [FromQuery] bool force = false, CancellationToken cancellationToken = default)
@@ -90,9 +87,6 @@ public partial class SalesController
         var sale = await _salesService.ReleaseSaleAsync(id, GetActorUserId(), force, cancellationToken);
         return Ok(sale);
     }
-
-    [NonAction]
-    public Task<ActionResult<SaleDto>> ReleaseSale(int id, [FromQuery] bool force = false) => ReleaseSaleAsync(id, force);
 }
 
 public class SaleLockedProblemDetails : ProblemDetails

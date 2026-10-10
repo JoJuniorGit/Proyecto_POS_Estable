@@ -176,7 +176,7 @@ public class SecurityTests
             Description = "Ingreso manual no autorizado"
         };
 
-        var actionResult = await controller.AddTransaction(request, CancellationToken.None);
+        var actionResult = await controller.AddTransactionAsync(request, CancellationToken.None);
         var objResult = actionResult.Result as ObjectResult;
 
         Assert.NotNull(objResult);

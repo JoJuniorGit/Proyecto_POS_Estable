@@ -266,19 +266,19 @@ public partial class ProductVariantsTests
 
         // 1. Éxito -> 204 NoContent
         mockService.Setup(s => s.AdjustStockAsync(1, 10m, "Ajuste OK", null)).Returns(Task.CompletedTask);
-        var result204 = await controller.AdjustStock(1, new AdjustStockDto { QuantityChange = 10m, Reason = "Ajuste OK" });
+        var result204 = await controller.AdjustStockAsync(1, new AdjustStockDto { QuantityChange = 10m, Reason = "Ajuste OK" });
         Assert.IsType<NoContentResult>(result204);
 
         // 2. Operación Inválida (Bloqueo de inventario) -> InvalidOperationException (409 por middleware)
         mockService.Setup(s => s.AdjustStockAsync(2, 10m, "Ajuste Bloqueado", null))
             .ThrowsAsync(new InvalidOperationException(Core.Constants.InventoryMessages.GroupIndividualStockAdjustmentBlocked));
         var exBlocked = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await controller.AdjustStock(2, new AdjustStockDto { QuantityChange = 10m, Reason = "Ajuste Bloqueado" }));
+            await controller.AdjustStockAsync(2, new AdjustStockDto { QuantityChange = 10m, Reason = "Ajuste Bloqueado" }));
         Assert.Equal(Core.Constants.InventoryMessages.GroupIndividualStockAdjustmentBlocked, exBlocked.Message);
 
         // 3. Usuario sin permisos (Cajero) -> 403 Forbidden
         mockUser.Setup(u => u.CanMutateCatalog).Returns(false);
-        var result403 = await controller.AdjustStock(1, new AdjustStockDto { QuantityChange = 10m, Reason = "Ajuste Cajero" });
+        var result403 = await controller.AdjustStockAsync(1, new AdjustStockDto { QuantityChange = 10m, Reason = "Ajuste Cajero" });
         var status403 = Assert.IsType<ObjectResult>(result403);
         Assert.Equal(StatusCodes.Status403Forbidden, status403.StatusCode);
 
@@ -286,7 +286,7 @@ public partial class ProductVariantsTests
         mockUser.Setup(u => u.CanMutateCatalog).Returns(true);
         mockService.Setup(s => s.AdjustStockAsync(999, 10m, "No Existe", null))
             .ThrowsAsync(new KeyNotFoundException());
-        var result404 = await controller.AdjustStock(999, new AdjustStockDto { QuantityChange = 10m, Reason = "No Existe" });
+        var result404 = await controller.AdjustStockAsync(999, new AdjustStockDto { QuantityChange = 10m, Reason = "No Existe" });
         var status404 = Assert.IsAssignableFrom<ObjectResult>(result404);
         Assert.Equal(StatusCodes.Status404NotFound, status404.StatusCode);
     }
@@ -310,7 +310,7 @@ public partial class ProductVariantsTests
         mockUser.Setup(u => u.CanMutateCatalog).Returns(false);
 
         var controller = new ProductsController(mockService.Object, managementMock.Object, mockUser.Object);
-        var result = await controller.GetById(1);
+        var result = await controller.GetByIdAsync(1);
 
         var dto = Assert.IsType<ProductDto>(result.Value);
         Assert.Equal(0m, dto.CostPriceUSD);
@@ -337,7 +337,7 @@ public partial class ProductVariantsTests
         mockUser.Setup(u => u.CanMutateCatalog).Returns(true);
 
         var controller = new ProductsController(mockService.Object, managementMock.Object, mockUser.Object);
-        var result = await controller.GetById(1);
+        var result = await controller.GetByIdAsync(1);
 
         var dto = Assert.IsType<ProductDto>(result.Value);
         Assert.Equal(50m, dto.CostPriceUSD);

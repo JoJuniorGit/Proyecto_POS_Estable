@@ -42,9 +42,6 @@ public partial class ProductsController
         }
     }
 
-    [NonAction]
-    public Task<IActionResult> BulkImport(Core.DTOs.BulkImportRequestDto request, System.Threading.CancellationToken cancellationToken) => BulkImportAsync(request, cancellationToken);
-
     [HttpGet("export")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ExportProductsAsync([FromQuery] string format = "xlsx", [FromQuery] bool activeOnly = true, [FromQuery] string? filter = null, System.Threading.CancellationToken cancellationToken = default)
@@ -68,9 +65,6 @@ public partial class ProductsController
         }
     }
 
-    [NonAction]
-    public Task<IActionResult> ExportProducts([FromQuery] string format = "xlsx", [FromQuery] bool activeOnly = true, [FromQuery] string? filter = null, System.Threading.CancellationToken cancellationToken = default) => ExportProductsAsync(format, activeOnly, filter, cancellationToken);
-
     [HttpGet("export-template")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ExportTemplateAsync([FromQuery] string format = "xlsx", System.Threading.CancellationToken cancellationToken = default)
@@ -93,7 +87,4 @@ public partial class ProductsController
             return this.ApiForbidden(unEx.Message);
         }
     }
-
-    [NonAction]
-    public Task<IActionResult> ExportTemplate([FromQuery] string format = "xlsx", System.Threading.CancellationToken cancellationToken = default) => ExportTemplateAsync(format, cancellationToken);
 }

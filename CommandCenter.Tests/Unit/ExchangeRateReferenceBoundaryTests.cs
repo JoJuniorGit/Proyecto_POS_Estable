@@ -144,7 +144,7 @@ public class ExchangeRateReferenceBoundaryTests
         httpContext.Request.Headers["Idempotency-Key"] = "RATE-REFERENCE-" + Guid.NewGuid().ToString("N");
         controller.ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = httpContext };
 
-        var result = await controller.AddTransaction(new AddTransactionRequest
+        var result = await controller.AddTransactionAsync(new AddTransactionRequest
         {
             SessionId = 1,
             Type = CashTransactionType.Income,

@@ -64,9 +64,6 @@ public class CashDrawerController : ControllerBase
         return Ok(await MapLocalTimesAsync(session, cancellationToken));
     }
 
-    [NonAction]
-    public Task<ActionResult<CashDrawerSessionResponseDto?>> GetActiveSession(CancellationToken cancellationToken) => GetActiveSessionAsync(cancellationToken);
-
     [HttpGet("history")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<IEnumerable<CashTransactionResponseDto>>> GetHistoryAsync([FromQuery] int limit = 300, CancellationToken cancellationToken = default)
@@ -77,9 +74,6 @@ public class CashDrawerController : ControllerBase
 
         return Ok(transactions.Select(tx => MapLocalTime(tx, tz)));
     }
-
-    [NonAction]
-    public Task<ActionResult<IEnumerable<CashTransactionResponseDto>>> GetHistory(int limit = 300, CancellationToken cancellationToken = default) => GetHistoryAsync(limit, cancellationToken);
 
     [HttpGet("history/paged")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
@@ -95,9 +89,6 @@ public class CashDrawerController : ControllerBase
         return Ok(new PagedResultDto<CashTransactionResponseDto>(mappedItems, paged.TotalCount, paged.HasMore));
     }
 
-    [NonAction]
-    public Task<ActionResult<PagedResultDto<CashTransactionResponseDto>>> GetHistoryPaged(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default) => GetHistoryPagedAsync(page, pageSize, cancellationToken);
-
     [RequireSecurityStampValidation]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpPost("open")]
@@ -108,9 +99,6 @@ public class CashDrawerController : ControllerBase
         return Ok(await MapLocalTimesAsync(session, cancellationToken));
     }
 
-    [NonAction]
-    public Task<ActionResult<CashDrawerSessionResponseDto>> OpenSession(OpenSessionRequest request, CancellationToken cancellationToken) => OpenSessionAsync(request, cancellationToken);
-
     [RequireSecurityStampValidation]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpPost("close")]
@@ -120,9 +108,6 @@ public class CashDrawerController : ControllerBase
         return Ok(await MapLocalTimesAsync(session, cancellationToken));
     }
 
-    [NonAction]
-    public Task<ActionResult<CashDrawerSessionResponseDto>> CloseSession(CloseSessionRequest request, CancellationToken cancellationToken) => CloseSessionAsync(request, cancellationToken);
-
     [HttpGet("current-balance")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<decimal>> GetCurrentBalanceAsync([FromQuery] int sessionId, CancellationToken cancellationToken)
@@ -130,9 +115,6 @@ public class CashDrawerController : ControllerBase
         var balance = await _cashDrawerService.GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
         return Ok(balance);
     }
-
-    [NonAction]
-    public Task<ActionResult<decimal>> GetCurrentBalance(int sessionId, CancellationToken cancellationToken) => GetCurrentBalanceAsync(sessionId, cancellationToken);
 
     [RequireSecurityStampValidation]
     [Authorize(Roles = "Admin,Manager")]
@@ -203,9 +185,6 @@ public class CashDrawerController : ControllerBase
             return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash);
         }
     }
-
-    [NonAction]
-    public Task<ActionResult<CashTransactionResponseDto>> AddTransaction(AddTransactionRequest request, CancellationToken cancellationToken) => AddTransactionAsync(request, cancellationToken);
 
     private async Task<decimal> ResolveAnchoredRateAsync(decimal clientRate, int referenceId, CancellationToken cancellationToken)
     {
@@ -327,11 +306,6 @@ public class CashDrawerController : ControllerBase
         return Ok(new CashAdvanceCommissionDto(isTransfer, percentage.Value));
     }
 
-    [NonAction]
-    [HttpGet("advance-commission")]
-    [Authorize(Roles = "Admin,Manager,Cashier")]
-    public Task<ActionResult<CashAdvanceCommissionDto>> GetAdvanceCommission(bool isTransfer, CancellationToken cancellationToken) => GetAdvanceCommissionAsync(isTransfer, cancellationToken);
-
     [RequireSecurityStampValidation]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpPost("cash-advance")]
@@ -367,9 +341,4 @@ public class CashDrawerController : ControllerBase
 
         return Ok(result);
     }
-
-    [NonAction]
-    [HttpPost("cash-advance")]
-    [Authorize(Roles = "Admin,Manager,Cashier")]
-    public Task<ActionResult<CashAdvanceResultDto>> ProcessCashAdvance(CashAdvanceRequest request, CancellationToken cancellationToken) => ProcessCashAdvanceAsync(request, cancellationToken);
 }

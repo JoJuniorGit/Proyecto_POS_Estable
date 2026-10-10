@@ -30,9 +30,6 @@ public partial class SalesController
         return Ok(preview);
     }
 
-    [NonAction]
-    public Task<ActionResult<CheckoutPreviewResponse>> GetCheckoutPreview(int id, [FromBody] CheckoutPreviewRequest request) => GetCheckoutPreviewAsync(id, request);
-
     [RequireSecurityStampValidation]
     [HttpPost("{id}/complete")]
     [ProducesResponseType(typeof(int), StatusCodes.Status200OK)]
@@ -109,9 +106,6 @@ public partial class SalesController
             ?? System.Linq.Enumerable.Empty<PaymentInfo>();
     }
 
-    [NonAction]
-    public Task<ActionResult> CompleteSale(int id, [FromBody] CompleteSaleRequest request) => CompleteSaleAsync(id, request);
-
     [HttpGet("idempotency/stats")]
     [Authorize(Roles = "Admin")]
     public ActionResult GetIdempotencyStats()
@@ -152,9 +146,6 @@ public partial class SalesController
         }
     }
 
-    [NonAction]
-    public Task<ActionResult<SaleHistoryDto>> ConfirmPickup(int id) => ConfirmPickupAsync(id);
-
     [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpGet("pending-pickups")]
     public async Task<ActionResult<System.Collections.Generic.IEnumerable<PendingPickupDto>>> GetPendingPickupsAsync([FromQuery] int limit = 200, [FromQuery] int offset = 0, System.Threading.CancellationToken cancellationToken = default)
@@ -167,7 +158,4 @@ public partial class SalesController
         Response.Headers.Append("X-Total-Count", totalCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
         return Ok(pending);
     }
-
-    [NonAction]
-    public Task<ActionResult<System.Collections.Generic.IEnumerable<PendingPickupDto>>> GetPendingPickups([FromQuery] int limit = 200, [FromQuery] int offset = 0) => GetPendingPickupsAsync(limit, offset);
 }

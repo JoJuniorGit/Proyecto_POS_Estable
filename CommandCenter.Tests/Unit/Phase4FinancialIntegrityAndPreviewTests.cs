@@ -88,7 +88,7 @@ public class Phase4FinancialIntegrityAndPreviewTests
         };
 
         // Act
-        var actionResult = await controller.GetCheckoutPreview(42, previewRequest);
+        var actionResult = await controller.GetCheckoutPreviewAsync(42, previewRequest);
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
@@ -270,7 +270,7 @@ public class Phase4FinancialIntegrityAndPreviewTests
             }
         };
 
-        var previewResult = await controller.GetCheckoutPreview(42, previewRequest);
+        var previewResult = await controller.GetCheckoutPreviewAsync(42, previewRequest);
         var previewOk = Assert.IsType<OkObjectResult>(previewResult.Result);
         var preview = Assert.IsType<CheckoutPreviewResponse>(previewOk.Value);
 
@@ -362,7 +362,7 @@ public class Phase4FinancialIntegrityAndPreviewTests
         };
 
         // Act
-        var actionResult = await controller.GetCheckoutPreview(42, previewRequest);
+        var actionResult = await controller.GetCheckoutPreviewAsync(42, previewRequest);
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);
@@ -419,7 +419,7 @@ public class Phase4FinancialIntegrityAndPreviewTests
 
         // Act
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => controller.GetCheckoutPreview(43, previewRequest));
+            () => controller.GetCheckoutPreviewAsync(43, previewRequest));
 
         // Assert: mensaje exacto del rechazo (el middleware global responde 400 ProblemDetails).
         Assert.Equal(
@@ -456,7 +456,7 @@ public class Phase4FinancialIntegrityAndPreviewTests
         };
 
         // Act
-        var actionResult = await controller.GetCheckoutPreview(42, new CheckoutPreviewRequest { ExchangeRate = 0m });
+        var actionResult = await controller.GetCheckoutPreviewAsync(42, new CheckoutPreviewRequest { ExchangeRate = 0m });
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(actionResult.Result);

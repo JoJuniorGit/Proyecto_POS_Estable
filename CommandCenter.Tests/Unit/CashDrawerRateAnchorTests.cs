@@ -165,7 +165,7 @@ public class CashDrawerRateAnchorTests
         var cashDrawer = CreateCashDrawerMock(capture);
         var controller = CreateController(cashDrawer.Object, CreateSettingsMock().Object, salesDb, new InventoryService(inventoryDb));
 
-        var result = await controller.AddTransaction(CreateRequest(67.00m), CancellationToken.None);
+        var result = await controller.AddTransactionAsync(CreateRequest(67.00m), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(OfficialRate, capture.AppliedRate);
@@ -182,7 +182,7 @@ public class CashDrawerRateAnchorTests
         var cashDrawer = CreateCashDrawerMock(capture);
         var controller = CreateController(cashDrawer.Object, CreateSettingsMock().Object, salesDb, new InventoryService(inventoryDb));
 
-        var result = await controller.AddTransaction(CreateRequest(63.50m), CancellationToken.None);
+        var result = await controller.AddTransactionAsync(CreateRequest(63.50m), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(63.50m, capture.AppliedRate);
@@ -199,7 +199,7 @@ public class CashDrawerRateAnchorTests
         var cashDrawer = CreateCashDrawerMock(capture);
         var controller = CreateController(cashDrawer.Object, CreateSettingsMock().Object, salesDb, new InventoryService(inventoryDb));
 
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => controller.AddTransaction(CreateRequest(120.00m), CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => controller.AddTransactionAsync(CreateRequest(120.00m), CancellationToken.None));
 
         Assert.Contains("excede", ex.Message);
         Assert.Null(capture.AppliedRate);
@@ -215,7 +215,7 @@ public class CashDrawerRateAnchorTests
         var cashDrawer = CreateCashDrawerMock(capture);
         var controller = CreateController(cashDrawer.Object, CreateSettingsMock().Object, salesDb, new InventoryService(inventoryDb));
 
-        var result = await controller.AddTransaction(CreateRequest(804.6301m), CancellationToken.None);
+        var result = await controller.AddTransactionAsync(CreateRequest(804.6301m), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(804.64m, capture.AppliedRate);
@@ -233,7 +233,7 @@ public class CashDrawerRateAnchorTests
             .ThrowsAsync(new InvalidOperationException("BCV lookup failure"));
         var controller = CreateController(cashDrawer.Object, CreateSettingsMock().Object, salesDb, inventory.Object);
 
-        var result = await controller.AddTransaction(CreateRequest(36.502175m), CancellationToken.None);
+        var result = await controller.AddTransactionAsync(CreateRequest(36.502175m), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(36.51m, capture.AppliedRate);
@@ -250,7 +250,7 @@ public class CashDrawerRateAnchorTests
         var cashDrawer = CreateCashDrawerMock(capture);
         var controller = CreateController(cashDrawer.Object, CreateSettingsMock("0.20").Object, salesDb, new InventoryService(inventoryDb));
 
-        var result = await controller.AddTransaction(CreateRequest(67.00m), CancellationToken.None);
+        var result = await controller.AddTransactionAsync(CreateRequest(67.00m), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(67.00m, capture.AppliedRate);
@@ -267,7 +267,7 @@ public class CashDrawerRateAnchorTests
         var cashDrawer = CreateCashDrawerMock(capture);
         var controller = CreateController(cashDrawer.Object, CreateSettingsMock("not-a-percentage").Object, salesDb, new InventoryService(inventoryDb));
 
-        var result = await controller.AddTransaction(CreateRequest(67.00m), CancellationToken.None);
+        var result = await controller.AddTransactionAsync(CreateRequest(67.00m), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(OfficialRate, capture.AppliedRate);
@@ -287,7 +287,7 @@ public class CashDrawerRateAnchorTests
             cashDrawer.Object, CreateAdvanceSettingsMock().Object, salesDb, new InventoryService(inventoryDb),
             currentUser, userService, CreateAdvanceSalesMock().Object);
 
-        var result = await controller.ProcessCashAdvance(CreateAdvanceRequest(67.00m), CancellationToken.None);
+        var result = await controller.ProcessCashAdvanceAsync(CreateAdvanceRequest(67.00m), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(OfficialRate, capture.AppliedRate);
@@ -307,7 +307,7 @@ public class CashDrawerRateAnchorTests
             cashDrawer.Object, CreateAdvanceSettingsMock().Object, salesDb, new InventoryService(inventoryDb),
             currentUser, userService, CreateAdvanceSalesMock().Object);
 
-        var result = await controller.ProcessCashAdvance(CreateAdvanceRequest(63.50m), CancellationToken.None);
+        var result = await controller.ProcessCashAdvanceAsync(CreateAdvanceRequest(63.50m), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(63.50m, capture.AppliedRate);
@@ -328,7 +328,7 @@ public class CashDrawerRateAnchorTests
             currentUser, userService, CreateAdvanceSalesMock().Object);
 
         var ex = await Assert.ThrowsAsync<ArgumentException>(
-            () => controller.ProcessCashAdvance(CreateAdvanceRequest(120.00m), CancellationToken.None));
+            () => controller.ProcessCashAdvanceAsync(CreateAdvanceRequest(120.00m), CancellationToken.None));
 
         Assert.Contains("excede", ex.Message);
         Assert.Null(capture.AppliedRate);
@@ -347,7 +347,7 @@ public class CashDrawerRateAnchorTests
             cashDrawer.Object, CreateAdvanceSettingsMock().Object, salesDb, new InventoryService(inventoryDb),
             currentUser, userService, CreateAdvanceSalesMock().Object);
 
-        var result = await controller.ProcessCashAdvance(CreateAdvanceRequest(80.463m), CancellationToken.None);
+        var result = await controller.ProcessCashAdvanceAsync(CreateAdvanceRequest(80.463m), CancellationToken.None);
 
         Assert.IsType<OkObjectResult>(result.Result);
         Assert.Equal(80.47m, capture.AppliedRate);

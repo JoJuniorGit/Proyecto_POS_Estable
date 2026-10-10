@@ -101,7 +101,7 @@ public class CancellationPropagationTests
         var controller = new DailyClosureController(closureService.Object, Mock.Of<ICurrentUserService>());
 
         using var cts = new CancellationTokenSource();
-        var result = await controller.GetExpectedTotals(date, cts.Token);
+        var result = await controller.GetExpectedTotalsAsync(date, cts.Token);
 
         Assert.IsType<OkObjectResult>(result.Result);
         closureService.Verify(s => s.GetExpectedTotalsByPaymentMethodAsync(date, cts.Token), Times.Once);
@@ -117,7 +117,7 @@ public class CancellationPropagationTests
         var controller = new DailyClosureController(closureService.Object, Mock.Of<ICurrentUserService>());
 
         using var cts = new CancellationTokenSource();
-        var result = await controller.GetClosure(7, cts.Token);
+        var result = await controller.GetClosureAsync(7, cts.Token);
 
         Assert.IsType<OkObjectResult>(result.Result);
         closureService.Verify(s => s.GetClosureAsync(7, cts.Token), Times.Once);
@@ -142,7 +142,7 @@ public class CancellationPropagationTests
         controller.ControllerContext = HttpContextOf(AdminUser());
 
         using var cts = new CancellationTokenSource();
-        var result = await controller.GetActiveSession(cts.Token);
+        var result = await controller.GetActiveSessionAsync(cts.Token);
 
         Assert.IsType<OkObjectResult>(result.Result);
         drawerService.Verify(s => s.GetActiveSessionWithTransactionsAsync(cts.Token), Times.Once);
@@ -173,7 +173,7 @@ public class CancellationPropagationTests
         controller.ControllerContext = HttpContextOf(AdminUser());
 
         using var cts = new CancellationTokenSource();
-        var result = await controller.AddTransaction(new AddTransactionRequest
+        var result = await controller.AddTransactionAsync(new AddTransactionRequest
         {
             SessionId = 3,
             Type = CashTransactionType.Income,
@@ -228,7 +228,7 @@ public class CancellationPropagationTests
         controller.ControllerContext = HttpContextOf(AdminUser());
 
         using var cts = new CancellationTokenSource();
-        var result = await controller.ProcessCashAdvance(new CashAdvanceRequest
+        var result = await controller.ProcessCashAdvanceAsync(new CashAdvanceRequest
         {
             SessionId = 3,
             RequestedAmountLocal = 100m,
@@ -253,16 +253,16 @@ public class CancellationPropagationTests
             (typeof(ShiftsController), nameof(ShiftsController.CloseShiftAsync)),
             (typeof(ShiftsController), nameof(ShiftsController.GetCurrentReportAsync)),
             (typeof(ShiftsController), nameof(ShiftsController.GetReportByIdAsync)),
-            (typeof(DailyClosureController), nameof(DailyClosureController.GetExpectedTotals)),
-            (typeof(DailyClosureController), nameof(DailyClosureController.CreateClosure)),
-            (typeof(DailyClosureController), nameof(DailyClosureController.GetClosure)),
-            (typeof(CashDrawerController), nameof(CashDrawerController.GetActiveSession)),
-            (typeof(CashDrawerController), nameof(CashDrawerController.GetHistory)),
-            (typeof(CashDrawerController), nameof(CashDrawerController.OpenSession)),
-            (typeof(CashDrawerController), nameof(CashDrawerController.CloseSession)),
-            (typeof(CashDrawerController), nameof(CashDrawerController.GetCurrentBalance)),
-            (typeof(CashDrawerController), nameof(CashDrawerController.AddTransaction)),
-            (typeof(CashDrawerController), nameof(CashDrawerController.ProcessCashAdvance))
+            (typeof(DailyClosureController), nameof(DailyClosureController.GetExpectedTotalsAsync)),
+            (typeof(DailyClosureController), nameof(DailyClosureController.CreateClosureAsync)),
+            (typeof(DailyClosureController), nameof(DailyClosureController.GetClosureAsync)),
+            (typeof(CashDrawerController), nameof(CashDrawerController.GetActiveSessionAsync)),
+            (typeof(CashDrawerController), nameof(CashDrawerController.GetHistoryAsync)),
+            (typeof(CashDrawerController), nameof(CashDrawerController.OpenSessionAsync)),
+            (typeof(CashDrawerController), nameof(CashDrawerController.CloseSessionAsync)),
+            (typeof(CashDrawerController), nameof(CashDrawerController.GetCurrentBalanceAsync)),
+            (typeof(CashDrawerController), nameof(CashDrawerController.AddTransactionAsync)),
+            (typeof(CashDrawerController), nameof(CashDrawerController.ProcessCashAdvanceAsync))
         };
 
         foreach (var (type, name) in actions)

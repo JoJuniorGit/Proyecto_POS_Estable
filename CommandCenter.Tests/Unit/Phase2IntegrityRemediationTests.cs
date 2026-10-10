@@ -87,7 +87,7 @@ public class Phase2IntegrityRemediationTests
     [Fact]
     public void CashAdvance_AsDriver_Returns403Forbidden()
     {
-        var method = typeof(CashDrawerController).GetMethod(nameof(CashDrawerController.ProcessCashAdvance));
+        var method = typeof(CashDrawerController).GetMethod(nameof(CashDrawerController.ProcessCashAdvanceAsync));
         Assert.NotNull(method);
 
         var authorize = (Microsoft.AspNetCore.Authorization.AuthorizeAttribute?)Attribute.GetCustomAttribute(
@@ -136,7 +136,7 @@ public class Phase2IntegrityRemediationTests
         };
 
         // Act
-        var result = await controller.CreateClosure(request, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(request, CancellationToken.None);
 
         // Assert
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);

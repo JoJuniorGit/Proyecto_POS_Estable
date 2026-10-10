@@ -67,9 +67,6 @@ public partial class SalesController : ControllerBase
         return Ok(sale);
     }
 
-    [NonAction]
-    public Task<ActionResult<SaleDto>> StartSale([FromQuery] int? cashierId = null) => StartSaleAsync(cashierId);
-
     private async Task<bool> IsAuthorizedForSaleAsync(int saleId, CancellationToken cancellationToken)
     {
         bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
@@ -142,9 +139,6 @@ public partial class SalesController : ControllerBase
             return this.ApiNotFound($"Venta con ID {id} no encontrada.");
         }
     }
-
-    [NonAction]
-    public Task<ActionResult<SaleDto>> GetSale(int id) => GetSaleAsync(id);
 
     [HttpPost("{id}/items")]
     public async Task<ActionResult<SaleDto>> AddItemAsync(int id, [FromBody] AddItemRequest request, CancellationToken cancellationToken = default)
@@ -228,9 +222,6 @@ public partial class SalesController : ControllerBase
         }
     }
 
-    [NonAction]
-    public Task<ActionResult<SaleDto>> AddItem(int id, [FromBody] AddItemRequest request) => AddItemAsync(id, request);
-
     [HttpDelete("{id}/items/{itemId}")]
     public async Task<ActionResult<SaleDto>> RemoveItemAsync(int id, int itemId, [FromQuery] string exchangeRate, CancellationToken cancellationToken = default)
     {
@@ -243,9 +234,6 @@ public partial class SalesController : ControllerBase
         return Ok(sale);
     }
 
-    [NonAction]
-    public Task<ActionResult<SaleDto>> RemoveItem(int id, int itemId, [FromQuery] string exchangeRate) => RemoveItemAsync(id, itemId, exchangeRate);
-
     [HttpPut("{id}/items/{itemId}")]
     public async Task<ActionResult<SaleDto>> UpdateItemQuantityAsync(int id, int itemId, [FromBody] UpdateQuantityRequest request, CancellationToken cancellationToken = default)
     {
@@ -257,9 +245,6 @@ public partial class SalesController : ControllerBase
         var sale = await _salesService.UpdateItemQuantityAsync(id, itemId, request.Quantity, request.ExchangeRate, GetActorUserId(), cancellationToken);
         return Ok(sale);
     }
-
-    [NonAction]
-    public Task<ActionResult<SaleDto>> UpdateItemQuantity(int id, int itemId, [FromBody] UpdateQuantityRequest request) => UpdateItemQuantityAsync(id, itemId, request);
 
     [HttpPut("{id}/exchange-rate")]
     public async Task<ActionResult<SaleDto>> UpdateExchangeRateAsync(int id, [FromQuery] string exchangeRate, CancellationToken cancellationToken = default)
@@ -279,9 +264,6 @@ public partial class SalesController : ControllerBase
             return this.ApiNotFound(ex.Message);
         }
     }
-
-    [NonAction]
-    public Task<ActionResult<SaleDto>> UpdateExchangeRate(int id, [FromQuery] string exchangeRate) => UpdateExchangeRateAsync(id, exchangeRate);
 
     internal static decimal ParseRateInvariant(string? raw)
     {

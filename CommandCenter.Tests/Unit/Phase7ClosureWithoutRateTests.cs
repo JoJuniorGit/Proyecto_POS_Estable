@@ -79,7 +79,7 @@ public class Phase7ClosureWithoutRateTests
             }
         };
 
-        var result = await controller.CreateClosure(request, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -118,7 +118,7 @@ public class Phase7ClosureWithoutRateTests
             }
         };
 
-        var result = await controller.CreateClosure(request, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(request, CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result);
         Assert.NotNull(ok.Value);

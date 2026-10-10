@@ -75,7 +75,7 @@ public class CashAdvanceCommissionEndpointTests
     [Fact]
     public void GetAdvanceCommission_IsHttpGetWithKebabCaseRoute_OnCashDrawerController()
     {
-        var method = typeof(CashDrawerController).GetMethod(nameof(CashDrawerController.GetAdvanceCommission));
+        var method = typeof(CashDrawerController).GetMethod(nameof(CashDrawerController.GetAdvanceCommissionAsync));
 
         Assert.NotNull(method);
         var httpGet = method!.GetCustomAttributes(typeof(HttpGetAttribute), inherit: false)
@@ -89,7 +89,7 @@ public class CashAdvanceCommissionEndpointTests
     [Fact]
     public void GetAdvanceCommission_AllowsCashierAndRejectsAnonymousAndDriver()
     {
-        var method = typeof(CashDrawerController).GetMethod(nameof(CashDrawerController.GetAdvanceCommission));
+        var method = typeof(CashDrawerController).GetMethod(nameof(CashDrawerController.GetAdvanceCommissionAsync));
 
         Assert.NotNull(method);
         Assert.Null(Attribute.GetCustomAttribute(method!, typeof(AllowAnonymousAttribute)));
@@ -114,7 +114,7 @@ public class CashAdvanceCommissionEndpointTests
         var settings = SettingsMock(transfer: "5.5", cash: "10.0");
         var controller = CreateController(context, CreateReadCoordinator(context, settings.Object));
 
-        var action = await controller.GetAdvanceCommission(isTransfer: true, CancellationToken.None);
+        var action = await controller.GetAdvanceCommissionAsync(isTransfer: true, CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(action.Result);
         var dto = Assert.IsType<CashAdvanceCommissionDto>(ok.Value);
@@ -129,7 +129,7 @@ public class CashAdvanceCommissionEndpointTests
         var settings = SettingsMock(transfer: "5.5", cash: "12.25");
         var controller = CreateController(context, CreateReadCoordinator(context, settings.Object));
 
-        var action = await controller.GetAdvanceCommission(isTransfer: false, CancellationToken.None);
+        var action = await controller.GetAdvanceCommissionAsync(isTransfer: false, CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(action.Result);
         var dto = Assert.IsType<CashAdvanceCommissionDto>(ok.Value);
@@ -144,7 +144,7 @@ public class CashAdvanceCommissionEndpointTests
         var settings = SettingsMock(transfer: null, cash: null);
         var controller = CreateController(context, CreateReadCoordinator(context, settings.Object));
 
-        var action = await controller.GetAdvanceCommission(isTransfer: true, CancellationToken.None);
+        var action = await controller.GetAdvanceCommissionAsync(isTransfer: true, CancellationToken.None);
 
         var result = Assert.IsType<ObjectResult>(action.Result);
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, result.StatusCode);

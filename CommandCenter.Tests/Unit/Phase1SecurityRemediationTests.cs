@@ -76,7 +76,7 @@ public class Phase1SecurityRemediationTests
         };
 
         // Act
-        var result = await controller.CompleteSale(1, requestDto);
+        var result = await controller.CompleteSaleAsync(1, requestDto);
 
         // Assert
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);

@@ -329,7 +329,7 @@ public class ErrorContractTests
             ExchangeRate = 50m
         };
 
-        var result = await controller.AddTransaction(request, CancellationToken.None);
+        var result = await controller.AddTransactionAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -359,7 +359,7 @@ public class ErrorContractTests
             ExchangeRate = 50m
         };
 
-        var result = await controller.AddTransaction(request, CancellationToken.None);
+        var result = await controller.AddTransactionAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
@@ -385,7 +385,7 @@ public class ErrorContractTests
             ExchangeRate = 50m
         };
 
-        var result = await controller.AddTransaction(request, CancellationToken.None);
+        var result = await controller.AddTransactionAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -411,7 +411,7 @@ public class ErrorContractTests
             ExchangeRate = 0m
         };
 
-        var result = await controller.AddTransaction(request, CancellationToken.None);
+        var result = await controller.AddTransactionAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -439,7 +439,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.CreateClosure(request, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
@@ -463,7 +463,7 @@ public class ErrorContractTests
             Details = new List<CreateClosureDetailRequest>()
         };
 
-        var result = await controller.CreateClosure(request, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -490,7 +490,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.CreateClosure(request, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -508,7 +508,7 @@ public class ErrorContractTests
 
         var controller = CreateDailyClosureController(mockClosure, mockCashDrawer, mockUser);
 
-        var result = await controller.CreateClosure(null!, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(null!, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -553,7 +553,7 @@ public class ErrorContractTests
             }
         };
 
-        var result = await controller.CreateClosure(request, CancellationToken.None);
+        var result = await controller.CreateClosureAsync(request, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
@@ -572,7 +572,7 @@ public class ErrorContractTests
 
         var controller = CreateDailyClosureController(mockClosure, mockCashDrawer, mockUser);
 
-        var result = await controller.GetExpectedTotals(default, CancellationToken.None);
+        var result = await controller.GetExpectedTotalsAsync(default, CancellationToken.None);
 
         var objectResult = Assert.IsAssignableFrom<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status400BadRequest, objectResult.StatusCode);
