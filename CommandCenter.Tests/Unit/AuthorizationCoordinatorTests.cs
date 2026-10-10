@@ -748,6 +748,69 @@ public class AuthorizationCoordinatorTests
         service.Verify(s => s.TryConsumeAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<AuthorizationActionType>(), It.IsAny<int?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    // ---------------------------------------------------------------- W1 (8.151): cancelacion
+
+    [Fact]
+    public async Task CancelAsync_Cancelled_NotifiesClosureWithoutToken()
+    {
+        var service = new Mock<IAuthorizationService>();
+        var notifier = new Mock<IAuthorizationNotifier>();
+        using var db = TestDatabaseFactory.CreateSalesDbContext();
+        var coordinator = new AuthorizationCoordinator(service.Object, CreateTokenService(), notifier.Object, db);
+
+        var cancelled = SampleRequest(status: AuthorizationStatus.Cancelled, resolvedAt: UtcNowSeconds());
+        service.Setup(s => s.CancelAsync(7, 70, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CancelAuthorizationResult(CancelAuthorizationOutcome.Cancelled, cancelled));
+
+        string? notifiedToken = "unset";
+        notifier.Setup(n => n.NotifyResolvedAsync(It.IsAny<AuthorizationRequestDto>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Callback<AuthorizationRequestDto, string?, CancellationToken>((_, token, _) => notifiedToken = token)
+            .Returns(Task.CompletedTask);
+
+        var result = await coordinator.CancelAsync(7, 70);
+
+        Assert.Equal(CancelAuthorizationOutcome.Cancelled, result.Outcome);
+        Assert.Null(notifiedToken);
+        notifier.Verify(n => n.NotifyResolvedAsync(cancelled, null, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CancelAsync_Forbidden_PassesExactMessageWithoutNotifying()
+    {
+        var service = new Mock<IAuthorizationService>();
+        var notifier = new Mock<IAuthorizationNotifier>();
+        using var db = TestDatabaseFactory.CreateSalesDbContext();
+        var coordinator = new AuthorizationCoordinator(service.Object, CreateTokenService(), notifier.Object, db);
+
+        service.Setup(s => s.CancelAsync(7, 71, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CancelAuthorizationResult(CancelAuthorizationOutcome.Forbidden, Message: AuthorizationMessages.CancelRequesterOnly));
+
+        var result = await coordinator.CancelAsync(7, 71);
+
+        Assert.Equal(CancelAuthorizationOutcome.Forbidden, result.Outcome);
+        Assert.Equal("Solo el solicitante puede cancelar la solicitud.", result.Message);
+        notifier.Verify(n => n.NotifyResolvedAsync(It.IsAny<AuthorizationRequestDto>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CancelAsync_EndToEnd_PushesCancelledClosureAndPersistsSingleAudit()
+    {
+        using var stack = new SqliteStack();
+        var created = await stack.Coordinator.CreateAsync(Contract(), 70, "Cajero 70", UserRole.Cashier);
+
+        var result = await stack.Coordinator.CancelAsync(created.Request!.Id, 70);
+
+        Assert.Equal(CancelAuthorizationOutcome.Cancelled, result.Outcome);
+        var notification = Assert.Single(stack.Notifier.ResolvedNotifications);
+        Assert.Equal(created.Request.Id, notification.Request.Id);
+        Assert.Equal(AuthorizationStatus.Cancelled, notification.Request.Status);
+        Assert.Null(notification.Token);
+
+        var persisted = await stack.Db.AuthorizationRequests.AsNoTracking().SingleAsync(row => row.Id == created.Request.Id);
+        Assert.Equal(AuthorizationStatus.Cancelled, persisted.Status);
+        Assert.Equal(1, await stack.Db.AuthorizationAudits.CountAsync(row => row.RequestId == created.Request.Id));
+    }
+
     // ---------------------------------------------------------------- expiracion
 
     [Fact]

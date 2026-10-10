@@ -12511,3 +12511,115 @@ H1. Cadena 8.150 en V0.15: 0da2c57 (plan) + 56829e4 (vetoes) + T1 570c5e5/
     fix final f290384 + commit de cierre de este ANEXO (git log / L16 del
     tracker ODD).
 ================================================================================
+
+================================================================================
+ANEXO 8.151 - CIERRE DE RESIDUALES DEL HUB DE AUTORIZACIONES (8.150)
+================================================================================
+(2026-10-09)
+
+A. ALCANCE
+
+A1. Change SDD: openspec/changes/2026-10-09-authorization-residual-closeout/
+    (proposal, design D1-D9, specs backend + clientes, tasks W1-W5, state,
+    verify-report). Tracker ODD: odd/tasks/cierre-residuales-autorizaciones.md
+    (R1-R12, log L1-L8).
+A2. Cierre de TODOS los residuales registrados del 8.150 (ANEXO 8.150 §D /
+    tracker L5-L16): W1 backend (D1/R3 dedupe NULL-safe con NULLS NOT DISTINCT;
+    R1 claim de consumo atómicamente bindeado; R2 re-lectura en expiración
+    perezosa; D4b cancelación del solicitante con estado terminal Cancelled=4,
+    endpoint POST /api/authorizations/{id}/cancel requester-only, auditoría
+    única y push de cierre SIN token; R11 qualify del contrato 400 vs 403);
+    W2 web (liquidación del wait por spec, cancelRequest best-effort, cierre
+    Cancelled con "Solicitud cancelada por el cajero.", piso de countdown, poda
+    acotada); W3 WPF (evento Reconnected + reconciliación de cola, cancel
+    best-effort en Waiting, cierre Cancelled, piso, poda, foco inicial);
+    W4 disparador WPF "Precio manual" para producto NORMAL (botón + F6,
+    validación y derivación de moneda, misma ruta de gate/wait; cierra D6/G1);
+    W5 E2E gated de WebSockets reales + pin del alcance deliberado del PUT.
+A3. E2 (E2E UI WPF de notificaciones admin) permanece CANCELADO por decisión
+    del mantenedor (WIP en stash@{0}); el veto L6 (UI web de precio manual /
+    gate de anulación) permanece vigente.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CON Postgres real: 2109/2109 (2m18s), 0 omitidos - incluye
+    los 7 escenarios E2E full-stack gated (agrega el de cancelación) y los
+    tests Postgres-gated nuevos.
+B3. Cobertura: Core 0.8868 (>=0.70), Sales.Module 0.9055 (>=0.80),
+    Inventory.Module 0.8587 (>=0.72) - check-coverage.py exit 0 (mejora vs
+    8.150: 0.8624/0.8844/0.8342).
+B4. Web: npm test 373/373; lint 0 (stage 7.150 + W2).
+B5. E2E gated de WebSockets reales (Kestrel + Postgres reales, dos clientes
+    SignalR sin forzar transporte): 1/1 en 19 s, RE-EJECUTADO por el
+    orquestador; aserción fail-closed (exige "Starting transport 'WebSockets'"
+    y la ausencia de cualquier otro arranque de transporte); cierra D2.
+B6. Pin del PUT /{id}/items: 10/10 en el filtro ProtectedAction - 403 por roles
+    SIN extensiones de flujo y sin efecto del header X-Authorization-Token
+    (alcance deliberado, D5).
+B7. Verificación por unit: W1 verificador independiente PASS WITH WARNINGS
+    (hallazgo LOW de clasificación de cancelación concurrente corregido
+    test-first: RED 2F -> GREEN 252/252); W2 PASS WITH WARNINGS (LOWs
+    registrados); W3 PASS (2 LOWs); W4/W5: la corrida del verificador
+    independiente fue INTERRUMPIDA por el mantenedor (decisión de ritmo) y la
+    verificación de registro es spot-check del orquestador (W4: diff de la rama
+    de adelanto intacta + catch/call site + 32/32 combinado; W5: PUT 10/10 +
+    WebSockets re-ejecutado 1/1). Sin hallazgos bloqueantes.
+B8. Limpieza: pos_e2e% = 0; scratch pos_test_w1 (creado en W1) DROPEADO y
+    verificado. Nota: pos_test local sigue stale (faltan tablas 8.150; el
+    bootstrap solo verifica marcadores Users/Products) - artefacto local
+    pre-existente, NO reparado en este change; los runs gated usan scratch
+    fresco.
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push). Push/PR/merge: decisión del mantenedor.
+
+D. LIMITACIONES CONOCIDAS
+
+D1. LOWs aceptados: doble query en reconnects rápidos de la cola WPF
+    (aplicaciones idempotentes); sin test dedicado de desuscripción del evento
+    Reconnected; consume-on-push/reconcile Cancelled de la web sin test de
+    componente (runner sin DOM); edge degradación-expiración->rechazo con retry
+    invisible en web (prácticamente inalcanzable).
+D2. El test de WebSockets depende de la línea de log del cliente
+    (Microsoft.AspNetCore.Http.Connections.Client 10.0.5); un rename futuro
+    falla cerrado (nunca falso verde).
+D3. El fixture WPF E2E lanza la app real aunque el test de WebSockets no use
+    UI; teardown verificado limpio.
+D4. W4: el click directo de mouse sobre una sugerencia agrega sin selección
+    previa (comportamiento existente); el precio manual requiere selección
+    (teclado) para habilitar F6/botón - por diseño actual.
+D5. Reparar el bootstrap marker de pos_test local queda como tarea de entorno
+    (recrear la DB o extender el chequeo) - fuera del alcance del change.
+
+E. ROLLBACK
+
+E1. Revertir los work units en orden inverso; la migración
+    20261010120000 Down restaura el índice previo (sin NULLS NOT DISTINCT);
+    los cambios de clientes son aditivos; la cancelación agrega un estado
+    terminal sin migración (enum). Sin reescrituras de datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS - 12/12 especificaciones R1-R12 cumplidas
+    (R9/R10 por tests; R12 por este cierre); reporte en el change
+    (verify-report.md). Cobertura sobre umbrales; E2E full-stack verde;
+    E2E de WebSockets real verde.
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. Reparar/recrear la DB local pos_test para runs gated locales sin scratch
+    (D5); el job backend de CI ya usa pos_test fresco por run.
+G2. Pendiente previo aún vigente: endurecer la sonda UIA de login del harness
+    E2E con retry (flake 8.150 B8).
+G3. E2 (notificaciones admin UI WPF) recuperable desde stash@{0} si se decide
+    completarla.
+
+H. COMMITS
+
+H1. Cadena 8.151 en V0.15: a944952 (plan) + W1 7fa0d6c + W2 387bcf3 +
+    W3 3eae78e + W4 93c72ea + W5 a33a8a7 + commits docs de tracker +
+    commit de cierre de este ANEXO (git log / L8 del tracker ODD).
+================================================================================

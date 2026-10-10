@@ -18,6 +18,13 @@ public interface IDialogService
     Task<string?> ShowTextInputAsync(string prompt, string hint);
     Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync();
     decimal? ShowCashAdvanceDialog();
+
+    /// <summary>
+    /// 8.151 (W4, R8/design D7): captura de precio manual (USD/Bs.S) para un producto normal; la
+    /// moneda omitida se deriva con la tasa recibida. Implementacion por defecto sin UI (stubs
+    /// headless): null equivale a dialogo cancelado, igual que <see cref="ShowCreateInvoiceProductDialog"/>.
+    /// </summary>
+    ViewModels.ManualPriceDialogResult? ShowManualPriceDialog(decimal exchangeRate) => null;
     bool ShowSuccessDialog(string message, string? secondaryActionLabel = null);
     Task<(bool success, decimal amount, string reason)?> ShowCashTransactionDialogAsync(string title);
     bool? ShowProductDialog(ViewModels.ProductDialogViewModel dialogVm);

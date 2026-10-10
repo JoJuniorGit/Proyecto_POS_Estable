@@ -395,6 +395,9 @@ internal static class AuthorizationEndToEndApi
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 
+    public static Task<HttpResponseMessage> CancelAsync(HttpClient requesterClient, int requestId) =>
+        requesterClient.PostAsync($"/api/authorizations/{requestId}/cancel", content: null);
+
     public static Task<HttpResponseMessage> LocalResolveAsync(
         HttpClient client,
         int requestId,

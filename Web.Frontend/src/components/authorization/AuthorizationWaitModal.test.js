@@ -92,4 +92,11 @@ describe('AuthorizationWaitModal (structural, SSR)', () => {
   it('6. renders nothing while closed', () => {
     assert.strictEqual(render({ isOpen: false }), '');
   });
+
+  it('7. floors the countdown display instead of showing a ceiling second', () => {
+    const html = render({ remainingSeconds: 0.9 });
+
+    assert.match(html, /00:00/);
+    assert.ok(!html.includes('00:01'), 'fractional seconds must floor, never ceil');
+  });
 });

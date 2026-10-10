@@ -35,6 +35,8 @@ namespace CommandCenter.Tests.Integration;
 /// POST /api/sales/{id}/items. Ciclo completo por HTTP: solicitud del cajero, aprobacion
 /// remota, recuperacion del token, consumo single-use, replay idempotente y contrato 403
 /// con extensiones authorizationRequired/authorizationAction.
+/// 8.151 (R10, design D8): ademas fija el alcance deliberado del PUT /api/sales/{id}/items
+/// (403 por roles del repositorio, sin extensiones de flujo y sin aceptar X-Authorization-Token).
 /// </summary>
 public class ProtectedActionAuthorizationTests
 {
@@ -47,6 +49,10 @@ public class ProtectedActionAuthorizationTests
     private const decimal CustomUsd = 9.99m;
     private const decimal CustomLocal = 1234.5m;
     private const decimal ExchangeRate = 50m;
+
+    /// <summary>Mensaje exacto del 403 del PUT (rechazo del servicio por precio custom sin rol elevado).</summary>
+    private static string ExpectedPutPriceOverrideMessage =>
+        $"Modificación de precio no autorizada para el producto 'Producto {ProductId}'. Se requiere autorización de Administrador o Supervisor.";
 
     [Fact]
     public async Task PriceOverride_WithValidToken_AddsItemAndConsumesRequest()
@@ -221,6 +227,37 @@ public class ProtectedActionAuthorizationTests
         Assert.Equal(0, await app.Db.AuthorizationRequests.CountAsync());
     }
 
+    // ------------------------------------------- R10: alcance deliberado del PUT /{id}/items
+
+    [Fact]
+    public async Task UpdateSaleItems_NonElevatedWithCustomPrice_ReturnsRoleBasedForbiddenWithoutAuthorizationExtensions()
+    {
+        await using var app = await ProtectedActionTestApplication.CreateAsync();
+        var saleId = await app.StartSaleAsync(CashierId);
+        await app.MarkSaleOnHoldClaimedByAsync(saleId, CashierId);
+        using var cashier = app.CreateClient(CashierId, UserRole.Cashier, "Cajero 70");
+
+        using var response = await SendUpdateItemsAsync(cashier, saleId, BuildUpdateItemsPayload(), token: null);
+
+        await AssertPutPriceOverrideForbiddenAsync(response);
+        Assert.Equal(0, await app.Db.SaleItems.CountAsync(saleItem => saleItem.SaleId == saleId));
+    }
+
+    [Fact]
+    public async Task UpdateSaleItems_NonElevatedWithAuthorizationTokenHeader_IgnoresTokenAndKeepsRoleBasedForbidden()
+    {
+        await using var app = await ProtectedActionTestApplication.CreateAsync();
+        var saleId = await app.StartSaleAsync(CashierId);
+        await app.MarkSaleOnHoldClaimedByAsync(saleId, CashierId);
+        using var cashier = app.CreateClient(CashierId, UserRole.Cashier, "Cajero 70");
+
+        // El PUT no implementa el flujo de token: el header se ignora y el 403 por roles persiste.
+        using var response = await SendUpdateItemsAsync(cashier, saleId, BuildUpdateItemsPayload(), token: "token-no-vinculado-al-put");
+
+        await AssertPutPriceOverrideForbiddenAsync(response);
+        Assert.Equal(0, await app.Db.SaleItems.CountAsync(saleItem => saleItem.SaleId == saleId));
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private static object BuildItemPayload(
@@ -303,6 +340,45 @@ public class ProtectedActionAuthorizationTests
         Assert.Equal("ManualPriceOverride", body.GetProperty("authorizationAction").GetString());
     }
 
+    private static object BuildUpdateItemsPayload() => new
+    {
+        items = new[]
+        {
+            new { productId = ProductId, quantity = Quantity, unitPrice = CustomUsd }
+        }
+    };
+
+    private static async Task<HttpResponseMessage> SendUpdateItemsAsync(
+        HttpClient client,
+        int saleId,
+        object payload,
+        string? token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Put, $"/api/sales/{saleId}/items")
+        {
+            Content = JsonContent.Create(payload)
+        };
+        if (token is not null)
+        {
+            request.Headers.Add("X-Authorization-Token", token);
+        }
+
+        return await client.SendAsync(request);
+    }
+
+    /// <summary>
+    /// R10 (design D8): el PUT conserva el 403 por roles del repositorio — sin las extensiones
+    /// authorizationRequired/authorizationAction del contrato de acciones protegidas.
+    /// </summary>
+    private static async Task AssertPutPriceOverrideForbiddenAsync(HttpResponseMessage response)
+    {
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(ExpectedPutPriceOverrideMessage, body.GetProperty("detail").GetString());
+        Assert.False(body.TryGetProperty("authorizationRequired", out _));
+        Assert.False(body.TryGetProperty("authorizationAction", out _));
+    }
+
     // ---------------------------------------------------------------- infraestructura
 
     private sealed class ProtectedActionTestApplication : IAsyncDisposable
@@ -349,17 +425,9 @@ public class ProtectedActionAuthorizationTests
 
             var inventory = new Mock<IInventoryService>();
             inventory.Setup(service => service.GetSaleProductByIdAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((int productId, CancellationToken _) => new SaleProductInfoDto
-                {
-                    Id = productId,
-                    Name = $"Producto {productId}",
-                    IsActive = true,
-                    PriceUSD = 10m,
-                    PriceBsS = 100m,
-                    IsFractional = true
-                });
+                .ReturnsAsync((int productId, CancellationToken _) => CreateProductInfo(productId));
             inventory.Setup(service => service.GetSaleProductsByIdsAsync(It.IsAny<IEnumerable<int>>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Array.Empty<SaleProductInfoDto>());
+                .ReturnsAsync((IEnumerable<int> productIds, CancellationToken _) => productIds.Select(CreateProductInfo).ToArray());
             inventory.Setup(service => service.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(0m);
 
@@ -411,6 +479,31 @@ public class ProtectedActionAuthorizationTests
             var sale = await SalesService.StartSaleAsync(cashierId);
             return sale.Id;
         }
+
+        /// <summary>
+        /// R10: deja la venta en el estado real que exige el PUT (OnHold con reclamo del editor).
+        /// Se escribe directo en la fila para no depender del flujo de hold (cliente real/hold).
+        /// </summary>
+        public async Task MarkSaleOnHoldClaimedByAsync(int saleId, int cashierId)
+        {
+            var sale = await Db.Sales.SingleAsync(candidate => candidate.Id == saleId);
+            sale.Status = SaleStatus.OnHold;
+            sale.ClaimedByUserId = cashierId;
+            sale.ClaimedByUserName = $"Usuario {cashierId}";
+            sale.ClaimAction = SaleClaimAction.Editing;
+            sale.ClaimedAtUtc = DateTime.UtcNow;
+            await Db.SaveChangesAsync();
+        }
+
+        private static SaleProductInfoDto CreateProductInfo(int productId) => new()
+        {
+            Id = productId,
+            Name = $"Producto {productId}",
+            IsActive = true,
+            PriceUSD = 10m,
+            PriceBsS = 100m,
+            IsFractional = true
+        };
 
         private static User CreateUser(int id, UserRole role) => new()
         {

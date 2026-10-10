@@ -16,10 +16,16 @@ public interface IAuthorizationHubService : IDisposable
     event EventHandler<AuthorizationResolvedPayload>? AuthorizationResolved;
     event EventHandler<AuthorizationExpiredPayload>? AuthorizationExpired;
 
+    /// <summary>8.151 (W3, R6/design D4a): el hub recupero el socket; la cola admin debe reconciliarse.</summary>
+    event EventHandler? Reconnected;
+
     Task<AuthorizationRequestInfo> RequestAuthorizationAsync(AuthorizationRequestContext context);
     Task<AuthorizationResolveInfo> ResolveAuthorizationAsync(int requestId, bool approved, string? reason = null);
     Task<AuthorizationStatusInfo?> GetStatusAsync(int requestId);
     Task<LocalResolveInfo> LocalResolveAsync(int requestId, string username, string password, string? reason = null);
+
+    /// <summary>8.151 (W3, R4-client): retiro del solicitante por REST (el hub no expone cancelacion).</summary>
+    Task CancelRequestAsync(int requestId);
 }
 
 /// <summary>8.150 (T9): contexto tipado de la accion protegida v1 (ManualPriceOverride).</summary>

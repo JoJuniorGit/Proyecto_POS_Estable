@@ -104,13 +104,62 @@ export function cancelAuthorizationWait() {
   return createAuthorizationFlowState();
 }
 
+// 8.151 (W2, R5/design D5): causas de liquidacion de la promesa del caller. El reducer expone
+// el resultado exacto; el provider decide el momento (el rechazo liquida al instante, la
+// expirada solo al desestimarse sin reintento) y el cierre del modal de acuse.
+export const AUTHORIZATION_SETTLEMENTS = Object.freeze({
+  REJECTION: 'rejection',
+  EXPIRED_DISMISSAL: 'expired-dismissal',
+  MANUAL_CANCEL: 'manual-cancel',
+});
+
+/**
+ * 8.151 (W2, R5/design D5): liquida el resultado que recibe el caller segun la fase alcanzada.
+ * - rejection: { ok:false, outcome:'rejected', reason, resolvedByName } (acuse abierto)
+ * - expired-dismissal: { ok:false, outcome:'expired' } (desestimar sin reintentar)
+ * - manual-cancel: { ok:false, cancelled:true } (cancelacion desde la espera)
+ * Devuelve null cuando la fase no corresponde al trigger (sin liquidacion pendiente).
+ */
+export function getAuthorizationSettlement(state, trigger) {
+  if (!state) return null;
+
+  if (trigger === AUTHORIZATION_SETTLEMENTS.REJECTION
+    && state.phase === AUTHORIZATION_PHASES.REJECTED) {
+    return {
+      ok: false,
+      outcome: 'rejected',
+      reason: state.reason ?? null,
+      resolvedByName: state.resolvedByName ?? null,
+    };
+  }
+
+  if (trigger === AUTHORIZATION_SETTLEMENTS.EXPIRED_DISMISSAL
+    && state.phase === AUTHORIZATION_PHASES.EXPIRED) {
+    return { ok: false, outcome: 'expired' };
+  }
+
+  if (trigger === AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL
+    && state.phase === AUTHORIZATION_PHASES.WAITING) {
+    return { ok: false, cancelled: true };
+  }
+
+  return null;
+}
+
+// 8.151 (W2, R4-client): el retiro server-side solo aplica mientras la solicitud sigue Pending;
+// el formulario de autorizacion local es una sub-vista de waiting (mismo requestId vivo).
+export function isAuthorizationPending(state) {
+  return Boolean(state) && state.phase === AUTHORIZATION_PHASES.WAITING && state.requestId != null;
+}
+
 export function getRemainingSeconds(expiresAt, now = Date.now()) {
   if (!expiresAt) return 0;
   const target = new Date(expiresAt).getTime();
   if (!Number.isFinite(target)) return 0;
   const diff = target - now;
   if (diff <= 0) return 0;
-  return Math.ceil(diff / 1000);
+  // 8.151 (W2, R7/design D4c): piso, nunca techo: el display no muestra 00:01 con <1s vivo.
+  return Math.floor(diff / 1000);
 }
 
 export function isAuthorizationExpired(expiresAt, now = Date.now()) {

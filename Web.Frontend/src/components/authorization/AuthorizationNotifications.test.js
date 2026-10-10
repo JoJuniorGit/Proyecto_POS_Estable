@@ -7,6 +7,7 @@ import {
   AUTHORIZATION_NOTIFICATION_STRINGS,
   AuthorizationNotificationModal,
   AuthorizationNotificationNotice,
+  MAX_OWN_RESOLVED_IDS,
   applyAuthorizationExpiredEvent,
   applyAuthorizationResolvedEvent,
   applyResolveAuthorizationOutcome,
@@ -14,6 +15,7 @@ import {
   buildAuthorizationDetail,
   buildAuthorizationNotificationMessage,
   enqueueAuthorizationNotification,
+  pruneOwnResolvedIds,
   removeAuthorizationNotification,
 } from './AuthorizationNotifications.jsx';
 
@@ -201,6 +203,57 @@ describe('AuthorizationNotifications queue reducer', () => {
 
     assert.deepStrictEqual(removeAuthorizationNotification(queue, 2).map((item) => item.requestId), [1, 3]);
   });
+
+  it('12b. closes a cancelled request with the exact cancellation note, never the race message', () => {
+    const queue = buildQueue();
+
+    const result = applyAuthorizationResolvedEvent(queue, {
+      requestId: 2,
+      status: 'Cancelled',
+      resolvedByName: 'Admin Uno',
+    });
+
+    assert.deepStrictEqual(result.queue.map((item) => item.requestId), [1, 3]);
+    assert.strictEqual(result.notice, 'Solicitud cancelada por el cajero.');
+    assert.notStrictEqual(result.notice, buildAlreadyResolvedMessage('Admin Uno'));
+
+    const withoutResolver = applyAuthorizationResolvedEvent(queue, { requestId: 1, status: 'Cancelled' });
+    assert.strictEqual(withoutResolver.notice, 'Solicitud cancelada por el cajero.');
+
+    // Nunca se emite la nota de cancelacion por solicitudes que jamas estuvieron en cola.
+    assert.strictEqual(
+      applyAuthorizationResolvedEvent(queue, { requestId: 99, status: 'Cancelled' }).notice,
+      null
+    );
+  });
+
+  it('12c. keeps the own-resolution guard silent for a cancelled closure', () => {
+    const queue = buildQueue();
+
+    const own = applyAuthorizationResolvedEvent(
+      queue,
+      { requestId: 2, status: 'Cancelled' },
+      { isOwnResolution: true }
+    );
+    assert.deepStrictEqual(own.queue.map((item) => item.requestId), [1, 3]);
+    assert.strictEqual(own.notice, null);
+  });
+
+  it('12d. prunes the own-resolved id set keeping the most recent entries within the bound', () => {
+    const untouched = new Set(['1', '2', '3']);
+    assert.deepStrictEqual([...pruneOwnResolvedIds(untouched, 5)], ['1', '2', '3']);
+
+    const bounded = pruneOwnResolvedIds(new Set(['1', '2', '3', '4']), 2);
+    assert.deepStrictEqual([...bounded], ['3', '4']);
+    assert.strictEqual(bounded.size, 2);
+
+    assert.strictEqual(MAX_OWN_RESOLVED_IDS >= 1, true);
+    assert.strictEqual(pruneOwnResolvedIds(new Set(), MAX_OWN_RESOLVED_IDS).size, 0);
+  });
+
+  it('12e. exports the exact cancellation note demanded by the spec', () => {
+    assert.strictEqual(AUTHORIZATION_NOTIFICATION_STRINGS.cancelled, 'Solicitud cancelada por el cajero.');
+  });
 });
 
 describe('AuthorizationNotifications components (structural, SSR)', () => {
@@ -259,5 +312,18 @@ describe('AuthorizationNotifications components (structural, SSR)', () => {
       renderToString(React.createElement(AuthorizationNotificationNotice, { notice: null })),
       ''
     );
+  });
+
+  it('16. floors the countdown display instead of showing a ceiling second', () => {
+    const html = renderToString(React.createElement(AuthorizationNotificationModal, {
+      notification: { requestId: 1, message: 'El cajero Cajero 01 solicita autorización.', terminal: null, expiresAt: EXPIRES_AT },
+      queuedCount: 1,
+      remainingSeconds: 0.9,
+      onApprove: () => {},
+      onReject: () => {},
+    }));
+
+    assert.match(html, /00:00/);
+    assert.ok(!html.includes('00:01'), 'fractional seconds must floor, never ceil');
   });
 });

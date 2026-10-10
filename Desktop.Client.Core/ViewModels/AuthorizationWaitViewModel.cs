@@ -182,6 +182,14 @@ public partial class AuthorizationWaitViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
+        // 8.151 (W3, R4-client): el retiro server-side solo aplica mientras la solicitud sigue
+        // Pending; es best-effort y un fallo (409 de carrera, red) no bloquea el cierre local:
+        // la solicitud expira sola.
+        if (Phase == AuthorizationWaitPhase.Waiting && _requestId > 0)
+        {
+            _hubService.CancelRequestAsync(_requestId).SafeFireAndForget("AuthorizationWaitViewModel.CancelServerRequest");
+        }
+
         StopCountdown();
         IsLocalFormOpen = false;
         Phase = AuthorizationWaitPhase.Idle;
@@ -373,8 +381,9 @@ public partial class AuthorizationWaitViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // 8.151 (W3, R7/design D4c): piso, nunca techo: el display no muestra 00:01 con <1s vivo.
         var remaining = (_expiresAtUtc - _utcNow()).TotalSeconds;
-        RemainingSeconds = remaining <= 0 ? 0 : (int)Math.Ceiling(remaining);
+        RemainingSeconds = remaining <= 0 ? 0 : (int)Math.Floor(remaining);
         if (RemainingSeconds <= 0)
         {
             ApplyExpiry();

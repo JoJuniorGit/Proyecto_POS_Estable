@@ -33,6 +33,7 @@ public partial class PosViewModel
 
     partial void OnSelectedSuggestionChanged(ProductQuickInfoDto? value)
     {
+        AddManualPriceSuggestionCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
@@ -54,7 +55,39 @@ public partial class PosViewModel
         }
     }
 
-    private async Task AddSelectedSuggestionCoreAsync(ProductQuickInfoDto? value)
+    /// <summary>
+    /// 8.151 (W4, R8/design D7): alta de un producto normal con precio manual capturado en el
+    /// dialogo (USD/Bs.S validados, moneda faltante derivada). Reusa el alta protegida y el flujo
+    /// T10; la rama de adelanto de efectivo queda intacta.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanAddManualPrice))]
+    private async Task AddManualPriceSuggestionAsync()
+    {
+        if (IsProcessing) return;
+
+        var product = SelectedSuggestion;
+        if (product == null || product.Id <= 0 || product.IsGroupHeader || product.IsCashAdvance) return;
+        if (_dialogService == null) return;
+
+        var manualPrice = _dialogService.ShowManualPriceDialog(CurrentExchangeRate);
+        if (manualPrice == null) return;
+
+        await _scannerLock.WaitAsync();
+        try
+        {
+            await AddSelectedSuggestionCoreAsync(product, manualPrice.UnitPriceUsd, manualPrice.UnitPriceLocal);
+        }
+        finally
+        {
+            _scannerLock.Release();
+        }
+    }
+
+    private bool CanAddManualPrice()
+        => !IsProcessing
+           && SelectedSuggestion is { Id: > 0, IsGroupHeader: false, IsCashAdvance: false };
+
+    private async Task AddSelectedSuggestionCoreAsync(ProductQuickInfoDto? value, decimal? manualPriceUsd = null, decimal? manualPriceLocal = null)
     {
         // Lazy-start: If sale is null, start one now
         if (Cart.CurrentSale == null)
@@ -98,8 +131,8 @@ public partial class PosViewModel
                 };
             }
 
-            decimal? customPriceUsd = null;
-            decimal? customPriceLocal = null;
+            decimal? customPriceUsd = manualPriceUsd;
+            decimal? customPriceLocal = manualPriceLocal;
 
             if (value.IsCashAdvance)
             {

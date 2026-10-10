@@ -1,0 +1,88 @@
+<Window x:Class="Desktop.Client.Views.ManualPriceDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        mc:Ignorable="d"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        Title="Precio manual"
+        Width="460"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
+    <Grid Margin="28">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Kind="PencilOutline"
+                                         Width="24" Height="24"
+                                         Foreground="{DynamicResource PrimaryHueMidBrush}"
+                                         VerticalAlignment="Center"/>
+                <TextBlock Text="Precio manual"
+                           Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
+                           FontWeight="Bold"
+                           Margin="10,0,0,0"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock Text="Ingrese el precio en dólares, en bolívares o en ambas monedas. El valor faltante se calcula con la tasa vigente."
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource MaterialDesignBodyLight}"
+                       Margin="34,6,0,0"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1">
+            <TextBox x:Name="UsdInput"
+                     Text="{Binding UnitPriceUsdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     materialDesign:HintAssist.Hint="Precio en USD ($)"
+                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                     TabIndex="1"
+                     AutomationProperties.AutomationId="ManualPrice_UsdInput"/>
+            <TextBox x:Name="BsInput"
+                     Text="{Binding UnitPriceBsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     materialDesign:HintAssist.Hint="Precio en Bs.S"
+                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                     Margin="0,12,0,0"
+                     TabIndex="2"
+                     AutomationProperties.AutomationId="ManualPrice_BsInput"/>
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Foreground="#B91C1C"
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       Margin="2,8,2,0"
+                       Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}"
+                       AutomationProperties.AutomationId="ManualPrice_ErrorText"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="Cancelar"
+                    Style="{DynamicResource MaterialDesignFlatButton}"
+                    Margin="0,0,12,0"
+                    IsCancel="True"
+                    TabIndex="4"
+                    Click="CancelButton_Click"
+                    AutomationProperties.AutomationId="ManualPrice_CancelButton"/>
+            <Button Content="Agregar al carrito"
+                    Style="{DynamicResource MaterialDesignRaisedButton}"
+                    IsDefault="True"
+                    TabIndex="3"
+                    Click="ConfirmButton_Click"
+                    AutomationProperties.AutomationId="ManualPrice_ConfirmButton"/>
+        </StackPanel>
+    </Grid>
+</Window>

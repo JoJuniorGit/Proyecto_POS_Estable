@@ -123,6 +123,7 @@
         <KeyBinding Key="F3" Command="{Binding ChangeCustomerCommand}" />
         <KeyBinding Key="F4" Command="{Binding HoldOrderCommand}" />
         <KeyBinding Key="F5" Command="{Binding SyncExchangeRateCommand}" />
+        <KeyBinding Key="F6" Command="{Binding AddManualPriceSuggestionCommand}" />
         <KeyBinding Key="F7" Command="{Binding TogglePriceListCommand}" />
         <KeyBinding Key="F8" Command="{Binding ClearCartCommand}" />
         <KeyBinding Key="Escape" Command="{Binding CancelOrClearCommand}" />
@@ -219,8 +220,32 @@
                            PlacementTarget="{Binding ElementName=SearchInput}"
                            AllowsTransparency="True"
                            PopupAnimation="Slide">
-                        <materialDesign:Card MaxHeight="300" Width="{Binding ElementName=SearchInput, Path=ActualWidth}">
-                            <ListBox x:Name="SuggestionsList"
+                        <materialDesign:Card MaxHeight="340" Width="{Binding ElementName=SearchInput, Path=ActualWidth}">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Bottom"
+                                        Command="{Binding AddManualPriceSuggestionCommand}"
+                                        Style="{DynamicResource MaterialDesignFlatButton}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Height="34"
+                                        Margin="6,2,6,6"
+                                        AutomationProperties.AutomationId="Pos_ManualPriceButton"
+                                        AutomationProperties.Name="Precio manual"
+                                        AutomationProperties.HelpText="Agregar el producto seleccionado con un precio manual."
+                                        ToolTip="Agregar el producto seleccionado con un precio manual (F6)">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="PencilOutline"
+                                                                 Width="16" Height="16"
+                                                                 VerticalAlignment="Center"
+                                                                 Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                        <TextBlock Text="Precio manual (F6)"
+                                                   Margin="6,0,0,0"
+                                                   FontSize="12"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <ListBox x:Name="SuggestionsList"
                                      AutomationProperties.AutomationId="Pos_SuggestionsList"
                                      ItemsSource="{Binding Suggestions}"
                                      SelectedItem="{Binding SelectedSuggestion, Mode=TwoWay}"
@@ -284,6 +309,7 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
+                            </DockPanel>
                         </materialDesign:Card>
                     </Popup>
                 </Grid>

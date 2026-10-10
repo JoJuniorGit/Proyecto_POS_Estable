@@ -143,6 +143,20 @@ public class AuthorizationEndToEndPostgresTests
         Assert.Equal("Caja-E2E-Journey", audit.Terminal);
         Assert.Equal(persistedRequest.CreatedAt, audit.RequestedAt);
         Assert.True(audit.ResolvedAt >= audit.RequestedAt);
+
+        // R11 (8.151): con el token ya consumido y SIN Idempotency-Key, el 400 de clave
+        // obligatoria precede al 403 del contrato de replay (la clave presente llega al gate).
+        using var replayWithoutKey = await AuthorizationEndToEndApi.SendAddItemAsync(
+            cashierHttp,
+            saleId,
+            AuthorizationEndToEndApi.BuildAddItemPayload(9701, Quantity, exchangeRate, CustomUnitPriceUsd, CustomUnitPriceLocal),
+            token,
+            idempotencyKey: null);
+        Assert.Equal(HttpStatusCode.BadRequest, replayWithoutKey.StatusCode);
+        var replayProblem = await replayWithoutKey.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(
+            IdempotencyRequestResolver.DefaultMissingKeyMessage,
+            replayProblem.GetProperty("detail").GetString());
     }
 
     // ---------------------------------------------------------------- 2. race
@@ -477,6 +491,83 @@ public class AuthorizationEndToEndPostgresTests
             var consumed = await verifyDb.AuthorizationRequests.AsNoTracking().SingleAsync(row => row.Id == requestId);
             Assert.NotNull(consumed.ConsumedAt);
             Assert.Equal(1, await verifyDb.AuthorizationAudits.CountAsync(row => row.RequestId == requestId));
+        }
+    }
+
+    // ---------------------------------------------------------------- 7. cancelacion del solicitante
+
+    [Fact]
+    public async Task Cancellation_RequesterCancels_PersistsAuditPushesClosureWithoutTokenAndBlocksApproval()
+    {
+        await using var app = await AuthorizationEndToEndApplication.CreateAsync("cancel");
+        if (!app.IsAvailable) return;
+
+        var cashier = await app.CreateUserAsync(7601, UserRole.Cashier, "Cajero E2E Cancel");
+        var admin = await app.CreateUserAsync(7602, UserRole.Admin, "Admin E2E Cancel");
+        await app.CreateProductAsync(9761, "Producto E2E Cancel", priceUsd: 6m, priceBsS: 300m);
+
+        var cashierToken = app.IssueToken(cashier);
+        using var cashierHttp = app.CreateHttpClient(cashierToken);
+        using var adminHttp = app.CreateHttpClient(app.IssueToken(admin));
+        var saleId = await AuthorizationEndToEndApi.StartSaleAsync(cashierHttp);
+        var requestId = await AuthorizationEndToEndApi.CreateRequestAsync(
+            cashierHttp,
+            Contract(saleId, 9761, "Producto E2E Cancel", "Caja-E2E-Cancel"));
+
+        await using var cashierHub = app.CreateHubConnection(cashierToken);
+        await using var adminHub = app.CreateHubConnection(app.IssueToken(admin));
+        var requesterClosure = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var elevatedClosure = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        cashierHub.On<JsonElement>("AuthorizationResolved", payload => requesterClosure.TrySetResult(payload));
+        adminHub.On<JsonElement>("AuthorizationResolved", payload => elevatedClosure.TrySetResult(payload));
+        await cashierHub.StartAsync();
+        await adminHub.StartAsync();
+
+        using (var cancelResponse = await AuthorizationEndToEndApi.CancelAsync(cashierHttp, requestId))
+        {
+            Assert.Equal(HttpStatusCode.OK, cancelResponse.StatusCode);
+            var body = await cancelResponse.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(requestId, body.GetProperty("requestId").GetInt32());
+            Assert.Equal("Cancelled", body.GetProperty("status").GetString());
+            Assert.NotEqual(JsonValueKind.Null, body.GetProperty("resolvedAt").ValueKind);
+        }
+
+        var requesterPayload = await requesterClosure.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Equal(requestId, requesterPayload.GetProperty("requestId").GetInt32());
+        Assert.Equal("Cancelled", requesterPayload.GetProperty("status").GetString());
+        Assert.False(requesterPayload.GetProperty("approved").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, requesterPayload.GetProperty("token").ValueKind);
+
+        var elevatedPayload = await elevatedClosure.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.Equal(requestId, elevatedPayload.GetProperty("requestId").GetInt32());
+        Assert.Equal("Cancelled", elevatedPayload.GetProperty("status").GetString());
+        Assert.False(elevatedPayload.TryGetProperty("token", out _));
+
+        await using (var db = app.CreateSalesDbContext())
+        {
+            var persisted = await db.AuthorizationRequests.AsNoTracking().SingleAsync(row => row.Id == requestId);
+            Assert.Equal(AuthorizationStatus.Cancelled, persisted.Status);
+            Assert.NotNull(persisted.ResolvedAt);
+            Assert.Null(persisted.ResolutionMode);
+            Assert.Null(persisted.ResolvedByUserId);
+            Assert.Null(persisted.ResolvedByName);
+
+            var audits = await db.AuthorizationAudits.AsNoTracking().Where(row => row.RequestId == requestId).ToListAsync();
+            var audit = Assert.Single(audits);
+            Assert.Equal(AuthorizationStatus.Cancelled, audit.Status);
+            Assert.Null(audit.ResolutionMode);
+            Assert.Null(audit.ResolvedByUserId);
+            Assert.Null(audit.ResolvedByName);
+            Assert.Equal(persisted.ResolvedAt, audit.ResolvedAt);
+        }
+
+        using (var approvalAfterCancel = await adminHttp.PostAsJsonAsync(
+            $"/api/authorizations/{requestId}/resolve",
+            new { approved = true, reason = "Tarde" }))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, approvalAfterCancel.StatusCode);
+            var problem = await approvalAfterCancel.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("Esta solicitud ya fue resuelta por otro usuario.", problem.GetProperty("detail").GetString());
         }
     }
 }

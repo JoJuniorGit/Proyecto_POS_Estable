@@ -141,6 +141,12 @@ public sealed class FullStackFixture : IDisposable
 
     public E2eBootstrapState? Bootstrap { get; private set; }
 
+    /// <summary>
+    /// Token real del admin sembrado (rotado por el bootstrap). Lo consumen tests sin UI que
+    /// necesitan la API autenticada (p. ej. el E2E de WebSockets, 8.151-W5).
+    /// </summary>
+    public string? AdminToken { get; private set; }
+
     public Window? ClientWindow { get; private set; }
 
     public Application? App => _clientFixture?.App;
@@ -444,6 +450,8 @@ public sealed class FullStackFixture : IDisposable
             token = reLogin.Token ?? throw new InvalidOperationException(
                 "El re-login del bootstrap no devolvió token tras rotar la contraseña forzada.");
         }
+
+        AdminToken = token;
 
         await api.SetExchangeRateAsync(token, BootstrapExchangeRate, cancellationToken);
         var product = await api.CreateTestProductAsync(token, cancellationToken);

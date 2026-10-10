@@ -366,6 +366,53 @@ public class AuthorizationHubServiceTests
         Assert.Equal("Credenciales inválidas o sin privilegios para autorizar.", exception.Message);
     }
 
+    // ── Cancelacion del solicitante (W3, R4-client) ──────────────────────
+
+    [Fact]
+    public async Task CancelRequestAsync_PostsBodylessToCancelRouteAndTreatsSuccess()
+    {
+        var handler = new StubHttpMessageHandler("""
+            {"requestId":55,"status":"Cancelled","resolvedAt":"2026-10-08T12:00:30Z"}
+            """);
+        using var service = CreateRestOnlyService(handler);
+
+        var exception = await Record.ExceptionAsync(() => service.CancelRequestAsync(55));
+
+        Assert.Null(exception);
+        var request = Assert.IsType<HttpRequestMessage>(handler.LastRequest);
+        Assert.Equal(HttpMethod.Post, request.Method);
+        Assert.Equal("/api/authorizations/55/cancel", request.RequestUri!.AbsolutePath);
+        Assert.Null(handler.LastRequestBody);
+    }
+
+    [Fact]
+    public async Task CancelRequestAsync_RaceFailure_ThrowsWithServerMessageAndStatus()
+    {
+        var handler = new StubHttpMessageHandler(
+            """{"message":"Esta solicitud ya fue resuelta por Admin Dos."}""",
+            HttpStatusCode.Conflict);
+        using var service = CreateRestOnlyService(handler);
+
+        var exception = await Assert.ThrowsAsync<AuthorizationHubException>(() => service.CancelRequestAsync(55));
+
+        Assert.Equal(409, exception.StatusCode);
+        Assert.Equal("Esta solicitud ya fue resuelta por Admin Dos.", exception.Message);
+    }
+
+    [Fact]
+    public async Task CancelRequestAsync_ForbiddenFailure_ThrowsWithStatusAndMessage()
+    {
+        var handler = new StubHttpMessageHandler(
+            """{"message":"Solo el solicitante puede cancelar la solicitud."}""",
+            HttpStatusCode.Forbidden);
+        using var service = CreateRestOnlyService(handler);
+
+        var exception = await Assert.ThrowsAsync<AuthorizationHubException>(() => service.CancelRequestAsync(55));
+
+        Assert.Equal(403, exception.StatusCode);
+        Assert.Equal("Solo el solicitante puede cancelar la solicitud.", exception.Message);
+    }
+
     // ── Ciclo de vida ─────────────────────────────────────────────────────
 
     [Fact]

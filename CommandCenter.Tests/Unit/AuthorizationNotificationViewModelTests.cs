@@ -77,6 +77,24 @@ public class AuthorizationNotificationViewModelTests
                 });
         }
 
+        public void RaiseResolvedStatus(int requestId, string status, string? resolvedByName = null)
+        {
+            Hub.Raise(
+                h => h.AuthorizationResolved += null,
+                new AuthorizationResolvedPayload
+                {
+                    RequestId = requestId,
+                    Status = status,
+                    Approved = string.Equals(status, "Approved", StringComparison.OrdinalIgnoreCase),
+                    ResolvedByName = resolvedByName
+                });
+        }
+
+        public void RaiseReconnected()
+        {
+            Hub.Raise(h => h.Reconnected += null, EventArgs.Empty);
+        }
+
         public void RaiseExpired(int requestId)
         {
             Hub.Raise(
@@ -311,6 +329,128 @@ public class AuthorizationNotificationViewModelTests
         Assert.Null(h.Vm.Notice);
     }
 
+    // ── Cancelacion del cajero y reconciliacion en reconnect (W3) ──────────
+
+    [Fact]
+    public void CancelledResolutionPush_ClosesWithExactNoteNeverTheRaceMessage()
+    {
+        var h = new Harness();
+        h.RaiseRequested(BuildRequested(1));
+
+        h.RaiseResolvedStatus(1, "Cancelled", resolvedByName: "Admin Uno");
+
+        Assert.Equal(0, h.Vm.QueuedCount);
+        Assert.Equal("Solicitud cancelada por el cajero.", h.Vm.Notice);
+        Assert.Equal(AuthorizationNotificationViewModel.CancelledNoticeMessage, h.Vm.Notice);
+        Assert.DoesNotContain("ya fue resuelta", h.Vm.Notice, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task OwnResolutionPush_WithCancelledStatus_StillClosesSilently()
+    {
+        var h = new Harness();
+        h.RaiseRequested(BuildRequested(1));
+        h.Hub.Setup(x => x.ResolveAuthorizationAsync(1, true, null))
+            .ReturnsAsync(new AuthorizationResolveInfo("Approved", "Yo Mismo", null));
+
+        await h.Vm.ApproveCommand.ExecuteAsync(null);
+        h.RaiseResolvedStatus(1, "Cancelled", resolvedByName: "Admin Dos");
+
+        Assert.Equal(0, h.Vm.QueuedCount);
+        Assert.Null(h.Vm.Notice);
+    }
+
+    [Fact]
+    public void Reconnected_ReconcilesResolvedQueuedRequestWithRaceNote()
+    {
+        var h = new Harness();
+        h.RaiseRequested(BuildRequested(1));
+        h.Hub.Setup(x => x.GetStatusAsync(1))
+            .ReturnsAsync(new AuthorizationStatusInfo { Id = 1, Status = "Approved", ResolvedByName = "Admin Dos" });
+
+        h.RaiseReconnected();
+
+        Assert.Equal(0, h.Vm.QueuedCount);
+        Assert.Equal("Esta solicitud ya fue resuelta por Admin Dos.", h.Vm.Notice);
+    }
+
+    [Fact]
+    public void Reconnected_ReconcilesCancelledQueuedRequestWithExactNote()
+    {
+        var h = new Harness();
+        h.RaiseRequested(BuildRequested(1));
+        h.Hub.Setup(x => x.GetStatusAsync(1))
+            .ReturnsAsync(new AuthorizationStatusInfo { Id = 1, Status = "Cancelled", ResolvedByName = "Admin Uno" });
+
+        h.RaiseReconnected();
+
+        Assert.Equal(0, h.Vm.QueuedCount);
+        Assert.Equal(AuthorizationNotificationViewModel.CancelledNoticeMessage, h.Vm.Notice);
+    }
+
+    [Fact]
+    public void Reconnected_ReconcilesExpiredQueuedRequest()
+    {
+        var h = new Harness();
+        h.RaiseRequested(BuildRequested(1));
+        h.Hub.Setup(x => x.GetStatusAsync(1))
+            .ReturnsAsync(new AuthorizationStatusInfo { Id = 1, Status = "Expired" });
+
+        h.RaiseReconnected();
+
+        Assert.Equal(0, h.Vm.QueuedCount);
+        Assert.Equal(AuthorizationNotificationViewModel.ExpiredNoticeMessage, h.Vm.Notice);
+    }
+
+    [Fact]
+    public void Reconnected_NotFoundStatus_ClosesQueueAsExpired()
+    {
+        var h = new Harness();
+        h.RaiseRequested(BuildRequested(1));
+        h.Hub.Setup(x => x.GetStatusAsync(1)).ReturnsAsync((AuthorizationStatusInfo?)null);
+
+        h.RaiseReconnected();
+
+        Assert.Equal(0, h.Vm.QueuedCount);
+        Assert.Equal(AuthorizationNotificationViewModel.ExpiredNoticeMessage, h.Vm.Notice);
+    }
+
+    [Fact]
+    public void Reconnected_StatusLookupFailure_KeepsQueueForNextReconnect()
+    {
+        var h = new Harness();
+        h.RaiseRequested(BuildRequested(1));
+        h.Hub.Setup(x => x.GetStatusAsync(1)).ThrowsAsync(new InvalidOperationException("socket caido"));
+
+        h.RaiseReconnected();
+
+        Assert.Equal(1, h.Vm.QueuedCount);
+        Assert.Null(h.Vm.Notice);
+    }
+
+    [Fact]
+    public void Reconnected_ReconcilesEveryQueuedRequestAndKeepsPendingOnes()
+    {
+        var h = new Harness();
+        h.RaiseRequested(BuildRequested(1));
+        h.RaiseRequested(BuildRequested(2, cashier: "Cajero 02"));
+        h.RaiseRequested(BuildRequested(3, cashier: "Cajero 03"));
+        h.Hub.Setup(x => x.GetStatusAsync(1))
+            .ReturnsAsync(new AuthorizationStatusInfo { Id = 1, Status = "Approved", ResolvedByName = "Admin Dos" });
+        h.Hub.Setup(x => x.GetStatusAsync(2))
+            .ReturnsAsync(new AuthorizationStatusInfo { Id = 2, Status = "Pending", ExpiresAt = Start.AddSeconds(120) });
+        h.Hub.Setup(x => x.GetStatusAsync(3))
+            .ReturnsAsync(new AuthorizationStatusInfo { Id = 3, Status = "Cancelled" });
+
+        h.RaiseReconnected();
+
+        Assert.Equal(new[] { 2 }, System.Linq.Enumerable.Select(h.Vm.PendingRequests, i => i.RequestId));
+        Assert.Equal(AuthorizationNotificationViewModel.CancelledNoticeMessage, h.Vm.Notice);
+        h.Hub.Verify(x => x.GetStatusAsync(1), Times.Once);
+        h.Hub.Verify(x => x.GetStatusAsync(2), Times.Once);
+        h.Hub.Verify(x => x.GetStatusAsync(3), Times.Once);
+    }
+
     // ── Expiracion ─────────────────────────────────────────────────────────
 
     [Fact]
@@ -355,6 +495,44 @@ public class AuthorizationNotificationViewModelTests
 
         h.RaiseExpired(1);
         Assert.Equal("01:20", h.Vm.RemainingTimeDisplay);
+    }
+
+    [Fact]
+    public void CountdownDisplay_FloorsPartialSecondInsteadOfCeiling()
+    {
+        var h = new Harness();
+        h.RaiseRequested(BuildRequested(1, expiresAt: Start.AddMilliseconds(59_900)));
+
+        Assert.Equal(59, h.Vm.RemainingSeconds);
+        Assert.Equal("00:59", h.Vm.RemainingTimeDisplay);
+    }
+
+    // ── Poda del set own-resolved (W3, R7/D4d) ─────────────────────────────
+
+    [Fact]
+    public void PruneOwnResolvedRequestIds_KeepsNewestEntriesWithinBound()
+    {
+        var ids = new System.Collections.Generic.List<int>();
+        for (var id = 1; id <= AuthorizationNotificationViewModel.MaxOwnResolvedRequestIds + 5; id++)
+        {
+            ids.Add(id);
+        }
+
+        AuthorizationNotificationViewModel.PruneOwnResolvedRequestIds(ids);
+
+        Assert.Equal(AuthorizationNotificationViewModel.MaxOwnResolvedRequestIds, ids.Count);
+        Assert.Equal(6, ids[0]);
+        Assert.Equal(AuthorizationNotificationViewModel.MaxOwnResolvedRequestIds + 5, ids[^1]);
+    }
+
+    [Fact]
+    public void PruneOwnResolvedRequestIds_WithinBound_KeepsAllEntriesInOrder()
+    {
+        var ids = new System.Collections.Generic.List<int> { 4, 8, 15 };
+
+        AuthorizationNotificationViewModel.PruneOwnResolvedRequestIds(ids);
+
+        Assert.Equal(new[] { 4, 8, 15 }, ids);
     }
 
     // ── Ciclo de vida ──────────────────────────────────────────────────────

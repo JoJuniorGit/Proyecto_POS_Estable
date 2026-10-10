@@ -14,6 +14,9 @@ public sealed record E2eTestProduct(string Name, string Sku);
 
 public sealed record E2eBootstrapState(string ProductName, string ProductSku, decimal ExchangeRate);
 
+/// <summary>Usuario creado por la API real (8.151-W5: cajero del E2E de WebSockets).</summary>
+public sealed record E2eCreatedUser(int Id, string Cedula, string Name);
+
 /// <summary>
 /// Bootstrap del harness contra la API real (HttpClient simple, sin mocks): login del admin
 /// sembrado, rotación de la clave forzada, tasa de cambio y producto de prueba. Todas las
@@ -128,6 +131,57 @@ public sealed class E2eApiClient : IDisposable
         return new E2eTestProduct(name, sku);
     }
 
+    /// <summary>
+    /// 8.151-W5: siembra un cajero con contraseña explícita (nace sin MustChangePassword, así el
+    /// login por HTTP devuelve token directo). <c>Role = 1</c> es <c>UserRole.Cashier</c>: el
+    /// backend serializa enums como número.
+    /// </summary>
+    public async Task<E2eCreatedUser> CreateCashierAsync(
+        string bearerToken,
+        string cedula,
+        string name,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        var payload = new { Cedula = cedula, Name = name, Password = password, Role = 1 };
+        using var response = await SendAsync(HttpMethod.Post, "api/users", payload, bearerToken, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "create cashier", body);
+
+        using var json = JsonDocument.Parse(body);
+        return new E2eCreatedUser(
+            json.RootElement.GetProperty("id").GetInt32(),
+            ReadString(json.RootElement, "cedula") ?? cedula,
+            ReadString(json.RootElement, "name") ?? name);
+    }
+
+    /// <summary>Abre una venta real del usuario autenticado (POST /api/sales/start) y devuelve su id.</summary>
+    public async Task<int> StartSaleAsync(string bearerToken, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "api/sales/start", payload: null, bearerToken, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "start sale", body);
+
+        using var json = JsonDocument.Parse(body);
+        return json.RootElement.GetProperty("id").GetInt32();
+    }
+
+    /// <summary>Id real del producto sembrado por el bootstrap (GET /api/products/quick-check/{sku}).</summary>
+    public async Task<int> GetProductIdBySkuAsync(string bearerToken, string sku, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"api/products/quick-check/{Uri.EscapeDataString(sku)}",
+            payload: null,
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "product quick-check", body);
+
+        using var json = JsonDocument.Parse(body);
+        return json.RootElement.GetProperty("id").GetInt32();
+    }
+
     public void Dispose()
     {
         _httpClient.Dispose();
@@ -188,4 +242,9 @@ public sealed class E2eApiClient : IDisposable
             return false;
         }
     }
+
+    private static string? ReadString(JsonElement element, string name)
+        => element.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
 }

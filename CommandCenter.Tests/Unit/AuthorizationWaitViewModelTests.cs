@@ -149,6 +149,30 @@ public class AuthorizationWaitViewModelTests
         Assert.True(h.Timer.StopCount >= 1);
     }
 
+    [Fact]
+    public async Task CountdownDisplay_FloorsPartialSecondInsteadOfCeiling()
+    {
+        var h = new Harness(expiresAt: Start.AddMilliseconds(59_900));
+        await h.Vm.StartCommand.ExecuteAsync(null);
+
+        Assert.Equal(59, h.Vm.RemainingSeconds);
+        Assert.Equal("00:59", h.Vm.RemainingTimeDisplay);
+    }
+
+    [Fact]
+    public async Task CountdownDisplay_SubSecondRemaining_FloorsToZeroAndExpires()
+    {
+        var h = new Harness(expiresAt: Start.AddMilliseconds(1_500));
+        await h.Vm.StartCommand.ExecuteAsync(null);
+        Assert.Equal(1, h.Vm.RemainingSeconds);
+
+        h.Now = Start.AddMilliseconds(600);
+        h.Timer.RaiseTick();
+
+        Assert.Equal(0, h.Vm.RemainingSeconds);
+        Assert.Equal(AuthorizationWaitPhase.Expired, h.Vm.Phase);
+    }
+
     // ── Aprobacion con token ──────────────────────────────────────────────
 
     [Fact]
@@ -388,6 +412,47 @@ public class AuthorizationWaitViewModelTests
 
         h.RaiseResolved(DefaultRequestId, approved: true, token: "late");
         Assert.Empty(h.RetriedTokens);
+    }
+
+    [Fact]
+    public async Task Cancel_WithdrawsPendingRequestOnceAndClosesLocally()
+    {
+        var h = new Harness();
+        await h.Vm.StartCommand.ExecuteAsync(null);
+
+        h.Vm.CancelCommand.Execute(null);
+
+        h.Hub.Verify(x => x.CancelRequestAsync(DefaultRequestId), Times.Once);
+        Assert.Equal(new[] { false }, h.CloseResults);
+        Assert.Equal(AuthorizationWaitPhase.Idle, h.Vm.Phase);
+        Assert.True(h.Timer.StopCount >= 1);
+    }
+
+    [Fact]
+    public async Task Cancel_WhenWithdrawalFails_StillClosesLocallyWithoutError()
+    {
+        var h = new Harness();
+        await h.Vm.StartCommand.ExecuteAsync(null);
+        h.Hub.Setup(x => x.CancelRequestAsync(DefaultRequestId))
+            .ThrowsAsync(new AuthorizationHubException("Esta solicitud ya fue resuelta por Admin Uno.", 409));
+
+        h.Vm.CancelCommand.Execute(null);
+
+        Assert.Equal(new[] { false }, h.CloseResults);
+        Assert.Equal(AuthorizationWaitPhase.Idle, h.Vm.Phase);
+    }
+
+    [Fact]
+    public async Task Cancel_AfterExpiryEvent_DoesNotWithdrawOnServer()
+    {
+        var h = new Harness();
+        await h.Vm.StartCommand.ExecuteAsync(null);
+        h.RaiseExpired(DefaultRequestId);
+
+        h.Vm.CancelCommand.Execute(null);
+
+        h.Hub.Verify(x => x.CancelRequestAsync(It.IsAny<int>()), Times.Never);
+        Assert.Equal(new[] { false }, h.CloseResults);
     }
 
     [Fact]

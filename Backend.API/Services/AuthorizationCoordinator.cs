@@ -223,6 +223,23 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
         return new AuthorizationStatusResult(request, TryRecoverToken(request, viewerUserId, viewerIsElevated));
     }
 
+    public async Task<CancelAuthorizationResult> CancelAsync(
+        int requestId,
+        int requesterUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _authorizationService.CancelAsync(requestId, requesterUserId, cancellationToken);
+
+        if (result.Outcome == CancelAuthorizationOutcome.Cancelled && result.Request is not null)
+        {
+            // 8.151 (W1, design D4): mutacion y push comparten el mismo DTO; el token viaja null
+            // porque cancelar no habilita la operacion protegida.
+            await _notifier.NotifyResolvedAsync(result.Request, token: null, cancellationToken);
+        }
+
+        return result;
+    }
+
     private string? TryRecoverToken(AuthorizationRequestDto request, int viewerUserId, bool viewerIsElevated)
     {
         // La entrega del token esta restringida al solicitante (design D3): los elevados ven el

@@ -2,13 +2,16 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
   AUTHORIZATION_PHASES,
+  AUTHORIZATION_SETTLEMENTS,
   AUTHORIZATION_STRINGS,
   applyAuthorizationExpiry,
   applyAuthorizationResolution,
   cancelAuthorizationWait,
   createAuthorizationFlowState,
+  getAuthorizationSettlement,
   getRemainingSeconds,
   isAuthorizationExpired,
+  isAuthorizationPending,
   retryAuthorizationWait,
   startAuthorizationWait,
 } from './authorizationFlow.js';
@@ -112,15 +115,17 @@ describe('authorizationFlow state machine', () => {
     assert.strictEqual(cancelled.requestId, null);
   });
 
-  it('8. countdown derives remaining seconds from expiresAt and floors at zero', () => {
+  it('8. countdown derives remaining seconds from expiresAt with a floor, never a ceiling', () => {
     assert.strictEqual(getRemainingSeconds(EXPIRES_AT, NOW), 30);
-    assert.strictEqual(getRemainingSeconds(EXPIRES_AT, NOW + 500), 30);
-    assert.strictEqual(getRemainingSeconds(EXPIRES_AT, NOW + 29_500), 1);
+    assert.strictEqual(getRemainingSeconds(EXPIRES_AT, NOW + 500), 29);
+    assert.strictEqual(getRemainingSeconds(EXPIRES_AT, NOW + 29_000), 1);
+    assert.strictEqual(getRemainingSeconds(EXPIRES_AT, NOW + 29_500), 0);
     assert.strictEqual(getRemainingSeconds(EXPIRES_AT, NOW + 30_000), 0);
     assert.strictEqual(getRemainingSeconds(EXPIRES_AT, NOW + 90_000), 0);
     assert.strictEqual(getRemainingSeconds(null, NOW), 0);
 
     assert.strictEqual(isAuthorizationExpired(EXPIRES_AT, NOW), false);
+    assert.strictEqual(isAuthorizationExpired(EXPIRES_AT, NOW + 29_500), true);
     assert.strictEqual(isAuthorizationExpired(EXPIRES_AT, NOW + 30_000), true);
   });
 
@@ -132,5 +137,93 @@ describe('authorizationFlow state machine', () => {
     assert.strictEqual(AUTHORIZATION_STRINGS.invalidCredentials, 'Credenciales inválidas o sin privilegios para autorizar.');
     assert.strictEqual(AUTHORIZATION_STRINGS.retry, 'Reintentar');
     assert.strictEqual(AUTHORIZATION_STRINGS.cancel, 'Cancelar');
+  });
+
+  it('10. settles the caller immediately on rejection with reason and resolver, keeping the ack open', () => {
+    const rejected = applyAuthorizationResolution(startWaiting(), {
+      approved: false,
+      reason: 'Monto fuera de política',
+      resolvedByName: 'Admin Uno',
+    });
+
+    assert.deepStrictEqual(
+      getAuthorizationSettlement(rejected, AUTHORIZATION_SETTLEMENTS.REJECTION),
+      {
+        ok: false,
+        outcome: 'rejected',
+        reason: 'Monto fuera de política',
+        resolvedByName: 'Admin Uno',
+      }
+    );
+
+    const rejectedWithoutReason = applyAuthorizationResolution(startWaiting(), { approved: false });
+    assert.deepStrictEqual(
+      getAuthorizationSettlement(rejectedWithoutReason, AUTHORIZATION_SETTLEMENTS.REJECTION),
+      { ok: false, outcome: 'rejected', reason: null, resolvedByName: null }
+    );
+
+    // El cierre posterior del acuse no vuelve a liquidar la promesa.
+    assert.strictEqual(getAuthorizationSettlement(rejected, AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL), null);
+    assert.strictEqual(getAuthorizationSettlement(rejected, AUTHORIZATION_SETTLEMENTS.EXPIRED_DISMISSAL), null);
+  });
+
+  it('11. expiry keeps the caller pending while a retry starts a new request that can reach granted', () => {
+    const expired = applyAuthorizationExpiry(startWaiting());
+
+    // Desestimar la expirada sin reintentar liquida expired.
+    assert.deepStrictEqual(
+      getAuthorizationSettlement(expired, AUTHORIZATION_SETTLEMENTS.EXPIRED_DISMISSAL),
+      { ok: false, outcome: 'expired' }
+    );
+
+    // Reintentar no liquida: vuelve a waiting y la promesa del caller sigue viva.
+    const retried = retryAuthorizationWait(expired, {
+      requestId: 8,
+      expiresAt: EXPIRES_AT,
+      context: null,
+      deduplicated: false,
+    });
+    assert.strictEqual(retried.phase, AUTHORIZATION_PHASES.WAITING);
+    assert.strictEqual(getAuthorizationSettlement(retried, AUTHORIZATION_SETTLEMENTS.EXPIRED_DISMISSAL), null);
+
+    // El reintento exitoso alcanza el outcome granted por la via de aprobacion de siempre.
+    const granted = applyAuthorizationResolution(retried, { approved: true, token: 'retry-token' });
+    assert.strictEqual(granted.phase, AUTHORIZATION_PHASES.GRANTED);
+    assert.strictEqual(granted.token, 'retry-token');
+  });
+
+  it('12. manual cancel settles cancelled and is distinguishable from rejection and expiry', () => {
+    const cancelled = getAuthorizationSettlement(startWaiting(), AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL);
+
+    assert.deepStrictEqual(cancelled, { ok: false, cancelled: true });
+    assert.ok(!('outcome' in cancelled));
+    assert.notDeepStrictEqual(cancelled, getAuthorizationSettlement(
+      applyAuthorizationResolution(startWaiting(), { approved: false }),
+      AUTHORIZATION_SETTLEMENTS.REJECTION
+    ));
+
+    // Triggers cruzados no liquidan: la fase manda.
+    assert.strictEqual(getAuthorizationSettlement(startWaiting(), AUTHORIZATION_SETTLEMENTS.REJECTION), null);
+    assert.strictEqual(
+      getAuthorizationSettlement(applyAuthorizationExpiry(startWaiting()), AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL),
+      null
+    );
+    assert.strictEqual(getAuthorizationSettlement(applyAuthorizationResolution(startWaiting(), { approved: false }), AUTHORIZATION_SETTLEMENTS.EXPIRED_DISMISSAL), null);
+    assert.strictEqual(getAuthorizationSettlement(null, AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL), null);
+  });
+
+  it('13. only a waiting request with an id is cancellable on the server', () => {
+    const waiting = startWaiting();
+    assert.strictEqual(isAuthorizationPending(waiting), true);
+
+    assert.strictEqual(isAuthorizationPending(applyAuthorizationExpiry(waiting)), false);
+    assert.strictEqual(isAuthorizationPending(applyAuthorizationResolution(waiting, { approved: false })), false);
+    assert.strictEqual(isAuthorizationPending(applyAuthorizationResolution(waiting, { approved: true, token: 't' })), false);
+    assert.strictEqual(isAuthorizationPending(createAuthorizationFlowState()), false);
+    assert.strictEqual(
+      isAuthorizationPending(startAuthorizationWait(createAuthorizationFlowState(), { requestId: null, expiresAt: EXPIRES_AT })),
+      false
+    );
+    assert.strictEqual(isAuthorizationPending(null), false);
   });
 });

@@ -1,11 +1,15 @@
 using System;
+using System.Data.Common;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
 using Core.Entities;
 using Core.Security;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Npgsql;
 using Sales.Module.Data;
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
@@ -923,6 +927,369 @@ public class AuthorizationServiceTests
         Assert.Equal(ConsumeAuthorizationOutcome.NotFound, result.Outcome);
     }
 
+    // ---------------------------------------------------------------- W1 (8.151): claim bindeado + expiracion perezosa
+
+    /// <summary>
+    /// W1 (8.151): ejecuta una mutacion cruda justo antes del primer UPDATE interceptado (claim
+    /// de consumo o de expiracion), en la misma conexion y transaccion del UPDATE, para forzar
+    /// un interleave determinista entre la validacion y el claim.
+    /// </summary>
+    private sealed class PreClaimMutationInterceptor : DbCommandInterceptor
+    {
+        private readonly string _marker;
+        private readonly Func<DbCommand, Task> _mutate;
+        private bool _enabled;
+        private bool _fired;
+
+        public PreClaimMutationInterceptor(string marker, Func<DbCommand, Task> mutate)
+        {
+            _marker = marker;
+            _mutate = mutate;
+        }
+
+        public void Enable() => _enabled = true;
+
+        public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (_enabled && !_fired && command.CommandText.Contains(_marker, StringComparison.Ordinal))
+            {
+                _fired = true;
+                await _mutate(command);
+            }
+
+            return result;
+        }
+    }
+
+    private static async Task ExecuteOnCommandConnectionAsync(DbCommand command, string sql, int requestId, DateTime? now = null)
+    {
+        await using var concurrent = command.Connection!.CreateCommand();
+        concurrent.Transaction = command.Transaction;
+        concurrent.CommandText = sql;
+        var idParameter = concurrent.CreateParameter();
+        idParameter.ParameterName = "@id";
+        idParameter.Value = requestId;
+        concurrent.Parameters.Add(idParameter);
+        if (now.HasValue)
+        {
+            var nowParameter = concurrent.CreateParameter();
+            nowParameter.ParameterName = "@now";
+            nowParameter.Value = now.Value;
+            concurrent.Parameters.Add(nowParameter);
+        }
+
+        await concurrent.ExecuteNonQueryAsync();
+    }
+
+    private static DbContextOptions<SalesDbContext> InterceptedSqliteOptions(
+        SqliteConnection connection,
+        PreClaimMutationInterceptor interceptor)
+        => new DbContextOptionsBuilder<SalesDbContext>()
+            .UseSqlite(connection)
+            .AddInterceptors(interceptor)
+            .Options;
+
+    public enum ConsumeBindingField
+    {
+        ActionType,
+        SaleId,
+        ContextHash
+    }
+
+    [Theory]
+    [InlineData(ConsumeBindingField.ActionType, ConsumeAuthorizationOutcome.WrongAction)]
+    [InlineData(ConsumeBindingField.SaleId, ConsumeAuthorizationOutcome.WrongSale)]
+    [InlineData(ConsumeBindingField.ContextHash, ConsumeAuthorizationOutcome.ContextMismatch)]
+    public async Task TryConsumeAsync_BindingMutatedBetweenValidationAndClaim_IsRejectedWithPreciseOutcome(
+        ConsumeBindingField field,
+        ConsumeAuthorizationOutcome expected)
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var requestId = 0;
+        var mutationSql = field switch
+        {
+            ConsumeBindingField.ActionType => "UPDATE \"AuthorizationRequests\" SET \"ActionType\" = 2 WHERE \"Id\" = @id",
+            ConsumeBindingField.SaleId => "UPDATE \"AuthorizationRequests\" SET \"SaleId\" = 999 WHERE \"Id\" = @id",
+            _ => $"UPDATE \"AuthorizationRequests\" SET \"ContextHash\" = '{HashB}' WHERE \"Id\" = @id"
+        };
+        var interceptor = new PreClaimMutationInterceptor(
+            "\"ConsumedAt\"",
+            command => ExecuteOnCommandConnectionAsync(command, mutationSql, requestId));
+        await using var db = new SalesDbContext(InterceptedSqliteOptions(connection, interceptor));
+        await db.Database.EnsureCreatedAsync();
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+        await service.ResolveAsync(created.Request!.Id, resolverUserId: 2, resolverName: "Admin Uno", approved: true);
+        requestId = created.Request.Id;
+
+        interceptor.Enable();
+        var result = await service.TryConsumeAsync(requestId, 70, AuthorizationActionType.ManualPriceOverride, 445, HashA);
+
+        Assert.Equal(expected, result.Outcome);
+        Assert.Null((await LoadRequestAsync(db, requestId)).ConsumedAt);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ExpiryClaimLosesToConcurrentApproval_ReReadsAndReportsAlreadyResolved()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var requestId = 0;
+        var interceptor = new PreClaimMutationInterceptor(
+            "UPDATE \"AuthorizationRequests\"",
+            command => ExecuteOnCommandConnectionAsync(
+                command,
+                "UPDATE \"AuthorizationRequests\" SET \"Status\" = 1, \"ResolutionMode\" = 1, \"ResolvedByUserId\" = 2, \"ResolvedByName\" = 'Admin Uno', \"ResolvedAt\" = @now WHERE \"Id\" = @id",
+                requestId,
+                DateTime.UtcNow));
+        await using var db = new SalesDbContext(InterceptedSqliteOptions(connection, interceptor));
+        await db.Database.EnsureCreatedAsync();
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+        await UpdateRequestAsync(db, created.Request!.Id, request => request.ExpiresAt = DateTime.UtcNow.AddSeconds(-5));
+        requestId = created.Request.Id;
+
+        interceptor.Enable();
+        var result = await service.ResolveAsync(requestId, resolverUserId: 2, resolverName: "Admin Uno", approved: true);
+
+        Assert.Equal(ResolveAuthorizationOutcome.AlreadyResolved, result.Outcome);
+        Assert.Equal("Esta solicitud ya fue resuelta por Admin Uno.", result.Message);
+        Assert.Equal(0, await db.AuthorizationAudits.CountAsync());
+    }
+
+    [Fact]
+    public async Task ResolveLocalAsync_ExpiryClaimLosesToConcurrentApproval_ReReadsAndReportsAlreadyResolved()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var requestId = 0;
+        var interceptor = new PreClaimMutationInterceptor(
+            "UPDATE \"AuthorizationRequests\"",
+            command => ExecuteOnCommandConnectionAsync(
+                command,
+                "UPDATE \"AuthorizationRequests\" SET \"Status\" = 1, \"ResolutionMode\" = 2, \"ResolvedByUserId\" = 2, \"ResolvedByName\" = 'Admin Uno', \"ResolvedAt\" = @now WHERE \"Id\" = @id",
+                requestId,
+                DateTime.UtcNow));
+        await using var db = new SalesDbContext(InterceptedSqliteOptions(connection, interceptor));
+        await db.Database.EnsureCreatedAsync();
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+        await UpdateRequestAsync(db, created.Request!.Id, request => request.ExpiresAt = DateTime.UtcNow.AddSeconds(-5));
+        requestId = created.Request.Id;
+
+        interceptor.Enable();
+        var result = await service.ResolveLocalAsync(requestId, "usuario2", "clave-cualquiera");
+
+        Assert.Equal(LocalResolveOutcome.AlreadyResolved, result.Outcome);
+        Assert.Equal("Esta solicitud ya fue resuelta por Admin Uno.", result.Message);
+        Assert.Equal(0, await db.AuthorizationAudits.CountAsync());
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ExpiryClaimLosesToConcurrentCancellation_ReReadsAndReportsAlreadyResolved()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var requestId = 0;
+        var interceptor = new PreClaimMutationInterceptor(
+            "UPDATE \"AuthorizationRequests\"",
+            command => ExecuteOnCommandConnectionAsync(
+                command,
+                "UPDATE \"AuthorizationRequests\" SET \"Status\" = 4, \"ResolvedAt\" = @now WHERE \"Id\" = @id",
+                requestId,
+                DateTime.UtcNow));
+        await using var db = new SalesDbContext(InterceptedSqliteOptions(connection, interceptor));
+        await db.Database.EnsureCreatedAsync();
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+        await UpdateRequestAsync(db, created.Request!.Id, request => request.ExpiresAt = DateTime.UtcNow.AddSeconds(-5));
+        requestId = created.Request.Id;
+
+        interceptor.Enable();
+        var result = await service.ResolveAsync(requestId, resolverUserId: 2, resolverName: "Admin Uno", approved: true);
+
+        Assert.Equal(ResolveAuthorizationOutcome.AlreadyResolved, result.Outcome);
+        Assert.Equal("Esta solicitud ya fue resuelta por otro usuario.", result.Message);
+        Assert.Equal(0, await db.AuthorizationAudits.CountAsync());
+    }
+
+    [Fact]
+    public async Task ResolveLocalAsync_ExpiryClaimLosesToConcurrentCancellation_ReReadsAndReportsAlreadyResolved()
+    {
+        using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var requestId = 0;
+        var interceptor = new PreClaimMutationInterceptor(
+            "UPDATE \"AuthorizationRequests\"",
+            command => ExecuteOnCommandConnectionAsync(
+                command,
+                "UPDATE \"AuthorizationRequests\" SET \"Status\" = 4, \"ResolvedAt\" = @now WHERE \"Id\" = @id",
+                requestId,
+                DateTime.UtcNow));
+        await using var db = new SalesDbContext(InterceptedSqliteOptions(connection, interceptor));
+        await db.Database.EnsureCreatedAsync();
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+        await UpdateRequestAsync(db, created.Request!.Id, request => request.ExpiresAt = DateTime.UtcNow.AddSeconds(-5));
+        requestId = created.Request.Id;
+
+        interceptor.Enable();
+        var result = await service.ResolveLocalAsync(requestId, "usuario2", "clave-cualquiera");
+
+        Assert.Equal(LocalResolveOutcome.AlreadyResolved, result.Outcome);
+        Assert.Equal("Esta solicitud ya fue resuelta por otro usuario.", result.Message);
+        Assert.Equal(0, await db.AuthorizationAudits.CountAsync());
+    }
+
+    // ---------------------------------------------------------------- W1 (8.151): cancelacion del solicitante
+
+    [Fact]
+    public async Task CancelAsync_RequesterCancelsPending_TransitionsToCancelledWithSingleAudit()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+
+        var result = await service.CancelAsync(created.Request!.Id, requesterUserId: 70);
+
+        Assert.Equal(CancelAuthorizationOutcome.Cancelled, result.Outcome);
+        Assert.Equal(AuthorizationStatus.Cancelled, result.Request!.Status);
+        Assert.NotNull(result.Request.ResolvedAt);
+        Assert.Null(result.Request.ResolutionMode);
+        Assert.Null(result.Request.ResolvedByUserId);
+        Assert.Null(result.Request.ResolvedByName);
+
+        var persisted = await LoadRequestAsync(db, created.Request.Id);
+        Assert.Equal(AuthorizationStatus.Cancelled, persisted.Status);
+        Assert.NotNull(persisted.ResolvedAt);
+        Assert.Null(persisted.ResolutionMode);
+        Assert.Null(persisted.ResolvedByUserId);
+        Assert.Null(persisted.ResolvedByName);
+        Assert.Null(persisted.ResolutionReason);
+
+        var audit = await db.AuthorizationAudits.AsNoTracking().SingleAsync();
+        Assert.Equal(created.Request.Id, audit.RequestId);
+        Assert.Equal(AuthorizationStatus.Cancelled, audit.Status);
+        Assert.Null(audit.ResolutionMode);
+        Assert.Null(audit.ResolvedByUserId);
+        Assert.Null(audit.ResolvedByName);
+        Assert.Equal(persisted.ResolvedAt, audit.ResolvedAt);
+    }
+
+    [Fact]
+    public async Task CancelAsync_NonRequester_IsForbiddenWithExactMessageAndNoMutation()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+
+        var result = await service.CancelAsync(created.Request!.Id, requesterUserId: 71);
+
+        Assert.Equal(CancelAuthorizationOutcome.Forbidden, result.Outcome);
+        Assert.Equal("Solo el solicitante puede cancelar la solicitud.", result.Message);
+        Assert.Equal(AuthorizationStatus.Pending, (await LoadRequestAsync(db, created.Request.Id)).Status);
+        Assert.Equal(0, await db.AuthorizationAudits.CountAsync());
+    }
+
+    [Fact]
+    public async Task CancelAsync_AlreadyApproved_ReturnsAlreadyResolvedWithResolverName()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+        await service.ResolveAsync(created.Request!.Id, resolverUserId: 2, resolverName: "Admin Uno", approved: true);
+
+        var result = await service.CancelAsync(created.Request.Id, requesterUserId: 70);
+
+        Assert.Equal(CancelAuthorizationOutcome.AlreadyResolved, result.Outcome);
+        Assert.Equal("Esta solicitud ya fue resuelta por Admin Uno.", result.Message);
+        Assert.Equal(AuthorizationStatus.Approved, (await LoadRequestAsync(db, created.Request.Id)).Status);
+        Assert.Equal(1, await db.AuthorizationAudits.CountAsync());
+    }
+
+    [Fact]
+    public async Task CancelAsync_AlreadyExpired_ReturnsExpiredWithExactMessage()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+        await UpdateRequestAsync(db, created.Request!.Id, request =>
+        {
+            request.Status = AuthorizationStatus.Expired;
+            request.ResolvedAt = FixedUtc;
+        });
+
+        var result = await service.CancelAsync(created.Request.Id, requesterUserId: 70);
+
+        Assert.Equal(CancelAuthorizationOutcome.Expired, result.Outcome);
+        Assert.Equal("La solicitud expiró; debe generarse una nueva.", result.Message);
+        Assert.Equal(AuthorizationStatus.Expired, (await LoadRequestAsync(db, created.Request.Id)).Status);
+        Assert.Equal(0, await db.AuthorizationAudits.CountAsync());
+    }
+
+    [Fact]
+    public async Task CancelAsync_PendingPastLifetime_LazilyExpiresWithAuditAndReportsExpired()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+        await UpdateRequestAsync(db, created.Request!.Id, request => request.ExpiresAt = DateTime.UtcNow.AddSeconds(-5));
+
+        var result = await service.CancelAsync(created.Request.Id, requesterUserId: 70);
+
+        Assert.Equal(CancelAuthorizationOutcome.Expired, result.Outcome);
+        Assert.Equal("La solicitud expiró; debe generarse una nueva.", result.Message);
+
+        var persisted = await LoadRequestAsync(db, created.Request.Id);
+        Assert.Equal(AuthorizationStatus.Expired, persisted.Status);
+        Assert.NotNull(persisted.ResolvedAt);
+        Assert.Null(persisted.ResolutionMode);
+
+        var audit = await db.AuthorizationAudits.AsNoTracking().SingleAsync();
+        Assert.Equal(AuthorizationStatus.Expired, audit.Status);
+        Assert.Null(audit.ResolvedByUserId);
+        Assert.Equal(persisted.ResolvedAt, audit.ResolvedAt);
+    }
+
+    [Fact]
+    public async Task CancelAsync_SecondCancel_ReturnsAlreadyResolvedWithoutSecondAudit()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+        await service.CancelAsync(created.Request!.Id, requesterUserId: 70);
+
+        var second = await service.CancelAsync(created.Request.Id, requesterUserId: 70);
+
+        Assert.Equal(CancelAuthorizationOutcome.AlreadyResolved, second.Outcome);
+        Assert.Equal("Esta solicitud ya fue resuelta por otro usuario.", second.Message);
+        Assert.Equal(1, await db.AuthorizationAudits.CountAsync());
+    }
+
+    [Fact]
+    public async Task CancelAsync_NotFound_ReturnsNotFound()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        var service = CreateService(db);
+
+        var result = await service.CancelAsync(99999, requesterUserId: 70);
+
+        Assert.Equal(CancelAuthorizationOutcome.NotFound, result.Outcome);
+        Assert.Equal("La solicitud de autorización no existe.", result.Message);
+    }
+
     // ---------------------------------------------------------------- lectura
 
     [Fact]
@@ -1107,5 +1474,81 @@ public class AuthorizationServiceTests
         await verificationContext.AuthorizationRequests
             .Where(row => row.RequestedByUserId == userId)
             .ExecuteDeleteAsync();
+    }
+
+    [Fact]
+    public async Task CreateAsync_ConcurrentNullSaleCollisionOnPostgres_TranslatesUniqueViolationToDeduplicated()
+    {
+        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        const int userId = 86001;
+        var databaseName = $"pos_auth_null_sale_{Guid.NewGuid():N}";
+        var derivedConnection = await CreateIsolatedPostgresDatabaseAsync(connectionString, databaseName);
+        try
+        {
+            var options = new DbContextOptionsBuilder<SalesDbContext>()
+                .UseNpgsql(derivedConnection.ConnectionString)
+                .Options;
+            await using (var bootstrap = new SalesDbContext(options))
+            {
+                await bootstrap.Database.MigrateAsync();
+            }
+
+            // La terminal perdedora inserta despues de que la ganadora commiteo una Pending con
+            // SaleId NULL: el indice NULLS NOT DISTINCT produce el 23505 que el servicio traduce.
+            ConflictInjectingSalesDbContext? raceContext = null;
+            raceContext = new ConflictInjectingSalesDbContext(options, async (_, cancellationToken) =>
+            {
+                await using var winnerContext = new SalesDbContext(options);
+                winnerContext.AuthorizationRequests.Add(BuildWinnerRequest(userId, saleId: null));
+                await winnerContext.SaveChangesAsync(cancellationToken);
+            });
+            await using var scope = raceContext;
+            var service = CreateService(raceContext);
+
+            var result = await service.CreateAsync(Command(userId: userId, saleId: null));
+
+            Assert.Equal(CreateAuthorizationOutcome.Deduplicated, result.Outcome);
+            Assert.NotNull(result.Request);
+            Assert.Equal("Caja-02", result.Request!.Terminal);
+
+            var persisted = await raceContext.AuthorizationRequests.AsNoTracking().SingleAsync();
+            Assert.Equal(AuthorizationStatus.Pending, persisted.Status);
+            Assert.Null(persisted.SaleId);
+        }
+        finally
+        {
+            await DropIsolatedPostgresDatabaseAsync(connectionString, databaseName);
+        }
+    }
+
+    private static async Task<NpgsqlConnectionStringBuilder> CreateIsolatedPostgresDatabaseAsync(
+        string baseConnectionString,
+        string databaseName)
+    {
+        var maintenance = new NpgsqlConnectionStringBuilder(baseConnectionString) { Database = "postgres" }.ConnectionString;
+        await using (var connection = new NpgsqlConnection(maintenance))
+        {
+            await connection.OpenAsync();
+            await using (var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)", connection))
+            {
+                await drop.ExecuteNonQueryAsync();
+            }
+
+            await using var create = new NpgsqlCommand($"CREATE DATABASE \"{databaseName}\"", connection);
+            await create.ExecuteNonQueryAsync();
+        }
+
+        return new NpgsqlConnectionStringBuilder(baseConnectionString) { Database = databaseName };
+    }
+
+    private static async Task DropIsolatedPostgresDatabaseAsync(string baseConnectionString, string databaseName)
+    {
+        var maintenance = new NpgsqlConnectionStringBuilder(baseConnectionString) { Database = "postgres" }.ConnectionString;
+        await using var connection = new NpgsqlConnection(maintenance);
+        await connection.OpenAsync();
+        await using var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)", connection);
+        await drop.ExecuteNonQueryAsync();
     }
 }

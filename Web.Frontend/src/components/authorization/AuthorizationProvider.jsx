@@ -6,12 +6,15 @@ import {
 } from '../../services/authorizationHub.js';
 import {
   AUTHORIZATION_PHASES,
+  AUTHORIZATION_SETTLEMENTS,
   AUTHORIZATION_STRINGS,
   applyAuthorizationExpiry,
   applyAuthorizationResolution,
   cancelAuthorizationWait,
   createAuthorizationFlowState,
+  getAuthorizationSettlement,
   getRemainingSeconds,
+  isAuthorizationPending,
   retryAuthorizationWait,
   startAuthorizationWait,
 } from '../../services/authorizationFlow.js';
@@ -50,6 +53,36 @@ export function AuthorizationProvider({ children }) {
     if (mountedRef.current) setFlow(next);
   }, []);
 
+  // 8.151 (W2, R5/design D5): la promesa del caller liquida una sola vez; el acuse de rechazo
+  // permanece abierto hasta que el operador lo cierra (el guard de espera unica se libera ahi).
+  const settlePending = useCallback((result) => {
+    const current = pendingRef.current;
+    if (!current || !current.resolve || current.settled) return false;
+    current.settled = true;
+    current.resolve(result);
+    return true;
+  }, []);
+
+  // 8.151 (W2, R5/D5): el rechazo llega del servidor (push o GET de estado) y liquida al
+  // instante. Si el cliente ya habia degradado a expirado (desfase de reloj), la transicion
+  // del reducer no aplica pero el estado terminal del servidor manda y el caller lo conoce.
+  const settleRejection = useCallback((reason, resolvedByName) => {
+    const settlement = getAuthorizationSettlement(flowRef.current, AUTHORIZATION_SETTLEMENTS.REJECTION)
+      ?? { ok: false, outcome: 'rejected', reason: reason ?? null, resolvedByName: resolvedByName ?? null };
+    settlePending(settlement);
+  }, [settlePending]);
+
+  // 8.151 (W2, R4-client): cierre local por cancelacion confirmada (local o push del servidor).
+  const closeCancelled = useCallback(() => {
+    settlePending({ ok: false, cancelled: true });
+    pendingRef.current = null;
+    executionRef.current = null;
+    commitFlow(cancelAuthorizationWait());
+    setIsLocalFormOpen(false);
+    setLocalError(null);
+    setRetryError(null);
+  }, [commitFlow, settlePending]);
+
   const expireWait = useCallback(() => {
     if (!pendingRef.current || !pendingRef.current.resolve) return;
     if (flowRef.current.phase !== AUTHORIZATION_PHASES.WAITING) return;
@@ -79,11 +112,11 @@ export function AuthorizationProvider({ children }) {
 
     try {
       await current.retry(token);
+      settlePending({ ok: true, requestId, token, resolutionMode, resolvedByName });
       pendingRef.current = null;
       executionRef.current = null;
       commitFlow(createAuthorizationFlowState());
       setIsLocalFormOpen(false);
-      current.resolve({ ok: true, requestId, token, resolutionMode, resolvedByName });
     } catch (err) {
       // Token ya consumido o ejecucion fallida: se conserva el token para reintentar
       // (el endpoint replay-aware resuelve la idempotencia) y se muestra el error real.
@@ -91,7 +124,7 @@ export function AuthorizationProvider({ children }) {
     } finally {
       isExecutingRef.current = false;
     }
-  }, [commitFlow]);
+  }, [commitFlow, settlePending]);
 
   const recoverStatus = useCallback(async () => {
     const current = pendingRef.current;
@@ -131,6 +164,12 @@ export function AuthorizationProvider({ children }) {
         resolvedByName: status.resolvedByName ?? null,
       }));
       setIsLocalFormOpen(false);
+      settleRejection(status.reason ?? null, status.resolvedByName ?? null);
+      return true;
+    }
+
+    if (status.status === 'Cancelled') {
+      closeCancelled();
       return true;
     }
 
@@ -154,12 +193,18 @@ export function AuthorizationProvider({ children }) {
     }
 
     return false;
-  }, [commitFlow, executeRetry, expireWait]);
+  }, [closeCancelled, commitFlow, executeRetry, expireWait, settleRejection]);
 
   const applyResolvedPayload = useCallback((payload) => {
     const current = pendingRef.current;
     if (!current || !current.resolve || !payload) return;
     if (Number(payload.requestId) !== flowRef.current.requestId) return;
+
+    // 8.151 (W2, R4): el push de cancelacion (sin token) cierra la espera como cancelada.
+    if (payload.status === 'Cancelled') {
+      closeCancelled();
+      return;
+    }
 
     const approved = payload.approved === true || payload.status === 'Approved';
     if (!approved) {
@@ -170,6 +215,7 @@ export function AuthorizationProvider({ children }) {
       }));
       setIsLocalFormOpen(false);
       setLocalError(null);
+      settleRejection(payload.reason ?? null, payload.resolvedByName ?? null);
       return;
     }
 
@@ -183,7 +229,7 @@ export function AuthorizationProvider({ children }) {
     setIsLocalFormOpen(false);
     setLocalError(null);
     executeRetry(payload.token ?? null, resolutionMode, payload.resolvedByName ?? null);
-  }, [commitFlow, executeRetry]);
+  }, [closeCancelled, commitFlow, executeRetry, settleRejection]);
 
   const applyExpiredPayload = useCallback((payload) => {
     const current = pendingRef.current;
@@ -253,7 +299,7 @@ export function AuthorizationProvider({ children }) {
     setRemainingSeconds(getRemainingSeconds(request.expiresAt));
 
     return new Promise((resolve) => {
-      pendingRef.current = { resolve, context, retry };
+      pendingRef.current = { resolve, context, retry, settled: false };
       // Recuperacion inmediata: si la resolucion se emitio antes de registrar el requestId,
       // el GET de estado cierra la ventana de push perdido sin esperar al reconnect.
       recoverStatus();
@@ -270,15 +316,28 @@ export function AuthorizationProvider({ children }) {
       return false;
     }
 
+    // 8.151 (W2, R4-client): retiro best-effort en el servidor solo mientras la solicitud sigue
+    // Pending. Un fallo no bloquea el cierre local: la solicitud expira naturalmente.
+    if (isAuthorizationPending(flowRef.current)) {
+      authorizationHub.cancelRequest(flowRef.current.requestId).catch(() => {});
+    }
+
+    if (phase === AUTHORIZATION_PHASES.EXPIRED) {
+      // 8.151 (W2, R5/D5): desestimar la expirada sin reintentar liquida expired.
+      settlePending(getAuthorizationSettlement(flowRef.current, AUTHORIZATION_SETTLEMENTS.EXPIRED_DISMISSAL));
+    } else if (phase === AUTHORIZATION_PHASES.WAITING) {
+      settlePending(getAuthorizationSettlement(flowRef.current, AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL));
+    }
+    // Fase rejected: la promesa ya liquido al llegar el rechazo; el cierre solo oculta el acuse.
+
     pendingRef.current = null;
     executionRef.current = null;
     commitFlow(cancelAuthorizationWait());
     setIsLocalFormOpen(false);
     setLocalError(null);
     setRetryError(null);
-    current.resolve({ ok: false, cancelled: true });
     return true;
-  }, [commitFlow]);
+  }, [commitFlow, settlePending]);
 
   const retryWait = useCallback(async () => {
     const current = pendingRef.current;
