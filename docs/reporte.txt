@@ -13521,3 +13521,72 @@ H1. 8.160 en V0.15: 5a6ac28 (plan) + 97fc513 (particion atomica) + ef84c47 (T1)
     L5 del tracker ODD).
 ================================================================================
 
+================================================================================
+ANEXO 8.161 - FACTURAS PROVEEDOR: ALTA DE PROVEEDOR EN MODAL Y FILA UNICA (PROVEEDOR / MONEDA / TASA) - 2026-10-10
+================================================================================
+Ejecucion directa pedida por el mantenedor (sin SDD): "Mueve los campos relacionados
+al registro de Proveedores (RIF / NIT) a un modal al que se acceda desde el boton de
+'Registrar proveedor'. haz una unica fila con el proveedor, moneda y tasa", con
+eleccion explicita de la opcion A (el combo carga todos los proveedores al abrir la
+vista con tipeo; "Buscar proveedor" desaparece; el modal solo registra).
+
+A. ALCANCE Y ENTREGA
+
+A1. Desktop: campos RIF/NIT y Nombre comercial movidos al modal "Registrar
+    proveedor" (nuevo RegisterSupplierDialog + RegisterSupplierDialogViewModel,
+    patron CreateInvoiceProductDialog); el boton "Registrar proveedor" lo abre y
+    el modal se precarga con los datos vigentes (incluidas las pistas OCR).
+A2. Desktop: card superior reducido a UNA fila: [Proveedor (combo)] [Moneda]
+    [Tasa aplicada + hint] + boton "Registrar proveedor". "Buscar proveedor"
+    retirado junto con su comando.
+A3. Combo de proveedores: listado completo al abrir la vista (Loaded ->
+    LoadSuppliersCommand) con TextSearch por nombre; la seleccion vigente se
+    preserva por Id con instancia fresca (los DTO son records de igualdad por
+    valor: null-then-set evita seleccion stale — defecto cazado por el test
+    nuevo antes de commitear).
+A4. Backend/cliente: GetSuppliersAsync sin filtros devuelve el listado completo
+    ordenado (backend: cota defensiva de 500; con filtro conserva la cota de 20)
+    y el cliente ya no exige RIF/nombre (ruta api/suppliers sin query string).
+A5. Sin migraciones; prefill/confirm de margenes, flujo OCR y ruta tabular
+    intactos.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2230/2230, 0 fallas (SIN PostgreSQL real local: credenciales
+    locales rechazadas 28P01, gated early-return; CI cubre al push) — 9 tests
+    nuevos (dialog VM x4, listado con preservacion por Id, registro via modal
+    confirmado/cancelado, ruta sin filtros cliente/backend) + adaptacion del
+    test de advertencia por plantilla guardada.
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8937, Sales.Module 0.8971, Inventory.Module 0.8712.
+B4. E2E salud WPF (mock): 2/2 (render de la vista con la fila unica).
+B5. RED compile-level observado antes de implementar (CS1061/CS0246 de los
+    miembros nuevos) -> GREEN; el test de preservacion por Id cazo el defecto de
+    igualdad por valor de los records antes del commit.
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. Suite sin PostgreSQL real local (misma degeneracion documentada del 8.160).
+D2. UI verificada por compilacion + E2E salud; sin ejecucion interactiva del
+    modal ni del combo en runtime.
+D3. Edicion de proveedores existentes (renombrar/corregir RIF) no incluida: el
+    modal solo registra (fuera de alcance del pedido).
+
+E. ROLLBACK
+
+E1. Revertir el commit del tramo restaura los campos inline + "Buscar
+    proveedor" y el guard de filtros en cliente/backend; sin migraciones ni
+    reescrituras de datos.
+
+F. COMMITS
+
+F1. 8.161 en V0.15: commit de implementacion (feat(8.161)) + commit de este
+    ANEXO (docs(8.161); git log).
+================================================================================
+

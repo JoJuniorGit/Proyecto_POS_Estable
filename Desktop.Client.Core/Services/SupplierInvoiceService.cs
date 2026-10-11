@@ -40,14 +40,12 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
             query.Add($"commercialName={Uri.EscapeDataString(commercialName.Trim())}");
         }
 
-        if (query.Count == 0)
-        {
-            throw new ArgumentException("A supplier RIF/NIT or commercial name is required.");
-        }
-
-        using var response = await _httpClient.GetAsync(
-            $"api/suppliers?{string.Join("&", query)}",
-            cancellationToken);
+        // 8.161: sin filtros consulta el listado completo (selector de la vista); con RIF/NIT o
+        // nombre conserva la busqueda exacta.
+        var route = query.Count == 0
+            ? "api/suppliers"
+            : $"api/suppliers?{string.Join("&", query)}";
+        using var response = await _httpClient.GetAsync(route, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<List<SupplierSummaryDto>>(
                    cancellationToken: cancellationToken)

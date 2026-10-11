@@ -71,10 +71,10 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     public bool IsRateInputEnabled => IsCurrencyInputEnabled && IsBsSCurrency;
 
     public bool CanSelectFile => CanMutateCatalog && !IsBusy;
-    public bool CanLookupSupplier => CanMutateCatalog && !IsBusy &&
-        (!string.IsNullOrWhiteSpace(SupplierRifOrNit) || !string.IsNullOrWhiteSpace(SupplierCommercialName));
-    public bool CanCreateSupplier => CanMutateCatalog && !IsBusy && SelectedSupplier is null &&
-        !string.IsNullOrWhiteSpace(SupplierCommercialName);
+
+    /// <summary>8.161: el alta de proveedor vive en un modal; el boton solo exige permiso y no estar ocupado.</summary>
+    public bool CanOpenRegisterSupplier => CanMutateCatalog && !IsBusy;
+
     public bool CanStageInvoice => CanMutateCatalog && !IsBusy && SelectedSupplier is not null &&
         !string.IsNullOrWhiteSpace(SelectedFilePath) && HasFileHeaders && HasValidColumnMapping() &&
         HasValidAppliedRate;
@@ -118,10 +118,6 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         ApplyCurrentColumnMapping();
         RefreshCommandStates();
     }
-
-    partial void OnSupplierRifOrNitChanged(string value) => RefreshCommandStates();
-
-    partial void OnSupplierCommercialNameChanged(string value) => RefreshCommandStates();
 
     partial void OnSelectedFilePathChanged(string value) => RefreshCommandStates();
 
@@ -213,45 +209,39 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanLookupSupplier))]
-    private async Task LookupSupplierAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// 8.161: carga/refresca el listado completo de proveedores del selector de la vista.
+    /// Se dispara al abrir la vista; preserva la seleccion vigente por Id.
+    /// </summary>
+    [RelayCommand]
+    private async Task LoadSuppliersAsync(CancellationToken cancellationToken)
     {
-        if (!CanMutateCatalog)
+        if (IsBusy || !CanMutateCatalog)
         {
-            ShowAccessDenied();
             return;
         }
 
+        var previousSupplierId = SelectedSupplier?.Id;
         IsBusy = true;
         try
         {
-            var suppliers = await _invoiceService.GetSuppliersAsync(
-                NormalizeInput(SupplierRifOrNit),
-                NormalizeInput(SupplierCommercialName),
-                cancellationToken);
+            var suppliers = await _invoiceService.GetSuppliersAsync(null, null, cancellationToken);
             Suppliers = new ObservableCollection<SupplierSummaryDto>(suppliers);
-
-            if (suppliers.Count == 0)
+            if (previousSupplierId is int supplierId)
             {
-                SelectedSupplier = null;
-                StatusMessage = "No se encontró el proveedor. Complete el nombre para registrarlo.";
-                _dialogService.ShowInfo("Proveedor no encontrado", StatusMessage);
-            }
-            else if (suppliers.Count > 1)
-            {
-                SelectedSupplier = null;
-                StatusMessage = "Se encontraron varios proveedores. Seleccione el correcto antes de continuar.";
-            }
-            else
-            {
-                StatusMessage = "Proveedor seleccionado. Revise la asignación guardada de columnas.";
-                SelectedSupplier = suppliers[0];
+                var match = Suppliers.FirstOrDefault(supplier => supplier.Id == supplierId);
+                if (!ReferenceEquals(SelectedSupplier, match))
+                {
+                    // 8.161: los DTO son records (igualdad por valor); el null intermedio fuerza
+                    // la instancia fresca del listado y evita una seleccion stale.
+                    SelectedSupplier = null;
+                    SelectedSupplier = match;
+                }
             }
         }
         catch (Exception exception)
         {
-            StatusMessage = $"No se pudo buscar el proveedor: {exception.Message}";
-            _dialogService.ShowError("Error de búsqueda", StatusMessage);
+            StatusMessage = $"No se pudo cargar la lista de proveedores: {exception.Message}";
         }
         finally
         {
@@ -260,8 +250,12 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanCreateSupplier))]
-    private async Task CreateSupplierAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// 8.161: el alta de proveedor vive en un modal (RIF/NIT + nombre comercial) precargado con
+    /// los datos vigentes (incluidas las pistas OCR). Al confirmar, registra y selecciona.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanOpenRegisterSupplier))]
+    private async Task OpenRegisterSupplierAsync(CancellationToken cancellationToken)
     {
         if (!CanMutateCatalog)
         {
@@ -269,9 +263,31 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(SupplierCommercialName))
+        var dialogViewModel = new RegisterSupplierDialogViewModel(
+            NormalizeInput(SupplierRifOrNit),
+            SupplierCommercialName);
+        if (_dialogService.ShowRegisterSupplierDialog(dialogViewModel) != true)
         {
-            _dialogService.ShowWarning("Datos incompletos", "Ingrese el nombre comercial del proveedor.");
+            return;
+        }
+
+        await RegisterSupplierAsync(
+            dialogViewModel.RifOrNit,
+            dialogViewModel.CommercialName,
+            cancellationToken);
+    }
+
+    /// <summary>8.161: registra el proveedor capturado en el modal y lo deja seleccionado.</summary>
+    public async Task RegisterSupplierAsync(
+        string? rifOrNit,
+        string commercialName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(commercialName);
+
+        if (!CanMutateCatalog)
+        {
+            ShowAccessDenied();
             return;
         }
 
@@ -280,10 +296,14 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         {
             var supplier = await _invoiceService.CreateSupplierAsync(
                 new CreateSupplierRequestDto(
-                    NormalizeInput(SupplierRifOrNit),
-                    SupplierCommercialName.Trim()),
+                    NormalizeInput(rifOrNit),
+                    commercialName.Trim()),
                 cancellationToken);
-            Suppliers.Add(supplier);
+            if (!Suppliers.Any(existing => existing.Id == supplier.Id))
+            {
+                Suppliers.Add(supplier);
+            }
+
             SelectedSupplier = supplier;
             StatusMessage = "Proveedor registrado y seleccionado.";
             _dialogService.ShowInfo("Proveedor registrado", StatusMessage);
@@ -566,16 +586,14 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     private void RefreshCommandStates()
     {
         OnPropertyChanged(nameof(CanSelectFile));
-        OnPropertyChanged(nameof(CanLookupSupplier));
-        OnPropertyChanged(nameof(CanCreateSupplier));
+        OnPropertyChanged(nameof(CanOpenRegisterSupplier));
         OnPropertyChanged(nameof(CanStageInvoice));
         OnPropertyChanged(nameof(CanConfirmInvoice));
         OnPropertyChanged(nameof(CanScanInvoice));
         OnPropertyChanged(nameof(IsCurrencyInputEnabled));
         OnPropertyChanged(nameof(IsRateInputEnabled));
         SelectFileCommand.NotifyCanExecuteChanged();
-        LookupSupplierCommand.NotifyCanExecuteChanged();
-        CreateSupplierCommand.NotifyCanExecuteChanged();
+        OpenRegisterSupplierCommand.NotifyCanExecuteChanged();
         StageInvoiceCommand.NotifyCanExecuteChanged();
         ConfirmInvoiceCommand.NotifyCanExecuteChanged();
         ScanInvoiceCommand.NotifyCanExecuteChanged();

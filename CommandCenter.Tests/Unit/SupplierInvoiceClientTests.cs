@@ -305,20 +305,85 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
-    public async Task LookupSupplier_SingleMatchWithMissingSavedColumns_KeepsSpecificWarning()
+    public void SelectedSupplier_WithMissingSavedColumns_KeepsSpecificWarning()
     {
+        // 8.161: la seleccion ocurre en el combo (listado completo); la advertencia por columnas
+        // guardadas ausentes se conserva al aplicar el mapping del proveedor seleccionado.
         var savedMapping = new SupplierColumnMappingDto("EAN", "Vendor Code", "Item", "Units", "Cost");
         var supplier = new SupplierSummaryDto(7, "J-123", "Supplier", savedMapping);
-        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
-        service.Setup(client => client.GetSuppliersAsync("J-123", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { supplier });
-        var viewModel = CreateViewModel(service.Object);
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
         viewModel.SetFileHeaders(new[] { "EAN", "Vendor Code", "Item", "Units" });
-        viewModel.SupplierRifOrNit = "J-123";
 
-        await viewModel.LookupSupplierCommand.ExecuteAsync(null);
+        viewModel.SelectedSupplier = supplier;
 
         Assert.Contains("no aparecen en el archivo", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task LoadSuppliers_PopulatesSelectorAndPreservesSelectionById()
+    {
+        // 8.161: al abrir la vista se lista todo el catalogo de proveedores y la seleccion vigente
+        // se preserva por Id (instancias nuevas del listado).
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        service.Setup(client => client.GetSuppliersAsync(null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new SupplierSummaryDto(1, "J-1", "Proveedor Alfa", null),
+                new SupplierSummaryDto(2, "J-2", "Proveedor Beta", null)
+            });
+        var viewModel = CreateViewModel(service.Object);
+        viewModel.SelectedSupplier = new SupplierSummaryDto(2, "J-2", "Proveedor Beta", null);
+
+        await viewModel.LoadSuppliersCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, viewModel.Suppliers.Count);
+        Assert.Equal(2, viewModel.SelectedSupplier?.Id);
+        Assert.Same(viewModel.Suppliers[1], viewModel.SelectedSupplier);
+        service.VerifyAll();
+    }
+
+    [Fact]
+    public async Task OpenRegisterSupplier_WithConfirmedDialog_RegistersAndSelects()
+    {
+        // 8.161: el boton "Registrar proveedor" abre el modal; al confirmar, el proveedor se
+        // registra, se agrega al selector y queda seleccionado.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        service.Setup(client => client.CreateSupplierAsync(
+                It.Is<CreateSupplierRequestDto>(request =>
+                    request.RifOrNit == "J-777" && request.CommercialName == "Nuevo Proveedor"),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SupplierSummaryDto(9, "J-777", "Nuevo Proveedor", null));
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(dialogService => dialogService.ShowRegisterSupplierDialog(It.IsAny<RegisterSupplierDialogViewModel>()))
+            .Callback<RegisterSupplierDialogViewModel>(dialogViewModel =>
+            {
+                dialogViewModel.RifOrNit = "J-777";
+                dialogViewModel.CommercialName = "Nuevo Proveedor";
+            })
+            .Returns(true);
+        var viewModel = CreateViewModel(service.Object, dialogService: dialog.Object);
+
+        await viewModel.OpenRegisterSupplierCommand.ExecuteAsync(null);
+
+        Assert.Equal(9, viewModel.SelectedSupplier?.Id);
+        Assert.Contains(viewModel.Suppliers, supplier => supplier.Id == 9);
+        Assert.Contains("registrado", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        service.VerifyAll();
+    }
+
+    [Fact]
+    public async Task OpenRegisterSupplier_WithCancelledDialog_DoesNotRegister()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(dialogService => dialogService.ShowRegisterSupplierDialog(It.IsAny<RegisterSupplierDialogViewModel>()))
+            .Returns(false);
+        var viewModel = CreateViewModel(service.Object, dialogService: dialog.Object);
+
+        await viewModel.OpenRegisterSupplierCommand.ExecuteAsync(null);
+
+        service.VerifyNoOtherCalls();
+        Assert.Null(viewModel.SelectedSupplier);
     }
 
     [Fact]
@@ -544,6 +609,37 @@ public sealed class SupplierInvoiceClientTests
         Assert.Equal(
             new SupplierColumnMappingDto("EAN", "Vendor Code", "Item", "Units", "Cost"),
             Assert.Single(result).ColumnMapping);
+    }
+
+    [Fact]
+    public async Task GetSuppliersAsync_WithoutFilters_ListsAllFromRootRoute()
+    {
+        // 8.161: sin filtros el cliente consulta el listado completo (sin query string).
+        var supplier = new SupplierSummaryDto(1, "J-1", "Proveedor Alfa", null);
+        var handler = new StubHttpMessageHandler(JsonResponse(new[] { supplier }));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        var suppliers = await service.GetSuppliersAsync(null, null);
+
+        Assert.Equal("/api/suppliers", Assert.Single(handler.RequestPaths));
+        Assert.Equal(1, Assert.Single(suppliers).Id);
+    }
+
+    [Fact]
+    public async Task GetSuppliersAsync_WithoutFilters_ReturnsOrderedFullListing()
+    {
+        // 8.161: el backend sin filtros devuelve el catalogo completo ordenado por nombre
+        // (selector de la vista), sin exigir RIF/nombre.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        context.Suppliers.Add(new Supplier { CommercialName = "Zeta", NormalizedCommercialName = "ZETA" });
+        context.Suppliers.Add(new Supplier { CommercialName = "Alfa", NormalizedCommercialName = "ALFA" });
+        await context.SaveChangesAsync();
+        var service = CreateBackendService(context);
+
+        var result = await service.GetSuppliersAsync(null, null);
+
+        Assert.Equal(new[] { "Alfa", "Zeta" }, result.Select(supplier => supplier.CommercialName));
     }
 
     [Fact]

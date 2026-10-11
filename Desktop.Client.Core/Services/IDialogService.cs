@@ -36,6 +36,12 @@ public interface IDialogService
     /// </summary>
     bool? ShowCreateInvoiceProductDialog(ViewModels.CreateInvoiceProductDialogViewModel dialogVm) => null;
 
+    /// <summary>
+    /// 8.161: modal de alta de proveedor (RIF/NIT + nombre comercial) desde la vista de facturas.
+    /// Implementacion por defecto sin UI (stubs headless): null equivale a dialogo cancelado.
+    /// </summary>
+    bool? ShowRegisterSupplierDialog(ViewModels.RegisterSupplierDialogViewModel dialogVm) => null;
+
     (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();

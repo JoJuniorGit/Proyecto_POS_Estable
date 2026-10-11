@@ -54,50 +54,25 @@
         </StackPanel>
 
         <materialDesign:Card Grid.Row="1" Padding="16" Margin="0,0,0,12">
+            <!-- 8.161: fila unica de seleccion (proveedor, moneda, tasa); el alta de proveedor
+                 (RIF/NIT + nombre comercial) vive en el modal del boton "Registrar proveedor". -->
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
 
-                <TextBox Grid.Row="0" Grid.Column="0"
-                         Text="{Binding SupplierRifOrNit, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                         materialDesign:HintAssist.Hint="RIF / NIT"
-                         IsEnabled="{Binding CanMutateCatalog}"
-                         Margin="0,0,10,8" />
-                <TextBox Grid.Row="0" Grid.Column="1"
-                         Text="{Binding SupplierCommercialName, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                         materialDesign:HintAssist.Hint="Nombre comercial"
-                         IsEnabled="{Binding CanMutateCatalog}"
-                         Margin="0,0,10,8" />
-                <Button Grid.Row="0" Grid.Column="2"
-                        Command="{Binding LookupSupplierCommand}"
-                        Content="Buscar proveedor"
-                        Style="{StaticResource MaterialDesignOutlinedButton}"
-                        IsEnabled="{Binding CanLookupSupplier}"
-                        Margin="0,0,8,8" />
-                <Button Grid.Row="0" Grid.Column="3"
-                        Command="{Binding CreateSupplierCommand}"
-                        Content="Registrar proveedor"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        IsEnabled="{Binding CanCreateSupplier}"
-                        Margin="0,0,0,8" />
-
-                <ComboBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
+                <ComboBox Grid.Column="0"
                           ItemsSource="{Binding Suppliers}"
                           SelectedItem="{Binding SelectedSupplier, Mode=TwoWay}"
                           Style="{StaticResource MaterialDesignOutlinedComboBox}"
                           materialDesign:HintAssist.Hint="Seleccione el proveedor"
-                          IsEnabled="{Binding CanMutateCatalog}">
+                          TextSearch.TextPath="CommercialName"
+                          IsEnabled="{Binding CanMutateCatalog}"
+                          VerticalAlignment="Top"
+                          Margin="0,0,10,0">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">
@@ -109,14 +84,17 @@
                     </ComboBox.ItemTemplate>
                 </ComboBox>
 
-                <ComboBox Grid.Row="2" Grid.Column="0"
+                <ComboBox Grid.Column="1"
                           ItemsSource="{Binding CurrencyOptions}"
                           SelectedItem="{Binding SelectedCurrency, Mode=TwoWay}"
                           Style="{StaticResource MaterialDesignOutlinedComboBox}"
                           materialDesign:HintAssist.Hint="Moneda del documento"
                           IsEnabled="{Binding IsCurrencyInputEnabled}"
-                          Margin="0,8,10,0" />
-                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,8,10,0">
+                          MinWidth="170"
+                          VerticalAlignment="Top"
+                          Margin="0,0,10,0" />
+
+                <StackPanel Grid.Column="2" MinWidth="190" VerticalAlignment="Top" Margin="0,0,10,0">
                     <TextBox Text="{Binding AppliedRateText, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource MaterialDesignOutlinedTextBox}"
                              materialDesign:HintAssist.Hint="Tasa aplicada (Bs.S)"
@@ -126,6 +104,14 @@
                                Foreground="#DC2626" FontSize="11" Margin="4,4,0,0"
                                Visibility="{Binding ShowRateValidationHint, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
+
+                <Button Grid.Column="3"
+                        Command="{Binding OpenRegisterSupplierCommand}"
+                        Content="Registrar proveedor"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        IsEnabled="{Binding CanOpenRegisterSupplier}"
+                        VerticalAlignment="Top"
+                        AutomationProperties.Name="Registrar proveedor de facturas" />
             </Grid>
         </materialDesign:Card>
 

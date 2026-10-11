@@ -76,11 +76,7 @@ public partial class SupplierInvoiceService
     {
         var normalizedRifOrNit = NormalizeSupplierRifOrNit(rifOrNit);
         var normalizedCommercialName = NormalizeSupplierName(commercialName);
-
-        if (normalizedRifOrNit.Length == 0 && normalizedCommercialName.Length == 0)
-        {
-            throw new ArgumentException("A RIF/NIT or commercial name is required.");
-        }
+        var isFiltered = normalizedRifOrNit.Length > 0 || normalizedCommercialName.Length > 0;
 
         var query = _context.Suppliers.AsNoTracking();
         if (normalizedRifOrNit.Length > 0 && normalizedCommercialName.Length > 0)
@@ -93,15 +89,19 @@ public partial class SupplierInvoiceService
         {
             query = query.Where(supplier => supplier.NormalizedRifOrNit == normalizedRifOrNit);
         }
-        else
+        else if (normalizedCommercialName.Length > 0)
         {
             query = query.Where(supplier => supplier.NormalizedCommercialName == normalizedCommercialName);
         }
 
+        // 8.161: sin filtros devuelve el listado completo para el selector de la vista (cota
+        // defensiva de 500); con filtro conserva la cota de 20 de la busqueda exacta.
+        var take = isFiltered ? 20 : 500;
+
         return await query
             .OrderBy(supplier => supplier.CommercialName)
             .ThenBy(supplier => supplier.Id)
-            .Take(20)
+            .Take(take)
             .Select(supplier => new SupplierSummaryDto(
                 supplier.Id,
                 supplier.RifOrNit,
