@@ -13589,3 +13589,57 @@ F. COMMITS
 F1. 8.161 en V0.15: commit unico con implementacion + ANEXO: 04b825e (git log).
 ================================================================================
 
+================================================================================
+ANEXO 8.162 - PARSER OCR: SELECCION DEL NUMERO POR CERCANIA AL ANCLA (FACTURAS M Y E / NUEVO VIENTO) - 2026-10-11
+================================================================================
+Cambio autorizado explicitamente por el mantenedor ("1" = autorizo el fix minimo
+del parser) tras el diagnostico que descarto la via de configuracion pura para el
+layout COMERCIAL M Y E (7 columnas contra 5 anclas maximas del mapeo).
+
+A. ALCANCE Y ENTREGA
+
+A1. InvoiceTableParser: la banda conoce la X de su ancla y BuildNumber, cuando el
+    bucket completo NO parsea (texto de columnas sin anclar: % ALIC, % DSCTO,
+    subtotal, rayas manuscritas), elige la palabra parseable mas cercana en X al
+    ancla de la columna (desempate: la mas a la izquierda); la confianza reportada
+    es la de la palabra elegida. Si el bucket completo parsea, se conserva el
+    comportamiento historico de union (numeros partidos en palabras, p. ej. "$" +
+    "4.250" o un signo separado).
+A2. Sin cambios de esquema, UI, DTOs ni migraciones; el mapeo por proveedor sigue
+    siendo la unica configuracion. Con este fix ambos proveedores quedan cubiertos
+    con el mapeo limpio de 3 campos: NameColumnName=DESCRIPCION,
+    QuantityColumnName=CANT., UnitCostColumnName=P.U. (las anclas de separacion
+    ALIC/SUBTTL que necesitaba el Caso B dejan de ser necesarias).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2233/2233, 0 fallas (SIN PostgreSQL real local: gated
+    early-return; CI cubre al push) - 3 tests nuevos con los layouts reales de
+    ambas facturas (7 columnas con ruido ALIC/DSCTO/subtotal y 6 columnas con
+    DESCRIPCION antes de UNIDAD) + regresion de numero partido con signo.
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8937, Sales.Module 0.8971, Inventory.Module 0.8717.
+B4. RED observado antes del fix (los 2 tests de layout real fallaban con el
+    parser previo; 21 en verde) -> GREEN 23/23 del parser y 247/247 del filtro
+    OCR/SupplierInvoice.
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada documentada).
+C2. Una descripcion muy larga puede perder su token de cola si cruza la frontera
+    de banda (editable en la revision OCR del flujo existente).
+C3. Confianza numerica: en el fallback por cercania se reporta la confianza de la
+    palabra elegida, no el minimo de todo el bucket sucio.
+
+D. ROLLBACK
+
+D1. Revertir el commit restaura la union estricta del bucket; sin migraciones ni
+    reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.162 en V0.15: commit de implementacion (fix(8.162)) + commit de este ANEXO
+    (docs(8.162); git log).
+================================================================================
+
