@@ -8,8 +8,8 @@ namespace Inventory.Module.Services.Ocr;
 /// <summary>
 /// 8.147-T4/D12: orquesta la extracción OCR de una factura de proveedor: guardas de subida
 /// (archivo/tipo/tamaño), decodificación (imagen o PDF ≤5 páginas), preprocesamiento, motor OCR,
-/// parser heurístico de word-boxes y pistas best-effort de RIF/nombre. No toca la base de datos
-/// ni aplica nada: la revisión y el confirm siguen en el flujo existente.
+/// parser heurístico de word-boxes y pistas best-effort de RIF/nombre/número de factura. No
+/// toca la base de datos ni aplica nada: la revisión y el confirm siguen en el flujo existente.
 /// </summary>
 public sealed class OcrExtractionService : IOcrExtractionService
 {
@@ -32,6 +32,13 @@ public sealed class OcrExtractionService : IOcrExtractionService
     /// chequeo opcional). Es solo una pista de prefill: nunca selecciona ni persiste nada.
     /// </summary>
     internal const string RifPattern = @"(?i)\b[JGVEP]-?\d{8,9}-?\d?\b";
+
+    /// <summary>
+    /// 8.160-S2/S4: patrón best-effort del número de factura (keyword FACTURA + ventana acotada
+    /// de no-dígitos + al menos 4 dígitos con guiones internos; ej. "FACTURA: *0238317" →
+    /// "0238317"). Es solo una pista de visualización: nunca selecciona ni persiste nada.
+    /// </summary>
+    internal const string InvoiceNumberPattern = @"(?i)\bFACTURA\b[^0-9]{0,12}?(\d[\d\-]{3,})";
 
     private readonly DocumentPageDecoder _documentDecoder;
     private readonly ImagePreprocessor _preprocessor;
@@ -61,12 +68,7 @@ public sealed class OcrExtractionService : IOcrExtractionService
         ArgumentNullException.ThrowIfNull(request);
         var fileBytes = Validate(request);
 
-        // Previews: los PNG originales decodificados (S5 "imagen original escaneada"), en orden
-        // de página y antes del preprocesamiento; el motor OCR recibe la versión procesada.
         var pages = _documentDecoder.DecodePages(fileBytes, Path.GetExtension(request.FileName));
-        var previews = pages
-            .Select(page => Convert.ToBase64String(page.EncodedBytes))
-            .ToArray();
 
         var ocrPages = new List<OcrPage>(pages.Count);
         foreach (var page in pages)
@@ -86,9 +88,9 @@ public sealed class OcrExtractionService : IOcrExtractionService
 
         return new OcrExtractionResultDto(
             _parser.Parse(ocrPages, request.ColumnMapping),
-            previews,
             DetectRif(ocrPages),
-            DetectSupplierName(ocrPages));
+            DetectSupplierName(ocrPages),
+            DetectInvoiceNumber(ocrPages));
     }
 
     /// <summary>Guardas zero-trust de subida: nombre, contenido, extensión y tamaño (S4/S7).</summary>
@@ -127,6 +129,14 @@ public sealed class OcrExtractionService : IOcrExtractionService
         var text = string.Join(' ', pages.SelectMany(page => page.Words).Select(word => word.Text));
         var match = Regex.Match(text, RifPattern);
         return match.Success ? match.Value : null;
+    }
+
+    /// <summary>Primer número tras la keyword FACTURA; null si no aparece; nunca lanza.</summary>
+    private static string? DetectInvoiceNumber(IReadOnlyList<OcrPage> pages)
+    {
+        var text = string.Join(' ', pages.SelectMany(page => page.Words).Select(word => word.Text));
+        var match = Regex.Match(text, InvoiceNumberPattern);
+        return match.Success ? match.Groups[1].Value : null;
     }
 
     /// <summary>

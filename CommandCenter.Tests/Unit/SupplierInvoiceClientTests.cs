@@ -566,9 +566,9 @@ public sealed class SupplierInvoiceClientTests
         {
             var extracted = new OcrExtractionResultDto(
                 new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 91.5m, 88m, 77.1m) },
-                new[] { "cGFnZTE=" },
                 "J-123",
-                "Proveedor OCR");
+                "Proveedor OCR",
+                "0238317");
             var handler = new MultipartCaptureHandler(JsonResponse(extracted));
             using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
             var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
@@ -579,6 +579,7 @@ public sealed class SupplierInvoiceClientTests
                 new SupplierColumnMappingDto("EAN", "Vendor Code", "Item", "Units", "Cost"));
 
             Assert.Equal("J-123", result.DetectedRif);
+            Assert.Equal("0238317", result.DetectedInvoiceNumber);
             Assert.Equal("/api/supplier-invoices/ocr-extract", Assert.Single(handler.RequestPaths));
             Assert.Equal("7", handler.GetFieldValue("supplierId"));
             Assert.Equal("Item", handler.GetFieldValue("nameColumn"));
@@ -604,7 +605,7 @@ public sealed class SupplierInvoiceClientTests
         try
         {
             var handler = new MultipartCaptureHandler(
-                JsonResponse(new OcrExtractionResultDto([], [], null, null)));
+                JsonResponse(new OcrExtractionResultDto([], null, null, null)));
             using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
             var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
 
@@ -631,7 +632,7 @@ public sealed class SupplierInvoiceClientTests
         try
         {
             var handler = new MultipartCaptureHandler(
-                JsonResponse(new OcrExtractionResultDto([], [], null, null)));
+                JsonResponse(new OcrExtractionResultDto([], null, null, null)));
             using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
             var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
 
@@ -663,9 +664,9 @@ public sealed class SupplierInvoiceClientTests
                 new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 91.5m, 88m, 77.1m),
                 new OcrExtractedLineDto(null, null, "Sugar", null, null, 55.5m, 0m, 0m)
             },
-            new[] { "cGFnZTE=", "cGFnZTI=" },
             "J-123",
-            "Proveedor OCR");
+            "Proveedor OCR",
+            "0238317");
         service.Setup(client => client.ExtractOcrAsync(
                 OcrFilePath, 7, Mapping(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(extracted);
@@ -693,11 +694,9 @@ public sealed class SupplierInvoiceClientTests
         Assert.Equal(0m, captured.Lines[1].UnitCostDocument);
         Assert.Equal(55.5m, captured.Lines[1].OcrNameConfidence);
         Assert.True(viewModel.IsOcrSource);
-        Assert.Equal(new[] { "cGFnZTE=", "cGFnZTI=" }, viewModel.OcrPreviewPagesBase64);
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-        Assert.Equal(1.0, viewModel.OcrZoom);
         Assert.Equal("J-123", viewModel.OcrDetectedRif);
         Assert.Equal("Proveedor OCR", viewModel.OcrDetectedSupplierName);
+        Assert.Equal("0238317", viewModel.OcrDetectedInvoiceNumber);
     }
 
     [Fact]
@@ -712,7 +711,7 @@ public sealed class SupplierInvoiceClientTests
                     new OcrExtractedLineDto(null, null, "Coffee", 2m, 4.25m, 90m, 80m, 70m),
                     new OcrExtractedLineDto(" ", null, null, 1m, 1m, 0m, 0m, 0m)
                 },
-                new[] { "cGFnZTE=" },
+                null,
                 null,
                 null));
         var dialog = new Mock<IDialogService>();
@@ -731,7 +730,7 @@ public sealed class SupplierInvoiceClientTests
             Times.Once);
         Assert.Null(viewModel.StagedInvoice);
         Assert.False(viewModel.IsOcrSource);
-        Assert.Empty(viewModel.OcrPreviewPagesBase64);
+        Assert.Null(viewModel.OcrDetectedInvoiceNumber);
         service.Verify(client => client.ExtractOcrAsync(
             OcrFilePath, 7, Mapping(), It.IsAny<CancellationToken>()), Times.Once);
         service.VerifyNoOtherCalls();
@@ -745,9 +744,9 @@ public sealed class SupplierInvoiceClientTests
                 OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OcrExtractionResultDto(
                 new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 90m, 80m, 70m) },
-                new[] { "cGFnZTE=" },
                 "J-999",
-                "Proveedor Detectado"));
+                "Proveedor Detectado",
+                null));
         service.Setup(client => client.StageAsync(
                 It.IsAny<StageSupplierInvoiceRequestDto>(),
                 It.IsAny<CancellationToken>()))
@@ -771,9 +770,9 @@ public sealed class SupplierInvoiceClientTests
                 OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OcrExtractionResultDto(
                 new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 90m, 80m, 70m) },
-                new[] { "cGFnZTE=" },
                 "J-999",
-                "Proveedor Detectado"));
+                "Proveedor Detectado",
+                null));
         service.Setup(client => client.StageAsync(
                 It.IsAny<StageSupplierInvoiceRequestDto>(),
                 It.IsAny<CancellationToken>()))
@@ -792,70 +791,6 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
-    public void OcrZoom_ClampsToRangeAndCommandsStepAndReset()
-    {
-        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
-
-        viewModel.OcrZoom = 0.1;
-        Assert.Equal(0.5, viewModel.OcrZoom);
-
-        viewModel.OcrZoom = 10.0;
-        Assert.Equal(4.0, viewModel.OcrZoom);
-
-        viewModel.OcrZoomOutCommand.Execute(null);
-        Assert.Equal(3.75, viewModel.OcrZoom);
-
-        viewModel.OcrZoomInCommand.Execute(null);
-        Assert.Equal(4.0, viewModel.OcrZoom);
-
-        viewModel.OcrZoomInCommand.Execute(null);
-        Assert.Equal(4.0, viewModel.OcrZoom);
-
-        viewModel.ResetOcrZoomCommand.Execute(null);
-        Assert.Equal(1.0, viewModel.OcrZoom);
-
-        viewModel.OcrZoom = 0.5;
-        viewModel.OcrZoomOutCommand.Execute(null);
-        Assert.Equal(0.5, viewModel.OcrZoom);
-    }
-
-    [Fact]
-    public void OcrPageNavigation_ClampsBetweenPagesAndResetsOnSourceChange()
-    {
-        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
-
-        Assert.False(viewModel.HasOcrPreviews);
-        Assert.False(viewModel.CanNavigateOcrNextPage);
-        Assert.False(viewModel.CanNavigateOcrPreviousPage);
-        viewModel.OcrNextPageCommand.Execute(null);
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-
-        viewModel.OcrPreviewPagesBase64 = new[] { "a", "b", "c" };
-
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-        Assert.False(viewModel.CanNavigateOcrPreviousPage);
-        Assert.True(viewModel.CanNavigateOcrNextPage);
-
-        viewModel.OcrNextPageCommand.Execute(null);
-        viewModel.OcrNextPageCommand.Execute(null);
-        Assert.Equal(2, viewModel.OcrSelectedPageIndex);
-        Assert.False(viewModel.CanNavigateOcrNextPage);
-
-        viewModel.OcrNextPageCommand.Execute(null);
-        Assert.Equal(2, viewModel.OcrSelectedPageIndex);
-
-        viewModel.OcrPreviousPageCommand.Execute(null);
-        Assert.Equal(1, viewModel.OcrSelectedPageIndex);
-        Assert.True(viewModel.CanNavigateOcrNextPage);
-
-        viewModel.OcrSelectedPageIndex = 99;
-        Assert.Equal(2, viewModel.OcrSelectedPageIndex);
-
-        viewModel.OcrPreviewPagesBase64 = new[] { "a" };
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-    }
-
-    [Fact]
     public async Task ConfirmSuccess_ClearsOcrReviewState()
     {
         var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
@@ -864,9 +799,9 @@ public sealed class SupplierInvoiceClientTests
                 OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OcrExtractionResultDto(
                 new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 90m, 80m, 70m) },
-                new[] { "cGFnZTE=", "cGFnZTI=" },
                 null,
-                null));
+                null,
+                "0238317"));
         service.Setup(client => client.StageAsync(
                 It.IsAny<StageSupplierInvoiceRequestDto>(),
                 It.IsAny<CancellationToken>()))
@@ -883,15 +818,14 @@ public sealed class SupplierInvoiceClientTests
 
         await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
         Assert.True(viewModel.IsOcrSource);
+        Assert.Equal("0238317", viewModel.OcrDetectedInvoiceNumber);
 
         await viewModel.ConfirmInvoiceAsync();
 
         Assert.False(viewModel.IsOcrSource);
-        Assert.Empty(viewModel.OcrPreviewPagesBase64);
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-        Assert.Equal(1.0, viewModel.OcrZoom);
         Assert.Null(viewModel.OcrDetectedRif);
         Assert.Null(viewModel.OcrDetectedSupplierName);
+        Assert.Null(viewModel.OcrDetectedInvoiceNumber);
     }
 
     [Fact]
@@ -902,9 +836,9 @@ public sealed class SupplierInvoiceClientTests
                 OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OcrExtractionResultDto(
                 new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 90m, 80m, 70m) },
-                new[] { "cGFnZTE=", "cGFnZTI=" },
                 "J-123",
-                "Proveedor OCR"));
+                "Proveedor OCR",
+                "0238317"));
         service.Setup(client => client.StageAsync(
                 It.IsAny<StageSupplierInvoiceRequestDto>(),
                 It.IsAny<CancellationToken>()))
@@ -918,17 +852,14 @@ public sealed class SupplierInvoiceClientTests
 
         await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
         Assert.True(viewModel.IsOcrSource);
-        viewModel.OcrSelectedPageIndex = 1;
-        viewModel.OcrZoom = 3.0;
+        Assert.Equal("0238317", viewModel.OcrDetectedInvoiceNumber);
 
         await viewModel.LoadFileAsync(TabularFilePath);
 
         Assert.False(viewModel.IsOcrSource);
-        Assert.Empty(viewModel.OcrPreviewPagesBase64);
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-        Assert.Equal(1.0, viewModel.OcrZoom);
         Assert.Null(viewModel.OcrDetectedRif);
         Assert.Null(viewModel.OcrDetectedSupplierName);
+        Assert.Null(viewModel.OcrDetectedInvoiceNumber);
     }
 
     [Fact]

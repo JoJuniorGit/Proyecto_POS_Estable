@@ -25,20 +25,6 @@ public partial class SupplierInvoiceViewModel
         "Imágenes (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff)|" +
         "*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff|PDF (*.pdf)|*.pdf";
 
-    public const double MinOcrZoom = 0.5;
-    public const double MaxOcrZoom = 4.0;
-    private const double OcrZoomStep = 0.25;
-
-    /// <summary>Previews PNG por página (base64) tal como las devuelve el backend; sin tipos WPF.</summary>
-    [ObservableProperty]
-    private IReadOnlyList<string> _ocrPreviewPagesBase64 = [];
-
-    [ObservableProperty]
-    private int _ocrSelectedPageIndex;
-
-    [ObservableProperty]
-    private double _ocrZoom = 1.0;
-
     [ObservableProperty]
     private bool _isOcrSource;
 
@@ -48,23 +34,9 @@ public partial class SupplierInvoiceViewModel
     [ObservableProperty]
     private string? _ocrDetectedSupplierName;
 
-    public bool HasOcrPreviews => OcrPreviewPagesBase64.Count > 0;
-    public bool CanNavigateOcrNextPage =>
-        OcrPreviewPagesBase64.Count > 0 && OcrSelectedPageIndex < OcrPreviewPagesBase64.Count - 1;
-    public bool CanNavigateOcrPreviousPage => OcrSelectedPageIndex > 0;
-
-    /// <summary>
-    /// 8.147-S5: base64 de la página seleccionada. Propiedad calculada (en vez de un indexer en
-    /// XAML) para garantizar la notificación al cambiar de página y alimentar al converter.
-    /// </summary>
-    public string? OcrSelectedPreviewBase64 => OcrPreviewPagesBase64.Count == 0
-        ? null
-        : OcrPreviewPagesBase64[Math.Clamp(OcrSelectedPageIndex, 0, OcrPreviewPagesBase64.Count - 1)];
-
-    /// <summary>8.147-S5: etiqueta "Página X/Y" del panel de previews; vacía sin páginas.</summary>
-    public string OcrPageLabel => OcrPreviewPagesBase64.Count == 0
-        ? string.Empty
-        : $"Página {OcrSelectedPageIndex + 1}/{OcrPreviewPagesBase64.Count}";
+    /// <summary>8.160-S2: número de factura best-effort detectado por el OCR; null si no aparece.</summary>
+    [ObservableProperty]
+    private string? _ocrDetectedInvoiceNumber;
 
     public bool CanScanInvoice => CanMutateCatalog && !IsBusy && SelectedSupplier is not null;
 
@@ -74,40 +46,6 @@ public partial class SupplierInvoiceViewModel
         foreach (var line in Lines)
         {
             line.IsEditorEnabled = value;
-        }
-    }
-
-    partial void OnOcrPreviewPagesBase64Changed(IReadOnlyList<string> value)
-    {
-        var maxIndex = Math.Max(0, value.Count - 1);
-        if (OcrSelectedPageIndex > maxIndex)
-        {
-            OcrSelectedPageIndex = maxIndex;
-        }
-
-        OnPropertyChanged(nameof(HasOcrPreviews));
-        NotifyOcrNavigationChanged();
-    }
-
-    partial void OnOcrSelectedPageIndexChanged(int value)
-    {
-        var maxIndex = Math.Max(0, OcrPreviewPagesBase64.Count - 1);
-        var clamped = Math.Clamp(value, 0, maxIndex);
-        if (clamped != value)
-        {
-            OcrSelectedPageIndex = clamped;
-            return;
-        }
-
-        NotifyOcrNavigationChanged();
-    }
-
-    partial void OnOcrZoomChanged(double value)
-    {
-        var clamped = Math.Clamp(value, MinOcrZoom, MaxOcrZoom);
-        if (clamped != value)
-        {
-            OcrZoom = clamped;
         }
     }
 
@@ -198,33 +136,6 @@ public partial class SupplierInvoiceViewModel
         }
     }
 
-    [RelayCommand]
-    private void ResetOcrZoom() => OcrZoom = 1.0;
-
-    [RelayCommand]
-    private void OcrZoomIn() => OcrZoom += OcrZoomStep;
-
-    [RelayCommand]
-    private void OcrZoomOut() => OcrZoom -= OcrZoomStep;
-
-    [RelayCommand(CanExecute = nameof(CanNavigateOcrPreviousPage))]
-    private void OcrPreviousPage()
-    {
-        if (CanNavigateOcrPreviousPage)
-        {
-            OcrSelectedPageIndex--;
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanNavigateOcrNextPage))]
-    private void OcrNextPage()
-    {
-        if (CanNavigateOcrNextPage)
-        {
-            OcrSelectedPageIndex++;
-        }
-    }
-
     private static IReadOnlyList<StageLineDto> BuildOcrStageLines(IReadOnlyList<OcrExtractedLineDto> lines) =>
         lines.Select(line => new StageLineDto(
             line.SupplierCode,
@@ -243,9 +154,9 @@ public partial class SupplierInvoiceViewModel
 
     private void ApplyOcrReviewState(OcrExtractionResultDto result)
     {
-        OcrPreviewPagesBase64 = result.PreviewPagesBase64 ?? [];
         OcrDetectedRif = NormalizeOcrHint(result.DetectedRif);
         OcrDetectedSupplierName = NormalizeOcrHint(result.DetectedSupplierName);
+        OcrDetectedInvoiceNumber = NormalizeOcrHint(result.DetectedInvoiceNumber);
         IsOcrSource = true;
 
         // Sugerencia best-effort: nunca pisa un valor ya escrito ni selecciona proveedor.
@@ -262,22 +173,10 @@ public partial class SupplierInvoiceViewModel
 
     private void ClearOcrReviewState()
     {
-        OcrPreviewPagesBase64 = [];
-        OcrSelectedPageIndex = 0;
-        OcrZoom = 1.0;
         IsOcrSource = false;
         OcrDetectedRif = null;
         OcrDetectedSupplierName = null;
-    }
-
-    private void NotifyOcrNavigationChanged()
-    {
-        OnPropertyChanged(nameof(CanNavigateOcrNextPage));
-        OnPropertyChanged(nameof(CanNavigateOcrPreviousPage));
-        OnPropertyChanged(nameof(OcrPageLabel));
-        OnPropertyChanged(nameof(OcrSelectedPreviewBase64));
-        OcrNextPageCommand.NotifyCanExecuteChanged();
-        OcrPreviousPageCommand.NotifyCanExecuteChanged();
+        OcrDetectedInvoiceNumber = null;
     }
 
     private static string? NormalizeOcrHint(string? value) =>

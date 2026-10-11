@@ -82,7 +82,7 @@ public sealed record SupplierColumnMappingDto(
 
 // 8.147-T3: fila extraída por el parser heurístico de word-boxes OCR. Confianzas 0–100 (1
 // decimal); un campo no resuelto lleva valor null y confianza 0. T4 la expone en la respuesta
-// del endpoint de extracción (junto con previews y pistas de proveedor).
+// del endpoint de extracción (junto con las pistas de proveedor).
 public sealed record OcrExtractedLineDto(
     string? SupplierCode,
     string? Barcode,
@@ -102,10 +102,11 @@ public sealed record OcrExtractionRequestDto(
     int? SupplierId,
     SupplierColumnMappingDto? ColumnMapping);
 
-// 8.147-T4/D12/S5: respuesta de extracción con filas (confianza por campo), una preview PNG por
-// página procesada (base64, en orden) y pistas detectadas.
+// 8.160-S2/S4: respuesta de extracción con filas (confianza por campo) y pistas best-effort de
+// RIF, nombre de proveedor y número de factura. El payload de previews por página se retiró por
+// decisión del mantenedor: la revisión Desktop ya no muestra la imagen escaneada.
 public sealed record OcrExtractionResultDto(
     IReadOnlyList<OcrExtractedLineDto> Lines,
-    IReadOnlyList<string> PreviewPagesBase64,
     string? DetectedRif,
-    string? DetectedSupplierName);
+    string? DetectedSupplierName,
+    string? DetectedInvoiceNumber);
