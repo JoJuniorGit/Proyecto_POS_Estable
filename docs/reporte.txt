@@ -13707,3 +13707,47 @@ E1. 8.163 en V0.15: commit de implementacion (fix(8.163)) + commit de este ANEXO
     (docs(8.163); git log).
 ================================================================================
 
+================================================================================
+ANEXO 8.164 - REVISION FACTURAS PROVEEDOR: SIN PRECIOS SUGERIDOS Y PRECIO ESCANEADO EDITABLE EN AMBAS MONEDAS - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: "Elimina las columnas relacionadas a los precios
+sugeridos, permite tambien edicion del precio escaneado por producto".
+
+A. ALCANCE Y ENTREGA
+
+A1. Se retiran de la grilla las columnas "Precio detal sugerido USD" y "Precio
+    mayor sugerido USD" junto con el calculo local del cliente (Pricing.cs del
+    line VM y las propiedades SuggestedRetailPriceUSD/SuggestedWholesalePriceUSD
+    del ViewModel). El backend NO cambia: los campos persistidos Suggested* de la
+    linea y su calculo en staging/creacion siguen intactos (contrato y datos sin
+    migracion; se removio solo la visualizacion del cliente).
+A2. El costo de factura pasa a ser editable por producto en AMBAS monedas: la
+    columna antes "Costo factura (Bs.S)" (visible y editable solo en Bs.S) ahora
+    esta siempre visible con encabezado dinamico ("Costo factura (Bs.S)" /
+    "Costo factura (USD)") y la celda de edicion del precio escaneado aplica a
+    las lineas OCR con la misma correccion zero-trust ya existente hacia confirm.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2234/2234, 0 fallas (SIN PostgreSQL real local; CI cubre al
+    push). RED->GREEN del test nuevo DocumentCostHeader_FollowsInvoiceCurrency;
+    se retiraron los 2 tests del calculo local de sugeridos.
+B3. Cobertura/dominio sin cambios relevantes (UI y ViewModel de cliente).
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada documentada).
+C2. UI verificada por compilacion + tests de ViewModel (sin ejecucion interactiva).
+
+D. ROLLBACK
+
+D1. Revertir el commit restaura las columnas sugeridas y la visibilidad Bs.S-only
+    del costo; sin migraciones ni reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.164 en V0.15: commit de implementacion (feat(8.164)) + commit de este
+    ANEXO (docs(8.164); git log).
+================================================================================
+
