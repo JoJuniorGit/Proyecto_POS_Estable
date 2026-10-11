@@ -288,7 +288,7 @@ public sealed class InvoiceTableParser
             var upper = index == sorted.Count - 1
                 ? double.PositiveInfinity
                 : (sorted[index].X + sorted[index + 1].X) / 2;
-            bands.Add(new Band(sorted[index].Column, upper));
+            bands.Add(new Band(sorted[index].Column, upper, sorted[index].X));
         }
 
         return bands;
@@ -323,8 +323,8 @@ public sealed class InvoiceTableParser
         var name = BuildText(buckets, InvoiceColumn.Name, " ");
         var supplierCode = BuildText(buckets, InvoiceColumn.SupplierCode, string.Empty);
         var barcode = BuildText(buckets, InvoiceColumn.Barcode, string.Empty);
-        var quantity = BuildNumber(buckets, InvoiceColumn.Quantity);
-        var unitCost = BuildNumber(buckets, InvoiceColumn.UnitCost);
+        var quantity = BuildNumber(buckets, bands, InvoiceColumn.Quantity);
+        var unitCost = BuildNumber(buckets, bands, InvoiceColumn.UnitCost);
 
         return new OcrExtractedLineDto(
             supplierCode.Value,
@@ -370,11 +370,15 @@ public sealed class InvoiceTableParser
     }
 
     /// <summary>
-    /// Une las palabras del bucket numérico y las parsea con las reglas tolerantes espejo de la
-    /// ruta tabular; si no parsean, valor null y confianza no resuelta.
+    /// 8.162: resuelve el valor numérico del bucket. Primero intenta el parseo del bucket completo
+    /// (comportamiento histórico 8.147: une números partidos en varias palabras, p. ej. "$" +
+    /// "4.250"); si el bucket quedó sucio con texto de columnas sin anclar (%, subtotales, rayas
+    /// manuscritas), elige la palabra parseable más cercana en X al ancla de la columna. Sin
+    /// candidatos: valor null y confianza no resuelta.
     /// </summary>
     private static (decimal? Value, decimal Confidence) BuildNumber(
         IReadOnlyDictionary<InvoiceColumn, List<OcrWord>> buckets,
+        IReadOnlyList<Band> bands,
         InvoiceColumn column)
     {
         if (!buckets.TryGetValue(column, out var words) || words.Count == 0)
@@ -383,9 +387,36 @@ public sealed class InvoiceTableParser
         }
 
         var text = string.Join(' ', words.Select(word => word.Text));
-        return TryParseDecimal(text, out var value)
-            ? (value, MinConfidence(words))
-            : (null, OcrConfidence.Unresolved);
+        if (TryParseDecimal(text, out var value))
+        {
+            return (value, MinConfidence(words));
+        }
+
+        var anchorX = bands.First(band => band.Column == column).AnchorX;
+        OcrWord? nearest = null;
+        var nearestDistance = double.MaxValue;
+        decimal nearestValue = 0m;
+        foreach (var word in words)
+        {
+            if (!TryParseDecimal(word.Text, out var wordValue))
+            {
+                continue;
+            }
+
+            var distance = Math.Abs(CenterX(word) - anchorX);
+            if (nearest is null ||
+                distance < nearestDistance ||
+                (distance == nearestDistance && CenterX(word) < CenterX(nearest)))
+            {
+                nearest = word;
+                nearestDistance = distance;
+                nearestValue = wordValue;
+            }
+        }
+
+        return nearest is null
+            ? (null, OcrConfidence.Unresolved)
+            : (nearestValue, MinConfidence([nearest]));
     }
 
     /// <summary>Mínimo de las confianzas contribuyentes, acotado a 0–100 y redondeado a 1 decimal.</summary>
@@ -564,7 +595,7 @@ public sealed class InvoiceTableParser
     private sealed record ColumnAnchor(InvoiceColumn Column, double X);
 
     /// <summary>Banda de una columna: recibe las palabras con centro X ≤ <see cref="Upper"/>.</summary>
-    private sealed record Band(InvoiceColumn Column, double Upper);
+    private sealed record Band(InvoiceColumn Column, double Upper, double AnchorX);
 
     /// <summary>Fila elegida como encabezado y sus anchors.</summary>
     private sealed record HeaderMatch(int RowIndex, List<ColumnAnchor> Anchors, int TemplateMatches);

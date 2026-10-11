@@ -396,4 +396,110 @@ public class OcrTableParserTests
         var line = Assert.Single(_parser.Parse([page], template: null));
         Assert.Equal("Café", line.Name);
     }
+
+    [Fact]
+    public void RealFormatCaseA_SevenColumnsWithNoise_ResolvesQuantityAndCost()
+    {
+        // 8.162: layout real COMERCIAL M Y E (matriz de punto): CANT | UNIDAD | DESCRIPCION |
+        // % ALIC | P.U. C/IVA $ | % DSCTO | SUBTTL. Con mapeo de 3 columnas, el % ALIC, el
+        // % DSCTO y el subtotal caen en la banda abierta del costo: no deben romperlo (se elige
+        // la palabra parseable más cercana al ancla "P.U."), y "UND" no debe romper la cantidad.
+        var template = new SupplierColumnMappingDto(null, null, "DESCRIPCION", "CANT.", "P.U.");
+        var page = Page(
+            Word("CANT.", 40, 100),
+            Word("UNIDAD", 140, 100),
+            Word("DESCRIPCION", 260, 100),
+            Word("%", 480, 100, width: 10),
+            Word("ALIC", 500, 100),
+            Word("P.U.", 560, 100),
+            Word("%", 650, 100, width: 10),
+            Word("DSCTO", 670, 100),
+            Word("SUBTTL", 780, 100),
+            Word("72,00", 40, 130),
+            Word("UND", 150, 130),
+            Word("TOALLAS", 260, 130),
+            Word("ALIVE", 340, 130),
+            Word("DIURNA", 420, 130),
+            Word("16,00%", 500, 130),
+            Word("0,614", 560, 130),
+            Word("0%", 660, 130),
+            Word("44,265", 780, 130),
+            Word("4,00", 40, 160),
+            Word("PAQ", 150, 160),
+            Word("VELAS", 260, 160),
+            Word("BIPA", 340, 160),
+            Word("0,00%", 500, 160),
+            Word("10,529", 560, 160),
+            Word("0%", 660, 160),
+            Word("42,119", 780, 160));
+
+        var lines = _parser.Parse([page], template);
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(72.00m, lines[0].Quantity);
+        Assert.Equal(0.614m, lines[0].UnitCost);
+        Assert.Contains("TOALLAS", lines[0].Name);
+        Assert.Equal(4.00m, lines[1].Quantity);
+        Assert.Equal(10.529m, lines[1].UnitCost);
+        Assert.Contains("VELAS", lines[1].Name);
+    }
+
+    [Fact]
+    public void RealFormatCaseB_SixColumnsDescBeforeUnit_ResolvesQuantityAndCost()
+    {
+        // 8.162: layout real INVERSIONES NUEVO VIENTO: CANT | DESCRIPCION | UNIDAD | % ALIC |
+        // P.U. C/IVA Bs.S | SUBTTL C/IVA Bs.S. El subtotal (banda abierta), el % ALIC y el texto
+        // de UNIDAD no deben contaminar el costo; el subtotal tampoco viaja como barras/código.
+        var template = new SupplierColumnMappingDto(null, null, "DESCRIPCION", "CANT.", "P.U.");
+        var page = Page(
+            Word("CANT.", 40, 100),
+            Word("DESCRIPCION", 260, 100),
+            Word("UNIDAD", 560, 100),
+            Word("ALIC", 640, 100),
+            Word("P.U.", 720, 100),
+            Word("SUBTTL", 840, 100),
+            Word("120", 40, 130),
+            Word("MAYONESA", 260, 130),
+            Word("MAVESA", 380, 130),
+            Word("175GR", 480, 130),
+            Word("UNIDAD", 560, 130),
+            Word("0,00%", 640, 130),
+            Word("1.564,22", 720, 130),
+            Word("187.706,40", 840, 130),
+            Word("5", 40, 160),
+            Word("SHAMPOO", 260, 160),
+            Word("PANTENE", 380, 160),
+            Word("16,00%", 640, 160),
+            Word("4.025,37", 720, 160),
+            Word("20.126,87", 840, 160));
+
+        var lines = _parser.Parse([page], template);
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(120m, lines[0].Quantity);
+        Assert.Equal(1564.22m, lines[0].UnitCost);
+        Assert.Contains("MAYONESA", lines[0].Name);
+        Assert.Equal(5m, lines[1].Quantity);
+        Assert.Equal(4025.37m, lines[1].UnitCost);
+        Assert.Null(lines[0].Barcode);
+        Assert.Null(lines[0].SupplierCode);
+    }
+
+    [Fact]
+    public void SplitNumericTokens_WithSign_StillJoinBeforeFallbackSelection()
+    {
+        // 8.162 regresión: si el bucket completo parsea (número partido en palabras, p. ej. el
+        // signo separado), se conserva el comportamiento histórico de unión antes del fallback.
+        var page = Page([
+            .. GenericHeader(),
+            Word("Café", 40, 130),
+            Word("-", 200, 130, width: 10),
+            Word("4.250", 230, 130),
+            Word("1,10", 340, 130)]);
+
+        var line = Assert.Single(_parser.Parse([page], template: null));
+
+        Assert.Equal(-4250m, line.Quantity);
+        Assert.Equal(1.10m, line.UnitCost);
+    }
 }
