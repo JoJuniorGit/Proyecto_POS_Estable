@@ -56,7 +56,9 @@ public sealed record SupplierInvoiceLineDto(
     // 8.147-S6/D10: confianzas OCR persistidas (0–100); null en filas tabulares.
     decimal? OcrNameConfidence,
     decimal? OcrQuantityConfidence,
-    decimal? OcrUnitCostConfidence);
+    decimal? OcrUnitCostConfidence,
+    // 8.165: factor de conversión caja→unidad persistido por línea (default 1, sin conversión).
+    decimal ConversionFactor = 1m);
 
 public sealed record CreateInvoiceProductRequestDto(string Barcode, string Name);
 
@@ -71,7 +73,9 @@ public sealed record ConfirmLineDto(
     // de confirm las valida zero-trust y renormaliza el costo documental con el snapshot de la factura.
     string? Name = null,
     decimal? Quantity = null,
-    decimal? UnitCostDocument = null);
+    decimal? UnitCostDocument = null,
+    // 8.165: factor de conversión caja→unidad (divisor); null = sin conversión (1).
+    decimal? ConversionFactor = null);
 
 public sealed record SupplierColumnMappingDto(
     string? BarcodeColumnName,

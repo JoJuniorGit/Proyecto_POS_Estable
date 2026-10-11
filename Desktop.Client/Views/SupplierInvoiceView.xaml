@@ -359,6 +359,21 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
+                <!-- 8.165: factor de conversión caja→unidad (divisor): costo ÷ factor, cantidad × factor. -->
+                <DataGridTemplateColumn Header="Factor" Width="80"
+                                        Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBox Text="{Binding ConversionFactor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     IsEnabled="{Binding CanApprove}"
+                                     HorizontalContentAlignment="Right"
+                                     Padding="5,2"
+                                     ToolTip="Factor de conversión (divisor): la factura viene por caja/bulto y el local vende por unidad. Al confirmar: costo unitario ÷ factor y cantidad × factor."
+                                     AutomationProperties.Name="Factor de conversion por producto" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Costo anterior → nuevo" Binding="{Binding CostComparison}" Width="160" />
                 <DataGridTemplateColumn Header="Aprobar" Width="85"
                                         Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">

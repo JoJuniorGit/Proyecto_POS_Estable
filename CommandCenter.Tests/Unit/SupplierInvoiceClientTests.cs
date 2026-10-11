@@ -38,6 +38,21 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
+    public void ToConfirmLine_IncludesConversionFactorPerLine()
+    {
+        // 8.165: el factor de conversión caja→unidad viaja al confirm por línea (default 1).
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1)));
+        var line = Assert.Single(viewModel.Lines);
+
+        Assert.Equal(1m, line.ConversionFactor);
+
+        line.ConversionFactor = 12m;
+
+        Assert.Equal(12m, line.ToConfirmLine().ConversionFactor);
+    }
+
+    [Fact]
     public void StagedLine_DefaultsApprovalToOn()
     {
         var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());

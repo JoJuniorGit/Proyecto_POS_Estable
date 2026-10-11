@@ -46,6 +46,80 @@ public class SupplierInvoiceApplyTests
     }
 
     [Fact]
+    public async Task ConfirmAsync_WithConversionFactor_DividesUnitCostAndMultipliesStock()
+    {
+        // 8.165: producto facturado por caja (P.U. 12 por caja de 2 unidades): el factor divide el
+        // costo unitario aplicado al producto y multiplica la cantidad que entra a stock; el
+        // documento conserva lo emitido por el proveedor (auditoría).
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-FACTOR", 4m, 10m, 20m);
+        var line = CreateLine(product, 5m, 12m);
+        line.UnitCostDocument = 12m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 2m)
+        }));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(6m, savedProduct.CostPriceUSD);
+        Assert.Equal(20m, savedProduct.StockQuantity);
+        var movement = await context.StockMovements.SingleAsync();
+        Assert.Equal(10m, movement.QuantityChange);
+        var persistedLine = await context.SupplierInvoiceLines.SingleAsync(candidate => candidate.Id == line.Id);
+        Assert.Equal(2m, persistedLine.ConversionFactor);
+        Assert.Equal(12m, persistedLine.UnitCostDocument);
+        Assert.Equal(5m, persistedLine.Quantity);
+        Assert.Equal(6m, persistedLine.UnitCostUSD);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithConversionFactorInBsS_NormalizesDividedCostWithSnapshotRate()
+    {
+        // 8.165: en Bs.S el costo dividido por el factor se renormaliza con el snapshot de la
+        // factura (Currency/AppliedRate), nunca con una tasa vigente.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-FACTOR-BSS", 1m, 0m, 30m);
+        var line = CreateLine(product, 3m, 1200m);
+        line.UnitCostDocument = 1200m;
+        line.UnitCostUSD = 3m;
+        var invoice = await AddInvoiceAsync(context, CurrencyCodes.BsS, 400m, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 3m)
+        }));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        // 1200 / 3 = 400 Bs.S por unidad -> 1 USD con la tasa del documento (400).
+        Assert.Equal(1m, savedProduct.CostPriceUSD);
+        Assert.Equal(9m, savedProduct.StockQuantity);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RejectsNonPositiveConversionFactorWithoutApplyingChanges()
+    {
+        var (context, product, line, invoice) = await ArrangeCorrectionTestAsync("APPLY-FACTOR-REJECT");
+        using var contextScope = context;
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 0m)
+            })));
+
+        Assert.Equal(
+            "The conversion factor must be positive (0 < factor <= 10000). (Parameter 'confirmation')",
+            exception.Message);
+        await AssertNoApplySideEffectsAsync(context, product, line);
+    }
+
+    [Fact]
     public async Task ConfirmAsync_DescendingProductOrder_AppliesIdenticalEffectsInAscendingLockOrder()
     {
         using var context = TestDatabaseFactory.CreateInventoryDbContext();

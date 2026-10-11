@@ -38,6 +38,10 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     [ObservableProperty]
     private decimal _marginWholesaleOverride;
 
+    /// <summary>8.165: divisor de conversión caja→unidad editable por línea (1 = sin conversión).</summary>
+    [ObservableProperty]
+    private decimal _conversionFactor;
+
     /// <summary>
     /// 8.147-S5/S6 (T7): edición de los campos OCR en revisión. Solo el origen OCR lo habilita
     /// (el padre lo propaga al cargar las líneas); las filas tabulares quedan de solo lectura.
@@ -69,6 +73,7 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
         _isApproved = source.IsApproved;
         _marginRetailOverride = source.MarginRetailOverride ?? source.OldProfitMarginRetail ?? 0m;
         _marginWholesaleOverride = source.MarginWholesaleOverride ?? source.OldProfitMarginWholesale ?? _marginRetailOverride;
+        _conversionFactor = source.ConversionFactor <= 0m ? 1m : source.ConversionFactor;
         _editName = source.Name;
         _editQuantity = source.Quantity;
         _editUnitCostDocument = source.UnitCostDocument;
@@ -91,7 +96,8 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
         MarginWholesaleOverride,
         IsEditorEnabled && IsEdited(EditName, _source.Name) ? EditName : null,
         IsEditorEnabled && EditQuantity != _source.Quantity ? EditQuantity : null,
-        IsEditorEnabled && EditUnitCostDocument != _source.UnitCostDocument ? EditUnitCostDocument : null);
+        IsEditorEnabled && EditUnitCostDocument != _source.UnitCostDocument ? EditUnitCostDocument : null,
+        ConversionFactor);
 
     public static string GetStatusLabel(string? status) => status?.Trim().ToUpperInvariant() switch
     {

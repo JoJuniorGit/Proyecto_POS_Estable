@@ -153,6 +153,7 @@ public partial class SupplierInvoiceService
                     }
 
                     ApplyCorrections(line, invoice, confirmation);
+                    ApplyConversionFactor(line, invoice, confirmation);
                     if (!productsById.TryGetValue(productId, out var product))
                     {
                         throw new KeyNotFoundException($"Product {productId} was not found or has been deleted.");
@@ -237,6 +238,9 @@ public partial class SupplierInvoiceService
                 ? confirmation.MarginWholesaleOverride ?? product.ProfitMarginWholesale
                 : retailMargin;
 
+            // 8.165: la cantidad efectiva que entra a stock respeta el factor caja→unidad de la línea.
+            var appliedQuantity = line.Quantity * line.ConversionFactor;
+
             product.CostPriceUSD = line.UnitCostUSD;
             product.ProfitMarginRetail = retailMargin;
             product.ProfitMarginWholesale = wholesaleMargin;
@@ -244,14 +248,14 @@ public partial class SupplierInvoiceService
             product.PriceRetailUSD = PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + retailMargin / 100m));
             product.PriceUSD = product.PriceRetailUSD;
             product.PriceWholesaleUSD = PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + wholesaleMargin / 100m));
-            product.StockQuantity += line.Quantity;
+            product.StockQuantity += appliedQuantity;
             product.UpdatedAt = DateTime.UtcNow;
 
             var movement = new StockMovement
             {
                 Product = product,
                 ProductId = product.Id,
-                QuantityChange = line.Quantity,
+                QuantityChange = appliedQuantity,
                 NewStockLevel = product.StockQuantity,
                 Reason = $"Supplier invoice {invoiceId} applied",
                 MovementDate = DateTime.UtcNow,
@@ -296,6 +300,13 @@ public partial class SupplierInvoiceService
         if (confirmation.MarginRetailOverride is < 0m || confirmation.MarginWholesaleOverride is < 0m)
         {
             throw new ArgumentException("Approved supplier invoice margin overrides cannot be negative.", nameof(confirmation));
+        }
+
+        // 8.165: el factor de conversión caja→unidad es un divisor: debe ser positivo y acotado.
+        if (confirmation.ConversionFactor is decimal conversionFactor &&
+            (conversionFactor <= 0m || conversionFactor > 10000m))
+        {
+            throw new ArgumentException("The conversion factor must be positive (0 < factor <= 10000).", nameof(confirmation));
         }
     }
 
@@ -353,5 +364,30 @@ public partial class SupplierInvoiceService
                 : PricingCalculator.ToUSD(correctedUnitCostDocument, invoice.AppliedRate);
             line.OcrUnitCostConfidence = null;
         }
+    }
+
+    /// <summary>
+    /// 8.165: factor de conversión caja→unidad (divisor). El costo unitario aplicado al producto se
+    /// divide por el factor (renormalizado con el snapshot de la factura) y ApplyApprovedLineAsync
+    /// multiplica la cantidad que entra a stock. El documento queda intacto: UnitCostDocument y
+    /// Quantity conservan lo emitido por el proveedor para auditoría; el factor persistido explica
+    /// el ajuste.
+    /// </summary>
+    private static void ApplyConversionFactor(
+        SupplierInvoiceLine line,
+        SupplierInvoice invoice,
+        ConfirmLineDto confirmation)
+    {
+        var factor = confirmation.ConversionFactor ?? 1m;
+        line.ConversionFactor = factor;
+        if (factor == 1m)
+        {
+            return;
+        }
+
+        var documentUnitCost = line.UnitCostDocument / factor;
+        line.UnitCostUSD = invoice.Currency == CurrencyCodes.Usd
+            ? documentUnitCost
+            : PricingCalculator.ToUSD(documentUnitCost, invoice.AppliedRate);
     }
 }

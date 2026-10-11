@@ -42,5 +42,6 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         line.MatchMethod.ToString(),
         line.OcrNameConfidence,
         line.OcrQuantityConfidence,
-        line.OcrUnitCostConfidence);
+        line.OcrUnitCostConfidence,
+        line.ConversionFactor);
 }
