@@ -40,23 +40,23 @@ Low-confidence fields MUST remain visually highlighted in the editable grid (yel
 
 ### Requirement: Side-by-Side Staging Review
 
-Removed by maintainer decision (ANEXO 8.160): backend page previews, zoom and page navigation are retired; replaced by the OCR Context Panel.
+Removed by maintainer decision (ANEXO 8.160): backend page previews, zoom and page navigation are retired; replaced by the invoice number indicator next to the "Escanear factura (OCR)" button.
 
 ## ADDED Requirements
 
-### Requirement: OCR Context Panel
+### Requirement: OCR Invoice Number Indicator
 
-When the staged invoice originates from OCR, the staging view MUST show a compact left context panel with the best-effort detected invoice number (`No detectado` placeholder when absent), and the right pane keeping the editable grid (approval, suggested prices, no margin inputs). Without OCR origin the view MUST keep its current single-grid layout.
+When the staged invoice originates from OCR, the staging view MUST show the best-effort detected invoice number next to the "Escanear factura (OCR)" button (with a `No detectado` placeholder when absent), and the review grid MUST keep the remaining editable columns (approval, suggested prices; no margin inputs, no supplier-code column). Without OCR origin no indicator is shown and the single-grid layout is kept.
 
-#### Scenario: Context panel for OCR origin
+#### Scenario: Invoice number indicator for OCR origin
 
 - GIVEN a staged invoice extracted from OCR
 - WHEN the staging view renders
-- THEN the left panel shows the detected invoice number, or the not-detected placeholder
-- AND the editable grid stays on the right
+- THEN the indicator next to the scan button shows the detected invoice number, or the not-detected placeholder
+- AND the editable grid keeps its columns without margin inputs or the supplier-code column
 
 #### Scenario: Non-OCR invoice unchanged
 
 - GIVEN a staged invoice created from a tabular file
 - WHEN the view renders
-- THEN the single-grid layout is used (no context panel)
+- THEN no invoice-number indicator is shown (single-grid layout)

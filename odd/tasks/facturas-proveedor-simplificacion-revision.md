@@ -17,8 +17,8 @@ Fuente: pedido del usuario, verbatim (L1). Supuestos marcados.
 | ID | Specs | Route | Descripción | Estado / commit |
 |----|-------|-------|-------------|-----------------|
 | Plan | S1-S5 | inline | Tracker + artefactos SDD + commit de planificación | hecho — commit de planificación (hash se registra al cerrar T1) |
-| T1 | S1-S4 | delegated (writer) | Implementación única: backend (detección número + retiro de previews) + Desktop (panel "N.º de factura", retiro preview/zoom/converter, columnas de margen fuera) + tests | pendiente |
-| T2 | S5 | inline (+ acciones delegadas) | Verificación final (suite completa + cobertura), verify-report, ANEXO 8.160, cierre | pendiente |
+| T1 | S1-S4 | delegated (writer) | Implementación única: backend (detección número + retiro de previews) + Desktop (panel "N.º de factura", retiro preview/zoom/converter, columnas de margen fuera) + tests | hecho — verificado (independiente PASS: S1-S4 CONFORME; build 0/0; focused 239/239; suite 2221/2221 sin PG real); commits ef84c47 + 320deb5 (ajuste directo L4) |
+| T2 | S5 | inline (+ acciones delegadas) | Verificación final (suite completa + cobertura), verify-report, ANEXO 8.160, cierre | hecho — suite 2221/2221 (sin PG real local), cobertura OK (exit 0), E2E 2/2; commit de cierre en git log |
 
 Estrategia de entrega: `ask-on-risk` → cadena stacked-to-main cacheada (política vigente de la cadena V0.15). Forecast ~350–550 líneas autoradas.
 
@@ -35,3 +35,13 @@ Estrategia de entrega: `ask-on-risk` → cadena stacked-to-main cacheada (polít
   - La ruta tabular (xlsx/csv/xml) no tiene número de factura en el archivo → sin panel para origen no-OCR; la ruta no cambia.
   - La spec 8.147-S5/S6 (revisión lado a lado con imagen) queda parcialmente reemplazada por decisión del mantenedor: el panel de número la sustituye.
   - Partición atómica: `OcrExtractionResultDto` es contrato compartido backend⇄Desktop; el retiro de `PreviewPagesBase64` rompe la compilación de ambos lados → UNA sola unidad de implementación (build verde por commit; sin slices con build rojo).
+
+- L3 (2026-10-10) — T1 cerrado (writer delegado + verificación independiente read-only): backend `DetectInvoiceNumber` best-effort (`(?i)\bFACTURA\b[^0-9]{0,12}?(\d[\d\-]{3,})`; `FACTURA: *0238317` → `0238317`) + retiro de `PreviewPagesBase64` de punta a punta; Desktop sin previews/zoom/páginas (converter y wheel eliminados) y sin columnas de margen; tests de servicio/endpoint/cliente/review actualizados (RED compile-level → GREEN). Evidencia: build 0/0; focused 239/239; verificación independiente S1-S4 CONFORME (0 blockers; I1 residual del patrón documentado); commit ef84c47.
+
+- L4 (2026-10-10) — Ajuste directo del mantenedor (posterior al cierre de T1; "No uses SDD haz el cambio directo"), verbatim:
+
+> Elimina visualmete la columna "Codigo proveedor" y coloca el numero / codigo de factura A la derecha del boton "Escanear Factura OCR" No uses SDD haz el cambio directo
+
+  Alcance: columna "Código proveedor" retirada visualmente de la grilla; indicador "N.º de factura:" reubicado a la derecha del botón "Escanear factura (OCR)" (visible con origen OCR; `No detectado` como placeholder). Sin cambios de VM/contrato. Build 0/0 + focused 239/239. Commit 320deb5.
+
+- L5 (2026-10-10) — Cierre: suite final 2221/2221 (SIN PostgreSQL real local: credenciales CI y dev rechazadas por el PG18 local — gated early-return documentado; CI cubre con PostgreSQL al push), cobertura Core 0.8937/Sales 0.8971/Inventory 0.8708 (exit 0), E2E salud 2/2, 0 vulnerables; verify-report en el change + ANEXO 8.160 registrado. Commit de cierre en git log (`docs(8.160)`).

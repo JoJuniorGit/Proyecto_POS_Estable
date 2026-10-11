@@ -13428,3 +13428,96 @@ H1. Cadena 8.158 en V0.15: ad93536 (plan) + 14ae597 (T1) + a3ab349 (T2) +
     tracker ODD).
 ================================================================================
 
+================================================================================
+ANEXO 8.160 - REVISION SIMPLIFICADA DE FACTURAS PROVEEDOR: NUMERO DE FACTURA OCR, SIN PREVIEWS Y SIN COLUMNAS DE MARGEN - 2026-10-10
+================================================================================
+Change SDD: openspec/changes/2026-10-10-supplier-invoice-review-simplification/
+(proposal, 3 deltas de specs, tasks, state, verify-report). Pedido del mantenedor
+(verbatim en tracker L1) + ajuste directo posterior sin SDD (L4).
+
+A. ALCANCE Y ENTREGA
+
+A1. Pedido: en Facturas Proveedores (Desktop) retirar la visualizacion de la
+    factura (previews base64 con zoom y paginacion) y mostrar en su lugar el
+    numero de factura detectado por OCR; eliminar las columnas de margen de
+    ganancia (detal y mayor) de la grilla de revision.
+A2. Plan -- 5a6ac28 + 97fc513: tracker ODD + propuesta/specs/tareas del tramo;
+    particion atomica en una sola unidad (el contrato OcrExtractionResultDto es
+    compartido backend<->Desktop: dividir el retiro dejaria el build rojo entre
+    slices).
+A3. T1 -- ef84c47: backend DetectInvoiceNumber best-effort (patron
+    (?i)\bFACTURA\b[^0-9]{0,12}?(\d[\d\-]{3,}); "FACTURA: *0238317" ->
+    "0238317"), OcrExtractionResultDto reemplaza PreviewPagesBase64 por
+    DetectedInvoiceNumber y el endpoint deja de armar previews; Desktop: retiro
+    total de previews/zoom/paginas/converter/wheel del code-behind, columnas
+    "Margen detal %"/"Margen mayor %" fuera; tests de servicio/endpoint/
+    cliente/review actualizados (RED compile-level -> GREEN).
+A4. Ajuste directo del mantenedor (sin SDD) -- 320deb5: columna "Codigo
+    proveedor" retirada visualmente de la grilla; numero de factura reubicado a
+    la derecha del boton "Escanear factura (OCR)" (indicador "N.º de factura:",
+    visible solo con origen OCR).
+A5. Fuera de alcance: persistencia del numero de factura (solo visualizacion;
+    D4 del change); ruta tabular xlsx/csv/xml intacta; prefill/confirm de
+    margenes intactos; sin migraciones.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2221/2221, 0 fallas, 0 omitidas -- SIN PostgreSQL real
+    local: las credenciales (CI postgres/root y dev appsettings) fueron
+    rechazadas por el PG18 local (28P01); los 42 tests gated hacen early-return
+    (no fallan); CI ejecuta la suite con PostgreSQL al push.
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8937 (>=0.70), Sales.Module 0.8971 (>=0.80), Inventory.Module 0.8708
+    (>=0.72).
+B4. Verificacion independiente del slice T1 (read-only, agente separado):
+    S1-S4 CONFORME; 0 blockers / 0 warnings estructurales; previews con cero
+    referencias residuales en fuente/tests; margin/confirm intactos (fuera del
+    diff); sin migracion. Residuales: I1 (riesgo best-effort del patron),
+    I2 (spec base se sincroniza en archive-time), I3 (sin runtime interactivo).
+B5. E2E salud WPF (mock): 2/2, incluye el render de SupplierInvoice_Title de la
+    vista modificada.
+B6. Auditoria de paquetes vulnerables: 0 vulnerables (10 proyectos, exit 0).
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. Suite SIN PostgreSQL real local (credenciales rechazadas 28P01; gated tests
+    en early-return). CI cubre al push.
+D2. Indicador WPF verificado estatico + compilacion + E2E salud; sin ejecucion
+    interactiva del flujo OCR completo en runtime.
+D3. Heuristica de numero de factura best-effort: sin keyword FACTURA -> null;
+    residual I1 documentado (si aparece en uso real, acotar la captura).
+
+E. ROLLBACK
+
+E1. Revertir ef84c47 + 320deb5 restaura previews base64 (con converter), la
+    columna "Codigo proveedor" y las columnas de margen; sin migraciones ni
+    reescrituras de datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS -- S1-S4 COMPLIANT (verificacion
+    independiente) + degeneraciones D1/D2 y residual I1 registrados. Reporte:
+    verify-report.md del change.
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. Si se quiere trazabilidad del numero de factura (persistirlo en la factura
+    staged), es un tramo propio con migracion (D4 del change).
+G2. Riesgo residual del patron (p. ej. "FACTURA FECHA: 2026-10-10" dentro de la
+    ventana de 12 no-digitos): acotar la captura si aparece en uso real.
+G3. La UI no tiene tests automatizados de estructura XAML (compilacion + E2E
+    salud); considerar un E2E de escaneo si el flujo se estabiliza.
+
+H. COMMITS
+
+H1. 8.160 en V0.15: 5a6ac28 (plan) + 97fc513 (particion atomica) + ef84c47 (T1)
+    + 320deb5 (ajuste directo UI) + commit de cierre de este ANEXO (git log /
+    L5 del tracker ODD).
+================================================================================
+
