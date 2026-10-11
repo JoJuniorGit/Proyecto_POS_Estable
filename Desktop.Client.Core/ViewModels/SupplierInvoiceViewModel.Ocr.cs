@@ -117,7 +117,7 @@ public partial class SupplierInvoiceViewModel
 
             if (lines.Count == 0)
             {
-                StatusMessage = "El OCR no detectó líneas legibles en la factura.";
+                StatusMessage = "El OCR no detectó líneas legibles en la factura. Verifique el enfoque y la iluminación de la foto e intente de nuevo.";
                 _dialogService.ShowWarning("Sin líneas OCR", StatusMessage);
                 return;
             }

@@ -201,7 +201,9 @@ public class OcrTableParserTests
         Assert.Equal(1234567m, lines[0].UnitCost);
         Assert.Equal(4.25m, lines[1].Quantity);
         Assert.Equal(4.25m, lines[1].UnitCost);
-        Assert.Equal(500m, lines[2].Quantity);
+        // 8.163: cero inicial = decimal ("0.500" → 0,5); en es-VE los miles no se escriben con
+        // cero delante.
+        Assert.Equal(0.5m, lines[2].Quantity);
         Assert.Equal(-4250m, lines[2].UnitCost);
         // 8.147-T9/D2: sin dígito antes del primer punto no hay regla de miles → decimal puro.
         Assert.Equal(0.5m, lines[3].Quantity);
@@ -400,10 +402,10 @@ public class OcrTableParserTests
     [Fact]
     public void RealFormatCaseA_SevenColumnsWithNoise_ResolvesQuantityAndCost()
     {
-        // 8.162: layout real COMERCIAL M Y E (matriz de punto): CANT | UNIDAD | DESCRIPCION |
-        // % ALIC | P.U. C/IVA $ | % DSCTO | SUBTTL. Con mapeo de 3 columnas, el % ALIC, el
-        // % DSCTO y el subtotal caen en la banda abierta del costo: no deben romperlo (se elige
-        // la palabra parseable más cercana al ancla "P.U."), y "UND" no debe romper la cantidad.
+        // 8.162/8.163: layout real COMERCIAL M Y E (matriz de punto) con los artefactos que
+        // produce el OCR en la práctica: cantidad con comilla de raya manuscrita (“72.00), precio
+        // con punto en vez de coma (0.614) y filas de pie (rayas/perforaciones, Nota legal,
+        // Sub-Total). Con mapeo de 3 columnas deben quedar EXACTAMENTE las dos líneas de ítems.
         var template = new SupplierColumnMappingDto(null, null, "DESCRIPCION", "CANT.", "P.U.");
         var page = Page(
             Word("CANT.", 40, 100),
@@ -415,13 +417,13 @@ public class OcrTableParserTests
             Word("%", 650, 100, width: 10),
             Word("DSCTO", 670, 100),
             Word("SUBTTL", 780, 100),
-            Word("72,00", 40, 130),
+            Word("“72.00", 40, 130),
             Word("UND", 150, 130),
             Word("TOALLAS", 260, 130),
             Word("ALIVE", 340, 130),
             Word("DIURNA", 420, 130),
             Word("16,00%", 500, 130),
-            Word("0,614", 560, 130),
+            Word("0.614", 560, 130),
             Word("0%", 660, 130),
             Word("44,265", 780, 130),
             Word("4,00", 40, 160),
@@ -431,7 +433,15 @@ public class OcrTableParserTests
             Word("0,00%", 500, 160),
             Word("10,529", 560, 160),
             Word("0%", 660, 160),
-            Word("42,119", 780, 160));
+            Word("42,119", 780, 160),
+            Word("¥", 704, 190),
+            Word("A,", 2725, 190),
+            Word("Nota:", 436, 220),
+            Word("Sub-Total", 1673, 220),
+            Word("430,689", 2210, 220),
+            Word("TOTAL", 1656, 250),
+            Word("FINAL:", 1796, 250),
+            Word("306,91", 2224, 250));
 
         var lines = _parser.Parse([page], template);
 
@@ -483,6 +493,22 @@ public class OcrTableParserTests
         Assert.Equal(4025.37m, lines[1].UnitCost);
         Assert.Null(lines[0].Barcode);
         Assert.Null(lines[0].SupplierCode);
+    }
+
+    [Fact]
+    public void FooterTerminator_DoesNotCutProductNamesWithTheWordAsPrefix()
+    {
+        // 8.163: la detección de pie compara la palabra normalizada completa; un producto como
+        // "TOTALCARE" no corta la lectura de la tabla.
+        var page = Page([
+            .. GenericHeader(),
+            .. DataRow("TOTALCARE", "2", "4,50", 130),
+            .. DataRow("Café", "1", "1,10", 160)]);
+
+        var lines = _parser.Parse([page], template: null);
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal("TOTALCARE", lines[0].Name);
     }
 
     [Fact]

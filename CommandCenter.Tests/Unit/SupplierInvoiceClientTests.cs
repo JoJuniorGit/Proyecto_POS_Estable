@@ -469,17 +469,24 @@ public sealed class SupplierInvoiceClientTests
             "Barcode;Supplier Code;Name;Quantity;Unit Cost\n" +
             "1;SUP-1;Miles;4.250;1.234.567\n" +
             "2;SUP-2;Decimales;4.25;4.2500\n" +
-            "3;SUP-3;Ambos;1.234,56;1,234.56"));
+            "3;SUP-3;Ambos;1.234,56;1,234.56\n" +
+            "4;SUP-4;CeroInicial;0.500;0.614\n" +
+            "5;SUP-5;Comilla;“72.00;1,50"));
 
         var lines = await service.ParseFileWithMappingAsync(stream, ".csv", Mapping());
 
-        Assert.Equal(3, lines.Count);
+        Assert.Equal(5, lines.Count);
         Assert.Equal(4250m, lines[0].Quantity);
         Assert.Equal(1234567m, lines[0].UnitCostDocument);
         Assert.Equal(4.25m, lines[1].Quantity);
         Assert.Equal(4.25m, lines[1].UnitCostDocument);
         Assert.Equal(1234.56m, lines[2].Quantity);
         Assert.Equal(1234.56m, lines[2].UnitCostDocument);
+        // 8.163: cero inicial = decimal ("0.500" → 0,5) y comillas tipográficas de OCR fuera.
+        Assert.Equal(0.5m, lines[3].Quantity);
+        Assert.Equal(0.614m, lines[3].UnitCostDocument);
+        Assert.Equal(72.00m, lines[4].Quantity);
+        Assert.Equal(1.50m, lines[4].UnitCostDocument);
     }
 
     [Fact]
@@ -884,6 +891,26 @@ public sealed class SupplierInvoiceClientTests
         Assert.Equal("Nombre Manual", viewModel.SupplierCommercialName);
         Assert.Equal("J-999", viewModel.OcrDetectedRif);
         Assert.Equal("Proveedor Detectado", viewModel.OcrDetectedSupplierName);
+    }
+
+    [Fact]
+    public async Task ScanInvoice_WithNoExtractedLines_ShowsActionableGuidance()
+    {
+        // 8.163: sin líneas extraíbles el mensaje guía a re-tomar la foto en vez de dejar al
+        // operador sin contexto.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        service.Setup(client => client.ExtractOcrAsync(
+                OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OcrExtractionResultDto(Array.Empty<OcrExtractedLineDto>(), null, null, null));
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowWarning("Sin líneas OCR", It.IsAny<string>()));
+        var viewModel = CreateViewModel(service.Object, dialogService: dialog.Object, filePicker: PickerReturning(OcrFilePath));
+        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null);
+
+        await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
+
+        Assert.Contains("enfoque", viewModel.StatusMessage);
+        dialog.Verify(d => d.ShowWarning("Sin líneas OCR", It.IsAny<string>()), Times.Once);
     }
 
     [Fact]

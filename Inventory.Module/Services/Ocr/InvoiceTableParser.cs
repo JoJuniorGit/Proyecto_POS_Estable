@@ -41,6 +41,17 @@ public sealed class InvoiceTableParser
             [InvoiceColumn.Barcode] = ["barras", "ean", "barcode", "upc"]
         };
 
+    /// <summary>
+    /// 8.163: palabras normalizadas que marcan el fin de la tabla de ítems en el pie fiscal
+    /// (Sub-Total, TOTAL, Nota legal, GRACIAS, SALDO, I.V.A, FORMA de pago, TASA de cambio).
+    /// La comparación es por igualdad completa: un producto como "TOTALCARE" no corta la lectura.
+    /// </summary>
+    private static readonly HashSet<string> FooterTerminators =
+        ["subtotal", "total", "nota", "gracias", "saldo", "iva", "forma", "tasa"];
+
+    private static bool IsFooterRow(IReadOnlyList<OcrWord> row) =>
+        row.Any(word => FooterTerminators.Contains(Normalize(word.Text)));
+
     /// <summary>Parsea páginas OCR (en orden) a filas de factura.</summary>
     /// <param name="pages">Páginas reconocidas, cada una con sus word-boxes.</param>
     /// <param name="template">Plantilla de columnas del proveedor; null usa solo keywords genéricas.</param>
@@ -76,6 +87,13 @@ public sealed class InvoiceTableParser
             var bands = BuildBands(anchors);
             foreach (var row in dataRows)
             {
+                // 8.163: el pie fiscal (totales, nota legal, formas de pago) no son ítems; al
+                // detectar una palabra marcadora se deja de leer la página.
+                if (IsFooterRow(row))
+                {
+                    break;
+                }
+
                 var line = MapRow(row, bands);
                 if (line is not null)
                 {
@@ -294,7 +312,7 @@ public sealed class InvoiceTableParser
         return bands;
     }
 
-    /// <summary>Proyecta una fila a línea; null si ningún bucket mapeado recibió palabras.</summary>
+    /// <summary>Proyecta una fila a línea; null si no aporta identificador ni valores numéricos (8.163).</summary>
     private static OcrExtractedLineDto? MapRow(IReadOnlyList<OcrWord> row, IReadOnlyList<Band> bands)
     {
         if (row.Count == 0)
@@ -325,6 +343,15 @@ public sealed class InvoiceTableParser
         var barcode = BuildText(buckets, InvoiceColumn.Barcode, string.Empty);
         var quantity = BuildNumber(buckets, bands, InvoiceColumn.Quantity);
         var unitCost = BuildNumber(buckets, bands, InvoiceColumn.UnitCost);
+
+        // 8.163: una fila sin identificador ni valores numéricos (rayas manuscritas,
+        // perforaciones, viñetas) no aporta nada: no se emite para no bloquear el flujo con
+        // filas fantasma.
+        if (name.Value is null && supplierCode.Value is null && barcode.Value is null &&
+            quantity.Value is null && unitCost.Value is null)
+        {
+            return null;
+        }
 
         return new OcrExtractedLineDto(
             supplierCode.Value,
@@ -446,10 +473,12 @@ public sealed class InvoiceTableParser
             return false;
         }
 
-        var normalized = value.Trim()
-            .Replace("$", string.Empty, StringComparison.Ordinal)
-            .Replace("€", string.Empty, StringComparison.Ordinal)
-            .Replace(" ", string.Empty, StringComparison.Ordinal);
+        // 8.163: además de moneda y espacios se descartan comillas tipográficas/rectas de OCR
+        // (p. ej. “72.00 junto a una raya manuscrita).
+        var normalized = new string(value
+            .Where(character => character != ' ' && character != '$' && character != '€' &&
+                character is not ('\u201C' or '\u201D' or '\u2018' or '\u2019' or '«' or '»' or '"'))
+            .ToArray());
         var commaIndex = normalized.LastIndexOf(',');
         var dotIndex = normalized.LastIndexOf('.');
 
@@ -481,12 +510,21 @@ public sealed class InvoiceTableParser
     }
 
     /// <summary>
-    /// 8.147-T9/D2: es-VE usa el punto como separador de miles y la coma como decimal. Un valor con
-    /// puntos solos es formato de miles cuando cada grupo posterior a un punto tiene exactamente
-    /// 3 dígitos y hay un dígito inmediatamente antes del primer punto.
+    /// 8.147-T9/D2 / 8.163: es-VE usa el punto como separador de miles y la coma como decimal. Un
+    /// valor con puntos solos es formato de miles cuando cada grupo posterior a un punto tiene
+    /// exactamente 3 dígitos, hay un dígito inmediatamente antes del primer punto y el entero no
+    /// arranca con cero ("0.614" es decimal).
     /// </summary>
     private static bool IsThousandsSeparatedByDots(string value)
     {
+        // 8.163: un cero inicial descarta la convención de miles ("0.614" es 0,614, no 614):
+        // en es-VE los miles nunca se escriben con cero delante.
+        var digitStart = value[0] is '-' or '+' ? 1 : 0;
+        if (digitStart < value.Length && value[digitStart] == '0')
+        {
+            return false;
+        }
+
         var firstDot = value.IndexOf('.');
         if (firstDot <= 0 || !char.IsAsciiDigit(value[firstDot - 1]))
         {
