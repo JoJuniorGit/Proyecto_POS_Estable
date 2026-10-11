@@ -13586,7 +13586,6 @@ E1. Revertir el commit del tramo restaura los campos inline + "Buscar
 
 F. COMMITS
 
-F1. 8.161 en V0.15: commit de implementacion (feat(8.161)) + commit de este
-    ANEXO (docs(8.161); git log).
+F1. 8.161 en V0.15: commit unico con implementacion + ANEXO: 04b825e (git log).
 ================================================================================
 
