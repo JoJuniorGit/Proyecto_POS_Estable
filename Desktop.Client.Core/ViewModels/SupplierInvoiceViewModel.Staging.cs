@@ -38,12 +38,6 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     [ObservableProperty]
     private decimal _marginWholesaleOverride;
 
-    [ObservableProperty]
-    private decimal _suggestedRetailPriceUSD;
-
-    [ObservableProperty]
-    private decimal _suggestedWholesalePriceUSD;
-
     /// <summary>
     /// 8.147-S5/S6 (T7): edición de los campos OCR en revisión. Solo el origen OCR lo habilita
     /// (el padre lo propaga al cargar las líneas); las filas tabulares quedan de solo lectura.
@@ -78,7 +72,6 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
         _editName = source.Name;
         _editQuantity = source.Quantity;
         _editUnitCostDocument = source.UnitCostDocument;
-        RecalculateSuggestedPrices();
     }
 
     partial void OnEditNameChanged(string? value) => OnPropertyChanged(nameof(NameConfidenceBand));

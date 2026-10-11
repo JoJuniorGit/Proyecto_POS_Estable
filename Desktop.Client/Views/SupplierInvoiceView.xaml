@@ -323,9 +323,10 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Costo USD" Binding="{Binding UnitCostUSD, StringFormat={}{0:N2}}" Width="100" />
-                <DataGridTemplateColumn Header="Costo factura (Bs.S)"
-                                        Width="130"
-                                        Visibility="{Binding Data.IsBsSInvoice, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
+                <!-- 8.164: el precio escaneado por producto es editable en USD y Bs.S; el
+                     encabezado acompaña la moneda del documento. -->
+                <DataGridTemplateColumn Header="{Binding Data.DocumentCostHeader, Source={StaticResource ViewModelProxy}}"
+                                        Width="150">
                     <DataGridTemplateColumn.CellStyle>
                         <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
                             <Style.Triggers>
@@ -359,8 +360,6 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Costo anterior → nuevo" Binding="{Binding CostComparison}" Width="160" />
-                <DataGridTextColumn Header="Precio detal sugerido USD" Binding="{Binding SuggestedRetailPriceUSD, StringFormat={}{0:N2}}" Width="150" />
-                <DataGridTextColumn Header="Precio mayor sugerido USD" Binding="{Binding SuggestedWholesalePriceUSD, StringFormat={}{0:N2}}" Width="160" />
                 <DataGridTemplateColumn Header="Aprobar" Width="85"
                                         Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
                     <DataGridTemplateColumn.CellTemplate>

@@ -23,31 +23,18 @@ namespace CommandCenter.Tests.Unit;
 public sealed class SupplierInvoiceClientTests
 {
     [Fact]
-    public void MarginEdit_RecalculatesSuggestedPriceWithoutCallingApi()
+    public void DocumentCostHeader_FollowsInvoiceCurrency()
     {
-        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
-        var viewModel = CreateViewModel(service.Object);
-        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1, unitCost: 10m)));
-        var line = Assert.Single(viewModel.Lines);
-
-        line.MarginRetailOverride = 33.333m;
-
-        Assert.Equal(PricingCalculator.RoundPriceUp(10m * (1m + 33.333m / 100m)), line.SuggestedRetailPriceUSD);
-        service.VerifyNoOtherCalls();
-    }
-
-    [Fact]
-    public void MarginEdit_RaisesPropertyChangeForSuggestedRetailPrice()
-    {
+        // 8.164: el encabezado del costo editable acompaña la moneda del documento (antes la
+        // columna solo existía para Bs.S y en USD el precio escaneado no era editable).
         var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
-        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1, unitCost: 10m)));
-        var line = Assert.Single(viewModel.Lines);
-        var changedProperties = new List<string?>();
-        line.PropertyChanged += (_, eventArgs) => changedProperties.Add(eventArgs.PropertyName);
+        Assert.Equal("Costo factura (USD)", viewModel.DocumentCostHeader);
 
-        line.MarginRetailOverride = 40m;
+        viewModel.LoadStagedInvoice(CreateInvoice(CurrencyCodes.BsS, CreateLine(1)));
+        Assert.Equal("Costo factura (Bs.S)", viewModel.DocumentCostHeader);
 
-        Assert.Contains(nameof(SupplierInvoiceLineViewModel.SuggestedRetailPriceUSD), changedProperties);
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1)));
+        Assert.Equal("Costo factura (USD)", viewModel.DocumentCostHeader);
     }
 
     [Fact]

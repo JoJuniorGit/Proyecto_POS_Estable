@@ -63,6 +63,9 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     public bool IsBsSCurrency => string.Equals(SelectedCurrency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
     public bool IsBsSInvoice => string.Equals(StagedInvoice?.Currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>8.164: encabezado del costo de factura editable según la moneda del documento.</summary>
+    public string DocumentCostHeader => IsBsSInvoice ? "Costo factura (Bs.S)" : "Costo factura (USD)";
+
     /// <summary>Factura Bs.S exige una tasa aplicada válida (&gt; 0); en USD la tasa se normaliza a 1.</summary>
     public bool HasValidAppliedRate => !IsBsSCurrency || (TryParseAppliedRate(AppliedRateText, out var rate) && rate > 0m);
 
@@ -148,6 +151,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(CanConfirmInvoice));
         OnPropertyChanged(nameof(IsBsSInvoice));
+        OnPropertyChanged(nameof(DocumentCostHeader));
         ConfirmInvoiceCommand.NotifyCanExecuteChanged();
     }
 
