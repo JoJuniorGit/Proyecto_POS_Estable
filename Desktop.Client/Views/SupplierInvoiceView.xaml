@@ -133,6 +133,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -158,12 +159,22 @@
                     <TextBlock Text="Escanear factura (OCR)" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
-            <TextBox Grid.Column="2"
+            <!-- 8.160-S2: el número de factura detectado por OCR se muestra junto al botón de
+                 escaneo (ajuste del mantenedor, L4; visible solo con origen OCR). -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                        Margin="0,0,12,0"
+                        Visibility="{Binding IsOcrSource, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="N.º de factura:" VerticalAlignment="Center" Margin="0,0,6,0"
+                           Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                <TextBlock Text="{Binding OcrDetectedInvoiceNumber, TargetNullValue='No detectado'}"
+                           FontWeight="Bold" VerticalAlignment="Center" />
+            </StackPanel>
+            <TextBox Grid.Column="3"
                      Text="{Binding SelectedFilePath}"
                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
                      IsReadOnly="True"
                      VerticalContentAlignment="Center" />
-            <ProgressBar Grid.Column="3"
+            <ProgressBar Grid.Column="4"
                          IsIndeterminate="{Binding IsBusy}"
                          Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
                          Width="100" Height="10" Margin="12,0,0,0"
@@ -206,31 +217,7 @@
         </materialDesign:Card>
 
         <Grid Grid.Row="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-
-            <!-- 8.160-S2: la revisión lado a lado (preview base64 con zoom y paginación) se retira
-                 por decisión del mantenedor; en su lugar, un panel compacto muestra el número de
-                 factura detectado por OCR. Sin origen OCR la columna colapsa y la grilla conserva
-                 su layout de siempre. -->
-            <materialDesign:Card Grid.Column="0" Margin="0,0,12,0"
-                                 VerticalAlignment="Top"
-                                 Visibility="{Binding IsOcrSource, Converter={StaticResource BoolToVis}}">
-                <StackPanel Margin="12">
-                    <TextBlock Text="N.º de factura (OCR)"
-                               FontWeight="Medium"
-                               Foreground="{DynamicResource MaterialDesignBodyLight}" />
-                    <TextBlock Text="{Binding OcrDetectedInvoiceNumber, TargetNullValue='No detectado'}"
-                               FontWeight="Bold"
-                               FontSize="18"
-                               TextWrapping="Wrap"
-                               Margin="0,4,0,0" />
-                </StackPanel>
-            </materialDesign:Card>
-
-            <DataGrid Grid.Column="1"
+            <DataGrid
                   ItemsSource="{Binding Lines}"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
@@ -287,7 +274,6 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Código proveedor" Binding="{Binding SupplierCode}" Width="130" />
                 <DataGridTextColumn Header="Código de barras" Binding="{Binding Barcode}" Width="130" />
                 <DataGridTemplateColumn Header="Estado" Width="115">
                     <DataGridTemplateColumn.CellTemplate>
