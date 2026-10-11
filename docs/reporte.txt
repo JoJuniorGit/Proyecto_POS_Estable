@@ -13643,3 +13643,67 @@ E1. 8.162 en V0.15: commit de implementacion (fix(8.162)) + commit de este ANEXO
     (docs(8.162); git log).
 ================================================================================
 
+================================================================================
+ANEXO 8.163 - OCR FACTURAS M Y E / NUEVO VIENTO: PIE FISCAL, COMIL LAS Y DECIMALES CON CERO INICIAL - 2026-10-11
+================================================================================
+Fix derivado de reproducir las fotos reales del mantenedor (IMG_20261010_190611
+M Y E y IMG_20261010_190856 NUEVO VIENTO) por el pipeline OCR completo (motor
+Tesseract + parser + preprocesamiento reales) con un harness temporal de
+diagnostico, eliminado antes del commit.
+
+A. ALCANCE Y ENTREGA
+
+A1. InvoiceTableParser + espejo tabular (SupplierInvoiceService.Parsing.cs):
+    (a) la normalizacion numerica descarta comillas tipograficas/rectas de OCR
+    ("“72.00" -> 72.00); (b) la convencion de miles es-VE ya no aplica cuando el
+    entero arranca con cero ("0.614" -> 0,614; antes 614, error x1000);
+    (c) la lectura de la tabla se detiene en el pie fiscal (Sub-Total/TOTAL/
+    Nota/GRACIAS/SALDO/I.V.A/FORMA/TASA por igualdad normalizada; "TOTALCARE"
+    no corta); (d) las filas sin identificador ni numeros (rayas manuscritas,
+    perforaciones, vinetas) dejan de emitirse.
+A2. Mensaje "Sin lineas OCR" ahora guia a re-tomar la foto (enfoque/iluminacion).
+A3. Diagnostico NUEVO VIENTO (foto 190856): imagen lavada/blanda; el motor pierde
+    la tabla (115 palabras; numeros corruptos a nivel pixel: "1.564,22" ->
+    "£4564,22"). Se probaron 5 variantes de binarizado (adaptativo 25/51 con y
+    sin upscale x2, nitidez unsharp, Otsu x2): ninguna produce datos confiables
+    (la mejor recupera texto pero con numeros corruptos). Accion practica:
+    re-tomar esa foto; el formato ya esta cubierto por tests (RealFormatCaseB)
+    y la calidad de M Y E produce el flujo completo sin intervencion.
+
+B. VERIFICACION
+
+B1. Reproduccion real M Y E ANTES del fix: 16 lineas (2 fantasma bloqueantes con
+    "Filas OCR incompletas", linea legal con costo basura 430.689, cantidad null
+    en la fila 1, costo 614 por el punto).
+    DESPUES del fix (misma foto, mismo pipeline): EXACTAMENTE las 6 lineas de
+    items con cantidad y costo correctos (72.00/0.614; 4.00/10.529; 72.00/1.020;
+    20.00/3.619; 5.00/27.69; 10.00/13.479), todas con identificador y 0 filas
+    fantasma.
+B2. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B3. Suite completa: 2235/2235, 0 fallas (SIN PostgreSQL real local: gated
+    early-return; CI cubre al push).
+B4. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8937, Sales.Module 0.8971, Inventory.Module 0.8724.
+B5. RED observado antes del fix (4 tests: parser comilla/cero/pie + espejo +
+    mensaje) -> GREEN.
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada documentada).
+C2. El filtrado de pie compara palabras completas: un item cuyo nombre contenga
+    exactamente "TOTAL"/"NOTA"/etc. como palabra suelta cortaria la lectura (no
+    observado en datos reales; el caso prefijo "TOTALCARE" quedo con test).
+C3. La foto 190856 de NUEVO VIENTO no es recuperable por software; requiere
+    re-foto en la practica.
+
+D. ROLLBACK
+
+D1. Revertir el commit restaura el comportamiento previo del parser y del
+    espejo tabular; sin migraciones ni reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.163 en V0.15: commit de implementacion (fix(8.163)) + commit de este ANEXO
+    (docs(8.163); git log).
+================================================================================
+
