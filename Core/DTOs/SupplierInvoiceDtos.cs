@@ -62,7 +62,16 @@ public sealed record SupplierInvoiceLineDto(
 
 public sealed record CreateInvoiceProductRequestDto(string Barcode, string Name);
 
-public sealed record LinkInvoiceProductRequestDto(int ProductId, string? InvoiceDescription = null);
+public sealed record LinkedProductMarginOverrideDto(
+    int ProductId,
+    decimal MarginRetail,
+    decimal MarginWholesale);
+
+public sealed record LinkInvoiceProductRequestDto(
+    int ProductId,
+    string? InvoiceDescription = null,
+    IReadOnlyList<int>? ProductIds = null,
+    IReadOnlyList<LinkedProductMarginOverrideDto>? MarginOverrides = null);
 
 public sealed record ConfirmSupplierInvoiceRequestDto(
     IReadOnlyList<ConfirmLineDto> Lines,

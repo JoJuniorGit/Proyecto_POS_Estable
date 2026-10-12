@@ -370,6 +370,251 @@ public class SupplierInvoiceCreationTests
         Assert.Equal(4.20m, matchedLine.OldCostPriceUSD);
     }
 
+    [Fact]
+    public async Task LinkProductToLineAsync_WithMultipleProducts_ExpandsLinesLoadsEachOldCostAndPersistsMultiAliases()
+    {
+        var (service, context) = CreateService();
+        var productA = new ProductBuilder()
+            .WithId(0)
+            .WithSku("7590001000011")
+            .WithName("Refresco Cola 2L")
+            .WithCostAndMargin(1.20m, 30m)
+            .WithStock(10m)
+            .Build();
+        var productB = new ProductBuilder()
+            .WithId(0)
+            .WithSku("7590001000028")
+            .WithName("Refresco Naranja 2L")
+            .WithCostAndMargin(1.10m, 25m)
+            .WithStock(5m)
+            .Build();
+        var productC = new ProductBuilder()
+            .WithId(0)
+            .WithSku("7590001000035")
+            .WithName("Refresco Limón 2L")
+            .WithCostAndMargin(1.15m, 20m)
+            .WithStock(8m)
+            .Build();
+        context.Products.AddRange(productA, productB, productC);
+        await context.SaveChangesAsync();
+
+        var invoice = await AddInvoiceAsync(
+            context,
+            CurrencyCodes.Usd,
+            1m,
+            CreateLine(
+                supplierCode: "PROV-REF-2L",
+                name: "REFRESCO SURTIDO 2 LITROS",
+                quantity: 6m,
+                unitCostUsd: 1.50m));
+        var line = Assert.Single(invoice.Lines);
+
+        var result = await service.LinkProductToLineAsync(
+            invoice.Id,
+            line.Id,
+            new LinkInvoiceProductRequestDto(
+                productA.Id,
+                "REFRESCO SURTIDO 2 LITROS",
+                new[] { productA.Id, productB.Id, productC.Id }));
+
+        Assert.Equal(3, result.Lines.Count);
+
+        Assert.Equal(productA.Id, result.Lines[0].ResolvedProductId);
+        Assert.Equal("Refresco Cola 2L", result.Lines[0].Name);
+        Assert.Equal(6m, result.Lines[0].Quantity);
+        Assert.Equal(1.50m, result.Lines[0].UnitCostUSD);
+        Assert.Equal(1.20m, result.Lines[0].OldCostPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(1.50m * 1.30m), result.Lines[0].SuggestedRetailPriceUSD);
+
+        Assert.Equal(productB.Id, result.Lines[1].ResolvedProductId);
+        Assert.Equal("Refresco Naranja 2L", result.Lines[1].Name);
+        Assert.Equal(0m, result.Lines[1].Quantity);
+        Assert.Equal(1.50m, result.Lines[1].UnitCostUSD);
+        Assert.Equal(1.10m, result.Lines[1].OldCostPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(1.50m * 1.25m), result.Lines[1].SuggestedRetailPriceUSD);
+
+        Assert.Equal(productC.Id, result.Lines[2].ResolvedProductId);
+        Assert.Equal("Refresco Limón 2L", result.Lines[2].Name);
+        Assert.Equal(0m, result.Lines[2].Quantity);
+        Assert.Equal(1.50m, result.Lines[2].UnitCostUSD);
+        Assert.Equal(1.15m, result.Lines[2].OldCostPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(1.50m * 1.20m), result.Lines[2].SuggestedRetailPriceUSD);
+
+        var codeAliases = await context.SupplierProductCodes
+            .AsNoTracking()
+            .Where(alias => alias.SupplierId == invoice.SupplierId && alias.Code == "PROV-REF-2L")
+            .Select(alias => alias.ProductId)
+            .OrderBy(id => id)
+            .ToListAsync();
+        Assert.Equal(new[] { productA.Id, productB.Id, productC.Id }.OrderBy(id => id), codeAliases);
+    }
+
+    [Fact]
+    public async Task LinkProductToLineAsync_MultiProductAlias_ExpandsFutureInvoiceAndConfirmSkipsZeroQuantityStockMovement()
+    {
+        var (service, context) = CreateService();
+        var productA = new ProductBuilder()
+            .WithId(0)
+            .WithSku("7590002000010")
+            .WithName("Jugo Durazno 1L")
+            .WithCostAndMargin(2.00m, 30m)
+            .WithStock(10m)
+            .Build();
+        var productB = new ProductBuilder()
+            .WithId(0)
+            .WithSku("7590002000027")
+            .WithName("Jugo Manzana 1L")
+            .WithCostAndMargin(2.10m, 25m)
+            .WithStock(7m)
+            .Build();
+        context.Products.AddRange(productA, productB);
+        await context.SaveChangesAsync();
+
+        var firstInvoice = await AddInvoiceAsync(
+            context,
+            CurrencyCodes.Usd,
+            1m,
+            CreateLine(
+                supplierCode: null,
+                name: "JUGO FRUTAS 1L SURTIDO",
+                quantity: 4m,
+                unitCostUsd: 2.50m));
+        var firstLine = Assert.Single(firstInvoice.Lines);
+
+        await service.LinkProductToLineAsync(
+            firstInvoice.Id,
+            firstLine.Id,
+            new LinkInvoiceProductRequestDto(
+                productA.Id,
+                "JUGO FRUTAS 1L SURTIDO",
+                new[] { productA.Id, productB.Id }));
+
+        var secondInvoice = await service.StageAsync(new StageSupplierInvoiceRequestDto(
+            firstInvoice.SupplierId,
+            null,
+            firstInvoice.Supplier!.CommercialName,
+            null,
+            new[] { new StageLineDto(null, null, "JUGO FRUTAS 1L SURTIDO", 5m, 3.00m) },
+            CurrencyCodes.Usd,
+            1m,
+            OcrSourced: true));
+
+        Assert.Equal(2, secondInvoice.Lines.Count);
+        Assert.Equal(productA.Id, secondInvoice.Lines[0].ResolvedProductId);
+        Assert.Equal(5m, secondInvoice.Lines[0].Quantity);
+        Assert.Equal(productB.Id, secondInvoice.Lines[1].ResolvedProductId);
+        Assert.Equal(0m, secondInvoice.Lines[1].Quantity);
+
+        await service.ConfirmAsync(
+            secondInvoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(
+                secondInvoice.Lines
+                    .Select(line => new ConfirmLineDto(line.Id, true, line.MarginRetailOverride, line.MarginWholesaleOverride))
+                    .ToArray()));
+
+        var updatedA = await context.Products.AsNoTracking().SingleAsync(p => p.Id == productA.Id);
+        var updatedB = await context.Products.AsNoTracking().SingleAsync(p => p.Id == productB.Id);
+
+        Assert.Equal(3.00m, updatedA.CostPriceUSD);
+        Assert.Equal(15m, updatedA.StockQuantity);
+
+        Assert.Equal(3.00m, updatedB.CostPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(3.00m * 1.25m), updatedB.PriceRetailUSD);
+        Assert.Equal(7m, updatedB.StockQuantity);
+
+        var movements = await context.StockMovements.AsNoTracking().ToListAsync();
+        var movement = Assert.Single(movements);
+        Assert.Equal(productA.Id, movement.ProductId);
+        Assert.Equal(5m, movement.QuantityChange);
+
+        var persistedAliases = await context.SupplierProductCodes
+            .AsNoTracking()
+            .Where(alias => alias.SupplierId == firstInvoice.SupplierId && alias.Code == "JUGO FRUTAS 1L SURTIDO")
+            .Select(alias => alias.ProductId)
+            .OrderBy(id => id)
+            .ToListAsync();
+        Assert.Equal(new[] { productA.Id, productB.Id }.OrderBy(id => id), persistedAliases);
+    }
+
+    [Fact]
+    public async Task LinkProductToLineAsync_WithCustomMarginOverrides_AppliesSuggestedPricesAndPersistsOnConfirm()
+    {
+        var (service, context) = CreateService();
+        var productA = new ProductBuilder()
+            .WithId(0)
+            .WithSku("7590003000019")
+            .WithName("Galleta Vainilla Paquete")
+            .WithCostAndMargin(1.00m, 25m)
+            .WithStock(10m)
+            .Build();
+        var productB = new ProductBuilder()
+            .WithId(0)
+            .WithSku("7590003000026")
+            .WithName("Galleta Chocolate Paquete")
+            .WithCostAndMargin(1.10m, 20m)
+            .WithStock(6m)
+            .Build();
+        context.Products.AddRange(productA, productB);
+        await context.SaveChangesAsync();
+
+        var invoice = await AddInvoiceAsync(
+            context,
+            CurrencyCodes.Usd,
+            1m,
+            CreateLine(
+                supplierCode: "PROV-GALLETA-SURTIDA",
+                name: "GALLETA SURTIDA PAQUETE",
+                quantity: 8m,
+                unitCostUsd: 2.00m));
+        var line = Assert.Single(invoice.Lines);
+
+        var linked = await service.LinkProductToLineAsync(
+            invoice.Id,
+            line.Id,
+            new LinkInvoiceProductRequestDto(
+                productA.Id,
+                "GALLETA SURTIDA PAQUETE",
+                new[] { productA.Id, productB.Id },
+                new[]
+                {
+                    new LinkedProductMarginOverrideDto(productA.Id, 40m, 22.5m),
+                    new LinkedProductMarginOverrideDto(productB.Id, 35m, 18m)
+                }));
+
+        Assert.Equal(2, linked.Lines.Count);
+        Assert.Equal(40m, linked.Lines[0].MarginRetailOverride);
+        Assert.Equal(22.5m, linked.Lines[0].MarginWholesaleOverride);
+        Assert.Equal(PricingCalculator.RoundPriceUp(2.00m * 1.40m), linked.Lines[0].SuggestedRetailPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(2.00m * 1.225m), linked.Lines[0].SuggestedWholesalePriceUSD);
+
+        Assert.Equal(35m, linked.Lines[1].MarginRetailOverride);
+        Assert.Equal(18m, linked.Lines[1].MarginWholesaleOverride);
+        Assert.Equal(PricingCalculator.RoundPriceUp(2.00m * 1.35m), linked.Lines[1].SuggestedRetailPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(2.00m * 1.18m), linked.Lines[1].SuggestedWholesalePriceUSD);
+
+        await service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(
+                linked.Lines
+                    .Select(item => new ConfirmLineDto(item.Id, true, item.MarginRetailOverride, item.MarginWholesaleOverride))
+                    .ToArray()));
+
+        var savedA = await context.Products.AsNoTracking().SingleAsync(p => p.Id == productA.Id);
+        var savedB = await context.Products.AsNoTracking().SingleAsync(p => p.Id == productB.Id);
+
+        Assert.Equal(40m, savedA.ProfitMarginRetail);
+        Assert.Equal(22.5m, savedA.ProfitMarginWholesale);
+        Assert.True(savedA.HasWholesale);
+        Assert.Equal(PricingCalculator.RoundPriceUp(2.00m * 1.40m), savedA.PriceRetailUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(2.00m * 1.225m), savedA.PriceWholesaleUSD);
+
+        Assert.Equal(35m, savedB.ProfitMarginRetail);
+        Assert.Equal(18m, savedB.ProfitMarginWholesale);
+        Assert.True(savedB.HasWholesale);
+        Assert.Equal(PricingCalculator.RoundPriceUp(2.00m * 1.35m), savedB.PriceRetailUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(2.00m * 1.18m), savedB.PriceWholesaleUSD);
+    }
+
 
     private static (SupplierInvoiceService Service, InventoryDbContext Context) CreateService(
         bool canMutateCatalog = true)

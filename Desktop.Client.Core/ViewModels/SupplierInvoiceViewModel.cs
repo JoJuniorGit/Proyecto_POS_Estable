@@ -24,6 +24,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     private int _disposed;
     private bool _isCreatingProduct;
     private bool _isUpdatingBulkApproval;
+    private bool _isPropagatingLinkedGroup;
 
     public UserSession UserSession { get; }
     public bool CanMutateCatalog => UserSession.CanMutateCatalog;
@@ -427,10 +428,54 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             Lines.Add(viewModel);
         }
 
+        AssignExpandedLinkedGroups();
+
         OnPropertyChanged(nameof(HasApprovableLines));
         OnPropertyChanged(nameof(AreAllApprovableLinesApproved));
         OnPropertyChanged(nameof(CanConfirmInvoice));
         RefreshCommandStates();
+    }
+
+    private void AssignExpandedLinkedGroups()
+    {
+        for (var index = 0; index < Lines.Count; index++)
+        {
+            var candidate = Lines[index];
+            if (candidate.ResolvedProductId is null
+                || !string.Equals(candidate.MatchMethod, "SupplierCode", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var groupEnd = index;
+            while (groupEnd + 1 < Lines.Count)
+            {
+                var next = Lines[groupEnd + 1];
+                if (next.ResolvedProductId is not null
+                    && string.Equals(next.MatchMethod, "SupplierCode", StringComparison.OrdinalIgnoreCase)
+                    && next.Quantity == 0m
+                    && next.UnitCostDocument == candidate.UnitCostDocument
+                    && string.Equals(next.SupplierCode, candidate.SupplierCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    groupEnd++;
+                    continue;
+                }
+
+                break;
+            }
+
+            if (groupEnd > index)
+            {
+                var groupKey = $"group-{candidate.LineId}";
+                for (var memberIndex = index; memberIndex <= groupEnd; memberIndex++)
+                {
+                    Lines[memberIndex].LinkedGroupKey = groupKey;
+                    Lines[memberIndex].IsEditorEnabled = true;
+                }
+
+                index = groupEnd;
+            }
+        }
     }
 
     [RelayCommand]
@@ -483,6 +528,44 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(AreAllApprovableLinesApproved));
             OnPropertyChanged(nameof(CanConfirmInvoice));
             ConfirmInvoiceCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        if (_isPropagatingLinkedGroup
+            || sender is not SupplierInvoiceLineViewModel changedLine
+            || string.IsNullOrWhiteSpace(changedLine.LinkedGroupKey))
+        {
+            return;
+        }
+
+        if (eventArgs.PropertyName is nameof(SupplierInvoiceLineViewModel.EditUnitCostDocument)
+            or nameof(SupplierInvoiceLineViewModel.ConversionFactor))
+        {
+            _isPropagatingLinkedGroup = true;
+            try
+            {
+                foreach (var sibling in Lines)
+                {
+                    if (ReferenceEquals(sibling, changedLine)
+                        || !string.Equals(sibling.LinkedGroupKey, changedLine.LinkedGroupKey, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    if (eventArgs.PropertyName == nameof(SupplierInvoiceLineViewModel.EditUnitCostDocument))
+                    {
+                        sibling.EditUnitCostDocument = changedLine.EditUnitCostDocument;
+                    }
+                    else if (eventArgs.PropertyName == nameof(SupplierInvoiceLineViewModel.ConversionFactor))
+                    {
+                        sibling.ConversionFactor = changedLine.ConversionFactor;
+                    }
+                }
+            }
+            finally
+            {
+                _isPropagatingLinkedGroup = false;
+            }
         }
     }
 

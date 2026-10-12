@@ -119,11 +119,10 @@ public partial class SupplierInvoiceService
                         .Distinct()
                         .ToList();
 
-                    var aliasesByCode = new Dictionary<string, SupplierProductCode>();
+                    var aliasesByCode = new Dictionary<string, List<SupplierProductCode>>(StringComparer.Ordinal);
                     if (candidateAliasCodes.Count > 0)
                     {
-                        // Orden por Id + TryAdd: si el arnés no aplica el índice único, gana el alias de
-                        // menor Id, igual que el FirstOrDefaultAsync del upsert por línea previo.
+                        // Orden por Id: si el arnés no aplica el índice único, el primer elemento es el de menor Id.
                         var existingAliases = await _context.SupplierProductCodes
                             .Where(alias => alias.SupplierId == invoice.SupplierId
                                 && alias.Code != null
@@ -132,7 +131,13 @@ public partial class SupplierInvoiceService
                             .ToListAsync(cancellationToken);
                         foreach (var alias in existingAliases)
                         {
-                            aliasesByCode.TryAdd(alias.Code!, alias);
+                            if (!aliasesByCode.TryGetValue(alias.Code!, out var list))
+                            {
+                                list = new List<SupplierProductCode>();
+                                aliasesByCode[alias.Code!] = list;
+                            }
+
+                            list.Add(alias);
                         }
                     }
 
@@ -152,6 +157,7 @@ public partial class SupplierInvoiceService
                     }
 
                     var aliasPlan = new Dictionary<string, int>(StringComparer.Ordinal);
+                    var multiProductAliasPlan = new Dictionary<string, List<int>>(StringComparer.Ordinal);
                     foreach (var line in orderedLines)
                     {
                         if (!confirmationsByLineId.TryGetValue(line.Id, out var confirmation))
@@ -186,16 +192,34 @@ public partial class SupplierInvoiceService
                         UpdateRememberedFactor(factorsByProductId, invoice.SupplierId, productId, line.ConversionFactor);
                         if (!string.IsNullOrWhiteSpace(line.SupplierCode))
                         {
-                            // 8.146-S5/D8: aprendizaje de alias dentro de la misma transacción;
-                            // el rollback del confirm no deja cambios de alias.
-                            aliasPlan[line.SupplierCode.Trim()] = productId;
+                            var normalizedCode = line.SupplierCode.Trim();
+                            if (line.MatchMethod == MatchMethod.SupplierCode)
+                            {
+                                if (!multiProductAliasPlan.TryGetValue(normalizedCode, out var multiProductIds))
+                                {
+                                    multiProductIds = new List<int>();
+                                    multiProductAliasPlan[normalizedCode] = multiProductIds;
+                                }
+
+                                if (!multiProductIds.Contains(productId))
+                                {
+                                    multiProductIds.Add(productId);
+                                }
+                            }
+                            else
+                            {
+                                // 8.146-S5/D8: aprendizaje de alias dentro de la misma transacción;
+                                // el rollback del confirm no deja cambios de alias.
+                                aliasPlan[normalizedCode] = productId;
+                            }
                         }
                     }
 
                     foreach (var aliasPlanEntry in aliasPlan.OrderBy(entry => entry.Key, StringComparer.Ordinal))
                     {
-                        if (aliasesByCode.TryGetValue(aliasPlanEntry.Key, out var alias))
+                        if (aliasesByCode.TryGetValue(aliasPlanEntry.Key, out var existingList) && existingList.Count > 0)
                         {
+                            var alias = existingList[0];
                             if (alias.ProductId != aliasPlanEntry.Value)
                             {
                                 alias.ProductId = aliasPlanEntry.Value;
@@ -209,6 +233,29 @@ public partial class SupplierInvoiceService
                                 Code = aliasPlanEntry.Key,
                                 ProductId = aliasPlanEntry.Value
                             });
+                        }
+                    }
+
+                    foreach (var multiAliasEntry in multiProductAliasPlan.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+                    {
+                        aliasesByCode.TryGetValue(multiAliasEntry.Key, out var existingList);
+                        foreach (var targetProductId in multiAliasEntry.Value)
+                        {
+                            if (existingList is not null && existingList.Any(alias => alias.ProductId == targetProductId))
+                            {
+                                continue;
+                            }
+
+                            var createdAlias = new SupplierProductCode
+                            {
+                                SupplierId = invoice.SupplierId,
+                                Code = multiAliasEntry.Key,
+                                ProductId = targetProductId
+                            };
+                            _context.SupplierProductCodes.Add(createdAlias);
+                            existingList ??= new List<SupplierProductCode>();
+                            aliasesByCode[multiAliasEntry.Key] = existingList;
+                            existingList.Add(createdAlias);
                         }
                     }
 
@@ -283,9 +330,12 @@ public partial class SupplierInvoiceService
         ConfirmLineDto confirmation)
     {
         var retailMargin = confirmation.MarginRetailOverride ?? product.ProfitMarginRetail;
-        var wholesaleMargin = product.HasWholesale
-            ? confirmation.MarginWholesaleOverride ?? product.ProfitMarginWholesale
-            : retailMargin;
+        var wholesaleMargin = confirmation.MarginWholesaleOverride
+            ?? (product.HasWholesale ? product.ProfitMarginWholesale : retailMargin);
+        if (confirmation.MarginWholesaleOverride.HasValue && confirmation.MarginWholesaleOverride.Value != retailMargin)
+        {
+            product.HasWholesale = true;
+        }
 
         // 8.165: la cantidad efectiva que entra a stock respeta el factor caja→unidad de la línea.
         var appliedQuantity = line.Quantity * line.ConversionFactor;
@@ -310,24 +360,27 @@ public partial class SupplierInvoiceService
         line.SuggestedRetailPriceUSD = product.PriceRetailUSD;
         line.SuggestedWholesalePriceUSD = product.PriceWholesaleUSD;
 
-        // SRE-09: Redirect stock increment to shared parent product when applicable.
-        var stockTarget = product.ParentProduct is { IsDeleted: false, IsStockShared: true } parent
-            ? parent
-            : product;
-        stockTarget.StockQuantity += appliedQuantity;
-        stockTarget.UpdatedAt = DateTime.UtcNow;
-
-        var movement = new StockMovement
+        if (appliedQuantity > 0m)
         {
-            Product = stockTarget,
-            ProductId = stockTarget.Id,
-            QuantityChange = appliedQuantity,
-            NewStockLevel = stockTarget.StockQuantity,
-            Reason = $"Supplier invoice {invoiceId} applied",
-            MovementDate = DateTime.UtcNow,
-            UserId = _currentUserService?.UserId
-        };
-        _context.StockMovements.Add(movement);
+            // SRE-09: Redirect stock increment to shared parent product when applicable.
+            var stockTarget = product.ParentProduct is { IsDeleted: false, IsStockShared: true } parent
+                ? parent
+                : product;
+            stockTarget.StockQuantity += appliedQuantity;
+            stockTarget.UpdatedAt = DateTime.UtcNow;
+
+            var movement = new StockMovement
+            {
+                Product = stockTarget,
+                ProductId = stockTarget.Id,
+                QuantityChange = appliedQuantity,
+                NewStockLevel = stockTarget.StockQuantity,
+                Reason = $"Supplier invoice {invoiceId} applied",
+                MovementDate = DateTime.UtcNow,
+                UserId = _currentUserService?.UserId
+            };
+            _context.StockMovements.Add(movement);
+        }
     }
 
     private static void ValidateApprovedLine(SupplierInvoiceLine line, ConfirmLineDto confirmation)

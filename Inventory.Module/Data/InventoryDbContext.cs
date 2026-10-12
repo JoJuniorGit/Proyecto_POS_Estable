@@ -192,7 +192,7 @@ public class InventoryDbContext : DbContext
 
         modelBuilder.Entity<SupplierProductCode>(entity =>
         {
-            entity.HasIndex(c => new { c.SupplierId, c.Code })
+            entity.HasIndex(c => new { c.SupplierId, c.Code, c.ProductId })
                 .IsUnique()
                 .HasFilter("\"Code\" IS NOT NULL")
                 .HasDatabaseName("IX_SupplierProductCodes_Supplier_Code");

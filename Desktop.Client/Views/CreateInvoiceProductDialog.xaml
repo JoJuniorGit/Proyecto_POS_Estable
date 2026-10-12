@@ -14,7 +14,7 @@
         Background="{DynamicResource MaterialDesignPaper}"
         FontFamily="{DynamicResource MaterialDesignFont}"
         Title="Resolver producto desde factura"
-        Height="560" Width="620"
+        Height="680" Width="760"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize">
 
@@ -31,11 +31,11 @@
         </Grid.RowDefinitions>
 
         <!-- HEADER -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
             <TextBlock Text="Resolver producto de la factura"
                        Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
                        FontWeight="Bold"/>
-            <TextBlock Text="Vincule este ítem con un producto existente del catálogo (se recordará para futuras facturas) o cree un producto nuevo."
+            <TextBlock Text="Vincule este ítem con uno o varios productos del catálogo y ajuste sus márgenes de ganancia en tiempo real, o cree un producto nuevo."
                        Style="{DynamicResource MaterialDesignCaptionTextBlock}"
                        Foreground="{DynamicResource MaterialDesignBodyLight}"
                        TextWrapping="Wrap"
@@ -43,118 +43,336 @@
         </StackPanel>
 
         <!-- BODY -->
-        <StackPanel Grid.Row="1">
-            <!-- Scanned Line Context -->
-            <Border Background="{DynamicResource MaterialDesignCardBackground}"
-                    BorderBrush="{DynamicResource PrimaryHueLightBrush}"
-                    BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,14">
-                <StackPanel>
-                    <TextBlock Text="{Binding ProductName}" FontWeight="Bold" TextWrapping="Wrap"/>
-                    <TextBlock Text="{Binding CostInfo}"
-                               Foreground="{DynamicResource MaterialDesignBodyLight}"
-                               TextWrapping="Wrap"
-                               Margin="0,4,0,0"/>
-                </StackPanel>
-            </Border>
-
-            <!-- Dual Mode Selector -->
-            <Grid Margin="0,0,0,14">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="12"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <RadioButton Grid.Column="0"
-                             GroupName="ResolutionModeGroup"
-                             IsChecked="{Binding IsLinkExistingMode, Mode=TwoWay}"
-                             Content="Modo A — Vincular Existente"
-                             FontWeight="SemiBold"
-                             VerticalContentAlignment="Center"
-                             Padding="6,4"
-                             AutomationProperties.Name="Modo A Vincular con Producto Existente"/>
-                <RadioButton Grid.Column="2"
-                             GroupName="ResolutionModeGroup"
-                             IsChecked="{Binding IsCreateNewMode, Mode=TwoWay}"
-                             Content="Modo B — Crear Producto Nuevo"
-                             FontWeight="SemiBold"
-                             VerticalContentAlignment="Center"
-                             Padding="6,4"
-                             AutomationProperties.Name="Modo B Crear Producto Nuevo"/>
-            </Grid>
-
-            <!-- MODO A: VINCULAR CON PRODUCTO EXISTENTE -->
-            <StackPanel Visibility="{Binding IsLinkExistingMode, Converter={StaticResource BoolToVis}}">
-                <TextBox x:Name="SearchCatalogTextBox"
-                         Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                         materialDesign:HintAssist.Hint="Buscar por Nombre, SKU o Código de Barras local"
-                         materialDesign:HintAssist.IsFloating="True"
-                         TabIndex="1"
-                         AutomationProperties.Name="Buscador predictivo de productos del catálogo"/>
-                <TextBlock Text="Escriba parte del nombre, SKU o código de barras y seleccione el producto a vincular."
-                           Foreground="#64748B" FontSize="11" Margin="4,4,0,8"/>
-
-                <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
-                        BorderThickness="1"
-                        CornerRadius="6"
-                        Height="165"
-                        Margin="0,0,0,8">
-                    <ListBox ItemsSource="{Binding SearchResults}"
-                             SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                             HorizontalContentAlignment="Stretch"
-                             AutomationProperties.Name="Resultados de búsqueda del catálogo">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Margin="4,4">
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Foreground="#64748B" FontSize="11">
-                                        <Run Text="SKU: "/><Run Text="{Binding SKU, Mode=OneWay}"/>
-                                        <Run Text=" · Costo anterior: $"/><Run Text="{Binding CostPriceUSD, Mode=OneWay, StringFormat={}{0:N2}}"/>
-                                        <Run Text=" · Stock: "/><Run Text="{Binding StockQuantity, Mode=OneWay, StringFormat={}{0:N3}}"/>
-                                    </TextBlock>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- Scanned Line Context (Calculation Base Header) -->
+                <Border Background="{DynamicResource MaterialDesignCardBackground}"
+                        BorderBrush="{DynamicResource PrimaryHueLightBrush}"
+                        BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="{Binding ProductName}" FontWeight="Bold" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding CostInfo}"
+                                       Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0"/>
+                        </StackPanel>
+                        <Border Grid.Column="1"
+                                Background="#EFF6FF"
+                                BorderBrush="#93C5FD"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="10,6"
+                                VerticalAlignment="Center"
+                                Margin="12,0,0,0">
+                            <TextBlock Text="{Binding LineUnitCostHeaderText}"
+                                       Foreground="#1D4ED8"
+                                       FontWeight="Bold"
+                                       FontSize="12"/>
+                        </Border>
+                    </Grid>
                 </Border>
 
-                <TextBlock Text="{Binding SelectedProductSummary}"
-                           Foreground="{DynamicResource PrimaryHueMidBrush}"
+                <!-- Dual Mode Selector -->
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="12"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <RadioButton Grid.Column="0"
+                                 GroupName="ResolutionModeGroup"
+                                 IsChecked="{Binding IsLinkExistingMode, Mode=TwoWay}"
+                                 Content="Modo A — Vincular Existente"
+                                 FontWeight="SemiBold"
+                                 VerticalContentAlignment="Center"
+                                 Padding="6,4"
+                                 AutomationProperties.Name="Modo A Vincular con Producto Existente"/>
+                    <RadioButton Grid.Column="2"
+                                 GroupName="ResolutionModeGroup"
+                                 IsChecked="{Binding IsCreateNewMode, Mode=TwoWay}"
+                                 Content="Modo B — Crear Producto Nuevo"
+                                 FontWeight="SemiBold"
+                                 VerticalContentAlignment="Center"
+                                 Padding="6,4"
+                                 AutomationProperties.Name="Modo B Crear Producto Nuevo"/>
+                </Grid>
+
+                <!-- MODO A: VINCULAR CON PRODUCTO EXISTENTE -->
+                <StackPanel Visibility="{Binding IsLinkExistingMode, Converter={StaticResource BoolToVis}}">
+                    <TextBox x:Name="SearchCatalogTextBox"
+                             Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             materialDesign:HintAssist.Hint="Buscar por Nombre, SKU o Código de Barras local"
+                             materialDesign:HintAssist.IsFloating="True"
+                             TabIndex="1"
+                             AutomationProperties.Name="Buscador predictivo de productos del catálogo"/>
+                    <TextBlock Text="Escriba parte del nombre, SKU o código de barras y marque uno o varios productos para vincular."
+                               Foreground="#64748B" FontSize="11" Margin="4,4,0,8"/>
+
+                    <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Height="135"
+                            Margin="0,0,0,10">
+                        <ListBox ItemsSource="{Binding SelectableSearchResults}"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 HorizontalContentAlignment="Stretch"
+                                 AutomationProperties.Name="Resultados de búsqueda del catálogo">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="4,3">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                  VerticalAlignment="Center"
+                                                  Margin="0,0,8,0"/>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Foreground="#64748B" FontSize="11">
+                                                <Run Text="SKU: "/><Run Text="{Binding SKU, Mode=OneWay}"/>
+                                                <Run Text=" · Costo anterior: $"/><Run Text="{Binding CostPriceUSD, Mode=OneWay, StringFormat={}{0:N2}}"/>
+                                                <Run Text=" · Stock: "/><Run Text="{Binding StockQuantity, Mode=OneWay, StringFormat={}{0:N3}}"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+
+                    <TextBlock Text="{Binding SelectedProductSummary}"
+                               Foreground="{DynamicResource PrimaryHueMidBrush}"
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Margin="4,0,0,8"/>
+
+                    <!-- SELECTED PRODUCTS & REACTIVE MARGINS PANEL -->
+                    <StackPanel Visibility="{Binding HasSelectedProduct, Converter={StaticResource BoolToVis}}">
+                        <!-- Bulk Margin Application Toolbar (1:N) -->
+                        <Border Visibility="{Binding HasMultipleSelectedProducts, Converter={StaticResource BoolToVis}}"
+                                Background="#F8FAFC"
+                                BorderBrush="#CBD5E1"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="10,8"
+                                Margin="0,0,0,8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="110"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="Ajuste masivo de márgenes (o copie del 1er ítem):"
+                                           VerticalAlignment="Center"
+                                           FontWeight="SemiBold"
+                                           FontSize="11"
+                                           Foreground="#334155"
+                                           TextWrapping="Wrap"/>
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding BulkMarginRetailText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="% Detal masivo"
+                                         FontSize="11"
+                                         VerticalAlignment="Center"
+                                         AutomationProperties.Name="Porcentaje margen detal masivo"/>
+                                <TextBox Grid.Column="3"
+                                         Text="{Binding BulkMarginWholesaleText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="% Mayor masivo"
+                                         FontSize="11"
+                                         VerticalAlignment="Center"
+                                         AutomationProperties.Name="Porcentaje margen mayor masivo"/>
+                                <Button Grid.Column="5"
+                                        Content="Aplicar a todos los seleccionados"
+                                        Command="{Binding ApplyBulkMarginsCommand}"
+                                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                        Height="28"
+                                        Padding="10,0"
+                                        FontSize="11"
+                                        AutomationProperties.Name="Aplicar márgenes a todos los productos seleccionados"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Global Commercial Coherence Warning Banner -->
+                        <Border Visibility="{Binding HasAnyMarginCoherenceWarning, Converter={StaticResource BoolToVis}}"
+                                Background="#FFF7ED"
+                                BorderBrush="#EA580C"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="10,6"
+                                Margin="0,0,0,8">
+                            <TextBlock Text="{Binding MarginCoherenceWarningSummary}"
+                                       Foreground="#C2410C"
+                                       FontWeight="SemiBold"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"/>
+                        </Border>
+
+                        <!-- Per-Product Margin & Live Suggested Price Cards -->
+                        <ItemsControl ItemsSource="{Binding SelectedProductMargins}"
+                                      AutomationProperties.Name="Configuración de márgenes de productos seleccionados">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="10,8"
+                                            Margin="0,0,0,6"
+                                            Background="{DynamicResource MaterialDesignCardBackground}">
+                                        <StackPanel>
+                                            <Grid Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Foreground="#64748B" FontSize="11">
+                                                        <Run Text="SKU: "/><Run Text="{Binding SKU, Mode=OneWay}"/>
+                                                        <Run Text=" · Costo anterior: $"/><Run Text="{Binding OldCostPriceUSD, Mode=OneWay, StringFormat={}{0:N2}}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                                <Button Grid.Column="1"
+                                                        Content="Quitar"
+                                                        Command="{Binding DataContext.RemoveSelectedProductCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding Product}"
+                                                        Style="{DynamicResource MaterialDesignFlatButton}"
+                                                        Height="24"
+                                                        Padding="8,0"
+                                                        FontSize="11"
+                                                        Foreground="#DC2626"/>
+                                            </Grid>
+
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="125"/>
+                                                    <ColumnDefinition Width="10"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="14"/>
+                                                    <ColumnDefinition Width="125"/>
+                                                    <ColumnDefinition Width="10"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock Text="% Margen Detal" FontSize="10" Foreground="#475569" FontWeight="SemiBold"/>
+                                                    <TextBox Text="{Binding MarginRetailText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             Padding="6,4"
+                                                             Margin="0,2,0,0"
+                                                             BorderBrush="#CBD5E1"
+                                                             BorderThickness="1"
+                                                             AutomationProperties.Name="Porcentaje de margen al detal"/>
+                                                </StackPanel>
+
+                                                <Border Grid.Column="2"
+                                                        Background="#F0FDF4"
+                                                        BorderBrush="#BBF7D0"
+                                                        BorderThickness="1"
+                                                        CornerRadius="4"
+                                                        Padding="8,4"
+                                                        VerticalAlignment="Bottom">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Nuevo Precio Detal" FontSize="10" Foreground="#166534"/>
+                                                        <TextBlock Text="{Binding SuggestedRetailPriceUSD, Mode=OneWay, StringFormat=${0:N2}}"
+                                                                   FontWeight="Bold"
+                                                                   FontSize="13"
+                                                                   Foreground="#15803D"/>
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <StackPanel Grid.Column="4">
+                                                    <TextBlock Text="% Margen Mayor" FontSize="10" Foreground="#475569" FontWeight="SemiBold"/>
+                                                    <TextBox Text="{Binding MarginWholesaleText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             Padding="6,4"
+                                                             Margin="0,2,0,0"
+                                                             BorderThickness="1"
+                                                             AutomationProperties.Name="Porcentaje de margen al mayor">
+                                                        <TextBox.Style>
+                                                            <Style TargetType="TextBox">
+                                                                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                                                <Setter Property="Background" Value="Transparent"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding HasMarginCoherenceWarning}" Value="True">
+                                                                        <Setter Property="BorderBrush" Value="#EA580C"/>
+                                                                        <Setter Property="Background" Value="#FFF7ED"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBox.Style>
+                                                    </TextBox>
+                                                </StackPanel>
+
+                                                <Border Grid.Column="6"
+                                                        Background="#EFF6FF"
+                                                        BorderBrush="#BFDBFE"
+                                                        BorderThickness="1"
+                                                        CornerRadius="4"
+                                                        Padding="8,4"
+                                                        VerticalAlignment="Bottom">
+                                                    <StackPanel>
+                                                        <TextBlock Text="Nuevo Precio Mayor" FontSize="10" Foreground="#1E40AF"/>
+                                                        <TextBlock Text="{Binding SuggestedWholesalePriceUSD, Mode=OneWay, StringFormat=${0:N2}}"
+                                                                   FontWeight="Bold"
+                                                                   FontSize="13"
+                                                                   Foreground="#1D4ED8"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Grid>
+
+                                            <TextBlock Text="{Binding MarginCoherenceWarningMessage}"
+                                                       Foreground="#C2410C"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Margin="0,4,0,0"
+                                                       Visibility="{Binding HasMarginCoherenceWarning, Converter={StaticResource BoolToVis}}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- MODO B: CREAR PRODUCTO NUEVO -->
+                <StackPanel Visibility="{Binding IsCreateNewMode, Converter={StaticResource BoolToVis}}">
+                    <TextBox x:Name="BarcodeTextBox"
+                             Text="{Binding Barcode, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             materialDesign:HintAssist.Hint="Código de barras EAN/UPC *"
+                             materialDesign:HintAssist.IsFloating="True"
+                             Loaded="BarcodeTextBox_Loaded"
+                             TabIndex="1"/>
+                    <TextBlock Text="Escanee o digite entre 8 y 14 dígitos numéricos."
+                               Foreground="#64748B" FontSize="11" Margin="4,4,0,12"/>
+
+                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             materialDesign:HintAssist.Hint="Nombre del producto *"
+                             materialDesign:HintAssist.IsFloating="True"
+                             TabIndex="2"/>
+                    <TextBlock Text="Máximo 100 caracteres."
+                               Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+                </StackPanel>
+
+                <TextBlock Text="{Binding ErrorMessage}"
+                           Foreground="#DC2626"
                            FontWeight="SemiBold"
-                           FontSize="12"
                            TextWrapping="Wrap"
-                           Margin="4,2,0,0"/>
+                           Margin="4,10,0,0"
+                           Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}"/>
             </StackPanel>
-
-            <!-- MODO B: CREAR PRODUCTO NUEVO -->
-            <StackPanel Visibility="{Binding IsCreateNewMode, Converter={StaticResource BoolToVis}}">
-                <TextBox x:Name="BarcodeTextBox"
-                         Text="{Binding Barcode, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                         materialDesign:HintAssist.Hint="Código de barras EAN/UPC *"
-                         materialDesign:HintAssist.IsFloating="True"
-                         Loaded="BarcodeTextBox_Loaded"
-                         TabIndex="1"/>
-                <TextBlock Text="Escanee o digite entre 8 y 14 dígitos numéricos."
-                           Foreground="#64748B" FontSize="11" Margin="4,4,0,12"/>
-
-                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                         materialDesign:HintAssist.Hint="Nombre del producto *"
-                         materialDesign:HintAssist.IsFloating="True"
-                         TabIndex="2"/>
-                <TextBlock Text="Máximo 100 caracteres."
-                           Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
-            </StackPanel>
-
-            <TextBlock Text="{Binding ErrorMessage}"
-                       Foreground="#DC2626"
-                       FontWeight="SemiBold"
-                       TextWrapping="Wrap"
-                       Margin="4,10,0,0"
-                       Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}"/>
-        </StackPanel>
+        </ScrollViewer>
 
         <!-- FOOTER -->
         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">

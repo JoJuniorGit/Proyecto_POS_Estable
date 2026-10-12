@@ -213,39 +213,88 @@ public partial class SupplierInvoiceViewModel
                 return;
             }
 
-            if (dialogViewModel.IsLinkExistingMode && dialogViewModel.SelectedProduct is not null)
+            var selectedProducts = dialogViewModel.GetEffectiveSelectedProducts();
+            if (dialogViewModel.IsLinkExistingMode && selectedProducts.Count > 0)
             {
-                var selectedProduct = dialogViewModel.SelectedProduct;
+                var primarySelectedProduct = selectedProducts[0];
+                var selectedProductIds = selectedProducts
+                    .Select(product => product.Id)
+                    .Distinct()
+                    .ToArray();
                 var invoiceDescription = !string.IsNullOrWhiteSpace(line.EditName)
                     ? line.EditName.Trim()
                     : line.Name;
+                var marginOverrides = dialogViewModel.GetSelectedMarginOverrides();
+                var marginOverridesByProductId = marginOverrides
+                    .GroupBy(item => item.ProductId)
+                    .ToDictionary(group => group.Key, group => group.Last());
                 IsBusy = true;
                 StatusMessage = "Vinculando el ítem con el producto del catálogo...";
                 try
                 {
                     var previousLinesById = Lines.ToDictionary(item => item.LineId);
+                    var linkRequest = selectedProductIds.Length > 1
+                        ? new LinkInvoiceProductRequestDto(
+                            primarySelectedProduct.Id,
+                            invoiceDescription,
+                            selectedProductIds,
+                            marginOverrides)
+                        : new LinkInvoiceProductRequestDto(
+                            primarySelectedProduct.Id,
+                            invoiceDescription,
+                            null,
+                            marginOverrides);
                     var updatedInvoice = await _invoiceService.LinkProductToLineAsync(
                         StagedInvoice.Id,
                         line.LineId,
-                        new LinkInvoiceProductRequestDto(selectedProduct.Id, invoiceDescription),
+                        linkRequest,
                         cancellationToken);
                     LoadStagedInvoice(updatedInvoice);
-                    foreach (var reloadedLine in Lines)
+                    var linkedGroupKey = selectedProductIds.Length > 1 ? $"group-{line.LineId}" : null;
+                    _isPropagatingLinkedGroup = true;
+                    try
                     {
-                        if (previousLinesById.TryGetValue(reloadedLine.LineId, out var previousLine))
+                        foreach (var reloadedLine in Lines)
                         {
-                            if (reloadedLine.LineId == line.LineId)
+                            if (previousLinesById.TryGetValue(reloadedLine.LineId, out var previousLine))
                             {
-                                reloadedLine.PreserveEditsAfterLinkFrom(previousLine);
+                                if (reloadedLine.LineId == line.LineId)
+                                {
+                                    reloadedLine.LinkedGroupKey = linkedGroupKey;
+                                    reloadedLine.PreserveEditsAfterMultiLinkFrom(previousLine, isPrimaryLine: true);
+                                    if (reloadedLine.ResolvedProductId is int primaryProductId
+                                        && marginOverridesByProductId.TryGetValue(primaryProductId, out var primaryMarginOverride))
+                                    {
+                                        reloadedLine.MarginRetailOverride = primaryMarginOverride.MarginRetail;
+                                        reloadedLine.MarginWholesaleOverride = primaryMarginOverride.MarginWholesale;
+                                    }
+                                }
+                                else
+                                {
+                                    reloadedLine.PreserveEditsFrom(previousLine);
+                                }
                             }
                             else
                             {
-                                reloadedLine.PreserveEditsFrom(previousLine);
+                                reloadedLine.LinkedGroupKey = linkedGroupKey ?? $"group-{line.LineId}";
+                                reloadedLine.PreserveEditsAfterMultiLinkFrom(line, isPrimaryLine: false);
+                                if (reloadedLine.ResolvedProductId is int secondaryProductId
+                                    && marginOverridesByProductId.TryGetValue(secondaryProductId, out var secondaryMarginOverride))
+                                {
+                                    reloadedLine.MarginRetailOverride = secondaryMarginOverride.MarginRetail;
+                                    reloadedLine.MarginWholesaleOverride = secondaryMarginOverride.MarginWholesale;
+                                }
                             }
                         }
                     }
+                    finally
+                    {
+                        _isPropagatingLinkedGroup = false;
+                    }
 
-                    StatusMessage = $"Ítem vinculado con '{selectedProduct.Name}'. Alias guardado para futuras facturas.";
+                    StatusMessage = selectedProducts.Count > 1
+                        ? $"Ítem vinculado con {selectedProducts.Count} productos ({string.Join(", ", selectedProducts.Select(product => product.Name))}). Alias guardado para futuras facturas."
+                        : $"Ítem vinculado con '{primarySelectedProduct.Name}'. Alias guardado para futuras facturas.";
                 }
                 catch (Exception exception)
                 {

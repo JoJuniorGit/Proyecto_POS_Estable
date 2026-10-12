@@ -1569,6 +1569,293 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
+    public async Task CreateProductCommand_ModeA_MultiProductLink_ExpandsRowsAndPropagatesCostAndFactorReactively()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var unresolvedLine = CreateLine(1, unitCost: 24.00m, isApproved: true, resolvedProductId: null, status: "New", unitCostDocument: 24.00m) with
+        {
+            SupplierCode = "PROV-REFRESCO-CAJA",
+            Name = "REFRESCO SURTIDO CAJA",
+            Quantity = 5m,
+            OldCostPriceUSD = null
+        };
+        var staged = CreateInvoice(unresolvedLine);
+
+        var productA = new ProductDto
+        {
+            Id = 101,
+            SKU = "7591000001011",
+            Name = "Refresco Cola 2L",
+            CostPriceUSD = 1.50m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m,
+            StockQuantity = 10m
+        };
+        var productB = new ProductDto
+        {
+            Id = 102,
+            SKU = "7591000001028",
+            Name = "Refresco Naranja 2L",
+            CostPriceUSD = 1.40m,
+            ProfitMarginRetail = 25m,
+            ProfitMarginWholesale = 15m,
+            StockQuantity = 4m
+        };
+
+        var refreshedAfterMultiLink = CreateInvoice(
+            CreateLine(1, unitCost: 24.00m, isApproved: true, resolvedProductId: 101, status: "Update", unitCostDocument: 24.00m) with
+            {
+                SupplierCode = "PROV-REFRESCO-CAJA",
+                Name = productA.Name,
+                Quantity = 5m,
+                MatchMethod = "SupplierCode",
+                OldCostPriceUSD = productA.CostPriceUSD,
+                OldProfitMarginRetail = productA.ProfitMarginRetail,
+                OldProfitMarginWholesale = productA.ProfitMarginWholesale,
+                MarginRetailOverride = productA.ProfitMarginRetail,
+                MarginWholesaleOverride = productA.ProfitMarginWholesale
+            },
+            CreateLine(2, unitCost: 24.00m, isApproved: true, resolvedProductId: 102, status: "Update", unitCostDocument: 24.00m) with
+            {
+                SupplierCode = "PROV-REFRESCO-CAJA",
+                Name = productB.Name,
+                Quantity = 0m,
+                MatchMethod = "SupplierCode",
+                OldCostPriceUSD = productB.CostPriceUSD,
+                OldProfitMarginRetail = productB.ProfitMarginRetail,
+                OldProfitMarginWholesale = productB.ProfitMarginWholesale,
+                MarginRetailOverride = productB.ProfitMarginRetail,
+                MarginWholesaleOverride = productB.ProfitMarginWholesale
+            });
+
+        LinkInvoiceProductRequestDto? capturedLink = null;
+        service.Setup(client => client.SearchCatalogProductsAsync("Refresco", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { productA, productB });
+        service.Setup(client => client.LinkProductToLineAsync(
+                staged.Id,
+                1,
+                It.IsAny<LinkInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, LinkInvoiceProductRequestDto, CancellationToken>((_, _, req, _) => capturedLink = req)
+            .ReturnsAsync(refreshedAfterMultiLink);
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(vm =>
+            {
+                vm.SearchQuery = "Refresco";
+                Assert.Equal(2, vm.SelectableSearchResults.Count);
+                vm.SelectableSearchResults[0].IsSelected = true;
+                vm.SelectableSearchResults[1].IsSelected = true;
+                Assert.Equal(2, vm.SelectedProducts.Count);
+                vm.SaveCommand.Execute(null);
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.CreateProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        Assert.NotNull(capturedLink);
+        Assert.Equal(101, capturedLink!.ProductId);
+        Assert.Equal(new[] { 101, 102 }, capturedLink.ProductIds);
+
+        Assert.Equal(2, viewModel.Lines.Count);
+        var lineA = viewModel.Lines[0];
+        var lineB = viewModel.Lines[1];
+
+        Assert.Equal(5m, lineA.EditQuantity);
+        Assert.Equal(0m, lineB.EditQuantity);
+        Assert.True(lineA.IsLinkedGroupMember);
+        Assert.True(lineB.IsLinkedGroupMember);
+
+        // Editing ConversionFactor on lineA propagates reactively to lineB
+        lineA.ConversionFactorText = "12";
+        Assert.Equal(12m, lineB.ConversionFactor);
+        Assert.Equal(2.00m, lineA.UnitCostUSD);
+        Assert.Equal(2.00m, lineB.UnitCostUSD);
+        Assert.Equal($"{1.50m:N2} → {2.00m:N2}", lineA.CostComparison);
+        Assert.Equal($"{1.40m:N2} → {2.00m:N2}", lineB.CostComparison);
+
+        // Editing EditUnitCostDocumentText on lineB propagates reactively back to lineA
+        lineB.EditUnitCostDocumentText = "36.00";
+        Assert.Equal(36.00m, lineA.EditUnitCostDocument);
+        Assert.Equal(3.00m, lineA.UnitCostUSD);
+        Assert.Equal(3.00m, lineB.UnitCostUSD);
+    }
+
+    [Fact]
+    public async Task CreateProductCommand_ModeA_ReactiveMargins_CalculatesLivePricesAppliesBulkValidatesCoherenceAndPropagatesToStaging()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var unresolvedLine = CreateLine(1, unitCost: 10.00m, isApproved: true, resolvedProductId: null, status: "New", unitCostDocument: 10.00m) with
+        {
+            SupplierCode = "PROV-BEBIDA-SURTIDA",
+            Name = "BEBIDA SABORES SURTIDOS",
+            Quantity = 4m,
+            OldCostPriceUSD = null
+        };
+        var staged = CreateInvoice(unresolvedLine);
+
+        var productA = new ProductDto
+        {
+            Id = 201,
+            SKU = "7592000002011",
+            Name = "Bebida Uva 1.5L",
+            CostPriceUSD = 8.00m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m,
+            HasWholesale = true,
+            StockQuantity = 12m
+        };
+        var productB = new ProductDto
+        {
+            Id = 202,
+            SKU = "7592000002028",
+            Name = "Bebida Piña 1.5L",
+            CostPriceUSD = 7.80m,
+            ProfitMarginRetail = 25m,
+            ProfitMarginWholesale = 12m,
+            HasWholesale = true,
+            StockQuantity = 6m
+        };
+
+        var refreshedAfterMultiLink = CreateInvoice(
+            CreateLine(1, unitCost: 10.00m, isApproved: true, resolvedProductId: 201, status: "Update", unitCostDocument: 10.00m) with
+            {
+                SupplierCode = "PROV-BEBIDA-SURTIDA",
+                Name = productA.Name,
+                Quantity = 4m,
+                MatchMethod = "SupplierCode",
+                OldCostPriceUSD = productA.CostPriceUSD,
+                OldProfitMarginRetail = productA.ProfitMarginRetail,
+                OldProfitMarginWholesale = productA.ProfitMarginWholesale,
+                MarginRetailOverride = productA.ProfitMarginRetail,
+                MarginWholesaleOverride = productA.ProfitMarginWholesale
+            },
+            CreateLine(2, unitCost: 10.00m, isApproved: true, resolvedProductId: 202, status: "Update", unitCostDocument: 10.00m) with
+            {
+                SupplierCode = "PROV-BEBIDA-SURTIDA",
+                Name = productB.Name,
+                Quantity = 0m,
+                MatchMethod = "SupplierCode",
+                OldCostPriceUSD = productB.CostPriceUSD,
+                OldProfitMarginRetail = productB.ProfitMarginRetail,
+                OldProfitMarginWholesale = productB.ProfitMarginWholesale,
+                MarginRetailOverride = productB.ProfitMarginRetail,
+                MarginWholesaleOverride = productB.ProfitMarginWholesale
+            });
+
+        LinkInvoiceProductRequestDto? capturedLink = null;
+        service.Setup(client => client.SearchCatalogProductsAsync("Bebida", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { productA, productB });
+        service.Setup(client => client.LinkProductToLineAsync(
+                staged.Id,
+                1,
+                It.IsAny<LinkInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, LinkInvoiceProductRequestDto, CancellationToken>((_, _, req, _) => capturedLink = req)
+            .ReturnsAsync(refreshedAfterMultiLink);
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(vm =>
+            {
+                // 1. Calculation base context in modal header
+                Assert.Equal(10.00m, vm.LineUnitCostUSD);
+                Assert.Contains("$10", vm.LineUnitCostHeaderText);
+
+                vm.SearchQuery = "Bebida";
+                vm.SelectableSearchResults[0].IsSelected = true;
+                vm.SelectableSearchResults[1].IsSelected = true;
+                Assert.Equal(2, vm.SelectedProductMargins.Count);
+
+                var marginA = vm.SelectedProductMargins[0];
+                var marginB = vm.SelectedProductMargins[1];
+
+                // 2. Initial current margins & live suggested prices loaded from ProductDto
+                Assert.Equal(30m, marginA.MarginRetail);
+                Assert.Equal(15m, marginA.MarginWholesale);
+                Assert.Equal(13.00m, marginA.SuggestedRetailPriceUSD);
+                Assert.Equal(11.50m, marginA.SuggestedWholesalePriceUSD);
+
+                // 3. Smooth decimal typing (with comma and trailing separator) + reactive calculation
+                marginA.MarginRetailText = "35,";
+                Assert.Equal("35,", marginA.MarginRetailText);
+                Assert.Equal(35m, marginA.MarginRetail);
+                Assert.Equal(13.50m, marginA.SuggestedRetailPriceUSD);
+
+                marginA.MarginRetailText = "35,5";
+                Assert.Equal(35.5m, marginA.MarginRetail);
+                Assert.Equal(PricingCalculator.RoundPriceUp(10.00m * 1.355m), marginA.SuggestedRetailPriceUSD);
+
+                // 4. Commercial coherence warning when Wholesale Margin > Retail Margin
+                marginA.MarginWholesaleText = "40";
+                Assert.True(marginA.HasMarginCoherenceWarning);
+                Assert.True(vm.HasAnyMarginCoherenceWarning);
+                Assert.NotEmpty(marginA.MarginCoherenceWarningMessage);
+
+                // Fix wholesale margin and verify warning clears
+                marginA.MarginWholesaleText = "20";
+                Assert.False(marginA.HasMarginCoherenceWarning);
+                Assert.False(vm.HasAnyMarginCoherenceWarning);
+
+                // 5. Bulk margin application copies to all selected products, then allows independent edit
+                vm.BulkMarginRetailText = "40";
+                vm.BulkMarginWholesaleText = "20";
+                vm.ApplyBulkMarginsCommand.Execute(null);
+
+                Assert.Equal(40m, marginA.MarginRetail);
+                Assert.Equal(20m, marginA.MarginWholesale);
+                Assert.Equal(14.00m, marginA.SuggestedRetailPriceUSD);
+                Assert.Equal(12.00m, marginA.SuggestedWholesalePriceUSD);
+
+                Assert.Equal(40m, marginB.MarginRetail);
+                Assert.Equal(20m, marginB.MarginWholesale);
+                Assert.Equal(14.00m, marginB.SuggestedRetailPriceUSD);
+                Assert.Equal(12.00m, marginB.SuggestedWholesalePriceUSD);
+
+                // Independent edit on second product after bulk apply
+                marginB.MarginRetailText = "50";
+                marginB.MarginWholesaleText = "25";
+                Assert.Equal(40m, marginA.MarginRetail);
+                Assert.Equal(50m, marginB.MarginRetail);
+                Assert.Equal(15.00m, marginB.SuggestedRetailPriceUSD);
+                Assert.Equal(12.50m, marginB.SuggestedWholesalePriceUSD);
+
+                vm.SaveCommand.Execute(null);
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.CreateProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        // 6. Propagation to LinkInvoiceProductRequestDto and Staging Table [UPDATE] rows
+        Assert.NotNull(capturedLink);
+        Assert.NotNull(capturedLink!.MarginOverrides);
+        Assert.Equal(2, capturedLink.MarginOverrides!.Count);
+        Assert.Equal(new LinkedProductMarginOverrideDto(201, 40m, 20m), capturedLink.MarginOverrides[0]);
+        Assert.Equal(new LinkedProductMarginOverrideDto(202, 50m, 25m), capturedLink.MarginOverrides[1]);
+
+        Assert.Equal(2, viewModel.Lines.Count);
+        var stagedLineA = viewModel.Lines[0];
+        var stagedLineB = viewModel.Lines[1];
+
+        Assert.Equal(40m, stagedLineA.MarginRetailOverride);
+        Assert.Equal(20m, stagedLineA.MarginWholesaleOverride);
+        Assert.Equal(14.00m, stagedLineA.SuggestedRetailPriceUSD);
+        Assert.Equal(12.00m, stagedLineA.SuggestedWholesalePriceUSD);
+
+        Assert.Equal(50m, stagedLineB.MarginRetailOverride);
+        Assert.Equal(25m, stagedLineB.MarginWholesaleOverride);
+        Assert.Equal(15.00m, stagedLineB.SuggestedRetailPriceUSD);
+        Assert.Equal(12.50m, stagedLineB.SuggestedWholesalePriceUSD);
+    }
+
+    [Fact]
     public async Task ConfirmInvoiceAsync_WithUncheckedNewProductRow_IgnoresUnresolvedRowAndProcessesRemainingLines()
     {
         var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);

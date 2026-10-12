@@ -201,8 +201,8 @@ public class SupplierInvoiceStagingBatchingTests
         var firstInvoice = await service.StageAsync(CreateRequest(supplier.Id, lines));
         var secondInvoice = await service.StageAsync(CreateRequest(supplier.Id, lines, includeMapping: false));
 
-        AssertLowestIdChoices(firstInvoice.Lines, firstBarcodeProduct.Id, firstCodeProduct.Id);
-        AssertLowestIdChoices(secondInvoice.Lines, firstBarcodeProduct.Id, firstCodeProduct.Id);
+        AssertLowestIdChoices(firstInvoice.Lines, firstBarcodeProduct.Id, firstCodeProduct.Id, secondCodeProduct.Id);
+        AssertLowestIdChoices(secondInvoice.Lines, firstBarcodeProduct.Id, firstCodeProduct.Id, secondCodeProduct.Id);
     }
 
     private static async Task<int> CountStageReaderCommandsAsync(int barcodeLineCount, int supplierCodeLineCount)
@@ -345,7 +345,8 @@ public class SupplierInvoiceStagingBatchingTests
     private static void AssertLowestIdChoices(
         IReadOnlyList<SupplierInvoiceLineDto> lines,
         int expectedBarcodeProductId,
-        int expectedSupplierCodeProductId)
+        int expectedFirstSupplierCodeProductId,
+        int expectedSecondSupplierCodeProductId)
     {
         Assert.Collection(
             lines,
@@ -356,8 +357,15 @@ public class SupplierInvoiceStagingBatchingTests
             },
             line =>
             {
-                Assert.Equal(expectedSupplierCodeProductId, line.ResolvedProductId);
+                Assert.Equal(expectedFirstSupplierCodeProductId, line.ResolvedProductId);
                 Assert.Equal("SupplierCode", line.MatchMethod);
+                Assert.Equal(1m, line.Quantity);
+            },
+            line =>
+            {
+                Assert.Equal(expectedSecondSupplierCodeProductId, line.ResolvedProductId);
+                Assert.Equal("SupplierCode", line.MatchMethod);
+                Assert.Equal(0m, line.Quantity);
             });
     }
 

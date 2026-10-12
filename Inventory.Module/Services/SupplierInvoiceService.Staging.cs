@@ -75,6 +75,43 @@ public partial class SupplierInvoiceService
                 ?? (line.Name is not null && fuzzyMatchesByName.TryGetValue(line.Name, out var fuzzyMatch)
                     ? fuzzyMatch
                     : new ProductMatch(null, MatchMethod.None));
+            if (match.Product is not null && match.AdditionalProducts is { Count: > 0 } additionalProducts)
+            {
+                var matchedProducts = new List<Product>(1 + additionalProducts.Count) { match.Product };
+                matchedProducts.AddRange(additionalProducts);
+
+                for (var productIndex = 0; productIndex < matchedProducts.Count; productIndex++)
+                {
+                    var matchedProduct = matchedProducts[productIndex];
+                    var factor = conversionFactorsByProductId.TryGetValue(matchedProduct.Id, out var rememberedProductFactor)
+                        && rememberedProductFactor > 0m
+                        ? rememberedProductFactor
+                        : 1m;
+                    var productUnitCostUsd = Core.Helpers.PricingCalculator.CalculateInvoiceUnitCostUsd(
+                        line.UnitCostDocument,
+                        factor,
+                        currency,
+                        appliedRate);
+                    var expandedInputLine = line with
+                    {
+                        SupplierCode = line.SupplierCode ?? line.Name,
+                        Barcode = line.Barcode ?? matchedProduct.SKU,
+                        Name = matchedProduct.Name,
+                        Quantity = productIndex == 0 ? line.Quantity : 0m
+                    };
+                    var expandedStagedLine = CreateStagedLine(
+                        expandedInputLine,
+                        new ProductMatch(matchedProduct, match.Method),
+                        productUnitCostUsd,
+                        request.OcrSourced);
+                    expandedStagedLine.Status = SupplierInvoiceLineStatus.Update;
+                    expandedStagedLine.ConversionFactor = factor;
+                    invoice.Lines.Add(expandedStagedLine);
+                }
+
+                continue;
+            }
+
             var stagedLine = CreateStagedLine(line, match, unitCostUsd, request.OcrSourced);
             if (match.Product is not null
                 && conversionFactorsByProductId.TryGetValue(match.Product.Id, out var rememberedFactor))

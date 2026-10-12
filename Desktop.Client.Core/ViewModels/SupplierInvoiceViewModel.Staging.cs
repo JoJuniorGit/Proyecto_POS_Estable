@@ -78,6 +78,9 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
 
     public bool CanApprove => ResolvedProductId is not null;
     public bool CanCreateProduct => ResolvedProductId is null;
+    public string MatchMethod => _source.MatchMethod;
+    public string? LinkedGroupKey { get; set; }
+    public bool IsLinkedGroupMember => !string.IsNullOrWhiteSpace(LinkedGroupKey);
 
     /// <summary>
     /// Indica si la línea nació sin producto resuelto ([NUEVO]), manteniendo habilitada la edición
@@ -284,8 +287,9 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(previous);
 
+        LinkedGroupKey = previous.LinkedGroupKey;
         WasUnresolved = previous.WasUnresolved || CanCreateProduct;
-        IsEditorEnabled = previous.IsEditorEnabled || WasUnresolved;
+        IsEditorEnabled = previous.IsEditorEnabled || WasUnresolved || IsLinkedGroupMember;
         EditName = !string.IsNullOrWhiteSpace(createdProductName) ? createdProductName : previous.EditName;
         EditQuantity = previous.EditQuantity;
         EditUnitCostDocument = previous.EditUnitCostDocument;
@@ -307,26 +311,29 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     /// tras vincular manualmente un ítem escaneado con un producto existente del catálogo, manteniendo
     /// el Costo anterior cargado desde la base de datos y recalculando la comparativa de costos en vivo.
     /// </summary>
-    public void PreserveEditsAfterLinkFrom(SupplierInvoiceLineViewModel previous)
+    public void PreserveEditsAfterLinkFrom(SupplierInvoiceLineViewModel previous) =>
+        PreserveEditsAfterMultiLinkFrom(previous, isPrimaryLine: true);
+
+    public void PreserveEditsAfterMultiLinkFrom(SupplierInvoiceLineViewModel previous, bool isPrimaryLine)
     {
         ArgumentNullException.ThrowIfNull(previous);
 
         WasUnresolved = true;
-        IsEditorEnabled = previous.IsEditorEnabled || WasUnresolved;
+        IsEditorEnabled = previous.IsEditorEnabled || WasUnresolved || IsLinkedGroupMember;
         EditName = _source.Name;
-        EditQuantity = previous.EditQuantity;
+        EditQuantity = isPrimaryLine ? previous.EditQuantity : 0m;
         EditUnitCostDocument = previous.EditUnitCostDocument;
         if (previous.ConversionFactor > 0m && previous.ConversionFactor != 1m)
         {
             ConversionFactor = previous.ConversionFactor;
         }
 
-        if (previous.MarginRetailOverride > 0m)
+        if (isPrimaryLine && previous.MarginRetailOverride > 0m)
         {
             MarginRetailOverride = previous.MarginRetailOverride;
         }
 
-        if (previous.MarginWholesaleOverride > 0m)
+        if (isPrimaryLine && previous.MarginWholesaleOverride > 0m)
         {
             MarginWholesaleOverride = previous.MarginWholesaleOverride;
         }
@@ -587,6 +594,9 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
         OnPropertyChanged(nameof(SuggestedRetailPriceBsS));
         OnPropertyChanged(nameof(SuggestedWholesalePriceBsS));
     }
+
+    public static string FormatEditableDecimal(decimal value) =>
+        value.ToString("0.##", CultureInfo.InvariantCulture);
 
     private static string FormatDocumentCostText(decimal value) =>
         value.ToString("0.00##", CultureInfo.InvariantCulture);

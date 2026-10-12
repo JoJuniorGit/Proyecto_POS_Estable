@@ -75,7 +75,7 @@ public partial class SupplierInvoiceService
             }
         }
 
-        var productsBySupplierCode = new Dictionary<string, Product>(StringComparer.OrdinalIgnoreCase);
+        var productsBySupplierCode = new Dictionary<string, List<Product>>(StringComparer.OrdinalIgnoreCase);
         if (supplierCodes.Length > 0)
         {
             var supplierCodeProducts = await (
@@ -91,9 +91,20 @@ public partial class SupplierInvoiceService
 
             foreach (var entry in supplierCodeProducts)
             {
-                if (entry.Code is not null)
+                if (entry.Code is null)
                 {
-                    productsBySupplierCode.TryAdd(entry.Code, entry.Product);
+                    continue;
+                }
+
+                if (!productsBySupplierCode.TryGetValue(entry.Code, out var matchedList))
+                {
+                    matchedList = new List<Product>();
+                    productsBySupplierCode[entry.Code] = matchedList;
+                }
+
+                if (matchedList.All(existing => existing.Id != entry.Product.Id))
+                {
+                    matchedList.Add(entry.Product);
                 }
             }
         }
@@ -114,15 +125,23 @@ public partial class SupplierInvoiceService
         }
 
         if (line.SupplierCode is not null
-            && lookups.ProductsBySupplierCode.TryGetValue(line.SupplierCode, out var supplierCodeProduct))
+            && lookups.ProductsBySupplierCode.TryGetValue(line.SupplierCode, out var supplierCodeProducts)
+            && supplierCodeProducts.Count > 0)
         {
-            return new ProductMatch(supplierCodeProduct, MatchMethod.SupplierCode);
+            return new ProductMatch(
+                supplierCodeProducts[0],
+                MatchMethod.SupplierCode,
+                supplierCodeProducts.Count > 1 ? supplierCodeProducts.Skip(1).ToArray() : null);
         }
 
         if (line.Name is not null
-            && lookups.ProductsBySupplierCode.TryGetValue(line.Name, out var supplierNameProduct))
+            && lookups.ProductsBySupplierCode.TryGetValue(line.Name, out var supplierNameProducts)
+            && supplierNameProducts.Count > 0)
         {
-            return new ProductMatch(supplierNameProduct, MatchMethod.SupplierCode);
+            return new ProductMatch(
+                supplierNameProducts[0],
+                MatchMethod.SupplierCode,
+                supplierNameProducts.Count > 1 ? supplierNameProducts.Skip(1).ToArray() : null);
         }
 
         return null;
@@ -266,9 +285,9 @@ public partial class SupplierInvoiceService
 
     private sealed record MatchLookups(
         Dictionary<string, Product> ProductsByBarcode,
-        Dictionary<string, Product> ProductsBySupplierCode);
+        Dictionary<string, List<Product>> ProductsBySupplierCode);
 
-    private sealed record ProductMatch(Product? Product, MatchMethod Method);
+    private sealed record ProductMatch(Product? Product, MatchMethod Method, IReadOnlyList<Product>? AdditionalProducts = null);
 }
 
 public sealed class PostgresSupplierProductSimilaritySearch : ISupplierProductSimilaritySearch
