@@ -13751,3 +13751,65 @@ E1. 8.164 en V0.15: commit de implementacion (feat(8.164)) + commit de este
     ANEXO (docs(8.164); git log).
 ================================================================================
 
+================================================================================
+ANEXO 8.165 - FACTURAS PROVEEDOR: FACTOR DE CONVERSION CAJA-UNIDAD (DIVISOR) POR LINEA - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: "Agrega un factor de conversion (divisor), ya que
+algunos productos son facturados por caja y en el local se venden por unidad".
+
+A. ALCANCE Y ENTREGA
+
+A1. Nueva columna editable "Factor" por linea en la grilla de revision (lineas OCR
+    y tabulares; habilitada para lineas aprobables). Default 1 = sin conversion.
+    El tooltip explica la matematica.
+A2. Al confirmar: costo unitario aplicado = costo documental / factor
+    (renormalizado con el snapshot Currency/AppliedRate de la factura); cantidad a
+    stock y StockMovement = cantidad facturada x factor. El documento queda intacto
+    para auditoria (UnitCostDocument y Quantity conservan lo emitido por el
+    proveedor); el factor se persiste en la linea.
+A3. Zero-trust backend: factor validado (0 < factor <= 10000); rechazo sin efectos
+    (sin mutacion de producto/linea/stock; la factura sigue Draft).
+A4. Migracion EF AddSupplierInvoiceLineConversionFactor: columna numeric(18,2)
+    NOT NULL DEFAULT 1 en SupplierInvoiceLines (la aplica el arranque via
+    DatabaseInitializer.MigrateAsync). DTOs con parametros nuevos con default
+    (SupplierInvoiceLineDto.ConversionFactor=1; ConfirmLineDto.ConversionFactor=null):
+    sin romper call sites existentes.
+A5. Fuera de alcance: factor recordado por producto/proveedor para futuras facturas
+    (se ingresa por linea en cada revision) y visualizacion del costo ya convertido
+    en la grilla (el costo mostrado es el de la factura; la conversion se aplica al
+    confirmar).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2238/2238, 0 fallas (SIN PostgreSQL real local; CI cubre al
+    push) - 4 tests nuevos: division de costo + multiplicacion de stock y movimiento
+    (USD), renormalizacion con tasa snapshot (Bs.S), rechazo de factor no positivo
+    sin efectos, y ToConfirmLine incluye el factor por linea.
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8941, Sales.Module 0.8971, Inventory.Module 0.8730.
+B4. RED observado antes de implementar (compile-level de los miembros nuevos)
+    -> GREEN: focused 193/193 y suite 2238/2238.
+B5. Migracion generada con dotnet-ef 10.0.4 (--configuration Release porque el
+    backend estaba corriendo en Debug y bloqueaba sus binarios; no se toco la app
+    en ejecucion).
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada documentada); la
+    migracion se ejercita con schema real en CI y al reiniciar la app local.
+C2. UI verificada por compilacion + tests de ViewModel (sin ejecucion interactiva).
+C3. La clasificacion [UPDATE]/[UNCHANGED] de la grilla sigue calculada con el costo
+    de factura (pre-factor); el ajuste aplica al confirmar.
+
+D. ROLLBACK
+
+D1. Revertir el commit: el Down de la migracion elimina la columna con
+    dotnet ef database update; sin reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.165 en V0.15: commit de implementacion (feat(8.165)) + commit de este ANEXO
+    (docs(8.165); git log).
+================================================================================
+
