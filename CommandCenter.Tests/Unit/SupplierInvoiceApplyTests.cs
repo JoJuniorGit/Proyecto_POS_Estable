@@ -215,6 +215,44 @@ public class SupplierInvoiceApplyTests
     }
 
     [Fact]
+    public async Task ConfirmAsync_RemembersSupplierInvoiceCurrency()
+    {
+        // 8.167: al confirmar, el proveedor recuerda la moneda facturada para prefijarla después.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var supplier = new Supplier
+        {
+            CommercialName = "Currency Supplier",
+            NormalizedCommercialName = "CURRENCY SUPPLIER"
+        };
+        context.Suppliers.Add(supplier);
+        await context.SaveChangesAsync();
+        var product = CreateProduct("APPLY-CURRENCY", 4m, 0m, 20m);
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
+        var line = CreateLine(product, 1m, 400m);
+        line.UnitCostDocument = 400m;
+        var invoice = new SupplierInvoice
+        {
+            Supplier = supplier,
+            Status = SupplierInvoiceStatus.Draft,
+            Currency = CurrencyCodes.BsS,
+            AppliedRate = 400m,
+            Lines = new List<SupplierInvoiceLine> { line }
+        };
+        context.SupplierInvoices.Add(invoice);
+        await context.SaveChangesAsync();
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        var savedSupplier = await context.Suppliers.SingleAsync(candidate => candidate.Id == supplier.Id);
+        Assert.Equal(CurrencyCodes.BsS, savedSupplier.InvoiceCurrency);
+    }
+
+    [Fact]
     public async Task ConfirmAsync_DescendingProductOrder_AppliesIdenticalEffectsInAscendingLockOrder()
     {
         using var context = TestDatabaseFactory.CreateInventoryDbContext();

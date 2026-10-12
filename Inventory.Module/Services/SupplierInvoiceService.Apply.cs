@@ -64,6 +64,7 @@ public partial class SupplierInvoiceService
                 var invoice = await _context.SupplierInvoices
                     .AsSplitQuery()
                     .Include(candidate => candidate.Lines)
+                    .Include(candidate => candidate.Supplier)
                     .FirstOrDefaultAsync(candidate => candidate.Id == invoiceId, cancellationToken)
                     ?? throw new KeyNotFoundException($"Supplier invoice {invoiceId} was not found.");
 
@@ -205,6 +206,14 @@ public partial class SupplierInvoiceService
                             ProductId = aliasPlanEntry.Value
                         });
                     }
+                }
+
+                // 8.167: recuerda la moneda facturada por el proveedor (prefijo de la próxima factura).
+                if (invoice.Supplier is not null
+                    && !string.Equals(invoice.Supplier.InvoiceCurrency, invoice.Currency, StringComparison.Ordinal))
+                {
+                    invoice.Supplier.InvoiceCurrency = invoice.Currency;
+                    invoice.Supplier.UpdatedAt = DateTime.UtcNow;
                 }
 
                 invoice.Status = SupplierInvoiceStatus.Applied;

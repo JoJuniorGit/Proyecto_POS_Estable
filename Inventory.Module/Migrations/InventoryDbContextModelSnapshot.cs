@@ -377,6 +377,10 @@ namespace Inventory.Module.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("InvoiceCurrency")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
                     b.Property<string>("NormalizedCommercialName")
                         .IsRequired()
                         .HasMaxLength(200)

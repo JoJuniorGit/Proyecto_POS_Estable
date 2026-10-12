@@ -40,6 +40,8 @@ public sealed record SupplierSummaryDto(
     int Id,
     string? RifOrNit,
     string CommercialName,
-    SupplierColumnMappingDto? ColumnMapping = null);
+    SupplierColumnMappingDto? ColumnMapping = null,
+    // 8.167: moneda de facturación recordada del proveedor (null = sin preferencia).
+    string? InvoiceCurrency = null);
 
 public sealed record CreateSupplierRequestDto(string? RifOrNit, string CommercialName);

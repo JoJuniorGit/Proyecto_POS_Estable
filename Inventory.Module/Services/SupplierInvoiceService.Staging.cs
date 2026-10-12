@@ -125,7 +125,8 @@ public partial class SupplierInvoiceService
                         supplier.ColumnMapping.SupplierCodeColumnName,
                         supplier.ColumnMapping.NameColumnName,
                         supplier.ColumnMapping.QuantityColumnName,
-                        supplier.ColumnMapping.UnitCostColumnName)))
+                        supplier.ColumnMapping.UnitCostColumnName),
+                supplier.InvoiceCurrency))
             .ToListAsync(cancellationToken);
     }
 
@@ -179,7 +180,7 @@ public partial class SupplierInvoiceService
         _context.Suppliers.Add(supplier);
         await _context.SaveChangesAsync(cancellationToken);
 
-        return new SupplierSummaryDto(supplier.Id, supplier.RifOrNit, supplier.CommercialName, null);
+        return new SupplierSummaryDto(supplier.Id, supplier.RifOrNit, supplier.CommercialName, null, supplier.InvoiceCurrency);
     }
 
     private async Task<Supplier> ResolveSupplierAsync(

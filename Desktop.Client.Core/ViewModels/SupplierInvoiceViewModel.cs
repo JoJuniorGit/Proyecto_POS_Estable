@@ -116,6 +116,12 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         {
             SupplierRifOrNit = value.RifOrNit ?? string.Empty;
             SupplierCommercialName = value.CommercialName;
+            // 8.167: prefija la moneda recordada del proveedor (nunca la pisa con un default).
+            if (!string.IsNullOrWhiteSpace(value.InvoiceCurrency)
+                && CurrencyOptions.Contains(value.InvoiceCurrency, StringComparer.Ordinal))
+            {
+                SelectedCurrency = value.InvoiceCurrency;
+            }
         }
 
         ApplyCurrentColumnMapping();

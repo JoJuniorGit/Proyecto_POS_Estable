@@ -166,6 +166,8 @@ public class InventoryDbContext : DbContext
             entity.Property(s => s.NormalizedRifOrNit).HasMaxLength(50);
             entity.Property(s => s.CommercialName).IsRequired().HasMaxLength(200);
             entity.Property(s => s.NormalizedCommercialName).IsRequired().HasMaxLength(200);
+            // 8.167: moneda de facturación recordada del proveedor.
+            entity.Property(s => s.InvoiceCurrency).HasMaxLength(8);
             entity.HasIndex(s => s.NormalizedRifOrNit)
                 .IsUnique()
                 .HasFilter("\"NormalizedRifOrNit\" IS NOT NULL AND \"NormalizedRifOrNit\" <> ''")

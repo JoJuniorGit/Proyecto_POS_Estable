@@ -333,6 +333,19 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
+    public void SelectedSupplier_PrefillsRememberedInvoiceCurrency()
+    {
+        // 8.167: al seleccionar un proveedor con moneda recordada, la vista la prefija; sin
+        // moneda recordada NO se pisa la elección vigente.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null, "Bs.S");
+        Assert.Equal(CurrencyCodes.BsS, viewModel.SelectedCurrency);
+
+        viewModel.SelectedSupplier = new SupplierSummaryDto(8, "J-124", "Otro", null, null);
+        Assert.Equal(CurrencyCodes.BsS, viewModel.SelectedCurrency);
+    }
+
+    [Fact]
     public async Task LoadSuppliers_PopulatesSelectorAndPreservesSelectionById()
     {
         // 8.161: al abrir la vista se lista todo el catalogo de proveedores y la seleccion vigente
@@ -629,6 +642,28 @@ public sealed class SupplierInvoiceClientTests
         Assert.Equal(
             new SupplierColumnMappingDto("EAN", "Vendor Code", "Item", "Units", "Cost"),
             Assert.Single(result).ColumnMapping);
+    }
+
+    [Fact]
+    public async Task SupplierLookup_IncludesRememberedInvoiceCurrency()
+    {
+        // 8.167: el listado de proveedores expone la moneda de facturación recordada.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var supplier = new Supplier
+        {
+            RifOrNit = "J-777",
+            NormalizedRifOrNit = "J777",
+            CommercialName = "Currency Supplier",
+            NormalizedCommercialName = "CURRENCY SUPPLIER",
+            InvoiceCurrency = "Bs.S"
+        };
+        context.Suppliers.Add(supplier);
+        await context.SaveChangesAsync();
+        var service = CreateBackendService(context);
+
+        var result = await service.GetSuppliersAsync("J-777", null);
+
+        Assert.Equal("Bs.S", Assert.Single(result).InvoiceCurrency);
     }
 
     [Fact]
