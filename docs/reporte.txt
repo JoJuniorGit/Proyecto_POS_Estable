@@ -13869,3 +13869,54 @@ E1. 8.166 en V0.15: commit de implementacion (feat(8.166)) + commit de este ANEX
     (docs(8.166); git log).
 ================================================================================
 
+================================================================================
+ANEXO 8.167 - FACTURAS PROVEEDOR: MONEDA DE FACTURA RECORDADA POR PROVEEDOR - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: "Haz que recuerde la moneda de la factura del
+proveedor".
+
+A. ALCANCE Y ENTREGA
+
+A1. Columna nueva Suppliers.InvoiceCurrency (varchar(8), nullable; migracion
+    AddSupplierInvoiceCurrency, aplicada por el arranque via MigrateAsync).
+    null = sin preferencia (no se pisa la eleccion vigente).
+A2. Aprendizaje al confirmar: la moneda del documento confirmado se guarda en el
+    proveedor dentro de la misma transaccion (solo si cambio; UpdatedAt).
+A3. Prefijo al seleccionar el proveedor: la vista aplica la moneda recordada al
+    combo "Moneda del documento" (validada contra las opciones USD/Bs.S; si es
+    Bs.S dispara el prefill de tasa existente). SIN moneda recordada NO se toca la
+    seleccion vigente (cero regresion). Siempre editable a mano.
+A4. SupplierSummaryDto expone InvoiceCurrency (parametro nuevo con default);
+    GetSuppliersAsync y CreateSupplierAsync lo mapean; sin cambios de endpoint.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2247/2247, 0 fallas (SIN PostgreSQL real local; CI cubre al
+    push) - 3 tests nuevos: aprendizaje al confirmar (Bs.S), listado con la moneda
+    recordada, y prefijo en el VM (+ no-pisar sin registro).
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8931, Sales.Module 0.8971, Inventory.Module 0.8755.
+B4. RED compile-level observado -> GREEN (focused 191/191; suite 2247/2247 con
+    rebuild). Nota: el guard MigrationIndexDriftTests exige rebuild tras generar
+    una migracion (binarios con el modelo nuevo y sin la migracion dan drift
+    correctamente detectado; con el build fresco pasa).
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada); la columna nueva se
+    ejercita con schema real en CI y al reiniciar la app local.
+C2. La tasa aplicada NO se recuerda (cambia por dia); sigue manual/prefill del
+    sistema.
+
+D. ROLLBACK
+
+D1. Revertir el commit: el Down de la migracion elimina la columna; sin
+    reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.167 en V0.15: commit de implementacion (feat(8.167)) + commit de este ANEXO
+    (docs(8.167); git log).
+================================================================================
+
