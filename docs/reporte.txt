@@ -13813,3 +13813,59 @@ E1. 8.165 en V0.15: commit de implementacion (feat(8.165)) + commit de este ANEX
     (docs(8.165); git log).
 ================================================================================
 
+================================================================================
+ANEXO 8.166 - FACTURAS PROVEEDOR: FACTOR DE CONVERSION RECORDADO POR PROVEEDOR+PRODUCTO - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: "Haz que el factor de conversion se recuerde,
+enlazado al proveedro y producto, Sin embrago debe ser editable por algun cambio
+en la facturacion del proveedor".
+
+A. ALCANCE Y ENTREGA
+
+A1. Nueva tabla SupplierProductFactors (SupplierId, ProductId, ConversionFactor
+    numeric(18,2) default 1; indice unico por par; FKs cascade; migracion
+    AddSupplierProductFactor, aplicada por el arranque via MigrateAsync).
+A2. Aprendizaje al confirmar: por cada linea aprobada y resuelta se recuerda el
+    factor aplicado (upsert en memoria dentro de la misma transaccion; el rollback
+    no deja cambios). Volver a 1 actualiza el registro (cambio de facturacion);
+    confirmar 1 sin registro previo no crea filas de ruido.
+A3. Prefijo al stagear: las lineas nuevas que resuelven a un (proveedor, producto)
+    con factor recordado lo reciben en la linea staged; la grilla lo muestra y
+    SIGUE siendo editable por linea (cambio de facturacion del proveedor).
+A4. Semantica de null: ConfirmLineDto.ConversionFactor=null ahora significa "sin
+    cambio" (conserva el factor de la linea) en vez de asumir 1; el cliente actual
+    envia siempre el valor explicito (mismo comportamiento observable).
+A5. Tooltip de la columna Factor actualizado (menciona que se recuerda por
+    proveedor y producto).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2244/2244, 0 fallas (SIN PostgreSQL real local; CI cubre al
+    push) - 6 tests nuevos: prefijo por proveedor+producto al stagear (y 1 en otro
+    producto), recuerdo al confirmar, reset a 1 sobre registro existente, 1 sin
+    registro no crea filas, null conserva el factor de la linea (y lo recuerda), y
+    el VM prefija el factor del DTO.
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8929, Sales.Module 0.8971, Inventory.Module 0.8751.
+B4. RED observado antes de implementar (compile-level: entidad/DbSet nuevos)
+    -> GREEN: focused 188/188 y suite 2244/2244.
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada); la tabla nueva se
+    ejercita con schema real en CI y al reiniciar la app local.
+C2. El recuerdo es por proveedor+producto resuelto: las lineas [NUEVO] sin producto
+    no aprenden hasta resolverse y confirmarse.
+
+D. ROLLBACK
+
+D1. Revertir el commit: el Down de la migracion elimina la tabla; el prefijo y el
+    aprendizaje vuelven a no existir. Sin reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.166 en V0.15: commit de implementacion (feat(8.166)) + commit de este ANEXO
+    (docs(8.166); git log).
+================================================================================
+
