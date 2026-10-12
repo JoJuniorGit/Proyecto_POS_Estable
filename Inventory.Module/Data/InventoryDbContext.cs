@@ -18,6 +18,7 @@ public class InventoryDbContext : DbContext
     public DbSet<ExchangeRateHistory> ExchangeRateHistory { get; set; }
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<SupplierColumnMapping> SupplierColumnMappings { get; set; }
+    public DbSet<SupplierProductFactor> SupplierProductFactors { get; set; }
     public DbSet<SupplierProductCode> SupplierProductCodes { get; set; }
     public DbSet<SupplierInvoice> SupplierInvoices { get; set; }
     public DbSet<SupplierInvoiceLine> SupplierInvoiceLines { get; set; }
@@ -200,6 +201,26 @@ public class InventoryDbContext : DbContext
             entity.HasOne(c => c.Product)
                 .WithMany()
                 .HasForeignKey(c => c.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SupplierProductFactor>(entity =>
+        {
+            // 8.166: un factor caja→unidad por par proveedor+producto.
+            entity.HasIndex(f => new { f.SupplierId, f.ProductId })
+                .IsUnique()
+                .HasDatabaseName("IX_SupplierProductFactors_Supplier_Product");
+            entity.Property(f => f.ConversionFactor)
+                .HasColumnType("numeric(18,2)")
+                .HasPrecision(18, 2)
+                .HasDefaultValue(1m);
+            entity.HasOne(f => f.Supplier)
+                .WithMany()
+                .HasForeignKey(f => f.SupplierId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(f => f.Product)
+                .WithMany()
+                .HasForeignKey(f => f.ProductId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

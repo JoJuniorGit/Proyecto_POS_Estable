@@ -662,6 +662,43 @@ namespace Inventory.Module.Migrations
                     b.ToTable("SupplierProductCodes");
                 });
 
+            modelBuilder.Entity("Core.Entities.SupplierProductFactor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("ConversionFactor")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(1m);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SupplierId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("SupplierId", "ProductId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_SupplierProductFactors_Supplier_Product");
+
+                    b.ToTable("SupplierProductFactors");
+                });
+
             modelBuilder.Entity("Core.Entities.SystemSetting", b =>
                 {
                     b.Property<string>("Key")
@@ -770,6 +807,25 @@ namespace Inventory.Module.Migrations
 
                     b.HasOne("Core.Entities.Supplier", "Supplier")
                         .WithMany("ProductCodes")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("Core.Entities.SupplierProductFactor", b =>
+                {
+                    b.HasOne("Core.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Core.Entities.Supplier", "Supplier")
+                        .WithMany()
                         .HasForeignKey("SupplierId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

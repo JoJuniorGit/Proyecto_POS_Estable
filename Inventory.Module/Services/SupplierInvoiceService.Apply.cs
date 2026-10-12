@@ -129,6 +129,21 @@ public partial class SupplierInvoiceService
                     }
                 }
 
+                // 8.166: factores recordados por proveedor+producto para los candidatos del apply
+                // (upsert en memoria; se persiste con el guardado final de la transacción).
+                var factorsByProductId = new Dictionary<int, SupplierProductFactor>();
+                if (applicableProductIds.Count > 0)
+                {
+                    var existingFactors = await _context.SupplierProductFactors
+                        .Where(factor => factor.SupplierId == invoice.SupplierId
+                            && applicableProductIds.Contains(factor.ProductId))
+                        .ToListAsync(cancellationToken);
+                    foreach (var factor in existingFactors)
+                    {
+                        factorsByProductId.TryAdd(factor.ProductId, factor);
+                    }
+                }
+
                 var aliasPlan = new Dictionary<string, int>();
                 foreach (var line in orderedLines)
                 {
@@ -162,6 +177,8 @@ public partial class SupplierInvoiceService
                     // 8.155/W1: el retry puede re-leer una instancia fresca del producto; el caché de
                     // precarga debe reflejarla para líneas posteriores que compartan el producto.
                     productsById[productId] = await ApplyApprovedLineAsync(invoice.Id, line, product, confirmation, cancellationToken);
+                    // 8.166: aprende/actualiza el factor caja→unidad por proveedor+producto.
+                    UpdateRememberedFactor(factorsByProductId, invoice.SupplierId, productId, line.ConversionFactor);
                     if (!string.IsNullOrWhiteSpace(line.SupplierCode))
                     {
                         // 8.146-S5/D8: aprendizaje de alias dentro de la misma transacción;
@@ -378,7 +395,8 @@ public partial class SupplierInvoiceService
         SupplierInvoice invoice,
         ConfirmLineDto confirmation)
     {
-        var factor = confirmation.ConversionFactor ?? 1m;
+        // 8.166: null = "sin cambio": conserva el factor ya prefijado en la línea (recordado).
+        var factor = confirmation.ConversionFactor ?? line.ConversionFactor;
         line.ConversionFactor = factor;
         if (factor == 1m)
         {
@@ -389,5 +407,42 @@ public partial class SupplierInvoiceService
         line.UnitCostUSD = invoice.Currency == CurrencyCodes.Usd
             ? documentUnitCost
             : PricingCalculator.ToUSD(documentUnitCost, invoice.AppliedRate);
+    }
+
+    /// <summary>
+    /// 8.166: recuerda el factor caja→unidad por proveedor+producto dentro de la misma transacción
+    /// (el rollback del confirm no deja cambios). Se actualiza también cuando el revisor vuelve a 1
+    /// (cambio de facturación); un 1 sin registro previo no crea una fila nueva.
+    /// </summary>
+    private void UpdateRememberedFactor(
+        Dictionary<int, SupplierProductFactor> factorsByProductId,
+        int supplierId,
+        int productId,
+        decimal conversionFactor)
+    {
+        if (factorsByProductId.TryGetValue(productId, out var existing))
+        {
+            if (existing.ConversionFactor != conversionFactor)
+            {
+                existing.ConversionFactor = conversionFactor;
+                existing.UpdatedAt = DateTime.UtcNow;
+            }
+
+            return;
+        }
+
+        if (conversionFactor == 1m)
+        {
+            return;
+        }
+
+        var created = new SupplierProductFactor
+        {
+            SupplierId = supplierId,
+            ProductId = productId,
+            ConversionFactor = conversionFactor
+        };
+        factorsByProductId[productId] = created;
+        _context.SupplierProductFactors.Add(created);
     }
 }

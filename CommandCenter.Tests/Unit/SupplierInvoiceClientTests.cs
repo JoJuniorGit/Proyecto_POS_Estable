@@ -53,6 +53,17 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
+    public void StagedLine_UsesDtoConversionFactorForPrefill()
+    {
+        // 8.166: el factor recordado por proveedor+producto llega al VM por la línea staged
+        // (visible y editable en la grilla).
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1) with { ConversionFactor = 12m }));
+
+        Assert.Equal(12m, Assert.Single(viewModel.Lines).ConversionFactor);
+    }
+
+    [Fact]
     public void StagedLine_DefaultsApprovalToOn()
     {
         var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());

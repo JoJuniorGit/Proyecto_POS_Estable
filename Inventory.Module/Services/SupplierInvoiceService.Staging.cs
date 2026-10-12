@@ -31,6 +31,11 @@ public partial class SupplierInvoiceService
         // 8.155/PEF-01 (REQ-SIB-01): los lookups exactos se precargan una sola vez por stage;
         // el loop resuelve barcode/supplierCode en memoria y solo cae a fuzzy sin match exacto.
         var matchLookups = await LoadMatchLookupsAsync(supplier.Id, lines, cancellationToken);
+        // 8.166: factores caja→unidad recordados por proveedor+producto; se prefijan por línea.
+        var conversionFactorsByProductId = await _context.SupplierProductFactors
+            .AsNoTracking()
+            .Where(factor => factor.SupplierId == supplier.Id)
+            .ToDictionaryAsync(factor => factor.ProductId, factor => factor.ConversionFactor, cancellationToken);
 
         var invoice = new SupplierInvoice
         {
@@ -47,7 +52,14 @@ public partial class SupplierInvoiceService
                 : Core.Helpers.PricingCalculator.ToUSD(line.UnitCostDocument, appliedRate);
             var match = TryResolveExactMatch(matchLookups, line)
                 ?? await FallbackFuzzyMatchAsync(line.Name, similarityThreshold, cancellationToken);
-            invoice.Lines.Add(CreateStagedLine(line, match, unitCostUsd, request.OcrSourced));
+            var stagedLine = CreateStagedLine(line, match, unitCostUsd, request.OcrSourced);
+            if (match.Product is not null
+                && conversionFactorsByProductId.TryGetValue(match.Product.Id, out var rememberedFactor))
+            {
+                stagedLine.ConversionFactor = rememberedFactor;
+            }
+
+            invoice.Lines.Add(stagedLine);
         }
 
         _context.SupplierInvoices.Add(invoice);

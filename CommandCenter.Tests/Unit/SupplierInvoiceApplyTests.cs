@@ -120,6 +120,101 @@ public class SupplierInvoiceApplyTests
     }
 
     [Fact]
+    public async Task ConfirmAsync_RemembersConversionFactorBySupplierAndProduct()
+    {
+        // 8.166: el factor confirmado se recuerda por proveedor+producto para las próximas facturas.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-REMEMBER", 4m, 0m, 20m);
+        var line = CreateLine(product, 5m, 12m);
+        line.UnitCostDocument = 12m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 12m)
+        }));
+
+        var remembered = await context.SupplierProductFactors.SingleAsync();
+        Assert.Equal(invoice.SupplierId, remembered.SupplierId);
+        Assert.Equal(product.Id, remembered.ProductId);
+        Assert.Equal(12m, remembered.ConversionFactor);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_UpdatesRememberedFactorWhenInvoicingChangesBackToOne()
+    {
+        // 8.166: volver a 1 (cambio de facturación) actualiza lo recordado sin crear una fila nueva.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-REMEMBER-RESET", 4m, 0m, 20m);
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
+        var line = CreateLine(product, 5m, 12m);
+        line.UnitCostDocument = 12m;
+        var invoice = await AddInvoiceAsync(context, line);
+        context.SupplierProductFactors.Add(new SupplierProductFactor
+        {
+            SupplierId = invoice.SupplierId,
+            ProductId = product.Id,
+            ConversionFactor = 12m
+        });
+        await context.SaveChangesAsync();
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 1m)
+        }));
+
+        var remembered = await context.SupplierProductFactors.SingleAsync();
+        Assert.Equal(1m, remembered.ConversionFactor);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_DoesNotRememberFactorOneWithoutPreviousRecord()
+    {
+        // 8.166: confirmar 1 sin registro previo no crea filas de ruido.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-NO-NOISE", 4m, 0m, 20m);
+        var line = CreateLine(product, 5m, 12m);
+        line.UnitCostDocument = 12m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 1m)
+        }));
+
+        Assert.Empty(await context.SupplierProductFactors.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithNullConversionFactor_KeepsLineFactorAndRemembersIt()
+    {
+        // 8.166: null significa "sin cambio": clientes que no envían el campo no pisan el factor
+        // prefijado (recordado).
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-KEEP", 4m, 0m, 20m);
+        var line = CreateLine(product, 4m, 12m);
+        line.UnitCostDocument = 12m;
+        line.ConversionFactor = 4m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(3m, savedProduct.CostPriceUSD);
+        Assert.Equal(16m, savedProduct.StockQuantity);
+        var remembered = await context.SupplierProductFactors.SingleAsync();
+        Assert.Equal(4m, remembered.ConversionFactor);
+    }
+
+    [Fact]
     public async Task ConfirmAsync_DescendingProductOrder_AppliesIdenticalEffectsInAscendingLockOrder()
     {
         using var context = TestDatabaseFactory.CreateInventoryDbContext();

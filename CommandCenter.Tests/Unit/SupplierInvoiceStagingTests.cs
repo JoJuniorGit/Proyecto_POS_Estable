@@ -492,6 +492,38 @@ public class SupplierInvoiceStagingTests
         Assert.Equal(15.00m, line.SuggestedWholesalePriceUSD);
     }
 
+    [Fact]
+    public async Task StageAsync_PrefillsRememberedConversionFactorBySupplierAndProduct()
+    {
+        // 8.166: el factor recordado por proveedor+producto se prefija en las líneas nuevas que
+        // resuelven al mismo producto (y no en las que resuelven a otro).
+        var (service, context) = CreateService();
+        var supplier = await AddSupplierAsync(context);
+        var rememberedProduct = CreateProduct("Mayonesa Mavesa", "SKU-FACTOR-1", 4m);
+        var otherProduct = CreateProduct("Café", "SKU-FACTOR-2", 5m);
+        context.Products.AddRange(rememberedProduct, otherProduct);
+        await context.SaveChangesAsync();
+        context.SupplierProductFactors.Add(new SupplierProductFactor
+        {
+            SupplierId = supplier.Id,
+            ProductId = rememberedProduct.Id,
+            ConversionFactor = 12m
+        });
+        await context.SaveChangesAsync();
+
+        var invoice = await service.StageAsync(CreateRequest(
+            supplier.Id,
+            null,
+            null,
+            CreateMapping(),
+            new StageLineDto(null, "SKU-FACTOR-1", "Mayonesa Mavesa", 5m, 4m),
+            new StageLineDto(null, "SKU-FACTOR-2", "Café", 2m, 5m)));
+
+        var lines = invoice.Lines.OrderBy(line => line.Id).ToArray();
+        Assert.Equal(12m, lines[0].ConversionFactor);
+        Assert.Equal(1m, lines[1].ConversionFactor);
+    }
+
     private static (SupplierInvoiceService Service, InventoryDbContext Context) CreateService()
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();

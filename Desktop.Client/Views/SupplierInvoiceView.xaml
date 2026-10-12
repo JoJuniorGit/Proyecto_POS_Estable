@@ -369,7 +369,7 @@
                                      IsEnabled="{Binding CanApprove}"
                                      HorizontalContentAlignment="Right"
                                      Padding="5,2"
-                                     ToolTip="Factor de conversión (divisor): la factura viene por caja/bulto y el local vende por unidad. Al confirmar: costo unitario ÷ factor y cantidad × factor."
+                                     ToolTip="Factor de conversión (divisor): la factura viene por caja/bulto y el local vende por unidad. Al confirmar: costo unitario ÷ factor y cantidad × factor. Se recuerda por proveedor y producto para las próximas facturas (editable si cambia la facturación)."
                                      AutomationProperties.Name="Factor de conversion por producto" />
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
