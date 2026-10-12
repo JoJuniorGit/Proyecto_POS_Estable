@@ -14054,3 +14054,80 @@ D1. Revertir los cambios en Backend.API, Core, Inventory.Module,
     Desktop.Client.Core y CommandCenter.Tests.
 ================================================================================
 
+================================================================================
+ANEXO 8.170 - MOTOR OCR: ESCALERA DE BINARIZADO POR RESULTADO Y FILTRO DE FILAS BASURA - 2026-10-12
+================================================================================
+Ajustes autorizados por el mantenedor ("Continua con los ajustes al motor, pero
+teniendo en cuenta que la calidad de la imagen puede variar") sobre la verificacion
+previa de las imagenes mejoradas, donde 4D requeria rescate. Numeracion 8.170: el
+tramo paralelo del mantenedor (c1f6df4) uso 8.168/8.169.
+
+A. ALCANCE Y ENTREGA
+
+A1. Escalera de candidatos por RESULTADO (OcrExtractionService): se mantiene el
+    pipeline principal (Preprocess). Si el parseo del DOCUMENTO COMPLETO no produce
+    NINGUNA fila con identificador (nombre/codigo/barras: mismo criterio del
+    cliente) se prueban candidatos de respaldo en orden: raw (pixeles originales) y
+    adaptativo sin deskew (ImagePreprocessor.PreprocessAdaptiveFallback: CLAHE +
+    umbral adaptativo bloque 51/C15). Gana el candidato con mas filas usables;
+    cortocircuito al primer candidato usable + log del fallback elegido.
+A2. El parseo de cada candidato es por documento (no por pagina) para preservar la
+    herencia de anclas entre paginas de continuacion del parser.
+A3. Filtro de filas basura refinado (InvoiceTableParser): sin identificador legible
+    Y sin cantidad -> la fila no se emite (antes solo se descartaba si faltaban
+    tambien TODOS los numeros; una fila del pie con costo suelto bloqueaba el flujo
+    con "Filas OCR incompletas").
+A4. Evidencia de diseno (fotos reales): el deskew sobre las binarizaciones
+    alternativas resulto destructivo en los casos verificados (4D adaptativo CON
+    deskew = 0 filas utiles; SIN deskew = 4 perfectas). De ahi el fallback sin
+    deskew. El cortocircuito evita costo extra de OCR en imagenes buenas.
+
+B. VERIFICACION
+
+B1. Servicio real end-to-end con las 4 imagenes mejoradas (harness temporal
+    eliminado tras la verificacion): MYE 6/6 lineas (una sola pasada de OCR),
+    DISMOLCA 3/3 (una pasada), ROSA ELENA 16 items (una pasada), y 4D 4/4
+    RESCATADA por el fallback raw (codigos, nombres, cantidades y costos exactos;
+    la fila basura 97347 desaparecio con A3). RIF y numero de factura detectados en
+    las cuatro.
+B2. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B3. Suite completa: 2281/2281, 0 fallas (SIN PostgreSQL real local; CI cubre al
+    push), con los 4 tests nuevos: filtro fila-solo-costo, cortocircuito sin
+    costo extra, rescate por candidato raw y limite acotado de intentos.
+B4. Cobertura (exit 0): Core 0.8190, Sales.Module 0.8971, Inventory.Module 0.8777.
+    La caida de Core vs 8.167 proviene del tramo paralelo 8.168/8.169
+    (FlexibleDecimalParser et al.), no de este tramo.
+B5. RED observado antes del fix (4 tests) -> GREEN (focused 293/293).
+
+C. COMPORTAMIENTO POR CALIDAD DE IMAGEN (pedido explicito del mantenedor)
+
+C1. Imagen buena (escaneo nitido o mejorado): el pipeline principal produce filas
+    usables -> comportamiento y costo IDENTICOS a antes (una pasada de OCR).
+C2. Imagen marginal (bajo contraste, impresion tenue): si el principal no produce
+    filas usables se intenta raw (caso 4D) y, si no alcanza, adaptativo sin deskew.
+    Maximo 3 pasadas por documento y solo en el caso degradado.
+C3. Imagen no legible (lavada/borrosa extrema): todos los candidatos fallan ->
+    misma salida segura de siempre (cero lineas + mensaje que guia a re-tomar la
+    foto); nunca se emiten datos basura silenciosos.
+
+D. LIMITACIONES
+
+D1. Suite sin PostgreSQL real local (degeneracion heredada documentada).
+D2. Las filas de pie de ROSA ELENA que caen en la banda de barras (texto) siguen
+    siendo revisables/rechazables en la grilla (futuro posible: ampliar los
+    terminadores con "exento"/"monto").
+D3. Parametros del fallback (bloque 51/C15, sin deskew) calibrados con los casos
+    reales disponibles (4D, NUEVO VIENTO y las fotos portrait originales).
+
+E. ROLLBACK
+
+E1. Revertir el commit restaura el pipeline unico y el filtro previo; sin
+    migraciones ni reescrituras de datos.
+
+F. COMMITS
+
+F1. 8.170 en V0.15: eb73723 (implementacion) + commit de este ANEXO (docs(8.170);
+    git log). Nota de contexto: el tramo paralelo del mantenedor (c1f6df4) uso
+    8.168/8.169; ambos conviven (suite completa en verde).
+================================================================================
+
