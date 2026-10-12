@@ -14131,3 +14131,82 @@ F1. 8.170 en V0.15: eb73723 (implementacion) + commit de este ANEXO (docs(8.170)
     8.168/8.169; ambos conviven (suite completa en verde).
 ================================================================================
 
+================================================================================
+ANEXO - REVISION 8.171: REMEDIACION INTEGRAL DE AUDITORIA FASES 1-4 (SPRINT 1, 2 Y 3)
+================================================================================
+
+A. RESUMEN DE REMEDIACION (27/27 HALLAZGOS CERRADOS)
+
+A1. SPRINT 1 (P0 - Bloqueadores Criticos de Seguridad, Integridad y Concurrencia):
+    - [SEC-09] Bloqueo de mutacion de cantidad y auto-merge en `SalesService.cs` sobre
+      items con `IsCustomPrice == true`.
+    - [SEC-10] RBAC explicito en `ReservationsController`: `Admin,Manager,Cashier` a nivel
+      controlador y `POST confirm/{id}` restringido a `Admin,Manager`.
+    - [SEC-06-RES] Enmascarado ciego para `Cashier` en `CashDrawerController`
+      (`Transactions` vacias y `ExpectedClosingBalanceLocal = null`) y eliminacion de
+      saldos disponibles en mensajes de error de `CashDrawerService`.
+    - [SRE-02b] Purga de registros vencidos (`ExpiresAtUtc <= now`) en
+      `IdempotencyService.CheckAsync` y validacion de expiracion en `HandleConcurrentCollisionAsync`.
+    - [SRE-06] Transaccion serializada con `ExecuteDeleteAsync` condicional en
+      `ReservationService.CancelReservationAsync` para impedir doble descuento de `ReservedQuantity`.
+    - [PERF-R01] Activacion del indice GIN `idx_products_name_trgm` con
+      `EF.Functions.TrigramsAreSimilar` (`%`) en `PostgresSupplierProductSimilaritySearch`.
+    - [PERF-R02] Eliminacion de `SaveChangesAsync()` por linea en `SupplierInvoiceService.Apply.cs`.
+    - [PERF-06] Proyeccion escalar ligera `GetSaleAuthorizationSnapshotAsync` en
+      `SalesController.IsAuthorizedForSaleAsync`.
+    - [PERF-12] Implementacion de `IDisposable` en `AuthorizationHubService` y
+      `DisposeAsync` ordenado en `App.xaml.cs`.
+
+A2. SPRINT 2 (P1 - Endurecimiento Transaccional, Seguridad y Rendimiento):
+    - [SRE-08] `_context.ChangeTracker.Clear()` al inicio de los delegados
+      `CreateExecutionStrategy().ExecuteAsync` en `Sales.Module` e `Inventory.Module`.
+    - [SRE-07] Preservacion de `ReservedQuantity` del padre cuando `IsStockShared == true`
+      en `InventoryService.ProductUpdates.cs`.
+    - [SRE-09] Redireccion de incremento de stock de facturas de proveedor al padre cuando
+      `ParentProduct.IsStockShared == true` y token de concurrencia optimista `xmin` (`RowVersion`)
+      en `SupplierInvoice`.
+    - [SRE-10 / SRE-02a] Resolucion e idempotencia (`ResolveIfPresentAsync` + `RegisterSuccessAsync`
+      + `HandleCollisionAsync`) en `cash-advance`, `shifts/close`, `confirm-pickup` y `adjust-stock`.
+    - [SRE-11] Reordenamiento de `RequestMetricsMiddleware` por fuera de
+      `GlobalExceptionHandlerMiddleware` en `PipelineExtensions.cs`.
+    - [SEC-04-RES] Anclaje de tasa oficial BCV en `OpenSessionAsync`/`CloseSessionAsync`
+      (`CashDrawerController`) y validacion de `PaymentMethod` activo y digital contra BD
+      en `CashAdvanceCoordinator.ProcessAsync`.
+    - [SEC-11 / SEC-12] Validacion de `PaymentMethod.IsActive && !IsDeleted` en `HoldOrders`
+      y `Payments`, y exigencia de declaracion explicita para todos los metodos con movimientos
+      en `DailyClosureService.MergeMissingMethodsWithReport`.
+    - [SEC-13 / SEC-15] Ocultamiento de montos del sistema al `Cashier` en `DailyClosureController`
+      y `ShiftsController`, y politica `[EnableRateLimiting("AuthRateLimit")]` en `local-resolve`.
+    - [SEC-16] Reemplazo de `[Authorize]` generico por `[Authorize(Roles = "Admin,Manager,Cashier")]`
+      para impedir acceso del rol `Driver` a endpoints operativos.
+    - [PERF-07 / R03] Consultas asincronas con `.AsSplitQuery()` en `GetDeliveryNotePdfAsync` y
+      eliminacion de recargas redundantes en `ConfirmPickupAsync`.
+    - [PERF-08 / 09] Precarga por lote en `RecalculateOnHoldSalesAsync`, limpieza de `ChangeTracker`
+      en `StockMovementArchiverJob` y centinela nulo cacheado en `SystemSettingsService`.
+    - [PERF-10 / 11] `IsQuantityDirty` en `CartItemViewModel` para sincronizar solo items
+      modificados en `FlushAllQuantitiesAsync` y verificacion BCrypt fuera de la transaccion
+      serializable en `AuthorizationService.ResolveLocalAsync`.
+
+A3. SPRINT 3 (P1/P2 - Higiene Arquitectonica, Clean Code y Observabilidad):
+    - [CLEAN-05-RES] Uso de saldos restantes canonicos de `checkout-preview` en `CheckoutModal.jsx`,
+      preservacion de 4 decimales BCV en `PaymentForm.jsx` (`Math.round(exchangeRate * 10000)`) y
+      alineacion de tolerancia a `0.01m` en `EditSaleDialogViewModel.cs`.
+    - [CLEAN-06-RES] `using var response = ...; response.EnsureSuccessStatusCode();` en todos los
+      metodos mutacionales de `Desktop.Client.Core/Services/SettingsService.cs`.
+    - [CLEAN-07 / 08] Eliminacion de bloques `catch` mudos en `ProductService`, `SalesService`,
+      `UserService`, `ProductImportService`, `ReceiptsController`, `RegisterPage.jsx` y `RegisterClosePage.jsx`.
+    - [CLEAN-09] Delegacion a `PricingCalculator.CalculateSuggestedPrice` en `VariantManagementViewModel`
+      e invalidacion de cache `er_today_*` en `SettingsController`.
+    - [CLEAN-10 / 11 / 12] Respeto de `isFractional` en `PosView.xaml.cs`, eliminacion de componentes
+      huerfanos (`CheckoutHeader.jsx`, `CheckoutSummary.jsx`) y parser decimal unificado.
+    - [PERF-R04 / 13] Desuscripcion de eventos en `UsersManagementView.xaml.cs` y dialogos de variantes,
+      `using` en `HttpResponseMessage`/`Process` y eliminacion de `ToLower()`/`ToUpper()` en predicados EF Core.
+    - [SRE-12] `AppLogger.LogCrash` reservado exclusivamente para errores `5xx` y emision de logs
+      estructurados con propiedades clave-valor para respuestas `4xx` en `GlobalExceptionHandlerMiddleware`.
+
+B. VERIFICACION
+
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: 2284/2284 tests en verde.
+B3. `npm test -- --run` y `npm run lint` en `Web.Frontend`: 379/379 tests y 0 warnings/errores de lint.
+================================================================================

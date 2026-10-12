@@ -68,7 +68,10 @@ function RegisterPageContent() {
     try {
       const [sessionData, historyData] = await Promise.all([
         api.get('/api/cashdrawer/active-session'),
-        api.get(`/api/cashdrawer/history?limit=${HISTORY_FETCH_LIMIT}`).catch(() => []),
+        api.get(`/api/cashdrawer/history?limit=${HISTORY_FETCH_LIMIT}`).catch((err) => {
+          console.warn('[RegisterPage] No se pudo cargar historial de caja:', err);
+          return [];
+        }),
       ]);
       setSession(sessionData);
       setHistoryTransactions(historyData || []);

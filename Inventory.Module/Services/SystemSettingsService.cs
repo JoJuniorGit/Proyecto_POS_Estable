@@ -31,7 +31,7 @@ public class SystemSettingsService : ISystemSettingsService
             return cached;
         }
 
-        var setting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == key);
+        var setting = await _context.SystemSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == key);
         var value = setting?.Value;
 
         // 8.9-L12: no cachear string.Empty — un key inexistente no debe quedar "falsamente

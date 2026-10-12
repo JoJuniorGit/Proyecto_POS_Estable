@@ -12,6 +12,7 @@ public interface ISalesService
 {
     Task<SaleDto> StartSaleAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> GetSaleAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
+    Task<(string Status, int? CashierId)?> GetSaleAuthMetadataAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);

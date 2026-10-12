@@ -424,12 +424,12 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         if (CurrentSale == null) return;
         try
         {
-            foreach (var item in CartItems.ToList())
+            var dirtyItems = CartItems.Where(i => i.IsQuantityDirty && i.Model.Quantity > 0m).ToList();
+            if (dirtyItems.Count == 0) return;
+
+            foreach (var item in dirtyItems)
             {
-                if (item.Model.Quantity > 0m)
-                {
-                    await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, item.Model.Quantity, _exchangeRateService.CurrentRate);
-                }
+                await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, item.Model.Quantity, _exchangeRateService.CurrentRate);
             }
             var reloaded = await _salesService.GetSaleAsync(CurrentSale.Id);
             CurrentSale = reloaded;

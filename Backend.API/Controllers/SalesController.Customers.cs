@@ -33,6 +33,7 @@ public partial class SalesController
         });
     }
 
+    [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpGet("customers/default")]
     public async Task<ActionResult<CustomerDto>> GetDefaultCustomerAsync(CancellationToken cancellationToken = default)
     {

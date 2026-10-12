@@ -18,7 +18,7 @@ namespace Desktop.Client.Services;
 /// ExchangeRateService), auto-reconnect y par REST del controlador para cuando el socket esta
 /// caido. Los eventos AuthorizationRequested/Resolved/Expired replican al notificador del backend.
 /// </summary>
-public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposable
+public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposable, IDisposable
 {
     public const string HubPath = "hubs/authorization";
     public const string RequestAuthorizationMethod = "RequestAuthorization";

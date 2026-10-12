@@ -19,7 +19,6 @@ namespace Backend.API.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly IUserService _userService;
-    private readonly IPasswordPolicyService _passwordPolicyService;
     private readonly ISecurityStampValidator? _stampValidator;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
@@ -29,7 +28,7 @@ public class UsersController : ControllerBase
         ISecurityStampValidator? stampValidator = null)
     {
         _userService = userService;
-        _passwordPolicyService = passwordPolicyService ?? new Core.Services.PasswordPolicyService();
+        _ = passwordPolicyService;
         _stampValidator = stampValidator;
     }
 

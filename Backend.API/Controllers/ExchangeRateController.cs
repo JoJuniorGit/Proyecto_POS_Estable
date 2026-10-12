@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Admin,Manager,Cashier")]
 [ApiController]
 [Route("api/exchange-rate")]
 public class ExchangeRateController : ControllerBase

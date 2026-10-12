@@ -37,6 +37,21 @@ public sealed class IdempotencyRequestResolver
             : null;
     }
 
+    public Task<IdempotencyResolution> ResolveIfPresentAsync(
+        ControllerBase controller,
+        string requestPath,
+        string bodyJson,
+        bool parseNumericBodyAsInvoice = false)
+    {
+        string? idempotencyKey = controller.Request?.Headers["Idempotency-Key"].ToString();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            return Task.FromResult(new IdempotencyResolution(false, null, null, null));
+        }
+
+        return ResolveAsync(controller, requestPath, bodyJson, DefaultMissingKeyMessage, parseNumericBodyAsInvoice);
+    }
+
     public async Task<IdempotencyResolution> ResolveAsync(
         ControllerBase controller,
         string requestPath,

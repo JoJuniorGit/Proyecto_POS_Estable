@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Admin,Manager,Cashier")]
 [ApiController]
 [Route("api/[controller]")]
 public partial class ProductsController : ControllerBase
@@ -21,13 +21,19 @@ public partial class ProductsController : ControllerBase
     private readonly IInventoryService _inventoryService;
     private readonly IProductManagementService _productManagementService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly Backend.API.Services.IdempotencyRequestResolver _idempotencyResolver;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
-    public ProductsController(IInventoryService inventoryService, IProductManagementService productManagementService, ICurrentUserService currentUserService)
+    public ProductsController(
+        IInventoryService inventoryService,
+        IProductManagementService productManagementService,
+        ICurrentUserService currentUserService,
+        IIdempotencyService? idempotencyService = null)
     {
         _inventoryService = inventoryService;
         _productManagementService = productManagementService;
         _currentUserService = currentUserService;
+        _idempotencyResolver = new Backend.API.Services.IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
     [HttpGet]
@@ -42,6 +48,11 @@ public partial class ProductsController : ControllerBase
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
+
+        if (!_currentUserService.CanMutateCatalog && string.Equals(sortBy, "cost", System.StringComparison.OrdinalIgnoreCase))
+        {
+            sortBy = "name";
+        }
 
         var result = await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter, sortBy, isDescending, cancellationToken);
         if (!_currentUserService.CanMutateCatalog)
@@ -74,10 +85,6 @@ public partial class ProductsController : ControllerBase
         try
         {
             ProductDto? created = await _productManagementService.CreateProductFromDtoAsync(request, cancellationToken);
-            if (created != null && !_currentUserService.CanMutateCatalog)
-            {
-                created.MaskCosts();
-            }
             return CreatedAtAction(nameof(GetByIdAsync), new { id = created?.Id }, created);
         }
         catch (System.UnauthorizedAccessException)
@@ -186,9 +193,20 @@ public partial class ProductsController : ControllerBase
             return this.ApiForbidden(Core.Constants.InventoryMessages.UnauthorizedAdjustment);
         }
 
+        string requestPath = $"/api/products/{id}/adjust-stock";
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(dto));
+        if (idempotency.ShouldStop)
+        {
+            return idempotency.BlockingResult!;
+        }
+
         try
         {
             await _inventoryService.AdjustStockAsync(id, dto.QuantityChange, dto.Reason, cancellationToken: cancellationToken);
+            await _idempotencyResolver.RegisterSuccessAsync(idempotency, requestPath, "", cancellationToken);
             return NoContent();
         }
         catch (System.Collections.Generic.KeyNotFoundException)
@@ -198,6 +216,10 @@ public partial class ProductsController : ControllerBase
         catch (System.UnauthorizedAccessException)
         {
             return this.ApiForbidden("No tiene permisos para realizar esta operación.");
+        }
+        catch (DbUpdateException ex) when (Backend.API.Services.IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
         }
     }
 

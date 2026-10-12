@@ -67,10 +67,10 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
   const finalAmountBsS = parsedCents / 100;
   const usdPreview = (() => {
     if (exchangeRate <= 0 || parsedCents <= 0) return '0.00';
-    // Equivalencia USD redondeada a 2 decimales en escala entera (evita drift de punto flotante)
-    const rateCents = Math.round(exchangeRate * 100);
-    if (rateCents <= 0) return '0.00';
-    const usdCents = Math.round((parsedCents * 100) / rateCents);
+    // 8.168 (CLEAN-05-RES): preservar 4 decimales de la tasa oficial BCV en escala entera (evita truncar a 2 decimales).
+    const rateScaled = Math.round(exchangeRate * 10000);
+    if (rateScaled <= 0) return '0.00';
+    const usdCents = Math.round((parsedCents * 10000) / rateScaled);
     return (usdCents / 100).toFixed(2);
   })();
 

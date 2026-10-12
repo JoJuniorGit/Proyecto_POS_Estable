@@ -53,6 +53,20 @@ public class CashAdvanceCoordinator
             throw new ArgumentException("El monto de efectivo a entregar debe ser un número entero sin decimales.", nameof(requestedAmountLocal));
         }
 
+        // 8.168 (SEC-04-RES): validar que el método de pago exista, esté activo y sea digital cuando el catálogo está poblado.
+        if (paymentMethodId > 0 && await _context.PaymentMethods.AnyAsync(cancellationToken))
+        {
+            var paymentMethod = await _context.PaymentMethods
+                .AsNoTracking()
+                .FirstOrDefaultAsync(pm => pm.Id == paymentMethodId && pm.IsActive && !pm.IsDeleted, cancellationToken)
+                ?? throw new ArgumentException($"El método de pago con ID {paymentMethodId} no existe o se encuentra inactivo.", nameof(paymentMethodId));
+
+            if (paymentMethod.IsCash)
+            {
+                throw new ArgumentException("El adelanto de efectivo solo puede cobrarse mediante métodos de pago digitales (Punto de Venta o Transferencia).", nameof(paymentMethodId));
+            }
+        }
+
         var availableCash = await _cashDrawerService.GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
         var roundedRequested = Math.Round(requestedAmountLocal, 2, MidpointRounding.AwayFromZero);
 
@@ -93,6 +107,7 @@ public class CashAdvanceCoordinator
         string activeUserName,
         CancellationToken cancellationToken)
     {
+        _context.ChangeTracker.Clear();
         IDbContextTransaction? dbTransaction = null;
         if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {

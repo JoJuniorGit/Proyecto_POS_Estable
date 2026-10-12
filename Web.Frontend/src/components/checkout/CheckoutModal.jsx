@@ -147,15 +147,21 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const paidBsS = payments.reduce((acc, p) => acc + p.amountBsS, 0);
   const paidUsd = payments.reduce((acc, p) => acc + p.amountUsd, 0);
 
-  const remainingBsS = Math.max(0, targetTotalBsS - paidBsS);
-  const remainingUsd = Math.max(0, targetTotalUSD - paidUsd);
-
   // Previsualización canónica del backend: redondeo fiscal, saldo, vuelto y estado de pago total
   const previewRequest = useMemo(
     () => buildCheckoutPreviewRequest({ saleId: activeSale?.id, exchangeRate: rateToUse, payments, overrideSale }),
     [activeSale?.id, rateToUse, payments, overrideSale]
   );
   const previewRequestSignature = useMemo(() => JSON.stringify(previewRequest), [previewRequest]);
+
+  // 8.168 (CLEAN-05-RES): priorizar saldos restantes canónicos de checkout-preview cuando está sincronizado.
+  const hasFreshPreview = preview != null && !previewFailed && previewSignature === previewRequestSignature;
+  const remainingBsS = hasFreshPreview && typeof preview.remainingBalanceBsS === 'number'
+    ? Math.max(0, preview.remainingBalanceBsS)
+    : Math.max(0, targetTotalBsS - paidBsS);
+  const remainingUsd = hasFreshPreview && typeof preview.remainingBalanceUSD === 'number'
+    ? Math.max(0, preview.remainingBalanceUSD)
+    : Math.max(0, targetTotalUSD - paidUsd);
 
   useEffect(() => {
     if (!isOpen || !previewRequest.saleId) {

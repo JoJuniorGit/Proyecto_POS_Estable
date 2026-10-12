@@ -288,7 +288,7 @@ public class CashDrawerService : ICashDrawerService
                     var currentBalance = await GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
                     if (currentBalance < amountLocal)
                     {
-                        throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para realizar el egreso. Disponible: {MoneyFormat.N2(currentBalance)} Bs.S, Requerido: {MoneyFormat.N2(amountLocal)} Bs.S.");
+                        throw new InvalidOperationException("Saldo de efectivo en caja insuficiente para realizar el egreso.");
                     }
                 }
 

@@ -23,6 +23,7 @@ public class SettingsController : ControllerBase
     private readonly IExchangeRateWriteService? _writeService;
     private readonly ITimeZoneProvider _timeZoneProvider;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? _hubContext;
+    private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache? _cache;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public SettingsController(
@@ -31,7 +32,8 @@ public class SettingsController : ControllerBase
         IExchangeRateHistoryService historyService,
         IExchangeRateWriteService? writeService = null,
         ITimeZoneProvider? timeZoneProvider = null,
-        Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null)
+        Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? cache = null)
     {
         _settingsService = settingsService;
         _currentUserService = currentUserService;
@@ -39,6 +41,7 @@ public class SettingsController : ControllerBase
         _writeService = writeService;
         _timeZoneProvider = timeZoneProvider ?? new Core.Services.TimeZoneProvider(settingsService);
         _hubContext = hubContext;
+        _cache = cache;
     }
 
     [HttpGet("exchange-rate")]
@@ -82,6 +85,9 @@ public class SettingsController : ControllerBase
         {
             await _writeService.UpsertTodayRateAsync(roundedRate, cancellationToken);
         }
+
+        var todayDate = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
+        _cache?.Remove($"er_today_{todayDate:yyyy-MM-dd}");
 
         return Ok(new SettingValueResponseDto { Value = roundedRate, LastUpdated = DateTime.UtcNow });
     }

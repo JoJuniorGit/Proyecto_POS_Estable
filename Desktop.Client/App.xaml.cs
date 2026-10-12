@@ -449,6 +449,26 @@ public partial class App : Application
 
             try
             {
+                Core.Logging.AppLogger.LogStart("Disponiendo servicio de hub de autorizaciones y cerrando SignalR...");
+                var authorizationHubService = _host.Services.GetService<IAuthorizationHubService>();
+                if (authorizationHubService is IAsyncDisposable asyncAuthHub)
+                {
+                    await asyncAuthHub.DisposeAsync();
+                    Core.Logging.AppLogger.LogStart("Servicio de hub de autorizaciones dispuesto con éxito.");
+                }
+                else if (authorizationHubService is IDisposable disposableAuthHub)
+                {
+                    disposableAuthHub.Dispose();
+                    Core.Logging.AppLogger.LogStart("Servicio de hub de autorizaciones dispuesto con éxito.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.StopServicesAsync.DisposeAuthorizationHub");
+            }
+
+            try
+            {
                 Core.Logging.AppLogger.LogStart("Deteniendo Generic Host asíncronamente...");
                 using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
                 await _host.StopAsync(cts.Token);

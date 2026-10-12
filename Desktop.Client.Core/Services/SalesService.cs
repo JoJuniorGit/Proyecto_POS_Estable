@@ -314,14 +314,18 @@ public class SalesService : ISalesService
                 return (pagedResult.Items, pagedResult.TotalCount);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogError($"Paged customer query fallback triggered: {ex.Message}", nameof(SalesService));
             try
             {
                 var list = await _httpClient.GetFromJsonAsync<List<CustomerDto>>(url);
                 if (list != null) return (list, list.Count);
             }
-            catch { }
+            catch (Exception innerEx)
+            {
+                Core.Logging.ClientStateLogger.LogError($"Customer query fallback failed: {innerEx.Message}", nameof(SalesService));
+            }
         }
 
         return (new List<CustomerDto>(), 0);

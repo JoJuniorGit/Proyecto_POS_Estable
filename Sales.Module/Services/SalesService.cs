@@ -224,7 +224,8 @@ public partial class SalesService : ISalesService
 
         sale.AppliedRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "AddItem", referenceId: sale.Id);
 
-        var existingItem = sale.Items.FirstOrDefault(i => i.ProductId == productId);
+        var existingItem = sale.Items.FirstOrDefault(i => i.ProductId == productId && (!i.IsCustomPrice || customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue))
+            ?? sale.Items.FirstOrDefault(i => i.ProductId == productId);
         if (existingItem != null)
         {
             await UpdateOrSplitExistingItemAsync(sale, saleId, productId, product, existingItem, quantity, customUnitPriceUsd, customUnitPriceLocal, cancellationToken);
@@ -271,6 +272,13 @@ public partial class SalesService : ISalesService
 
     private async Task UpdateOrSplitExistingItemAsync(Sale sale, int saleId, int productId, SaleProductInfoDto? product, SaleItem existingItem, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, System.Threading.CancellationToken cancellationToken)
     {
+        // SEC-09: Do not merge a standard item addition into an existing item with an authorized custom price.
+        if (existingItem.IsCustomPrice && !customUnitPriceUsd.HasValue && !customUnitPriceLocal.HasValue)
+        {
+            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, quantity, null, null, cancellationToken));
+            return;
+        }
+
         if (customUnitPriceUsd.HasValue && existingItem.UnitPrice != customUnitPriceUsd.Value)
         {
             sale.Items.Add(new SaleItem
@@ -393,7 +401,17 @@ public partial class SalesService : ISalesService
             }
             else
             {
+                if (item.IsCustomPrice && quantity != item.Quantity)
+                {
+                    throw new UnauthorizedAccessException("Cannot modify the quantity of an item with an authorized custom price.");
+                }
+
                 quantity = await ValidateAndAdjustQuantityForProductAsync(item.ProductId, quantity);
+                if (item.IsCustomPrice && quantity != item.Quantity)
+                {
+                    throw new UnauthorizedAccessException("Cannot modify the quantity of an item with an authorized custom price.");
+                }
+
                 item.Quantity = quantity;
                 await RecalculateTotalAsync(sale);
             }

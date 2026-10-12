@@ -37,10 +37,15 @@ public partial class SalesService
         var correlationId = Guid.NewGuid().ToString("N");
         _logger?.LogInformation("[TX_START] CorrelationId={CorrelationId}, SaleId={SaleId}, IsolationLevel=ReadCommitted", correlationId, saleId);
 
+        int checkoutRetryAttempt = 0;
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (checkoutRetryAttempt++ > 0 || _context.Database.IsRelational())
+            {
+                _context.ChangeTracker.Clear();
+            }
             var sale = await GetSaleEntityAsync(saleId);
 
             // Idempotency check: if sale is already completed, return existing InvoiceNumber immediately

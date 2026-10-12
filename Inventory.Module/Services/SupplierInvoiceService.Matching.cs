@@ -296,7 +296,10 @@ public sealed class PostgresSupplierProductSimilaritySearch : ISupplierProductSi
 
         return await _context.Products
             .AsNoTracking()
-            .Where(product => !product.IsDeleted)
+            .Where(product => !product.IsDeleted
+                && product.IsActive
+                && !product.IsGroupHeader
+                && EF.Functions.TrigramsAreSimilar(product.Name, productName))
             .Select(product => new
             {
                 product.Id,

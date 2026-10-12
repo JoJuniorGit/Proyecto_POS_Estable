@@ -149,8 +149,9 @@ public class ProductService : IProductService
             return await _httpClient.GetFromJsonAsync<List<Core.DTOs.ProductDto>>($"api/products/{parentProductId}/variants")
                    ?? new List<Core.DTOs.ProductDto>();
         }
-        catch
+        catch (System.Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogError($"Error loading variants for parent {parentProductId}: {ex.Message}", nameof(ProductService));
             return new List<Core.DTOs.ProductDto>();
         }
     }
@@ -162,8 +163,9 @@ public class ProductService : IProductService
             return await _httpClient.GetFromJsonAsync<List<Core.DTOs.ProductDto>>("api/products/parents")
                    ?? new List<Core.DTOs.ProductDto>();
         }
-        catch
+        catch (System.Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogError($"Error loading parent products: {ex.Message}", nameof(ProductService));
             return new List<Core.DTOs.ProductDto>();
         }
     }

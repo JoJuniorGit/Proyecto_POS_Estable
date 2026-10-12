@@ -88,10 +88,10 @@ public partial class InventoryService
             product.SKU = existing.SKU;
         }
         product.ParentProductId = null;
-        product.ReservedQuantity = 0m;
         if (!product.IsStockShared)
         {
             product.StockQuantity = 0m;
+            product.ReservedQuantity = 0m;
             product.LowStockThreshold = 0m;
         }
         if (string.IsNullOrWhiteSpace(product.GroupKey))

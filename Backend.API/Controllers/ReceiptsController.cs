@@ -63,8 +63,9 @@ public class ReceiptsController : ControllerBase
         {
             currencyFormat = await _settingsService.GetSettingAsync("CurrencyFormat");
         }
-        catch
+        catch (Exception ex)
         {
+            Core.Logging.AppLogger.LogWarn($"No se pudo leer CurrencyFormat al generar recibo #{saleId}: {ex.Message}", nameof(ReceiptsController));
         }
 
         var document = _renderer.Render(context, MoneyFormat.ParseFormat(currencyFormat));

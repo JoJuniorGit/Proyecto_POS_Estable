@@ -102,4 +102,13 @@ public static class PricingCalculator
 
         return unitDocumentCost;
     }
+
+    /// <summary>
+    /// [CLEAN-09]: Canonical calculation of a suggested USD selling price from USD cost and profit margin percentage,
+    /// rounded to digital precision (2 decimals, AwayFromZero).
+    /// </summary>
+    public static decimal CalculateSuggestedPrice(decimal costUsd, decimal profitMarginPercent)
+    {
+        return RoundToDigital(costUsd * (1m + (profitMarginPercent / 100m)));
+    }
 }

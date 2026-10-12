@@ -438,23 +438,65 @@ public partial class InventoryService
     {
         if (reservationId == 0) return; // Ignore service reservations
 
+        if (_context.Database.IsRelational())
+        {
+            async Task CancelRelationalCoreAsync()
+            {
+                await using var transaction = _context.Database.CurrentTransaction is null
+                    ? await _context.Database.BeginTransactionAsync(cancellationToken)
+                    : null;
+
+                var relationalReservation = await _context.StockReservations
+                    .AsNoTracking()
+                    .Include(r => r.Product)
+                    .FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
+
+                if (relationalReservation == null) return;
+
+                var deleted = await _context.StockReservations
+                    .Where(r => r.Id == reservationId)
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                if (deleted == 0) return;
+
+                await _context.Products
+                    .Where(p => p.Id == relationalReservation.ProductId)
+                    .ExecuteUpdateAsync(
+                        s => s.SetProperty(
+                            p => p.ReservedQuantity,
+                            p => p.ReservedQuantity > relationalReservation.Quantity ? p.ReservedQuantity - relationalReservation.Quantity : 0m),
+                        cancellationToken);
+
+                if (transaction is not null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                }
+
+                if (relationalReservation.Product != null)
+                {
+                    InvalidateProductSkuCache(relationalReservation.Product.SKU);
+                }
+            }
+
+            if (_context.Database.CurrentTransaction is null)
+            {
+                await _context.Database.CreateExecutionStrategy().ExecuteAsync(CancelRelationalCoreAsync);
+            }
+            else
+            {
+                await CancelRelationalCoreAsync();
+            }
+
+            return;
+        }
+
         var reservation = await _context.StockReservations
             .Include(r => r.Product)
             .FirstOrDefaultAsync(r => r.Id == reservationId, cancellationToken);
 
         if (reservation == null) return; // Already gone
 
-        if (_context.Database.IsRelational())
-        {
-            await _context.Products
-                .Where(p => p.Id == reservation.ProductId)
-                .ExecuteUpdateAsync(s => s.SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity > reservation.Quantity ? p.ReservedQuantity - reservation.Quantity : 0), cancellationToken);
-        }
-        else
-        {
-            reservation.Product.ReservedQuantity = Math.Max(0, reservation.Product.ReservedQuantity - reservation.Quantity);
-        }
-
+        reservation.Product.ReservedQuantity = Math.Max(0, reservation.Product.ReservedQuantity - reservation.Quantity);
         _context.StockReservations.Remove(reservation);
 
         await _context.SaveChangesAsync(cancellationToken);

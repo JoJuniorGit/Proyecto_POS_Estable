@@ -102,6 +102,7 @@ public class IdempotencyService : IIdempotencyService
 
         if (existing.ExpiresAtUtc <= DateTime.UtcNow)
         {
+            await PurgeExpiredRecordAsync(existing.Id, cancellationToken);
             Interlocked.Increment(ref _misses);
             return IdempotencyCheckResult.New();
         }
@@ -153,6 +154,12 @@ public class IdempotencyService : IIdempotencyService
 
         if (existing != null)
         {
+            if (existing.ExpiresAtUtc <= DateTime.UtcNow)
+            {
+                await PurgeExpiredRecordAsync(existing.Id, cancellationToken);
+                return IdempotencyCheckResult.New();
+            }
+
             if (existing.UserId != userId)
             {
                 return IdempotencyCheckResult.Mismatch();
@@ -167,5 +174,25 @@ public class IdempotencyService : IIdempotencyService
         }
 
         return IdempotencyCheckResult.Conflict();
+    }
+
+    private async Task PurgeExpiredRecordAsync(int id, CancellationToken cancellationToken)
+    {
+        var nowUtc = DateTime.UtcNow;
+        if (_context.Database.IsRelational())
+        {
+            await _context.IdempotentRequests
+                .Where(r => r.Id == id && r.ExpiresAtUtc <= nowUtc)
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+        else
+        {
+            var tracked = await _context.IdempotentRequests.FindAsync(new object[] { id }, cancellationToken);
+            if (tracked != null && tracked.ExpiresAtUtc <= nowUtc)
+            {
+                _context.IdempotentRequests.Remove(tracked);
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+        }
     }
 }

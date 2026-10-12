@@ -23,13 +23,13 @@ public static class PipelineExtensions
         // Normalizar encabezados reenviados (X-Forwarded-For / X-Forwarded-Proto) al inicio del pipeline
         app.UseForwardedHeaders();
 
+        app.UseMiddleware<Backend.API.Middleware.RequestMetricsMiddleware>();
+
         // Global Unhandled Exception & DB Resilience Middleware
         app.UseMiddleware<Backend.API.Middleware.GlobalExceptionHandlerMiddleware>();
 
         // Security Headers (M-07)
         app.UseMiddleware<Backend.API.Middleware.SecurityHeadersMiddleware>();
-
-        app.UseMiddleware<Backend.API.Middleware.RequestMetricsMiddleware>();
 
         // 8.7-B10: Con certificado presente, en Producción se fuerza HTTPS para el cliente Web:
         //  - HSTS dirige al browser a HTTPS desde la primera respuesta segura.

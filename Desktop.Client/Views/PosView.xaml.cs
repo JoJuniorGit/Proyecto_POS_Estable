@@ -142,6 +142,7 @@ namespace Desktop.Client.Views
                 char c = text[i];
                 if (c == '.' || c == ',')
                 {
+                    if (!isFractional) return false;
                     separatorCount++;
                     separatorIndex = i;
                     if (separatorCount > 1) return false;

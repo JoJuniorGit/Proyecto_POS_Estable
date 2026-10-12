@@ -338,7 +338,7 @@ public partial class ProductItemViewModel : ObservableObject
 
         try
         {
-            PriceUSD = Math.Round(Cost * (1 + (value / 100m)), 2, MidpointRounding.AwayFromZero);
+            PriceUSD = Core.Helpers.PricingCalculator.CalculateSuggestedPrice(Cost, value);
             PriceBsS = Helpers.PricingHelper.ToBsSCeiling(PriceUSD, _exchangeRateService.CurrentRate);
             
             _dto.ProfitPercentage = value;

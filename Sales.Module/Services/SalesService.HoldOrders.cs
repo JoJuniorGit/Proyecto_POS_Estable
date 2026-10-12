@@ -44,7 +44,11 @@ public partial class SalesService
         if (paymentsToProcess.Any())
         {
             var pMethodIds = paymentsToProcess.Select(p => p.PaymentMethodId).Distinct().ToList();
-            var pMethodsDict = await _context.PaymentMethods.Where(pm => pMethodIds.Contains(pm.Id)).ToDictionaryAsync(pm => pm.Id, cancellationToken);
+            var pMethodsDict = await _context.PaymentMethods
+                .IgnoreQueryFilters()
+                .Where(pm => pMethodIds.Contains(pm.Id))
+                .ToDictionaryAsync(pm => pm.Id, cancellationToken);
+            bool hasConfiguredPaymentMethods = pMethodsDict.Count > 0 || await _context.PaymentMethods.IgnoreQueryFilters().AnyAsync(cancellationToken);
 
             foreach (var payment in paymentsToProcess)
             {
@@ -52,6 +56,12 @@ public partial class SalesService
                 if (payment.AmountUSD < 0m || payment.AmountBsS < 0m)
                 {
                     throw new ArgumentException($"La validación del abono (PaymentMethodId={payment.PaymentMethodId}) rechaza montos negativos.");
+                }
+
+                pMethodsDict.TryGetValue(payment.PaymentMethodId, out var pMethodForValidation);
+                if (hasConfiguredPaymentMethods && (pMethodForValidation == null || !pMethodForValidation.IsActive || pMethodForValidation.IsDeleted))
+                {
+                    throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={payment.PaymentMethodId}. Verifique la configuración de métodos de pago.");
                 }
 
                 decimal rate = payment.ExchangeRate > 0
@@ -62,6 +72,11 @@ public partial class SalesService
                     : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
 
                 var (resolvedAmountUsd, resolvedAmountBsS) = ResolveConsistentPaymentAmounts(amountUsd, payment.AmountBsS, rate);
+
+                if (pMethodForValidation != null && pMethodForValidation.IsCash && resolvedAmountBsS % 1 != 0)
+                {
+                    throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
+                }
 
                 var initialPaymentEntity = new SalePayment
                 {
@@ -77,7 +92,7 @@ public partial class SalesService
                 sale.Payments.Add(initialPaymentEntity);
 
                 // H-SAL-5: Asentar ingresos físicos en sesión activa de caja
-                if (resolvedAmountUsd > 0 && pMethodsDict.TryGetValue(payment.PaymentMethodId, out var pMethod) && pMethod.IsCash && _cashDrawerService != null)
+                if (resolvedAmountUsd > 0 && pMethodForValidation != null && pMethodForValidation.IsCash && _cashDrawerService != null)
                 {
                     var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(rate);
                     if (activeSession != null)
@@ -114,8 +129,14 @@ public partial class SalesService
             // 8.9-B4: caminar TODA la operación bajo execution strategy para que un fallo
             // transitorio reintente el bloque completo (sales + inventory enrollado) y no
             // quede una escritura a medias entre las dos bases.
+            int holdRetryAttempt = 0;
             await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
             {
+            if (holdRetryAttempt++ > 0)
+            {
+                _context.ChangeTracker.Clear();
+                sale = await GetSaleEntityAsync(saleId);
+            }
             IDbContextTransaction? txn = null;
             if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
             {

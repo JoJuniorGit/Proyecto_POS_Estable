@@ -213,7 +213,7 @@ public partial class EditSaleDialogViewModel : ObservableObject, IDisposable
         ValidationMessage = string.Empty;
 
         decimal newTotalUsd = _items.Sum(i => i.Subtotal);
-        if (newTotalUsd < _sale.TotalPaidUSD - 0.05m)
+        if (newTotalUsd < _sale.TotalPaidUSD - 0.01m)
         {
             HasValidationError = true;
             ValidationMessage = $"El nuevo total del pedido (${CurrencyDisplay.Number(newTotalUsd)}) no puede ser menor al monto ya abonado por el cliente (${CurrencyDisplay.Number(_sale.TotalPaidUSD)}).";

@@ -110,8 +110,9 @@ public class UserService : IUserService
                             }
                         }
                     }
-                    catch
+                    catch (Exception jsonEx)
                     {
+                        Core.Logging.ClientStateLogger.LogError($"Non-JSON error payload in UserService: {jsonEx.Message}", nameof(UserService));
                         if (!body.Contains("<html", StringComparison.OrdinalIgnoreCase) && body.Length < 300)
                         {
                             return body;
@@ -120,7 +121,10 @@ public class UserService : IUserService
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Core.Logging.ClientStateLogger.LogError($"Error extracting error message in UserService: {ex.Message}", nameof(UserService));
+        }
 
         return fallback;
     }

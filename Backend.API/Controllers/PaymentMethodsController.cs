@@ -5,7 +5,7 @@ using Sales.Module.Interfaces;
 
 namespace Backend.API.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Admin,Manager,Cashier")]
 [ApiController]
 [Route("api/[controller]")]
 public class PaymentMethodsController : ControllerBase

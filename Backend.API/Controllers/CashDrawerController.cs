@@ -61,11 +61,32 @@ public class CashDrawerController : ControllerBase
             return Ok(null);
         }
 
-        return Ok(await MapLocalTimesAsync(session, cancellationToken));
+        var mapped = await MapLocalTimesAsync(session, cancellationToken);
+        if (IsStrictlyCashier())
+        {
+            mapped = mapped with
+            {
+                ClosingBalanceLocal = null,
+                Transactions = Array.Empty<CashTransactionResponseDto>()
+            };
+        }
+
+        return Ok(mapped);
+    }
+
+    private bool IsStrictlyCashier()
+    {
+        bool isElevated = User?.IsInRole("Admin") == true
+            || User?.IsInRole("Manager") == true
+            || _currentUserService.UserRole is Core.Entities.UserRole.Admin or Core.Entities.UserRole.Manager;
+        if (isElevated) return false;
+
+        return User?.IsInRole("Cashier") == true
+            || _currentUserService.UserRole == Core.Entities.UserRole.Cashier;
     }
 
     [HttpGet("history")]
-    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<IEnumerable<CashTransactionResponseDto>>> GetHistoryAsync([FromQuery] int limit = 300, CancellationToken cancellationToken = default)
     {
         limit = Math.Clamp(limit, 1, 300);
@@ -76,7 +97,7 @@ public class CashDrawerController : ControllerBase
     }
 
     [HttpGet("history/paged")]
-    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<PagedResultDto<CashTransactionResponseDto>>> GetHistoryPagedAsync([FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
@@ -95,7 +116,9 @@ public class CashDrawerController : ControllerBase
     [HttpPost("open-session")]
     public async Task<ActionResult<CashDrawerSessionResponseDto>> OpenSessionAsync([FromBody] OpenSessionRequest request, CancellationToken cancellationToken)
     {
-        var session = await _cashDrawerService.OpenSessionAsync(request.OpeningBalanceLocal, request.CurrentExchangeRate, cancellationToken);
+        // 8.168 (SEC-04-RES): anclar la tasa de apertura al valor oficial BCV cuando existe.
+        decimal anchoredRate = await ResolveAnchoredRateAsync(request.CurrentExchangeRate, referenceId: 0, cancellationToken: cancellationToken);
+        var session = await _cashDrawerService.OpenSessionAsync(request.OpeningBalanceLocal, anchoredRate, cancellationToken);
         return Ok(await MapLocalTimesAsync(session, cancellationToken));
     }
 
@@ -104,7 +127,9 @@ public class CashDrawerController : ControllerBase
     [HttpPost("close")]
     public async Task<ActionResult<CashDrawerSessionResponseDto>> CloseSessionAsync([FromBody] CloseSessionRequest request, CancellationToken cancellationToken)
     {
-        var session = await _cashDrawerService.CloseSessionAsync(request.ActualClosingBalanceLocal, request.CurrentExchangeRate, cancellationToken);
+        // 8.168 (SEC-04-RES): anclar la tasa de cierre al valor oficial BCV cuando existe.
+        decimal anchoredRate = await ResolveAnchoredRateAsync(request.CurrentExchangeRate, referenceId: 0, cancellationToken: cancellationToken);
+        var session = await _cashDrawerService.CloseSessionAsync(request.ActualClosingBalanceLocal, anchoredRate, cancellationToken);
         return Ok(await MapLocalTimesAsync(session, cancellationToken));
     }
 
@@ -316,6 +341,16 @@ public class CashDrawerController : ControllerBase
             return this.ApiUnauthorized("Sesión inválida.");
         }
 
+        const string requestPath = "/api/cashdrawer/cash-advance";
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(request));
+        if (idempotency.ShouldStop)
+        {
+            return idempotency.BlockingResult!;
+        }
+
         var user = await _userService.GetUserAsync(authUserId, cancellationToken)
             ?? throw new UnauthorizedAccessException("Usuario no encontrado.");
         int cashierId = user.Id;
@@ -324,21 +359,34 @@ public class CashDrawerController : ControllerBase
         // 8.154 (SEC-04): anclar la tasa antes del coordinador para que comisión y movimientos usen la tasa anclada.
         decimal anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, referenceId: request.SessionId, cancellationToken: cancellationToken);
 
-        var result = await _cashAdvanceCoordinator.ProcessAsync(
-            request.SessionId,
-            request.RequestedAmountLocal,
-            request.PaymentMethodId,
-            request.PaymentMethodName,
-            request.IsTransfer,
-            anchoredRate,
-            cashierId,
-            userName,
-            cancellationToken);
+        try
+        {
+            var result = await _cashAdvanceCoordinator.ProcessAsync(
+                request.SessionId,
+                request.RequestedAmountLocal,
+                request.PaymentMethodId,
+                request.PaymentMethodName,
+                request.IsTransfer,
+                anchoredRate,
+                cashierId,
+                userName,
+                cancellationToken);
 
-        var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
-        result.ExpenseTransaction = result.ExpenseTransaction with { TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.ExpenseTransaction.TransactionTime, tz) };
-        result.IncomeTransaction = result.IncomeTransaction with { TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.IncomeTransaction.TransactionTime, tz) };
+            var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
+            result.ExpenseTransaction = result.ExpenseTransaction with { TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.ExpenseTransaction.TransactionTime, tz) };
+            result.IncomeTransaction = result.IncomeTransaction with { TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.IncomeTransaction.TransactionTime, tz) };
 
-        return Ok(result);
+            await _idempotencyResolver.RegisterSuccessAsync(
+                idempotency,
+                requestPath,
+                System.Text.Json.JsonSerializer.Serialize(result),
+                cancellationToken);
+
+            return Ok(result);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
+        }
     }
 }

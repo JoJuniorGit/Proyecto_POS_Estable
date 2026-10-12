@@ -29,8 +29,14 @@ public partial class SalesService
             throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
 
         // 8.9-B4: envolver en execution strategy (reintento completo ante fallos transitorios).
+        int paymentRetryAttempt = 0;
         return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
+        if (paymentRetryAttempt++ > 0 || _context.Database.IsRelational())
+        {
+            _context.ChangeTracker.Clear();
+            sale = await GetSaleEntityAsync(saleId);
+        }
         IDbContextTransaction? dbTransaction = null;
         if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {
@@ -143,8 +149,14 @@ public partial class SalesService
             throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
 
         // 8.9-B4: execution strategy para reintentos completos del lote ante fallos transitorios.
+        int batchRetryAttempt = 0;
         return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
+            if (batchRetryAttempt++ > 0 || _context.Database.IsRelational())
+            {
+                _context.ChangeTracker.Clear();
+                sale = await GetSaleEntityAsync(saleId);
+            }
             IDbContextTransaction? dbTransaction = null;
             if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
             {
@@ -272,8 +284,17 @@ public partial class SalesService
             throw new ArgumentException("El monto del abono excede el total pendiente de la venta.");
         }
 
+        // SEC-11: Validate payment method is active and not soft-deleted.
+        var method = await _context.PaymentMethods
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(pm => pm.Id == request.PaymentMethodId);
+        bool hasConfiguredPaymentMethods = method != null || await _context.PaymentMethods.IgnoreQueryFilters().AnyAsync();
+        if (hasConfiguredPaymentMethods && (method == null || !method.IsActive || method.IsDeleted))
+        {
+            throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={request.PaymentMethodId}. Verifique la configuración de métodos de pago.");
+        }
+
         // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
-        var method = await _context.PaymentMethods.FindAsync(request.PaymentMethodId);
         if (method != null && method.IsCash && resolvedAmountBsS % 1 != 0)
         {
             throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");

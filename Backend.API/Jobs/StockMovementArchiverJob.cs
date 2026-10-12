@@ -149,6 +149,7 @@ public class StockMovementArchiverJob : BackgroundService
                 }
             });
 
+            context.ChangeTracker.Clear();
             totalArchived += batch.Count;
             await Task.Delay(100, stoppingToken);
         }

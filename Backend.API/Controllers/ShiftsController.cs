@@ -20,13 +20,17 @@ public class ShiftsController : ControllerBase
 {
     private readonly IDailyClosureService _dailyClosureService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly Backend.API.Services.IdempotencyRequestResolver _idempotencyResolver;
 
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public ShiftsController(
         IDailyClosureService dailyClosureService,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IIdempotencyService? idempotencyService = null)
     {
         _dailyClosureService = dailyClosureService;
         _currentUserService = currentUserService;
+        _idempotencyResolver = new Backend.API.Services.IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
     [RequireSecurityStampValidation]
@@ -50,6 +54,16 @@ public class ShiftsController : ControllerBase
         if (duplicatedMethodIds.Count > 0)
         {
             return this.ApiBadRequest($"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.");
+        }
+
+        const string requestPath = "/api/shifts/close";
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(request));
+        if (idempotency.ShouldStop)
+        {
+            return idempotency.BlockingResult!;
         }
 
         try
@@ -87,6 +101,12 @@ public class ShiftsController : ControllerBase
                 }).ToList()
             };
 
+            await _idempotencyResolver.RegisterSuccessAsync(
+                idempotency,
+                requestPath,
+                System.Text.Json.JsonSerializer.Serialize(report),
+                cancellationToken);
+
             return Ok(report);
         }
         catch (ArgumentException ex)
@@ -97,8 +117,12 @@ public class ShiftsController : ControllerBase
         {
             return this.ApiBadRequest(ex.Message);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
+            if (Backend.API.Services.IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+            {
+                return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
+            }
             return this.ApiConflict("Conflicto de concurrencia al registrar el cierre del turno. Es posible que ya se haya ejecutado otro cierre en paralelo.");
         }
     }

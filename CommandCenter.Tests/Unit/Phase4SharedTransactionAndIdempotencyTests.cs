@@ -199,6 +199,13 @@ public class Phase4SharedTransactionAndIdempotencyTests
 
         Assert.True(result.IsNew);
         Assert.False(result.IsReplay);
+        Assert.Equal(0, await context.IdempotentRequests.CountAsync(r => r.Key == key));
+
+        // [SRE-02b]: Re-registering the same key after expiry must succeed without PK collision
+        await service.RegisterSuccessAsync(key, path, hash, 200, "205");
+        var replay = await service.CheckAsync(key, path, hash);
+        Assert.True(replay.IsReplay);
+        Assert.Equal("205", replay.StoredResponseBody);
     }
 
     #endregion

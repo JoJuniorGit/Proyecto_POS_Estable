@@ -375,7 +375,7 @@ public partial class VariantItemViewModel : ObservableObject
         if (!CanEditPrices) return;
         if (CostPriceUSD > 0 && ProfitMarginRetail >= 0)
         {
-            PriceRetailUSD = Math.Round(CostPriceUSD * (1 + (ProfitMarginRetail / 100m)), 2, MidpointRounding.AwayFromZero);
+            PriceRetailUSD = Core.Helpers.PricingCalculator.CalculateSuggestedPrice(CostPriceUSD, ProfitMarginRetail);
         }
     }
 }

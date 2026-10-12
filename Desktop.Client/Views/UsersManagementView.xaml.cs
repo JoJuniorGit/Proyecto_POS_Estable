@@ -11,6 +11,25 @@ public partial class UsersManagementView : UserControl
     {
         InitializeComponent();
         DataContextChanged += UsersManagementView_DataContextChanged;
+        Loaded += UsersManagementView_Loaded;
+        Unloaded += UsersManagementView_Unloaded;
+    }
+
+    private void UsersManagementView_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is UsersManagementViewModel vm)
+        {
+            vm.PropertyChanged -= Vm_PropertyChanged;
+            vm.PropertyChanged += Vm_PropertyChanged;
+        }
+    }
+
+    private void UsersManagementView_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is UsersManagementViewModel vm)
+        {
+            vm.PropertyChanged -= Vm_PropertyChanged;
+        }
     }
 
     private void UsersManagementView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -21,6 +40,7 @@ public partial class UsersManagementView : UserControl
         }
         if (e.NewValue is UsersManagementViewModel newVm)
         {
+            newVm.PropertyChanged -= Vm_PropertyChanged;
             newVm.PropertyChanged += Vm_PropertyChanged;
         }
     }
