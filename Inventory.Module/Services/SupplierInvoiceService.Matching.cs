@@ -51,8 +51,9 @@ public partial class SupplierInvoiceService
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         var supplierCodes = lines
-            .Select(line => line.SupplierCode)
-            .OfType<string>()
+            .SelectMany(line => new[] { line.SupplierCode, line.Name })
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code!.Trim())
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
@@ -74,7 +75,7 @@ public partial class SupplierInvoiceService
             }
         }
 
-        var productsBySupplierCode = new Dictionary<string, Product>(StringComparer.Ordinal);
+        var productsBySupplierCode = new Dictionary<string, Product>(StringComparer.OrdinalIgnoreCase);
         if (supplierCodes.Length > 0)
         {
             var supplierCodeProducts = await (
@@ -101,8 +102,8 @@ public partial class SupplierInvoiceService
     }
 
     /// <summary>
-    /// Prioridad barcode > supplierCode sobre los diccionarios precargados; null cuando no hay
-    /// match exacto y corresponde evaluar el fallback fuzzy.
+    /// Prioridad barcode > supplierCode/alias de descripción sobre los diccionarios precargados;
+    /// null cuando no hay match exacto y corresponde evaluar el fallback fuzzy.
     /// </summary>
     private static ProductMatch? TryResolveExactMatch(MatchLookups lookups, StageLineDto line)
     {
@@ -116,6 +117,12 @@ public partial class SupplierInvoiceService
             && lookups.ProductsBySupplierCode.TryGetValue(line.SupplierCode, out var supplierCodeProduct))
         {
             return new ProductMatch(supplierCodeProduct, MatchMethod.SupplierCode);
+        }
+
+        if (line.Name is not null
+            && lookups.ProductsBySupplierCode.TryGetValue(line.Name, out var supplierNameProduct))
+        {
+            return new ProductMatch(supplierNameProduct, MatchMethod.SupplierCode);
         }
 
         return null;

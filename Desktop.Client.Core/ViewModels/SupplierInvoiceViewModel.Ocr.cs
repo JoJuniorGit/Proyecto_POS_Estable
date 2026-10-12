@@ -39,15 +39,19 @@ public partial class SupplierInvoiceViewModel
     [ObservableProperty]
     private string? _ocrDetectedInvoiceNumber;
 
+    /// <summary>8.172: tasa de cambio best-effort detectada por el OCR; null si no aparece o es &lt;= 0.</summary>
+    [ObservableProperty]
+    private decimal? _ocrDetectedExchangeRate;
+
     public bool CanScanInvoice => CanMutateCatalog && !IsBusy && SelectedSupplier is not null;
 
-    /// <summary>8.147-S5/S6: el origen OCR propaga el editor a las líneas ya cargadas.</summary>
+    /// <summary>8.147-S5/S6: el origen OCR propaga el editor a las líneas ya cargadas sin deshabilitar productos inexistentes.</summary>
     partial void OnIsOcrSourceChanged(bool value)
     {
         OnPropertyChanged(nameof(HasSelectedFilePath));
         foreach (var line in Lines)
         {
-            line.IsEditorEnabled = value;
+            line.IsEditorEnabled = value || line.CanCreateProduct || line.WasUnresolved;
         }
     }
 
@@ -159,7 +163,17 @@ public partial class SupplierInvoiceViewModel
         OcrDetectedRif = NormalizeOcrHint(result.DetectedRif);
         OcrDetectedSupplierName = NormalizeOcrHint(result.DetectedSupplierName);
         OcrDetectedInvoiceNumber = NormalizeOcrHint(result.DetectedInvoiceNumber);
+        OcrDetectedExchangeRate = result.DetectedExchangeRate is decimal rate && rate > 0m
+            ? Math.Round(rate, 4, MidpointRounding.AwayFromZero)
+            : null;
         IsOcrSource = true;
+
+        // 8.172: cuando la factura está en Bs.S y el OCR detecta la tasa impresa en el documento,
+        // toma ese valor y reemplaza la tasa mostrada al usuario en la sección antes del staging.
+        if (IsBsSCurrency && OcrDetectedExchangeRate is decimal detectedRate)
+        {
+            AppliedRateText = FormatAppliedRateText(detectedRate);
+        }
 
         // Sugerencia best-effort: nunca pisa un valor ya escrito ni selecciona proveedor.
         if (OcrDetectedRif is not null && string.IsNullOrWhiteSpace(SupplierRifOrNit))
@@ -179,6 +193,7 @@ public partial class SupplierInvoiceViewModel
         OcrDetectedRif = null;
         OcrDetectedSupplierName = null;
         OcrDetectedInvoiceNumber = null;
+        OcrDetectedExchangeRate = null;
     }
 
     private static string? NormalizeOcrHint(string? value) =>

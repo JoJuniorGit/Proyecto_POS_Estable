@@ -3,6 +3,7 @@ using Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenCvSharp;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace Inventory.Module.Services.Ocr;
@@ -41,6 +42,14 @@ public sealed class OcrExtractionService : IOcrExtractionService
     /// "0238317"). Es solo una pista de visualización: nunca selecciona ni persiste nada.
     /// </summary>
     internal const string InvoiceNumberPattern = @"(?i)\bFACTURA\b[^0-9]{0,12}?(\d[\d\-]{3,})";
+
+    /// <summary>
+    /// 8.172: patrón best-effort de la tasa de cambio impresa en la factura (ej. "TASA BCV: 78,45",
+    /// "TASA DE CAMBIO: 36.50", "FACTOR DE CAMBIO: 42,1250", "TASA: Bs. 54,20"). Excluye alícuotas
+    /// de IVA o porcentajes seguidos de '%'.
+    /// </summary>
+    internal const string ExchangeRatePattern =
+        @"(?i)\b(?:TASA(?:\s+(?:DE\s+CAMBIO|CAMBIO|DEL\s+D[IÍ]A|BCV|REF(?:ERENCIAL)?|OFICIAL|USD|D[OÓ]LAR(?:ES)?|\$))?(?!\s*(?:IVA|IMP(?:UESTO)?|AL[IÍ]CUOTA|G\b|R\b|A\b))|(?:FACTOR|TIPO)\s+DE\s+CAMBIO|CAMBIO\s+(?:BCV|DEL\s+D[IÍ]A|OFICIAL|USD|\$))\b[^0-9%\r\n]{0,20}?(\d{1,6}(?:[.,]\d{1,4})?)(?!\s*%)";
 
     private readonly DocumentPageDecoder _documentDecoder;
     private readonly ImagePreprocessor _preprocessor;
@@ -108,7 +117,8 @@ public sealed class OcrExtractionService : IOcrExtractionService
             lines,
             DetectRif(ocrPages),
             DetectSupplierName(ocrPages),
-            DetectInvoiceNumber(ocrPages));
+            DetectInvoiceNumber(ocrPages),
+            DetectExchangeRate(ocrPages));
 
         _logger.LogInformation(
             "OCR extracted {LineCount} candidate lines across {PageCount} page(s) from '{FileName}' ({FileSizeBytes} bytes).",
@@ -214,6 +224,30 @@ public sealed class OcrExtractionService : IOcrExtractionService
         var text = string.Join(' ', pages.SelectMany(page => page.Words).Select(word => word.Text));
         var match = Regex.Match(text, InvoiceNumberPattern);
         return match.Success ? match.Groups[1].Value : null;
+    }
+
+    /// <summary>
+    /// 8.172: primera tasa de cambio positiva reconocida en las palabras crudas del documento;
+    /// null si no aparece ninguna o no es válida.
+    /// </summary>
+    private static decimal? DetectExchangeRate(IReadOnlyList<OcrPage> pages)
+    {
+        var text = string.Join(' ', pages.SelectMany(page => page.Words).Select(word => word.Text));
+        foreach (Match match in Regex.Matches(text, ExchangeRatePattern))
+        {
+            var rawRate = match.Groups[1].Value.Replace(',', '.');
+            if (decimal.TryParse(
+                    rawRate,
+                    NumberStyles.AllowDecimalPoint,
+                    CultureInfo.InvariantCulture,
+                    out var parsed)
+                && parsed > 0m)
+            {
+                return Math.Round(parsed, 4, MidpointRounding.AwayFromZero);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

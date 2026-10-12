@@ -88,6 +88,22 @@ public sealed class SupplierInvoicesController : ControllerBase
         return Ok(invoice);
     }
 
+    [HttpPost("{id:int}/lines/{lineId:int}/link-product")]
+    [ProducesResponseType(typeof(SupplierInvoiceDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<SupplierInvoiceDetailDto>> LinkProductToLineAsync(
+        int id,
+        int lineId,
+        [FromBody] LinkInvoiceProductRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var invoice = await _supplierInvoiceService.LinkProductToLineAsync(id, lineId, request, cancellationToken);
+        return Ok(invoice);
+    }
+
     [HttpPost("ocr-extract")]
     [RequestSizeLimit(OcrExtractionService.MaxFileBytes + 5L * 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = OcrExtractionService.MaxFileBytes + 4L * 1024 * 1024)]

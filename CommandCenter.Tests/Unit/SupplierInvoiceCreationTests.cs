@@ -271,6 +271,106 @@ public class SupplierInvoiceCreationTests
         await AssertNoCreationSideEffectsAsync(context, invoice.Id, line.Id);
     }
 
+    [Fact]
+    public async Task LinkProductToLineAsync_LinksExistingProductUpdatesStatusLoadsOldCostAndPersistsAliases()
+    {
+        var (service, context) = CreateService();
+        var existingProduct = new ProductBuilder()
+            .WithSku("7590001112223")
+            .WithName("Harina P.A.N. 1kg")
+            .WithCostAndMargin(8.50m, 30m)
+            .WithWholesale(6m, 15m)
+            .WithStock(12m)
+            .Build();
+
+        context.Products.Add(existingProduct);
+        await context.SaveChangesAsync();
+
+        var invoice = await AddInvoiceAsync(
+            context,
+            CurrencyCodes.Usd,
+            1m,
+            CreateLine(
+                supplierCode: "PROV-HAR-01",
+                name: "HARINA MAIZ BLANCO 1KG",
+                quantity: 4m,
+                unitCostUsd: 10.25m));
+        var line = Assert.Single(invoice.Lines);
+
+        var result = await service.LinkProductToLineAsync(
+            invoice.Id,
+            line.Id,
+            new LinkInvoiceProductRequestDto(existingProduct.Id, "HARINA MAIZ BLANCO 1KG"));
+
+        var resultLine = Assert.Single(result.Lines);
+        Assert.Equal(existingProduct.Id, resultLine.ResolvedProductId);
+        Assert.Equal("Update", resultLine.Status);
+        Assert.Equal("Harina P.A.N. 1kg", resultLine.Name);
+        Assert.Equal(8.50m, resultLine.OldCostPriceUSD);
+        Assert.Equal(30m, resultLine.OldProfitMarginRetail);
+        Assert.Equal(15m, resultLine.OldProfitMarginWholesale);
+        Assert.Equal(12m, resultLine.OldStockQuantity);
+        Assert.Equal(PricingCalculator.RoundPriceUp(10.25m * 1.30m), resultLine.SuggestedRetailPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(10.25m * 1.15m), resultLine.SuggestedWholesalePriceUSD);
+        Assert.True(resultLine.IsApproved);
+
+        var aliases = await context.SupplierProductCodes
+            .AsNoTracking()
+            .Where(alias => alias.SupplierId == invoice.SupplierId && alias.ProductId == existingProduct.Id)
+            .Select(alias => alias.Code)
+            .ToListAsync();
+        Assert.Contains("PROV-HAR-01", aliases);
+        Assert.Contains("HARINA MAIZ BLANCO 1KG", aliases);
+    }
+
+    [Fact]
+    public async Task LinkProductToLineAsync_LearnedAlias_AutomaticallyMatchesFutureInvoicesByDescription()
+    {
+        var (service, context) = CreateService();
+        var existingProduct = new ProductBuilder()
+            .WithSku("7590009998887")
+            .WithName("Café Madrid 500g")
+            .WithCostAndMargin(4.20m, 25m)
+            .WithStock(8m)
+            .Build();
+        context.Products.Add(existingProduct);
+        await context.SaveChangesAsync();
+
+        var firstInvoice = await AddInvoiceAsync(
+            context,
+            CurrencyCodes.Usd,
+            1m,
+            CreateLine(
+                supplierCode: null,
+                name: "CAFE MOLIDO MADRID MEDIO KILO",
+                quantity: 5m,
+                unitCostUsd: 4.80m));
+        var firstLine = Assert.Single(firstInvoice.Lines);
+
+        await service.LinkProductToLineAsync(
+            firstInvoice.Id,
+            firstLine.Id,
+            new LinkInvoiceProductRequestDto(existingProduct.Id, "CAFE MOLIDO MADRID MEDIO KILO"));
+
+        // Stage a future invoice from the same supplier with only the OCR description (no barcode/supplier code)
+        var secondInvoice = await service.StageAsync(new StageSupplierInvoiceRequestDto(
+            firstInvoice.SupplierId,
+            null,
+            firstInvoice.Supplier!.CommercialName,
+            null,
+            new[] { new StageLineDto(null, null, "CAFE MOLIDO MADRID MEDIO KILO", 3m, 5.00m) },
+            CurrencyCodes.Usd,
+            1m,
+            OcrSourced: true));
+
+        var matchedLine = Assert.Single(secondInvoice.Lines);
+        Assert.Equal(existingProduct.Id, matchedLine.ResolvedProductId);
+        Assert.Equal("Update", matchedLine.Status);
+        Assert.Equal("SupplierCode", matchedLine.MatchMethod);
+        Assert.Equal(4.20m, matchedLine.OldCostPriceUSD);
+    }
+
+
     private static (SupplierInvoiceService Service, InventoryDbContext Context) CreateService(
         bool canMutateCatalog = true)
     {

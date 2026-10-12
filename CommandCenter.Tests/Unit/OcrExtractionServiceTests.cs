@@ -244,6 +244,39 @@ public class OcrExtractionServiceTests
         Assert.Equal("000123", result.DetectedInvoiceNumber);
     }
 
+    [Theory]
+    [InlineData("TASA BCV:", "78,45", 78.45)]
+    [InlineData("TASA DE CAMBIO", "36.50", 36.50)]
+    [InlineData("FACTOR DE CAMBIO:", "42,1250", 42.125)]
+    [InlineData("TASA:", "Bs. 54,20", 54.20)]
+    public async Task ExtractAsync_DetectsExchangeRatePrintedOnInvoice(string label, string value, decimal expectedRate)
+    {
+        var engine = new StubOcrEngine(_ => Page(
+            Word(label, 40, 10),
+            Word(value, 180, 10)));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Equal(expectedRate, result.DetectedExchangeRate);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_IgnoresVatPercentageAndDetectsRealExchangeRate()
+    {
+        var engine = new StubOcrEngine(_ => Page(
+            Word("TASA", 40, 10),
+            Word("IVA", 90, 10),
+            Word("16%", 140, 10),
+            Word("TASA BCV:", 200, 10),
+            Word("79,80", 300, 10)));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Equal(79.80m, result.DetectedExchangeRate);
+    }
+
     [Fact]
     public async Task ExtractAsync_MissingFileName_ThrowsWithExactMessage()
     {

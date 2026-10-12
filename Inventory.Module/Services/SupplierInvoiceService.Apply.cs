@@ -35,6 +35,12 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("The confirmation contains duplicate supplier invoice line IDs.", nameof(request));
         }
 
+        if (request.AppliedRate is decimal requestedRate &&
+            (requestedRate <= 0m || requestedRate > MaxInvoiceNumericValue))
+        {
+            throw new ArgumentException("The applied exchange rate must be positive and within the supported range.", nameof(request));
+        }
+
         return _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             for (var attempt = 0; attempt < MaxConcurrencyAttempts; attempt++)
@@ -63,6 +69,20 @@ public partial class SupplierInvoiceService
                     if (request.Lines.Any(confirmation => !lineIds.Contains(confirmation.LineId)))
                     {
                         throw new ArgumentException("A confirmed line does not belong to this supplier invoice.", nameof(request));
+                    }
+
+                    // 8.172: si la factura es Bs.S y el usuario ajustó la tasa aplicada antes de
+                    // confirmar, actualiza el snapshot de la factura y recalcula costos en USD.
+                    var appliedRateChanged = false;
+                    if (string.Equals(invoice.Currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase)
+                        && request.AppliedRate is decimal overrideRate)
+                    {
+                        var normalizedOverrideRate = Math.Round(overrideRate, 4, MidpointRounding.AwayFromZero);
+                        if (invoice.AppliedRate != normalizedOverrideRate)
+                        {
+                            invoice.AppliedRate = normalizedOverrideRate;
+                            appliedRateChanged = true;
+                        }
                     }
 
                     var confirmationsByLineId = request.Lines.ToDictionary(confirmation => confirmation.LineId);
@@ -155,7 +175,7 @@ public partial class SupplierInvoiceService
                         }
 
                         ApplyCorrections(line, invoice, confirmation);
-                        ApplyConversionFactor(line, invoice, confirmation);
+                        ApplyConversionFactor(line, invoice, confirmation, appliedRateChanged);
                         if (!productsById.TryGetValue(productId, out var product))
                         {
                             throw new KeyNotFoundException($"Product {productId} was not found or has been deleted.");
@@ -270,6 +290,14 @@ public partial class SupplierInvoiceService
         // 8.165: la cantidad efectiva que entra a stock respeta el factor caja→unidad de la línea.
         var appliedQuantity = line.Quantity * line.ConversionFactor;
 
+        if (!string.IsNullOrWhiteSpace(confirmation.Name)
+            && !string.IsNullOrWhiteSpace(line.Name)
+            && line.OldCostPriceUSD == 0m
+            && line.OldStockQuantity == 0m)
+        {
+            product.Name = line.Name;
+        }
+
         product.Cost = line.UnitCostUSD;
         product.CostPriceUSD = line.UnitCostUSD;
         product.ProfitMarginRetail = retailMargin;
@@ -279,6 +307,8 @@ public partial class SupplierInvoiceService
         product.PriceUSD = product.PriceRetailUSD;
         product.PriceWholesaleUSD = PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + wholesaleMargin / 100m));
         product.UpdatedAt = DateTime.UtcNow;
+        line.SuggestedRetailPriceUSD = product.PriceRetailUSD;
+        line.SuggestedWholesalePriceUSD = product.PriceWholesaleUSD;
 
         // SRE-09: Redirect stock increment to shared parent product when applicable.
         var stockTarget = product.ParentProduct is { IsDeleted: false, IsStockShared: true } parent
@@ -410,21 +440,21 @@ public partial class SupplierInvoiceService
     }
 
     /// <summary>
-    /// 8.165: factor de conversión caja→unidad (divisor). El costo unitario aplicado al producto se
-    /// divide por el factor (renormalizado con el snapshot de la factura) y ApplyApprovedLineAsync
-    /// multiplica la cantidad que entra a stock. El documento queda intacto: UnitCostDocument y
-    /// Quantity conservan lo emitido por el proveedor para auditoría; el factor persistido explica
-    /// el ajuste.
+    /// 8.165/8.172: factor de conversión caja→unidad (divisor) y renormalización cuando cambia la
+    /// tasa aplicada de una factura Bs.S. El costo unitario aplicado al producto se divide por el
+    /// factor (renormalizado con el snapshot de la factura) y ApplyApprovedLine multiplica la
+    /// cantidad que entra a stock.
     /// </summary>
     private static void ApplyConversionFactor(
         SupplierInvoiceLine line,
         SupplierInvoice invoice,
-        ConfirmLineDto confirmation)
+        ConfirmLineDto confirmation,
+        bool appliedRateChanged = false)
     {
         // 8.166: null = "sin cambio": conserva el factor ya prefijado en la línea (recordado).
         var factor = confirmation.ConversionFactor ?? line.ConversionFactor;
         line.ConversionFactor = factor;
-        if (factor == 1m)
+        if (factor == 1m && !appliedRateChanged)
         {
             return;
         }

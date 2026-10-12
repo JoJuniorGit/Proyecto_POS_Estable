@@ -183,6 +183,35 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         return await ReadRequiredResponseAsync<SupplierInvoiceDetailDto>(response, cancellationToken);
     }
 
+    public async Task<SupplierInvoiceDetailDto> LinkProductToLineAsync(
+        int invoiceId,
+        int lineId,
+        LinkInvoiceProductRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using var response = await _httpClient.PostAsJsonAsync(
+            $"api/supplier-invoices/{invoiceId}/lines/{lineId}/link-product",
+            request,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await ReadRequiredResponseAsync<SupplierInvoiceDetailDto>(response, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ProductDto>> SearchCatalogProductsAsync(
+        string? filter,
+        CancellationToken cancellationToken = default)
+    {
+        var queryFilter = Uri.EscapeDataString((filter ?? string.Empty).Trim());
+        var url = $"api/products?filter={queryFilter}&page=1&pageSize=20&statusFilter=active";
+        using var response = await _httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var paged = await response.Content.ReadFromJsonAsync<PagedResultDto<ProductDto>>(
+            cancellationToken: cancellationToken);
+        return paged?.Items?.ToList() ?? [];
+    }
+
+
     private static async Task<TResponse> ReadRequiredResponseAsync<TResponse>(
         HttpResponseMessage response,
         CancellationToken cancellationToken)
@@ -190,3 +219,4 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken: cancellationToken)
         ?? throw new InvalidOperationException("The supplier invoice API returned an empty response.");
 }
+

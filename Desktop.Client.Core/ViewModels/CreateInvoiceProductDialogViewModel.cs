@@ -1,19 +1,51 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
+using Core.DTOs;
+using Core.Helpers;
+
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
 
+public enum InvoiceProductResolutionMode
+{
+    LinkExisting,
+    CreateNew
+}
+
 /// <summary>
-/// 8.146-T5 (S4): captura obligatoria del código de barras universal (EAN/UPC) al crear un
-/// producto desde una línea de factura. El código del proveedor (SupplierCode/Barcode de la
-/// factura) nunca se hereda como SKU del producto físico.
+/// Modal híbrido de resolución de productos desde una línea de factura sin coincidencia:
+/// Modo A — Vincular con Producto Existente (buscador predictivo por Nombre, SKU o Código de Barras local + aprendizaje de alias).
+/// Modo B — Crear Producto Nuevo (captura obligatoria del código de barras universal EAN/UPC).
 /// </summary>
 public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, IDisposable
 {
+    private readonly Func<string, CancellationToken, Task<IReadOnlyList<ProductDto>>>? _searchProductsAsync;
+    private CancellationTokenSource? _searchCts;
+
     public Action<bool>? RequestClose;
+
+    [ObservableProperty]
+    private InvoiceProductResolutionMode _resolutionMode;
+
+    [ObservableProperty]
+    private string _searchQuery = string.Empty;
+
+    [ObservableProperty]
+    private ObservableCollection<ProductDto> _searchResults = new();
+
+    [ObservableProperty]
+    private ProductDto? _selectedProduct;
+
+    [ObservableProperty]
+    private bool _isSearching;
 
     [ObservableProperty]
     [Required(ErrorMessage = "El código de barras es obligatorio.")]
@@ -37,20 +69,161 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
     [ObservableProperty]
     private string _errorMessage = string.Empty;
 
-    public CreateInvoiceProductDialogViewModel(SupplierInvoiceLineViewModel line, bool isBsSCurrency)
+    public bool IsLinkExistingMode
+    {
+        get => ResolutionMode == InvoiceProductResolutionMode.LinkExisting;
+        set
+        {
+            if (value && ResolutionMode != InvoiceProductResolutionMode.LinkExisting)
+            {
+                ResolutionMode = InvoiceProductResolutionMode.LinkExisting;
+            }
+        }
+    }
+
+    public bool IsCreateNewMode
+    {
+        get => ResolutionMode == InvoiceProductResolutionMode.CreateNew;
+        set
+        {
+            if (value && ResolutionMode != InvoiceProductResolutionMode.CreateNew)
+            {
+                ResolutionMode = InvoiceProductResolutionMode.CreateNew;
+            }
+        }
+    }
+
+    public bool HasSelectedProduct => SelectedProduct is not null;
+
+    public string SelectedProductSummary => SelectedProduct is null
+        ? "Seleccione un producto de la lista para asociarlo con esta línea."
+        : $"{SelectedProduct.Name} · SKU: {SelectedProduct.SKU} · Costo anterior: ${SelectedProduct.CostPriceUSD:N2} · Stock: {SelectedProduct.StockQuantity:N3}";
+
+    public string PrimaryActionLabel => IsLinkExistingMode ? "Vincular Producto" : "Crear Producto";
+
+    public CreateInvoiceProductDialogViewModel(
+        SupplierInvoiceLineViewModel line,
+        bool isBsSCurrency,
+        Func<string, CancellationToken, Task<IReadOnlyList<ProductDto>>>? searchProductsAsync = null)
     {
         ArgumentNullException.ThrowIfNull(line);
 
-        ProductName = line.Name ?? string.Empty;
+        _searchProductsAsync = searchProductsAsync;
+        _resolutionMode = searchProductsAsync is not null
+            ? InvoiceProductResolutionMode.LinkExisting
+            : InvoiceProductResolutionMode.CreateNew;
+
+        var effectiveName = !string.IsNullOrWhiteSpace(line.EditName) ? line.EditName : line.Name;
+        ProductName = effectiveName ?? string.Empty;
         Name = ProductName.Trim();
         CostInfo = isBsSCurrency
-            ? $"Costo normalizado: ${line.UnitCostUSD:N2} · Costo factura: Bs.S {line.UnitCostDocument:N2} · Cantidad: {line.Quantity:N3}"
-            : $"Costo normalizado: ${line.UnitCostUSD:N2} · Cantidad: {line.Quantity:N3}";
+            ? $"Costo normalizado: ${line.UnitCostUSD:N2} · Costo factura: Bs.S {line.EditUnitCostDocument:N2} · Cantidad: {line.EditQuantity:N3}"
+            : $"Costo normalizado: ${line.UnitCostUSD:N2} · Cantidad: {line.EditQuantity:N3}";
     }
 
     private bool CanSave => !IsSaving;
 
     partial void OnIsSavingChanged(bool value) => SaveCommand.NotifyCanExecuteChanged();
+
+    partial void OnResolutionModeChanged(InvoiceProductResolutionMode value)
+    {
+        ErrorMessage = string.Empty;
+        ClearErrors();
+        OnPropertyChanged(nameof(IsLinkExistingMode));
+        OnPropertyChanged(nameof(IsCreateNewMode));
+        OnPropertyChanged(nameof(PrimaryActionLabel));
+    }
+
+    partial void OnSearchQueryChanged(string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value) && ResolutionMode != InvoiceProductResolutionMode.LinkExisting)
+        {
+            ResolutionMode = InvoiceProductResolutionMode.LinkExisting;
+        }
+
+        SearchCatalogAsync().SafeFireAndForget(nameof(SearchCatalogAsync));
+    }
+
+    partial void OnSelectedProductChanged(ProductDto? value)
+    {
+        if (value is not null && ResolutionMode != InvoiceProductResolutionMode.LinkExisting)
+        {
+            ResolutionMode = InvoiceProductResolutionMode.LinkExisting;
+        }
+
+        if (value is not null)
+        {
+            ErrorMessage = string.Empty;
+        }
+
+        OnPropertyChanged(nameof(HasSelectedProduct));
+        OnPropertyChanged(nameof(SelectedProductSummary));
+    }
+
+    partial void OnBarcodeChanged(string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value) && ResolutionMode != InvoiceProductResolutionMode.CreateNew)
+        {
+            ResolutionMode = InvoiceProductResolutionMode.CreateNew;
+        }
+    }
+
+    [RelayCommand]
+    public async Task SearchCatalogAsync(CancellationToken cancellationToken = default)
+    {
+        if (_searchProductsAsync is null)
+        {
+            return;
+        }
+
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = _searchCts.Token;
+
+        var query = SearchQuery?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            SearchResults.Clear();
+            IsSearching = false;
+            return;
+        }
+
+        IsSearching = true;
+        ErrorMessage = string.Empty;
+        try
+        {
+            var results = await _searchProductsAsync(query, token);
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            SearchResults = new ObservableCollection<ProductDto>(results);
+            if (SelectedProduct is not null)
+            {
+                SelectedProduct = SearchResults.FirstOrDefault(product => product.Id == SelectedProduct.Id);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Búsqueda previa cancelada por nueva entrada del usuario.
+        }
+        catch (Exception exception)
+        {
+            if (!token.IsCancellationRequested)
+            {
+                ErrorMessage = $"No se pudo buscar en el catálogo: {exception.Message}";
+            }
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                IsSearching = false;
+            }
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(CanSave))]
     private void Save()
@@ -61,6 +234,20 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
         }
 
         ErrorMessage = string.Empty;
+        ClearErrors();
+
+        if (IsLinkExistingMode)
+        {
+            if (SelectedProduct is null)
+            {
+                ErrorMessage = "Seleccione un producto existente del catálogo para vincular.";
+                return;
+            }
+
+            RequestClose?.Invoke(true);
+            return;
+        }
+
         Barcode = Barcode.Trim();
         Name = Name.Trim();
         ValidateAllProperties();
@@ -76,5 +263,12 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
     [RelayCommand]
     private void Cancel() => RequestClose?.Invoke(false);
 
-    public void Dispose() => RequestClose = null;
+    public void Dispose()
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
+        RequestClose = null;
+    }
 }
+

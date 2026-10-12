@@ -145,6 +145,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         !string.IsNullOrWhiteSpace(SelectedFilePath) && HasFileHeaders && HasValidColumnMapping() &&
         HasValidAppliedRate;
     public bool CanConfirmInvoice => CanMutateCatalog && !IsBusy && StagedInvoice is not null &&
+        HasValidAppliedRate &&
         Lines.Any(line => line.IsApproved && line.CanApprove);
 
     public SupplierInvoiceViewModel(
@@ -339,6 +340,15 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (Lines.Any(line => line.CanCreateProduct && line.IsApproved))
+        {
+            StatusMessage = "Resuelva (vincule o cree) los productos nuevos marcados con Aprobar, o desmarque su casilla Aprobar para omitirlos.";
+            _dialogService.ShowWarning(
+                "Productos nuevos sin resolver",
+                StatusMessage);
+            return;
+        }
+
         var approvedLines = Lines
             .Where(line => line.IsApproved && line.CanApprove)
             .ToArray();
@@ -347,6 +357,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             _dialogService.ShowWarning("Sin líneas aprobadas", "Apruebe al menos una línea válida antes de procesar la factura.");
             return;
         }
+
 
         if (!_dialogService.ShowConfirm(
                 "Confirmar factura",
@@ -359,9 +370,14 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         StatusMessage = "Procesando la factura aprobada...";
         try
         {
-            var request = new ConfirmSupplierInvoiceRequestDto(approvedLines
-                .Select(line => line.ToConfirmLine())
-                .ToArray());
+            decimal? confirmAppliedRate = IsBsSInvoice
+                && TryParseAppliedRate(AppliedRateText, out var parsedConfirmRate)
+                && parsedConfirmRate > 0m
+                ? Math.Round(parsedConfirmRate, 4, MidpointRounding.AwayFromZero)
+                : null;
+            var request = new ConfirmSupplierInvoiceRequestDto(
+                approvedLines.Select(line => line.ToConfirmLine()).ToArray(),
+                confirmAppliedRate);
             var result = await _invoiceService.ConfirmAsync(StagedInvoice.Id, request, cancellationToken);
             LoadStagedInvoice(result);
             ClearOcrReviewState();
@@ -385,13 +401,28 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(invoice);
         StagedInvoice = invoice;
         ClearLines();
+        if (IsBsSCurrency && string.IsNullOrWhiteSpace(AppliedRateText) && invoice.AppliedRate > 0m)
+        {
+            AppliedRateText = FormatAppliedRateText(invoice.AppliedRate);
+        }
+
+        var effectiveRate = (IsBsSCurrency || IsBsSInvoice)
+            && TryParseAppliedRate(AppliedRateText, out var parsedRate)
+            && parsedRate > 0m
+            ? Math.Round(parsedRate, 4, MidpointRounding.AwayFromZero)
+            : invoice.AppliedRate;
         foreach (var line in invoice.Lines)
         {
             var viewModel = new SupplierInvoiceLineViewModel(line, invoice.Currency, invoice.AppliedRate)
             {
-                // 8.147-S5/S6 (T7): solo las líneas de una factura OCR permiten revisar editando.
-                IsEditorEnabled = IsOcrSource
+                // 8.147-S5/S6 (T7): las líneas OCR y los productos inexistentes permiten editar sus campos.
+                IsEditorEnabled = IsOcrSource || line.ResolvedProductId is null
             };
+            if (effectiveRate != invoice.AppliedRate && effectiveRate > 0m)
+            {
+                viewModel.UpdateCurrencyAndRate(invoice.Currency, effectiveRate);
+            }
+
             viewModel.PropertyChanged += OnLinePropertyChanged;
             Lines.Add(viewModel);
         }

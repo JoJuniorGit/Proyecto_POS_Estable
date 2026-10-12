@@ -305,7 +305,6 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Código de barras" Binding="{Binding Barcode}" Width="150" MinWidth="140" />
                 <DataGridTemplateColumn Header="Estado" Width="140" MinWidth="130">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
@@ -433,14 +432,13 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <!-- 8.165/8.168: factor de conversión caja→unidad (divisor): costo ÷ factor, cantidad × factor. -->
                 <DataGridTemplateColumn Header="Factor" Width="95" MinWidth="80"
                                         Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <TextBox Text="{Binding ConversionFactorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                      Validation.ErrorTemplate="{x:Null}"
-                                     IsEnabled="{Binding CanApprove}"
+                                     IsEnabled="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}}"
                                      HorizontalAlignment="Stretch"
                                      HorizontalContentAlignment="Right"
                                      MinWidth="60"
@@ -478,13 +476,15 @@
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <CheckBox IsChecked="{Binding IsApproved, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                      IsEnabled="{Binding CanApprove}"
+                                      IsEnabled="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}}"
                                       HorizontalAlignment="Center"
                                       VerticalAlignment="Center"
+                                      ToolTip="Aprobar línea para procesamiento (desmarque en productos nuevos para omitir la línea sin crear ni vincular)."
                                       AutomationProperties.Name="Aprobar línea de factura" />
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
+
             </DataGrid.Columns>
             </DataGrid>
         </Grid>

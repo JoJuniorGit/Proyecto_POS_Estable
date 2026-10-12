@@ -15,8 +15,10 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     private const string BandRed = "Red";
 
     private readonly SupplierInvoiceLineDto _source;
-    private readonly string _invoiceCurrency;
-    private readonly decimal _appliedRate;
+    private readonly string _initialInvoiceCurrency;
+    private readonly decimal _initialAppliedRate;
+    private string _invoiceCurrency;
+    private decimal _appliedRate;
     private bool _isSyncingText;
     private bool _hasInvalidConversionFactorInput;
     private string _editQuantityText = string.Empty;
@@ -28,10 +30,12 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     public string? Barcode => _source.Barcode;
     public string? Name => _source.Name;
     public decimal Quantity => _source.Quantity;
+    public string InvoiceCurrency => _invoiceCurrency;
+    public decimal AppliedRate => _appliedRate;
 
     /// <summary>
-    /// 8.168: costo unitario normalizado en USD reactivo en vivo ante cambios de
-    /// <see cref="EditUnitCostDocument"/> y <see cref="ConversionFactor"/>.
+    /// 8.168/8.172: costo unitario normalizado en USD reactivo en vivo ante cambios de
+    /// <see cref="EditUnitCostDocument"/>, <see cref="ConversionFactor"/> y <see cref="AppliedRate"/>.
     /// </summary>
     public decimal UnitCostUSD => CalculateUnitCostUsd();
 
@@ -58,6 +62,14 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     public decimal SuggestedWholesalePriceUSD =>
         PricingCalculator.RoundPriceUp(UnitCostUSD * (1m + (MarginWholesaleOverride / 100m)));
 
+    /// <summary>8.172: precio sugerido detal en Bs.S reactivo en base a la tasa aplicada a la factura.</summary>
+    public decimal SuggestedRetailPriceBsS =>
+        PricingCalculator.ToBsSCeiling(SuggestedRetailPriceUSD, _appliedRate > 0m ? _appliedRate : 0m);
+
+    /// <summary>8.172: precio sugerido mayor en Bs.S reactivo en base a la tasa aplicada a la factura.</summary>
+    public decimal SuggestedWholesalePriceBsS =>
+        PricingCalculator.ToBsSCeiling(SuggestedWholesalePriceUSD, _appliedRate > 0m ? _appliedRate : 0m);
+
     /// <summary>8.168: factor efectivo (> 0); usa 1 como fallback seguro ante entradas vacías o &lt;= 0.</summary>
     public decimal EffectiveConversionFactor => ConversionFactor > 0m ? ConversionFactor : 1m;
 
@@ -66,6 +78,12 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
 
     public bool CanApprove => ResolvedProductId is not null;
     public bool CanCreateProduct => ResolvedProductId is null;
+
+    /// <summary>
+    /// Indica si la línea nació sin producto resuelto ([NUEVO]), manteniendo habilitada la edición
+    /// incluso después de asociar/crear el producto durante la sesión de revisión.
+    /// </summary>
+    public bool WasUnresolved { get; private set; }
 
     [ObservableProperty]
     private bool _isApproved;
@@ -81,8 +99,8 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     private decimal _conversionFactor;
 
     /// <summary>
-    /// 8.147-S5/S6 (T7): edición de los campos OCR en revisión. Solo el origen OCR lo habilita
-    /// (el padre lo propaga al cargar las líneas); las filas tabulares quedan de solo lectura.
+    /// 8.147-S5/S6 (T7): edición de los campos de la línea en revisión (habilitada para origen OCR
+    /// y para productos inexistentes/nuevos).
     /// </summary>
     [ObservableProperty]
     private bool _isEditorEnabled;
@@ -240,8 +258,12 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(source);
         _source = source;
-        _invoiceCurrency = string.IsNullOrWhiteSpace(invoiceCurrency) ? CurrencyCodes.Usd : invoiceCurrency;
-        _appliedRate = appliedRate;
+        _initialInvoiceCurrency = string.IsNullOrWhiteSpace(invoiceCurrency) ? CurrencyCodes.Usd : invoiceCurrency;
+        _initialAppliedRate = appliedRate;
+        _invoiceCurrency = _initialInvoiceCurrency;
+        _appliedRate = _initialAppliedRate;
+        WasUnresolved = source.ResolvedProductId is null;
+        _isEditorEnabled = WasUnresolved;
         _isApproved = source.IsApproved;
         _marginRetailOverride = source.MarginRetailOverride ?? source.OldProfitMarginRetail ?? 0m;
         _marginWholesaleOverride = source.MarginWholesaleOverride ?? source.OldProfitMarginWholesale ?? _marginRetailOverride;
@@ -252,6 +274,95 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
         _editQuantityText = FormatQuantityText(_editQuantity);
         _editUnitCostDocumentText = FormatDocumentCostText(_editUnitCostDocument);
         _conversionFactorText = FormatFactorText(_conversionFactor);
+    }
+
+    /// <summary>
+    /// Preserva las ediciones en memoria del revisor (nombre, cantidad, costo documental, factor y
+    /// márgenes) cuando la factura se recarga tras crear un producto inexistente desde una línea.
+    /// </summary>
+    public void PreserveEditsFrom(SupplierInvoiceLineViewModel previous, string? createdProductName = null)
+    {
+        ArgumentNullException.ThrowIfNull(previous);
+
+        WasUnresolved = previous.WasUnresolved || CanCreateProduct;
+        IsEditorEnabled = previous.IsEditorEnabled || WasUnresolved;
+        EditName = !string.IsNullOrWhiteSpace(createdProductName) ? createdProductName : previous.EditName;
+        EditQuantity = previous.EditQuantity;
+        EditUnitCostDocument = previous.EditUnitCostDocument;
+        ConversionFactor = previous.ConversionFactor;
+        MarginRetailOverride = previous.MarginRetailOverride;
+        MarginWholesaleOverride = previous.MarginWholesaleOverride;
+        if (CanApprove && createdProductName is not null)
+        {
+            IsApproved = true;
+        }
+        else if (CanApprove)
+        {
+            IsApproved = previous.IsApproved;
+        }
+    }
+
+    /// <summary>
+    /// Preserva las ediciones en memoria (cantidad, costo documental, factor y márgenes editados)
+    /// tras vincular manualmente un ítem escaneado con un producto existente del catálogo, manteniendo
+    /// el Costo anterior cargado desde la base de datos y recalculando la comparativa de costos en vivo.
+    /// </summary>
+    public void PreserveEditsAfterLinkFrom(SupplierInvoiceLineViewModel previous)
+    {
+        ArgumentNullException.ThrowIfNull(previous);
+
+        WasUnresolved = true;
+        IsEditorEnabled = previous.IsEditorEnabled || WasUnresolved;
+        EditName = _source.Name;
+        EditQuantity = previous.EditQuantity;
+        EditUnitCostDocument = previous.EditUnitCostDocument;
+        if (previous.ConversionFactor > 0m && previous.ConversionFactor != 1m)
+        {
+            ConversionFactor = previous.ConversionFactor;
+        }
+
+        if (previous.MarginRetailOverride > 0m)
+        {
+            MarginRetailOverride = previous.MarginRetailOverride;
+        }
+
+        if (previous.MarginWholesaleOverride > 0m)
+        {
+            MarginWholesaleOverride = previous.MarginWholesaleOverride;
+        }
+
+        IsApproved = true;
+        NotifyPricingChanged();
+    }
+
+
+    /// <summary>
+    /// 8.172: actualiza en vivo la moneda y la tasa aplicada a la factura y recalcula costos y
+    /// precios sugeridos de la línea de forma reactiva.
+    /// </summary>
+    public void UpdateCurrencyAndRate(string invoiceCurrency, decimal appliedRate)
+    {
+        var normalizedCurrency = string.IsNullOrWhiteSpace(invoiceCurrency) ? CurrencyCodes.Usd : invoiceCurrency;
+        var currencyChanged = !string.Equals(_invoiceCurrency, normalizedCurrency, StringComparison.OrdinalIgnoreCase);
+        var rateChanged = _appliedRate != appliedRate;
+        if (!currencyChanged && !rateChanged)
+        {
+            return;
+        }
+
+        _invoiceCurrency = normalizedCurrency;
+        _appliedRate = appliedRate;
+        if (currencyChanged)
+        {
+            OnPropertyChanged(nameof(InvoiceCurrency));
+        }
+
+        if (rateChanged)
+        {
+            OnPropertyChanged(nameof(AppliedRate));
+        }
+
+        NotifyPricingChanged();
     }
 
     partial void OnEditNameChanged(string? value) => OnPropertyChanged(nameof(NameConfidenceBand));
@@ -317,11 +428,17 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
         NotifyPricingChanged();
     }
 
-    partial void OnMarginRetailOverrideChanged(decimal value) =>
+    partial void OnMarginRetailOverrideChanged(decimal value)
+    {
         OnPropertyChanged(nameof(SuggestedRetailPriceUSD));
+        OnPropertyChanged(nameof(SuggestedRetailPriceBsS));
+    }
 
-    partial void OnMarginWholesaleOverrideChanged(decimal value) =>
+    partial void OnMarginWholesaleOverrideChanged(decimal value)
+    {
         OnPropertyChanged(nameof(SuggestedWholesalePriceUSD));
+        OnPropertyChanged(nameof(SuggestedWholesalePriceBsS));
+    }
 
     /// <summary>
     /// 8.147-S6/T7b: proyección al confirm con SOLO las correcciones efectivas de campos OCR
@@ -409,7 +526,10 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
 
     private decimal CalculateUnitCostUsd()
     {
-        if (EditUnitCostDocument == _source.UnitCostDocument && EffectiveConversionFactor == 1m)
+        if (EditUnitCostDocument == _source.UnitCostDocument
+            && EffectiveConversionFactor == 1m
+            && _appliedRate == _initialAppliedRate
+            && string.Equals(_invoiceCurrency, _initialInvoiceCurrency, StringComparison.OrdinalIgnoreCase))
         {
             return _source.UnitCostUSD;
         }
@@ -464,6 +584,8 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
         OnPropertyChanged(nameof(CostComparison));
         OnPropertyChanged(nameof(SuggestedRetailPriceUSD));
         OnPropertyChanged(nameof(SuggestedWholesalePriceUSD));
+        OnPropertyChanged(nameof(SuggestedRetailPriceBsS));
+        OnPropertyChanged(nameof(SuggestedWholesalePriceBsS));
     }
 
     private static string FormatDocumentCostText(decimal value) =>

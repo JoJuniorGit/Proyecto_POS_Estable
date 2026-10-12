@@ -62,7 +62,12 @@ public sealed record SupplierInvoiceLineDto(
 
 public sealed record CreateInvoiceProductRequestDto(string Barcode, string Name);
 
-public sealed record ConfirmSupplierInvoiceRequestDto(IReadOnlyList<ConfirmLineDto> Lines);
+public sealed record LinkInvoiceProductRequestDto(int ProductId, string? InvoiceDescription = null);
+
+public sealed record ConfirmSupplierInvoiceRequestDto(
+    IReadOnlyList<ConfirmLineDto> Lines,
+    // 8.172: permite actualizar la tasa aplicada a una factura en Bs.S durante la revisión antes de confirmar.
+    decimal? AppliedRate = null);
 
 public sealed record ConfirmLineDto(
     int LineId,
@@ -106,11 +111,12 @@ public sealed record OcrExtractionRequestDto(
     int? SupplierId,
     SupplierColumnMappingDto? ColumnMapping);
 
-// 8.160-S2/S4: respuesta de extracción con filas (confianza por campo) y pistas best-effort de
-// RIF, nombre de proveedor y número de factura. El payload de previews por página se retiró por
-// decisión del mantenedor: la revisión Desktop ya no muestra la imagen escaneada.
+// 8.160-S2/S4 + 8.172: respuesta de extracción con filas (confianza por campo) y pistas best-effort de
+// RIF, nombre de proveedor, número de factura y tasa de cambio detectada. El payload de previews por
+// página se retiró por decisión del mantenedor: la revisión Desktop ya no muestra la imagen escaneada.
 public sealed record OcrExtractionResultDto(
     IReadOnlyList<OcrExtractedLineDto> Lines,
     string? DetectedRif,
     string? DetectedSupplierName,
-    string? DetectedInvoiceNumber);
+    string? DetectedInvoiceNumber,
+    decimal? DetectedExchangeRate = null);

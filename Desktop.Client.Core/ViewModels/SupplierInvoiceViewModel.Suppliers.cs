@@ -39,12 +39,25 @@ public partial class SupplierInvoiceViewModel
         OnPropertyChanged(nameof(HasValidAppliedRate));
         OnPropertyChanged(nameof(ShowRateValidationHint));
         OnPropertyChanged(nameof(CanStageInvoice));
+        OnPropertyChanged(nameof(CanConfirmInvoice));
         StageInvoiceCommand.NotifyCanExecuteChanged();
+        ConfirmInvoiceCommand.NotifyCanExecuteChanged();
 
-        if (IsBsSCurrency && string.IsNullOrWhiteSpace(AppliedRateText))
+        if (IsBsSCurrency)
         {
-            PrefillAppliedRateAsync().SafeFireAndForget(nameof(PrefillAppliedRateAsync));
+            // 8.172: si el OCR ya detectó una tasa de cambio en la factura, prevalece y reemplaza
+            // el valor mostrado en la sección al pasar a Bs.S.
+            if (OcrDetectedExchangeRate is decimal detectedRate && detectedRate > 0m)
+            {
+                AppliedRateText = FormatAppliedRateText(detectedRate);
+            }
+            else if (string.IsNullOrWhiteSpace(AppliedRateText))
+            {
+                PrefillAppliedRateAsync().SafeFireAndForget(nameof(PrefillAppliedRateAsync));
+            }
         }
+
+        PropagateCurrencyAndRateToLines();
     }
 
     partial void OnAppliedRateTextChanged(string value)
@@ -52,7 +65,10 @@ public partial class SupplierInvoiceViewModel
         OnPropertyChanged(nameof(HasValidAppliedRate));
         OnPropertyChanged(nameof(ShowRateValidationHint));
         OnPropertyChanged(nameof(CanStageInvoice));
+        OnPropertyChanged(nameof(CanConfirmInvoice));
         StageInvoiceCommand.NotifyCanExecuteChanged();
+        ConfirmInvoiceCommand.NotifyCanExecuteChanged();
+        PropagateCurrencyAndRateToLines();
     }
 
     /// <summary>
@@ -188,9 +204,59 @@ public partial class SupplierInvoiceViewModel
         _isCreatingProduct = true;
         try
         {
-            var dialogViewModel = new CreateInvoiceProductDialogViewModel(line, IsBsSInvoice);
+            var dialogViewModel = new CreateInvoiceProductDialogViewModel(
+                line,
+                IsBsSInvoice,
+                (query, token) => _invoiceService.SearchCatalogProductsAsync(query, token));
             if (_dialogService.ShowCreateInvoiceProductDialog(dialogViewModel) != true)
             {
+                return;
+            }
+
+            if (dialogViewModel.IsLinkExistingMode && dialogViewModel.SelectedProduct is not null)
+            {
+                var selectedProduct = dialogViewModel.SelectedProduct;
+                var invoiceDescription = !string.IsNullOrWhiteSpace(line.EditName)
+                    ? line.EditName.Trim()
+                    : line.Name;
+                IsBusy = true;
+                StatusMessage = "Vinculando el ítem con el producto del catálogo...";
+                try
+                {
+                    var previousLinesById = Lines.ToDictionary(item => item.LineId);
+                    var updatedInvoice = await _invoiceService.LinkProductToLineAsync(
+                        StagedInvoice.Id,
+                        line.LineId,
+                        new LinkInvoiceProductRequestDto(selectedProduct.Id, invoiceDescription),
+                        cancellationToken);
+                    LoadStagedInvoice(updatedInvoice);
+                    foreach (var reloadedLine in Lines)
+                    {
+                        if (previousLinesById.TryGetValue(reloadedLine.LineId, out var previousLine))
+                        {
+                            if (reloadedLine.LineId == line.LineId)
+                            {
+                                reloadedLine.PreserveEditsAfterLinkFrom(previousLine);
+                            }
+                            else
+                            {
+                                reloadedLine.PreserveEditsFrom(previousLine);
+                            }
+                        }
+                    }
+
+                    StatusMessage = $"Ítem vinculado con '{selectedProduct.Name}'. Alias guardado para futuras facturas.";
+                }
+                catch (Exception exception)
+                {
+                    StatusMessage = $"No se pudo vincular el producto: {exception.Message}";
+                    _dialogService.ShowError("Error al vincular el producto", StatusMessage);
+                }
+                finally
+                {
+                    IsBusy = false;
+                }
+
                 return;
             }
 
@@ -200,12 +266,23 @@ public partial class SupplierInvoiceViewModel
             StatusMessage = "Creando el producto en el catálogo...";
             try
             {
+                var previousLinesById = Lines.ToDictionary(item => item.LineId);
                 var updatedInvoice = await _invoiceService.CreateProductFromLineAsync(
                     StagedInvoice.Id,
                     line.LineId,
                     new CreateInvoiceProductRequestDto(barcode, productName),
                     cancellationToken);
                 LoadStagedInvoice(updatedInvoice);
+                foreach (var reloadedLine in Lines)
+                {
+                    if (previousLinesById.TryGetValue(reloadedLine.LineId, out var previousLine))
+                    {
+                        reloadedLine.PreserveEditsFrom(
+                            previousLine,
+                            reloadedLine.LineId == line.LineId ? productName : null);
+                    }
+                }
+
                 StatusMessage = $"Producto '{productName}' creado. Revise el costo y confirme la factura.";
             }
             catch (Exception exception)
@@ -224,15 +301,19 @@ public partial class SupplierInvoiceViewModel
         }
     }
 
-    /// <summary>Precarga la tasa vigente solo si el usuario aun no escribio una (Bs.S).</summary>
+
+    /// <summary>Precarga la tasa vigente solo si el usuario aun no escribio una ni el OCR detectó la de la factura (Bs.S).</summary>
     private async Task PrefillAppliedRateAsync()
     {
         try
         {
             var currentRate = await _exchangeRateService.GetCurrentRateAsync();
-            if (currentRate.Rate > 0m && IsBsSCurrency && string.IsNullOrWhiteSpace(AppliedRateText))
+            if (currentRate.Rate > 0m
+                && IsBsSCurrency
+                && OcrDetectedExchangeRate is null
+                && string.IsNullOrWhiteSpace(AppliedRateText))
             {
-                AppliedRateText = currentRate.Rate.ToString(CultureInfo.InvariantCulture);
+                AppliedRateText = FormatAppliedRateText(currentRate.Rate);
             }
         }
         catch (Exception)
@@ -241,7 +322,48 @@ public partial class SupplierInvoiceViewModel
         }
     }
 
+    /// <summary>
+    /// 8.172: propaga en vivo la moneda y la tasa aplicada de la factura hacia todas las líneas
+    /// cargadas en revisión para que los costos y precios sugeridos se recalculen reactivamente.
+    /// </summary>
+    private void PropagateCurrencyAndRateToLines()
+    {
+        if (Lines.Count == 0)
+        {
+            return;
+        }
+
+        if (IsBsSCurrency || IsBsSInvoice)
+        {
+            if (!TryParseAppliedRate(AppliedRateText, out var parsedRate) || parsedRate <= 0m)
+            {
+                return;
+            }
+
+            var normalizedRate = Math.Round(parsedRate, 4, MidpointRounding.AwayFromZero);
+            if (StagedInvoice is not null && IsBsSInvoice && StagedInvoice.AppliedRate != normalizedRate)
+            {
+                StagedInvoice = StagedInvoice with { AppliedRate = normalizedRate };
+            }
+
+            foreach (var line in Lines)
+            {
+                line.UpdateCurrencyAndRate(CurrencyCodes.BsS, normalizedRate);
+            }
+
+            return;
+        }
+
+        foreach (var line in Lines)
+        {
+            line.UpdateCurrencyAndRate(CurrencyCodes.Usd, 1m);
+        }
+    }
+
+    internal static string FormatAppliedRateText(decimal rate) =>
+        rate.ToString("0.00##", CultureInfo.InvariantCulture);
+
     /// <summary>Acepta tasa con coma o punto decimal ("36,50" / "36.50").</summary>
     private static bool TryParseAppliedRate(string? value, out decimal rate) =>
-        FlexibleDecimalParser.TryParse(value, out rate);
+        SupplierInvoiceLineViewModel.TryParseFlexibleDecimal(value, out rate);
 }

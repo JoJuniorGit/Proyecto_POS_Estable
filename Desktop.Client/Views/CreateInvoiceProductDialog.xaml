@@ -13,13 +13,13 @@
         TextOptions.TextRenderingMode="Auto"
         Background="{DynamicResource MaterialDesignPaper}"
         FontFamily="{DynamicResource MaterialDesignFont}"
-        Title="Crear producto desde factura"
-        Height="440" Width="560"
+        Title="Resolver producto desde factura"
+        Height="560" Width="620"
         WindowStartupLocation="CenterScreen"
-        ResizeMode="NoResize"
-        FocusManager.FocusedElement="{Binding ElementName=BarcodeTextBox}">
+        ResizeMode="NoResize">
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
     </Window.Resources>
 
@@ -31,22 +31,23 @@
         </Grid.RowDefinitions>
 
         <!-- HEADER -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,16">
-            <TextBlock Text="Crear producto desde factura"
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <TextBlock Text="Resolver producto de la factura"
                        Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
                        FontWeight="Bold"/>
-            <TextBlock Text="Capture el código de barras universal del producto físico. No se hereda el código del proveedor."
+            <TextBlock Text="Vincule este ítem con un producto existente del catálogo (se recordará para futuras facturas) o cree un producto nuevo."
                        Style="{DynamicResource MaterialDesignCaptionTextBlock}"
                        Foreground="{DynamicResource MaterialDesignBodyLight}"
                        TextWrapping="Wrap"
-                       Margin="0,6,0,0"/>
+                       Margin="0,4,0,0"/>
         </StackPanel>
 
-        <!-- FORM -->
+        <!-- BODY -->
         <StackPanel Grid.Row="1">
+            <!-- Scanned Line Context -->
             <Border Background="{DynamicResource MaterialDesignCardBackground}"
                     BorderBrush="{DynamicResource PrimaryHueLightBrush}"
-                    BorderThickness="1" CornerRadius="6" Padding="14,12" Margin="0,0,0,16">
+                    BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,14">
                 <StackPanel>
                     <TextBlock Text="{Binding ProductName}" FontWeight="Bold" TextWrapping="Wrap"/>
                     <TextBlock Text="{Binding CostInfo}"
@@ -56,41 +57,114 @@
                 </StackPanel>
             </Border>
 
-            <TextBox x:Name="BarcodeTextBox"
-                     Text="{Binding Barcode, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                     materialDesign:HintAssist.Hint="Código de barras EAN/UPC *"
-                     materialDesign:HintAssist.IsFloating="True"
-                     Loaded="BarcodeTextBox_Loaded"
-                     TabIndex="1"/>
-            <TextBlock Text="Escanee o digite entre 8 y 14 dígitos numéricos."
-                       Foreground="#64748B" FontSize="11" Margin="4,4,0,12"/>
+            <!-- Dual Mode Selector -->
+            <Grid Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="12"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <RadioButton Grid.Column="0"
+                             GroupName="ResolutionModeGroup"
+                             IsChecked="{Binding IsLinkExistingMode, Mode=TwoWay}"
+                             Content="Modo A — Vincular Existente"
+                             FontWeight="SemiBold"
+                             VerticalContentAlignment="Center"
+                             Padding="6,4"
+                             AutomationProperties.Name="Modo A Vincular con Producto Existente"/>
+                <RadioButton Grid.Column="2"
+                             GroupName="ResolutionModeGroup"
+                             IsChecked="{Binding IsCreateNewMode, Mode=TwoWay}"
+                             Content="Modo B — Crear Producto Nuevo"
+                             FontWeight="SemiBold"
+                             VerticalContentAlignment="Center"
+                             Padding="6,4"
+                             AutomationProperties.Name="Modo B Crear Producto Nuevo"/>
+            </Grid>
 
-            <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                     materialDesign:HintAssist.Hint="Nombre del producto *"
-                     materialDesign:HintAssist.IsFloating="True"
-                     TabIndex="2"/>
-            <TextBlock Text="Máximo 100 caracteres."
-                       Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+            <!-- MODO A: VINCULAR CON PRODUCTO EXISTENTE -->
+            <StackPanel Visibility="{Binding IsLinkExistingMode, Converter={StaticResource BoolToVis}}">
+                <TextBox x:Name="SearchCatalogTextBox"
+                         Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                         materialDesign:HintAssist.Hint="Buscar por Nombre, SKU o Código de Barras local"
+                         materialDesign:HintAssist.IsFloating="True"
+                         TabIndex="1"
+                         AutomationProperties.Name="Buscador predictivo de productos del catálogo"/>
+                <TextBlock Text="Escriba parte del nombre, SKU o código de barras y seleccione el producto a vincular."
+                           Foreground="#64748B" FontSize="11" Margin="4,4,0,8"/>
+
+                <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Height="165"
+                        Margin="0,0,0,8">
+                    <ListBox ItemsSource="{Binding SearchResults}"
+                             SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             HorizontalContentAlignment="Stretch"
+                             AutomationProperties.Name="Resultados de búsqueda del catálogo">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="4,4">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Foreground="#64748B" FontSize="11">
+                                        <Run Text="SKU: "/><Run Text="{Binding SKU, Mode=OneWay}"/>
+                                        <Run Text=" · Costo anterior: $"/><Run Text="{Binding CostPriceUSD, Mode=OneWay, StringFormat={}{0:N2}}"/>
+                                        <Run Text=" · Stock: "/><Run Text="{Binding StockQuantity, Mode=OneWay, StringFormat={}{0:N3}}"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
+                <TextBlock Text="{Binding SelectedProductSummary}"
+                           Foreground="{DynamicResource PrimaryHueMidBrush}"
+                           FontWeight="SemiBold"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Margin="4,2,0,0"/>
+            </StackPanel>
+
+            <!-- MODO B: CREAR PRODUCTO NUEVO -->
+            <StackPanel Visibility="{Binding IsCreateNewMode, Converter={StaticResource BoolToVis}}">
+                <TextBox x:Name="BarcodeTextBox"
+                         Text="{Binding Barcode, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                         materialDesign:HintAssist.Hint="Código de barras EAN/UPC *"
+                         materialDesign:HintAssist.IsFloating="True"
+                         Loaded="BarcodeTextBox_Loaded"
+                         TabIndex="1"/>
+                <TextBlock Text="Escanee o digite entre 8 y 14 dígitos numéricos."
+                           Foreground="#64748B" FontSize="11" Margin="4,4,0,12"/>
+
+                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                         materialDesign:HintAssist.Hint="Nombre del producto *"
+                         materialDesign:HintAssist.IsFloating="True"
+                         TabIndex="2"/>
+                <TextBlock Text="Máximo 100 caracteres."
+                           Foreground="#64748B" FontSize="11" Margin="4,4,0,0"/>
+            </StackPanel>
 
             <TextBlock Text="{Binding ErrorMessage}"
                        Foreground="#DC2626"
                        FontWeight="SemiBold"
                        TextWrapping="Wrap"
-                       Margin="4,12,0,0"
+                       Margin="4,10,0,0"
                        Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}"/>
         </StackPanel>
 
         <!-- FOOTER -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="Cancelar"
                     Command="{Binding CancelCommand}"
                     IsCancel="True"
                     Style="{DynamicResource MaterialDesignFlatButton}"
                     Margin="0,0,15,0"
                     TabIndex="4"/>
-            <Button Content="Guardar"
+            <Button Content="{Binding PrimaryActionLabel}"
                     Command="{Binding SaveCommand}"
                     IsDefault="True"
                     Style="{DynamicResource MaterialDesignRaisedButton}"
@@ -98,3 +172,4 @@
         </StackPanel>
     </Grid>
 </Window>
+

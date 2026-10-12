@@ -48,4 +48,16 @@ public interface ISupplierInvoiceService
         int lineId,
         CreateInvoiceProductRequestDto request,
         CancellationToken cancellationToken = default);
+
+    Task<SupplierInvoiceDetailDto> LinkProductToLineAsync(
+        int invoiceId,
+        int lineId,
+        LinkInvoiceProductRequestDto request,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ProductDto>> SearchCatalogProductsAsync(
+        string? filter,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<ProductDto>>([]);
 }
+
