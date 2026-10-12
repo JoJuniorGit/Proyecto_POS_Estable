@@ -1,5 +1,7 @@
 using Core.DTOs;
 using Core.Interfaces;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenCvSharp;
 using System.Text.RegularExpressions;
 
@@ -44,12 +46,14 @@ public sealed class OcrExtractionService : IOcrExtractionService
     private readonly ImagePreprocessor _preprocessor;
     private readonly IOcrEngine _ocrEngine;
     private readonly InvoiceTableParser _parser;
+    private readonly ILogger<OcrExtractionService> _logger;
 
     public OcrExtractionService(
         DocumentPageDecoder documentDecoder,
         ImagePreprocessor preprocessor,
         IOcrEngine ocrEngine,
-        InvoiceTableParser parser)
+        InvoiceTableParser parser,
+        ILogger<OcrExtractionService>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(documentDecoder);
         ArgumentNullException.ThrowIfNull(preprocessor);
@@ -59,6 +63,7 @@ public sealed class OcrExtractionService : IOcrExtractionService
         _preprocessor = preprocessor;
         _ocrEngine = ocrEngine;
         _parser = parser;
+        _logger = logger ?? NullLogger<OcrExtractionService>.Instance;
     }
 
     public async Task<OcrExtractionResultDto> ExtractAsync(
@@ -67,8 +72,9 @@ public sealed class OcrExtractionService : IOcrExtractionService
     {
         ArgumentNullException.ThrowIfNull(request);
         var fileBytes = Validate(request);
+        var extension = Path.GetExtension(request.FileName);
 
-        var pages = _documentDecoder.DecodePages(fileBytes, Path.GetExtension(request.FileName));
+        var pages = _documentDecoder.DecodePages(fileBytes, extension);
 
         var ocrPages = new List<OcrPage>(pages.Count);
         foreach (var page in pages)
@@ -86,11 +92,21 @@ public sealed class OcrExtractionService : IOcrExtractionService
             ocrPages.Add(await _ocrEngine.RecognizeAsync(image, cancellationToken).ConfigureAwait(false));
         }
 
-        return new OcrExtractionResultDto(
-            _parser.Parse(ocrPages, request.ColumnMapping),
+        var lines = _parser.Parse(ocrPages, request.ColumnMapping);
+        var result = new OcrExtractionResultDto(
+            lines,
             DetectRif(ocrPages),
             DetectSupplierName(ocrPages),
             DetectInvoiceNumber(ocrPages));
+
+        _logger.LogInformation(
+            "OCR extracted {LineCount} candidate lines across {PageCount} page(s) from '{FileName}' ({FileSizeBytes} bytes).",
+            lines.Count,
+            pages.Count,
+            request.FileName,
+            fileBytes.Length);
+
+        return result;
     }
 
     /// <summary>Guardas zero-trust de subida: nombre, contenido, extensión y tamaño (S4/S7).</summary>

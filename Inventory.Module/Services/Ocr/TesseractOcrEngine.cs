@@ -42,18 +42,20 @@ public sealed class TesseractOcrEngine : IOcrEngine, IDisposable
     public async Task<OcrPage> RecognizeAsync(OcrImage image, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(image);
+        ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return await Task.Run(() => Recognize(image), cancellationToken).ConfigureAwait(false);
+        return await Task.Run(() => Recognize(image, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
-    private OcrPage Recognize(OcrImage image)
+    private OcrPage Recognize(OcrImage image, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        _processGate.Wait();
+        _processGate.Wait(cancellationToken);
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             using var pix = Pix.LoadFromMemory(image.EncodedBytes);
             using var page = _engine.Value.Process(pix);
             using var iterator = page.GetIterator();
@@ -127,12 +129,24 @@ public sealed class TesseractOcrEngine : IOcrEngine, IDisposable
             return;
         }
 
-        _disposed = true;
-        if (_engine.IsValueCreated)
+        _processGate.Wait();
+        try
         {
-            _engine.Value.Dispose();
-        }
+            if (_disposed)
+            {
+                return;
+            }
 
-        _processGate.Dispose();
+            _disposed = true;
+            if (_engine.IsValueCreated)
+            {
+                _engine.Value.Dispose();
+            }
+        }
+        finally
+        {
+            _processGate.Release();
+            _processGate.Dispose();
+        }
     }
 }

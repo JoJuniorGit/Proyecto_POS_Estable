@@ -121,52 +121,78 @@ public partial class SupplierInvoiceService
         return null;
     }
 
-    private async Task<ProductMatch> FallbackFuzzyMatchAsync(
-        string? productName,
+    /// <summary>
+    /// 8.169/PERF-01: deduplica los nombres sin match exacto por stage y materializa los productos
+    /// candidatos en una única consulta <c>WHERE Id IN (...)</c>.
+    /// </summary>
+    private async Task<Dictionary<string, ProductMatch>> ResolveFuzzyMatchesBatchAsync(
+        IReadOnlyList<string> unmatchedNames,
         double similarityThreshold,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(productName))
-        {
-            return new ProductMatch(null, MatchMethod.None);
-        }
-
-        var candidates = await _similaritySearch.FindCandidatesAsync(
-            productName,
-            similarityThreshold,
-            cancellationToken);
-        var eligibleCandidates = candidates
-            .Where(candidate => candidate.ProductId > 0
-                && double.IsFinite(candidate.Similarity)
-                && candidate.Similarity >= similarityThreshold
-                && candidate.Similarity <= 1d)
-            .OrderByDescending(candidate => candidate.Similarity)
-            .ThenBy(candidate => candidate.ProductId)
-            .ToList();
-
-        if (eligibleCandidates.Count == 0)
-        {
-            return new ProductMatch(null, MatchMethod.None);
-        }
-
-        var candidateIds = eligibleCandidates
-            .Select(candidate => candidate.ProductId)
-            .Distinct()
+        var matchesByName = new Dictionary<string, ProductMatch>(StringComparer.Ordinal);
+        var distinctNames = unmatchedNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.Ordinal)
             .ToArray();
+        if (distinctNames.Length == 0)
+        {
+            return matchesByName;
+        }
+
+        var candidatesByName = new Dictionary<string, List<SupplierProductSimilarityCandidate>>(StringComparer.Ordinal);
+        var allCandidateIds = new HashSet<int>();
+        foreach (var productName in distinctNames)
+        {
+            var candidates = await _similaritySearch.FindCandidatesAsync(
+                productName,
+                similarityThreshold,
+                cancellationToken);
+            var eligibleCandidates = candidates
+                .Where(candidate => candidate.ProductId > 0
+                    && double.IsFinite(candidate.Similarity)
+                    && candidate.Similarity >= similarityThreshold
+                    && candidate.Similarity <= 1d)
+                .OrderByDescending(candidate => candidate.Similarity)
+                .ThenBy(candidate => candidate.ProductId)
+                .ToList();
+
+            if (eligibleCandidates.Count == 0)
+            {
+                continue;
+            }
+
+            candidatesByName[productName] = eligibleCandidates;
+            foreach (var candidate in eligibleCandidates)
+            {
+                allCandidateIds.Add(candidate.ProductId);
+            }
+        }
+
+        if (allCandidateIds.Count == 0)
+        {
+            return matchesByName;
+        }
+
+        var candidateIds = allCandidateIds.ToArray();
         var productsById = await _context.Products
             .AsNoTracking()
             .Where(product => !product.IsDeleted && candidateIds.Contains(product.Id))
             .ToDictionaryAsync(product => product.Id, cancellationToken);
 
-        foreach (var candidate in eligibleCandidates)
+        foreach (var (productName, eligibleCandidates) in candidatesByName)
         {
-            if (productsById.TryGetValue(candidate.ProductId, out var product))
+            foreach (var candidate in eligibleCandidates)
             {
-                return new ProductMatch(product, MatchMethod.Fuzzy);
+                if (productsById.TryGetValue(candidate.ProductId, out var product))
+                {
+                    matchesByName[productName] = new ProductMatch(product, MatchMethod.Fuzzy);
+                    break;
+                }
             }
         }
 
-        return new ProductMatch(null, MatchMethod.None);
+        return matchesByName;
     }
 
     private static SupplierInvoiceLine CreateStagedLine(

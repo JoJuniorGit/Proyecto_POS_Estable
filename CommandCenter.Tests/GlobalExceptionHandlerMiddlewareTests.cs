@@ -288,6 +288,80 @@ public class GlobalExceptionHandlerMiddlewareTests
     }
 
     [Fact]
+    public async Task Middleware_CatchesPostgresException_22003_NumericValueOutOfRange_ReturnsHttp400()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/supplier-invoices";
+        context.Request.Method = "POST";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = new GlobalExceptionHandlerMiddleware(_ =>
+        {
+            throw new PostgresException("numeric field overflow", "ERROR", "ERROR", "22003");
+        });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal((int)HttpStatusCode.BadRequest, context.Response.StatusCode);
+
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        using var reader = new StreamReader(context.Response.Body);
+        var doc = JsonDocument.Parse(await reader.ReadToEndAsync());
+
+        Assert.Equal("NumericValueOutOfRange", doc.RootElement.GetProperty("error").GetString());
+        Assert.Equal("22003", doc.RootElement.GetProperty("sqlState").GetString());
+    }
+
+    [Fact]
+    public async Task Middleware_CatchesOverflowException_ReturnsHttp400()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/supplier-invoices";
+        context.Request.Method = "POST";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = new GlobalExceptionHandlerMiddleware(_ =>
+        {
+            throw new OverflowException("Value was either too large or too small for a Decimal.");
+        });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal((int)HttpStatusCode.BadRequest, context.Response.StatusCode);
+
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        using var reader = new StreamReader(context.Response.Body);
+        var doc = JsonDocument.Parse(await reader.ReadToEndAsync());
+
+        Assert.Equal("NumericValueOutOfRange", doc.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Middleware_CatchesPostgresException_23505_SupplierRifUniqueViolation_ReturnsFriendlyMessage()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/suppliers";
+        context.Request.Method = "POST";
+        context.Response.Body = new MemoryStream();
+
+        var middleware = new GlobalExceptionHandlerMiddleware(_ =>
+        {
+            throw new PostgresException("duplicate key", "ERROR", "ERROR", "23505", constraintName: "IX_Suppliers_NormalizedRifOrNit");
+        });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal((int)HttpStatusCode.Conflict, context.Response.StatusCode);
+
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        using var reader = new StreamReader(context.Response.Body);
+        var doc = JsonDocument.Parse(await reader.ReadToEndAsync());
+
+        Assert.Equal("UniqueConstraintViolation", doc.RootElement.GetProperty("error").GetString());
+        Assert.Contains("RIF o NIT", doc.RootElement.GetProperty("message").GetString());
+    }
+
+    [Fact]
     public async Task Middleware_CatchesIOException_ReturnsHttp503WithJson()
     {
         var context = new DefaultHttpContext();

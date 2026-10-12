@@ -1,4 +1,5 @@
 using System;
+using Core.Common;
 
 namespace Core.Helpers;
 
@@ -76,5 +77,29 @@ public static class PricingCalculator
     {
         if (rate <= 0) return 0m;
         return Math.Round(amountBsS / rate, decimals, MidpointRounding.AwayFromZero);
+    }
+
+    /// <summary>
+    /// 8.169 [CLEAN-01]: canonical calculation of a supplier invoice line unit cost in USD,
+    /// dividing the document unit cost by the effective box-to-unit conversion factor (rounded to
+    /// 4 decimals when factor != 1) and converting from Bs.S using the invoice snapshot rate.
+    /// </summary>
+    public static decimal CalculateInvoiceUnitCostUsd(
+        decimal unitCostDocument,
+        decimal conversionFactor,
+        string? currency,
+        decimal appliedRate)
+    {
+        decimal effectiveFactor = conversionFactor > 0m ? conversionFactor : 1m;
+        decimal unitDocumentCost = effectiveFactor == 1m
+            ? unitCostDocument
+            : Math.Round(unitCostDocument / effectiveFactor, 4, MidpointRounding.AwayFromZero);
+
+        if (string.Equals(currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase))
+        {
+            return ToUSD(unitDocumentCost, appliedRate);
+        }
+
+        return unitDocumentCost;
     }
 }

@@ -23,6 +23,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     private readonly IExchangeRateService _exchangeRateService;
     private int _disposed;
     private bool _isCreatingProduct;
+    private bool _isUpdatingBulkApproval;
 
     public UserSession UserSession { get; }
     public bool CanMutateCatalog => UserSession.CanMutateCatalog;
@@ -65,6 +66,68 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
 
     /// <summary>8.164: encabezado del costo de factura editable según la moneda del documento.</summary>
     public string DocumentCostHeader => IsBsSInvoice ? "Costo factura (Bs.S)" : "Costo factura (USD)";
+
+    /// <summary>8.168: oculta el campo de ruta de archivo cuando está vacío o en flujo OCR.</summary>
+    public bool HasSelectedFilePath => !string.IsNullOrWhiteSpace(SelectedFilePath) && !IsOcrSource;
+
+    /// <summary>8.168: indica si existen líneas resueltas que pueden aprobarse masivamente.</summary>
+    public bool HasApprovableLines => Lines.Any(line => line.CanApprove);
+
+    /// <summary>
+    /// 8.168: estado tri-estado del selector maestro "Aprobar todas" en el encabezado de la columna
+    /// (true = todas las aprobables marcadas, false = ninguna o sin aprobables, null = selección parcial).
+    /// </summary>
+    public bool? AreAllApprovableLinesApproved
+    {
+        get
+        {
+            var approvableCount = 0;
+            var approvedCount = 0;
+            foreach (var line in Lines)
+            {
+                if (!line.CanApprove)
+                {
+                    continue;
+                }
+
+                approvableCount++;
+                if (line.IsApproved)
+                {
+                    approvedCount++;
+                }
+            }
+
+            if (approvableCount == 0 || approvedCount == 0)
+            {
+                return false;
+            }
+
+            return approvedCount == approvableCount ? true : null;
+        }
+        set
+        {
+            var shouldApprove = value == true;
+            _isUpdatingBulkApproval = true;
+            try
+            {
+                foreach (var line in Lines)
+                {
+                    if (line.CanApprove)
+                    {
+                        line.IsApproved = shouldApprove;
+                    }
+                }
+            }
+            finally
+            {
+                _isUpdatingBulkApproval = false;
+            }
+
+            OnPropertyChanged(nameof(AreAllApprovableLinesApproved));
+            OnPropertyChanged(nameof(CanConfirmInvoice));
+            ConfirmInvoiceCommand.NotifyCanExecuteChanged();
+        }
+    }
 
     /// <summary>Factura Bs.S exige una tasa aplicada válida (&gt; 0); en USD la tasa se normaliza a 1.</summary>
     public bool HasValidAppliedRate => !IsBsSCurrency || (TryParseAppliedRate(AppliedRateText, out var rate) && rate > 0m);
@@ -110,47 +173,10 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         RefreshCommandStates();
     }
 
-    partial void OnSelectedSupplierChanged(SupplierSummaryDto? value)
+    partial void OnSelectedFilePathChanged(string value)
     {
-        if (value is not null)
-        {
-            SupplierRifOrNit = value.RifOrNit ?? string.Empty;
-            SupplierCommercialName = value.CommercialName;
-            // 8.167: prefija la moneda recordada del proveedor (nunca la pisa con un default).
-            if (!string.IsNullOrWhiteSpace(value.InvoiceCurrency)
-                && CurrencyOptions.Contains(value.InvoiceCurrency, StringComparer.Ordinal))
-            {
-                SelectedCurrency = value.InvoiceCurrency;
-            }
-        }
-
-        ApplyCurrentColumnMapping();
+        OnPropertyChanged(nameof(HasSelectedFilePath));
         RefreshCommandStates();
-    }
-
-    partial void OnSelectedFilePathChanged(string value) => RefreshCommandStates();
-
-    partial void OnSelectedCurrencyChanged(string value)
-    {
-        OnPropertyChanged(nameof(IsBsSCurrency));
-        OnPropertyChanged(nameof(IsRateInputEnabled));
-        OnPropertyChanged(nameof(HasValidAppliedRate));
-        OnPropertyChanged(nameof(ShowRateValidationHint));
-        OnPropertyChanged(nameof(CanStageInvoice));
-        StageInvoiceCommand.NotifyCanExecuteChanged();
-
-        if (IsBsSCurrency && string.IsNullOrWhiteSpace(AppliedRateText))
-        {
-            _ = PrefillAppliedRateAsync();
-        }
-    }
-
-    partial void OnAppliedRateTextChanged(string value)
-    {
-        OnPropertyChanged(nameof(HasValidAppliedRate));
-        OnPropertyChanged(nameof(ShowRateValidationHint));
-        OnPropertyChanged(nameof(CanStageInvoice));
-        StageInvoiceCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnStagedInvoiceChanged(SupplierInvoiceDetailDto? value)
@@ -192,7 +218,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         SelectedFilePath = filePath;
         ClearOcrReviewState();
         StagedInvoice = null;
-        Lines.Clear();
+        ClearLines();
         StatusMessage = "Leyendo encabezados del archivo...";
 
         try
@@ -211,117 +237,6 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             SetFileHeaders([]);
             StatusMessage = $"No se pudo leer el archivo: {exception.Message}";
             _dialogService.ShowError("Error de lectura", StatusMessage);
-        }
-        finally
-        {
-            IsBusy = false;
-            RefreshCommandStates();
-        }
-    }
-
-    /// <summary>
-    /// 8.161: carga/refresca el listado completo de proveedores del selector de la vista.
-    /// Se dispara al abrir la vista; preserva la seleccion vigente por Id.
-    /// </summary>
-    [RelayCommand]
-    private async Task LoadSuppliersAsync(CancellationToken cancellationToken)
-    {
-        if (IsBusy || !CanMutateCatalog)
-        {
-            return;
-        }
-
-        var previousSupplierId = SelectedSupplier?.Id;
-        IsBusy = true;
-        try
-        {
-            var suppliers = await _invoiceService.GetSuppliersAsync(null, null, cancellationToken);
-            Suppliers = new ObservableCollection<SupplierSummaryDto>(suppliers);
-            if (previousSupplierId is int supplierId)
-            {
-                var match = Suppliers.FirstOrDefault(supplier => supplier.Id == supplierId);
-                if (!ReferenceEquals(SelectedSupplier, match))
-                {
-                    // 8.161: los DTO son records (igualdad por valor); el null intermedio fuerza
-                    // la instancia fresca del listado y evita una seleccion stale.
-                    SelectedSupplier = null;
-                    SelectedSupplier = match;
-                }
-            }
-        }
-        catch (Exception exception)
-        {
-            StatusMessage = $"No se pudo cargar la lista de proveedores: {exception.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-            RefreshCommandStates();
-        }
-    }
-
-    /// <summary>
-    /// 8.161: el alta de proveedor vive en un modal (RIF/NIT + nombre comercial) precargado con
-    /// los datos vigentes (incluidas las pistas OCR). Al confirmar, registra y selecciona.
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanOpenRegisterSupplier))]
-    private async Task OpenRegisterSupplierAsync(CancellationToken cancellationToken)
-    {
-        if (!CanMutateCatalog)
-        {
-            ShowAccessDenied();
-            return;
-        }
-
-        var dialogViewModel = new RegisterSupplierDialogViewModel(
-            NormalizeInput(SupplierRifOrNit),
-            SupplierCommercialName);
-        if (_dialogService.ShowRegisterSupplierDialog(dialogViewModel) != true)
-        {
-            return;
-        }
-
-        await RegisterSupplierAsync(
-            dialogViewModel.RifOrNit,
-            dialogViewModel.CommercialName,
-            cancellationToken);
-    }
-
-    /// <summary>8.161: registra el proveedor capturado en el modal y lo deja seleccionado.</summary>
-    public async Task RegisterSupplierAsync(
-        string? rifOrNit,
-        string commercialName,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(commercialName);
-
-        if (!CanMutateCatalog)
-        {
-            ShowAccessDenied();
-            return;
-        }
-
-        IsBusy = true;
-        try
-        {
-            var supplier = await _invoiceService.CreateSupplierAsync(
-                new CreateSupplierRequestDto(
-                    NormalizeInput(rifOrNit),
-                    commercialName.Trim()),
-                cancellationToken);
-            if (!Suppliers.Any(existing => existing.Id == supplier.Id))
-            {
-                Suppliers.Add(supplier);
-            }
-
-            SelectedSupplier = supplier;
-            StatusMessage = "Proveedor registrado y seleccionado.";
-            _dialogService.ShowInfo("Proveedor registrado", StatusMessage);
-        }
-        catch (Exception exception)
-        {
-            StatusMessage = $"No se pudo registrar el proveedor: {exception.Message}";
-            _dialogService.ShowError("Error de registro", StatusMessage);
         }
         finally
         {
@@ -465,64 +380,6 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
-    private async Task CreateProductAsync(SupplierInvoiceLineViewModel? line, CancellationToken cancellationToken)
-    {
-        if (line is null || StagedInvoice is null)
-        {
-            return;
-        }
-
-        if (!CanMutateCatalog)
-        {
-            ShowAccessDenied();
-            return;
-        }
-
-        if (IsBusy || _isCreatingProduct || !line.CanCreateProduct)
-        {
-            return;
-        }
-
-        _isCreatingProduct = true;
-        try
-        {
-            var dialogViewModel = new CreateInvoiceProductDialogViewModel(line, IsBsSInvoice);
-            if (_dialogService.ShowCreateInvoiceProductDialog(dialogViewModel) != true)
-            {
-                return;
-            }
-
-            var barcode = dialogViewModel.Barcode.Trim();
-            var productName = dialogViewModel.Name.Trim();
-            IsBusy = true;
-            StatusMessage = "Creando el producto en el catálogo...";
-            try
-            {
-                var updatedInvoice = await _invoiceService.CreateProductFromLineAsync(
-                    StagedInvoice.Id,
-                    line.LineId,
-                    new CreateInvoiceProductRequestDto(barcode, productName),
-                    cancellationToken);
-                LoadStagedInvoice(updatedInvoice);
-                StatusMessage = $"Producto '{productName}' creado. Revise el costo y confirme la factura.";
-            }
-            catch (Exception exception)
-            {
-                StatusMessage = $"No se pudo crear el producto: {exception.Message}";
-                _dialogService.ShowError("Error al crear el producto", StatusMessage);
-            }
-            finally
-            {
-                IsBusy = false;
-            }
-        }
-        finally
-        {
-            _isCreatingProduct = false;
-        }
-    }
-
     public void LoadStagedInvoice(SupplierInvoiceDetailDto invoice)
     {
         ArgumentNullException.ThrowIfNull(invoice);
@@ -530,7 +387,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         ClearLines();
         foreach (var line in invoice.Lines)
         {
-            var viewModel = new SupplierInvoiceLineViewModel(line)
+            var viewModel = new SupplierInvoiceLineViewModel(line, invoice.Currency, invoice.AppliedRate)
             {
                 // 8.147-S5/S6 (T7): solo las líneas de una factura OCR permiten revisar editando.
                 IsEditorEnabled = IsOcrSource
@@ -539,6 +396,8 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             Lines.Add(viewModel);
         }
 
+        OnPropertyChanged(nameof(HasApprovableLines));
+        OnPropertyChanged(nameof(AreAllApprovableLinesApproved));
         OnPropertyChanged(nameof(CanConfirmInvoice));
         RefreshCommandStates();
     }
@@ -563,6 +422,13 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         }
 
         UserSession.PropertyChanged -= OnUserSessionPropertyChanged;
+        ClearLines();
+        foreach (var mapping in ColumnMappings)
+        {
+            mapping.PropertyChanged -= OnColumnMappingChanged;
+        }
+
+        ColumnMappings.Clear();
     }
 
     private void OnUserSessionPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -576,8 +442,14 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
 
     private void OnLinePropertyChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
+        if (_isUpdatingBulkApproval)
+        {
+            return;
+        }
+
         if (eventArgs.PropertyName == nameof(SupplierInvoiceLineViewModel.IsApproved))
         {
+            OnPropertyChanged(nameof(AreAllApprovableLinesApproved));
             OnPropertyChanged(nameof(CanConfirmInvoice));
             ConfirmInvoiceCommand.NotifyCanExecuteChanged();
         }
@@ -591,6 +463,8 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         }
 
         Lines.Clear();
+        OnPropertyChanged(nameof(HasApprovableLines));
+        OnPropertyChanged(nameof(AreAllApprovableLinesApproved));
     }
 
     private void RefreshCommandStates()
@@ -614,51 +488,4 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
 
     private static string? NormalizeInput(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    /// <summary>Precarga la tasa vigente solo si el usuario aun no escribio una (Bs.S).</summary>
-    private async Task PrefillAppliedRateAsync()
-    {
-        try
-        {
-            var currentRate = await _exchangeRateService.GetCurrentRateAsync();
-            if (currentRate.Rate > 0m && IsBsSCurrency && string.IsNullOrWhiteSpace(AppliedRateText))
-            {
-                AppliedRateText = currentRate.Rate.ToString(CultureInfo.InvariantCulture);
-            }
-        }
-        catch (Exception)
-        {
-            // Sin tasa vigente la factura Bs.S queda bloqueada; el usuario puede escribirla a mano.
-        }
-    }
-
-    /// <summary>Acepta tasa con coma o punto decimal ("36,50" / "36.50").</summary>
-    private static bool TryParseAppliedRate(string? value, out decimal rate)
-    {
-        rate = 0m;
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        var normalized = value.Trim().Replace(" ", string.Empty, StringComparison.Ordinal);
-        var commaIndex = normalized.LastIndexOf(',');
-        var dotIndex = normalized.LastIndexOf('.');
-        if (commaIndex >= 0 && dotIndex >= 0)
-        {
-            normalized = commaIndex > dotIndex
-                ? normalized.Replace(".", string.Empty, StringComparison.Ordinal).Replace(',', '.')
-                : normalized.Replace(",", string.Empty, StringComparison.Ordinal);
-        }
-        else if (commaIndex >= 0)
-        {
-            normalized = normalized.Replace(',', '.');
-        }
-
-        return decimal.TryParse(
-            normalized,
-            NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
-            CultureInfo.InvariantCulture,
-            out rate);
-    }
 }

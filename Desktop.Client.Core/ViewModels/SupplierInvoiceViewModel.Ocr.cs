@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.DTOs;
 using System;
 using System.Collections.Generic;
@@ -43,6 +44,7 @@ public partial class SupplierInvoiceViewModel
     /// <summary>8.147-S5/S6: el origen OCR propaga el editor a las líneas ya cargadas.</summary>
     partial void OnIsOcrSourceChanged(bool value)
     {
+        OnPropertyChanged(nameof(HasSelectedFilePath));
         foreach (var line in Lines)
         {
             line.IsEditorEnabled = value;
@@ -140,7 +142,7 @@ public partial class SupplierInvoiceViewModel
         lines.Select(line => new StageLineDto(
             line.SupplierCode,
             line.Barcode,
-            line.Name,
+            OcrConfidence.SanitizeProductName(line.Name),
             line.Quantity ?? 0m,
             line.UnitCost ?? 0m,
             line.NameConfidence,

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,32 +10,13 @@ using Core.Helpers;
 using Core.Interfaces;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Inventory.Module.Services;
 
 public partial class SupplierInvoiceService
 {
-    private readonly ICurrentUserService? _currentUserService;
-
-    public SupplierInvoiceService(
-        InventoryDbContext context,
-        ISystemSettingsService systemSettingsService,
-        ISupplierProductSimilaritySearch similaritySearch,
-        ICurrentUserService currentUserService,
-        IProductManagementService productManagementService)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(systemSettingsService);
-        ArgumentNullException.ThrowIfNull(similaritySearch);
-        ArgumentNullException.ThrowIfNull(currentUserService);
-        ArgumentNullException.ThrowIfNull(productManagementService);
-
-        _context = context;
-        _systemSettingsService = systemSettingsService;
-        _similaritySearch = similaritySearch;
-        _currentUserService = currentUserService;
-        _productManagementService = productManagementService;
-    }
+    private const int MaxConcurrencyAttempts = 3;
 
     public Task<SupplierInvoiceDetailDto> ConfirmAsync(
         int invoiceId,
@@ -145,7 +127,7 @@ public partial class SupplierInvoiceService
                     }
                 }
 
-                var aliasPlan = new Dictionary<string, int>();
+                var aliasPlan = new Dictionary<string, int>(StringComparer.Ordinal);
                 foreach (var line in orderedLines)
                 {
                     if (!confirmationsByLineId.TryGetValue(line.Id, out var confirmation))
@@ -188,7 +170,7 @@ public partial class SupplierInvoiceService
                     }
                 }
 
-                foreach (var aliasPlanEntry in aliasPlan)
+                foreach (var aliasPlanEntry in aliasPlan.OrderBy(entry => entry.Key, StringComparer.Ordinal))
                 {
                     if (aliasesByCode.TryGetValue(aliasPlanEntry.Key, out var alias))
                     {
@@ -224,6 +206,13 @@ public partial class SupplierInvoiceService
                     await transaction.CommitAsync(cancellationToken);
                 }
 
+                InvalidateProductCache(productsById.Values);
+                _logger.LogInformation(
+                    "Confirmed supplier invoice {InvoiceId} for supplier {SupplierId} ({ApprovedCount} approved lines).",
+                    invoice.Id,
+                    invoice.SupplierId,
+                    applicableLines.Count);
+
                 return ToDetailDto(invoice);
             }
             catch
@@ -245,7 +234,7 @@ public partial class SupplierInvoiceService
         ConfirmLineDto confirmation,
         CancellationToken cancellationToken)
     {
-        for (var attempt = 0; attempt < 2; attempt++)
+        for (var attempt = 0; attempt < MaxConcurrencyAttempts; attempt++)
         {
             if (attempt > 0)
             {
@@ -267,6 +256,7 @@ public partial class SupplierInvoiceService
             // 8.165: la cantidad efectiva que entra a stock respeta el factor caja→unidad de la línea.
             var appliedQuantity = line.Quantity * line.ConversionFactor;
 
+            product.Cost = line.UnitCostUSD;
             product.CostPriceUSD = line.UnitCostUSD;
             product.ProfitMarginRetail = retailMargin;
             product.ProfitMarginWholesale = wholesaleMargin;
@@ -295,7 +285,7 @@ public partial class SupplierInvoiceService
                 return product;
             }
             catch (DbUpdateConcurrencyException exception) when (
-                attempt == 0 && exception.Entries.Any(entry => entry.Entity is Product))
+                attempt + 1 < MaxConcurrencyAttempts && exception.Entries.Any(entry => entry.Entity is Product))
             {
                 // 8.144: el savepoint revierte la fila insertada en el intento fallido, pero el
                 // tracker puede dejarla como guardada; se descarta y el reintento crea otra.
@@ -305,6 +295,15 @@ public partial class SupplierInvoiceService
                 }
 
                 _context.Entry(product).State = EntityState.Detached;
+                _logger.LogWarning(
+                    exception,
+                    "Optimistic concurrency conflict applying invoice {InvoiceId} line {LineId} to product {ProductId} (attempt {Attempt}/{MaxAttempts}).",
+                    invoiceId,
+                    line.Id,
+                    product.Id,
+                    attempt + 1,
+                    MaxConcurrencyAttempts);
+                await Task.Delay(25 * (attempt + 1), cancellationToken);
             }
         }
 
@@ -318,14 +317,30 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("Approved supplier invoice unit cost cannot be negative.", nameof(line));
         }
 
+        if (line.UnitCostUSD > MaxInvoiceNumericValue)
+        {
+            throw new ArgumentException("Approved supplier invoice unit cost exceeds the maximum supported value.", nameof(line));
+        }
+
         if (line.Quantity < 0m)
         {
             throw new ArgumentException("Approved supplier invoice quantity cannot be negative.", nameof(line));
         }
 
+        if (line.Quantity > MaxInvoiceNumericValue)
+        {
+            throw new ArgumentException("Approved supplier invoice quantity exceeds the maximum supported value.", nameof(line));
+        }
+
         if (confirmation.MarginRetailOverride is < 0m || confirmation.MarginWholesaleOverride is < 0m)
         {
             throw new ArgumentException("Approved supplier invoice margin overrides cannot be negative.", nameof(confirmation));
+        }
+
+        if (confirmation.MarginRetailOverride > MaxMarginOverrideValue ||
+            confirmation.MarginWholesaleOverride > MaxMarginOverrideValue)
+        {
+            throw new ArgumentException("Approved supplier invoice margin overrides exceed the maximum supported value.", nameof(confirmation));
         }
 
         // 8.165: el factor de conversión caja→unidad es un divisor: debe ser positivo y acotado.
@@ -364,9 +379,19 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("The corrected quantity cannot be negative.");
         }
 
+        if (confirmation.Quantity > MaxInvoiceNumericValue)
+        {
+            throw new ArgumentException("The corrected quantity exceeds the maximum supported value.");
+        }
+
         if (confirmation.UnitCostDocument is < 0m)
         {
             throw new ArgumentException("The corrected unit cost cannot be negative.");
+        }
+
+        if (confirmation.UnitCostDocument > MaxInvoiceNumericValue)
+        {
+            throw new ArgumentException("The corrected unit cost exceeds the maximum supported value.");
         }
 
         if (correctedName is not null)
@@ -385,9 +410,11 @@ public partial class SupplierInvoiceService
         if (confirmation.UnitCostDocument is decimal correctedUnitCostDocument)
         {
             line.UnitCostDocument = correctedUnitCostDocument;
-            line.UnitCostUSD = invoice.Currency == CurrencyCodes.Usd
-                ? correctedUnitCostDocument
-                : PricingCalculator.ToUSD(correctedUnitCostDocument, invoice.AppliedRate);
+            line.UnitCostUSD = PricingCalculator.CalculateInvoiceUnitCostUsd(
+                correctedUnitCostDocument,
+                1m,
+                invoice.Currency,
+                invoice.AppliedRate);
             line.OcrUnitCostConfidence = null;
         }
     }
@@ -412,10 +439,11 @@ public partial class SupplierInvoiceService
             return;
         }
 
-        var documentUnitCost = line.UnitCostDocument / factor;
-        line.UnitCostUSD = invoice.Currency == CurrencyCodes.Usd
-            ? documentUnitCost
-            : PricingCalculator.ToUSD(documentUnitCost, invoice.AppliedRate);
+        line.UnitCostUSD = PricingCalculator.CalculateInvoiceUnitCostUsd(
+            line.UnitCostDocument,
+            factor,
+            invoice.Currency,
+            invoice.AppliedRate);
     }
 
     /// <summary>

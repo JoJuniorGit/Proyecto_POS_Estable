@@ -74,12 +74,155 @@ public sealed class SupplierInvoiceClientTests
 
     [Theory]
     [InlineData("New", "[NUEVO]")]
-    [InlineData("Update", "[UPDATE]")]
+    [InlineData("Update", "[ACTUALIZAR]")]
     [InlineData("Unchanged", "[UNCHANGED]")]
     [InlineData("Conflict", "[CONFLICT]")]
     public void StatusBadge_MapsBackendStatus(string status, string expected)
     {
         Assert.Equal(expected, SupplierInvoiceLineViewModel.GetStatusLabel(status));
+    }
+
+    [Fact]
+    public void LiveUnitCostAndComparison_UpdateImmediatelyWhenFactorOrDocumentCostChanges()
+    {
+        // 8.168: caso real reportado (VELAS BIPA 1X40: costo factura 10.529 USD, factor 40,
+        // costo anterior 0.24): Costo USD y Costo anterior → nuevo se recalculan en vivo a 0.2632 (0,26)
+        // y cascadan a los precios sugeridos por margen.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        var dto = CreateLine(1, unitCost: 10.529m, unitCostDocument: 10.529m) with
+        {
+            OldCostPriceUSD = 0.24m,
+            MarginRetailOverride = 30m,
+            MarginWholesaleOverride = 15m,
+            ConversionFactor = 40m
+        };
+        viewModel.LoadStagedInvoice(CreateInvoice(dto));
+
+        var line = Assert.Single(viewModel.Lines);
+        Assert.Equal(0.2632m, line.UnitCostUSD);
+        Assert.Equal($"{0.24m:N2} → {0.2632m:N2}", line.CostComparison);
+        Assert.Equal(PricingCalculator.RoundPriceUp(0.2632m * 1.30m), line.SuggestedRetailPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(0.2632m * 1.15m), line.SuggestedWholesalePriceUSD);
+
+        line.EditUnitCostDocumentText = "20,00";
+        Assert.Equal(20m, line.EditUnitCostDocument);
+        Assert.Equal(0.5m, line.UnitCostUSD);
+        Assert.Equal($"{0.24m:N2} → {0.5m:N2}", line.CostComparison);
+        Assert.Equal(PricingCalculator.RoundPriceUp(0.5m * 1.30m), line.SuggestedRetailPriceUSD);
+
+        line.ConversionFactorText = "10";
+        Assert.Equal(10m, line.ConversionFactor);
+        Assert.Equal(2m, line.UnitCostUSD);
+        Assert.Equal($"{0.24m:N2} → {2m:N2}", line.CostComparison);
+    }
+
+    [Fact]
+    public void LiveUnitCostInBsS_NormalizesEditedCostAndFactorWithAppliedRate()
+    {
+        // 8.168: en facturas Bs.S el cálculo en vivo divide por el factor y convierte con la tasa aplicada.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        var dto = CreateLine(1, unitCost: 10m, unitCostDocument: 365m) with
+        {
+            OldCostPriceUSD = 0.80m
+        };
+        viewModel.LoadStagedInvoice(CreateInvoice(CurrencyCodes.BsS, dto));
+
+        var line = Assert.Single(viewModel.Lines);
+        Assert.Equal(10m, line.UnitCostUSD);
+
+        line.ConversionFactorText = "10";
+        Assert.Equal(1m, line.UnitCostUSD);
+        Assert.Equal($"{0.80m:N2} → {1m:N2}", line.CostComparison);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("abc")]
+    public void InvalidOrEmptyConversionFactor_UsesSafeFallbackOneAndFlagsInvalidState(string invalidFactorInput)
+    {
+        // 8.168: nunca divide por cero ni produce NaN/Infinity mientras el usuario borra o edita el factor.
+        var line = new SupplierInvoiceLineViewModel(CreateLine(1, unitCost: 12m, unitCostDocument: 12m));
+
+        line.ConversionFactorText = invalidFactorInput;
+
+        Assert.True(line.HasInvalidConversionFactor);
+        Assert.Equal(1m, line.EffectiveConversionFactor);
+        Assert.Equal(12m, line.UnitCostUSD);
+        Assert.Equal(1m, line.ToConfirmLine().ConversionFactor);
+    }
+
+    [Fact]
+    public void FlexibleDecimalTextBuffers_PreserveTransitoryInputAndAcceptCommaOrDot()
+    {
+        // 8.168: escribir ".0", "10.", "10," o 3-4 decimales no pisa el texto transitorio ni falla.
+        var line = new SupplierInvoiceLineViewModel(CreateLine(1, unitCost: 10.529m, unitCostDocument: 10.529m));
+        Assert.Equal("10.529", line.EditUnitCostDocumentText);
+
+        line.EditUnitCostDocumentText = ".0";
+        Assert.Equal(".0", line.EditUnitCostDocumentText);
+        Assert.Equal(0m, line.EditUnitCostDocument);
+
+        line.EditUnitCostDocumentText = "10.";
+        Assert.Equal("10.", line.EditUnitCostDocumentText);
+        Assert.Equal(10m, line.EditUnitCostDocument);
+
+        line.EditUnitCostDocumentText = "10,5295";
+        Assert.Equal("10,5295", line.EditUnitCostDocumentText);
+        Assert.Equal(10.5295m, line.EditUnitCostDocument);
+
+        line.EditQuantityText = "3,25";
+        Assert.Equal(3.25m, line.EditQuantity);
+    }
+
+    [Fact]
+    public void MasterApprovalCheckbox_TogglesAllApprovableLinesAndReflectsIndeterminateState()
+    {
+        // 8.168: el checkbox maestro en el encabezado de "Aprobar" marca/desmarca todas las líneas
+        // aprobables e ignora las líneas nuevas no resueltas.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.LoadStagedInvoice(CreateInvoice(
+            CreateLine(1, isApproved: true, resolvedProductId: 10),
+            CreateLine(2, isApproved: true, resolvedProductId: 11),
+            CreateLine(3, isApproved: false, resolvedProductId: null, status: "New")));
+
+        Assert.True(viewModel.HasApprovableLines);
+        Assert.Equal(true, viewModel.AreAllApprovableLinesApproved);
+
+        viewModel.Lines[0].IsApproved = false;
+        Assert.Null(viewModel.AreAllApprovableLinesApproved);
+
+        viewModel.AreAllApprovableLinesApproved = false;
+        Assert.Equal(false, viewModel.AreAllApprovableLinesApproved);
+        Assert.False(viewModel.Lines[0].IsApproved);
+        Assert.False(viewModel.Lines[1].IsApproved);
+        Assert.False(viewModel.CanConfirmInvoice);
+
+        viewModel.AreAllApprovableLinesApproved = true;
+        Assert.Equal(true, viewModel.AreAllApprovableLinesApproved);
+        Assert.True(viewModel.Lines[0].IsApproved);
+        Assert.True(viewModel.Lines[1].IsApproved);
+        Assert.False(viewModel.Lines[2].IsApproved);
+        Assert.True(viewModel.CanConfirmInvoice);
+    }
+
+    [Fact]
+    public void HasSelectedFilePath_IsTrueOnlyWhenTabularPathIsPresentAndNotOcr()
+    {
+        // 8.168: el campo de ruta de archivo se oculta cuando está vacío o en flujo OCR.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        Assert.False(viewModel.HasSelectedFilePath);
+
+        viewModel.SelectedFilePath = InvoiceFilePath;
+        Assert.True(viewModel.HasSelectedFilePath);
+
+        viewModel.IsOcrSource = true;
+        Assert.False(viewModel.HasSelectedFilePath);
+
+        viewModel.IsOcrSource = false;
+        viewModel.SelectedFilePath = string.Empty;
+        Assert.False(viewModel.HasSelectedFilePath);
     }
 
     [Fact]
@@ -252,7 +395,7 @@ public sealed class SupplierInvoiceClientTests
         var line = Assert.Single(viewModel.Lines);
         Assert.True(line.CanApprove);
         Assert.False(line.CanCreateProduct);
-        Assert.Equal("[UPDATE]", line.StatusLabel);
+        Assert.Equal("[ACTUALIZAR]", line.StatusLabel);
     }
 
     [Fact]
@@ -1043,6 +1186,47 @@ public sealed class SupplierInvoiceClientTests
         Assert.Equal("Name", request.ColumnMapping!.NameColumnName);
         Assert.Equal("Quantity", request.ColumnMapping.QuantityColumnName);
         Assert.Equal("Unit Cost", request.ColumnMapping.UnitCostColumnName);
+    }
+
+    [Fact]
+    public void Dispose_ClearsLinesAndColumnMappings()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var viewModel = CreateViewModel(service.Object);
+        viewModel.SetFileHeaders(new[] { "Barcode", "Name", "Quantity", "Unit Cost" });
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1)));
+
+        Assert.NotEmpty(viewModel.ColumnMappings);
+        Assert.NotEmpty(viewModel.Lines);
+
+        viewModel.Dispose();
+
+        Assert.Empty(viewModel.ColumnMappings);
+        Assert.Empty(viewModel.Lines);
+    }
+
+    [Fact]
+    public void SupplierControllers_EnforceSecurityStampValidationAndOcrUploadSizeLimits()
+    {
+        Assert.NotNull(Attribute.GetCustomAttribute(
+            typeof(Backend.API.Controllers.SupplierInvoicesController),
+            typeof(Backend.API.Attributes.RequireSecurityStampValidationAttribute)));
+        Assert.NotNull(Attribute.GetCustomAttribute(
+            typeof(Backend.API.Controllers.SuppliersController),
+            typeof(Backend.API.Attributes.RequireSecurityStampValidationAttribute)));
+
+        var ocrMethod = typeof(Backend.API.Controllers.SupplierInvoicesController)
+            .GetMethod(nameof(Backend.API.Controllers.SupplierInvoicesController.OcrExtractAsync));
+        Assert.NotNull(ocrMethod);
+        var sizeLimit = Attribute.GetCustomAttribute(
+            ocrMethod!,
+            typeof(Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute)) as Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute;
+        var formLimits = Attribute.GetCustomAttribute(
+            ocrMethod!,
+            typeof(Microsoft.AspNetCore.Mvc.RequestFormLimitsAttribute)) as Microsoft.AspNetCore.Mvc.RequestFormLimitsAttribute;
+        Assert.NotNull(sizeLimit);
+        Assert.NotNull(formLimits);
+        Assert.Equal(Inventory.Module.Services.Ocr.OcrExtractionService.MaxFileBytes + 4L * 1024 * 1024, formLimits!.MultipartBodyLengthLimit);
     }
 
     private const string InvoiceFilePath = "C:\\facturas\\factura.csv";

@@ -4,6 +4,7 @@ using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Inventory.Module.Services;
 
@@ -37,6 +38,23 @@ public partial class SupplierInvoiceService
             .Where(factor => factor.SupplierId == supplier.Id)
             .ToDictionaryAsync(factor => factor.ProductId, factor => factor.ConversionFactor, cancellationToken);
 
+        var exactMatches = new ProductMatch?[lines.Count];
+        var unmatchedNames = new List<string>();
+        for (var index = 0; index < lines.Count; index++)
+        {
+            var exactMatch = TryResolveExactMatch(matchLookups, lines[index]);
+            exactMatches[index] = exactMatch;
+            if (exactMatch is null && !string.IsNullOrWhiteSpace(lines[index].Name))
+            {
+                unmatchedNames.Add(lines[index].Name!);
+            }
+        }
+
+        var fuzzyMatchesByName = await ResolveFuzzyMatchesBatchAsync(
+            unmatchedNames,
+            similarityThreshold,
+            cancellationToken);
+
         var invoice = new SupplierInvoice
         {
             SupplierId = supplier.Id,
@@ -45,13 +63,18 @@ public partial class SupplierInvoiceService
             AppliedRate = appliedRate
         };
 
-        foreach (var line in lines)
+        for (var index = 0; index < lines.Count; index++)
         {
-            var unitCostUsd = currency == CurrencyCodes.Usd
-                ? line.UnitCostDocument
-                : Core.Helpers.PricingCalculator.ToUSD(line.UnitCostDocument, appliedRate);
-            var match = TryResolveExactMatch(matchLookups, line)
-                ?? await FallbackFuzzyMatchAsync(line.Name, similarityThreshold, cancellationToken);
+            var line = lines[index];
+            var unitCostUsd = Core.Helpers.PricingCalculator.CalculateInvoiceUnitCostUsd(
+                line.UnitCostDocument,
+                1m,
+                currency,
+                appliedRate);
+            var match = exactMatches[index]
+                ?? (line.Name is not null && fuzzyMatchesByName.TryGetValue(line.Name, out var fuzzyMatch)
+                    ? fuzzyMatch
+                    : new ProductMatch(null, MatchMethod.None));
             var stagedLine = CreateStagedLine(line, match, unitCostUsd, request.OcrSourced);
             if (match.Product is not null
                 && conversionFactorsByProductId.TryGetValue(match.Product.Id, out var rememberedFactor))
@@ -64,6 +87,14 @@ public partial class SupplierInvoiceService
 
         _context.SupplierInvoices.Add(invoice);
         await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Staged supplier invoice {InvoiceId} for supplier {SupplierId} with {LineCount} lines ({Currency} @ {AppliedRate}).",
+            invoice.Id,
+            supplier.Id,
+            invoice.Lines.Count,
+            currency,
+            appliedRate);
 
         return ToDetailDto(invoice);
     }
@@ -169,6 +200,13 @@ public partial class SupplierInvoiceService
             throw new InvalidOperationException("A supplier with this RIF/NIT already exists.");
         }
 
+        if (normalizedRifOrNit is null && await _context.Suppliers
+                .AsNoTracking()
+                .AnyAsync(supplier => supplier.NormalizedCommercialName == normalizedCommercialName, cancellationToken))
+        {
+            throw new InvalidOperationException("A supplier with this commercial name already exists.");
+        }
+
         var supplier = new Supplier
         {
             RifOrNit = rifOrNit,
@@ -179,6 +217,11 @@ public partial class SupplierInvoiceService
 
         _context.Suppliers.Add(supplier);
         await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Created supplier {SupplierId} ({CommercialName}).",
+            supplier.Id,
+            supplier.CommercialName);
 
         return new SupplierSummaryDto(supplier.Id, supplier.RifOrNit, supplier.CommercialName, null, supplier.InvoiceCurrency);
     }
@@ -265,6 +308,12 @@ public partial class SupplierInvoiceService
                 "An applied exchange rate greater than zero is required for supplier invoices in Bs.S.");
         }
 
+        if (request.AppliedRate > MaxInvoiceNumericValue)
+        {
+            throw new ArgumentException(
+                "The applied exchange rate exceeds the maximum supported value.");
+        }
+
         return (CurrencyCodes.BsS, Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(request.AppliedRate));
     }
 
@@ -303,6 +352,11 @@ public partial class SupplierInvoiceService
             if (line.Quantity < 0m || line.UnitCostDocument < 0m)
             {
                 throw new ArgumentException("Invoice quantities and unit costs cannot be negative.", nameof(sourceLines));
+            }
+
+            if (line.Quantity > MaxInvoiceNumericValue || line.UnitCostDocument > MaxInvoiceNumericValue)
+            {
+                throw new ArgumentException("Invoice quantities and unit costs exceed the maximum supported value.", nameof(sourceLines));
             }
 
             if (line.SupplierCode?.Length > 100 || line.Barcode?.Length > 100 || line.Name?.Length > 200)

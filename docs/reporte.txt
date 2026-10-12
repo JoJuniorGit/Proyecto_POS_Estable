@@ -13920,3 +13920,137 @@ E1. 8.167 en V0.15: commit de implementacion (feat(8.167)) + commit de este ANEX
     (docs(8.167); git log).
 ================================================================================
 
+================================================================================
+ANEXO 8.168 - FACTURAS PROVEEDOR: REACTIVIDAD EN VIVO POR FACTOR/COSTO, DECIMALES FLEXIBLES, SANITIZACION OCR Y PULIDO UI - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: reactividad en tiempo real para Factor de
+Conversion y Costo de Factura en la tabla de pre-visualizacion (Staging),
+soporte fluido de decimales (coma/punto sin tooltip de error invasivo),
+sanitizacion OCR de empaques (X leido como % o 4) y mejoras de UI/UX en
+SupplierInvoiceView.
+
+A. ALCANCE Y ENTREGA
+
+A1. Calculo reactivo en cascada en SupplierInvoiceLineViewModel:
+    - UnitCostUSD se recalcula instantaneamente al cambiar EditUnitCostDocument
+      o ConversionFactor (dividiendo por EffectiveConversionFactor y convirtiendo
+      a USD segun la moneda/tasa del documento staged), incluyendo cuando la
+      linea ya viene prefijada con un factor recordado (8.166).
+    - CostComparison ("Costo anterior -> nuevo") y los precios sugeridos
+      (SuggestedRetailPriceUSD y SuggestedWholesalePriceUSD) se recalculan en
+      cascada en cada pulsacion sin recargar del servidor.
+A2. Validacion defensiva del factor de conversion:
+    - EffectiveConversionFactor asume 1 cuando el input esta vacio, en 0 o
+      negativo, previniendo division por cero, NaN o Infinity, y marcando
+      HasInvalidConversionFactor para feedback visual no intrusivo.
+A3. Soporte fluido de decimales (punto y coma, 2 a 4 decimales):
+    - Nuevas propiedades de texto (EditUnitCostDocumentText, ConversionFactorText,
+      EditQuantityText) con TryParseFlexibleDecimal que aceptan tanto "." como ","
+      y preservan estados transitorios ("10.", "10,", ".0", "10,529") sin
+      re-formatear mientras se escribe.
+    - Validation.ErrorTemplate={x:Null} en los TextBox editables de la grilla
+      para eliminar el popup rojo nativo de WPF que tapaba la fila inferior.
+A4. Sanitizacion OCR de empaques en nombres de producto:
+    - OcrConfidence.SanitizeProductName normaliza lecturas corruptas de "X"
+      como "%" entre digitos (36%250GR -> 36X250GR, 1%5 -> 1X5, 10%20 UNI ->
+      10X20 UNI) y "4" como separador de empaque antes de unidad (10420 UNI ->
+      10X20 UNI) sin alterar pesos redondos legitimos (400GR, 140GR) ni
+      porcentajes reales (2% 1L).
+A5. Mejoras de UI/UX en SupplierInvoiceView.xaml:
+    - Se oculta el TextBox de ruta de archivo cuando esta vacio o en origen OCR
+      (HasSelectedFilePath) y se agrega HintAssist.Hint="Archivo cargado".
+    - Se agrega leyenda superior de confianza OCR (Amarillo / Rojo) y ToolTips
+      explicativos en las celdas resaltadas.
+    - Se unifica el boton "Crear Producto" dentro de la columna Estado para
+      filas nuevas y se elimina la columna vacia "Crear Producto", ampliando los
+      anchos de "Codigo de barras" y "Costo anterior -> nuevo" sin truncado.
+    - Se traduce el badge [UPDATE] a [ACTUALIZAR] y se agrega un CheckBox
+      maestro tri-estado en el encabezado de "Aprobar" (AreAllApprovableLinesApproved).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Tests focalizados SupplierInvoice + OCR: 279/279 en verde (14 tests nuevos
+    cubriendo reactividad por factor/costo, cascada de precios sugeridos,
+    decimales con coma/punto y estados transitorios, validacion defensiva de
+    factor <= 0, aprobacion masiva tri-estado, sanitizacion OCR de empaques y
+    visibilidad de SelectedFilePath).
+
+C. LIMITACIONES
+
+C1. UI verificada por compilacion + tests unitarios de ViewModel y parser OCR.
+
+D. ROLLBACK
+
+D1. Revertir los cambios en Desktop.Client, Desktop.Client.Core, Core e
+    Inventory.Module; sin migraciones ni cambios de esquema en base de datos.
+================================================================================
+
+================================================================================
+ANEXO 8.169 - AUDITORIA 4 FASES Y REMEDIACION INTEGRAL EN FACTURAS DE PROVEEDORES - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: auditoria exhaustiva en 4 fases (DevSecOps,
+Performance/Memoria, Clean Code/Higiene y Concurrencia/SRE) sobre el modulo
+"Facturas de Proveedores" y ejecucion de todas las remediaciones detectadas.
+
+A. ALCANCE Y ENTREGA
+
+A1. Fase 1 (DevSecOps / Zero-Trust):
+    - [RequireSecurityStampValidation] agregado en SupplierInvoicesController y
+      SuppliersController para eliminar la ventana de gracia de 45s de tokens
+      revocados, mas guardia EnsureCatalogMutationPermission() en
+      SupplierInvoiceService.
+    - Cotas superiores estrictas en montos, cantidades, tasas y margenes
+      (MaxInvoiceNumericValue = 10^9, MaxMarginOverrideValue = 10^5) y longitud
+      maxima de columnas de mapeo (MaxColumnNameLength = 128).
+    - Proteccion contra bombas de descompresion de imagen en ImagePageDecoder
+      (MaxImageDimension = 8000, MaxImagePixels = 25 MP) y limites de multipart
+      en SupplierInvoicesController.OcrExtractAsync.
+    - Mapeo en GlobalExceptionHandlerMiddleware de OverflowException y Postgres
+      22003 a 400 Bad Request, mas constraints unicos 23505 de Suppliers,
+      SupplierColumnMappings, SupplierProductCodes y SupplierProductFactors a
+      409 Conflict.
+A2. Fase 2 (Performance / EF Core / Memoria):
+    - Eliminacion de tormenta N+1 en StageAsync (ResolveFuzzyMatchesBatchAsync):
+      deduplicacion de nombres no resueltos y carga batch unica de Products.
+    - Invalidacion de IMemoryCache (product_quick_{SKU}, product_sku_{SKU}) y
+      sincronizacion de Product.Cost al confirmar facturas en ConfirmAsync.
+    - Correccion de fuga de suscripciones PropertyChanged en
+      SupplierInvoiceViewModel.Dispose() (ClearLines + desuscripcion de
+      ColumnMappings) y supresion de notificaciones en aprobacion masiva.
+    - Adquisicion asincrona de semaforo con CancellationToken y Dispose seguro
+      en TesseractOcrEngine.
+A3. Fase 3 (Clean Code / Mantenibilidad):
+    - Calculo canonico PricingCalculator.CalculateInvoiceUnitCostUsd compartido
+      entre StageAsync (aplicando el factor recordado antes de evaluar estado y
+      precios sugeridos), ConfirmAsync y SupplierInvoiceLineViewModel.
+    - Extraccion del parser decimal compartido a Core/Helpers/FlexibleDecimalParser.cs
+      (eliminando ~90 lineas duplicadas entre cliente y OCR).
+    - Particion de archivos mayores a 500 lineas: SupplierInvoiceViewModel.Suppliers.cs
+      e InvoiceTableParser.Helpers.cs (todos los archivos quedan < 500 lineas).
+    - Uso de SafeFireAndForget en PrefillAppliedRateAsync.
+A4. Fase 4 (SRE / Concurrencia / Idempotencia / Observabilidad):
+    - Reintentos xmin en ApplyApprovedLineAsync ampliados a 3 intentos con
+      backoff progresivo y orden determinista en aliasPlan.
+    - Bloqueo de creacion de proveedores duplicados por NormalizedCommercialName
+      cuando no se informa RIF/NIT (evitando bloqueo 409 en ResolveSupplierAsync).
+    - Logging estructurado (ILogger) en StageAsync, ConfirmAsync,
+      CreateProductFromLineAsync, CreateSupplierAsync, reintentos xmin y
+      OcrExtractionService.ExtractAsync.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite de pruebas SupplierInvoice + OCR + GlobalException: 307/307 en verde.
+B3. Todos los archivos modificados/creados cumplen el tope < 500 lineas.
+
+C. LIMITACIONES
+
+C1. Sin migraciones de esquema adicionales requeridas en esta unidad.
+
+D. ROLLBACK
+
+D1. Revertir los cambios en Backend.API, Core, Inventory.Module,
+    Desktop.Client.Core y CommandCenter.Tests.
+================================================================================
+

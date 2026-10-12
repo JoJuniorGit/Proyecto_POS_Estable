@@ -7,6 +7,7 @@ using Core.Interfaces;
 using Inventory.Module.Data;
 using Inventory.Module.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using Xunit;
 
@@ -375,7 +376,7 @@ public class SupplierInvoiceApplyTests
         var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
         var movement = await context.StockMovements.SingleAsync();
         Assert.Equal(6.5m, savedProduct.StockQuantity);
-        Assert.Equal(91m, savedProduct.Cost);
+        Assert.Equal(3.5m, savedProduct.Cost);
         Assert.Equal(123.45m, savedProduct.PriceBsS);
         Assert.Equal(36.5m, savedProduct.LastConversionRate);
         Assert.Equal(product.Id, movement.ProductId);
@@ -383,6 +384,66 @@ public class SupplierInvoiceApplyTests
         Assert.Equal(6.5m, movement.NewStockLevel);
         Assert.Equal($"Supplier invoice {invoice.Id} applied", movement.Reason);
         Assert.Equal("supplier-invoice-user", movement.UserId);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_EvictsProductCacheKeysAndSyncsLegacyCostProperty()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        using var memoryCache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions());
+        var service = CreateService(context, memoryCache: memoryCache);
+        var product = CreateProduct("Abc-123", 4m, 2m, 25m);
+        product.Cost = 99m;
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 3m, 7.25m));
+        var line = Assert.Single(invoice.Lines);
+
+        memoryCache.Set("product_quick_Abc-123", new object());
+        memoryCache.Set("product_quick_ABC-123", new object());
+        memoryCache.Set("product_sku_ABC-123", new object());
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(7.25m, savedProduct.CostPriceUSD);
+        Assert.Equal(7.25m, savedProduct.Cost);
+        Assert.False(memoryCache.TryGetValue("product_quick_Abc-123", out _));
+        Assert.False(memoryCache.TryGetValue("product_quick_ABC-123", out _));
+        Assert.False(memoryCache.TryGetValue("product_sku_ABC-123", out _));
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RejectsNumericValuesExceedingUpperBound()
+    {
+        var (context, product, line, invoice) = await ArrangeCorrectionTestAsync("APPLY-OVERFLOW-GUARD");
+        using var contextScope = context;
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, 100_001m, null)
+            })));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, Quantity: 1_000_000_001m)
+            })));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, UnitCostDocument: 1_000_000_001m)
+            })));
+
+        await AssertNoApplySideEffectsAsync(context, product, line);
     }
 
     [Fact]
@@ -680,7 +741,8 @@ public class SupplierInvoiceApplyTests
 
     private static SupplierInvoiceService CreateService(
         InventoryDbContext context,
-        ICurrentUserService? currentUser = null)
+        ICurrentUserService? currentUser = null,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? memoryCache = null)
     {
         var settings = Mock.Of<ISystemSettingsService>();
         var similaritySearch = Mock.Of<ISupplierProductSimilaritySearch>();
@@ -690,7 +752,8 @@ public class SupplierInvoiceApplyTests
             settings,
             similaritySearch,
             currentUser,
-            Mock.Of<IProductManagementService>());
+            Mock.Of<IProductManagementService>(),
+            memoryCache);
     }
 
     private static async Task<SupplierInvoice> AddInvoiceAsync(

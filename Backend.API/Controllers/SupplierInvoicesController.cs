@@ -1,3 +1,4 @@
+using Backend.API.Attributes;
 using Core.DTOs;
 using Core.Interfaces;
 using Inventory.Module.Services.Ocr;
@@ -9,6 +10,7 @@ namespace Backend.API.Controllers;
 
 [ApiController]
 [Authorize(Roles = "Admin,Manager")]
+[RequireSecurityStampValidation]
 [Route("api/supplier-invoices")]
 public sealed class SupplierInvoicesController : ControllerBase
 {
@@ -87,6 +89,8 @@ public sealed class SupplierInvoicesController : ControllerBase
     }
 
     [HttpPost("ocr-extract")]
+    [RequestSizeLimit(OcrExtractionService.MaxFileBytes + 5L * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = OcrExtractionService.MaxFileBytes + 4L * 1024 * 1024)]
     [ProducesResponseType(typeof(OcrExtractionResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]

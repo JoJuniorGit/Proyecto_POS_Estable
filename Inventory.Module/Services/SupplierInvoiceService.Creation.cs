@@ -4,6 +4,7 @@ using Core.Entities;
 using Core.Helpers;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Inventory.Module.Services;
 
@@ -114,6 +115,13 @@ public partial class SupplierInvoiceService
                 {
                     await transaction.CommitAsync(cancellationToken);
                 }
+
+                _logger.LogInformation(
+                    "Created product {ProductId} (SKU {Sku}) from supplier invoice {InvoiceId} line {LineId}.",
+                    created.Id,
+                    created.SKU,
+                    invoiceId,
+                    lineId);
 
                 return ToDetailDto(invoice);
             }

@@ -9,6 +9,8 @@ namespace Inventory.Module.Services;
 
 public partial class SupplierInvoiceService
 {
+    private const int MaxColumnNameLength = 128;
+
     private async Task<SupplierColumnMapping> UpsertColumnMappingAsync(
         int supplierId,
         SupplierColumnMappingDto? requestMapping,
@@ -27,10 +29,12 @@ public partial class SupplierInvoiceService
         var nameColumnName = RequiredColumn(requestMapping.NameColumnName, nameof(requestMapping.NameColumnName));
         var quantityColumnName = RequiredColumn(requestMapping.QuantityColumnName, nameof(requestMapping.QuantityColumnName));
         var unitCostColumnName = RequiredColumn(requestMapping.UnitCostColumnName, nameof(requestMapping.UnitCostColumnName));
+        var barcodeColumnName = OptionalColumnMapping(requestMapping.BarcodeColumnName, nameof(requestMapping.BarcodeColumnName));
+        var supplierCodeColumnName = OptionalColumnMapping(requestMapping.SupplierCodeColumnName, nameof(requestMapping.SupplierCodeColumnName));
 
         mapping ??= new SupplierColumnMapping { SupplierId = supplierId };
-        mapping.BarcodeColumnName = OptionalColumn(requestMapping.BarcodeColumnName);
-        mapping.SupplierCodeColumnName = OptionalColumn(requestMapping.SupplierCodeColumnName);
+        mapping.BarcodeColumnName = barcodeColumnName;
+        mapping.SupplierCodeColumnName = supplierCodeColumnName;
         mapping.NameColumnName = nameColumnName;
         mapping.QuantityColumnName = quantityColumnName;
         mapping.UnitCostColumnName = unitCostColumnName;
@@ -50,7 +54,24 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("Required column mappings cannot be empty.", parameterName);
         }
 
-        return columnName.Trim();
+        var trimmed = columnName.Trim();
+        if (trimmed.Length > MaxColumnNameLength)
+        {
+            throw new ArgumentException($"Column mapping names cannot exceed {MaxColumnNameLength} characters.", parameterName);
+        }
+
+        return trimmed;
+    }
+
+    private static string? OptionalColumnMapping(string? columnName, string parameterName)
+    {
+        var trimmed = OptionalColumn(columnName);
+        if (trimmed is { Length: > MaxColumnNameLength })
+        {
+            throw new ArgumentException($"Column mapping names cannot exceed {MaxColumnNameLength} characters.", parameterName);
+        }
+
+        return trimmed;
     }
 
     private static string? OptionalColumn(string? columnName) =>

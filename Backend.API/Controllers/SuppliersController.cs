@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Backend.API.Attributes;
 using Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -8,6 +9,7 @@ namespace Backend.API.Controllers;
 
 [ApiController]
 [Authorize(Roles = "Admin,Manager")]
+[RequireSecurityStampValidation]
 [Route("api/suppliers")]
 public sealed class SuppliersController : ControllerBase
 {

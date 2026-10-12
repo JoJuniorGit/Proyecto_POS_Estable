@@ -55,6 +55,10 @@ public class GlobalExceptionHandlerMiddleware
                     "IX_Products_Barcode" => "El código de barras ya está asignado a otro producto registrado.",
                     "IX_Products_SKU" => "El código SKU ya está registrado en el inventario.",
                     "IX_Customers_CedulaOrRif" => "Ya existe un cliente registrado con esta cédula o RIF.",
+                    "IX_Suppliers_NormalizedRifOrNit" => "Ya existe un proveedor registrado con ese RIF o NIT.",
+                    "IX_SupplierColumnMappings_SupplierId" => "El proveedor ya posee una plantilla de mapeo de columnas registrada.",
+                    "IX_SupplierProductCodes_Supplier_Code" => "El código de proveedor ya está asociado a un producto para este proveedor.",
+                    "IX_SupplierProductFactors_Supplier_Product" => "El factor de conversión ya está registrado para este proveedor y producto.",
                     _ => "El registro ya existe o infringe una restricción de unicidad en el sistema."
                 };
 
@@ -100,6 +104,22 @@ public class GlobalExceptionHandlerMiddleware
                     "Bad Request",
                     "https://tools.ietf.org/html/rfc7231#section-6.5.1",
                     "ForeignKeyViolation",
+                    friendlyMessage,
+                    friendlyMessage,
+                    requestPath,
+                    sqlState);
+                return;
+            }
+
+            if (sqlState == "22003") // numeric_value_out_of_range
+            {
+                string friendlyMessage = "Uno o más valores numéricos exceden el rango permitido por el sistema.";
+                await WriteProblemDetailsAsync(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "Bad Request",
+                    "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                    "NumericValueOutOfRange",
                     friendlyMessage,
                     friendlyMessage,
                     requestPath,
@@ -220,6 +240,23 @@ public class GlobalExceptionHandlerMiddleware
                 "Forbidden",
                 exception.Message,
                 exception.Message,
+                requestPath,
+                null);
+            return;
+        }
+
+        if (exception is OverflowException)
+        {
+            AppLogger.LogCrash(exception, $"Handled OverflowException in Request: {requestPath}");
+            string msg = "Uno o más valores numéricos exceden el rango permitido por el sistema.";
+            await WriteProblemDetailsAsync(
+                context,
+                StatusCodes.Status400BadRequest,
+                "Bad Request",
+                "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                "NumericValueOutOfRange",
+                msg,
+                msg,
                 requestPath,
                 null);
             return;

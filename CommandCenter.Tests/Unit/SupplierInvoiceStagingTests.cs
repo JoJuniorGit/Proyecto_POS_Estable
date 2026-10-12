@@ -524,6 +524,60 @@ public class SupplierInvoiceStagingTests
         Assert.Equal(1m, lines[1].ConversionFactor);
     }
 
+    [Fact]
+    public async Task CreateSupplierAsync_WithoutRif_RejectsDuplicateNormalizedCommercialName()
+    {
+        var (service, _) = CreateService();
+        await service.CreateSupplierAsync(new CreateSupplierRequestDto(null, "Distribuidora El Sol"));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateSupplierAsync(new CreateSupplierRequestDto("   ", "  distribuidora   el   sol  ")));
+
+        Assert.Equal("A supplier with this commercial name already exists.", exception.Message);
+    }
+
+    [Fact]
+    public async Task StageAsync_RejectsColumnMappingNameExceedingMaxLength()
+    {
+        var (service, context) = CreateService();
+        var supplier = await AddSupplierAsync(context);
+        var oversizedColumn = new string('C', 129);
+        var mapping = new SupplierColumnMappingDto(null, null, oversizedColumn, "Quantity", "UnitCost");
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.StageAsync(CreateRequest(
+            supplier.Id,
+            null,
+            null,
+            mapping,
+            new StageLineDto(null, "SKU-1", "Valid Product", 1m, 10m))));
+    }
+
+    [Fact]
+    public async Task StageAsync_RejectsNumericValuesExceedingUpperBound()
+    {
+        var (service, context) = CreateService();
+        var supplier = await AddSupplierAsync(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.StageAsync(CreateBsSRequest(
+            supplier.Id,
+            1_000_000_001m,
+            new StageLineDto(null, "SKU-1", "Valid Product", 1m, 10m))));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.StageAsync(CreateRequest(
+            supplier.Id,
+            null,
+            null,
+            CreateMapping(),
+            new StageLineDto(null, "SKU-1", "Valid Product", 1_000_000_001m, 10m))));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.StageAsync(CreateRequest(
+            supplier.Id,
+            null,
+            null,
+            CreateMapping(),
+            new StageLineDto(null, "SKU-1", "Valid Product", 1m, 1_000_000_001m))));
+    }
+
     private static (SupplierInvoiceService Service, InventoryDbContext Context) CreateService()
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();

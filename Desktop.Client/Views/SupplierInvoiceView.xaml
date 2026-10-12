@@ -158,8 +158,11 @@
             <TextBox Grid.Column="3"
                      Text="{Binding SelectedFilePath}"
                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                     materialDesign:HintAssist.Hint="Archivo cargado"
                      IsReadOnly="True"
-                     VerticalContentAlignment="Center" />
+                     VerticalContentAlignment="Center"
+                     Visibility="{Binding HasSelectedFilePath, Converter={StaticResource BoolToVis}}"
+                     AutomationProperties.Name="Ruta del archivo cargado" />
             <ProgressBar Grid.Column="4"
                          IsIndeterminate="{Binding IsBusy}"
                          Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
@@ -203,7 +206,43 @@
         </materialDesign:Card>
 
         <Grid Grid.Row="4">
-            <DataGrid
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 8.168: leyenda semántica del resaltado por confianza de lectura OCR -->
+            <Border Grid.Row="0"
+                    Margin="0,0,0,8"
+                    Padding="10,6"
+                    CornerRadius="6"
+                    Background="{DynamicResource MaterialDesignCardBackground}"
+                    BorderBrush="{DynamicResource MaterialDesignDivider}"
+                    BorderThickness="1"
+                    Visibility="{Binding IsOcrSource, Converter={StaticResource BoolToVis}}">
+                <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Confianza de lectura OCR:"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Margin="0,0,12,0" />
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                        <Border Width="14" Height="14" CornerRadius="3"
+                                Background="#FFF3C4" BorderBrush="#D97706" BorderThickness="1"
+                                VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="Amarillo: confianza media (verificar dato contra la factura)"
+                                   VerticalAlignment="Center" FontSize="12" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="14" Height="14" CornerRadius="3"
+                                Background="#FFD6D6" BorderBrush="#DC2626" BorderThickness="1"
+                                VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="Rojo: confianza baja (requiere revisión o corrección manual)"
+                                   VerticalAlignment="Center" FontSize="12" />
+                    </StackPanel>
+                </WrapPanel>
+            </Border>
+
+            <DataGrid Grid.Row="1"
                   ItemsSource="{Binding Lines}"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
@@ -222,21 +261,25 @@
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding CanCreateProduct}" Value="True">
                             <Setter Property="Opacity" Value="0.9" />
-                            <Setter Property="ToolTip" Value="Producto nuevo: use 'Crear Producto' para capturar el código de barras y resolver la línea." />
+                            <Setter Property="ToolTip" Value="Producto nuevo: use 'Crear Producto' en la columna Estado para capturar el código de barras y resolver la línea." />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </DataGrid.RowStyle>
             <DataGrid.Columns>
-                <DataGridTemplateColumn Header="Producto" Width="*" MinWidth="160">
+                <DataGridTemplateColumn Header="Producto" Width="2*" MinWidth="180">
                     <DataGridTemplateColumn.CellStyle>
                         <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding NameConfidenceBand}" Value="Yellow">
                                     <Setter Property="Background" Value="#FFF3C4" />
+                                    <Setter Property="Foreground" Value="#1F2937" />
+                                    <Setter Property="ToolTip" Value="Confianza OCR media (60–84 %): verifique el nombre contra la factura física. Al editarlo se marca como revisado." />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding NameConfidenceBand}" Value="Red">
                                     <Setter Property="Background" Value="#FFD6D6" />
+                                    <Setter Property="Foreground" Value="#1F2937" />
+                                    <Setter Property="ToolTip" Value="Confianza OCR baja (&lt; 60 %): lectura incierta, revise o corrija manualmente el nombre." />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -251,8 +294,10 @@
                                            Visibility="{Binding IsEditorEnabled, Converter={StaticResource InverseBoolToVis}}" />
                                 <TextBox Text="{Binding EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         Validation.ErrorTemplate="{x:Null}"
                                          IsEnabled="{Binding IsEditorEnabled}"
                                          Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}"
+                                         HorizontalAlignment="Stretch"
                                          Padding="5,2"
                                          VerticalContentAlignment="Center"
                                          AutomationProperties.Name="Nombre OCR editable" />
@@ -260,44 +305,63 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Código de barras" Binding="{Binding Barcode}" Width="130" />
-                <DataGridTemplateColumn Header="Estado" Width="115">
+                <DataGridTextColumn Header="Código de barras" Binding="{Binding Barcode}" Width="150" MinWidth="140" />
+                <DataGridTemplateColumn Header="Estado" Width="140" MinWidth="130">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Border Padding="7,3" CornerRadius="8" HorizontalAlignment="Center">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Background" Value="#E3F2FD" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[NUEVO]">
-                                                <Setter Property="Background" Value="#E8F5E9" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[UPDATE]">
-                                                <Setter Property="Background" Value="#FFF3E0" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[UNCHANGED]">
-                                                <Setter Property="Background" Value="#ECEFF1" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[CONFLICT]">
-                                                <Setter Property="Background" Value="#FFEBEE" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold" />
-                            </Border>
+                            <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Border Padding="7,3" CornerRadius="8" HorizontalAlignment="Center"
+                                        Visibility="{Binding CanCreateProduct, Converter={StaticResource InverseBoolToVis}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#E3F2FD" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding StatusLabel}" Value="[NUEVO]">
+                                                    <Setter Property="Background" Value="#E8F5E9" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusLabel}" Value="[ACTUALIZAR]">
+                                                    <Setter Property="Background" Value="#FFF3E0" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusLabel}" Value="[UNCHANGED]">
+                                                    <Setter Property="Background" Value="#ECEFF1" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusLabel}" Value="[CONFLICT]">
+                                                    <Setter Property="Background" Value="#FFEBEE" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold" Foreground="#1F2937" />
+                                </Border>
+                                <Button Content="Crear Producto"
+                                        Command="{Binding Data.CreateProductCommand, Source={StaticResource ViewModelProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Visibility="{Binding CanCreateProduct, Converter={StaticResource BoolToVis}}"
+                                        IsEnabled="{Binding CanCreateProduct}"
+                                        FontSize="11"
+                                        Padding="8,2"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        ToolTip="Producto nuevo en el catálogo: haga clic para registrar su código de barras y habilitar la línea."
+                                        AutomationProperties.Name="Crear producto desde la línea" />
+                            </Grid>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="Cantidad" Width="90">
+                <DataGridTemplateColumn Header="Cantidad" Width="105" MinWidth="90">
                     <DataGridTemplateColumn.CellStyle>
                         <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding QuantityConfidenceBand}" Value="Yellow">
                                     <Setter Property="Background" Value="#FFF3C4" />
+                                    <Setter Property="Foreground" Value="#1F2937" />
+                                    <Setter Property="ToolTip" Value="Confianza OCR media (60–84 %): verifique la cantidad contra la factura física. Al editarla se marca como revisada." />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding QuantityConfidenceBand}" Value="Red">
                                     <Setter Property="Background" Value="#FFD6D6" />
+                                    <Setter Property="Foreground" Value="#1F2937" />
+                                    <Setter Property="ToolTip" Value="Confianza OCR baja (&lt; 60 %): lectura incierta, revise o corrija manualmente la cantidad." />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -310,11 +374,14 @@
                                            HorizontalAlignment="Right"
                                            Margin="8,0"
                                            Visibility="{Binding IsEditorEnabled, Converter={StaticResource InverseBoolToVis}}" />
-                                <TextBox Text="{Binding EditQuantity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                <TextBox Text="{Binding EditQuantityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         Validation.ErrorTemplate="{x:Null}"
                                          IsEnabled="{Binding IsEditorEnabled}"
                                          Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}"
+                                         HorizontalAlignment="Stretch"
                                          HorizontalContentAlignment="Right"
+                                         MinWidth="65"
                                          Padding="5,2"
                                          VerticalContentAlignment="Center"
                                          AutomationProperties.Name="Cantidad OCR editable" />
@@ -322,19 +389,23 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Costo USD" Binding="{Binding UnitCostUSD, StringFormat={}{0:N2}}" Width="100" />
-                <!-- 8.164: el precio escaneado por producto es editable en USD y Bs.S; el
-                     encabezado acompaña la moneda del documento. -->
+                <DataGridTextColumn Header="Costo USD" Binding="{Binding UnitCostUSD, Mode=OneWay, StringFormat={}{0:N2}}" Width="110" MinWidth="95" />
+                <!-- 8.164/8.168: el precio escaneado por producto es editable en USD y Bs.S con coma o punto
+                     y recalcula Costo USD y Costo anterior → nuevo en vivo sin popup intrusivo. -->
                 <DataGridTemplateColumn Header="{Binding Data.DocumentCostHeader, Source={StaticResource ViewModelProxy}}"
-                                        Width="150">
+                                        Width="155" MinWidth="140">
                     <DataGridTemplateColumn.CellStyle>
                         <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding UnitCostConfidenceBand}" Value="Yellow">
                                     <Setter Property="Background" Value="#FFF3C4" />
+                                    <Setter Property="Foreground" Value="#1F2937" />
+                                    <Setter Property="ToolTip" Value="Confianza OCR media (60–84 %): verifique el costo unitario contra la factura física. Al editarlo se marca como revisado." />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding UnitCostConfidenceBand}" Value="Red">
                                     <Setter Property="Background" Value="#FFD6D6" />
+                                    <Setter Property="Foreground" Value="#1F2937" />
+                                    <Setter Property="ToolTip" Value="Confianza OCR baja (&lt; 60 %): lectura incierta, revise o corrija manualmente el costo unitario." />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -347,11 +418,14 @@
                                            HorizontalAlignment="Right"
                                            Margin="8,0"
                                            Visibility="{Binding IsEditorEnabled, Converter={StaticResource InverseBoolToVis}}" />
-                                <TextBox Text="{Binding EditUnitCostDocument, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                <TextBox Text="{Binding EditUnitCostDocumentText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         Validation.ErrorTemplate="{x:Null}"
                                          IsEnabled="{Binding IsEditorEnabled}"
                                          Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}"
+                                         HorizontalAlignment="Stretch"
                                          HorizontalContentAlignment="Right"
+                                         MinWidth="85"
                                          Padding="5,2"
                                          VerticalContentAlignment="Center"
                                          AutomationProperties.Name="Costo factura OCR editable" />
@@ -359,24 +433,48 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <!-- 8.165: factor de conversión caja→unidad (divisor): costo ÷ factor, cantidad × factor. -->
-                <DataGridTemplateColumn Header="Factor" Width="80"
+                <!-- 8.165/8.168: factor de conversión caja→unidad (divisor): costo ÷ factor, cantidad × factor. -->
+                <DataGridTemplateColumn Header="Factor" Width="95" MinWidth="80"
                                         Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <TextBox Text="{Binding ConversionFactor, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                            <TextBox Text="{Binding ConversionFactorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     Validation.ErrorTemplate="{x:Null}"
                                      IsEnabled="{Binding CanApprove}"
+                                     HorizontalAlignment="Stretch"
                                      HorizontalContentAlignment="Right"
+                                     MinWidth="60"
                                      Padding="5,2"
-                                     ToolTip="Factor de conversión (divisor): la factura viene por caja/bulto y el local vende por unidad. Al confirmar: costo unitario ÷ factor y cantidad × factor. Se recuerda por proveedor y producto para las próximas facturas (editable si cambia la facturación)."
-                                     AutomationProperties.Name="Factor de conversion por producto" />
+                                     VerticalContentAlignment="Center"
+                                     AutomationProperties.Name="Factor de conversion por producto">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                        <Setter Property="ToolTip" Value="Factor de conversión (divisor): la factura viene por caja/bulto y el local vende por unidad. Al confirmar: costo unitario ÷ factor y cantidad × factor. Se recuerda por proveedor y producto para las próximas facturas." />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasInvalidConversionFactor}" Value="True">
+                                                <Setter Property="BorderBrush" Value="#DC2626" />
+                                                <Setter Property="ToolTip" Value="El factor debe ser un número mayor a cero (mientras esté vacío o en 0 se usa 1 como divisor seguro)." />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Costo anterior → nuevo" Binding="{Binding CostComparison}" Width="160" />
-                <DataGridTemplateColumn Header="Aprobar" Width="85"
+                <DataGridTextColumn Header="Costo anterior → nuevo" Binding="{Binding CostComparison, Mode=OneWay}" Width="185" MinWidth="175" />
+                <DataGridTemplateColumn Width="115" MinWidth="105"
                                         Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
+                    <DataGridTemplateColumn.Header>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <CheckBox IsChecked="{Binding Data.AreAllApprovableLinesApproved, Source={StaticResource ViewModelProxy}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      IsEnabled="{Binding Data.HasApprovableLines, Source={StaticResource ViewModelProxy}}"
+                                      VerticalAlignment="Center"
+                                      ToolTip="Marcar o desmarcar todas las líneas aprobables"
+                                      AutomationProperties.Name="Aprobar todas las líneas" />
+                            <TextBlock Text="Aprobar" VerticalAlignment="Center" Margin="6,0,0,0" />
+                        </StackPanel>
+                    </DataGridTemplateColumn.Header>
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <CheckBox IsChecked="{Binding IsApproved, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -384,24 +482,6 @@
                                       HorizontalAlignment="Center"
                                       VerticalAlignment="Center"
                                       AutomationProperties.Name="Aprobar línea de factura" />
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="Crear Producto" Width="140"
-                                        Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Button Content="Crear Producto"
-                                    Command="{Binding Data.CreateProductCommand, Source={StaticResource ViewModelProxy}}"
-                                    CommandParameter="{Binding}"
-                                    Style="{StaticResource MaterialDesignOutlinedButton}"
-                                    Visibility="{Binding CanCreateProduct, Converter={StaticResource BoolToVis}}"
-                                    IsEnabled="{Binding CanCreateProduct}"
-                                    FontSize="11"
-                                    Padding="8,2"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.Name="Crear producto desde la línea" />
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>

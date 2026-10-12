@@ -1,3 +1,4 @@
+using Core.Common;
 using Core.DTOs;
 using Core.Interfaces;
 using Inventory.Module.Services.Ocr;
@@ -527,5 +528,29 @@ public class OcrTableParserTests
 
         Assert.Equal(-4250m, line.Quantity);
         Assert.Equal(1.10m, line.UnitCost);
+    }
+
+    [Theory]
+    [InlineData("MANTEQUILLA MAVESA 36%250GR", "MANTEQUILLA MAVESA 36X250GR")]
+    [InlineData("CAFE MADRID 1%5", "CAFE MADRID 1X5")]
+    [InlineData("SERVILLETAS 10%20 UNI", "SERVILLETAS 10X20 UNI")]
+    [InlineData("VASOS PLASTICOS 10420 UNI", "VASOS PLASTICOS 10X20 UNI")]
+    [InlineData("HARINA 1440 UND", "HARINA 1X40 UND")]
+    [InlineData("AVENA 400GR", "AVENA 400GR")]
+    [InlineData("ATUN 140GR", "ATUN 140GR")]
+    [InlineData("REFRESCO 1400GR", "REFRESCO 1400GR")]
+    [InlineData("LECHE DESCREMADA 2% 1L", "LECHE DESCREMADA 2% 1L")]
+    public void SanitizeProductName_NormalizesOcrPackMultipliers_WithoutFalsePositives(
+        string rawName,
+        string expectedName)
+    {
+        Assert.Equal(expectedName, OcrConfidence.SanitizeProductName(rawName));
+
+        var page = Page([
+            .. GenericHeader(),
+            .. DataRow(rawName, "2", "4,50", 130)]);
+
+        var line = Assert.Single(_parser.Parse([page], template: null));
+        Assert.Equal(expectedName, line.Name);
     }
 }

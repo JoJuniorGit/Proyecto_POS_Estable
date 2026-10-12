@@ -1,8 +1,6 @@
 using Core.Common;
 using Core.DTOs;
 using Core.Interfaces;
-using System.Globalization;
-using System.Text;
 
 namespace Inventory.Module.Services.Ocr;
 
@@ -14,7 +12,7 @@ namespace Inventory.Module.Services.Ocr;
 /// <see cref="OcrExtractedLineDto"/> con confianza por campo (mínimo de las palabras que lo
 /// componen, 1 decimal; campo no resuelto = <c>OcrConfidence.Unresolved</c>).
 /// </summary>
-public sealed class InvoiceTableParser
+public sealed partial class InvoiceTableParser
 {
     /// <summary>Fracción de la altura mediana usada como tolerancia vertical de clustering.</summary>
     public const double RowToleranceHeightFactor = 0.6;
@@ -103,67 +101,6 @@ public sealed class InvoiceTableParser
         }
 
         return lines;
-    }
-
-    /// <summary>
-    /// Agrupa las palabras de una página en filas por centro Y (tolerancia 0.6× la altura
-    /// mediana) y ordena cada fila de izquierda a derecha por centro X. Ignora texto vacío.
-    /// </summary>
-    private static List<List<OcrWord>> ClusterRows(IReadOnlyList<OcrWord> words)
-    {
-        var visible = words.Where(word => !string.IsNullOrWhiteSpace(word.Text)).ToList();
-        if (visible.Count == 0)
-        {
-            return [];
-        }
-
-        var tolerance = ComputeRowTolerance(visible);
-        var ordered = visible
-            .OrderBy(CenterY)
-            .ThenBy(CenterX)
-            .ToList();
-        var rows = new List<List<OcrWord>>();
-        var current = new List<OcrWord> { ordered[0] };
-        var centerSum = CenterY(ordered[0]);
-
-        for (var index = 1; index < ordered.Count; index++)
-        {
-            var word = ordered[index];
-            var rowCenter = centerSum / current.Count;
-            if (Math.Abs(CenterY(word) - rowCenter) <= tolerance)
-            {
-                current.Add(word);
-                centerSum += CenterY(word);
-            }
-            else
-            {
-                rows.Add(SortByX(current));
-                current = [word];
-                centerSum = CenterY(word);
-            }
-        }
-
-        rows.Add(SortByX(current));
-        return rows;
-    }
-
-    /// <summary>Mediana de las alturas positivas de la página, escalada por el factor de tolerancia.</summary>
-    private static double ComputeRowTolerance(IReadOnlyList<OcrWord> words)
-    {
-        var heights = words
-            .Select(word => word.Height)
-            .Where(height => height > 0)
-            .OrderBy(height => height)
-            .ToArray();
-        if (heights.Length == 0)
-        {
-            return 0;
-        }
-
-        var median = heights.Length % 2 == 1
-            ? heights[heights.Length / 2]
-            : (heights[(heights.Length / 2) - 1] + heights[heights.Length / 2]) / 2;
-        return median * RowToleranceHeightFactor;
     }
 
     /// <summary>Elige como encabezado la fila con más columnas reconocidas (mínimo 2).</summary>
@@ -356,7 +293,7 @@ public sealed class InvoiceTableParser
         return new OcrExtractedLineDto(
             supplierCode.Value,
             barcode.Value,
-            name.Value,
+            OcrConfidence.SanitizeProductName(name.Value),
             quantity.Value,
             unitCost.Value,
             name.Confidence,
@@ -453,172 +390,6 @@ public sealed class InvoiceTableParser
         var clamped = Math.Clamp((decimal)minimum, 0m, 100m);
         return Math.Round(clamped, 1, MidpointRounding.AwayFromZero);
     }
-
-    /// <summary>
-    /// 8.147-T3/T9-D2: espejo exacto de <c>TryParseDecimal</c> de
-    /// <c>Desktop.Client.Core/Services/SupplierInvoiceService.Parsing.cs</c> para que la ruta OCR y
-    /// la tabular interpreten los números igual. Símbolos de moneda y espacios fuera; con coma y
-    /// punto presentes el último es el separador decimal; coma sola = decimal es-VE; punto(s) solos
-    /// = separador de miles cuando cada grupo posterior a un punto tiene exactamente 3 dígitos y
-    /// hay al menos un dígito antes del primer punto ("4.250" → 4250, "1.234.567" → 1234567).
-    /// Puntos con 1–2 o 4+ dígitos después quedan decimales ("4.25" → 4.25, "4.2500" → 4.25).
-    /// Trade-off aceptado: una cantidad de 3 decimales escrita con punto se lee como miles; es-VE
-    /// escribe esos decimales con coma.
-    /// </summary>
-    private static bool TryParseDecimal(string? value, out decimal result)
-    {
-        result = 0m;
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return false;
-        }
-
-        // 8.163: además de moneda y espacios se descartan comillas tipográficas/rectas de OCR
-        // (p. ej. “72.00 junto a una raya manuscrita).
-        var normalized = new string(value
-            .Where(character => character != ' ' && character != '$' && character != '€' &&
-                character is not ('\u201C' or '\u201D' or '\u2018' or '\u2019' or '«' or '»' or '"'))
-            .ToArray());
-        var commaIndex = normalized.LastIndexOf(',');
-        var dotIndex = normalized.LastIndexOf('.');
-
-        if (commaIndex >= 0 && dotIndex >= 0)
-        {
-            if (commaIndex > dotIndex)
-            {
-                normalized = normalized.Replace(".", string.Empty, StringComparison.Ordinal).Replace(',', '.');
-            }
-            else
-            {
-                normalized = normalized.Replace(",", string.Empty, StringComparison.Ordinal);
-            }
-        }
-        else if (commaIndex >= 0)
-        {
-            normalized = normalized.Replace(',', '.');
-        }
-        else if (dotIndex >= 0 && IsThousandsSeparatedByDots(normalized))
-        {
-            normalized = normalized.Replace(".", string.Empty, StringComparison.Ordinal);
-        }
-
-        return decimal.TryParse(
-            normalized,
-            NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
-            CultureInfo.InvariantCulture,
-            out result);
-    }
-
-    /// <summary>
-    /// 8.147-T9/D2 / 8.163: es-VE usa el punto como separador de miles y la coma como decimal. Un
-    /// valor con puntos solos es formato de miles cuando cada grupo posterior a un punto tiene
-    /// exactamente 3 dígitos, hay un dígito inmediatamente antes del primer punto y el entero no
-    /// arranca con cero ("0.614" es decimal).
-    /// </summary>
-    private static bool IsThousandsSeparatedByDots(string value)
-    {
-        // 8.163: un cero inicial descarta la convención de miles ("0.614" es 0,614, no 614):
-        // en es-VE los miles nunca se escriben con cero delante.
-        var digitStart = value[0] is '-' or '+' ? 1 : 0;
-        if (digitStart < value.Length && value[digitStart] == '0')
-        {
-            return false;
-        }
-
-        var firstDot = value.IndexOf('.');
-        if (firstDot <= 0 || !char.IsAsciiDigit(value[firstDot - 1]))
-        {
-            return false;
-        }
-
-        var groupLength = 0;
-        for (var index = firstDot + 1; index < value.Length; index++)
-        {
-            var character = value[index];
-            if (character == '.')
-            {
-                if (groupLength != 3)
-                {
-                    return false;
-                }
-
-                groupLength = 0;
-            }
-            else if (char.IsAsciiDigit(character))
-            {
-                groupLength++;
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        return groupLength == 3;
-    }
-
-    /// <summary>Normaliza a minúsculas sin diacríticos ni símbolos (solo letras y dígitos).</summary>
-    private static string Normalize(string text)
-    {
-        var decomposed = text.Trim().Normalize(NormalizationForm.FormD);
-        var normalized = new StringBuilder(decomposed.Length);
-        foreach (var character in decomposed)
-        {
-            if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark &&
-                char.IsLetterOrDigit(character))
-            {
-                normalized.Append(char.ToLowerInvariant(character));
-            }
-        }
-
-        return normalized.ToString();
-    }
-
-    private static bool MatchesGeneric(string normalizedWord, string keyword) =>
-        normalizedWord.Equals(keyword, StringComparison.Ordinal) ||
-        normalizedWord.StartsWith(keyword, StringComparison.Ordinal);
-
-    private static bool IsRangeUsed(bool[] used, int start, int length)
-    {
-        for (var index = start; index < start + length; index++)
-        {
-            if (used[index])
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static void MarkUsed(bool[] used, int start, int length)
-    {
-        for (var index = start; index < start + length; index++)
-        {
-            used[index] = true;
-        }
-    }
-
-    /// <summary>Centro X de la caja que engloba la secuencia de palabras.</summary>
-    private static double SequenceCenterX(IReadOnlyList<OcrWord> row, int start, int length)
-    {
-        var left = double.MaxValue;
-        var right = double.MinValue;
-        for (var index = start; index < start + length; index++)
-        {
-            left = Math.Min(left, row[index].X);
-            right = Math.Max(right, row[index].X + row[index].Width);
-        }
-
-        return (left + right) / 2;
-    }
-
-    private static List<OcrWord> SortByX(List<OcrWord> row) =>
-        row.OrderBy(CenterX).ToList();
-
-    private static double CenterX(OcrWord word) => word.X + (word.Width / 2);
-
-    private static double CenterY(OcrWord word) => word.Y + (word.Height / 2);
 
     private enum InvoiceColumn
     {
