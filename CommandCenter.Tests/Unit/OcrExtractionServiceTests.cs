@@ -117,6 +117,50 @@ public class OcrExtractionServiceTests
     }
 
     [Fact]
+    public async Task ExtractAsync_WhenPrimaryYieldsNoUsableLines_FallsBackToRawResult()
+    {
+        // 8.170: si el pipeline actual no produce filas con identificador, se intenta el candidato
+        // raw y gana si aporta filas usables (caso real: la factura 4D mejorada).
+        var engine = new StubOcrEngine(call => call switch
+        {
+            0 => Page(Word("123", 40, 100), Word("456", 200, 100)),
+            1 => Page([.. GenericHeader(), .. DataRow("Café", "2", "4,50", 130)]),
+            _ => Page()
+        });
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Equal("Café", Assert.Single(result.Lines).Name);
+        Assert.Equal(2, engine.Calls);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_WhenPrimaryHasUsableLines_DoesNotRunFallback()
+    {
+        // Cortocircuito: con filas usables del pipeline actual no hay costo extra de OCR.
+        var engine = new StubOcrEngine(_ => Page([.. GenericHeader(), .. DataRow("Café", "2", "4,50", 130)]));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Single(result.Lines);
+        Assert.Equal(1, engine.Calls);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_WhenAllCandidatesFail_ReturnsEmptyAfterBoundedAttempts()
+    {
+        var engine = new StubOcrEngine(_ => Page(Word("123", 40, 100), Word("456", 200, 100)));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Empty(result.Lines);
+        Assert.Equal(3, engine.Calls);
+    }
+
+    [Fact]
     public async Task ExtractAsync_Pdf_ReturnsLinesInPageOrder()
     {
         var pdf = CreatePdf(3);
@@ -289,6 +333,9 @@ public class OcrExtractionServiceTests
         {
             _pageFactory = pageFactory;
         }
+
+        /// <summary>8.170: llamadas acumuladas (verificación del cortocircuito de candidatos).</summary>
+        public int Calls => _calls;
 
         public Task<OcrPage> RecognizeAsync(OcrImage image, CancellationToken cancellationToken = default)
         {

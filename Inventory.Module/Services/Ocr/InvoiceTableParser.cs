@@ -281,11 +281,13 @@ public sealed partial class InvoiceTableParser
         var quantity = BuildNumber(buckets, bands, InvoiceColumn.Quantity);
         var unitCost = BuildNumber(buckets, bands, InvoiceColumn.UnitCost);
 
-        // 8.163: una fila sin identificador ni valores numéricos (rayas manuscritas,
-        // perforaciones, viñetas) no aporta nada: no se emite para no bloquear el flujo con
-        // filas fantasma.
-        if (name.Value is null && supplierCode.Value is null && barcode.Value is null &&
-            quantity.Value is null && unitCost.Value is null)
+        // 8.163/8.170: sin identificador legible Y sin cantidad la fila no aporta nada (costos
+        // sueltos del pie, rayas manuscritas, perforaciones): no se emite para no bloquear el
+        // flujo con filas fantasma.
+        var hasIdentifier = name.Value is not null
+            || supplierCode.Value is not null
+            || barcode.Value is not null;
+        if (!hasIdentifier && quantity.Value is null)
         {
             return null;
         }

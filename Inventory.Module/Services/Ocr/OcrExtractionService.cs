@@ -76,23 +76,34 @@ public sealed class OcrExtractionService : IOcrExtractionService
 
         var pages = _documentDecoder.DecodePages(fileBytes, extension);
 
-        var ocrPages = new List<OcrPage>(pages.Count);
-        foreach (var page in pages)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            using var decoded = Cv2.ImDecode(page.EncodedBytes, ImreadModes.Color);
-            if (decoded.Empty())
-            {
-                throw new ArgumentException("No se pudo decodificar una página del documento para el OCR.");
-            }
-
-            using var processed = _preprocessor.Preprocess(decoded);
-            var processedPng = _preprocessor.EncodePng(processed);
-            var image = new OcrImage(processedPng, processed.Width, processed.Height);
-            ocrPages.Add(await _ocrEngine.RecognizeAsync(image, cancellationToken).ConfigureAwait(false));
-        }
-
+        // 8.170: la calidad de la imagen varía. Si el pipeline principal (binarizado automático)
+        // no produce NINGUNA fila con identificador se escalan candidatos de respaldo por
+        // RESULTADO (raw y luego adaptativo sin deskew), con cortocircuito: en imágenes buenas el
+        // costo de OCR no cambia.
+        var ocrPages = await RecognizeDocumentAsync(pages, OcrPreprocessingMode.Primary, cancellationToken);
         var lines = _parser.Parse(ocrPages, request.ColumnMapping);
+        if (CountUsableLines(lines) == 0)
+        {
+            foreach (var mode in new[] { OcrPreprocessingMode.Raw, OcrPreprocessingMode.AdaptiveFallback })
+            {
+                var candidatePages = await RecognizeDocumentAsync(pages, mode, cancellationToken);
+                var candidateLines = _parser.Parse(candidatePages, request.ColumnMapping);
+                if (CountUsableLines(candidateLines) > CountUsableLines(lines))
+                {
+                    ocrPages = candidatePages;
+                    lines = candidateLines;
+                    _logger.LogInformation(
+                        "OCR fallback {Mode} selected for '{FileName}': primary pipeline yielded no usable lines.",
+                        mode,
+                        request.FileName);
+                }
+
+                if (CountUsableLines(lines) > 0)
+                {
+                    break;
+                }
+            }
+        }
         var result = new OcrExtractionResultDto(
             lines,
             DetectRif(ocrPages),
@@ -108,6 +119,56 @@ public sealed class OcrExtractionService : IOcrExtractionService
 
         return result;
     }
+
+    /// <summary>8.170: modos de preprocesamiento candidatos para la escalera de respaldo.</summary>
+    private enum OcrPreprocessingMode
+    {
+        Primary,
+        Raw,
+        AdaptiveFallback
+    }
+
+    /// <summary>
+    /// 8.170: reconoce el documento completo con el modo de preprocesamiento indicado. El parseo
+    /// se hace por DOCUMENTO (no por página) para conservar la herencia de anclas entre páginas
+    /// de continuación del parser.
+    /// </summary>
+    private async Task<IReadOnlyList<OcrPage>> RecognizeDocumentAsync(
+        IReadOnlyList<OcrImage> pages,
+        OcrPreprocessingMode mode,
+        CancellationToken cancellationToken)
+    {
+        var ocrPages = new List<OcrPage>(pages.Count);
+        foreach (var page in pages)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var decoded = Cv2.ImDecode(page.EncodedBytes, ImreadModes.Color);
+            if (decoded.Empty())
+            {
+                throw new ArgumentException("No se pudo decodificar una página del documento para el OCR.");
+            }
+
+            using var processed = mode switch
+            {
+                OcrPreprocessingMode.Raw => null,
+                OcrPreprocessingMode.AdaptiveFallback => _preprocessor.PreprocessAdaptiveFallback(decoded),
+                _ => _preprocessor.Preprocess(decoded)
+            };
+            var sourceImage = processed ?? decoded;
+            var encodedPng = _preprocessor.EncodePng(sourceImage);
+            var image = new OcrImage(encodedPng, sourceImage.Width, sourceImage.Height);
+            ocrPages.Add(await _ocrEngine.RecognizeAsync(image, cancellationToken).ConfigureAwait(false));
+        }
+
+        return ocrPages;
+    }
+
+    /// <summary>Filas con identificador legible (nombre/código/barras): mismo criterio que el cliente.</summary>
+    private static int CountUsableLines(IReadOnlyList<OcrExtractedLineDto> lines) =>
+        lines.Count(line =>
+            !string.IsNullOrWhiteSpace(line.Name) ||
+            !string.IsNullOrWhiteSpace(line.SupplierCode) ||
+            !string.IsNullOrWhiteSpace(line.Barcode));
 
     /// <summary>Guardas zero-trust de subida: nombre, contenido, extensión y tamaño (S4/S7).</summary>
     private static byte[] Validate(OcrExtractionRequestDto request)

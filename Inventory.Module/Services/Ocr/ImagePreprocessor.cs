@@ -13,6 +13,12 @@ public sealed class ImagePreprocessor
     /// <summary>Desviación estándar de grises bajo la cual Otsu se considera poco fiable.</summary>
     public const double LowVarianceStdDevThreshold = 18.0;
 
+    /// <summary>8.170: tamaño de bloque del umbral adaptativo de respaldo (validado con fotos reales).</summary>
+    public const int FallbackAdaptiveBlockSize = 51;
+
+    /// <summary>8.170: constante C del umbral adaptativo de respaldo (validada con fotos reales).</summary>
+    public const double FallbackAdaptiveConstant = 15.0;
+
     /// <summary>Ángulo (grados) bajo el cual el deskew no rota (evita remuestreos inútiles).</summary>
     public const double MinDeskewAngleDegrees = 0.1;
 
@@ -155,6 +161,30 @@ public sealed class ImagePreprocessor
         }
 
         return Rotate(binarized, -detectedSkewAngleDegrees);
+    }
+
+    /// <summary>
+    /// 8.170: candidato de respaldo para imágenes de bajo contraste donde el umbral automático
+    /// pierde la tabla (validado contra fotos reales: 4D mejorada y previas). Fuerza el umbral
+    /// adaptativo (bloque 51 / C 15) y NO aplica deskew: la estimación de inclinación sobre estas
+    /// imágenes resultó destructiva en los casos verificados (rotación espuria). Se usa solo
+    /// cuando el pipeline principal no produce filas usables.
+    /// </summary>
+    public Mat PreprocessAdaptiveFallback(Mat source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        using var gray = ToGrayscale(source);
+        using var contrasted = IncreaseContrast(gray);
+        var binarized = new Mat();
+        Cv2.AdaptiveThreshold(
+            contrasted,
+            binarized,
+            255,
+            AdaptiveThresholdTypes.GaussianC,
+            ThresholdTypes.Binary,
+            FallbackAdaptiveBlockSize,
+            FallbackAdaptiveConstant);
+        return binarized;
     }
 
     /// <summary>Codifica un Mat a PNG (previews y entrada del motor OCR).</summary>

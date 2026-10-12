@@ -513,6 +513,21 @@ public class OcrTableParserTests
     }
 
     [Fact]
+    public void CostOnlyRowWithoutIdentifierOrQuantity_IsNotEmitted()
+    {
+        // 8.170: una fila del pie que solo aporta un costo suelto (sin nombre/código ni cantidad)
+        // no se emite; antes bloqueaba el OCR con "Filas OCR incompletas".
+        var page = Page([
+            .. GenericHeader(),
+            .. DataRow("Harina", "2", "4,50", 130),
+            Word("97,347", 340, 160)]);
+
+        var line = Assert.Single(_parser.Parse([page], template: null));
+
+        Assert.Equal("Harina", line.Name);
+    }
+
+    [Fact]
     public void SplitNumericTokens_WithSign_StillJoinBeforeFallbackSelection()
     {
         // 8.162 regresión: si el bucket completo parsea (número partido en palabras, p. ej. el
