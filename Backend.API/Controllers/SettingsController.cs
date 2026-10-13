@@ -176,6 +176,41 @@ public class SettingsController : ControllerBase
         await _settingsService.SetSettingAsync(Core.Constants.SettingKeys.AllowNegativeStock, request.Allowed.ToString());
         return Ok(new AllowNegativeStockResponseDto { Allowed = request.Allowed });
     }
+
+    // 8.177-T2 (S3): razón social usada en el encabezado legal de las exportaciones del Kardex.
+    [HttpGet("company-name")]
+    public async Task<ActionResult> GetCompanyNameAsync(CancellationToken cancellationToken = default)
+    {
+        var value = await _settingsService.GetSettingAsync("CompanyLegalName");
+        return Ok(new CompanyNameSettingResponseDto
+        {
+            Name = string.IsNullOrWhiteSpace(value) ? "COMMANDCENTER POS" : value
+        });
+    }
+
+    [HttpPost("company-name")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> SetCompanyNameAsync([FromBody] SetCompanyNameRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!_currentUserService.CanMutateSettings)
+        {
+            return this.ApiForbidden("Su rol no tiene permisos para actualizar la razón social.");
+        }
+
+        var value = request?.Name?.Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            return this.ApiBadRequest("La razón social no puede estar vacía.");
+        }
+
+        if (value.Length > 120)
+        {
+            return this.ApiBadRequest("La razón social no puede exceder los 120 caracteres.");
+        }
+
+        await _settingsService.SetSettingAsync("CompanyLegalName", value);
+        return Ok(new CompanyNameSettingResponseDto { Name = value });
+    }
 }
 
 public class SetExchangeRateRequest
@@ -218,4 +253,14 @@ public class CurrencyFormatResponseDto
 public class AllowNegativeStockResponseDto
 {
     public bool Allowed { get; set; }
+}
+
+public class SetCompanyNameRequest
+{
+    public string Name { get; set; } = string.Empty;
+}
+
+public class CompanyNameSettingResponseDto
+{
+    public string Name { get; set; } = string.Empty;
 }
