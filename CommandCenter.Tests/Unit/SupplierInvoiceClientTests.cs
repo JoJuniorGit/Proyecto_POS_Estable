@@ -23,15 +23,22 @@ namespace CommandCenter.Tests.Unit;
 public sealed class SupplierInvoiceClientTests
 {
     [Fact]
-    public void DocumentCostHeader_FollowsInvoiceCurrency()
+    public void DocumentCostHeader_FollowsHeaderSelection_AndLoadDoesNotReassignIt()
     {
-        // 8.164: el encabezado del costo editable acompaña la moneda del documento (antes la
-        // columna solo existía para Bs.S y en USD el precio escaneado no era editable).
+        // 8.164/8.178: el encabezado del costo editable acompaña la moneda VIVA de la cabecera;
+        // cargar/recargar la factura no re-asigna la selección (aislamiento del flujo "Actualizar"
+        // y protección de la corrección manual de la tasa).
         var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
         Assert.Equal("Costo factura (USD)", viewModel.DocumentCostHeader);
 
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
+        Assert.Equal("Costo factura (Bs.S)", viewModel.DocumentCostHeader);
+
         viewModel.LoadStagedInvoice(CreateInvoice(CurrencyCodes.BsS, CreateLine(1)));
         Assert.Equal("Costo factura (Bs.S)", viewModel.DocumentCostHeader);
+
+        viewModel.SelectedCurrency = CurrencyCodes.Usd;
+        Assert.Equal("Costo factura (USD)", viewModel.DocumentCostHeader);
 
         viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1)));
         Assert.Equal("Costo factura (USD)", viewModel.DocumentCostHeader);
@@ -125,6 +132,8 @@ public sealed class SupplierInvoiceClientTests
         {
             OldCostPriceUSD = 0.80m
         };
+        // 8.178: flujo real: la moneda del documento ya está seleccionada antes de cargar.
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
         viewModel.LoadStagedInvoice(CreateInvoice(CurrencyCodes.BsS, dto));
 
         var line = Assert.Single(viewModel.Lines);
@@ -482,6 +491,8 @@ public sealed class SupplierInvoiceClientTests
     public void BsSInvoice_ExposesDocumentCostAndCurrencyFlag()
     {
         var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        // 8.178: la cabecera es del revisor; en el flujo real el selector ya está en Bs.S antes de cargar.
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
         viewModel.LoadStagedInvoice(CreateInvoice(
             CurrencyCodes.BsS,
             CreateLine(1, unitCost: 10m, unitCostDocument: 365m)));
@@ -1539,6 +1550,8 @@ public sealed class SupplierInvoiceClientTests
         dialog.Setup(d => d.ShowConfirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
 
         var viewModel = CreateViewModel(service.Object, dialog.Object);
+        // 8.178: flujo real: la moneda del documento ya está seleccionada antes de cargar.
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
         viewModel.LoadStagedInvoice(staged);
 
         var line1 = viewModel.Lines[0];

@@ -45,10 +45,11 @@ public sealed class SupplierInvoiceCurrencyReactivityTests
     }
 
     [Fact]
-    public void LoadStagedInvoice_AlignsHeaderCurrencyWithDocumentAndRecomputesRows()
+    public void LoadStagedInvoice_DoesNotReassignHeaderCurrencyOrRate_RowsFollowLiveHeader()
     {
-        // 8.176: al cargar la factura la cabecera se alinea con la moneda del documento y las filas
-        // quedan interpretadas con esa moneda y la tasa vigente (flujo stage/confirm/link).
+        // 8.178: cargar/recargar la factura no re-asigna Moneda/Tasa de la cabecera (aislamiento
+        // del flujo "Actualizar" y protección de la corrección manual); las filas se interpretan
+        // con el estado VIVO de la cabecera.
         var viewModel = CreateViewModel();
         Assert.Equal(CurrencyCodes.Usd, viewModel.SelectedCurrency);
 
@@ -56,10 +57,10 @@ public sealed class SupplierInvoiceCurrencyReactivityTests
             CurrencyCodes.BsS,
             CreateLine(1, unitCost: 10m, unitCostDocument: 365m)));
 
-        Assert.Equal(CurrencyCodes.BsS, viewModel.SelectedCurrency);
-        Assert.Equal("Costo factura (Bs.S)", viewModel.DocumentCostHeader);
-        Assert.Equal("36.50", viewModel.AppliedRateText);
-        Assert.Equal(10m, Assert.Single(viewModel.Lines).UnitCostUSD);
+        Assert.Equal(CurrencyCodes.Usd, viewModel.SelectedCurrency);
+        Assert.Equal("Costo factura (USD)", viewModel.DocumentCostHeader);
+        Assert.Equal(string.Empty, viewModel.AppliedRateText);
+        Assert.Equal(365m, Assert.Single(viewModel.Lines).UnitCostUSD);
     }
 
     [Fact]

@@ -46,11 +46,11 @@ public partial class SupplierInvoiceViewModel
 
         if (IsBsSCurrency)
         {
-            // 8.172: si el OCR ya detectó una tasa de cambio en la factura, prevalece y reemplaza
-            // el valor mostrado en la sección al pasar a Bs.S.
-            if (OcrDetectedExchangeRate is decimal detectedRate && detectedRate > 0m)
+            // 8.172/8.178: la tasa detectada por el OCR prevalece SOLO si el revisor no corrigió la
+            // tasa a mano: una corrección manual nunca se revierte al cambiar de moneda.
+            if (OcrDetectedExchangeRate is decimal detectedRate && detectedRate > 0m && !_isRateManuallyEdited)
             {
-                AppliedRateText = FormatAppliedRateText(detectedRate);
+                SetAppliedRateTextProgrammatically(FormatAppliedRateText(detectedRate));
             }
             else if (string.IsNullOrWhiteSpace(AppliedRateText))
             {
@@ -63,6 +63,13 @@ public partial class SupplierInvoiceViewModel
 
     partial void OnAppliedRateTextChanged(string value)
     {
+        // 8.178: toda escritura que no venga de un flujo programático (OCR/prefill/carga) es una
+        // corrección manual del revisor y pasa a proteger la tasa.
+        if (!_isApplyingProgrammaticRate)
+        {
+            _isRateManuallyEdited = true;
+        }
+
         OnPropertyChanged(nameof(HasValidAppliedRate));
         OnPropertyChanged(nameof(ShowRateValidationHint));
         OnPropertyChanged(nameof(CanStageInvoice));
@@ -363,7 +370,7 @@ public partial class SupplierInvoiceViewModel
                 && OcrDetectedExchangeRate is null
                 && string.IsNullOrWhiteSpace(AppliedRateText))
             {
-                AppliedRateText = FormatAppliedRateText(currentRate.Rate);
+                SetAppliedRateTextProgrammatically(FormatAppliedRateText(currentRate.Rate));
             }
         }
         catch (Exception)

@@ -62,6 +62,29 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _appliedRateText = string.Empty;
 
+    // 8.178: distingue una edición manual de la tasa (el OCR no debe pisarla) de una escritura
+    // programática (detección OCR, prefill de tasa vigente, carga de factura).
+    private bool _isRateManuallyEdited;
+    private bool _isApplyingProgrammaticRate;
+
+    /// <summary>
+    /// 8.178: escribe la tasa por código sin marcarla como corrección manual del revisor; junto a
+    /// <see cref="_isRateManuallyEdited"/> protege la corrección manual de ser reemplazada por la
+    /// tasa detectada por el OCR en cambios de moneda.
+    /// </summary>
+    private void SetAppliedRateTextProgrammatically(string text)
+    {
+        _isApplyingProgrammaticRate = true;
+        try
+        {
+            AppliedRateText = text;
+        }
+        finally
+        {
+            _isApplyingProgrammaticRate = false;
+        }
+    }
+
     public bool IsBsSCurrency => string.Equals(SelectedCurrency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
     public bool IsBsSInvoice => string.Equals(StagedInvoice?.Currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
 
@@ -405,17 +428,13 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(invoice);
         StagedInvoice = invoice;
         ClearLines();
-        // 8.176: la cabecera es la fuente de verdad viva de la interpretación de la grilla; al
-        // cargar la factura se alinea con la moneda del documento (stage/confirm/link devuelven
-        // la vigente) para que el título dinámico y las filas queden consistentes.
-        if (!string.Equals(SelectedCurrency, invoice.Currency, StringComparison.Ordinal))
-        {
-            SelectedCurrency = invoice.Currency;
-        }
+        // 8.178: la cabecera (Moneda/Tasa) pertenece al revisor y NUNCA se re-asigna al cargar o
+        // recargar la factura (aislamiento del flujo "Actualizar"); la interpretación viva se
+        // propaga a las filas y al snapshot al final de la carga.
 
         if (IsBsSCurrency && string.IsNullOrWhiteSpace(AppliedRateText) && invoice.AppliedRate > 0m)
         {
-            AppliedRateText = FormatAppliedRateText(invoice.AppliedRate);
+            SetAppliedRateTextProgrammatically(FormatAppliedRateText(invoice.AppliedRate));
         }
 
         var effectiveRate = (IsBsSCurrency || IsBsSInvoice)
@@ -445,6 +464,11 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(AreAllApprovableLinesApproved));
         OnPropertyChanged(nameof(CanConfirmInvoice));
         RefreshCommandStates();
+
+        // 8.178: inyecta el estado VIVO de la cabecera (moneda/tasa corregida por el revisor) en
+        // las filas recién cargadas y en el snapshot local; con Bs.S sin tasa válida las filas
+        // quedan en (Bs.S, 0) y el confirm permanece bloqueado.
+        PropagateCurrencyAndRateToLines();
     }
 
     private void AssignExpandedLinkedGroups()

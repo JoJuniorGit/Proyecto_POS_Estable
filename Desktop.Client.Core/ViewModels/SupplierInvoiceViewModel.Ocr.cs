@@ -275,12 +275,16 @@ public partial class SupplierInvoiceViewModel
         // tasa recalcula los montos de la grilla en vivo (PropagateCurrencyAndRateToLines).
         if (OcrDetectedExchangeRate is decimal detectedRate)
         {
+            // 8.178: una nueva detección OCR re-basa la tasa del documento; una corrección manual
+            // previa deja de protegerse (el escaneo más reciente es la referencia).
+            _isRateManuallyEdited = false;
+
             if (!IsBsSCurrency)
             {
                 SelectedCurrency = CurrencyCodes.BsS;
             }
 
-            AppliedRateText = FormatAppliedRateText(detectedRate);
+            SetAppliedRateTextProgrammatically(FormatAppliedRateText(detectedRate));
         }
 
         // Sugerencia best-effort: nunca pisa un valor ya escrito ni selecciona proveedor.
@@ -302,6 +306,7 @@ public partial class SupplierInvoiceViewModel
         OcrDetectedSupplierName = null;
         OcrDetectedInvoiceNumber = null;
         OcrDetectedExchangeRate = null;
+        _isRateManuallyEdited = false; // 8.178
     }
 
     private static string? NormalizeOcrHint(string? value) =>
