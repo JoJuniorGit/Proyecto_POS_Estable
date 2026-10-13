@@ -47,29 +47,46 @@ public sealed partial class InvoiceTableParser
     private static readonly HashSet<string> FooterTerminators =
         ["subtotal", "total", "nota", "gracias", "saldo", "iva", "forma", "tasa"];
 
-    private static bool IsFooterRow(IReadOnlyList<OcrWord> row) =>
-        row.Any(word => FooterTerminators.Contains(Normalize(word.Text)));
-
     /// <summary>Parsea páginas OCR (en orden) a filas de factura.</summary>
     /// <param name="pages">Páginas reconocidas, cada una con sus word-boxes.</param>
     /// <param name="template">Plantilla de columnas del proveedor; null usa solo keywords genéricas.</param>
-    public IReadOnlyList<OcrExtractedLineDto> Parse(IReadOnlyList<OcrPage> pages, SupplierColumnMappingDto? template)
+    /// <param name="ocrTemplate">Plantilla avanzada de escáner OCR del proveedor (anclas, posiciones, reglas numéricas y de texto).</param>
+    public IReadOnlyList<OcrExtractedLineDto> Parse(
+        IReadOnlyList<OcrPage> pages,
+        SupplierColumnMappingDto? template,
+        SupplierOcrTemplateDto? ocrTemplate = null)
     {
         ArgumentNullException.ThrowIfNull(pages);
         var lines = new List<OcrExtractedLineDto>();
         List<ColumnAnchor>? anchors = null;
+        var hasPositionMapping = HasPositionMapping(ocrTemplate);
+        var customHeaderKeywords = ParseKeywordList(ocrTemplate?.HeaderAnchorKeywords);
+        var customFooterKeywords = ParseKeywordList(ocrTemplate?.FooterAnchorKeywords);
 
         foreach (var page in pages)
         {
             var rows = ClusterRows(page.Words);
-            var header = FindHeader(rows, template);
+            if (rows.Count == 0)
+            {
+                continue;
+            }
+
+            var header = FindHeader(rows, template, customHeaderKeywords, hasPositionMapping);
             List<List<OcrWord>> dataRows;
 
             if (header is not null)
             {
-                anchors = header.Anchors;
+                if (header.Anchors.Count >= MinimumHeaderColumns)
+                {
+                    anchors = header.Anchors;
+                }
+
                 // Las filas sobre el encabezado (RIF, datos del proveedor) no son filas de factura.
                 dataRows = rows.Skip(header.RowIndex + 1).ToList();
+            }
+            else if (hasPositionMapping)
+            {
+                dataRows = rows;
             }
             else if (anchors is not null)
             {
@@ -82,17 +99,37 @@ public sealed partial class InvoiceTableParser
                 continue;
             }
 
-            var bands = BuildBands(anchors);
+            var bands = anchors is { Count: >= MinimumHeaderColumns } ? BuildBands(anchors) : null;
+            var medianHeight = ComputeMedianWordHeight(page.Words);
+
             foreach (var row in dataRows)
             {
                 // 8.163: el pie fiscal (totales, nota legal, formas de pago) no son ítems; al
                 // detectar una palabra marcadora se deja de leer la página.
-                if (IsFooterRow(row))
+                if (IsFooterRow(row, customFooterKeywords))
                 {
                     break;
                 }
 
-                var line = MapRow(row, bands);
+                OcrExtractedLineDto? line;
+                if (hasPositionMapping)
+                {
+                    if (IsLikelyHeaderRow(row, template, customHeaderKeywords))
+                    {
+                        continue;
+                    }
+
+                    line = MapRowByPosition(row, ocrTemplate!, medianHeight);
+                }
+                else if (bands is not null)
+                {
+                    line = MapRow(row, bands, ocrTemplate);
+                }
+                else
+                {
+                    continue;
+                }
+
                 if (line is not null)
                 {
                     lines.Add(line);
@@ -103,28 +140,120 @@ public sealed partial class InvoiceTableParser
         return lines;
     }
 
-    /// <summary>Elige como encabezado la fila con más columnas reconocidas (mínimo 2).</summary>
-    private static HeaderMatch? FindHeader(List<List<OcrWord>> rows, SupplierColumnMappingDto? template)
+    private static bool HasPositionMapping(SupplierOcrTemplateDto? ocrTemplate) =>
+        ocrTemplate is not null &&
+        (ocrTemplate.ProductColumnPosition is >= 1 ||
+         ocrTemplate.QuantityColumnPosition is >= 1 ||
+         ocrTemplate.UnitCostColumnPosition is >= 1 ||
+         ocrTemplate.SupplierCodeColumnPosition is >= 1);
+
+    private static bool IsFooterRow(IReadOnlyList<OcrWord> row, IReadOnlyList<string> customFooterKeywords)
+    {
+        if (row.Any(word => FooterTerminators.Contains(Normalize(word.Text))))
+        {
+            return true;
+        }
+
+        if (customFooterKeywords.Count == 0)
+        {
+            return false;
+        }
+
+        return MatchesAnyCustomKeyword(row, customFooterKeywords);
+    }
+
+    /// <summary>Elige como encabezado la fila con más columnas reconocidas (mínimo 2) o anclada por keywords del usuario.</summary>
+    private static HeaderMatch? FindHeader(
+        List<List<OcrWord>> rows,
+        SupplierColumnMappingDto? template,
+        IReadOnlyList<string> customHeaderKeywords,
+        bool hasPositionMapping)
     {
         HeaderMatch? best = null;
         for (var index = 0; index < rows.Count; index++)
         {
             var (anchors, templateMatches) = MatchHeaderRow(rows[index], template);
-            if (anchors.Count < MinimumHeaderColumns)
+            var customHits = CountCustomKeywordMatches(rows[index], customHeaderKeywords);
+
+            if (customHits > 0)
             {
-                continue;
+                templateMatches += customHits * 10;
             }
 
-            // Empate de columnas: gana la fila con más nombres de plantilla y, si persiste, la primera.
+            if (anchors.Count < MinimumHeaderColumns)
+            {
+                if (customHits > 0 && hasPositionMapping)
+                {
+                    return new HeaderMatch(index, anchors, templateMatches);
+                }
+
+                if (customHits >= MinimumHeaderColumns)
+                {
+                    var synthesized = SynthesizeAnchorsFromRow(rows[index]);
+                    if (synthesized.Count >= MinimumHeaderColumns)
+                    {
+                        anchors = synthesized;
+                    }
+                }
+
+                if (anchors.Count < MinimumHeaderColumns)
+                {
+                    continue;
+                }
+            }
+
+            // Si hay keywords de encabezado personalizadas configuradas y alguna fila las cumple,
+            // se priorizan las filas que coinciden con dichas keywords.
             if (best is null ||
-                anchors.Count > best.Anchors.Count ||
-                (anchors.Count == best.Anchors.Count && templateMatches > best.TemplateMatches))
+                (customHits > 0 && best.TemplateMatches < 10) ||
+                ((customHits > 0 || best.TemplateMatches < 10) &&
+                 (anchors.Count > best.Anchors.Count ||
+                  (anchors.Count == best.Anchors.Count && templateMatches > best.TemplateMatches))))
             {
                 best = new HeaderMatch(index, anchors, templateMatches);
             }
         }
 
         return best;
+    }
+
+    private static List<ColumnAnchor> SynthesizeAnchorsFromRow(IReadOnlyList<OcrWord> row)
+    {
+        var anchors = new List<ColumnAnchor>();
+        var defaultOrder = new[]
+        {
+            InvoiceColumn.Name,
+            InvoiceColumn.Quantity,
+            InvoiceColumn.UnitCost,
+            InvoiceColumn.SupplierCode,
+            InvoiceColumn.Barcode
+        };
+
+        for (var i = 0; i < Math.Min(row.Count, defaultOrder.Length); i++)
+        {
+            anchors.Add(new ColumnAnchor(defaultOrder[i], CenterX(row[i])));
+        }
+
+        return anchors;
+    }
+
+    private static bool IsLikelyHeaderRow(
+        IReadOnlyList<OcrWord> row,
+        SupplierColumnMappingDto? template,
+        IReadOnlyList<string> customHeaderKeywords)
+    {
+        if (row.Any(word => TryParseDecimal(word.Text, out _)))
+        {
+            return false;
+        }
+
+        if (customHeaderKeywords.Count > 0 && MatchesAnyCustomKeyword(row, customHeaderKeywords))
+        {
+            return true;
+        }
+
+        var (anchors, _) = MatchHeaderRow(row, template);
+        return anchors.Count >= MinimumHeaderColumns;
     }
 
     /// <summary>
@@ -250,15 +379,19 @@ public sealed partial class InvoiceTableParser
     }
 
     /// <summary>Proyecta una fila a línea; null si no aporta identificador ni valores numéricos (8.163).</summary>
-    private static OcrExtractedLineDto? MapRow(IReadOnlyList<OcrWord> row, IReadOnlyList<Band> bands)
+    private static OcrExtractedLineDto? MapRow(
+        IReadOnlyList<OcrWord> row,
+        IReadOnlyList<Band> bands,
+        SupplierOcrTemplateDto? ocrTemplate = null)
     {
-        if (row.Count == 0)
+        var effectiveRow = ApplyReplacementsToRow(row, ocrTemplate?.CharacterReplacements);
+        if (effectiveRow.Count == 0)
         {
             return null;
         }
 
         var buckets = new Dictionary<InvoiceColumn, List<OcrWord>>();
-        foreach (var word in row)
+        foreach (var word in effectiveRow)
         {
             var column = FindBand(word, bands);
             if (!buckets.TryGetValue(column, out var bucket))
@@ -275,16 +408,90 @@ public sealed partial class InvoiceTableParser
             return null;
         }
 
+        var separatorRule = ocrTemplate?.DecimalSeparator ?? OcrDecimalSeparatorRule.Auto;
         var name = BuildText(buckets, InvoiceColumn.Name, " ");
         var supplierCode = BuildText(buckets, InvoiceColumn.SupplierCode, string.Empty);
         var barcode = BuildText(buckets, InvoiceColumn.Barcode, string.Empty);
-        var quantity = BuildNumber(buckets, bands, InvoiceColumn.Quantity);
-        var unitCost = BuildNumber(buckets, bands, InvoiceColumn.UnitCost);
+        var quantity = BuildNumber(buckets, bands, InvoiceColumn.Quantity, separatorRule);
+        var unitCost = BuildNumber(buckets, bands, InvoiceColumn.UnitCost, separatorRule);
 
+        return CreateExtractedLine(name, supplierCode, barcode, quantity, unitCost, ocrTemplate);
+    }
+
+    /// <summary>
+    /// Proyecta una fila según las posiciones horizontales 1-based configuradas en la plantilla OCR.
+    /// </summary>
+    private static OcrExtractedLineDto? MapRowByPosition(
+        IReadOnlyList<OcrWord> row,
+        SupplierOcrTemplateDto ocrTemplate,
+        double medianHeight)
+    {
+        var effectiveRow = ApplyReplacementsToRow(row, ocrTemplate.CharacterReplacements);
+        if (effectiveRow.Count == 0)
+        {
+            return null;
+        }
+
+        var maxPos = Math.Max(
+            Math.Max(ocrTemplate.ProductColumnPosition ?? 0, ocrTemplate.QuantityColumnPosition ?? 0),
+            Math.Max(ocrTemplate.UnitCostColumnPosition ?? 0, ocrTemplate.SupplierCodeColumnPosition ?? 0));
+
+        var cells = SegmentRowIntoCells(effectiveRow, maxPos, ocrTemplate.ProductColumnPosition, medianHeight);
+        if (cells.Count == 0)
+        {
+            return null;
+        }
+
+        var separatorRule = ocrTemplate.DecimalSeparator;
+        var name = ExtractTextCell(cells, ocrTemplate.ProductColumnPosition, " ");
+        var supplierCode = ExtractTextCell(cells, ocrTemplate.SupplierCodeColumnPosition, string.Empty);
+        var barcode = (Value: (string?)null, Confidence: OcrConfidence.Unresolved);
+        var quantity = ExtractNumberCell(cells, ocrTemplate.QuantityColumnPosition, separatorRule);
+        var unitCost = ExtractNumberCell(cells, ocrTemplate.UnitCostColumnPosition, separatorRule);
+
+        return CreateExtractedLine(name, supplierCode, barcode, quantity, unitCost, ocrTemplate);
+    }
+
+    private static IReadOnlyList<OcrWord> ApplyReplacementsToRow(
+        IReadOnlyList<OcrWord> row,
+        IReadOnlyList<OcrCharacterReplacementRuleDto>? replacements)
+    {
+        if (replacements is not { Count: > 0 })
+        {
+            return row;
+        }
+
+        var result = new List<OcrWord>(row.Count);
+        foreach (var word in row)
+        {
+            var replaced = ApplyCharacterReplacements(word.Text, replacements);
+            if (!string.IsNullOrWhiteSpace(replaced))
+            {
+                result.Add(word with { Text = replaced });
+            }
+        }
+
+        return result;
+    }
+
+    private static OcrExtractedLineDto? CreateExtractedLine(
+        (string? Value, decimal Confidence) name,
+        (string? Value, decimal Confidence) supplierCode,
+        (string? Value, decimal Confidence) barcode,
+        (decimal? Value, decimal Confidence) quantity,
+        (decimal? Value, decimal Confidence) unitCost,
+        SupplierOcrTemplateDto? ocrTemplate)
+    {
         // 8.163/8.170: sin identificador legible Y sin cantidad la fila no aporta nada (costos
         // sueltos del pie, rayas manuscritas, perforaciones): no se emite para no bloquear el
         // flujo con filas fantasma.
-        var hasIdentifier = name.Value is not null
+        var sanitizedName = OcrConfidence.SanitizeProductName(name.Value);
+        if (sanitizedName is not null && ocrTemplate?.CharacterReplacements is { Count: > 0 } replacements)
+        {
+            sanitizedName = ApplyCharacterReplacements(sanitizedName, replacements);
+        }
+
+        var hasIdentifier = sanitizedName is not null
             || supplierCode.Value is not null
             || barcode.Value is not null;
         if (!hasIdentifier && quantity.Value is null)
@@ -292,15 +499,27 @@ public sealed partial class InvoiceTableParser
             return null;
         }
 
+        var effectiveUnitCost = unitCost.Value;
+        if (ocrTemplate?.CostAmountRule == OcrCostAmountRule.LineTotal
+            && effectiveUnitCost is decimal totalCost
+            && quantity.Value is decimal qty
+            && qty > 0m)
+        {
+            effectiveUnitCost = Math.Round(totalCost / qty, 4, MidpointRounding.AwayFromZero);
+        }
+
+        var extractedFactor = TryExtractConversionFactor(sanitizedName ?? name.Value, ocrTemplate?.FactorExtractionPattern);
+
         return new OcrExtractedLineDto(
             supplierCode.Value,
             barcode.Value,
-            OcrConfidence.SanitizeProductName(name.Value),
+            sanitizedName,
             quantity.Value,
-            unitCost.Value,
+            effectiveUnitCost,
             name.Confidence,
             quantity.Confidence,
-            unitCost.Confidence);
+            unitCost.Confidence,
+            extractedFactor);
     }
 
     /// <summary>Columna cuya banda contiene el centro X de la palabra (la última banda es abierta).</summary>
@@ -345,7 +564,8 @@ public sealed partial class InvoiceTableParser
     private static (decimal? Value, decimal Confidence) BuildNumber(
         IReadOnlyDictionary<InvoiceColumn, List<OcrWord>> buckets,
         IReadOnlyList<Band> bands,
-        InvoiceColumn column)
+        InvoiceColumn column,
+        OcrDecimalSeparatorRule separatorRule = OcrDecimalSeparatorRule.Auto)
     {
         if (!buckets.TryGetValue(column, out var words) || words.Count == 0)
         {
@@ -353,7 +573,7 @@ public sealed partial class InvoiceTableParser
         }
 
         var text = string.Join(' ', words.Select(word => word.Text));
-        if (TryParseDecimal(text, out var value))
+        if (TryParseDecimalWithRule(text, separatorRule, out var value))
         {
             return (value, MinConfidence(words));
         }
@@ -364,7 +584,7 @@ public sealed partial class InvoiceTableParser
         decimal nearestValue = 0m;
         foreach (var word in words)
         {
-            if (!TryParseDecimal(word.Text, out var wordValue))
+            if (!TryParseDecimalWithRule(word.Text, separatorRule, out var wordValue))
             {
                 continue;
             }

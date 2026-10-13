@@ -85,22 +85,32 @@ public sealed class OcrExtractionService : IOcrExtractionService
 
         var pages = _documentDecoder.DecodePages(fileBytes, extension);
 
-        // 8.170: la calidad de la imagen varía. Si el pipeline principal (binarizado automático)
-        // no produce NINGUNA fila con identificador se escalan candidatos de respaldo por
-        // RESULTADO (raw y luego adaptativo sin deskew), con cortocircuito: en imágenes buenas el
-        // costo de OCR no cambia.
-        var ocrPages = await RecognizeDocumentAsync(pages, OcrPreprocessingMode.Primary, cancellationToken);
-        var lines = _parser.Parse(ocrPages, request.ColumnMapping);
-        if (CountUsableLines(lines) == 0)
+        // 8.170: la calidad de la imagen varía. Si el pipeline principal (binarizado automático o
+        // plantilla OCR del proveedor) no produce NINGUNA fila con identificador se escalan
+        // candidatos de respaldo por RESULTADO (raw y luego adaptativo sin deskew), con cortocircuito:
+        // en imágenes buenas el costo de OCR no cambia.
+        var (ocrPages, primaryPreviewPng) = await RecognizeDocumentAsync(
+            pages,
+            OcrPreprocessingMode.Primary,
+            request.OcrTemplate,
+            cancellationToken);
+        var previewPng = primaryPreviewPng;
+        var lines = _parser.Parse(ocrPages, request.ColumnMapping, request.OcrTemplate);
+        if (CountUsableLines(lines) == 0 && (request.OcrTemplate is null || request.OcrTemplate.BinarizationThreshold is < 1 or > 254))
         {
             foreach (var mode in new[] { OcrPreprocessingMode.Raw, OcrPreprocessingMode.AdaptiveFallback })
             {
-                var candidatePages = await RecognizeDocumentAsync(pages, mode, cancellationToken);
-                var candidateLines = _parser.Parse(candidatePages, request.ColumnMapping);
+                var (candidatePages, candidatePreviewPng) = await RecognizeDocumentAsync(
+                    pages,
+                    mode,
+                    request.OcrTemplate,
+                    cancellationToken);
+                var candidateLines = _parser.Parse(candidatePages, request.ColumnMapping, request.OcrTemplate);
                 if (CountUsableLines(candidateLines) > CountUsableLines(lines))
                 {
                     ocrPages = candidatePages;
                     lines = candidateLines;
+                    previewPng = candidatePreviewPng ?? previewPng;
                     _logger.LogInformation(
                         "OCR fallback {Mode} selected for '{FileName}': primary pipeline yielded no usable lines.",
                         mode,
@@ -113,12 +123,16 @@ public sealed class OcrExtractionService : IOcrExtractionService
                 }
             }
         }
+
+        var rawText = FormatRawText(ocrPages);
         var result = new OcrExtractionResultDto(
             lines,
             DetectRif(ocrPages),
             DetectSupplierName(ocrPages),
             DetectInvoiceNumber(ocrPages),
-            DetectExchangeRate(ocrPages));
+            DetectExchangeRate(ocrPages),
+            rawText,
+            previewPng);
 
         _logger.LogInformation(
             "OCR extracted {LineCount} candidate lines across {PageCount} page(s) from '{FileName}' ({FileSizeBytes} bytes).",
@@ -143,12 +157,15 @@ public sealed class OcrExtractionService : IOcrExtractionService
     /// se hace por DOCUMENTO (no por página) para conservar la herencia de anclas entre páginas
     /// de continuación del parser.
     /// </summary>
-    private async Task<IReadOnlyList<OcrPage>> RecognizeDocumentAsync(
+    private async Task<(IReadOnlyList<OcrPage> Pages, byte[]? FirstPagePreviewPng)> RecognizeDocumentAsync(
         IReadOnlyList<OcrImage> pages,
         OcrPreprocessingMode mode,
+        SupplierOcrTemplateDto? ocrTemplate,
         CancellationToken cancellationToken)
     {
         var ocrPages = new List<OcrPage>(pages.Count);
+        byte[]? firstPagePreviewPng = null;
+
         foreach (var page in pages)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -162,15 +179,61 @@ public sealed class OcrExtractionService : IOcrExtractionService
             {
                 OcrPreprocessingMode.Raw => null,
                 OcrPreprocessingMode.AdaptiveFallback => _preprocessor.PreprocessAdaptiveFallback(decoded),
-                _ => _preprocessor.Preprocess(decoded)
+                _ => ocrTemplate is not null
+                    ? _preprocessor.PreprocessWithTemplate(decoded, ocrTemplate)
+                    : _preprocessor.Preprocess(decoded)
             };
             var sourceImage = processed ?? decoded;
             var encodedPng = _preprocessor.EncodePng(sourceImage);
+            firstPagePreviewPng ??= encodedPng;
             var image = new OcrImage(encodedPng, sourceImage.Width, sourceImage.Height);
             ocrPages.Add(await _ocrEngine.RecognizeAsync(image, cancellationToken).ConfigureAwait(false));
         }
 
-        return ocrPages;
+        return (ocrPages, firstPagePreviewPng);
+    }
+
+    private static string? FormatRawText(IReadOnlyList<OcrPage> pages)
+    {
+        if (pages.Count == 0)
+        {
+            return null;
+        }
+
+        var lines = new List<string>();
+        foreach (var page in pages)
+        {
+            var visible = page.Words.Where(word => !string.IsNullOrWhiteSpace(word.Text)).ToList();
+            if (visible.Count == 0)
+            {
+                continue;
+            }
+
+            var tolerance = ComputeRowTolerance(visible);
+            var ordered = visible.OrderBy(CenterY).ThenBy(CenterX).ToList();
+            var current = new List<OcrWord> { ordered[0] };
+            var centerSum = CenterY(ordered[0]);
+
+            for (var index = 1; index < ordered.Count; index++)
+            {
+                var word = ordered[index];
+                if (Math.Abs(CenterY(word) - (centerSum / current.Count)) <= tolerance)
+                {
+                    current.Add(word);
+                    centerSum += CenterY(word);
+                }
+                else
+                {
+                    lines.Add(JoinRowText(current));
+                    current = [word];
+                    centerSum = CenterY(word);
+                }
+            }
+
+            lines.Add(JoinRowText(current));
+        }
+
+        return lines.Count == 0 ? null : string.Join(Environment.NewLine, lines);
     }
 
     /// <summary>Filas con identificador legible (nombre/código/barras): mismo criterio que el cliente.</summary>

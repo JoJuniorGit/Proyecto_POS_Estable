@@ -42,6 +42,12 @@ public interface IDialogService
     /// </summary>
     bool? ShowRegisterSupplierDialog(ViewModels.RegisterSupplierDialogViewModel dialogVm) => null;
 
+    /// <summary>
+    /// Panel interactivo de configuración avanzada del escáner OCR y plantillas por proveedor.
+    /// Implementación por defecto sin UI (stubs headless): null equivale a diálogo cancelado.
+    /// </summary>
+    bool? ShowOcrScannerConfigDialog(ViewModels.OcrScannerConfigDialogViewModel dialogVm) => null;
+
     (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();

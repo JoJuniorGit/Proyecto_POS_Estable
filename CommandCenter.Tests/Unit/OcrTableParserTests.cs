@@ -568,4 +568,153 @@ public class OcrTableParserTests
         var line = Assert.Single(_parser.Parse([page], template: null));
         Assert.Equal(expectedName, line.Name);
     }
+
+    [Fact]
+    public void CustomHeaderAndFooterAnchorKeywords_OverrideTableStartAndStopAtCustomFooter()
+    {
+        var ocrTemplate = new SupplierOcrTemplateDto(
+            HeaderAnchorKeywords: "RENGLON, DETALLE",
+            FooterAnchorKeywords: "FIN DE RENGLONES, OBSERVACIONES");
+
+        var page = Page(
+            Word("DESCRIPCION", 40, 70),
+            Word("CANTIDAD", 200, 70),
+            Word("PRECIO", 340, 70),
+            Word("FILA PRE-TABLA", 40, 85),
+            Word("99", 200, 85),
+            Word("9,99", 340, 85),
+            Word("RENGLON", 40, 100),
+            Word("DETALLE", 140, 100),
+            Word("CANTIDAD", 320, 100),
+            Word("PRECIO", 460, 100),
+            Word("HARINA PAN", 140, 130),
+            Word("5", 320, 130),
+            Word("1,20", 460, 130),
+            Word("FIN", 40, 160),
+            Word("DE", 90, 160),
+            Word("RENGLONES", 140, 160),
+            Word("FILA IGNORADA", 140, 190),
+            Word("9", 320, 190),
+            Word("9,99", 460, 190));
+
+        var line = Assert.Single(_parser.Parse([page], template: null, ocrTemplate));
+        Assert.Equal("HARINA PAN", line.Name);
+        Assert.Equal(5m, line.Quantity);
+        Assert.Equal(1.20m, line.UnitCost);
+    }
+
+    [Fact]
+    public void PositionalColumnMapping_AssignsFieldsByOneBasedHorizontalOrder()
+    {
+        var ocrTemplate = new SupplierOcrTemplateDto(
+            HeaderAnchorKeywords: "COL1",
+            SupplierCodeColumnPosition: 1,
+            QuantityColumnPosition: 2,
+            ProductColumnPosition: 3,
+            UnitCostColumnPosition: 4);
+
+        var page = Page(
+            Word("COL1", 40, 100),
+            Word("COL2", 140, 100),
+            Word("DESCRIPCION", 260, 100),
+            Word("COL4", 440, 100),
+            Word("COD-99", 40, 130),
+            Word("12", 140, 130),
+            Word("AZUCAR", 260, 130),
+            Word("3,50", 440, 130));
+
+        var line = Assert.Single(_parser.Parse([page], template: null, ocrTemplate));
+        Assert.Equal("COD-99", line.SupplierCode);
+        Assert.Equal(12m, line.Quantity);
+        Assert.Equal("AZUCAR", line.Name);
+        Assert.Equal(3.50m, line.UnitCost);
+    }
+
+    [Fact]
+    public void DecimalSeparatorRules_CommaAndDotRulesParseExplicitConventions()
+    {
+        var commaTemplate = new SupplierOcrTemplateDto(
+            DecimalSeparator: OcrDecimalSeparatorRule.Comma);
+        var dotTemplate = new SupplierOcrTemplateDto(
+            DecimalSeparator: OcrDecimalSeparatorRule.Dot);
+
+        var pageComma = Page([
+            .. GenericHeader(),
+            .. DataRow("Item Coma", "1.200,50", "4.500,25", 130)
+        ]);
+        var commaLine = Assert.Single(_parser.Parse([pageComma], template: null, commaTemplate));
+        Assert.Equal(1200.50m, commaLine.Quantity);
+        Assert.Equal(4500.25m, commaLine.UnitCost);
+
+        var pageDot = Page([
+            .. GenericHeader(),
+            .. DataRow("Item Punto", "1,200.50", "4.250", 130)
+        ]);
+        var dotLine = Assert.Single(_parser.Parse([pageDot], template: null, dotTemplate));
+        Assert.Equal(1200.50m, dotLine.Quantity);
+        Assert.Equal(4.25m, dotLine.UnitCost);
+    }
+
+    [Fact]
+    public void CostAmountRule_LineTotal_DividesTotalByQuantityAndRoundsToFourDecimals()
+    {
+        var ocrTemplate = new SupplierOcrTemplateDto(
+            CostAmountRule: OcrCostAmountRule.LineTotal);
+
+        var page = Page([
+            .. GenericHeader(),
+            .. DataRow("Bulto Arroz", "3", "10,00", 130)
+        ]);
+
+        var line = Assert.Single(_parser.Parse([page], template: null, ocrTemplate));
+        Assert.Equal(3m, line.Quantity);
+        Assert.Equal(3.3333m, line.UnitCost);
+    }
+
+    [Fact]
+    public void CharacterReplacements_ApplyLiteralRulesBeforeNumericAndDescriptionParsing()
+    {
+        var ocrTemplate = new SupplierOcrTemplateDto(
+            CharacterReplacements: new[]
+            {
+                new OcrCharacterReplacementRuleDto("O", "0"),
+                new OcrCharacterReplacementRuleDto("$", string.Empty)
+            });
+
+        var page = Page([
+            .. GenericHeader(),
+            .. DataRow("CAFE 5OOGR", "1O", "$4,5O", 130)
+        ]);
+
+        var line = Assert.Single(_parser.Parse([page], template: null, ocrTemplate));
+        Assert.Equal("CAFE 500GR", line.Name);
+        Assert.Equal(10m, line.Quantity);
+        Assert.Equal(4.50m, line.UnitCost);
+    }
+
+    [Theory]
+    [InlineData("HARINA PAN 1X40 UND", "AUTO", 40)]
+    [InlineData("MANTEQUILLA MAVESA 36X250GR", "AUTO", 36)]
+    [InlineData("REFRESCO BTO X 24", "BTO_X_N", 24)]
+    [InlineData("GALLETAS CAJA 12 UND", "CAJA_N_UND", 12)]
+    [InlineData("ATUN PACK=18 LATAS", @"PACK=(\d+)", 18)]
+    public void FactorExtractionPattern_ExtractsPackMultipliersAcrossAutoPresetsAndCustomRegex(
+        string description,
+        string patternKey,
+        decimal expectedFactor)
+    {
+        var ocrTemplate = new SupplierOcrTemplateDto
+        {
+            FactorExtractionPattern = patternKey
+        };
+
+        var page = Page([
+            .. GenericHeader(),
+            .. DataRow(description, "2", "20,00", 130)
+        ]);
+
+        var line = Assert.Single(_parser.Parse([page], template: null, ocrTemplate));
+        Assert.Equal(expectedFactor, line.ExtractedConversionFactor);
+    }
 }
+

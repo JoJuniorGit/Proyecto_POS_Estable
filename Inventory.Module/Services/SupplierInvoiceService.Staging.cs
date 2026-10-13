@@ -66,11 +66,6 @@ public partial class SupplierInvoiceService
         for (var index = 0; index < lines.Count; index++)
         {
             var line = lines[index];
-            var unitCostUsd = Core.Helpers.PricingCalculator.CalculateInvoiceUnitCostUsd(
-                line.UnitCostDocument,
-                1m,
-                currency,
-                appliedRate);
             var match = exactMatches[index]
                 ?? (line.Name is not null && fuzzyMatchesByName.TryGetValue(line.Name, out var fuzzyMatch)
                     ? fuzzyMatch
@@ -86,7 +81,9 @@ public partial class SupplierInvoiceService
                     var factor = conversionFactorsByProductId.TryGetValue(matchedProduct.Id, out var rememberedProductFactor)
                         && rememberedProductFactor > 0m
                         ? rememberedProductFactor
-                        : 1m;
+                        : line.ConversionFactor is > 1m
+                            ? line.ConversionFactor.Value
+                            : 1m;
                     var productUnitCostUsd = Core.Helpers.PricingCalculator.CalculateInvoiceUnitCostUsd(
                         line.UnitCostDocument,
                         factor,
@@ -112,11 +109,27 @@ public partial class SupplierInvoiceService
                 continue;
             }
 
+            var rememberedFactor = 1m;
+            var hasRememberedFactor = match.Product is not null
+                && conversionFactorsByProductId.TryGetValue(match.Product.Id, out rememberedFactor)
+                && rememberedFactor > 0m;
+            var inputFactor = !hasRememberedFactor && line.ConversionFactor is > 1m
+                ? line.ConversionFactor.Value
+                : 1m;
+            var unitCostUsd = Core.Helpers.PricingCalculator.CalculateInvoiceUnitCostUsd(
+                line.UnitCostDocument,
+                inputFactor,
+                currency,
+                appliedRate);
+
             var stagedLine = CreateStagedLine(line, match, unitCostUsd, request.OcrSourced);
-            if (match.Product is not null
-                && conversionFactorsByProductId.TryGetValue(match.Product.Id, out var rememberedFactor))
+            if (hasRememberedFactor)
             {
                 stagedLine.ConversionFactor = rememberedFactor;
+            }
+            else if (line.ConversionFactor is > 1m)
+            {
+                stagedLine.ConversionFactor = line.ConversionFactor.Value;
             }
 
             invoice.Lines.Add(stagedLine);
@@ -158,7 +171,11 @@ public partial class SupplierInvoiceService
         var normalizedCommercialName = NormalizeSupplierName(commercialName);
         var isFiltered = normalizedRifOrNit.Length > 0 || normalizedCommercialName.Length > 0;
 
-        var query = _context.Suppliers.AsNoTracking();
+        var query = _context.Suppliers
+            .AsNoTracking()
+            .Include(supplier => supplier.ColumnMapping)
+            .Include(supplier => supplier.OcrTemplate)
+            .AsQueryable();
         if (normalizedRifOrNit.Length > 0 && normalizedCommercialName.Length > 0)
         {
             query = query.Where(supplier =>
@@ -178,10 +195,13 @@ public partial class SupplierInvoiceService
         // defensiva de 500); con filtro conserva la cota de 20 de la busqueda exacta.
         var take = isFiltered ? 20 : 500;
 
-        return await query
+        var suppliers = await query
             .OrderBy(supplier => supplier.CommercialName)
             .ThenBy(supplier => supplier.Id)
             .Take(take)
+            .ToListAsync(cancellationToken);
+
+        return suppliers
             .Select(supplier => new SupplierSummaryDto(
                 supplier.Id,
                 supplier.RifOrNit,
@@ -194,8 +214,9 @@ public partial class SupplierInvoiceService
                         supplier.ColumnMapping.NameColumnName,
                         supplier.ColumnMapping.QuantityColumnName,
                         supplier.ColumnMapping.UnitCostColumnName),
-                supplier.InvoiceCurrency))
-            .ToListAsync(cancellationToken);
+                supplier.InvoiceCurrency,
+                supplier.OcrTemplate == null ? null : ToOcrTemplateDto(supplier.OcrTemplate)))
+            .ToArray();
     }
 
     public async Task<SupplierSummaryDto> CreateSupplierAsync(
@@ -376,7 +397,8 @@ public partial class SupplierInvoiceService
                 line.UnitCostDocument,
                 line.OcrNameConfidence,
                 line.OcrQuantityConfidence,
-                line.OcrUnitCostConfidence))
+                line.OcrUnitCostConfidence,
+                line.ConversionFactor is > 0m and <= MaxInvoiceNumericValue ? line.ConversionFactor : null))
             .ToList();
 
         if (lines.Count == 0)

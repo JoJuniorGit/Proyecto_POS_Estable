@@ -344,6 +344,65 @@ public class OcrExtractionServiceTests
         Assert.DoesNotContain(parameterTypes, name => name.Contains("DbContext", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void PreprocessWithTemplate_AppliesCropRotationContrastBrightnessAndFixedThreshold()
+    {
+        using var source = new Mat(100, 200, MatType.CV_8UC3, Scalar.White);
+        Cv2.Rectangle(source, new Rect(20, 20, 80, 40), new Scalar(80, 80, 80), thickness: -1);
+
+        var template = new SupplierOcrTemplateDto(
+            RotationDegrees: 90,
+            ContrastFactor: 1.4,
+            BrightnessDelta: -10,
+            BinarizationThreshold: 150,
+            RoiX: 0.10,
+            RoiY: 0.10,
+            RoiWidth: 0.50,
+            RoiHeight: 0.80);
+
+        using var processed = _preprocessor.PreprocessWithTemplate(source, template);
+
+        // 200x100 rotated around center (200x100) then cropped to 50%x80% = 100x80
+        Assert.Equal(100, processed.Cols);
+        Assert.Equal(80, processed.Rows);
+        Assert.Equal(MatType.CV_8UC1, processed.Type());
+    }
+
+    [Fact]
+    public async Task ExtractAsync_WithOcrTemplate_UsesTemplatePreprocessorAndPopulatesRawTextAndPreviewPng()
+    {
+        var engine = new StubOcrEngine(_ => Page([
+            .. GenericHeader(),
+            Word("HARINA PAN 1X40 UND", 40, 130),
+            Word("2", 200, 130),
+            Word("80,00", 340, 130)
+        ]));
+        var service = CreateService(engine);
+        var ocrTemplate = new SupplierOcrTemplateDto
+        {
+            CostAmountRule = OcrCostAmountRule.LineTotal,
+            FactorExtractionPattern = "AUTO"
+        };
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(
+            CreatePng(),
+            "factura.png",
+            7,
+            null,
+            ocrTemplate));
+
+        var line = Assert.Single(result.Lines);
+        Assert.Equal("HARINA PAN 1X40 UND", line.Name);
+        Assert.Equal(2m, line.Quantity);
+        Assert.Equal(40m, line.UnitCost);
+        Assert.Equal(40m, line.ExtractedConversionFactor);
+        Assert.NotNull(result.RawExtractedText);
+        Assert.Contains("HARINA PAN 1X40 UND", result.RawExtractedText);
+        Assert.NotNull(result.PreprocessedPreviewPng);
+        Assert.NotEmpty(result.PreprocessedPreviewPng!);
+        Assert.Equal(1, engine.Calls);
+    }
+
     private OcrExtractionService CreateService(IOcrEngine engine)
     {
         var documentDecoder = new DocumentPageDecoder(new ImagePageDecoder(_preprocessor), new PdfPageDecoder(72));

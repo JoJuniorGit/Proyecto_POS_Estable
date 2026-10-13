@@ -615,6 +615,110 @@ public class SupplierInvoiceCreationTests
         Assert.Equal(PricingCalculator.RoundPriceUp(2.00m * 1.18m), savedB.PriceWholesaleUSD);
     }
 
+    [Fact]
+    public async Task SaveSupplierOcrTemplateAsync_AndGetSupplierOcrTemplateAsync_PersistsAndUpdatesPerSupplierTemplate()
+    {
+        var (service, context) = CreateService();
+        var supplier = new Supplier
+        {
+            RifOrNit = "J-55555555-5",
+            NormalizedRifOrNit = "J555555555",
+            CommercialName = "Distribuidora OCR",
+            NormalizedCommercialName = "DISTRIBUIDORA OCR"
+        };
+        context.Suppliers.Add(supplier);
+        await context.SaveChangesAsync();
+
+        Assert.Null(await service.GetSupplierOcrTemplateAsync(supplier.Id));
+
+        var initialTemplate = new SupplierOcrTemplateDto(
+            RotationDegrees: 90,
+            ContrastFactor: 1.35,
+            BrightnessDelta: -12,
+            BinarizationThreshold: 140,
+            RoiX: 0.05,
+            RoiY: 0.12,
+            RoiWidth: 0.90,
+            RoiHeight: 0.75,
+            HeaderAnchorKeywords: "RENGLON, DETALLE",
+            FooterAnchorKeywords: "SUBTOTAL, IVA",
+            ProductColumnPosition: 3,
+            QuantityColumnPosition: 2,
+            UnitCostColumnPosition: 4,
+            SupplierCodeColumnPosition: 1,
+            CostAmountRule: OcrCostAmountRule.LineTotal,
+            DecimalSeparator: OcrDecimalSeparatorRule.Comma,
+            CharacterReplacements: new[]
+            {
+                new OcrCharacterReplacementRuleDto("O", "0")
+            },
+            FactorExtractionPattern: "AUTO");
+
+        var saved = await service.SaveSupplierOcrTemplateAsync(supplier.Id, initialTemplate);
+        Assert.Equal(0.05, saved.RoiX);
+        Assert.Equal(90, saved.RotationDegrees);
+        Assert.Equal(OcrCostAmountRule.LineTotal, saved.CostAmountRule);
+        Assert.Equal(OcrDecimalSeparatorRule.Comma, saved.DecimalSeparator);
+        Assert.Single(saved.CharacterReplacements!);
+
+        var updatedTemplate = initialTemplate with
+        {
+            RotationDegrees = 0,
+            BinarizationThreshold = 0,
+            CostAmountRule = OcrCostAmountRule.UnitCost,
+            FactorExtractionPattern = "BTO_X_N"
+        };
+
+        var updated = await service.SaveSupplierOcrTemplateAsync(supplier.Id, updatedTemplate);
+        Assert.Equal(0, updated.RotationDegrees);
+        Assert.Equal(0, updated.BinarizationThreshold);
+        Assert.Equal(OcrCostAmountRule.UnitCost, updated.CostAmountRule);
+        Assert.Equal("BTO_X_N", updated.FactorExtractionPattern);
+
+        var loaded = await service.GetSupplierOcrTemplateAsync(supplier.Id);
+        Assert.NotNull(loaded);
+        Assert.Equal("BTO_X_N", loaded!.FactorExtractionPattern);
+        Assert.Single(await context.SupplierOcrTemplates.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task StageAsync_WithStageLineConversionFactor_PersistsConversionFactorOnStagedInvoiceLines()
+    {
+        var (service, context) = CreateService();
+        var product = new ProductBuilder()
+            .WithSku("7591234567890")
+            .WithName("Harina P.A.N. 1kg")
+            .WithCostAndMargin(1.00m, 30m)
+            .WithStock(10m)
+            .Build();
+        var supplier = new Supplier
+        {
+            RifOrNit = "J-88888888-8",
+            NormalizedRifOrNit = "J888888888",
+            CommercialName = "Mayorista Pack",
+            NormalizedCommercialName = "MAYORISTA PACK"
+        };
+        context.Products.Add(product);
+        context.Suppliers.Add(supplier);
+        await context.SaveChangesAsync();
+
+        var staged = await service.StageAsync(new StageSupplierInvoiceRequestDto(
+            supplier.Id,
+            supplier.RifOrNit,
+            supplier.CommercialName,
+            null,
+            new[]
+            {
+                new StageLineDto("COD-1", "7591234567890", "HARINA PAN 1X40 UND", 2m, 40m, ConversionFactor: 40m)
+            },
+            CurrencyCodes.Usd,
+            1m,
+            OcrSourced: true));
+
+        var line = Assert.Single(staged.Lines);
+        Assert.Equal(40m, line.ConversionFactor);
+    }
+
 
     private static (SupplierInvoiceService Service, InventoryDbContext Context) CreateService(
         bool canMutateCatalog = true)

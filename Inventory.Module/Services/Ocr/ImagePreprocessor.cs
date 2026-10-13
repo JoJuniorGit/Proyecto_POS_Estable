@@ -1,3 +1,4 @@
+using Core.DTOs;
 using OpenCvSharp;
 
 namespace Inventory.Module.Services.Ocr;
@@ -161,6 +162,89 @@ public sealed class ImagePreprocessor
         }
 
         return Rotate(binarized, -detectedSkewAngleDegrees);
+    }
+
+    /// <summary>
+    /// Preprocesa una página aplicando los parámetros visuales de la plantilla OCR del proveedor
+    /// (rotación manual, recorte ROI normalizado, contraste/brillo y umbral de binarización).
+    /// </summary>
+    public Mat PreprocessWithTemplate(Mat source, SupplierOcrTemplateDto template)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(template);
+
+        var hasManualRotation = double.IsFinite(template.RotationDegrees) && Math.Abs(template.RotationDegrees) >= 0.01;
+        using var rotated = hasManualRotation ? Rotate(source, template.RotationDegrees) : null;
+        var afterRotation = rotated ?? source;
+
+        using var cropped = TryCropRoi(afterRotation, template);
+        var afterCrop = cropped ?? afterRotation;
+
+        using var gray = ToGrayscale(afterCrop);
+        var contrast = double.IsFinite(template.ContrastFactor) && template.ContrastFactor > 0.01
+            ? Math.Clamp(template.ContrastFactor, 0.1, 5.0)
+            : 1.0;
+        var brightness = double.IsFinite(template.BrightnessDelta)
+            ? Math.Clamp(template.BrightnessDelta, -255.0, 255.0)
+            : 0.0;
+
+        using var adjusted = new Mat();
+        gray.ConvertTo(adjusted, MatType.CV_8UC1, contrast, brightness);
+
+        if (template.BinarizationThreshold is >= 1 and <= 254)
+        {
+            var fixedBinarized = new Mat();
+            Cv2.Threshold(adjusted, fixedBinarized, template.BinarizationThreshold, 255, ThresholdTypes.Binary);
+            return fixedBinarized;
+        }
+
+        using var contrasted = IncreaseContrast(adjusted);
+        var binarized = Binarize(contrasted);
+        if (hasManualRotation)
+        {
+            return binarized;
+        }
+
+        using (binarized)
+        {
+            return Deskew(binarized);
+        }
+    }
+
+    private static Mat? TryCropRoi(Mat source, SupplierOcrTemplateDto template)
+    {
+        if (source.Width <= 1 || source.Height <= 1)
+        {
+            return null;
+        }
+
+        if (template.RoiWidth is not double rawW ||
+            template.RoiHeight is not double rawH ||
+            !double.IsFinite(rawW) ||
+            !double.IsFinite(rawH) ||
+            rawW is <= 0.01 or > 1.0 ||
+            rawH is <= 0.01 or > 1.0)
+        {
+            return null;
+        }
+
+        var normX = template.RoiX is double rawX && double.IsFinite(rawX) ? Math.Clamp(rawX, 0.0, 0.99) : 0.0;
+        var normY = template.RoiY is double rawY && double.IsFinite(rawY) ? Math.Clamp(rawY, 0.0, 0.99) : 0.0;
+        var normW = Math.Clamp(rawW, 0.01, 1.0 - normX);
+        var normH = Math.Clamp(rawH, 0.01, 1.0 - normY);
+
+        if (normX <= 0.001 && normY <= 0.001 && normW >= 0.999 && normH >= 0.999)
+        {
+            return null;
+        }
+
+        var x = Math.Clamp((int)Math.Round(normX * source.Width), 0, source.Width - 1);
+        var y = Math.Clamp((int)Math.Round(normY * source.Height), 0, source.Height - 1);
+        var width = Math.Clamp((int)Math.Round(normW * source.Width), 1, source.Width - x);
+        var height = Math.Clamp((int)Math.Round(normH * source.Height), 1, source.Height - y);
+
+        using var subMat = new Mat(source, new Rect(x, y, width, height));
+        return subMat.Clone();
     }
 
     /// <summary>

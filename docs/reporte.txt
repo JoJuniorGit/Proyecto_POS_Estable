@@ -14210,3 +14210,84 @@ B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
 B2. `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: 2284/2284 tests en verde.
 B3. `npm test -- --run` y `npm run lint` en `Web.Frontend`: 379/379 tests y 0 warnings/errores de lint.
 ================================================================================
+
+================================================================================
+ANEXO - REVISION 8.172: VINCULACION DE PRODUCTOS CON APRENDIZAJE DE ALIAS, DETECCION OCR DE TASA Y RECALCULO REACTIVO EN FACTURAS
+================================================================================
+
+A. RESUMEN DE IMPLEMENTACION
+A1. Deteccion de tasa en OCR (`OcrExtractionService.cs`, `SupplierInvoiceDtos.cs`):
+    - `OcrExtractionResultDto` expone `DetectedExchangeRate` y extrae tasas impresas
+      (`TASA BCV`, `TASA DE CAMBIO`, `FACTOR DE CAMBIO`, `TIPO DE CAMBIO`, `TASA:`)
+      descartando porcentajes de IVA.
+A2. Reemplazo automatico y recalculo reactivo en UI (`SupplierInvoiceViewModel.*`):
+    - Al escanear o cambiar a `Bs.S`, `OcrDetectedExchangeRate` reemplaza `AppliedRateText`
+      y propaga cambios de tasa/moneda a todas las lineas (`UnitCostUSD`, `CostComparison`,
+      `SuggestedRetailPriceUSD/BsS`, `SuggestedWholesalePriceUSD/BsS`).
+A3. Resolucion Hibrida y Aprendizaje de Alias (`SupplierInvoicesController.cs`,
+    `SupplierInvoiceService.Creation.cs`, `SupplierInvoiceService.Matching.cs`,
+    `CreateInvoiceProductDialog.*`):
+    - Endpoint `POST /api/supplier-invoices/{id}/lines/{lineId}/link-product` para vincular
+      lineas con productos existentes y persistir alias en `SupplierProductCodes`.
+    - Habilitacion de edicion de campos para lineas `[NUEVO]` y casilla `Aprobar` para omitir
+      filas desmarcadas.
+
+================================================================================
+ANEXO - REVISION 8.173: VINCULACION MULTIPLE (1:N) EN MODO A Y EDICION REACTIVA DE MARGENES DETAL/MAYOR EN FACTURAS DE PROVEEDOR
+================================================================================
+
+A. RESUMEN DE IMPLEMENTACION
+A1. Vinculacion multiple (1:N) en Modo A (`20261012193000_AllowMultiProductSupplierCode`,
+    `InventoryDbContext.cs`, `SupplierInvoiceService.Creation.cs`, `CreateInvoiceProductDialog.*`):
+    - Soporte para asociar una linea de factura de proveedor a multiples productos/sabores del
+      catalogo con distribucion de cantidades y aprendizaje de alias 1:N.
+A2. Edicion reactiva de margenes detal y mayor (`SupplierInvoiceViewModel.Staging.cs`,
+    `SupplierInvoiceService.Apply.cs`):
+    - Recalculo bidireccional de precios sugeridos detal/mayor en USD y Bs.S al modificar
+      margenes por linea y persistencia al confirmar la factura.
+
+================================================================================
+ANEXO - REVISION 8.174: PLANTILLAS DE CONFIGURACION DEL ESCANER OCR POR PROVEEDOR, PREPROCESAMIENTO Y MOTOR TABULAR AVANZADO
+================================================================================
+
+A. RESUMEN DE IMPLEMENTACION
+A1. Entidad y Persistencia de Plantillas OCR (`Core/Entities/SupplierOcrTemplate.cs`,
+    `InventoryDbContext.cs`, `20260425000000_AddSupplierOcrTemplates.cs`,
+    `SupplierInvoiceService.Mapping.cs`):
+    - Nueva entidad `SupplierOcrTemplate` vinculada a `Supplier` para persistir parametros de
+      preprocesamiento visual (rotacion, contraste, brillo, umbral de binarizacion), region de
+      interes (`RoiX`, `RoiY`, `RoiWidth`, `RoiHeight`), palabras ancla de inicio/fin de tabla
+      (`HeaderAnchorKeywords`, `FooterAnchorKeywords`), posicion explicita de columnas
+      (`ProductColumnPosition`, `QuantityColumnPosition`, `UnitCostColumnPosition`,
+      `SupplierCodeColumnPosition`), regla de calculo de costo (`OcrCostAmountRule`:
+      `UnitCost` vs `LineTotalDivideByQty`), regla de separador decimal
+      (`OcrDecimalSeparatorRule`), reemplazos de caracteres (`CharacterReplacementsJson`) y
+      patron de extraccion de factor (`FactorExtractionPattern`).
+A2. Preprocesamiento de Imagen y Motor Tabular OCR (`ImagePreprocessor.cs`,
+    `InvoiceTableParser.cs`, `InvoiceTableParser.Helpers.cs`, `OcrExtractionService.cs`):
+    - Recorte por ROI normalizado, rotacion arbitraria, ajuste de brillo/contraste y
+      binarizacion configurable en `ImagePreprocessor`.
+    - Filtrado por anclas de encabezado y pie, asignacion posicional de columnas, limpieza de
+      caracteres OCR, normalizacion determinista de separadores decimales, calculo automatico
+      de costo unitario desde total de linea (`Total / Cantidad`) y extraccion automatica de
+      factor de empaque (`1X40`, `BTO X N`, `CAJA N UND` o regex personalizada).
+A3. Endpoints API y Sandbox de Prueba (`SupplierInvoicesController.cs`,
+    `SupplierInvoiceService.Staging.cs`, `ISupplierInvoiceService.cs`):
+    - `GET /api/supplier-invoices/suppliers/{supplierId}/ocr-template` y
+      `PUT /api/supplier-invoices/suppliers/{supplierId}/ocr-template` para consultar y guardar
+      la plantilla OCR del proveedor.
+    - `POST /api/supplier-invoices/ocr-preview` para ejecutar pruebas en vivo (sandbox) con
+      plantilla temporal sin crear registros de factura en staging.
+A4. Panel Interactivo "No-Code" en WPF (`OcrScannerConfigDialog.xaml`,
+    `OcrScannerConfigDialog.xaml.cs`, `OcrScannerConfigDialogViewModel.cs`,
+    `SupplierInvoiceView.xaml`, `SupplierInvoiceViewModel.Ocr.cs`, `WpfDialogService.Modals.cs`):
+    - Modal de configuracion avanzada del escaner OCR por proveedor dividido en 6 bloques
+      operativos (Zona de Lectura ROI, Preprocesamiento Visual, Anclas de Tabla, Orden y
+      Calculo de Columnas, Limpieza y Factor de Empaque, y Sandbox de Prueba en Vivo).
+
+B. VERIFICACION
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: 100% superadas
+    (incluyendo nuevas pruebas unitarias en `OcrExtractionServiceTests`, `OcrTableParserTests`,
+    `SupplierInvoiceClientTests` y `SupplierInvoiceCreationTests`).
+================================================================================

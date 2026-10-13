@@ -16,6 +16,7 @@ public class Supplier : BaseEntity
     public string? InvoiceCurrency { get; set; }
 
     public SupplierColumnMapping? ColumnMapping { get; set; }
+    public SupplierOcrTemplate? OcrTemplate { get; set; }
     public ICollection<SupplierProductCode> ProductCodes { get; set; } = new List<SupplierProductCode>();
     public ICollection<SupplierInvoice> Invoices { get; set; } = new List<SupplierInvoice>();
 }

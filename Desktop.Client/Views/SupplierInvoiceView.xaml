@@ -120,6 +120,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -145,9 +146,21 @@
                     <TextBlock Text="Escanear factura (OCR)" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
+            <Button Grid.Column="2"
+                    Command="{Binding ConfigureOcrScannerCommand}"
+                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                    IsEnabled="{Binding CanConfigureOcrScanner}"
+                    ToolTip="Configurar recorte, preprocesamiento, anclas, orden de columnas y reglas OCR para este proveedor"
+                    AutomationProperties.Name="Configurar escáner OCR"
+                    Margin="0,0,12,0">
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="TuneVariant" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBlock Text="Configurar escáner OCR" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
             <!-- 8.160-S2: el número de factura detectado por OCR se muestra junto al botón de
                  escaneo (ajuste del mantenedor, L4; visible solo con origen OCR). -->
-            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center"
                         Margin="0,0,12,0"
                         Visibility="{Binding IsOcrSource, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="N.º de factura:" VerticalAlignment="Center" Margin="0,0,6,0"
@@ -155,7 +168,7 @@
                 <TextBlock Text="{Binding OcrDetectedInvoiceNumber, TargetNullValue='No detectado'}"
                            FontWeight="Bold" VerticalAlignment="Center" />
             </StackPanel>
-            <TextBox Grid.Column="3"
+            <TextBox Grid.Column="4"
                      Text="{Binding SelectedFilePath}"
                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
                      materialDesign:HintAssist.Hint="Archivo cargado"
@@ -163,7 +176,7 @@
                      VerticalContentAlignment="Center"
                      Visibility="{Binding HasSelectedFilePath, Converter={StaticResource BoolToVis}}"
                      AutomationProperties.Name="Ruta del archivo cargado" />
-            <ProgressBar Grid.Column="4"
+            <ProgressBar Grid.Column="5"
                          IsIndeterminate="{Binding IsBusy}"
                          Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
                          Width="100" Height="10" Margin="12,0,0,0"

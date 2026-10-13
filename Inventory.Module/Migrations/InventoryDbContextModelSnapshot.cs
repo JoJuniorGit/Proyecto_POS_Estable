@@ -454,6 +454,98 @@ namespace Inventory.Module.Migrations
                     b.ToTable("SupplierColumnMappings");
                 });
 
+            modelBuilder.Entity("Core.Entities.SupplierOcrTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BinarizationThreshold")
+                        .HasColumnType("integer");
+
+                    b.Property<double>("BrightnessDelta")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("CharacterReplacementsJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<double>("ContrastFactor")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("CostAmountRule")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("UnitCost");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecimalSeparator")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Auto");
+
+                    b.Property<string>("FactorExtractionPattern")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("FooterAnchorKeywords")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("HeaderAnchorKeywords")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int?>("ProductColumnPosition")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("QuantityColumnPosition")
+                        .HasColumnType("integer");
+
+                    b.Property<double?>("RoiHeight")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("RoiWidth")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("RoiX")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("RoiY")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("RotationDegrees")
+                        .HasColumnType("double precision");
+
+                    b.Property<int?>("SupplierCodeColumnPosition")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SupplierId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("UnitCostColumnPosition")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplierId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_SupplierOcrTemplates_SupplierId");
+
+                    b.ToTable("SupplierOcrTemplates");
+                });
+
             modelBuilder.Entity("Core.Entities.SupplierInvoice", b =>
                 {
                     b.Property<int>("Id")
@@ -772,6 +864,17 @@ namespace Inventory.Module.Migrations
                     b.Navigation("Supplier");
                 });
 
+            modelBuilder.Entity("Core.Entities.SupplierOcrTemplate", b =>
+                {
+                    b.HasOne("Core.Entities.Supplier", "Supplier")
+                        .WithOne("OcrTemplate")
+                        .HasForeignKey("Core.Entities.SupplierOcrTemplate", "SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Supplier");
+                });
+
             modelBuilder.Entity("Core.Entities.SupplierInvoice", b =>
                 {
                     b.HasOne("Core.Entities.Supplier", "Supplier")
@@ -849,6 +952,8 @@ namespace Inventory.Module.Migrations
                     b.Navigation("ColumnMapping");
 
                     b.Navigation("Invoices");
+
+                    b.Navigation("OcrTemplate");
 
                     b.Navigation("ProductCodes");
                 });

@@ -214,6 +214,107 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
+    public async Task ScanInvoice_WithUsdSelection_WhenOcrDetectsExchangeRate_SwitchesToBsSAndKeepsAmountsReactiveToRateEdits()
+    {
+        // 8.174: la tasa impresa evidencia una factura en Bs.S. Sin moneda recordada en el proveedor
+        // (selector en USD), el escaneo ajusta la moneda a Bs.S, aplica la tasa detectada y el
+        // revisor puede corregirla después con montos de grilla reactivos antes de confirmar.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        StageSupplierInvoiceRequestDto? captured = null;
+        var extracted = new OcrExtractionResultDto(
+            new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 784.50m, 92m, 90m, 88m) },
+            "J-123",
+            "Proveedor OCR",
+            "0238317",
+            78.45m);
+        service.Setup(client => client.ExtractOcrAsync(
+                OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(extracted);
+        service.Setup(client => client.StageAsync(
+                It.IsAny<StageSupplierInvoiceRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<StageSupplierInvoiceRequestDto, CancellationToken>((request, _) => captured = request)
+            .ReturnsAsync(new SupplierInvoiceDetailDto(
+                42,
+                7,
+                "Draft",
+                CurrencyCodes.BsS,
+                78.45m,
+                new[] { CreateLine(1, unitCost: 10m, unitCostDocument: 784.50m) with { OldCostPriceUSD = 10m } }));
+
+        var viewModel = CreateViewModel(
+            service.Object,
+            exchangeRateService: CreateRateService(36.50m),
+            filePicker: PickerReturning(OcrFilePath));
+        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null, null);
+        Assert.Equal(CurrencyCodes.Usd, viewModel.SelectedCurrency);
+        Assert.Equal(string.Empty, viewModel.AppliedRateText);
+        Assert.False(viewModel.IsRateInputEnabled);
+
+        await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
+
+        Assert.Equal(CurrencyCodes.BsS, viewModel.SelectedCurrency);
+        Assert.True(viewModel.IsRateInputEnabled);
+        Assert.Equal("78.45", viewModel.AppliedRateText);
+        Assert.Contains("Moneda ajustada a Bs.S", viewModel.StatusMessage);
+        Assert.NotNull(captured);
+        Assert.Equal(CurrencyCodes.BsS, captured!.Currency);
+        Assert.Equal(78.45m, captured.AppliedRate);
+
+        var stagedLine = Assert.Single(viewModel.Lines);
+        Assert.Equal(10m, stagedLine.UnitCostUSD);
+
+        viewModel.AppliedRateText = "36,50";
+
+        Assert.Equal(36.50m, viewModel.StagedInvoice!.AppliedRate);
+        Assert.Equal(21.49m, stagedLine.UnitCostUSD);
+        Assert.Equal($"{10m:N2} → {21.49m:N2}", stagedLine.CostComparison);
+    }
+
+    [Fact]
+    public async Task ScanInvoice_WithUsdSelection_WithoutDetectedExchangeRate_KeepsUsdAndCanonicalRateOne()
+    {
+        // 8.174 (guardia): sin tasa impresa el escaneo no cambia la moneda seleccionada ni la tasa.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        StageSupplierInvoiceRequestDto? captured = null;
+        var extracted = new OcrExtractionResultDto(
+            new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 10m, 92m, 90m, 88m) },
+            "J-123",
+            "Proveedor OCR",
+            "0238317");
+        service.Setup(client => client.ExtractOcrAsync(
+                OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(extracted);
+        service.Setup(client => client.StageAsync(
+                It.IsAny<StageSupplierInvoiceRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<StageSupplierInvoiceRequestDto, CancellationToken>((request, _) => captured = request)
+            .ReturnsAsync(new SupplierInvoiceDetailDto(
+                42,
+                7,
+                "Draft",
+                CurrencyCodes.Usd,
+                1m,
+                new[] { CreateLine(1) }));
+
+        var viewModel = CreateViewModel(
+            service.Object,
+            exchangeRateService: CreateRateService(36.50m),
+            filePicker: PickerReturning(OcrFilePath));
+        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null, null);
+
+        await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.OcrDetectedExchangeRate);
+        Assert.Equal(CurrencyCodes.Usd, viewModel.SelectedCurrency);
+        Assert.Equal(string.Empty, viewModel.AppliedRateText);
+        Assert.DoesNotContain("Moneda ajustada", viewModel.StatusMessage);
+        Assert.NotNull(captured);
+        Assert.Equal(CurrencyCodes.Usd, captured!.Currency);
+        Assert.Equal(1m, captured.AppliedRate);
+    }
+
+    [Fact]
     public async Task ConfirmAsync_BsSInvoiceWithUpdatedAppliedRate_RecalculatesProductCostAndPrice()
     {
         // 8.172: si el revisor ajusta la tasa aplicada en Bs.S durante la revisión, el confirm
@@ -1922,6 +2023,119 @@ public sealed class SupplierInvoiceClientTests
             {
                 "/api/products?filter=Harina%20PAN&page=1&pageSize=20&statusFilter=active",
                 $"/api/supplier-invoices/{invoice.Id}/lines/15/link-product"
+            },
+            handler.RequestPaths);
+    }
+
+    [Fact]
+    public async Task OcrScannerConfigDialogViewModel_BuildsTemplateRunsLiveTestAndSavesTemplate()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var filePicker = Mock.Of<IFilePickerDialog>();
+
+        SupplierOcrTemplateDto? capturedTestTemplate = null;
+        service.Setup(s => s.ExtractOcrAsync(
+                "C:\\temp\\test.png",
+                7,
+                null,
+                It.IsAny<SupplierOcrTemplateDto?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, int?, SupplierColumnMappingDto?, SupplierOcrTemplateDto?, CancellationToken>(
+                (_, _, _, tpl, _) => capturedTestTemplate = tpl)
+            .ReturnsAsync(new OcrExtractionResultDto(
+                new[]
+                {
+                    new OcrExtractedLineDto("COD-1", null, "HARINA PAN 1X40", 2m, 40m, 95m, 90m, 88m, ExtractedConversionFactor: 40m)
+                },
+                "J-123",
+                "Proveedor OCR",
+                "00099",
+                RawExtractedText: "COD-1 HARINA PAN 1X40 2 40.00",
+                PreprocessedPreviewPng: new byte[] { 1, 2, 3 }));
+
+        SupplierOcrTemplateDto? savedTemplate = null;
+        service.Setup(s => s.SaveSupplierOcrTemplateAsync(
+                7,
+                It.IsAny<SupplierOcrTemplateDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, SupplierOcrTemplateDto, CancellationToken>((_, tpl, _) => savedTemplate = tpl)
+            .ReturnsAsync((int _, SupplierOcrTemplateDto tpl, CancellationToken _) => tpl);
+
+        var vm = new OcrScannerConfigDialogViewModel(
+            7,
+            "Proveedor OCR",
+            null,
+            null,
+            service.Object,
+            filePicker,
+            "C:\\temp\\test.png");
+
+        vm.RoiX = 0.05;
+        vm.RoiY = 0.10;
+        vm.RoiWidth = 0.85;
+        vm.RoiHeight = 0.70;
+        vm.RotateRightCommand.Execute(null);
+        vm.ContrastFactor = 1.3;
+        vm.BrightnessDelta = -15;
+        vm.UseCustomBinarizationThreshold = true;
+        vm.BinarizationThreshold = 145;
+        vm.HeaderAnchorKeywords = "RENGLON, DETALLE";
+        vm.FooterAnchorKeywords = "SUBTOTAL, IVA";
+        vm.SupplierCodeColumnPosition = 1;
+        vm.QuantityColumnPosition = 2;
+        vm.ProductColumnPosition = 3;
+        vm.UnitCostColumnPosition = 4;
+        vm.IsCostRuleLineTotal = true;
+        vm.IsDecimalComma = true;
+        vm.SelectedFactorPatternKey = "AUTO";
+        vm.NewReplacementFrom = "O";
+        vm.NewReplacementTo = "0";
+        vm.AddReplacementRuleCommand.Execute(null);
+
+        await vm.TestExtractionCommand.ExecuteAsync(null);
+
+        Assert.NotNull(capturedTestTemplate);
+        Assert.Equal(90, capturedTestTemplate!.RotationDegrees);
+        Assert.Equal(145, capturedTestTemplate.BinarizationThreshold);
+        Assert.Equal(OcrCostAmountRule.LineTotal, capturedTestTemplate.CostAmountRule);
+        Assert.Equal(OcrDecimalSeparatorRule.Comma, capturedTestTemplate.DecimalSeparator);
+        Assert.Equal("AUTO", capturedTestTemplate.FactorExtractionPattern);
+        Assert.Single(vm.SandboxLines);
+        Assert.Equal(40m, vm.SandboxLines[0].ExtractedConversionFactor);
+        Assert.Contains("HARINA PAN 1X40", vm.RawExtractedText);
+        Assert.Equal(new byte[] { 1, 2, 3 }, vm.PreprocessedPreviewBytes);
+
+        await vm.ApplyToInvoiceCommand.ExecuteAsync(null);
+
+        Assert.True(vm.ApplyResultToStaging);
+        Assert.NotNull(savedTemplate);
+        Assert.Equal(OcrCostAmountRule.LineTotal, savedTemplate!.CostAmountRule);
+    }
+
+    [Fact]
+    public async Task ClientSupplierInvoiceService_GetAndSaveOcrTemplateRoutesAndMultipartOcrTemplateJson()
+    {
+        var template = new SupplierOcrTemplateDto(
+            RoiX: 0.1,
+            CostAmountRule: OcrCostAmountRule.LineTotal,
+            FactorExtractionPattern: "AUTO");
+        var handler = new StubHttpMessageHandler(
+            JsonResponse(template),
+            JsonResponse(template));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        var loaded = await service.GetSupplierOcrTemplateAsync(7);
+        var saved = await service.SaveSupplierOcrTemplateAsync(7, template);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(OcrCostAmountRule.LineTotal, loaded!.CostAmountRule);
+        Assert.Equal("AUTO", saved.FactorExtractionPattern);
+        Assert.Equal(
+            new[]
+            {
+                "/api/supplier-invoices/suppliers/7/ocr-template",
+                "/api/supplier-invoices/suppliers/7/ocr-template"
             },
             handler.RequestPaths);
     }

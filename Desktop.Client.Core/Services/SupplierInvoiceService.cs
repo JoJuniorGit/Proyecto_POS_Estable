@@ -65,6 +65,13 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         return await ReadRequiredResponseAsync<SupplierSummaryDto>(response, cancellationToken);
     }
 
+    public Task<OcrExtractionResultDto> ExtractOcrAsync(
+        string filePath,
+        int? supplierId,
+        SupplierColumnMappingDto? columnMapping,
+        CancellationToken cancellationToken = default) =>
+        ExtractOcrAsync(filePath, supplierId, columnMapping, null, cancellationToken);
+
     // 8.147-T6/D12: sube la imagen/PDF al endpoint de extracción OCR. El mapping viaja como
     // campos planos y solo cuando hay plantilla del proveedor; sin él el parser usa keywords
     // genéricas. El archivo va como stream con nombre para conservar la extensión.
@@ -72,6 +79,7 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         string filePath,
         int? supplierId,
         SupplierColumnMappingDto? columnMapping,
+        SupplierOcrTemplateDto? ocrTemplate,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
@@ -105,12 +113,48 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
             }
         }
 
+        if (ocrTemplate is not null)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(ocrTemplate);
+            content.Add(new StringContent(json), "ocrTemplateJson");
+        }
+
         using var response = await _httpClient.PostAsync(
             "api/supplier-invoices/ocr-extract",
             content,
             cancellationToken);
         response.EnsureSuccessStatusCode();
         return await ReadRequiredResponseAsync<OcrExtractionResultDto>(response, cancellationToken);
+    }
+
+    public async Task<SupplierOcrTemplateDto?> GetSupplierOcrTemplateAsync(
+        int supplierId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            $"api/supplier-invoices/suppliers/{supplierId}/ocr-template",
+            cancellationToken);
+        if (response.StatusCode is HttpStatusCode.NoContent or HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<SupplierOcrTemplateDto>(cancellationToken: cancellationToken);
+    }
+
+    public async Task<SupplierOcrTemplateDto> SaveSupplierOcrTemplateAsync(
+        int supplierId,
+        SupplierOcrTemplateDto template,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        using var response = await _httpClient.PutAsJsonAsync(
+            $"api/supplier-invoices/suppliers/{supplierId}/ocr-template",
+            template,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await ReadRequiredResponseAsync<SupplierOcrTemplateDto>(response, cancellationToken);
     }
 
     private static string ResolveOcrContentType(string filePath) =>

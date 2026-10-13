@@ -26,6 +26,8 @@ public partial class SupplierInvoiceViewModel
         "Imágenes (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff)|" +
         "*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff|PDF (*.pdf)|*.pdf";
 
+    private string? _lastScannedOcrFilePath;
+
     [ObservableProperty]
     private bool _isOcrSource;
 
@@ -44,6 +46,7 @@ public partial class SupplierInvoiceViewModel
     private decimal? _ocrDetectedExchangeRate;
 
     public bool CanScanInvoice => CanMutateCatalog && !IsBusy && SelectedSupplier is not null;
+    public bool CanConfigureOcrScanner => CanMutateCatalog && !IsBusy && SelectedSupplier is not null;
 
     /// <summary>8.147-S5/S6: el origen OCR propaga el editor a las líneas ya cargadas sin deshabilitar productos inexistentes.</summary>
     partial void OnIsOcrSourceChanged(bool value)
@@ -52,6 +55,80 @@ public partial class SupplierInvoiceViewModel
         foreach (var line in Lines)
         {
             line.IsEditorEnabled = value || line.CanCreateProduct || line.WasUnresolved;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanConfigureOcrScanner))]
+    private async Task ConfigureOcrScannerAsync(CancellationToken cancellationToken)
+    {
+        if (!CanMutateCatalog)
+        {
+            ShowAccessDenied();
+            return;
+        }
+
+        if (SelectedSupplier is null)
+        {
+            _dialogService.ShowWarning("Datos incompletos", "Seleccione un proveedor antes de configurar el escáner OCR.");
+            return;
+        }
+
+        SupplierOcrTemplateDto? initialTemplate = SelectedSupplier.OcrTemplate;
+        try
+        {
+            var fetched = await _invoiceService.GetSupplierOcrTemplateAsync(SelectedSupplier.Id, cancellationToken);
+            if (fetched is not null)
+            {
+                initialTemplate = fetched;
+            }
+        }
+        catch
+        {
+            // Usa la plantilla en memoria si la consulta previa no estuvo disponible.
+        }
+
+        var dialogVm = new OcrScannerConfigDialogViewModel(
+            SelectedSupplier.Id,
+            SelectedSupplier.CommercialName,
+            SelectedSupplier.ColumnMapping,
+            initialTemplate,
+            _invoiceService,
+            _filePicker,
+            _lastScannedOcrFilePath);
+
+        _dialogService.ShowOcrScannerConfigDialog(dialogVm);
+
+        if (dialogVm.SavedTemplate is not null && SelectedSupplier is not null)
+        {
+            var updatedSupplier = SelectedSupplier with { OcrTemplate = dialogVm.SavedTemplate };
+            var index = Suppliers.IndexOf(SelectedSupplier);
+            if (index >= 0)
+            {
+                Suppliers[index] = updatedSupplier;
+            }
+
+            SelectedSupplier = updatedSupplier;
+            StatusMessage = $"Plantilla OCR actualizada para {updatedSupplier.CommercialName}.";
+        }
+
+        if (dialogVm.ApplyResultToStaging && dialogVm.LastExtractionResult is not null)
+        {
+            IsBusy = true;
+            ClearOcrReviewState();
+            try
+            {
+                await ProcessOcrExtractionResultAsync(dialogVm.LastExtractionResult, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"No se pudo aplicar el resultado OCR: {ex.Message}";
+                _dialogService.ShowError("Error al aplicar OCR", StatusMessage);
+            }
+            finally
+            {
+                IsBusy = false;
+                RefreshCommandStates();
+            }
         }
     }
 
@@ -98,37 +175,26 @@ public partial class SupplierInvoiceViewModel
             return;
         }
 
+        _lastScannedOcrFilePath = filePath;
         IsBusy = true;
         ClearOcrReviewState();
         StatusMessage = "Extrayendo el texto de la factura escaneada...";
         try
         {
-            var result = await _invoiceService.ExtractOcrAsync(
-                filePath,
-                SelectedSupplier.Id,
-                SelectedSupplier.ColumnMapping,
-                cancellationToken);
+            var result = SelectedSupplier.OcrTemplate is not null
+                ? await _invoiceService.ExtractOcrAsync(
+                    filePath,
+                    SelectedSupplier.Id,
+                    SelectedSupplier.ColumnMapping,
+                    SelectedSupplier.OcrTemplate,
+                    cancellationToken)
+                : await _invoiceService.ExtractOcrAsync(
+                    filePath,
+                    SelectedSupplier.Id,
+                    SelectedSupplier.ColumnMapping,
+                    cancellationToken);
 
-            var lines = BuildOcrStageLines(result.Lines);
-
-            // 8.147-L8: bloquear en vez de stagear filas que el backend descartaría sin aviso.
-            if (lines.Any(line => !HasReadableIdentifier(line)))
-            {
-                StatusMessage = OcrMissingIdentifierMessage;
-                _dialogService.ShowError("Filas OCR incompletas", OcrMissingIdentifierMessage);
-                return;
-            }
-
-            ApplyOcrReviewState(result);
-
-            if (lines.Count == 0)
-            {
-                StatusMessage = "El OCR no detectó líneas legibles en la factura. Verifique el enfoque y la iluminación de la foto e intente de nuevo.";
-                _dialogService.ShowWarning("Sin líneas OCR", StatusMessage);
-                return;
-            }
-
-            await StagePreparedLinesAsync(lines, columnMapping: null, ocrSourced: true, cancellationToken);
+            await ProcessOcrExtractionResultAsync(result, cancellationToken);
         }
         catch (Exception exception)
         {
@@ -142,6 +208,40 @@ public partial class SupplierInvoiceViewModel
         }
     }
 
+    private async Task ProcessOcrExtractionResultAsync(
+        OcrExtractionResultDto result,
+        CancellationToken cancellationToken)
+    {
+        var lines = BuildOcrStageLines(result.Lines);
+
+        // 8.147-L8: bloquear en vez de stagear filas que el backend descartaría sin aviso.
+        if (lines.Any(line => !HasReadableIdentifier(line)))
+        {
+            StatusMessage = OcrMissingIdentifierMessage;
+            _dialogService.ShowError("Filas OCR incompletas", OcrMissingIdentifierMessage);
+            return;
+        }
+
+        // 8.174: se registra ANTES de aplicar el estado OCR para poder avisar en el status que la
+        // moneda del documento se ajustó sola por la tasa impresa detectada.
+        var currencyAdjustedForDetectedRate = result.DetectedExchangeRate is > 0m && !IsBsSCurrency;
+        ApplyOcrReviewState(result);
+
+        if (lines.Count == 0)
+        {
+            StatusMessage = "El OCR no detectó líneas legibles en la factura. Verifique el enfoque y la iluminación de la foto e intente de nuevo.";
+            _dialogService.ShowWarning("Sin líneas OCR", StatusMessage);
+            return;
+        }
+
+        await StagePreparedLinesAsync(lines, columnMapping: null, ocrSourced: true, cancellationToken);
+
+        if (currencyAdjustedForDetectedRate)
+        {
+            StatusMessage += " Moneda ajustada a Bs.S por la tasa detectada en la factura.";
+        }
+    }
+
     private static IReadOnlyList<StageLineDto> BuildOcrStageLines(IReadOnlyList<OcrExtractedLineDto> lines) =>
         lines.Select(line => new StageLineDto(
             line.SupplierCode,
@@ -151,7 +251,8 @@ public partial class SupplierInvoiceViewModel
             line.UnitCost ?? 0m,
             line.NameConfidence,
             line.QuantityConfidence,
-            line.UnitCostConfidence)).ToArray();
+            line.UnitCostConfidence,
+            line.ExtractedConversionFactor)).ToArray();
 
     private static bool HasReadableIdentifier(StageLineDto line) =>
         !string.IsNullOrWhiteSpace(line.SupplierCode) ||
@@ -168,10 +269,17 @@ public partial class SupplierInvoiceViewModel
             : null;
         IsOcrSource = true;
 
-        // 8.172: cuando la factura está en Bs.S y el OCR detecta la tasa impresa en el documento,
-        // toma ese valor y reemplaza la tasa mostrada al usuario en la sección antes del staging.
-        if (IsBsSCurrency && OcrDetectedExchangeRate is decimal detectedRate)
+        // 8.174: la tasa impresa en el documento es evidencia de una factura en Bs.S. Si el selector
+        // aún no está en Bs.S (proveedor sin moneda recordada o primera factura), se ajusta para que
+        // la tasa quede aplicada y editable al terminar el escaneo; toda corrección posterior de la
+        // tasa recalcula los montos de la grilla en vivo (PropagateCurrencyAndRateToLines).
+        if (OcrDetectedExchangeRate is decimal detectedRate)
         {
+            if (!IsBsSCurrency)
+            {
+                SelectedCurrency = CurrencyCodes.BsS;
+            }
+
             AppliedRateText = FormatAppliedRateText(detectedRate);
         }
 

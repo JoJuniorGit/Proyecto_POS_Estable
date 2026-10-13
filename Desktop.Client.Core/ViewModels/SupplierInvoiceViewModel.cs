@@ -588,6 +588,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanStageInvoice));
         OnPropertyChanged(nameof(CanConfirmInvoice));
         OnPropertyChanged(nameof(CanScanInvoice));
+        OnPropertyChanged(nameof(CanConfigureOcrScanner));
         OnPropertyChanged(nameof(IsCurrencyInputEnabled));
         OnPropertyChanged(nameof(IsRateInputEnabled));
         SelectFileCommand.NotifyCanExecuteChanged();
@@ -595,6 +596,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         StageInvoiceCommand.NotifyCanExecuteChanged();
         ConfirmInvoiceCommand.NotifyCanExecuteChanged();
         ScanInvoiceCommand.NotifyCanExecuteChanged();
+        ConfigureOcrScannerCommand.NotifyCanExecuteChanged();
     }
 
     private void ShowAccessDenied() =>

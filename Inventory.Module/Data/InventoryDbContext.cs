@@ -18,6 +18,7 @@ public class InventoryDbContext : DbContext
     public DbSet<ExchangeRateHistory> ExchangeRateHistory { get; set; }
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<SupplierColumnMapping> SupplierColumnMappings { get; set; }
+    public DbSet<SupplierOcrTemplate> SupplierOcrTemplates { get; set; }
     public DbSet<SupplierProductFactor> SupplierProductFactors { get; set; }
     public DbSet<SupplierProductCode> SupplierProductCodes { get; set; }
     public DbSet<SupplierInvoice> SupplierInvoices { get; set; }
@@ -187,6 +188,29 @@ public class InventoryDbContext : DbContext
             entity.HasOne(m => m.Supplier)
                 .WithOne(s => s.ColumnMapping)
                 .HasForeignKey<SupplierColumnMapping>(m => m.SupplierId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SupplierOcrTemplate>(entity =>
+        {
+            entity.HasIndex(t => t.SupplierId)
+                .IsUnique()
+                .HasDatabaseName("IX_SupplierOcrTemplates_SupplierId");
+            entity.Property(t => t.HeaderAnchorKeywords).HasMaxLength(500);
+            entity.Property(t => t.FooterAnchorKeywords).HasMaxLength(500);
+            entity.Property(t => t.CharacterReplacementsJson).HasMaxLength(2000);
+            entity.Property(t => t.FactorExtractionPattern).HasMaxLength(200);
+            entity.Property(t => t.CostAmountRule)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .HasDefaultValue(Core.DTOs.OcrCostAmountRule.UnitCost);
+            entity.Property(t => t.DecimalSeparator)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .HasDefaultValue(Core.DTOs.OcrDecimalSeparatorRule.Auto);
+            entity.HasOne(t => t.Supplier)
+                .WithOne(s => s.OcrTemplate)
+                .HasForeignKey<SupplierOcrTemplate>(t => t.SupplierId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
