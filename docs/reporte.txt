@@ -14427,3 +14427,109 @@ E. COMMITS
 
 E1. 8.176 en V0.15: 3298d85 (implementación) + commit de este ANEXO (docs(8.176); git log).
 ================================================================================
+
+================================================================================
+ANEXO 8.177 - STOCK: CENTRO DE AUDITORIA E INMUTABILIDAD DE AJUSTES (KARDEX DE INVENTARIO) - 2026-10-13
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/kardex-auditoria-stock.md): registro histórico,
+inmutable y auditable de todas las variaciones de inventario sobre StockMovement (metadatos de
+actores, cuantías, valorización, clasificación y referencias), motor de consulta con filtros
+combinables + KPIs + paginación server-side, y exportación CSV/XLSX/PDF con encabezado legal.
+Decisión del mantenedor: el Centro consulta la UNIÓN activa + archivo.
+
+A. ALCANCE Y ENTREGA
+
+A1. Datos (commit 04d5b19):
+    - StockMovement: OriginType, ReasonCode, AuthorizedByUserId, UnitCostUSD numeric(18,4),
+      SupplierInvoiceId y Observation (nullable; históricos sin clasificar). Enums
+      StockMovementOriginType {Manual,Import,System} y StockMovementReason {Sale,PurchaseEntry,
+      Damage,Expiry,PhysicalCountCorrection,Return,InitialLoad,ImportAdjustment} persistidos string(32).
+    - StockMovementArchive: espejo de auditoría + factory FromStockMovement (el archiver preserva
+      TODOS los campos y mantiene la atomicidad INSERT+DELETE).
+    - Migración idempotente 20261013160314_AddStockMovementAuditFieldsRev8177 (guards
+      DO $$/to_regclass/information_schema; columnas e índices ProductId/ReasonCode en ambas tablas;
+      Down preserva el índice ProductId preexistente); snapshot EF consistente
+      (has-pending-model-changes limpio).
+    - Productores clasificados: ajuste manual (validación de motivo/observación solo-cuando-llegan),
+      defaults centrales de venta (SaleId != null -> System/Sale) y snapshot de costo del producto
+      destino en UpdateStockBatchAsync, carga inicial, importación masiva, factura de proveedor
+      (Import/PurchaseEntry + SupplierInvoiceId + costo renormalizado de la línea).
+    - Fix de verificación independiente (bloqueante): snapshot de costo NULL en variantes con stock
+      compartido (el destino es el PADRE) -> carga de padres faltantes + proyección única
+      StockDeductionProductProjection; test RED->GREEN del caso.
+A2. API de consulta y exportación (commit fded8aa):
+    - StockKardexService: unión EF (Concat -> UNION ALL) de StockMovements + StockMovements_Archive
+      con identidad lógica (MovementId = Id activo / OriginalMovementId archivado); filtros de fechas
+      (UTC inclusivos), usuario ejecutor O autorizador, producto, motivos y orígenes sobre el valor
+      EFECTIVO derivado, sentido; paginación server-side (clamp 1..200, default 25) con dos fases
+      documentada cuando hay filtros de clasificación; KPIs (total, volumen neto, entradas/mermas/
+      neto USD con TotalValueUSD redondeado por fila y UnvaluedMovements honesto).
+    - StockMovementKardexClassifier: derivación histórica best-effort (persistidos mandan) para
+      ventas/devoluciones (SaleId), "Ajuste Manual: {keyword}" (merma/daño, vencimiento, conteo,
+      devolución, compra), variantes ("Variante: ... | X"), carga inicial e importación; texto
+      desconocido -> sin clasificar. Fixes post-verificación: prefijo Manual antes de keywords,
+      "importaci" (no "importa"), "compra" por palabra completa.
+    - Export CSV (';'+BOM+escape anti-fórmula), XLSX (ClosedXML, montos numéricos) y PDF (writer
+      propio multi-página estilo cierre de caja, sin dependencias nuevas) con ENCABEZADO LEGAL:
+      razón social (key CompanyLegalName, fallback COMMANDCENTER POS), fecha/hora UTC+local, usuario
+      exportador y resumen de filtros.
+    - StockMovementsController (solo lectura, RBAC Admin/Manager + security stamp) + endpoints
+      GET/POST api/settings/company-name (POST solo Admin).
+A3. UI Desktop y ajuste auditado (commit 48768f6):
+    - StockKardexView + StockKardexViewModel: filtros con atajos Hoy/Esta Semana/Mes Actual (zona
+      legal Venezuela, fin exclusivo compensado con AddTicks(-1) contra el <= inclusivo del API),
+      búsqueda predictiva de producto, KPIs con aviso de movimientos sin costo, grilla paginada
+      server-side (fecha local + UTC en tooltip), export vía SaveFileDialog, gating RBAC; navegación
+      (MainViewModel + MainWindow) y DI (cliente HTTP con ConfigureClient).
+    - AdjustStockDialog: ComboBox de motivo estandarizado (8 etiquetas ES) + Observación obligatoria
+      (<=500) con validación local; flujo auditado expuesto como ShowAdjustStockDialogWithAudit
+      (miembro nuevo con implementación por defecto que delega al legado — evita romper stubs fuera
+      de superficie); ProductService envía ReasonCode numérico + Observation.
+A4. Tests: T1 11 (auditoría de productores, archiver, validaciones, shared-stock) + T2 47
+    (filtros/paginación/KPIs/clasificador/export/controller) + smoke relacional SQLite del Concat +
+    T3 22 (atajos/contrato/paginación/KPIs/export/RBAC y flujo de ajuste) = 80+ casos nuevos.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores (XAML WPF incluido).
+B2. Suite completa POR PARTES (restricción de RAM del mantenedor): Unit 1887/1887 + resto 571/571
+    = 2458/2458, 0 fallas. Carriles enfocados: SupplierInvoice 282/282; Kardex/Inventory 155/155.
+B3. Verificación independiente read-only por tarea (agente reviewer): T1 bloqueó por el snapshot
+    shared-stock (fix aplicado + test); T2 "REVISAR sin bloqueantes" (falsos positivos del
+    clasificador corregidos + smoke SQLite agregado; residuales diferidos: summary sin agregación
+    SQL, export íntegro en memoria, partial de export de 691 líneas); T3 "REVISAR sin bloqueantes"
+    (4 fixes baratos aplicados: comando muerto, IsEntry >0, cancelación de búsqueda en vuelo,
+    MaxLength 200). RED->GREEN observado por carril en cada tarea.
+B4. Migración y gate de cobertura por capas: validables contra PostgreSQL solo en CI (convención
+    del repo: sin PG local); localmente se respetó la restricción de RAM y se validó la suite
+    completa en verde; el gate de cobertura (coverage.runsettings + check-coverage.py) corre en CI
+    al push.
+
+C. LIMITACIONES ACEPTADAS
+
+C1. El clasificador histórico es best-effort: textos legados fuera de los formatos conocidos quedan
+    "sin clasificar" (la heurística no inventa clasificaciones); los ajustes manuales hechos con el
+    cliente previo a T3 dependen de la derivación hasta que se use la UI nueva.
+C2. KPIs valorizados: los movimientos sin costo snapshot (pre-8.177) se cuentan aparte
+    (UnvaluedMovements) y no suman al balance USD — no hay costo histórico recuperable.
+C3. Summary y export materializan las filas filtradas (sin agregación SQL / streaming); aceptado
+    para el volumen actual, a vigilar con el crecimiento del archivo (retención configurable).
+C4. Residuales de estilo diferidos: extracción de tipos de StockKardexViewModel.cs (638 líneas /
+    6 tipos), [Obsolete] al método legado de ajuste (difiere por TreatWarningsAsErrors), filename
+    de export con hora local de máquina.
+C5. Referencia cruzada del Kardex es textual (#venta/#factura); la acción clicable queda para cuando
+    cierre el WIP de la vista de facturas (SupplierInvoiceViewModel*).
+C6. Productores cuyo archivo tiene WIP ajeno (Checkout/HoldOrders) quedan cubiertos por defaults
+    centrales + derivación; el enriquecimiento explícito (incl. AuthorizedByUserId en flujos
+    autorizados) es follow-up post-WIP.
+
+D. ROLLBACK
+
+D1. Revertir los tres commits restaura el comportamiento previo. La migración es aditiva y nullable
+    (Down seguro); no hay cambios destructivos de datos.
+
+E. COMMITS
+
+E1. 8.177 en V0.15: 04d5b19 (T1 datos) + fded8aa (T2 API/export) + 48768f6 (T3 UI/ajuste) + commit
+    de este ANEXO (docs(8.177); git log).
+================================================================================
