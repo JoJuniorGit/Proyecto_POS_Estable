@@ -255,6 +255,45 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         return paged?.Items?.ToList() ?? [];
     }
 
+    // 8.175-S6: hidratación del modal de actualización. Deduplica ids (> 0) preservando el orden de
+    // primera aparición; un 404 se salta (producto eliminado) y el resto de estados propaga el error.
+    public async Task<IReadOnlyList<ProductDto>> GetCatalogProductsByIdsAsync(
+        IReadOnlyList<int> productIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+
+        var orderedIds = new List<int>(productIds.Count);
+        var seenIds = new HashSet<int>();
+        foreach (var productId in productIds)
+        {
+            if (productId > 0 && seenIds.Add(productId))
+            {
+                orderedIds.Add(productId);
+            }
+        }
+
+        var found = new List<ProductDto>(orderedIds.Count);
+        foreach (var productId in orderedIds)
+        {
+            using var response = await _httpClient.GetAsync($"api/products/{productId}", cancellationToken);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                continue;
+            }
+
+            response.EnsureSuccessStatusCode();
+            var product = await response.Content.ReadFromJsonAsync<ProductDto>(
+                cancellationToken: cancellationToken);
+            if (product is not null)
+            {
+                found.Add(product);
+            }
+        }
+
+        return found;
+    }
+
 
     private static async Task<TResponse> ReadRequiredResponseAsync<TResponse>(
         HttpResponseMessage response,

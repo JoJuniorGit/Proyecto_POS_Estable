@@ -43,11 +43,9 @@ public partial class SupplierInvoiceService
                     ?? throw new KeyNotFoundException(
                         $"Supplier invoice line {lineId} was not found in invoice {invoiceId}.");
 
-                if (line.ResolvedProductId is not null)
-                {
-                    throw new InvalidOperationException(
-                        $"Supplier invoice line {lineId} already resolves to a product.");
-                }
+                // 8.175-S5: el ancla puede venir ya resuelta; la creación re-resuelve la línea y
+                // absorbe las filas reemplazadas del vínculo previo (misma validación zero-trust).
+                var wasResolved = line.ResolvedProductId is not null;
 
                 // 8.146-S4/D7: el SKU ES el código de barras y las columnas de códigos de la
                 // factura jamás se heredan; solo el EAN/UPC capturado (zero-trust) es válido.
@@ -66,6 +64,13 @@ public partial class SupplierInvoiceService
                 if (name.Length > 100)
                 {
                     throw new ArgumentException("The product name cannot exceed 100 characters.");
+                }
+
+                if (wasResolved)
+                {
+                    // 8.175-S5: se valida y reconcilia el grupo previo antes de crear; una
+                    // validación fallida no debe dejar producto creado ni filas eliminadas.
+                    PrepareResolutionSlots(invoice, line, request.ReplacedLineIds, targetCount: 1);
                 }
 
                 // 8.146-D5: creación de identidad únicamente; costo, márgenes, precios y stock
@@ -123,11 +128,12 @@ public partial class SupplierInvoiceService
                 }
 
                 _logger.LogInformation(
-                    "Created product {ProductId} (SKU {Sku}) from supplier invoice {InvoiceId} line {LineId}.",
+                    "Created product {ProductId} (SKU {Sku}) from supplier invoice {InvoiceId} line {LineId} (re-resolution: {IsReResolution}).",
                     created.Id,
                     created.SKU,
                     invoiceId,
-                    lineId);
+                    lineId,
+                    wasResolved);
 
                 return ToDetailDto(invoice);
             }
@@ -188,11 +194,9 @@ public partial class SupplierInvoiceService
                     ?? throw new KeyNotFoundException(
                         $"Supplier invoice line {lineId} was not found in invoice {invoiceId}.");
 
-                if (line.ResolvedProductId is not null)
-                {
-                    throw new InvalidOperationException(
-                        $"Supplier invoice line {lineId} already resolves to a product.");
-                }
+                // 8.175-S5: el ancla puede venir ya resuelta; la re-resolución reconcilia el grupo
+                // 1:N previo con las filas reemplazadas explícitas del cliente.
+                var wasResolved = line.ResolvedProductId is not null;
 
                 var productsById = await _context.Products
                     .AsNoTracking()
@@ -209,6 +213,14 @@ public partial class SupplierInvoiceService
                     targetProducts.Add(foundProduct);
                 }
 
+                // 8.175-S5: antes de tocar alias se reconcilia el grupo destino: ancla + filas
+                // reutilizadas + filas nuevas; las absorbidas sobrantes se eliminan.
+                var resolutionSlots = PrepareResolutionSlots(
+                    invoice,
+                    line,
+                    request.ReplacedLineIds,
+                    targetProducts.Count);
+
                 // Persistencia del vínculo (aprendizaje de alias 1:N): guarda la relación
                 // ProveedorId + Código/Descripción en Factura -> ProductIds para futuras facturas.
                 var originalDescription = line.Name?.Trim();
@@ -219,20 +231,37 @@ public partial class SupplierInvoiceService
                     targetProductIds,
                     cancellationToken);
 
-                if (!string.IsNullOrWhiteSpace(originalDescription)
-                    && !string.Equals(originalDescription, line.SupplierCode?.Trim(), StringComparison.Ordinal))
+                if (!wasResolved)
                 {
-                    await UpsertSupplierProductCodesAsync(
-                        invoice.SupplierId,
-                        originalDescription,
-                        targetProductIds,
-                        cancellationToken);
-                }
+                    // Ruta sin resolver: comportamiento vigente (descripción original + editada).
+                    if (!string.IsNullOrWhiteSpace(originalDescription)
+                        && !string.Equals(originalDescription, line.SupplierCode?.Trim(), StringComparison.Ordinal))
+                    {
+                        await UpsertSupplierProductCodesAsync(
+                            invoice.SupplierId,
+                            originalDescription,
+                            targetProductIds,
+                            cancellationToken);
+                    }
 
-                if (!string.IsNullOrWhiteSpace(editedDescription)
-                    && !string.Equals(editedDescription, originalDescription, StringComparison.Ordinal)
+                    if (!string.IsNullOrWhiteSpace(editedDescription)
+                        && !string.Equals(editedDescription, originalDescription, StringComparison.Ordinal)
+                        && !string.Equals(editedDescription, line.SupplierCode?.Trim(), StringComparison.Ordinal))
+                    {
+                        await UpsertSupplierProductCodesAsync(
+                            invoice.SupplierId,
+                            editedDescription,
+                            targetProductIds,
+                            cancellationToken);
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(editedDescription)
+                    && !string.Equals(editedDescription, line.Name?.Trim(), StringComparison.Ordinal)
                     && !string.Equals(editedDescription, line.SupplierCode?.Trim(), StringComparison.Ordinal))
                 {
+                    // 8.175-S5: en re-vínculo solo se re-apunta el código de proveedor y, si el
+                    // revisor la aportó, la descripción editada. line.Name pertenece al vínculo
+                    // anterior (nombre del producto previo) y jamás se aliasea.
                     await UpsertSupplierProductCodesAsync(
                         invoice.SupplierId,
                         editedDescription,
@@ -249,31 +278,14 @@ public partial class SupplierInvoiceService
                     .GroupBy(item => item.ProductId)
                     .ToDictionary(group => group.Key, group => group.Last());
 
-                var baseConversionFactor = line.ConversionFactor;
                 var lineSupplierCode = targetProducts.Count > 1 && string.IsNullOrWhiteSpace(line.SupplierCode)
                     ? (editedDescription ?? originalDescription)
                     : line.SupplierCode;
-                var lineUnitCostDocument = line.UnitCostDocument;
-                var lineOcrNameConfidence = line.OcrNameConfidence;
-                var lineOcrQuantityConfidence = line.OcrQuantityConfidence;
-                var lineOcrUnitCostConfidence = line.OcrUnitCostConfidence;
 
-                for (var index = 0; index < targetProducts.Count; index++)
+                for (var index = 0; index < resolutionSlots.Count; index++)
                 {
                     var product = targetProducts[index];
-                    var currentLine = index == 0
-                        ? line
-                        : new SupplierInvoiceLine
-                        {
-                            SupplierInvoiceId = invoice.Id,
-                            SupplierCode = lineSupplierCode,
-                            Quantity = 0m,
-                            UnitCostDocument = lineUnitCostDocument,
-                            ConversionFactor = baseConversionFactor,
-                            OcrNameConfidence = lineOcrNameConfidence,
-                            OcrQuantityConfidence = lineOcrQuantityConfidence,
-                            OcrUnitCostConfidence = lineOcrUnitCostConfidence
-                        };
+                    var currentLine = resolutionSlots[index];
 
                     currentLine.SupplierCode = lineSupplierCode;
                     if (currentLine.ConversionFactor <= 1m
@@ -322,11 +334,6 @@ public partial class SupplierInvoiceService
                     currentLine.SuggestedWholesalePriceUSD = PricingCalculator.RoundPriceUp(
                         currentLine.UnitCostUSD * (1m + wholesaleMargin / 100m));
                     currentLine.IsApproved = true;
-
-                    if (index > 0)
-                    {
-                        invoice.Lines.Add(currentLine);
-                    }
                 }
 
                 await _context.SaveChangesAsync(cancellationToken);
@@ -336,11 +343,15 @@ public partial class SupplierInvoiceService
                 }
 
                 _logger.LogInformation(
-                    "Linked supplier invoice {InvoiceId} line {LineId} to {ProductCount} existing product(s): {ProductIds}.",
+                    "Linked supplier invoice {InvoiceId} line {LineId} to {ProductCount} existing product(s): {ProductIds} (re-resolution: {IsReResolution}; replaced lines: {ReplacedLineIds}).",
                     invoiceId,
                     lineId,
                     targetProducts.Count,
-                    string.Join(",", targetProductIds));
+                    string.Join(",", targetProductIds),
+                    wasResolved,
+                    request.ReplacedLineIds is { Count: > 0 }
+                        ? string.Join(",", request.ReplacedLineIds)
+                        : "none");
 
                 return ToDetailDto(invoice);
             }

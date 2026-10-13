@@ -2028,6 +2028,469 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
+    public async Task GetCatalogProductsByIdsAsync_RequestsEachIdAndSkipsMissing()
+    {
+        // 8.175-S6: la hidratación del modal de actualización consulta GET api/products/{id} por id
+        // (ruta existente), deduplicando ids y saltando los que no resuelven (404) sin abortar los demás.
+        var product = new ProductDto { Id = 1, Name = "Harina", SKU = "7591234" };
+        var handler = new StubHttpMessageHandler(
+            JsonResponse(product),
+            new HttpResponseMessage(HttpStatusCode.NotFound));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        var found = await service.GetCatalogProductsByIdsAsync(new[] { 1, 2, 1, 2 });
+
+        Assert.Equal(1, Assert.Single(found).Id);
+        Assert.Equal(new[] { "/api/products/1", "/api/products/2" }, handler.RequestPaths);
+    }
+
+    [Fact]
+    public async Task LinkProductToLineAsync_SerializesReplacedLineIds()
+    {
+        // 8.175-S5: la re-resolución reemplaza el grupo 1:N previo; las filas absorbidas viajan en el body.
+        var invoice = CreateInvoice(CreateLine(1));
+        var handler = new StubHttpMessageHandler(JsonResponse(invoice));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        await service.LinkProductToLineAsync(
+            invoice.Id,
+            1,
+            new LinkInvoiceProductRequestDto(45, "HARINA PAN 1KG", ReplacedLineIds: new[] { 7, 8 }));
+
+        Assert.Contains("\"replacedLineIds\":[7,8]", Assert.Single(handler.RequestBodies));
+    }
+
+    [Fact]
+    public async Task UpdateLinkedProduct_GroupMemberClick_OpensHydratedDialogAnchoredToPrimaryAndReLinksWithReplacedIds()
+    {
+        // 8.175-S1/S2/S4/S7: clic en [ACTUALIZAR] de un miembro del grupo 1:N abre el modal
+        // existente hidratado con el/los producto(s) vinculado(s) anclado a la fila primaria;
+        // al guardar, la re-resolución viaja con los ids de las filas reemplazadas.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var primaryLine = CreateLine(1, unitCost: 24m, resolvedProductId: 101, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            Name = "REFRESCO SURTIDO CAJA",
+            MatchMethod = "SupplierCode",
+            MarginRetailOverride = 30m,
+            MarginWholesaleOverride = 15m
+        };
+        var memberLine = CreateLine(2, unitCost: 24m, resolvedProductId: 102, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            Name = "REFRESCO NARANJA CAJA",
+            Quantity = 0m,
+            MatchMethod = "SupplierCode",
+            MarginRetailOverride = 25m,
+            MarginWholesaleOverride = 12m
+        };
+        var untouchedLine = CreateLine(3, unitCost: 5m, resolvedProductId: 30, status: "Unchanged") with
+        {
+            SupplierCode = "PROV-OTRO",
+            Name = "Sin tocar"
+        };
+        var staged = CreateInvoice(primaryLine, memberLine, untouchedLine);
+
+        var productA = new ProductDto
+        {
+            Id = 101,
+            SKU = "7591000001011",
+            Name = "Refresco Cola 2L",
+            CostPriceUSD = 1.50m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m,
+            StockQuantity = 10m
+        };
+        var productB = new ProductDto
+        {
+            Id = 102,
+            SKU = "7591000001028",
+            Name = "Refresco Naranja 2L",
+            CostPriceUSD = 1.40m,
+            ProfitMarginRetail = 25m,
+            ProfitMarginWholesale = 12m,
+            StockQuantity = 4m
+        };
+
+        var refreshedAfterReLink = CreateInvoice(
+            primaryLine with
+            {
+                Name = productA.Name,
+                OldCostPriceUSD = productA.CostPriceUSD,
+                OldProfitMarginRetail = productA.ProfitMarginRetail,
+                OldProfitMarginWholesale = productA.ProfitMarginWholesale,
+                MarginRetailOverride = 40m,
+                MarginWholesaleOverride = 20m
+            },
+            memberLine with
+            {
+                Name = productB.Name,
+                OldCostPriceUSD = productB.CostPriceUSD,
+                OldProfitMarginRetail = productB.ProfitMarginRetail,
+                OldProfitMarginWholesale = productB.ProfitMarginWholesale
+            },
+            untouchedLine);
+
+        IReadOnlyList<int>? requestedProductIds = null;
+        LinkInvoiceProductRequestDto? capturedLink = null;
+        var capturedLinkLineId = 0;
+        service.Setup(client => client.GetCatalogProductsByIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<int>, CancellationToken>((productIds, _) => requestedProductIds = productIds)
+            .ReturnsAsync(new[] { productA, productB });
+        service.Setup(client => client.LinkProductToLineAsync(
+                staged.Id,
+                It.IsAny<int>(),
+                It.IsAny<LinkInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, LinkInvoiceProductRequestDto, CancellationToken>((_, lineId, request, _) =>
+            {
+                capturedLinkLineId = lineId;
+                capturedLink = request;
+            })
+            .ReturnsAsync(refreshedAfterReLink);
+
+        CreateInvoiceProductDialogViewModel? capturedDialog = null;
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(dialogViewModel =>
+            {
+                capturedDialog = dialogViewModel;
+                Assert.True(dialogViewModel.IsUpdateMode);
+                Assert.Equal(new[] { 101, 102 }, dialogViewModel.SelectedProducts.Select(product => product.Id).ToArray());
+                Assert.Equal(101, dialogViewModel.SelectedProduct?.Id);
+                Assert.Equal(2, dialogViewModel.SelectedProductMargins.Count);
+                Assert.Equal(30m, dialogViewModel.SelectedProductMargins[0].MarginRetail);
+                Assert.Equal(15m, dialogViewModel.SelectedProductMargins[0].MarginWholesale);
+                Assert.Equal(25m, dialogViewModel.SelectedProductMargins[1].MarginRetail);
+                Assert.Equal(12m, dialogViewModel.SelectedProductMargins[1].MarginWholesale);
+
+                // 8.175-S4: el revisor ajusta los márgenes del producto primario en vivo.
+                dialogViewModel.SelectedProductMargins[0].MarginRetail = 40m;
+                dialogViewModel.SelectedProductMargins[0].MarginWholesale = 20m;
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        var primaryRow = viewModel.Lines[0];
+        var memberRow = viewModel.Lines[1];
+        Assert.NotNull(primaryRow.LinkedGroupKey);
+        Assert.Equal(primaryRow.LinkedGroupKey, memberRow.LinkedGroupKey);
+        Assert.True(memberRow.CanUpdateLink);
+        Assert.False(memberRow.ShowStaticStatusBadge);
+        Assert.True(viewModel.UpdateLinkedProductCommand.CanExecute(memberRow));
+
+        // Edición en memoria de una fila ajena al grupo: debe sobrevivir a la recarga.
+        viewModel.Lines[2].EditQuantityText = "7";
+        viewModel.Lines[2].MarginRetailOverride = 33m;
+
+        await viewModel.UpdateLinkedProductCommand.ExecuteAsync(memberRow);
+
+        Assert.NotNull(capturedDialog);
+        Assert.Equal(new[] { 101, 102 }, requestedProductIds!);
+        Assert.NotNull(capturedLink);
+        Assert.Equal(1, capturedLinkLineId);
+        Assert.Equal(101, capturedLink!.ProductId);
+        Assert.Equal(new[] { 101, 102 }, capturedLink.ProductIds!);
+        Assert.Equal(new[] { 2 }, capturedLink.ReplacedLineIds!);
+        Assert.Null(capturedLink.InvoiceDescription);
+        Assert.NotNull(capturedLink.MarginOverrides);
+        Assert.Contains(new LinkedProductMarginOverrideDto(101, 40m, 20m), capturedLink.MarginOverrides!);
+        Assert.Contains("Vínculo actualizado: 2 producto(s).", viewModel.StatusMessage);
+
+        var reloadedPrimary = viewModel.Lines[0];
+        Assert.Equal(40m, reloadedPrimary.MarginRetailOverride);
+        Assert.Equal(20m, reloadedPrimary.MarginWholesaleOverride);
+        Assert.Equal(productA.CostPriceUSD, reloadedPrimary.OldCostPriceUSD);
+        Assert.Equal(7m, viewModel.Lines[2].EditQuantity);
+        Assert.Equal(33m, viewModel.Lines[2].MarginRetailOverride);
+    }
+
+    [Fact]
+    public void CanUpdateLink_And_ShowStaticStatusBadge_ReflectResolutionAndStatus()
+    {
+        // 8.175-S1: solo las filas resueltas con estado Update ofrecen el botón Actualizar;
+        // el badge estático se conserva para Unchanged/Conflict y las filas sin resolver.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.LoadStagedInvoice(CreateInvoice(
+            CreateLine(1, resolvedProductId: 9, status: "Update"),
+            CreateLine(2, resolvedProductId: 9, status: "Unchanged"),
+            CreateLine(3, resolvedProductId: 9, status: "Conflict"),
+            CreateLine(4, resolvedProductId: null, status: "New")));
+
+        var updateRow = viewModel.Lines[0];
+        var unchangedRow = viewModel.Lines[1];
+        var conflictRow = viewModel.Lines[2];
+        var unresolvedRow = viewModel.Lines[3];
+
+        Assert.True(updateRow.CanUpdateLink);
+        Assert.False(updateRow.ShowStaticStatusBadge);
+
+        Assert.False(unchangedRow.CanUpdateLink);
+        Assert.True(unchangedRow.ShowStaticStatusBadge);
+
+        Assert.False(conflictRow.CanUpdateLink);
+        Assert.True(conflictRow.ShowStaticStatusBadge);
+
+        Assert.False(unresolvedRow.CanUpdateLink);
+        Assert.False(unresolvedRow.ShowStaticStatusBadge);
+    }
+
+    [Fact]
+    public async Task UpdateLinkedProduct_CreateMode_CallsCreateProductWithReplacedIds()
+    {
+        // 8.175-S4: desde la vista pre-cargada el revisor puede cambiar a Modo B; la creación
+        // re-resuelve el ancla y absorbe las filas 1:N reemplazadas.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var primaryLine = CreateLine(1, unitCost: 24m, resolvedProductId: 101, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            Name = "REFRESCO SURTIDO CAJA",
+            MatchMethod = "SupplierCode"
+        };
+        var memberLine = CreateLine(2, unitCost: 24m, resolvedProductId: 102, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            Name = "REFRESCO NARANJA CAJA",
+            Quantity = 0m,
+            MatchMethod = "SupplierCode"
+        };
+        var staged = CreateInvoice(primaryLine, memberLine);
+        var refreshedAfterCreate = CreateInvoice(
+            primaryLine with { Name = "Harina Nueva 1kg", OldCostPriceUSD = 0m });
+
+        var productA = new ProductDto
+        {
+            Id = 101,
+            SKU = "7591000001011",
+            Name = "Refresco Cola 2L",
+            CostPriceUSD = 1.50m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m
+        };
+        var productB = new ProductDto
+        {
+            Id = 102,
+            SKU = "7591000001028",
+            Name = "Refresco Naranja 2L",
+            CostPriceUSD = 1.40m,
+            ProfitMarginRetail = 25m,
+            ProfitMarginWholesale = 12m
+        };
+
+        CreateInvoiceProductRequestDto? capturedCreate = null;
+        var capturedCreateLineId = 0;
+        service.Setup(client => client.GetCatalogProductsByIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { productA, productB });
+        service.Setup(client => client.CreateProductFromLineAsync(
+                staged.Id,
+                It.IsAny<int>(),
+                It.IsAny<CreateInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, CreateInvoiceProductRequestDto, CancellationToken>((_, lineId, request, _) =>
+            {
+                capturedCreateLineId = lineId;
+                capturedCreate = request;
+            })
+            .ReturnsAsync(refreshedAfterCreate);
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(dialogViewModel =>
+            {
+                Assert.True(dialogViewModel.IsUpdateMode);
+                dialogViewModel.ResolutionMode = InvoiceProductResolutionMode.CreateNew;
+                dialogViewModel.Barcode = "7591234567890";
+                dialogViewModel.Name = "Harina Nueva 1kg";
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.UpdateLinkedProductCommand.ExecuteAsync(viewModel.Lines[1]);
+
+        Assert.NotNull(capturedCreate);
+        Assert.Equal(1, capturedCreateLineId);
+        Assert.Equal("7591234567890", capturedCreate!.Barcode);
+        Assert.Equal("Harina Nueva 1kg", capturedCreate.Name);
+        Assert.Equal(new[] { 2 }, capturedCreate.ReplacedLineIds!);
+        Assert.Contains("Harina Nueva 1kg", viewModel.StatusMessage);
+        service.Verify(client => client.LinkProductToLineAsync(
+            It.IsAny<int>(),
+            It.IsAny<int>(),
+            It.IsAny<LinkInvoiceProductRequestDto>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateLinkedProduct_WhenCatalogFetchIncomplete_DoesNotOpenDialog()
+    {
+        // 8.175-S6: si un producto del vínculo ya no resuelve en el catálogo, el comando aborta
+        // con error visible y no abre el modal (no se guarda una re-resolución que perdería el producto).
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var primaryLine = CreateLine(1, unitCost: 24m, resolvedProductId: 101, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            MatchMethod = "SupplierCode"
+        };
+        var memberLine = CreateLine(2, unitCost: 24m, resolvedProductId: 102, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            Quantity = 0m,
+            MatchMethod = "SupplierCode"
+        };
+        var staged = CreateInvoice(primaryLine, memberLine);
+        var onlyProductA = new ProductDto { Id = 101, SKU = "7591000001011", Name = "Refresco Cola 2L" };
+
+        service.Setup(client => client.GetCatalogProductsByIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { onlyProductA });
+
+        var dialog = new Mock<IDialogService>();
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.UpdateLinkedProductCommand.ExecuteAsync(viewModel.Lines[1]);
+
+        dialog.Verify(
+            d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()),
+            Times.Never);
+        dialog.Verify(d => d.ShowError(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+        Assert.Contains(
+            "No se pudieron cargar todos los productos vinculados de la línea",
+            viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task UpdateLinkedProduct_WhenDialogCancelled_MakesNoServiceCall()
+    {
+        // 8.175-S2: cancelar el modal pre-cargado no dispara ninguna re-resolución.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var staged = CreateInvoice(CreateLine(1, resolvedProductId: 101, status: "Update"));
+        var productA = new ProductDto { Id = 101, SKU = "7591000001011", Name = "Refresco Cola 2L" };
+
+        service.Setup(client => client.GetCatalogProductsByIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { productA });
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Returns(false);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.UpdateLinkedProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        service.Verify(client => client.LinkProductToLineAsync(
+            It.IsAny<int>(),
+            It.IsAny<int>(),
+            It.IsAny<LinkInvoiceProductRequestDto>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        service.Verify(client => client.CreateProductFromLineAsync(
+            It.IsAny<int>(),
+            It.IsAny<int>(),
+            It.IsAny<CreateInvoiceProductRequestDto>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Single(viewModel.Lines);
+    }
+
+    [Fact]
+    public async Task UpdateLinkedProduct_SingleResolvedLine_ReLinksWithoutReplacedIds()
+    {
+        // 8.175-S4/S7: una fila 1:1 puede re-vincularse a otro producto existente sin filas
+        // reemplazadas; la grilla refresca el producto nuevo y su comparativa de costo.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var stagedLine = CreateLine(1, unitCost: 24m, resolvedProductId: 101, status: "Update") with
+        {
+            SupplierCode = "PROV-BEBIDA",
+            Name = "BEBIDA SURTIDA",
+            MatchMethod = "SupplierCode",
+            MarginRetailOverride = 30m,
+            MarginWholesaleOverride = 15m
+        };
+        var staged = CreateInvoice(stagedLine);
+        var productA = new ProductDto
+        {
+            Id = 101,
+            SKU = "7591000001011",
+            Name = "Bebida Uva 1.5L",
+            CostPriceUSD = 8.00m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m
+        };
+        var productB = new ProductDto
+        {
+            Id = 102,
+            SKU = "7591000001028",
+            Name = "Bebida Piña 1.5L",
+            CostPriceUSD = 7.80m,
+            ProfitMarginRetail = 28m,
+            ProfitMarginWholesale = 12m
+        };
+        var refreshedAfterReLink = CreateInvoice(stagedLine with
+        {
+            ResolvedProductId = 102,
+            Name = productB.Name,
+            OldCostPriceUSD = productB.CostPriceUSD,
+            OldProfitMarginRetail = productB.ProfitMarginRetail,
+            OldProfitMarginWholesale = productB.ProfitMarginWholesale,
+            MarginRetailOverride = 28m,
+            MarginWholesaleOverride = 12m
+        });
+
+        LinkInvoiceProductRequestDto? capturedLink = null;
+        service.Setup(client => client.GetCatalogProductsByIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { productA });
+        service.Setup(client => client.LinkProductToLineAsync(
+                staged.Id,
+                It.IsAny<int>(),
+                It.IsAny<LinkInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, LinkInvoiceProductRequestDto, CancellationToken>((_, _, request, _) => capturedLink = request)
+            .ReturnsAsync(refreshedAfterReLink);
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(dialogViewModel =>
+            {
+                Assert.Equal(new[] { 101 }, dialogViewModel.SelectedProducts.Select(product => product.Id).ToArray());
+                dialogViewModel.RemoveSelectedProductCommand.Execute(productA);
+                dialogViewModel.ToggleProductSelectionCommand.Execute(productB);
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.UpdateLinkedProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        Assert.NotNull(capturedLink);
+        Assert.Equal(102, capturedLink!.ProductId);
+        Assert.Null(capturedLink.ProductIds);
+        Assert.Null(capturedLink.ReplacedLineIds);
+        Assert.Null(capturedLink.InvoiceDescription);
+        Assert.Equal("Vínculo actualizado: 1 producto(s).", viewModel.StatusMessage);
+
+        var reloadedLine = Assert.Single(viewModel.Lines);
+        Assert.Equal(102, reloadedLine.ResolvedProductId);
+        Assert.Equal(productB.CostPriceUSD, reloadedLine.OldCostPriceUSD);
+        Assert.Equal(28m, reloadedLine.MarginRetailOverride);
+    }
+
+    [Fact]
     public async Task OcrScannerConfigDialogViewModel_BuildsTemplateRunsLiveTestAndSavesTemplate()
     {
         var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);

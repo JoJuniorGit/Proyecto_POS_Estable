@@ -595,6 +595,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         OpenRegisterSupplierCommand.NotifyCanExecuteChanged();
         StageInvoiceCommand.NotifyCanExecuteChanged();
         ConfirmInvoiceCommand.NotifyCanExecuteChanged();
+        UpdateLinkedProductCommand.NotifyCanExecuteChanged();
         ScanInvoiceCommand.NotifyCanExecuteChanged();
         ConfigureOcrScannerCommand.NotifyCanExecuteChanged();
     }

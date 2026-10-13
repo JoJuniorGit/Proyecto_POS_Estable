@@ -78,6 +78,14 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
 
     public bool CanApprove => ResolvedProductId is not null;
     public bool CanCreateProduct => ResolvedProductId is null;
+
+    /// <summary>8.175: fila resuelta con coincidencia de catálogo ([ACTUALIZAR]) → habilita la edición del vínculo.</summary>
+    public bool CanUpdateLink => ResolvedProductId is not null
+        && string.Equals(Status, "Update", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>8.175: el badge estático de estado solo se muestra cuando la fila no ofrece edición de vínculo.</summary>
+    public bool ShowStaticStatusBadge => ResolvedProductId is not null && !CanUpdateLink;
+
     public string MatchMethod => _source.MatchMethod;
     public string? LinkedGroupKey { get; set; }
     public bool IsLinkedGroupMember => !string.IsNullOrWhiteSpace(LinkedGroupKey);

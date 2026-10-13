@@ -78,5 +78,12 @@ public interface ISupplierInvoiceService
         string? filter,
         CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<ProductDto>>([]);
+
+    // 8.175-S6: hidratación del modal de actualización — productos del catálogo por id (ruta existente).
+    // Default vacío para no romper mocks/stubs existentes que no lo configuran.
+    Task<IReadOnlyList<ProductDto>> GetCatalogProductsByIdsAsync(
+        IReadOnlyList<int> productIds,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<ProductDto>>([]);
 }
 

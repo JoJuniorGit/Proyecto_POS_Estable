@@ -322,8 +322,21 @@
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <!-- 8.175-S1: las filas resueltas con coincidencia de catálogo ofrecen la
+                                     edición del vínculo; el badge estático queda para Unchanged/Conflict. -->
+                                <Button Content="Actualizar"
+                                        Command="{Binding Data.UpdateLinkedProductCommand, Source={StaticResource ViewModelProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Background="#FFF3E0" BorderBrush="#FB8C00" Foreground="#1F2937"
+                                        FontSize="11" FontWeight="SemiBold" Padding="10,2"
+                                        Cursor="Hand"
+                                        Visibility="{Binding CanUpdateLink, Converter={StaticResource BoolToVis}}"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        ToolTip="Editar el vínculo con el catálogo: márgenes, re-vinculación (1:1 o 1:N) o crear un producto nuevo."
+                                        AutomationProperties.Name="Actualizar producto vinculado" />
                                 <Border Padding="7,3" CornerRadius="8" HorizontalAlignment="Center"
-                                        Visibility="{Binding CanCreateProduct, Converter={StaticResource InverseBoolToVis}}">
+                                        Visibility="{Binding ShowStaticStatusBadge, Converter={StaticResource BoolToVis}}">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <Setter Property="Background" Value="#E3F2FD" />

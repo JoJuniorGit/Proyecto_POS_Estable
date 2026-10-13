@@ -62,7 +62,12 @@ public sealed record SupplierInvoiceLineDto(
     // 8.165: factor de conversión caja→unidad persistido por línea (default 1, sin conversión).
     decimal ConversionFactor = 1m);
 
-public sealed record CreateInvoiceProductRequestDto(string Barcode, string Name);
+public sealed record CreateInvoiceProductRequestDto(
+    string Barcode,
+    string Name,
+    // 8.175-S5: filas 1:N del vínculo previo que el cliente reemplaza al re-resolver la línea.
+    // Vacío/null = resolución simple sin absorción de filas existentes.
+    IReadOnlyList<int>? ReplacedLineIds = null);
 
 public sealed record LinkedProductMarginOverrideDto(
     int ProductId,
@@ -73,7 +78,10 @@ public sealed record LinkInvoiceProductRequestDto(
     int ProductId,
     string? InvoiceDescription = null,
     IReadOnlyList<int>? ProductIds = null,
-    IReadOnlyList<LinkedProductMarginOverrideDto>? MarginOverrides = null);
+    IReadOnlyList<LinkedProductMarginOverrideDto>? MarginOverrides = null,
+    // 8.175-S5: filas 1:N del vínculo previo que el cliente reemplaza al re-resolver la línea.
+    // Vacío/null = resolución simple sin absorción de filas existentes.
+    IReadOnlyList<int>? ReplacedLineIds = null);
 
 public sealed record ConfirmSupplierInvoiceRequestDto(
     IReadOnlyList<ConfirmLineDto> Lines,

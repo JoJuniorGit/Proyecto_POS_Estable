@@ -20,6 +20,9 @@ public enum InvoiceProductResolutionMode
     CreateNew
 }
 
+/// <summary>8.175: semilla de hidratación — producto ya vinculado y sus márgenes vigentes (null = default del catálogo).</summary>
+public sealed record InvoiceProductLinkSeed(ProductDto Product, decimal? MarginRetail = null, decimal? MarginWholesale = null);
+
 /// <summary>
 /// Modal híbrido de resolución de productos desde una línea de factura sin coincidencia:
 /// Modo A — Vincular con Producto Existente (buscador predictivo por Nombre, SKU o Código de Barras local + aprendizaje de alias).
@@ -28,6 +31,8 @@ public enum InvoiceProductResolutionMode
 public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, IDisposable
 {
     private readonly Func<string, CancellationToken, Task<IReadOnlyList<ProductDto>>>? _searchProductsAsync;
+    private readonly IReadOnlyList<InvoiceProductLinkSeed>? _linkSeeds;
+    private readonly Dictionary<int, InvoiceProductLinkSeed> _seedMarginsByProductId = new();
     private CancellationTokenSource? _searchCts;
 
     public Action<bool>? RequestClose;
@@ -118,6 +123,9 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
 
     public bool HasMultipleSelectedProducts => SelectedProducts.Count > 1;
 
+    /// <summary>8.175-S3: el modal fue abierto desde el botón Actualizar de una fila ya resuelta (con semillas de vínculo).</summary>
+    public bool IsUpdateMode => _linkSeeds is { Count: > 0 };
+
     public bool HasAnyMarginCoherenceWarning =>
         SelectedProductMargins.Any(item => item.HasMarginCoherenceWarning);
 
@@ -141,18 +149,32 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
         }
     }
 
-    public string PrimaryActionLabel => IsLinkExistingMode
-        ? (SelectedProducts.Count > 1 ? $"Vincular ({SelectedProducts.Count}) Productos" : "Vincular Producto")
-        : "Crear Producto";
+    public string PrimaryActionLabel
+    {
+        get
+        {
+            if (!IsLinkExistingMode)
+            {
+                return "Crear Producto";
+            }
+
+            var prefix = IsUpdateMode ? "Actualizar" : "Vincular";
+            return SelectedProducts.Count > 1
+                ? $"{prefix} ({SelectedProducts.Count}) Productos"
+                : $"{prefix} Producto";
+        }
+    }
 
     public CreateInvoiceProductDialogViewModel(
         SupplierInvoiceLineViewModel line,
         bool isBsSCurrency,
-        Func<string, CancellationToken, Task<IReadOnlyList<ProductDto>>>? searchProductsAsync = null)
+        Func<string, CancellationToken, Task<IReadOnlyList<ProductDto>>>? searchProductsAsync = null,
+        IReadOnlyList<InvoiceProductLinkSeed>? linkSeeds = null)
     {
         ArgumentNullException.ThrowIfNull(line);
 
         _searchProductsAsync = searchProductsAsync;
+        _linkSeeds = linkSeeds;
         _resolutionMode = searchProductsAsync is not null
             ? InvoiceProductResolutionMode.LinkExisting
             : InvoiceProductResolutionMode.CreateNew;
@@ -166,6 +188,54 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
             : $"Costo normalizado: ${line.UnitCostUSD:N2} · Cantidad: {line.EditQuantity:N3}";
 
         SelectedProducts.CollectionChanged += (_, _) => NotifySelectionChanged();
+
+        HydrateLinkSeeds(linkSeeds);
+    }
+
+    /// <summary>
+    /// 8.175-S3: pre-carga el/los producto(s) ya vinculado(s) (distintos por Id, orden preservado) con
+    /// sus márgenes vigentes; la búsqueda queda vacía hasta que el usuario consulta el catálogo.
+    /// </summary>
+    private void HydrateLinkSeeds(IReadOnlyList<InvoiceProductLinkSeed>? linkSeeds)
+    {
+        if (linkSeeds is not { Count: > 0 })
+        {
+            return;
+        }
+
+        var seenIds = new HashSet<int>();
+        foreach (var seed in linkSeeds)
+        {
+            if (seed.Product is null)
+            {
+                continue;
+            }
+
+            if (seed.MarginRetail is not null || seed.MarginWholesale is not null)
+            {
+                _seedMarginsByProductId[seed.Product.Id] = seed;
+            }
+
+            if (seenIds.Add(seed.Product.Id))
+            {
+                SelectedProducts.Add(seed.Product);
+            }
+        }
+
+        if (SelectedProducts.Count == 0)
+        {
+            return;
+        }
+
+        _suppressSelectionSync = true;
+        try
+        {
+            SelectedProduct = SelectedProducts[0];
+        }
+        finally
+        {
+            _suppressSelectionSync = false;
+        }
     }
 
     public IReadOnlyList<ProductDto> GetEffectiveSelectedProducts()
@@ -423,7 +493,15 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
             var product = effectiveProducts[index];
             if (!existingById.TryGetValue(product.Id, out var marginVm))
             {
-                marginVm = new SelectedProductMarginViewModel(product, LineUnitCostUSD, NotifyMarginsChanged);
+                // 8.175-S3: si el producto viene de una semilla con márgenes vigentes, la tarjeta nace
+                // con ellos en vez de los defaults del catálogo.
+                _seedMarginsByProductId.TryGetValue(product.Id, out var seed);
+                marginVm = new SelectedProductMarginViewModel(
+                    product,
+                    LineUnitCostUSD,
+                    NotifyMarginsChanged,
+                    seed?.MarginRetail,
+                    seed?.MarginWholesale);
                 if (index < SelectedProductMargins.Count)
                 {
                     SelectedProductMargins.Insert(index, marginVm);
@@ -742,7 +820,9 @@ public sealed class SelectedProductMarginViewModel : ObservableObject
     public SelectedProductMarginViewModel(
         ProductDto product,
         decimal lineUnitCostUsd,
-        Action? onMarginChanged = null)
+        Action? onMarginChanged = null,
+        decimal? initialMarginRetail = null,
+        decimal? initialMarginWholesale = null)
     {
         ArgumentNullException.ThrowIfNull(product);
 
@@ -757,9 +837,14 @@ public sealed class SelectedProductMarginViewModel : ObservableObject
             ? product.ProfitMarginWholesale
             : initialRetail;
 
-        _marginRetail = decimal.Round(Math.Max(0m, initialRetail), 2, MidpointRounding.AwayFromZero);
+        // 8.175-S3: los márgenes vigentes de la línea (semilla) pisan el default del catálogo por margen;
+        // se normalizan igual que las ediciones en vivo (2 decimales, piso 0).
+        var retail = initialMarginRetail ?? initialRetail;
+        var wholesale = initialMarginWholesale ?? initialWholesale;
+
+        _marginRetail = decimal.Round(Math.Max(0m, retail), 2, MidpointRounding.AwayFromZero);
         _marginRetailText = SupplierInvoiceLineViewModel.FormatEditableDecimal(_marginRetail);
-        _marginWholesale = decimal.Round(Math.Max(0m, initialWholesale), 2, MidpointRounding.AwayFromZero);
+        _marginWholesale = decimal.Round(Math.Max(0m, wholesale), 2, MidpointRounding.AwayFromZero);
         _marginWholesaleText = SupplierInvoiceLineViewModel.FormatEditableDecimal(_marginWholesale);
     }
 }
