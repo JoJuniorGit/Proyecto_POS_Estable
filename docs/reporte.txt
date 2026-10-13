@@ -14291,3 +14291,71 @@ B2. `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: 100
     (incluyendo nuevas pruebas unitarias en `OcrExtractionServiceTests`, `OcrTableParserTests`,
     `SupplierInvoiceClientTests` y `SupplierInvoiceCreationTests`).
 ================================================================================
+
+================================================================================
+ANEXO 8.175 - FACTURAS DE PROVEEDOR: BOTON "ACTUALIZAR" EN COLUMNA ESTADO CON EDICION DEL VINCULO DESDE EL MODAL DE RESOLUCION - 2026-10-12
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/actualizar-vinculo-producto.md): convertir el
+badge estático [ACTUALIZAR] de la grilla de revisión en un botón interactivo que abre el modal
+existente "Resolver producto desde factura" pre-cargado con el/los producto(s) ya vinculado(s)
+(1:1 o 1:N) y con todas sus capacidades (márgenes en vivo, re-vínculo, ampliación 1:N y creación);
+al guardar, la grilla refresca nombre, comparativa de costo y márgenes listos para el confirm.
+
+A. ALCANCE Y ENTREGA
+
+A1. Contrato backend (Core/DTOs/SupplierInvoiceDtos.cs, SupplierInvoiceService.Creation.cs,
+    nuevo partial SupplierInvoiceService.Resolution.cs):
+    - LinkInvoiceProductRequestDto y CreateInvoiceProductRequestDto aceptan ReplacedLineIds
+      (filas 1:N absorbidas por el vínculo anterior, provistas por el cliente).
+    - PrepareResolutionSlots: validación zero-trust por id (no pertenece a la factura -> 404;
+      igual al ancla / cantidad != 0 / sin resolver -> 400), reuso de extras por Id ascendente,
+      creación de faltantes con el template del ancla y eliminación de sobrantes (contexto +
+      colección). LinkProductToLineAsync y CreateProductFromLineAsync aceptan re-resolución de
+      líneas ya resueltas; en re-vínculo el alias se re-apunta SOLO por código de proveedor
+      (nunca el nombre del producto anterior); las rutas sin resolver quedan sin cambios.
+A2. Cliente (ISupplierInvoiceService, SupplierInvoiceService, CreateInvoiceProductDialogViewModel):
+    - GetCatalogProductsByIdsAsync: GET api/products/{id} por id (404 se omite, orden preservado).
+    - Hidratación del modal con InvoiceProductLinkSeed (producto + márgenes vigentes), IsUpdateMode
+      y label "Actualizar (N) Productos"; SelectedProductMarginViewModel acepta márgenes iniciales
+      por seed (null = margen del catálogo). El mismo componente/modal se reutiliza (sin diálogo nuevo).
+A3. Grilla (SupplierInvoiceViewModel.Staging.cs, nuevo partial SupplierInvoiceViewModel.Links.cs,
+    SupplierInvoiceViewModel.cs, SupplierInvoiceView.xaml):
+    - CanUpdateLink/ShowStaticStatusBadge: botón "Actualizar" (cursor Hand, badge de acción) solo
+      en filas resueltas [ACTUALIZAR]; badge estático para UNCHANGED/CONFLICT; "Crear Producto"
+      intacto; sin re-agregar la columna de código de barras (decisión 8.172 vigente).
+    - UpdateLinkedProductCommand: ancla = fila primaria del grupo 1:N; ReplacedLineIds = miembros;
+      InvoiceDescription null (política de alias); modos vincular y crear; tras guardar, las filas
+      editadas/creadas conservan el estado del servidor y las no editadas preservan ediciones en
+      memoria por LineId; notificación del comando en RefreshCommandStates.
+A4. Tests: backend 10 casos (re-vínculo 1:1, shrink y expand 1:N con reuso/creación, validaciones
+    Theory sin side effects, sin ReplacedIds, create re-resolución, rewrite del rechazo obsoleto);
+    cliente: 8 casos de hidratación/rutas + 6 casos de comando/flujo de grilla.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores (XAML incluido).
+B2. Suite completa POR PARTES (restricción de RAM del mantenedor): Unit 1773/1773 + resto 571/571
+    = 2344/2344, 0 fallas (SIN PostgreSQL real local; CI cubre al push).
+B3. Verificación independiente read-only (agente verifier): S1–S8 CONFORME, 0 blockers;
+    S9 (proceso) cerrado con este ANEXO y el commit de cierre. Residuales analizados y aceptados.
+B4. RED->GREEN observado por carril (backend: guard "already resolves to a product" en
+    Creation.cs:193; cliente y grilla: compile-level), según práctica del repo.
+
+C. LIMITACIONES ACEPTADAS
+
+C1. La agrupación 1:N del cliente es por adyacencia de filas (herencia 8.173): un draft reabierto
+    en otra sesión con extras no adyacentes puede resolver el ancla por la primera fila del run
+    heurístico. El flujo inmediato post-vínculo usa la clave explícita y no se ve afectado.
+C2. Alias en re-vínculo: las descripciones históricas no se corrigen (protege alias compartidos);
+    el backend acepta una InvoiceDescription editada no-null (superficie API), la UI envía null.
+C3. Un override de margen persistido en 0% no se re-semilla al reabrir el modal (usa el margen del
+    catálogo). Caso improbable.
+
+D. ROLLBACK
+
+D1. Revertir los archivos del tramo restaura la grilla y los endpoints previos; sin migraciones.
+
+E. COMMITS
+
+E1. 8.175 en V0.15: 048702c (implementación) + commit de este ANEXO (docs(8.175); git log).
+================================================================================

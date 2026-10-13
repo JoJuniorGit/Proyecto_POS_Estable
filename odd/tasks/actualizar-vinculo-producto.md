@@ -23,7 +23,7 @@ Fuente: pedido del usuario, verbatim (L1). Supuestos marcados con "(supuesto)".
 | T1 | S5 | delegated (writer) | Backend: `ReplacedLineIds` en DTOs + ramas de re-resolución en `SupplierInvoiceService.Creation.cs` (link y create) + tests backend | hecho — RED (guard "already resolves" en Creation.cs:193) → GREEN; 32/32 creación + 58/58 regresión; build 0/0 (sin commit) |
 | T2 | S3, S6 | delegated (writer) | Cliente: `GetCatalogProductsByIdsAsync` (servicio cliente) + hidratación del `CreateInvoiceProductDialogViewModel` (seeds de producto+márgenes, modo actualización, label) + tests | hecho — RED compile-level → GREEN; 21/21 dialog + 78/78 cliente; build 0/0 (sin commit) |
 | T3 | S1, S2, S4, S7, S8 | delegated (writer) | Grilla: `CanUpdateLink`/badge estático en la línea VM, comando `UpdateLinkedProductCommand` (nuevo partial `SupplierInvoiceViewModel.Links.cs`), XAML de la columna Estado + tests | hecho — RED compile-level → GREEN; build slnx 0/0 (XAML); 84/84 cliente + 53/53 regresión (sin commit) |
-| T4 | S9 | inline (+ verify) | Verificación final (build + suite por partes + verificación independiente), ANEXO 8.175, commits | en curso |
+| T4 | S9 | inline (+ verify) | Verificación final (build + suite por partes + verificación independiente), ANEXO 8.175, commits | hecho — verificación independiente PASS (0 blockers); ANEXO 8.175; commits 048702c + docs(8.175) |
 
 Estrategia de entrega: `ask-on-risk` → work units locales en V0.15; PR/cadena = decisión del mantenedor. Forecast ~600–900 líneas autoradas (backend ~200 + cliente ~250 + XAML ~30 + tests ~300).
 
@@ -48,3 +48,5 @@ Estrategia de entrega: `ask-on-risk` → work units locales en V0.15; PR/cadena 
   - T3 grilla: `CanUpdateLink`/`ShowStaticStatusBadge`; partial `Links.cs` con `UpdateLinkedProductCommand` (ancla primaria del grupo, `ReplacedLineIds` = miembros, `InvoiceDescription` null, modos vincular/crear, preservación de ediciones por `LineId`); botón "Actualizar" en la columna Estado; notificación en `RefreshCommandStates`. RED compile-level → GREEN. Evidencia: build slnx 0/0 (XAML); 84/84 cliente; 53/53 regresión dialog+creation.
   - Suite completa POR PARTES (restricción RAM del mantenedor): Unit 1773/1773 + resto 571/571 = 2344/2344, 0 fallas.
   - Verificación independiente (agente verifier read-only): S1–S8 CONFORME, 0 blockers; S9 parcial por diseño (ANEXO/commits al cierre). Residuales aceptados: agrupación 1:N por adyacencia (herencia 8.173, sin impacto en el flujo inmediato post-vínculo), superficie API de alias más amplia que la UI (dormida; la UI envía null), override de margen 0% no re-semillado.
+
+- L4 (2026-10-12) — Cierre: verificación independiente read-only (S1–S8 CONFORME, 0 blockers; residuales C1–C3 del ANEXO), ANEXO 8.175 registrado en `docs/reporte.txt`, commits feat `048702c` + docs(8.175) en V0.15. Push/PR: decisión del mantenedor (no realizados).
