@@ -14359,3 +14359,71 @@ E. COMMITS
 
 E1. 8.175 en V0.15: 048702c (implementación) + commit de este ANEXO (docs(8.175); git log).
 ================================================================================
+
+================================================================================
+ANEXO 8.176 - FACTURAS DE PROVEEDOR: REACTIVIDAD GLOBAL DE LA TABLA STAGING AL CAMBIAR MONEDA O TASA DE CAMBIO - 2026-10-13
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/reactividad-moneda-tasa-staging.md): al modificar la
+moneda del documento (Bs.S/USD) o la tasa aplicada en la cabecera, posterior a la carga o escaneo de
+la factura, la tabla de pre-visualización debe recalcular en tiempo real el Costo USD y los precios
+sugeridos de todas las filas, con título de columna dinámico y salvaguarda de división por cero.
+
+A. ALCANCE Y ENTREGA
+
+A1. Cliente (Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel.cs, .Suppliers.cs, .Staging.cs):
+    - DocumentCostHeader ahora depende de la moneda viva de la cabecera (IsBsSCurrency) y se
+      notifica en OnSelectedCurrencyChanged; LoadStagedInvoice alinea SelectedCurrency con la
+      moneda del documento servido (stage/confirm/link) antes del prefill de tasa y de construir
+      las líneas.
+    - PropagateCurrencyAndRateToLines: la moneda viva manda (se retiró la condición IsBsSInvoice);
+      con Bs.S y tasa inválida (vacía o 0) propaga (Bs.S, 0m) a todas las filas y SyncStagedSnapshot
+      mantiene el snapshot local alineado; el confirm permanece bloqueado por HasValidAppliedRate.
+    - CalculateUnitCostUsd: rama Bs.S sin tasa válida retorna 0m (sin NaN/Infinity; se retiró el
+      fallback por ratio que solo era alcanzable en ese estado).
+    - ConfirmInvoiceAsync envía la moneda viva y la tasa vigente (Bs.S) al contrato de confirm.
+A2. Contrato backend (Core/DTOs/SupplierInvoiceDtos.cs, Inventory.Module/Services/SupplierInvoiceService.Apply.cs):
+    - ConfirmSupplierInvoiceRequestDto.Currency (string?, posicional final, default null;
+      retrocompatible con clientes previos: null conserva la moneda del staging).
+    - Validación zero-trust: la moneda confirmada solo puede ser USD o Bs.S; cambiar el draft a
+      Bs.S exige tasa explícita (>0) — no se reutiliza la tasa de otra interpretación; cambiar a USD
+      fuerza la tasa canónica 1; currencyChanged implica appliedRateChanged y renormaliza las líneas
+      aprobadas (ApplyCorrections/ApplyConversionFactor) con la fórmula compartida de
+      PricingCalculator (la misma del preview: Costo USD = (Costo factura / Tasa) / Factor).
+A3. Tests (CommandCenter.Tests/Unit/SupplierInvoiceCurrencyReactivityTests.cs, nuevo):
+    - 10 casos: título por selector + notificación; alineación al cargar + recálculo; cascada
+      Bs.S<->USD conservando el costo factura (incluye factor > 1 y precios sugeridos); tasa inválida
+      -> 0,00 + confirm bloqueado + restauración con tasa válida; payload de confirm con moneda/tasa
+      vivas (flip a USD y edición de tasa); backend: conmutación a USD y a Bs.S con renormalización
+      de costo/producto, y rechazos de cambio a Bs.S sin tasa y de moneda desconocida.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores (XAML incluido).
+B2. Suite completa POR PARTES (restricción de RAM del mantenedor): Unit 1804/1804 + resto 571/571
+    = 2375/2375, 0 fallas; carril enfocado SupplierInvoice 282/282.
+B3. Verificación independiente read-only (agente reviewer): S1-S4 CONFORME; S5 mecanismo correcto
+    con 2 residuales no bloqueantes (C1-C2); 0 blockers; tests del tramo re-ejecutados 10/10.
+B4. RED->GREEN observado por carril (cliente: 4 fallas por la causa correcta antes de implementar;
+    contrato: compile-level), según práctica del repo.
+
+C. LIMITACIONES ACEPTADAS
+
+C1. SyncStagedSnapshot conserva la tasa previa del snapshot local cuando la tasa de cabecera es
+    inválida: es estado solo-display (el confirm está bloqueado y AppliedRateText manda el valor
+    real); el modal de vínculo podría rotular Bs.S con esa tasa previa. Sin impacto en montos.
+C2. Divergencia de precisión 2 vs 4 decimales pre-existente de PricingCalculator entre preview
+    (UnitCostUSD reactivo) y persistencia (redondeos a 2) con factor > 1 en USD; delta <= 0.005;
+    fuera del alcance de este tramo.
+C3. Un flip de moneda posterior al staging se pierde si el revisor recarga la factura desde el
+    servidor (vínculo/creación) antes de confirmar: la cabecera se re-alinea a la moneda del draft
+    servido y el revisor debe re-elegir. El confirm sí respeta la moneda viva.
+
+D. ROLLBACK
+
+D1. Revertir los archivos del tramo restaura el comportamiento previo; sin migraciones ni cambios
+    de esquema. El contrato nuevo es un campo opcional (null = comportamiento previo).
+
+E. COMMITS
+
+E1. 8.176 en V0.15: 3298d85 (implementación) + commit de este ANEXO (docs(8.176); git log).
+================================================================================
