@@ -245,7 +245,12 @@ public partial class InventoryService : IProductManagementService, IReservationS
                 Reason = "Carga inicial",
                 SaleId = null,
                 MovementDate = DateTime.UtcNow,
-                UserId = _currentUserService?.UserId
+                UserId = _currentUserService?.UserId,
+                // 8.177-T1: alta de catálogo = movimiento de Sistema con motivo Carga inicial y
+                // snapshot del costo del producto en el momento del movimiento.
+                OriginType = StockMovementOriginType.System,
+                ReasonCode = StockMovementReason.InitialLoad,
+                UnitCostUSD = product.CostPriceUSD
             });
         }
     }

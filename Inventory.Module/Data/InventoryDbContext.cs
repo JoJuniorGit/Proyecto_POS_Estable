@@ -106,10 +106,22 @@ public class InventoryDbContext : DbContext
         modelBuilder.Entity<StockMovement>().HasOne(m => m.Product).WithMany().HasForeignKey(m => m.ProductId);
         modelBuilder.Entity<StockMovement>().Property(m => m.QuantityChange).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<StockMovement>().Property(m => m.NewStockLevel).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+        // 8.177-T1: auditoría del Kardex. Enums persistidos como string (estilo del repo) y
+        // nullable para no clasificar los movimientos históricos/legados.
+        modelBuilder.Entity<StockMovement>().Property(m => m.OriginType).HasConversion<string>().HasMaxLength(32);
+        modelBuilder.Entity<StockMovement>().Property(m => m.ReasonCode).HasConversion<string>().HasMaxLength(32);
+        // 8.177-T1: costo unitario histórico del movimiento. Se usa numeric(18,4) porque el costo
+        // renormalizado de las líneas de factura proveedor (factor de conversión → 4 decimales)
+        // se snapshotea tal cual; las columnas de costo de Product son numeric(18,2).
+        modelBuilder.Entity<StockMovement>().Property(m => m.UnitCostUSD).HasColumnType("numeric(18,4)").HasPrecision(18, 4);
         // 8.9-M9: el archiver recorre por MovementDate (StockMovementArchiverJob).
         modelBuilder.Entity<StockMovement>().HasIndex(m => m.MovementDate).HasDatabaseName("IX_StockMovements_MovementDate");
         // 8.16-H03: lookup de idempotencia por SaleId (dedupe de deducción, handler de inventario).
         modelBuilder.Entity<StockMovement>().HasIndex(m => m.SaleId).HasDatabaseName("IX_StockMovements_SaleId");
+        // 8.177: el Centro (T2) filtra por producto y motivo; ProductId ya existía por convención FK
+        // (se explicita su nombre canónico, sin duplicar estructura).
+        modelBuilder.Entity<StockMovement>().HasIndex(m => m.ProductId).HasDatabaseName("IX_StockMovements_ProductId");
+        modelBuilder.Entity<StockMovement>().HasIndex(m => m.ReasonCode).HasDatabaseName("IX_StockMovements_ReasonCode");
 
         modelBuilder.Entity<StockMovementArchive>(entity =>
         {
@@ -117,8 +129,14 @@ public class InventoryDbContext : DbContext
             entity.ToTable("StockMovements_Archive");
             entity.Property(m => m.QuantityChange).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
             entity.Property(m => m.NewStockLevel).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+            // 8.177-T1: espejo de auditoría en el archivo (L2: la consulta une activa + archivo).
+            entity.Property(m => m.OriginType).HasConversion<string>().HasMaxLength(32);
+            entity.Property(m => m.ReasonCode).HasConversion<string>().HasMaxLength(32);
+            entity.Property(m => m.UnitCostUSD).HasColumnType("numeric(18,4)").HasPrecision(18, 4);
             entity.HasIndex(m => m.OriginalMovementId).HasDatabaseName("IX_StockMovements_Archive_OriginalMovementId");
             entity.HasIndex(m => m.MovementDate).HasDatabaseName("IX_StockMovements_Archive_MovementDate");
+            entity.HasIndex(m => m.ProductId).HasDatabaseName("IX_StockMovements_Archive_ProductId");
+            entity.HasIndex(m => m.ReasonCode).HasDatabaseName("IX_StockMovements_Archive_ReasonCode");
         });
 
         // Token de concurrencia basado en la pseudo-columna de sistema `xmin` de PostgreSQL

@@ -193,6 +193,18 @@ public partial class ProductsController : ControllerBase
             return this.ApiForbidden(Core.Constants.InventoryMessages.UnauthorizedAdjustment);
         }
 
+        // 8.177-T1: validación explícita de la clasificación opcional (el ModelState automático no
+        // cubre llamadas directas y el binding numérico admite valores de enum indefinidos).
+        if (dto.ReasonCode.HasValue && !System.Enum.IsDefined(dto.ReasonCode.Value))
+        {
+            return this.ApiBadRequest("El motivo estandarizado del ajuste no es válido.");
+        }
+
+        if (dto.Observation is { Length: > 500 })
+        {
+            return this.ApiBadRequest("La observación no puede exceder los 500 caracteres.");
+        }
+
         string requestPath = $"/api/products/{id}/adjust-stock";
         var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
             this,
@@ -205,7 +217,13 @@ public partial class ProductsController : ControllerBase
 
         try
         {
-            await _inventoryService.AdjustStockAsync(id, dto.QuantityChange, dto.Reason, cancellationToken: cancellationToken);
+            await _inventoryService.AdjustStockAsync(
+                id,
+                dto.QuantityChange,
+                dto.Reason,
+                reasonCode: dto.ReasonCode,
+                observation: dto.Observation,
+                cancellationToken: cancellationToken);
             await _idempotencyResolver.RegisterSuccessAsync(idempotency, requestPath, "", cancellationToken);
             return NoContent();
         }

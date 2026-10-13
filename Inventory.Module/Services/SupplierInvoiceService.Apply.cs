@@ -412,7 +412,14 @@ public partial class SupplierInvoiceService
                 NewStockLevel = stockTarget.StockQuantity,
                 Reason = $"Supplier invoice {invoiceId} applied",
                 MovementDate = DateTime.UtcNow,
-                UserId = _currentUserService?.UserId
+                UserId = _currentUserService?.UserId,
+                // 8.177-T1: entrada por factura proveedor = Importación / Entrada por Compra, con
+                // referencia cruzada a la factura y costo unitario renormalizado de la línea
+                // (snapshot Currency/AppliedRate de la factura, nunca la tasa BCV vigente).
+                OriginType = StockMovementOriginType.Import,
+                ReasonCode = StockMovementReason.PurchaseEntry,
+                SupplierInvoiceId = invoiceId,
+                UnitCostUSD = line.UnitCostUSD
             };
             _context.StockMovements.Add(movement);
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Core.Entities;
 using Core.Interfaces;
@@ -15,6 +16,27 @@ public partial class InventoryService
         decimal raw = quantity * (factor > 0 ? factor : 1.0000m);
         return Math.Round(raw, 4, MidpointRounding.AwayFromZero);
     }
+
+    /// <summary>
+    /// 8.177-T1: proyección única de productos para la resolución/consolidación de deducciones y
+    /// el snapshot histórico de costo del Kardex (el producto destino de una variante con stock
+    /// compartido es su padre).
+    /// </summary>
+    private static readonly Expression<Func<Product, StockDeductionProductInfo>> StockDeductionProductProjection =
+        p => new StockDeductionProductInfo
+        {
+            Id = p.Id,
+            Name = p.Name,
+            SKU = p.SKU,
+            IsCashAdvance = p.IsCashAdvance,
+            ConversionFactor = p.ConversionFactor,
+            ParentId = p.ParentProductId,
+            ParentIsStockShared = p.ParentProduct != null && p.ParentProduct.IsStockShared,
+            ParentName = p.ParentProduct != null ? p.ParentProduct.Name : null,
+            ParentSKU = p.ParentProduct != null ? p.ParentProduct.SKU : null,
+            // 8.177-T1: costo del producto destino para el snapshot histórico del Kardex.
+            CostPriceUSD = p.CostPriceUSD
+        };
 
     public async Task UpdateStockBatchAsync(IEnumerable<StockDeductionRequest> items, string? userId = null, bool allowNegativeStock = false, System.Threading.CancellationToken cancellationToken = default)
     {
@@ -35,19 +57,32 @@ public partial class InventoryService
             var productsData = await _context.Products
                 .AsNoTracking()
                 .Where(p => productIds.Contains(p.Id))
-                .Select(p => new StockDeductionProductInfo
-                {
-                    Id = p.Id,
-                    Name = p.Name,
-                    SKU = p.SKU,
-                    IsCashAdvance = p.IsCashAdvance,
-                    ConversionFactor = p.ConversionFactor,
-                    ParentId = p.ParentProductId,
-                    ParentIsStockShared = p.ParentProduct != null && p.ParentProduct.IsStockShared,
-                    ParentName = p.ParentProduct != null ? p.ParentProduct.Name : null,
-                    ParentSKU = p.ParentProduct != null ? p.ParentProduct.SKU : null
-                })
+                .Select(StockDeductionProductProjection)
                 .ToDictionaryAsync(p => p.Id, cancellationToken);
+
+            // 8.177-T1 (fix verificación independiente): una variante con stock compartido tiene como
+            // producto DESTINO a su PADRE; se cargan los padres faltantes para que el snapshot de
+            // costo del movimiento (y todo lookup por TargetProductId) resuelva sin null — el costo
+            // histórico solo existe en el momento del movimiento y no es backfilleable.
+            var missingParentIds = productsData.Values
+                .Where(info => info.ParentId.HasValue
+                    && info.ParentIsStockShared
+                    && !productsData.ContainsKey(info.ParentId.Value))
+                .Select(info => info.ParentId!.Value)
+                .Distinct()
+                .ToList();
+            if (missingParentIds.Count > 0)
+            {
+                var parentInfos = await _context.Products
+                    .AsNoTracking()
+                    .Where(p => missingParentIds.Contains(p.Id))
+                    .Select(StockDeductionProductProjection)
+                    .ToListAsync(cancellationToken);
+                foreach (var parentInfo in parentInfos)
+                {
+                    productsData[parentInfo.Id] = parentInfo;
+                }
+            }
 
             // 8.149-T1 (SRE-01): resolver + consolidar ANTES de tocar stock: una deducción por
             // (target, razón, venta) con la cantidad sumada, ordenada ascendente por ProductId, para
@@ -148,7 +183,21 @@ public partial class InventoryService
                     // 8.16-H03: idempotencia estructurada por SaleId (si el caller lo provee).
                     SaleId = deduction.SaleId,
                     MovementDate = DateTime.UtcNow,
-                    UserId = _currentUserService?.UserId ?? userId
+                    UserId = _currentUserService?.UserId ?? userId,
+                    // 8.177-T1: defaults centrales de auditoría. Una deducción con SaleId sin
+                    // clasificación explícita es Sistema/Venta: así los productores cuyo archivo
+                    // tiene WIP ajeno (Checkout/HoldOrders en Sales.Module, 8.177-L3) quedan
+                    // cubiertos sin editarlos.
+                    OriginType = deduction.OriginType ?? (deduction.SaleId.HasValue ? StockMovementOriginType.System : null),
+                    ReasonCode = deduction.ReasonCode ?? (deduction.SaleId.HasValue ? StockMovementReason.Sale : null),
+                    AuthorizedByUserId = deduction.AuthorizedByUserId,
+                    SupplierInvoiceId = deduction.SupplierInvoiceId,
+                    Observation = deduction.Observation,
+                    // 8.177-T1: snapshot del costo del producto DESTINO del movimiento (para una
+                    // variante con stock compartido, el destino es el padre).
+                    UnitCostUSD = productsData.TryGetValue(deduction.TargetProductId, out var targetInfo)
+                        ? targetInfo.CostPriceUSD
+                        : null
                 });
             }
 
@@ -173,10 +222,14 @@ public partial class InventoryService
         await UpdateStockBatchAsync(new[] { new StockDeductionRequest(productId, quantityChange, reason) }, userId, allowNegativeStock, cancellationToken);
     }
 
-    public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, System.Threading.CancellationToken cancellationToken = default)
+    public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, StockMovementReason? reasonCode = null, string? observation = null, string? authorizedByUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
         if (quantityChange == 0) return;
+
+        // 8.177-T1: los campos de auditoría son OPCIONALES en este tramo (el cliente Desktop
+        // actual no los envía; T3 los exige en la UI). Se validan solo cuando llegan.
+        ValidateManualAdjustmentAudit(reasonCode, ref observation, ref authorizedByUserId);
 
         var product = await _context.Products
             .AsNoTracking()
@@ -218,7 +271,67 @@ public partial class InventoryService
             throw new InvalidOperationException(Core.Constants.InventoryMessages.VariantSharedStockAdjustmentBlocked);
         }
 
-        await UpdateStockAsync(productId, quantityChange, $"Ajuste Manual: {reason}", userId, allowNegativeStock: false, cancellationToken);
+        // 8.177-T1: cuando llegan datos de auditoría, el movimiento se clasifica Manual; sin ellos
+        // el movimiento legado queda sin clasificar (derivación en la capa de consulta, T2).
+        var originType = reasonCode.HasValue || observation is not null || authorizedByUserId is not null
+            ? StockMovementOriginType.Manual
+            : (StockMovementOriginType?)null;
+
+        await UpdateStockBatchAsync(
+            new[]
+            {
+                new StockDeductionRequest(
+                    productId,
+                    quantityChange,
+                    $"Ajuste Manual: {reason}",
+                    SaleId: null,
+                    OriginType: originType,
+                    ReasonCode: reasonCode,
+                    AuthorizedByUserId: authorizedByUserId,
+                    SupplierInvoiceId: null,
+                    Observation: observation)
+            },
+            userId,
+            allowNegativeStock: false,
+            cancellationToken);
+    }
+
+    // 8.177-T1: tope del texto de observación del ajuste manual (contrato del AdjustStockDto).
+    private const int MaxManualAdjustmentObservationLength = 500;
+
+    /// <summary>
+    /// 8.177-T1: valida los datos de auditoría del ajuste manual SOLO cuando llegan y normaliza
+    /// los textos (trim) antes de persistirlos.
+    /// </summary>
+    private static void ValidateManualAdjustmentAudit(StockMovementReason? reasonCode, ref string? observation, ref string? authorizedByUserId)
+    {
+        if (reasonCode.HasValue && !Enum.IsDefined(reasonCode.Value))
+        {
+            throw new ArgumentException("El motivo estandarizado del ajuste no es válido.", nameof(reasonCode));
+        }
+
+        if (observation is not null)
+        {
+            observation = observation.Trim();
+            if (observation.Length == 0)
+            {
+                throw new ArgumentException("La observación del ajuste no puede estar vacía.", nameof(observation));
+            }
+
+            if (observation.Length > MaxManualAdjustmentObservationLength)
+            {
+                throw new ArgumentException($"La observación del ajuste no puede exceder los {MaxManualAdjustmentObservationLength} caracteres.", nameof(observation));
+            }
+        }
+
+        if (authorizedByUserId is not null)
+        {
+            authorizedByUserId = authorizedByUserId.Trim();
+            if (authorizedByUserId.Length == 0)
+            {
+                throw new ArgumentException("El usuario autorizador no puede estar vacío.", nameof(authorizedByUserId));
+            }
+        }
     }
 
     public async Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration, string? referenceId = null, System.Threading.CancellationToken cancellationToken = default)

@@ -224,7 +224,14 @@ public partial class InventoryService
                                 Reason = importReason,
                                 SaleId = null,
                                 MovementDate = DateTime.UtcNow,
-                                UserId = _currentUserService?.UserId
+                                UserId = _currentUserService?.UserId,
+                                // 8.177-T1: la importación masiva carga/ajusta stock desde archivo
+                                // sin factura proveedor asociada; se clasifica Importación + Ajuste
+                                // de importación (no Entrada por Compra: esa exige referencia de
+                                // factura y se emite en SupplierInvoiceService.Apply).
+                                OriginType = StockMovementOriginType.Import,
+                                ReasonCode = StockMovementReason.ImportAdjustment,
+                                UnitCostUSD = existingProduct.CostPriceUSD
                             });
                         }
 
@@ -356,7 +363,12 @@ public partial class InventoryService
                             Reason = importReason,
                             SaleId = null,
                             MovementDate = DateTime.UtcNow,
-                            UserId = _currentUserService?.UserId
+                            UserId = _currentUserService?.UserId,
+                            // 8.177-T1: mismo criterio que el merge de importación (ver arriba):
+                            // origen Importación + ajuste por archivo, sin referencia de factura.
+                            OriginType = StockMovementOriginType.Import,
+                            ReasonCode = StockMovementReason.ImportAdjustment,
+                            UnitCostUSD = newProduct.CostPriceUSD
                         });
                     }
 

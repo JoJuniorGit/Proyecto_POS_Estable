@@ -78,22 +78,14 @@ public class StockMovementArchiverJob : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // 8.177-T1: se cargan las entidades completas (lote acotado a 1000) para mapearlas con
+            // StockMovementArchive.FromStockMovement, que preserva TODOS los campos de auditoría
+            // (L2: la consulta del Centro une activa + archivo).
             var batch = await context.StockMovements
                 .AsNoTracking()
                 .Where(m => m.MovementDate < cutoffDate)
                 .OrderBy(m => m.MovementDate)
                 .Take(batchSize)
-                .Select(m => new
-                {
-                    m.Id,
-                    m.ProductId,
-                    m.QuantityChange,
-                    m.NewStockLevel,
-                    m.Reason,
-                    m.SaleId,
-                    m.MovementDate,
-                    m.UserId
-                })
                 .ToListAsync(stoppingToken);
 
             if (batch.Count == 0)
@@ -101,18 +93,9 @@ public class StockMovementArchiverJob : BackgroundService
                 break;
             }
 
-            var archiveEntries = batch.Select(m => new Core.Entities.StockMovementArchive
-            {
-                OriginalMovementId = m.Id,
-                ProductId = m.ProductId,
-                QuantityChange = m.QuantityChange,
-                NewStockLevel = m.NewStockLevel,
-                Reason = m.Reason,
-                SaleId = m.SaleId,
-                MovementDate = m.MovementDate,
-                UserId = m.UserId,
-                ArchivedAtUtc = DateTime.UtcNow
-            }).ToList();
+            var archiveEntries = batch
+                .Select(Core.Entities.StockMovementArchive.FromStockMovement)
+                .ToList();
 
             // 8.7-L4: INSERT de archivo y DELETE de original en la MISMA transacción atómica.
             // Un fallo a mitad de lote revierte ambos, evitando pérdida de datos.

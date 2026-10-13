@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Core.Entities;
 
 namespace Core.Interfaces;
 
@@ -21,7 +22,7 @@ public interface IInventoryService
     Task RestoreProductAsync(int id, System.Threading.CancellationToken cancellationToken = default);
     Task UpdateStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, bool allowNegativeStock = false, System.Threading.CancellationToken cancellationToken = default);
     Task UpdateStockBatchAsync(IEnumerable<StockDeductionRequest> items, string? userId = null, bool allowNegativeStock = false, System.Threading.CancellationToken cancellationToken = default);
-    Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task AdjustStockAsync(int productId, decimal quantityChange, string reason, string? userId = null, StockMovementReason? reasonCode = null, string? observation = null, string? authorizedByUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration, string? referenceId = null, System.Threading.CancellationToken cancellationToken = default);
     Task ConfirmReservationAsync(int reservationId, string reason, System.Threading.CancellationToken cancellationToken = default);
     Task CancelReservationAsync(int reservationId, System.Threading.CancellationToken cancellationToken = default);
@@ -41,4 +42,16 @@ public interface IInventoryService
     Task DetachFromTransactionAsync(System.Threading.CancellationToken cancellationToken = default);
 }
 
-public record StockDeductionRequest(int ProductId, decimal QuantityChange, string Reason, int? SaleId = null);
+// 8.177-T1 (S1): campos de auditoría opcionales para los movimientos del Kardex. Nullable para no
+// clasificar movimientos históricos/legados; los defaults centrales (venta → Sistema/Venta +
+// snapshot de costo) viven en UpdateStockBatchAsync.
+public record StockDeductionRequest(
+    int ProductId,
+    decimal QuantityChange,
+    string Reason,
+    int? SaleId = null,
+    StockMovementOriginType? OriginType = null,
+    StockMovementReason? ReasonCode = null,
+    string? AuthorizedByUserId = null,
+    int? SupplierInvoiceId = null,
+    string? Observation = null);

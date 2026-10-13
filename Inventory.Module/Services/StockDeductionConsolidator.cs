@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Core.Entities;
 using Core.Interfaces;
 
 namespace Inventory.Module.Services;
@@ -20,13 +21,26 @@ public sealed record StockDeductionProductInfo
     public bool ParentIsStockShared { get; init; }
     public string? ParentName { get; init; }
     public string? ParentSKU { get; init; }
+
+    /// <summary>8.177-T1: costo USD del producto destino para el snapshot histórico del movimiento.</summary>
+    public decimal CostPriceUSD { get; init; }
 }
 
 /// <summary>
 /// 8.149-T1 (SRE-01): deducción ya resuelta a su producto destino y consolidada por
-/// (producto destino, razón, venta).
+/// (producto destino, razón, venta). 8.177-T1: además transporta los campos de auditoría del
+/// request para que el movimiento único del grupo los persista.
 /// </summary>
-public sealed record ConsolidatedStockDeduction(int TargetProductId, decimal QuantityChange, string Reason, int? SaleId);
+public sealed record ConsolidatedStockDeduction(
+    int TargetProductId,
+    decimal QuantityChange,
+    string Reason,
+    int? SaleId,
+    StockMovementOriginType? OriginType = null,
+    StockMovementReason? ReasonCode = null,
+    string? AuthorizedByUserId = null,
+    int? SupplierInvoiceId = null,
+    string? Observation = null);
 
 /// <summary>
 /// 8.149-T1 (SRE-01): plan determinista de ejecución para un lote de deducciones de stock.
@@ -77,7 +91,16 @@ public static class StockDeductionConsolidator
                 movementReason = $"Variante: {productData.Name} (SKU: {productData.SKU}, Factor: {factor:G29}) | {item.Reason}";
             }
 
-            resolved.Add(new ConsolidatedStockDeduction(targetProductId, effectiveQuantityChange, movementReason, item.SaleId));
+            resolved.Add(new ConsolidatedStockDeduction(
+                targetProductId,
+                effectiveQuantityChange,
+                movementReason,
+                item.SaleId,
+                item.OriginType,
+                item.ReasonCode,
+                item.AuthorizedByUserId,
+                item.SupplierInvoiceId,
+                item.Observation));
 
             if (!string.IsNullOrWhiteSpace(productData.SKU)) skusToInvalidate.Add(productData.SKU);
             if (!string.IsNullOrWhiteSpace(productData.ParentSKU)) skusToInvalidate.Add(productData.ParentSKU);
@@ -89,7 +112,15 @@ public static class StockDeductionConsolidator
                 g.Key.TargetProductId,
                 g.Sum(d => d.QuantityChange),
                 g.Key.Reason,
-                g.Key.SaleId))
+                g.Key.SaleId,
+                // 8.177-T1: el grupo comparte clave (producto, razón, venta); si algún request del
+                // grupo trae un campo de auditoría y otro no, gana el primer valor no nulo
+                // (determinista por el orden de entrada).
+                g.Select(d => d.OriginType).FirstOrDefault(value => value.HasValue),
+                g.Select(d => d.ReasonCode).FirstOrDefault(value => value.HasValue),
+                g.Select(d => d.AuthorizedByUserId).FirstOrDefault(value => !string.IsNullOrEmpty(value)),
+                g.Select(d => d.SupplierInvoiceId).FirstOrDefault(value => value.HasValue),
+                g.Select(d => d.Observation).FirstOrDefault(value => !string.IsNullOrEmpty(value))))
             .Where(d => d.QuantityChange != 0) // Un grupo que netea 0 no aplica delta: sin update ni movimiento.
             .OrderBy(d => d.TargetProductId)
             .ThenBy(d => d.Reason, StringComparer.Ordinal)
