@@ -217,10 +217,11 @@ public partial class InventoryViewModel
                 return;
             }
 
-            var (success, qtyChange, reason) = _dialogService.ShowAdjustStockDialog(product);
+            // 8.177-T3 (S1/S4): el flujo manual exige motivo estandarizado + observación desde la UI.
+            var (success, qtyChange, reason, reasonCode, observation) = _dialogService.ShowAdjustStockDialogWithAudit(product);
             if (success)
             {
-                await _productService.AdjustStockAsync(product.Id, qtyChange, reason);
+                await _productService.AdjustStockAsync(product.Id, qtyChange, reason, reasonCode, observation);
                 // The item in our list needs to show updated stock
                 var dto = item.GetDto();
                 dto.StockQuantity += qtyChange;

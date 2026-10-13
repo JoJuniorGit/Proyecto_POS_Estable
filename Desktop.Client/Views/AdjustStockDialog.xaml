@@ -12,7 +12,7 @@
         TextOptions.TextRenderingMode="Auto"        
         Background="{DynamicResource MaterialDesignPaper}"
         FontFamily="{DynamicResource MaterialDesignFont}"
-        Title="Ajustar Cantidad de Stock" Height="520" Width="480"
+        Title="Ajustar Cantidad de Stock" Height="640" Width="480"
         WindowStartupLocation="CenterScreen" ResizeMode="CanResizeWithGrip">
     
     <Grid Margin="20">
@@ -54,13 +54,42 @@
                 </Grid>
                 
                 <!-- Description Space -->
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="CommentTextOutline" VerticalAlignment="Top" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}" Margin="0,12,12,0"/>
+                    <TextBox x:Name="ReasonInput" Grid.Column="1" materialDesign:HintAssist.Hint="Motivo / Descripción *" materialDesign:HintAssist.HelperText="Obligatorio (mínimo 3 caracteres, máximo 200, ej. Mermas, Reabastecimiento, Auditoría)" Style="{DynamicResource MaterialDesignOutlinedTextBox}" AcceptsReturn="True" TextWrapping="Wrap" Height="70" MaxLength="200" TabIndex="2"/>
+                </Grid>
+
+                <!-- 8.177-T3 (S1/S4): clasificación estandarizada obligatoria de auditoría -->
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="FormatListBulleted" VerticalAlignment="Center" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}" Margin="0,0,12,0"/>
+                    <ComboBox x:Name="ReasonCodeCombo" Grid.Column="1"
+                              materialDesign:HintAssist.Hint="Motivo estandarizado *"
+                              materialDesign:HintAssist.HelperText="Clasificación de auditoría del movimiento"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              DisplayMemberPath="Label"
+                              TabIndex="3"/>
+                </Grid>
+
+                <!-- 8.177-T3 (S1/S4): observación obligatoria del ajuste manual -->
                 <Grid Margin="0,0,0,5">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <materialDesign:PackIcon Kind="CommentTextOutline" VerticalAlignment="Top" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignTextBoxBorder}" Margin="0,12,12,0"/>
-                    <TextBox x:Name="ReasonInput" Grid.Column="1" materialDesign:HintAssist.Hint="Motivo / Descripción *" materialDesign:HintAssist.HelperText="Obligatorio (mínimo 3 caracteres, ej. Mermas, Reabastecimiento, Auditoría)" Style="{DynamicResource MaterialDesignOutlinedTextBox}" AcceptsReturn="True" TextWrapping="Wrap" Height="80" TabIndex="2"/>
+                    <TextBox x:Name="ObservationInput" Grid.Column="1"
+                             materialDesign:HintAssist.Hint="Observación *"
+                             materialDesign:HintAssist.HelperText="Obligatoria para auditoría (máx. 500 caracteres)"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             AcceptsReturn="True" TextWrapping="Wrap" Height="70" MaxLength="500" TabIndex="4"/>
                 </Grid>
             </StackPanel>
         </ScrollViewer>
@@ -69,8 +98,8 @@
         <StackPanel Grid.Row="2" Margin="0,10,0,0">
             <TextBlock x:Name="ValidationMessageText" Foreground="#C0392B" FontWeight="SemiBold" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,10"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Cancelar" Click="Cancel_Click" Style="{DynamicResource MaterialDesignFlatButton}" Foreground="DimGray" Margin="0,0,15,0" IsCancel="True" TabIndex="4"/>
-                <Button Content="Guardar Ajuste" Click="Save_Click" Style="{DynamicResource MaterialDesignRaisedButton}" IsDefault="True" TabIndex="3"/>
+                <Button Content="Cancelar" Click="Cancel_Click" Style="{DynamicResource MaterialDesignFlatButton}" Foreground="DimGray" Margin="0,0,15,0" IsCancel="True" TabIndex="6"/>
+                <Button Content="Guardar Ajuste" Click="Save_Click" Style="{DynamicResource MaterialDesignRaisedButton}" IsDefault="True" TabIndex="5"/>
             </StackPanel>
         </StackPanel>
     </Grid>

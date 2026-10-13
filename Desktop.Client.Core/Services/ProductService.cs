@@ -84,9 +84,11 @@ public class ProductService : IProductService
 
     private class DeleteResultResponse { public string? Result { get; set; } }
 
-    public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason)
+    public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason, Core.Entities.StockMovementReason? reasonCode = null, string? observation = null)
     {
-        var dto = new { QuantityChange = quantityChange, Reason = reason };
+        // 8.177-T3 (S1): el motivo estandarizado viaja numérico (contrato T1/T2) y la observación
+        // es obligatoria en la UI; los defaults preservan las llamadas legadas.
+        var dto = new { QuantityChange = quantityChange, Reason = reason, ReasonCode = reasonCode, Observation = observation };
         var response = await _httpClient.PostAsJsonAsync($"api/products/{productId}/adjust-stock", dto);
         if (!response.IsSuccessStatusCode)
         {

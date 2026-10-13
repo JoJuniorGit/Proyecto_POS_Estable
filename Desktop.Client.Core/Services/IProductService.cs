@@ -12,7 +12,7 @@ public interface IProductService
     Task SetStatusAsync(int id, bool isActive, bool isDeleted);
     Task<string> DeleteAsync(int id, bool hardDelete = false);
     Task RestoreAsync(int id);
-    Task AdjustStockAsync(int productId, decimal quantityChange, string reason);
+    Task AdjustStockAsync(int productId, decimal quantityChange, string reason, Core.Entities.StockMovementReason? reasonCode = null, string? observation = null);
     Task<Core.DTOs.ProductQuickInfoDto?> GetQuickInfoAsync(string sku);
     Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token);
     Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default);

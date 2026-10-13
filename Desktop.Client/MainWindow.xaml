@@ -48,6 +48,9 @@
         <DataTemplate DataType="{x:Type vm:SupplierInvoiceViewModel}">
             <views:SupplierInvoiceView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:StockKardexViewModel}">
+            <views:StockKardexView/>
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:LoginViewModel}">
             <views:LoginView/>
         </DataTemplate>
@@ -180,6 +183,23 @@
                                                          Width="18" Height="18"
                                                          VerticalAlignment="Center"/>
                                 <TextBlock Text="Facturas de proveedores"
+                                           Margin="10,0,0,0"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Kardex / Auditoría de Inventario (Admin/Manager) -->
+                        <Button x:Name="BtnStockKardex"
+                                AutomationProperties.AutomationId="Nav_BtnStockKardex"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToStockKardexCommand}"
+                                IsEnabled="{Binding UserSession.CanMutateCatalog}"
+                                ToolTip="Centro de Auditoría de Inventario (Kardex)">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ClipboardListOutline"
+                                                         Width="18" Height="18"
+                                                         VerticalAlignment="Center"/>
+                                <TextBlock Text="Kardex / Auditoría"
                                            Margin="10,0,0,0"
                                            VerticalAlignment="Center"/>
                             </StackPanel>

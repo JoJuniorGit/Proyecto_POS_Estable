@@ -49,6 +49,19 @@ public interface IDialogService
     bool? ShowOcrScannerConfigDialog(ViewModels.OcrScannerConfigDialogViewModel dialogVm) => null;
 
     (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
+
+    /// <summary>
+    /// 8.177-T3 (S1/S4): variante auditada de <see cref="ShowAdjustStockDialog"/> — devuelve además
+    /// el motivo estandarizado y la observación obligatoria del ajuste manual. La implementación por
+    /// defecto (stubs headless) delega en el método legado y completa los campos nuevos con null;
+    /// el flujo de inventario usa siempre esta sobrecarga.
+    /// </summary>
+    AdjustStockDialogResult ShowAdjustStockDialogWithAudit(ProductDto product)
+    {
+        var (success, quantityChange, reason) = ShowAdjustStockDialog(product);
+        return new AdjustStockDialogResult(success, quantityChange, reason, null, null);
+    }
+
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();
     Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(System.Collections.Generic.List<PaymentMethodDto> paymentMethods, decimal? availableCashLocal);
@@ -106,3 +119,17 @@ public class PartialDeliveryDialogResult
     public string? Notes { get; set; }
 }
 
+/// <summary>
+/// 8.177-T3 (S1): resultado del ajuste manual con los campos de auditoría capturados por el
+/// diálogo (motivo estandarizado + observación). <see cref="Cancelled"/> representa diálogo
+/// cancelado o stub headless sin UI.
+/// </summary>
+public sealed record AdjustStockDialogResult(
+    bool Success,
+    decimal QuantityChange,
+    string Reason,
+    Core.Entities.StockMovementReason? ReasonCode,
+    string? Observation)
+{
+    public static AdjustStockDialogResult Cancelled { get; } = new(false, 0m, string.Empty, null, null);
+}

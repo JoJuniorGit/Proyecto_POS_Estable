@@ -184,6 +184,12 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }));
 
+        // 8.177-T3 (S2/S3): cliente del Centro de Auditoría de Kardex (mismo pipeline HTTP).
+        ConfigureClient(builder.Services.AddHttpClient<IStockKardexClientService, StockKardexClientService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
         ConfigureClient(builder.Services.AddHttpClient("SalesApi", client =>
         {
             client.BaseAddress = baseAddressUri;
@@ -245,6 +251,7 @@ public partial class App : Application
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<PosViewModel>();
         builder.Services.AddSingleton<InventoryViewModel>();
+        builder.Services.AddSingleton<StockKardexViewModel>();
         builder.Services.AddSingleton<SalesHistoryViewModel>();
         builder.Services.AddSingleton<PendingOrdersViewModel>(sp => new Desktop.Client.ViewModels.PendingOrdersViewModel(
             sp.GetRequiredService<Desktop.Client.Services.ISalesService>(),

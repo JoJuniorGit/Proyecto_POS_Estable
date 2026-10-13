@@ -251,6 +251,37 @@ public partial class WpfDialogService
         return (success, qtyChange, reason);
     }
 
+    /// <summary>
+    /// 8.177-T3 (S1/S4): variante auditada del ajuste manual. El diálogo exige motivo
+    /// estandarizado y observación antes de habilitar el OK; el resultado viaja completo.
+    /// </summary>
+    public AdjustStockDialogResult ShowAdjustStockDialogWithAudit(Core.DTOs.ProductDto product)
+    {
+        if (Application.Current == null) return AdjustStockDialogResult.Cancelled;
+        using var _ = TrackModal();
+        var result = AdjustStockDialogResult.Cancelled;
+
+        Action openDialog = () =>
+        {
+            var dialog = new AdjustStockDialog(product);
+            dialog.Owner = Application.Current.MainWindow;
+            if (dialog.ShowDialog() == true)
+            {
+                result = new AdjustStockDialogResult(
+                    true,
+                    dialog.QuantityChange,
+                    dialog.Reason,
+                    dialog.ReasonCode,
+                    dialog.Observation);
+            }
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return result;
+    }
+
     public void ShowInterruptedTransactionDialog(string title, string message)
     {
         if (Application.Current == null) return;
