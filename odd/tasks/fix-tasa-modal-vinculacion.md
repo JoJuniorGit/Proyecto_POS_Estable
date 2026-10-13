@@ -24,7 +24,7 @@ Tres vectores combinados, todos en el flujo `UpdateLinkedProductAsync → LoadSt
 | F1 | S1 | inline | Quitar la re-alineación de moneda de `LoadStagedInvoice` (aislamiento; comentario 8.178) | hecho |
 | F2 | S2, S3 | inline | `PropagateCurrencyAndRateToLines()` al final de `LoadStagedInvoice` (tasa viva → filas + snapshot; Bs.S sin tasa → filas 0 y confirm bloqueado) | hecho |
 | F3 | S1, S2 | inline | Guarda de corrección manual: flags `_isRateManuallyEdited`/`_isApplyingProgrammaticRate` + `SetAppliedRateTextProgrammatically`; la rama OCR de `OnSelectedCurrencyChanged` solo repone si el revisor no editó; scan nuevo re-basa | hecho |
-| F4 | S1–S3 | inline (+ verify) | Tests (RED 3/3 → GREEN) + actualización de 5 tests con expectativa vieja (flujo real con moneda preseleccionada) + build/suite + verificación independiente + ANEXO 8.178 + commit | hecho — build slnx 0/0; carril SupplierInvoice 286/286; suite completa Unit 1890/1890 + resto 571/571 = 2461/2461; verificación independiente PASS (S1–S3 CONFORME, 0 blockers, 2 residuales cosméticos); ANEXO 8.178; commits fix + docs(8.178) en V0.15 |
+| F4 | S1–S3 | inline (+ verify) | Tests (RED 3/3 → GREEN) + actualización de 5 tests con expectativa vieja (flujo real con moneda preseleccionada) + build/suite + verificación independiente + ANEXO 8.178 + commit | hecho — build slnx 0/0; carril SupplierInvoice 286/286; suite completa Unit 1890/1890 + resto 571/571 = 2461/2461; verificación independiente PASS (S1–S3 CONFORME, 0 blockers, 2 residuales cosméticos); ANEXO 8.178; commits `1bd9f12` (fix) + docs(8.178) en V0.15 |
 
 Estrategia de entrega: `ask-on-risk` → work unit local en V0.15. Forecast ~200 líneas autoradas (fix ~70 + tests ~180).
 

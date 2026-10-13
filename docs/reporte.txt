@@ -14533,3 +14533,69 @@ E. COMMITS
 E1. 8.177 en V0.15: 04d5b19 (T1 datos) + fded8aa (T2 API/export) + 48768f6 (T3 UI/ajuste) + commit
     de este ANEXO (docs(8.177); git log).
 ================================================================================
+
+================================================================================
+ANEXO 8.178 - FACTURAS DE PROVEEDOR: FIX DEL RESET ACCIDENTAL DE LA TASA DE CAMBIO AL USAR "ACTUALIZAR" (MODAL DE VINCULACION) - 2026-10-13
+================================================================================
+Defecto reportado (L1 del tracker odd/tasks/fix-tasa-modal-vinculacion.md): si el OCR detectaba una
+tasa errónea y el revisor la corregía a mano, al guardar el modal "Actualizar" (Resolver producto
+desde factura) la recarga revertía la Tasa aplicada al valor original del escaneo, borrando el
+trabajo del revisor.
+
+A. ALCANCE Y ENTREGA
+
+A1. Diagnóstico (tres vectores encadenados en UpdateLinkedProductAsync -> LoadStagedInvoice):
+    (1) la re-alineación de moneda agregada en 8.176 re-asignaba SelectedCurrency en cada recarga
+        (violaba el aislamiento exigido);
+    (2) esa re-asignación disparaba la rama OCR de OnSelectedCurrencyChanged, que reponía la tasa
+        detectada original sobre la corrección manual (el revert literal reportado);
+    (3) la recarga dejaba el snapshot local (StagedInvoice) con la tasa histórica del staging en
+        lugar de la tasa viva del TextBox.
+A2. Fix (Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel{.cs,.Suppliers.cs,.Ocr.cs}):
+    - LoadStagedInvoice ya NO re-asigna Moneda ni Tasa de la cabecera (aislamiento del flujo de
+      fila; la cabecera es propiedad del revisor). Único carve-out: prefill programático cuando el
+      TextBox de tasa está vacío.
+    - PropagateCurrencyAndRateToLines() al final de LoadStagedInvoice: la interpretación VIVA
+      (moneda/tasa corregida) se inyecta en filas y snapshot local en cada carga/recarga; con
+      Bs.S sin tasa válida las filas quedan en (Bs.S, 0) y el confirm sigue bloqueado (8.176 S4).
+    - Guarda de corrección manual: flags _isRateManuallyEdited/_isApplyingProgrammaticRate +
+      SetAppliedRateTextProgrammatically; la rama OCR de OnSelectedCurrencyChanged solo repone la
+      tasa detectada si el revisor no la editó a mano; un escaneo nuevo re-basa la protección y
+      ClearOcrReviewState la limpia. Los tres productores (carga, prefill, OCR) convergen a un
+      único punto de escritura programática.
+A3. Tests: NUEVO CommandCenter.Tests/Unit/SupplierInvoiceRatePersistenceTests.cs (3 casos:
+    inyección de la tasa viva en filas+snapshot tras el modal; flip-back conserva la corrección;
+    flip + Actualizar no re-asigna la cabecera ni revierte la tasa). Actualizados 5 tests con
+    expectativa vieja (2 reescritos al contrato nuevo — encabezado por selección y aislamiento de
+    carga — y 3 que ahora preseleccionan la moneda del documento, reflejando el flujo real).
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa POR PARTES: Unit 1890/1890 + resto 571/571 = 2461/2461, 0 fallas. Carril
+    SupplierInvoice 286/286.
+B3. Verificación independiente read-only (agente reviewer): S1-S3 CONFORME, ciclo de vida del flag
+    CONFORME, 0 blockers (re-ejecutó 286/286 y 3/3). Residuales: SyncStagedSnapshot conserva la
+    tasa previa en el snapshot cuando la tasa viva es inválida (cosmético, pre-existente 8.176;
+    el confirm está bloqueado y los requests leen el TextBox) y el prefill de carga usa la tasa
+    del staging (idéntico a HEAD, cubierto por el carve-out).
+B4. RED->GREEN observado: SupplierInvoiceRatePersistenceTests 3/3 fallando por las causas exactas
+    antes del fix (revert a "78.45", re-alineación USD->Bs.S, snapshot 78.45) -> 3/3 verde.
+
+C. LIMITACIONES ACEPTADAS
+
+C1. La protección de la corrección manual es de sesión de revisión (se re-basa con cada escaneo y
+    se limpia al limpiar/confirmar); una futura persistencia del estado de revisión entre
+    navegaciones debería reconsiderarla.
+C2. La re-alineación eliminada hacía que una carga directa de una factura Bs.S con selector USD
+    cambiara el título a Bs.S; ahora la cabecera manda siempre (los flujos reales de stage/scan ya
+    la dejan consistente) y los tests quedaron alineados al contrato nuevo.
+
+D. ROLLBACK
+
+D1. Revertir el commit restaura el comportamiento previo; sin migraciones ni cambios de esquema.
+
+E. COMMITS
+
+E1. 8.178 en V0.15: 1bd9f12 (fix + tests) + commit de este ANEXO (docs(8.178); git log).
+================================================================================
