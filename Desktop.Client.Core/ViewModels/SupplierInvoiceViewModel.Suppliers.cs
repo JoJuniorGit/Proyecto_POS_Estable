@@ -35,6 +35,7 @@ public partial class SupplierInvoiceViewModel
     partial void OnSelectedCurrencyChanged(string value)
     {
         OnPropertyChanged(nameof(IsBsSCurrency));
+        OnPropertyChanged(nameof(DocumentCostHeader));
         OnPropertyChanged(nameof(IsRateInputEnabled));
         OnPropertyChanged(nameof(HasValidAppliedRate));
         OnPropertyChanged(nameof(ShowRateValidationHint));
@@ -372,8 +373,10 @@ public partial class SupplierInvoiceViewModel
     }
 
     /// <summary>
-    /// 8.172: propaga en vivo la moneda y la tasa aplicada de la factura hacia todas las líneas
-    /// cargadas en revisión para que los costos y precios sugeridos se recalculen reactivamente.
+    /// 8.172/8.176: propaga en vivo la moneda y la tasa aplicada de la cabecera hacia todas las
+    /// líneas cargadas en revisión. La moneda VIVA de la cabecera es la fuente de verdad de la
+    /// interpretación (un flip Bs.S ↔ USD reinterpreta el costo factura conservado en cada fila);
+    /// con Bs.S sin tasa válida las filas quedan en (Bs.S, 0) y el confirm permanece bloqueado.
     /// </summary>
     private void PropagateCurrencyAndRateToLines()
     {
@@ -382,19 +385,23 @@ public partial class SupplierInvoiceViewModel
             return;
         }
 
-        if (IsBsSCurrency || IsBsSInvoice)
+        if (IsBsSCurrency)
         {
             if (!TryParseAppliedRate(AppliedRateText, out var parsedRate) || parsedRate <= 0m)
             {
+                // 8.176: salvaguarda de división por cero: sin tasa válida la factura Bs.S no puede
+                // normalizar costos; las filas muestran 0,00 (nunca NaN/Infinity) hasta una tasa válida.
+                SyncStagedSnapshot(CurrencyCodes.BsS, appliedRate: null);
+                foreach (var line in Lines)
+                {
+                    line.UpdateCurrencyAndRate(CurrencyCodes.BsS, 0m);
+                }
+
                 return;
             }
 
             var normalizedRate = Math.Round(parsedRate, 4, MidpointRounding.AwayFromZero);
-            if (StagedInvoice is not null && IsBsSInvoice && StagedInvoice.AppliedRate != normalizedRate)
-            {
-                StagedInvoice = StagedInvoice with { AppliedRate = normalizedRate };
-            }
-
+            SyncStagedSnapshot(CurrencyCodes.BsS, normalizedRate);
             foreach (var line in Lines)
             {
                 line.UpdateCurrencyAndRate(CurrencyCodes.BsS, normalizedRate);
@@ -403,10 +410,33 @@ public partial class SupplierInvoiceViewModel
             return;
         }
 
+        SyncStagedSnapshot(CurrencyCodes.Usd, 1m);
         foreach (var line in Lines)
         {
             line.UpdateCurrencyAndRate(CurrencyCodes.Usd, 1m);
         }
+    }
+
+    /// <summary>
+    /// 8.176: mantiene el snapshot local de la factura alineado con la moneda/tasa vivas de la
+    /// cabecera; los consumidores de IsBsSInvoice (modal de vínculo, carga de staging) heredan
+    /// el contexto vigente de la revisión.
+    /// </summary>
+    private void SyncStagedSnapshot(string currency, decimal? appliedRate)
+    {
+        if (StagedInvoice is null)
+        {
+            return;
+        }
+
+        var targetRate = appliedRate ?? StagedInvoice.AppliedRate;
+        if (string.Equals(StagedInvoice.Currency, currency, StringComparison.Ordinal)
+            && StagedInvoice.AppliedRate == targetRate)
+        {
+            return;
+        }
+
+        StagedInvoice = StagedInvoice with { Currency = currency, AppliedRate = targetRate };
     }
 
     internal static string FormatAppliedRateText(decimal rate) =>

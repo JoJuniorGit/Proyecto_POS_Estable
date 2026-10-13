@@ -86,7 +86,10 @@ public sealed record LinkInvoiceProductRequestDto(
 public sealed record ConfirmSupplierInvoiceRequestDto(
     IReadOnlyList<ConfirmLineDto> Lines,
     // 8.172: permite actualizar la tasa aplicada a una factura en Bs.S durante la revisión antes de confirmar.
-    decimal? AppliedRate = null);
+    decimal? AppliedRate = null,
+    // 8.176: moneda viva de la cabecera en revisión; null conserva la moneda del staging (contrato previo).
+    // Si difiere del snapshot del draft, el confirm conmuta la moneda y renormaliza los costos aprobados.
+    string? Currency = null);
 
 public sealed record ConfirmLineDto(
     int LineId,

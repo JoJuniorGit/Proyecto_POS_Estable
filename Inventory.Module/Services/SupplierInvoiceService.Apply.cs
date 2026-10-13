@@ -35,6 +35,14 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("The confirmation contains duplicate supplier invoice line IDs.", nameof(request));
         }
 
+        // 8.176: la moneda viva de la cabecera en revisión viaja opcional; si viene, debe ser canónica.
+        if (request.Currency is not null
+            && !string.Equals(request.Currency, CurrencyCodes.Usd, StringComparison.Ordinal)
+            && !string.Equals(request.Currency, CurrencyCodes.BsS, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The supplier invoice currency must be USD or Bs.S.", nameof(request));
+        }
+
         if (request.AppliedRate is decimal requestedRate &&
             (requestedRate <= 0m || requestedRate > MaxInvoiceNumericValue))
         {
@@ -71,18 +79,45 @@ public partial class SupplierInvoiceService
                         throw new ArgumentException("A confirmed line does not belong to this supplier invoice.", nameof(request));
                     }
 
-                    // 8.172: si la factura es Bs.S y el usuario ajustó la tasa aplicada antes de
-                    // confirmar, actualiza el snapshot de la factura y recalcula costos en USD.
+                    // 8.172/8.176: el revisor puede ajustar la tasa y la moneda del documento durante
+                    // la revisión; el confirm conmuta el snapshot del draft (moneda y/o tasa) y fuerza
+                    // la renormalización de los costos aprobados con la interpretación final.
                     var appliedRateChanged = false;
-                    if (string.Equals(invoice.Currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase)
-                        && request.AppliedRate is decimal overrideRate)
+                    var targetCurrency = request.Currency ?? invoice.Currency;
+                    var currencyChanged = !string.Equals(targetCurrency, invoice.Currency, StringComparison.Ordinal);
+                    if (string.Equals(targetCurrency, CurrencyCodes.BsS, StringComparison.Ordinal))
                     {
-                        var normalizedOverrideRate = Math.Round(overrideRate, 4, MidpointRounding.AwayFromZero);
-                        if (invoice.AppliedRate != normalizedOverrideRate)
+                        if (request.AppliedRate is not decimal overrideRate)
                         {
-                            invoice.AppliedRate = normalizedOverrideRate;
-                            appliedRateChanged = true;
+                            // Cambiar la moneda del documento a Bs.S exige una tasa explícita; la tasa
+                            // de un snapshot previo pertenece a otra interpretación y no se reutiliza.
+                            if (currencyChanged)
+                            {
+                                throw new ArgumentException(
+                                    "An applied exchange rate greater than zero is required for supplier invoices in Bs.S.",
+                                    nameof(request));
+                            }
                         }
+                        else
+                        {
+                            var normalizedOverrideRate = Math.Round(overrideRate, 4, MidpointRounding.AwayFromZero);
+                            if (invoice.AppliedRate != normalizedOverrideRate)
+                            {
+                                invoice.AppliedRate = normalizedOverrideRate;
+                                appliedRateChanged = true;
+                            }
+                        }
+                    }
+                    else if (invoice.AppliedRate != 1m)
+                    {
+                        invoice.AppliedRate = 1m;
+                        appliedRateChanged = true;
+                    }
+
+                    if (currencyChanged)
+                    {
+                        invoice.Currency = targetCurrency;
+                        appliedRateChanged = true;
                     }
 
                     var confirmationsByLineId = request.Lines.ToDictionary(confirmation => confirmation.LineId);

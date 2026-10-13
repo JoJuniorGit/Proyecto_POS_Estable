@@ -65,8 +65,8 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     public bool IsBsSCurrency => string.Equals(SelectedCurrency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
     public bool IsBsSInvoice => string.Equals(StagedInvoice?.Currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>8.164: encabezado del costo de factura editable según la moneda del documento.</summary>
-    public string DocumentCostHeader => IsBsSInvoice ? "Costo factura (Bs.S)" : "Costo factura (USD)";
+    /// <summary>8.164/8.176: encabezado del costo de factura editable; acompaña la moneda viva de la cabecera.</summary>
+    public string DocumentCostHeader => IsBsSCurrency ? "Costo factura (Bs.S)" : "Costo factura (USD)";
 
     /// <summary>8.168: oculta el campo de ruta de archivo cuando está vacío o en flujo OCR.</summary>
     public bool HasSelectedFilePath => !string.IsNullOrWhiteSpace(SelectedFilePath) && !IsOcrSource;
@@ -371,14 +371,17 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         StatusMessage = "Procesando la factura aprobada...";
         try
         {
-            decimal? confirmAppliedRate = IsBsSInvoice
+            // 8.172/8.176: el confirm transporta la tasa ajustada (Bs.S) y la moneda viva de la
+            // cabecera para que el backend procese exactamente la interpretación que muestra la tabla.
+            decimal? confirmAppliedRate = IsBsSCurrency
                 && TryParseAppliedRate(AppliedRateText, out var parsedConfirmRate)
                 && parsedConfirmRate > 0m
                 ? Math.Round(parsedConfirmRate, 4, MidpointRounding.AwayFromZero)
                 : null;
             var request = new ConfirmSupplierInvoiceRequestDto(
                 approvedLines.Select(line => line.ToConfirmLine()).ToArray(),
-                confirmAppliedRate);
+                confirmAppliedRate,
+                SelectedCurrency);
             var result = await _invoiceService.ConfirmAsync(StagedInvoice.Id, request, cancellationToken);
             LoadStagedInvoice(result);
             ClearOcrReviewState();
@@ -402,6 +405,14 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(invoice);
         StagedInvoice = invoice;
         ClearLines();
+        // 8.176: la cabecera es la fuente de verdad viva de la interpretación de la grilla; al
+        // cargar la factura se alinea con la moneda del documento (stage/confirm/link devuelven
+        // la vigente) para que el título dinámico y las filas queden consistentes.
+        if (!string.Equals(SelectedCurrency, invoice.Currency, StringComparison.Ordinal))
+        {
+            SelectedCurrency = invoice.Currency;
+        }
+
         if (IsBsSCurrency && string.IsNullOrWhiteSpace(AppliedRateText) && invoice.AppliedRate > 0m)
         {
             AppliedRateText = FormatAppliedRateText(invoice.AppliedRate);

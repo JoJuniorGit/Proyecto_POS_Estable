@@ -551,29 +551,18 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
 
         if (string.Equals(_invoiceCurrency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase))
         {
-            if (_appliedRate > 0m)
+            if (_appliedRate <= 0m)
             {
-                return PricingCalculator.CalculateInvoiceUnitCostUsd(
-                    EditUnitCostDocument,
-                    EffectiveConversionFactor,
-                    _invoiceCurrency,
-                    _appliedRate);
+                // 8.176: sin tasa válida una factura Bs.S no tiene costo normalizado; la columna
+                // Costo USD muestra 0,00 (sin NaN/Infinity) y el confirm queda bloqueado.
+                return 0m;
             }
 
-            if (_source.UnitCostDocument > 0m)
-            {
-                var unitDocumentCost = PricingCalculator.CalculateInvoiceUnitCostUsd(
-                    EditUnitCostDocument,
-                    EffectiveConversionFactor,
-                    CurrencyCodes.Usd,
-                    1m);
-                return Math.Round(
-                    _source.UnitCostUSD * (unitDocumentCost / _source.UnitCostDocument),
-                    4,
-                    MidpointRounding.AwayFromZero);
-            }
-
-            return 0m;
+            return PricingCalculator.CalculateInvoiceUnitCostUsd(
+                EditUnitCostDocument,
+                EffectiveConversionFactor,
+                _invoiceCurrency,
+                _appliedRate);
         }
 
         var usdDocumentCost = PricingCalculator.CalculateInvoiceUnitCostUsd(
