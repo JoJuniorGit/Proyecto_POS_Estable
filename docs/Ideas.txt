@@ -2,9 +2,9 @@ A continuación se presenta el **plan de desarrollo secuencial integral de 15 pa
 
 Las ideas originales se presentan **íntegras y textualmente tal como fueron redactadas**, las nuevas ideas sinérgicas adoptan la misma estructura formal, y cada una cuenta con su bloque **Justificación:** detallando el motivo lógico, técnico, la dificultad y el efecto dominó que determinan su ubicación en la secuencia.
 
-> **Sincronización con el código — 2026-10-13 (commits hasta `ef9ce68`):**
-> Pasos **1, 2, 3, 4, 5, 7 y 8 COMPLETADOS** (marcados `[x]` con evidencia de código/commits).
-> Pasos **6 y 9–15 PENDIENTES**, con notas de dependencias actualizadas donde el código ya
+> **Sincronización con el código — 2026-10-14 (commits hasta `ea83e96`):**
+> Pasos **1, 2, 3, 4, 5, 6, 7 y 8 COMPLETADOS** (marcados `[x]` con evidencia de código/commits).
+> Pasos **9–15 PENDIENTES**, con notas de dependencias actualizadas donde el código ya
 > fusionado cambió el terreno (multi-moneda, auditoría de stock enriquecida, etc.).
 > El informe estratégico completo (correcciones arquitectónicas, funcionalidades sinérgicas y
 > reordenamiento óptimo propuesto) vive en `docs/roadmap-sync-2026-10-13.md`.
@@ -275,7 +275,7 @@ Cumplimiento normativo.
 
 ### Paso 6
 
-**[ ] PENDIENTE** — nota de sincronización: el prerrequisito "escáner móvil Web" **ya está operativo** (escáner con cámara en Web + recuperación de permisos 8.109); NO existen aún `StockCountSession`/`StockCountItem`. Al implementarse, la aplicación automática de ajustes debe usar el modelo real del Paso 5 (`StockMovement` enriquecido + espejo, **no** `StockAdjustmentsAudit`).
+**[x] COMPLETADO (8.180, verificado 2026-10-14)** — evidencia: commits `298dbc1` (backend: `StockCountSession`/`StockCountItem` + migración + scan CIEGO por SKU con guards y alcance por subárbol + close congelando + apply atómico auditado como `PhysicalCountCorrection` con vínculo a la sesión) + `ea83e96` (Web: vista "Conteo físico" con cámara reutilizada y panel Admin de descuadre/aplicación) + ANEXO 8.180. **Desvíos:** todo el flujo vive en Web (el Kardex WPF ya muestra los movimientos); las variantes con stock compartido se rechazan en el scan (conversión por factor = futuro); bundle Web pendiente de regenerar al cierre del WIP ajeno.
 
 11. Conteo físico ciego e inventario rotativo asistido por escáner móvil
 Objetivo: Agilizar la toma física de inventario periódica utilizando la cámara de dispositivos móviles en modo ciego para detectar discrepancias reales sin sesgar al personal.
@@ -792,7 +792,7 @@ flowchart TD
 
     subgraph F3["Fase 3: Control & Auditoría de Stock"]
         P5["✅ 5. Auditoría de Ajustes de Stock (Idea 6) — Kardex 8.177"]
-        P6["6. Conteo Físico Ciego Móvil (Idea 11)"]
+        P6["✅ 6. Conteo Físico Ciego Móvil (Idea 11)"]
         P4 --> P5 --> P6
     end
 

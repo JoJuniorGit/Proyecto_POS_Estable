@@ -14675,3 +14675,73 @@ E. COMMITS
 E1. 8.179 en V0.15: 2b64f47 (T1 backend) + bf32f71 (T2 WPF) + ef9ce68 (T3 Web) + commit de este
     ANEXO (docs(8.179); git log).
 ================================================================================
+
+================================================================================
+ANEXO 8.180 - PASO 6 DEL ROADMAP: CONTEO FISICO CIEGO E INVENTARIO ROTATIVO CON ESCANER MOVIL - 2026-10-14
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/paso-6-conteo-fisico.md): implementar el Paso 6
+(sesiones de conteo físico ciego con escáner móvil, cálculo de discrepancias y aplicación aprobada
+con trazabilidad completa), como siguiente paso del reordenamiento propuesto del roadmap.
+
+A. ALCANCE Y ENTREGA
+
+A1. Backend (commit 298dbc1): StockCountSession (alcance por subárbol de categoría, ciclo de vida
+    Open/Closed/Applied/Cancelled con guard xmin) + StockCountItem (contado + teórico/costo
+    congelados al cerrar); migración idempotente 20261014030655 (+ StockCountSessionId en
+    StockMovements y StockMovements_Archive, con índice); StockCountService: scan CIEGO por SKU con
+    guards de producto (borrado/adelanto/grupo-individual/variante compartida) y de alcance;
+    close congela; apply ATÓMICO (execution strategy + transacción + guard xmin) con batch
+    UpdateStockBatchAsync auditado (OriginType=Manual, ReasonCode=PhysicalCountCorrection,
+    Observation "Toma física #C-{id}", StockCountSessionId, AuthorizedByUserId), Δ = contado −
+    stock actual (el stock queda exactamente en lo contado), Δ=0 omitidos, no-escaneados intactos;
+    review con preview live (Open) o congelado (Closed/Applied) + totales sobrantes/faltantes/neto;
+    controller con RBAC (clase Admin/Manager/Cashier; mutaciones y review Admin/Manager) +
+    security stamp. El modo ciego es por construcción: los DTOs de conteo no exponen teórico/costo.
+A2. Web (commit ea83e96): vista "Conteo físico" (view stock-count) con lista/filtro por estado,
+    creación Admin (alcance por categoría), detalle CIEGO con input + cámara (BarcodeScannerModal
+    reutilizado con UN solo POST por scan vía promesa compartida), +1/−1/edición/quitar; panel
+    Admin de review con descuadre, totales y Cerrar/Aplicar/Cancelar con confirmaciones;
+    navegación RBAC (VIEW_ORDER/ROLE_VIEWS/Sidebar) con side-tests sincronizados; mobile-first.
+A3. Fix de verificación (T2): el panel review consumía `row.unitCostUsd` mientras el contrato
+    camelCase sirve `unitCostUSD` (los acrónimos finales se preservan en System.Text.Json) → la
+    columna Costo USD mostraba $0,00 en todas las filas; fix + aserción case-sensitive en el test.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa POR PARTES: Unit 2003/2003 + resto 571/571 = 2574/2574, 0 fallas. Carril
+    StockCount/Inventory/StockMovement 125/125 (T1). Web: npm test 415/415 + npm run lint 0.
+B3. Verificación independiente read-only por tarea (agente reviewer): T1 "REVISAR sin
+    bloqueantes" (39/39 re-ejecutados; snapshot EF limpio; micro-fix del mensaje de persistencia
+    aplicado); T2 "BLOQUEAR" con el defecto de casing corregido y test endurecido antes del
+    commit. Migración validable contra PostgreSQL solo en CI (sin PG local).
+
+C. LIMITACIONES ACEPTADAS
+
+C1. Bundle web NO regenerado (misma regla que 8.179: hornearía el WIP ajeno en wwwroot); la vista
+    de conteo llega a la app servida al regenerarse el bundle junto con ese WIP.
+C2. Semántica del apply: el Δ se calcula con lectura previa y escritura aditiva; el guard xmin
+    serializa applies entre sí, no contra ventas concurrentes en esa ventana (venta post-cierre
+    secuencial sí queda cubierta: el stock termina en lo contado).
+C3. Scan ciego: variantes con stock compartido, grupos individuales, adelantos de efectivo y
+    productos borrados se rechazan EN EL SCAN con mensaje claro; el conteo de variantes con stock
+    compartido (conversión por factor) queda para un tramo futuro.
+C4. Residuales diferidos: StockCountService de 667 líneas / Apply con complejidad alta (estilo);
+    scan duplicado concurrente del mismo producto nuevo → 500 posible (probabilidad baja); review
+    de una sesión Cancelada-desde-Open muestra un Δ cosmético (null→0); el vínculo
+    StockCountSessionId no se expone aún en el DTO/UI del Kardex (follow-up); sin smoke visual
+    interactivo de la vista Web.
+C5. Interacción conocida con el WIP ajeno: el guard de ReservedQuantity (sin commitear) no corre
+    en InMemory → el rechazo por reservas activas al aplicar faltantes solo se ejerce en
+    PostgreSQL/CI.
+
+D. ROLLBACK
+
+D1. Revertir los dos commits restaura el estado previo; la migración es aditiva con Down seguro
+    (drop de las tablas nuevas y de la columna StockCountSessionId).
+
+E. COMMITS
+
+E1. 8.180 en V0.15: 298dbc1 (T1 backend) + ea83e96 (T2 Web) + commit de este ANEXO (docs(8.180);
+    git log).
+================================================================================
