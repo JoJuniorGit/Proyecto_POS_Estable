@@ -2,9 +2,9 @@ A continuación se presenta el **plan de desarrollo secuencial integral de 15 pa
 
 Las ideas originales se presentan **íntegras y textualmente tal como fueron redactadas**, las nuevas ideas sinérgicas adoptan la misma estructura formal, y cada una cuenta con su bloque **Justificación:** detallando el motivo lógico, técnico, la dificultad y el efecto dominó que determinan su ubicación en la secuencia.
 
-> **Sincronización con el código — 2026-10-13 (commits hasta `f2aa030`):**
-> Pasos **1, 2, 3, 4, 5 y 7 COMPLETADOS** (marcados `[x]` con evidencia de código/commits).
-> Pasos **6 y 8–15 PENDIENTES**, con notas de dependencias actualizadas donde el código ya
+> **Sincronización con el código — 2026-10-13 (commits hasta `ef9ce68`):**
+> Pasos **1, 2, 3, 4, 5, 7 y 8 COMPLETADOS** (marcados `[x]` con evidencia de código/commits).
+> Pasos **6 y 9–15 PENDIENTES**, con notas de dependencias actualizadas donde el código ya
 > fusionado cambió el terreno (multi-moneda, auditoría de stock enriquecida, etc.).
 > El informe estratégico completo (correcciones arquitectónicas, funcionalidades sinérgicas y
 > reordenamiento óptimo propuesto) vive en `docs/roadmap-sync-2026-10-13.md`.
@@ -369,7 +369,7 @@ Mejora la experiencia del usuario.
 
 ### Paso 8
 
-**[ ] PENDIENTE (verificado 2026-10-13: sin entidades Categories/ProductCategories en el modelo).**
+**[x] COMPLETADO (8.179, verificado 2026-10-13)** — evidencia: commits `2b64f47` (backend: `Category`/`ProductCategory` + migración idempotente + CRUD validado sin ciclos + filtro por subárbol + import con ruta `>` / export con columna), `bf32f71` (WPF: card multi-selección en el formulario de producto + diálogo de gestión + filtro en Inventario + columna en importador), `ef9ce68` (Web: filtro en catálogo + categoría en búsqueda POS); ANEXO 8.179. **Desvíos:** la gestión vive en Desktop (el Web no tiene CRUD de producto); bundle Web pendiente de regenerar al cierre del WIP ajeno.
 
 7. Implementar categorías
 Objetivo: Organizar los productos en categorías jerárquicas para mejorar la navegación y el análisis.
@@ -798,7 +798,7 @@ flowchart TD
 
     subgraph F4["Fase 4: Catálogo & Presentación"]
         P7["✅ 7. Estilización de Grupos/Variantes (Idea 8)"]
-        P8["8. Categorías Jerárquicas (Idea 7)"]
+        P8["✅ 8. Categorías Jerárquicas (Idea 7)"]
         P6 --> P7 --> P8
     end
 

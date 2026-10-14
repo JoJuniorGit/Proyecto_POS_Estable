@@ -14599,3 +14599,79 @@ E. COMMITS
 
 E1. 8.178 en V0.15: 1bd9f12 (fix + tests) + commit de este ANEXO (docs(8.178); git log).
 ================================================================================
+
+================================================================================
+ANEXO 8.179 - PASO 8 DEL ROADMAP: CATEGORIAS JERARQUICAS DEL CATALOGO - 2026-10-13
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/paso-8-categorias.md): implementar el Paso 8 del
+plan de 15 pasos ("Implementar categorías": jerarquía padre/hijas, múltiples por producto,
+asignación en formularios, filtros en catálogo, importación con columna) como habilitador
+estructural de la edición masiva de precios (Paso 9) y de los reportes por categoría (14-15).
+
+A. ALCANCE Y ENTREGA
+
+A1. Backend (commit 2b64f47): entidades Category (self-FK jerárquica) + ProductCategory (N:M, molde
+    SupplierProductCode); migración idempotente 20261014000349_AddProductCategories (guards
+    to_regclass/information_schema; único (ParentCategoryId, NormalizedName), único
+    (ProductId, CategoryId), Restrict self-FK y Category, Cascade Product); CategoryService con
+    validaciones (unicidad por padre incl. raíces, sin ciclos al mover, borrado bloqueado 409) y
+    CategoriesController (GET Admin/Manager/Cashier; mutaciones Admin/Manager + security stamp);
+    productos con categoryIds (Create null/[] = sin categorías; Update null = no tocar, [] =
+    quitar todas, lista = reemplazo) y ProductDto.categories; filtro por SUBÁRBOL en
+    GetProductsPagedAsync y suggestions (set BFS calculado en servicio, provider-agnóstico);
+    import con categoryPath ("A > B", auto-creación raíz→hoja, asigna la hoja) y export/plantilla
+    con columna de categorías ("Categorías" `; ` en export; "Categoría" en template).
+A2. Desktop WPF (commit bf32f71): cliente ICategoryService; partial
+    ProductDialogViewModel.Categories (árbol aplanado con indentación, multi-selección,
+    preselección desde el DTO, reemplazo completo al guardar, null si falla la carga);
+    CategoryManagementDialog (crear/renombrar/mover/borrar con confirmación, 409 legibles,
+    refresco preservando selección); filtro Categoría en InventoryView (sentinel "Todas" → null;
+    aplica también al refresh de catálogo); columna "Categoría" en el importador (XLSX+CSV);
+    DIM ShowCategoryManagementDialog (stubs intactos) y attach del cliente en ShowProductDialog.
+A3. Web (commit ef9ce68): categoriesApi (+toCategoryOptions); filtro de categorías en CatalogPage
+    (categoryId solo con valor, reset a página 1, carga no bloqueante) y selector de categoría en
+    la búsqueda POS (SearchBar/productsApi con parámetro opcional compatible).
+A4. Fixes post-verificación (T2): B1 el selector de padre no se re-anclaba al cambiar de categoría
+    (renombrar una hija podía re-parentarla en silencio) → re-anclaje con tests; B2 el filtro de
+    categorías no cargaba en login fresco (carga solo en ctor pre-login) → recarga en
+    EnsureLoadedAsync con test. Fix de estilo T3: estilos inline del select POS → clase
+    .pos-category-select (§3.3).
+A5. Tests: 40 backend (CategoryServiceTests + regresiones) + 34 desktop + 16 web = 90+ casos nuevos.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores (XAML incluido).
+B2. Suite completa POR PARTES: Unit 1964/1964 + resto 571/571 = 2535/2535, 0 fallas. Carriles
+    enfocados: Categor/Product/Inventory/Catalog 434/434 (T1) y 539/539 (T2). Web: npm test
+    395/395 + npm run lint 0.
+B3. Verificación independiente read-only por tarea (agente reviewer): T1 "REVISAR sin
+    bloqueantes" (40/40 re-ejecutados; snapshot EF limpio); T2 "BLOQUEAR" con 2 defectos reales
+    (B1/B2) corregidos con tests RED→GREEN antes del commit; T3 "REVISAR sin bloqueantes"
+    (22 puntos CONFORME; único hallazgo de estilo corregido). Migración validable contra
+    PostgreSQL solo en CI (sin PG local).
+
+C. LIMITACIONES ACEPTADAS
+
+C1. Bundle web (Backend.API/wwwroot) NO regenerado: un build hornearía el WIP sin commitear de
+    otro tramo dentro de los assets. Pendiente regenerarlo cuando ese WIP cierre; hasta entonces
+    la app servida no incluye el filtro Web (código y tests sí).
+C2. Unicidad de raíces solo a nivel servicio (el índice único PG no cubre ParentCategoryId NULL);
+    carrera teórica multi-usuario, protegida hoy por el servicio.
+C3. Import: segmentos de categoría >60 chars devuelven 500 (rollback íntegro; sugerido 400 con
+    validación futura); round-trip export→import de multi-categoría interpreta la celda "A; B"
+    como UNA ruta (supuesto v1: una categoría por celda); con overwriteMerge=false los productos
+    existentes no reciben categorías.
+C4. Residuales diferidos: índice único parcial de raíces; edge MaxLength(60) del DTO vs trim del
+    servicio; POS sin test del camino de error de carga de categorías; smoke visual WPF pendiente
+    de pasada manual; Merge de la grilla no sincroniza Categories en memoria (inofensivo hoy).
+
+D. ROLLBACK
+
+D1. Revertir los tres commits restaura el estado previo. La migración es aditiva y nullable con
+    Down seguro (drop de tablas nuevas); sin cambios destructivos de datos.
+
+E. COMMITS
+
+E1. 8.179 en V0.15: 2b64f47 (T1 backend) + bf32f71 (T2 WPF) + ef9ce68 (T3 Web) + commit de este
+    ANEXO (docs(8.179); git log).
+================================================================================
