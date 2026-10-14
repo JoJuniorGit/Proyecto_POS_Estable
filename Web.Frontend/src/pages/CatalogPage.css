@@ -101,6 +101,14 @@
   position: relative;
 }
 
+:root .cat-select-category {
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 150px;
+  max-width: 240px;
+}
+
 :root .cat-select-currency {
   padding: 8px 12px;
   border-radius: 8px;

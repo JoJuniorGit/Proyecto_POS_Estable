@@ -5,7 +5,7 @@ import SuggestionList from './SuggestionList';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { useDebounce } from '../../hooks/useDebounce';
 
-const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
+const SearchBar = forwardRef(function SearchBar({ onSelectProduct, categoryId }, ref) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -32,7 +32,7 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
     },
   }));
 
-  // Cancelar peticiones fetch en vuelo al cambiar la búsqueda debounced
+  // Cancelar peticiones fetch en vuelo al cambiar la búsqueda debounced o la categoría
   useEffect(() => {
     if (!debouncedQuery.trim()) {
       setSuggestions([]);
@@ -43,7 +43,7 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
     const controller = new AbortController();
     setLoading(true);
 
-    getProductSuggestions(debouncedQuery, controller.signal)
+    getProductSuggestions(debouncedQuery, controller.signal, categoryId)
       .then((results) => {
         setSuggestions(results || []);
         setIsOpen(true);
@@ -61,7 +61,7 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct }, ref) {
     return () => {
       controller.abort();
     };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, categoryId]);
 
   // Handle outside click to close dropdown
   useEffect(() => {
