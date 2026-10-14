@@ -156,6 +156,10 @@ public partial class WpfDialogService
         if (Application.Current == null) return null;
         using var _ = TrackModal();
         bool? res = null;
+
+        // 8.179-T2 (S3): la tarjeta "Categorías" necesita el cliente del árbol; se adjunta aquí
+        // porque el ViewModel se construye fuera del contenedor DI.
+        dialogVm.CategoryClient = CategoryClient;
         Action openDialog = () =>
         {
             var dialog = new ProductDialog(dialogVm);
@@ -666,6 +670,47 @@ public partial class WpfDialogService
         else Application.Current.Dispatcher.Invoke(openDialog);
 
         return System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 8.179-T2 (S3): cliente del árbol de categorías para los diálogos del catálogo. Se construye
+    /// una única vez desde el cliente nombrado "Categories" del pipeline DI (patrón equivalente al
+    /// <c>CreateClient("SalesApi")</c> de PairingQrDialog); sin <c>IHttpClientFactory</c> inyectado
+    /// degrada a null y la tarjeta de categorías queda deshabilitada.
+    /// </summary>
+    public ICategoryService? CategoryClient => _categoryClient ??= CreateCategoryClient();
+
+    private ICategoryService? _categoryClient;
+
+    private ICategoryService? CreateCategoryClient() =>
+        _httpClientFactory is null ? null : new CategoryService(_httpClientFactory.CreateClient("Categories"));
+
+    /// <summary>
+    /// 8.179-T2 (S3): abre el diálogo modal de gestión de categorías y devuelve si hubo cambios
+    /// persistidos (para que ProductDialog refresque su tarjeta preservando la selección).
+    /// </summary>
+    public bool ShowCategoryManagementDialog(ViewModels.CategoryManagementDialogViewModel viewModel)
+    {
+        if (Application.Current == null) return false;
+        using var _ = TrackModal();
+        bool changed = false;
+
+        Action openDialog = () =>
+        {
+            var dialog = new CategoryManagementDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            dialog.ShowDialog();
+            changed = viewModel.HasChanges;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return changed;
     }
 }
 

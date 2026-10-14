@@ -20,6 +20,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     private readonly IExchangeRateService _exchangeRateService;
     private readonly IDialogService? _dialogService;
     private readonly IDispatcherInvoker _dispatcherInvoker;
+    private readonly ICategoryService? _categoryService;
     private CancellationTokenSource? _cancellationTokenSource;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
 
@@ -142,18 +143,80 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         }
     }
 
+    // 8.179-T2 (S4): filtro por categoría (subárbol completo). "Todas" es el sentinel Id 0 y viaja
+    // como null al servicio; el árbol aplanado preserva profundidad y ruta para el combo.
+    private CategoryOption? _selectedCategoryFilter = CategoryOption.AllFilter;
+    public CategoryOption? SelectedCategoryFilter
+    {
+        get => _selectedCategoryFilter;
+        set
+        {
+            if (SetProperty(ref _selectedCategoryFilter, value))
+            {
+                LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.CategoryFilterChanged");
+            }
+        }
+    }
+
+    public ObservableCollection<CategoryOption> CategoryFilterOptions { get; } = new();
+
+    /// <summary>Tarea de la carga inicial del filtro de categorías (awaitable en pruebas).</summary>
+    public Task CategoryFilterLoadTask { get; private set; } = Task.CompletedTask;
+
+    private int? CategoryFilterIdForQuery => _selectedCategoryFilter is { Id: > 0 } selected ? selected.Id : null;
+
+    private async Task LoadCategoryFilterAsync()
+    {
+        if (_categoryService is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var categories = await _categoryService.GetCategoriesAsync();
+            var options = CategoryOption.BuildFlat(categories);
+
+            void Apply()
+            {
+                CategoryFilterOptions.Clear();
+                CategoryFilterOptions.Add(CategoryOption.AllFilter);
+                foreach (var option in options)
+                {
+                    CategoryFilterOptions.Add(option);
+                }
+            }
+
+            if (!_dispatcherInvoker.CheckAccess())
+            {
+                _dispatcherInvoker.Invoke(Apply);
+            }
+            else
+            {
+                Apply();
+            }
+        }
+        catch (Exception ex)
+        {
+            // No bloqueante: el filtro queda solo con "Todas" y el catálogo sigue operativo.
+            ClientStateLogger.LogError($"Fallo al cargar el filtro de categorías: {ex.Message}", nameof(InventoryViewModel));
+        }
+    }
+
     public InventoryViewModel(
         IProductService productService,
         IExchangeRateService exchangeRateService,
         UserSession? userSession = null,
         IDialogService? dialogService = null,
-        IDispatcherInvoker? dispatcherInvoker = null)
+        IDispatcherInvoker? dispatcherInvoker = null,
+        ICategoryService? categoryService = null)
     {
         _productService = productService;
         _exchangeRateService = exchangeRateService;
         UserSession = userSession;
         _dialogService = dialogService;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
+        _categoryService = categoryService;
 
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
         {
@@ -181,6 +244,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         if (UserSession == null || UserSession.IsLoggedIn)
         {
             LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.InitialLoad");
+            CategoryFilterLoadTask = _categoryService is null ? Task.CompletedTask : LoadCategoryFilterAsync();
         }
     }
 
@@ -189,6 +253,15 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         if ((UserSession == null || UserSession.IsLoggedIn) && !Products.Any())
         {
             await LoadDataAsync(false);
+        }
+
+        // 8.179-T2 (fix verificación B2): en un arranque con login fresco el constructor corre ANTES
+        // del login y no carga el filtro de categorías; al entrar a la vista se carga (o refresca)
+        // aquí para que el combo nunca quede vacío en ese flujo.
+        if (UserSession == null || UserSession.IsLoggedIn)
+        {
+            CategoryFilterLoadTask = _categoryService is null ? Task.CompletedTask : LoadCategoryFilterAsync();
+            await CategoryFilterLoadTask;
         }
     }
 
@@ -256,7 +329,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             }
 
             var queryText = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim();
-            var result = await _productService.GetPagedAsync(queryText, CurrentPage, PageSize, statusFilter: SelectedStatusFilter, sortBy: SortBy, isDescending: IsSortDescending, token: token);
+            var result = await _productService.GetPagedAsync(queryText, CurrentPage, PageSize, statusFilter: SelectedStatusFilter, sortBy: SortBy, isDescending: IsSortDescending, token: token, categoryId: CategoryFilterIdForQuery);
             
             // Build ProductItemViewModel instances on background thread to prevent UI thread stutter
             var newItems = new System.Collections.Generic.List<ProductItemViewModel>();
@@ -334,7 +407,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             IsSearching = true;
 
             var queryText = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText.Trim();
-            var result = await _productService.GetPagedAsync(queryText, _currentPage, PageSize, statusFilter: SelectedStatusFilter, token: token);
+            var result = await _productService.GetPagedAsync(queryText, _currentPage, PageSize, statusFilter: SelectedStatusFilter, token: token, categoryId: CategoryFilterIdForQuery);
 
             var fetchedDict = result.Items.ToDictionary(dto => dto.SKU, dto => dto);
             var existingSkus = Products.Select(p => p.SKU).ToHashSet();

@@ -151,7 +151,7 @@
                     </Grid>
                 </Border>
 
-                <!-- 2. Filtro de Estado — control único (ComboBox en lugar de pestañas) -->
+                <!-- 2. Filtros de Estado y Categoría — controles únicos (ComboBox) -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="20,0,15,0">
                     <TextBlock Text="Estado:" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,6,0" Foreground="#64748B"/>
                     <ComboBox SelectedValue="{Binding SelectedStatusFilter, Mode=TwoWay}"
@@ -168,6 +168,19 @@
                         <ComboBoxItem Content="Eliminados (Archivo)" Tag="deleted"/>
                         <ComboBoxItem Content="Todos" Tag="all"/>
                     </ComboBox>
+
+                    <!-- 8.179-T2 (S4): filtro por categoría (incluye subárbol); "Todas" = sin filtro -->
+                    <TextBlock Text="Categoría:" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="14,0,6,0" Foreground="#64748B"/>
+                    <ComboBox ItemsSource="{Binding CategoryFilterOptions}"
+                              SelectedItem="{Binding SelectedCategoryFilter, Mode=TwoWay}"
+                              DisplayMemberPath="Path"
+                              AutomationProperties.AutomationId="Inventory_CategoryFilterCombo"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              Height="40"
+                              MinWidth="190"
+                              Padding="10,4"
+                              FontWeight="SemiBold"
+                              ToolTip="Filtrar productos por categoría (incluye subcategorías)"/>
                 </StackPanel>
                 
                 <!-- 3. Botones de Acción y Selectores a la Derecha -->

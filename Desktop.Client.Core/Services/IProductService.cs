@@ -15,7 +15,7 @@ public interface IProductService
     Task AdjustStockAsync(int productId, decimal quantityChange, string reason, Core.Entities.StockMovementReason? reasonCode = null, string? observation = null);
     Task<Core.DTOs.ProductQuickInfoDto?> GetQuickInfoAsync(string sku);
     Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token);
-    Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default);
+    Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default, int? categoryId = null);
     Task<List<Core.DTOs.ProductDto>> GetVariantsAsync(int parentProductId);
     Task<List<Core.DTOs.ProductDto>> GetParentsAsync();
     Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetCandidateVariantsPagedAsync(int parentId, string? filter, int page, int pageSize, System.Threading.CancellationToken token = default);

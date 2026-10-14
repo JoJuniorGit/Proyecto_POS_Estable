@@ -30,6 +30,14 @@ public interface IDialogService
     bool? ShowProductDialog(ViewModels.ProductDialogViewModel dialogVm);
 
     /// <summary>
+    /// 8.179-T2 (S3): gestión del árbol de categorías del catálogo (crear/renombrar/mover/borrar)
+    /// abierta desde la tarjeta "Categorías" del diálogo de producto. Devuelve true cuando hubo
+    /// cambios persistidos, para que el llamador refresque su listado preservando la selección.
+    /// La implementación por defecto sin UI (stubs headless) equivale a "sin cambios".
+    /// </summary>
+    bool ShowCategoryManagementDialog(ViewModels.CategoryManagementDialogViewModel viewModel) => false;
+
+    /// <summary>
     /// 8.146-T5 (S4): modal de captura del código de barras universal al crear un producto desde una línea de factura.
     /// Implementación por defecto sin UI (stubs headless): null equivale a diálogo cancelado, igual que
     /// <see cref="ShowPartialDeliveryDialogAsync"/>.

@@ -184,6 +184,18 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }));
 
+        // 8.179-T2 (S3): cliente tipado del árbol de categorías (filtro de inventario y diálogos) +
+        // cliente nombrado que WpfDialogService usa para adjuntarlo al diálogo de producto.
+        ConfigureClient(builder.Services.AddHttpClient<ICategoryService, CategoryService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
+        ConfigureClient(builder.Services.AddHttpClient("Categories", client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
         // 8.177-T3 (S2/S3): cliente del Centro de Auditoría de Kardex (mismo pipeline HTTP).
         ConfigureClient(builder.Services.AddHttpClient<IStockKardexClientService, StockKardexClientService>(client =>
         {

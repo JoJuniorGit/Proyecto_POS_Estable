@@ -238,6 +238,50 @@
                             </CheckBox>
                         </StackPanel>
                     </Border>
+
+                    <!-- 3. Tarjeta de Categorías (8.179-T2 S3) -->
+                    <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="16,14,16,16" Margin="0,0,0,16" BorderThickness="1" BorderBrush="{DynamicResource PrimaryHueLightBrush}">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock Text="Categorías" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <TextBlock Text="{Binding SelectedCategoriesCount, StringFormat={}{0} seleccionadas}" FontSize="11" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <Button Content="Gestionar categorías"
+                                            Command="{Binding ManageCategoriesCommand}"
+                                            IsEnabled="{Binding CanEditCategories}"
+                                            Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                            Height="26" Padding="10,0" FontSize="11"
+                                            ToolTip="Crear, renombrar, mover o eliminar categorías del catálogo"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="Cargando categorías..." FontSize="11" Foreground="#64748B" Margin="2,2,0,4"
+                                       Visibility="{Binding IsLoadingCategories, Converter={StaticResource BoolToVisConverter}}"/>
+                            <TextBlock Text="{Binding CategoriesErrorMessage}" FontSize="11" Foreground="#B45309" TextWrapping="Wrap" Margin="2,2,0,4"
+                                       Visibility="{Binding HasCategoriesError, Converter={StaticResource BoolToVisConverter}}"/>
+
+                            <Border MaxHeight="170" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="4" Background="White"
+                                    Visibility="{Binding IsLoadingCategories, Converter={StaticResource InverseBoolToVisConverter}}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding CategoryOptions}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                          IsEnabled="{Binding DataContext.CanEditCategories, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                          Margin="2,2,2,2"
+                                                          ToolTip="{Binding Path}">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Width="{Binding IndentWidth}"/>
+                                                        <TextBlock Text="{Binding Name}" FontSize="12"/>
+                                                    </StackPanel>
+                                                </CheckBox>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Border>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- RIGHT COLUMN: Pricing & Inventory -->

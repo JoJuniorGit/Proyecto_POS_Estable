@@ -129,7 +129,7 @@ public class ProductService : IProductService
         }
     }
 
-    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default)
+    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default, int? categoryId = null)
     {
         var url = $"api/products?filter={System.Uri.EscapeDataString(filter ?? string.Empty)}&page={page}&pageSize={pageSize}";
         if (!string.IsNullOrWhiteSpace(statusFilter))
@@ -139,6 +139,11 @@ public class ProductService : IProductService
         if (!string.IsNullOrWhiteSpace(sortBy))
         {
             url += $"&sortBy={System.Uri.EscapeDataString(sortBy)}&isDescending={isDescending}";
+        }
+        // 8.179-T2 (S4): filtro por categoría (subárbol) solo cuando hay selección; "Todas" viaja null.
+        if (categoryId.HasValue)
+        {
+            url += $"&categoryId={categoryId.Value}";
         }
         return await _httpClient.GetFromJsonAsync<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>>(url, token)
                ?? new Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>();

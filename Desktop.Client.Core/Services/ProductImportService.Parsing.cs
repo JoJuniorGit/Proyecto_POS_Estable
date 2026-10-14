@@ -90,6 +90,10 @@ public partial class ProductImportService
                         bool parseConvFactor = TryParseDecimal(row, propertyColumnIndices, out var convFactor, "ConversionFactor", "FactorConversion", "Equivalencia", "Factor");
                         dto.ConversionFactor = parseConvFactor && convFactor > 0 ? convFactor : 1.0000m;
 
+                        // 8.179-T2 (S5-UI): ruta "A > B" de la columna "Categoría"; el backend
+                        // auto-crea los segmentos inexistentes y reemplaza las asignaciones previas.
+                        dto.CategoryPath = GetStringValue(row, propertyColumnIndices, "CategoryPath", "Categoría", "Categoria", "Categorias", "Categorías", "Category");
+
                         // Financial Logic (Calculated from cost and profit margin)
                         dto.PriceRetailUSD = dto.CostPriceUSD > 0 && dto.ProfitMarginRetail > 0
                             ? Math.Ceiling(dto.CostPriceUSD * (1m + dto.ProfitMarginRetail / 100m) * 100m) / 100m
@@ -253,6 +257,9 @@ public partial class ProductImportService
 
             decimal csvConvFactor = GetCsvDec("ConversionFactor", "FactorConversion", "Equivalencia", "Factor");
             dto.ConversionFactor = csvConvFactor > 0 ? csvConvFactor : 1.0000m;
+
+            // 8.179-T2 (S5-UI): ruta "A > B" de la columna "Categoría" (celda vacía = no tocar).
+            dto.CategoryPath = GetCsvStr("CategoryPath", "Categoría", "Categoria", "Categorias", "Categorías", "Category");
 
             bool isGroup = string.Equals(dto.ProductType, "Grupo", StringComparison.OrdinalIgnoreCase) ||
                            string.Equals(dto.ProductType, "Group", StringComparison.OrdinalIgnoreCase);
