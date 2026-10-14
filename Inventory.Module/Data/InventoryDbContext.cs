@@ -26,6 +26,9 @@ public class InventoryDbContext : DbContext
     // 8.179-T1 (S1): categorías jerárquicas + junction N:M producto-categoría.
     public DbSet<Category> Categories { get; set; }
     public DbSet<ProductCategory> ProductCategories { get; set; }
+    // 8.180-T1 (S1): sesiones de conteo físico ciego + ítems contados (Paso 6).
+    public DbSet<StockCountSession> StockCountSessions { get; set; }
+    public DbSet<StockCountItem> StockCountItems { get; set; }
 
 
 
@@ -125,6 +128,8 @@ public class InventoryDbContext : DbContext
         // (se explicita su nombre canónico, sin duplicar estructura).
         modelBuilder.Entity<StockMovement>().HasIndex(m => m.ProductId).HasDatabaseName("IX_StockMovements_ProductId");
         modelBuilder.Entity<StockMovement>().HasIndex(m => m.ReasonCode).HasDatabaseName("IX_StockMovements_ReasonCode");
+        // 8.180-T1: lookup de trazabilidad por sesión de conteo físico.
+        modelBuilder.Entity<StockMovement>().HasIndex(m => m.StockCountSessionId).HasDatabaseName("IX_StockMovements_StockCountSessionId");
 
         modelBuilder.Entity<StockMovementArchive>(entity =>
         {
@@ -372,6 +377,52 @@ public class InventoryDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(line => line.ResolvedProductId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // 8.180-T1 (S1): sesión de conteo físico (molde SupplierInvoice: status string(32) + xmin
+        // condicional). ScopeCategory Restrict: una categoría con sesiones no puede eliminarse.
+        modelBuilder.Entity<StockCountSession>(entity =>
+        {
+            entity.Property(s => s.Name).IsRequired().HasMaxLength(80);
+            entity.Property(s => s.Notes).HasMaxLength(300);
+            entity.Property(s => s.Status)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .HasDefaultValue(StockCountStatus.Open);
+            entity.HasOne(s => s.ScopeCategory)
+                .WithMany()
+                .HasForeignKey(s => s.ScopeCategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(s => s.Status).HasDatabaseName("IX_StockCountSessions_Status");
+
+            if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+            {
+                entity.Property<uint>("xmin")
+                    .HasColumnType("xid")
+                    .ValueGeneratedOnAddOrUpdate()
+                    .IsConcurrencyToken();
+            }
+        });
+
+        // 8.180-T1 (S1): ítems contados. Único (sesión, producto); FK Session Cascade (borrar la
+        // sesión borra sus ítems) y FK Product Restrict (un producto con ítems no se hard-deletea).
+        modelBuilder.Entity<StockCountItem>(entity =>
+        {
+            entity.Property(i => i.CountedQuantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+            entity.Property(i => i.TheoreticalStock).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
+            entity.Property(i => i.UnitCostUSD).HasColumnType("numeric(18,4)").HasPrecision(18, 4);
+            entity.HasIndex(i => new { i.StockCountSessionId, i.ProductId })
+                .IsUnique()
+                .HasDatabaseName("IX_StockCountItems_SessionId_ProductId");
+            entity.HasIndex(i => i.ProductId).HasDatabaseName("IX_StockCountItems_ProductId");
+            entity.HasOne(i => i.Session)
+                .WithMany(s => s.Items)
+                .HasForeignKey(i => i.StockCountSessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(i => i.Product)
+                .WithMany()
+                .HasForeignKey(i => i.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

@@ -296,7 +296,8 @@ public sealed class StockMovementAuditTests
             AuthorizedByUserId = "sup-9",
             UnitCostUSD = 1.2345m,
             SupplierInvoiceId = 55,
-            Observation = "obs-8177"
+            Observation = "obs-8177",
+            StockCountSessionId = 66
         };
 
         var archived = StockMovementArchive.FromStockMovement(movement);
@@ -315,6 +316,8 @@ public sealed class StockMovementAuditTests
         Assert.Equal(1.2345m, archived.UnitCostUSD);
         Assert.Equal(55, archived.SupplierInvoiceId);
         Assert.Equal("obs-8177", archived.Observation);
+        // 8.180-T1: el archivo también espeja el vínculo con la sesión de conteo físico.
+        Assert.Equal(66, archived.StockCountSessionId);
         Assert.True(archived.ArchivedAtUtc >= DateTime.UtcNow.AddMinutes(-1));
     }
 

@@ -160,6 +160,21 @@ public partial class InventoryService
                 }
             }
 
+            // 8.180-T1: el plan consolidado no transporta el vínculo con la sesión de conteo físico
+            // (el consolidador agrupa por target/razón/venta); se resuelve aquí desde los requests
+            // originales usando el producto DESTINO ya calculado por el resolver.
+            var stockCountSessionByTarget = new Dictionary<int, int>();
+            foreach (var item in itemList)
+            {
+                if (item.StockCountSessionId is not int stockCountSessionId) continue;
+                int targetProductId = productsData.TryGetValue(item.ProductId, out var requestInfo)
+                    && requestInfo.ParentId.HasValue
+                    && requestInfo.ParentIsStockShared
+                        ? requestInfo.ParentId.Value
+                        : item.ProductId;
+                stockCountSessionByTarget.TryAdd(targetProductId, stockCountSessionId);
+            }
+
             var movements = new List<StockMovement>();
             foreach (var deduction in plan.Deductions)
             {
@@ -193,6 +208,10 @@ public partial class InventoryService
                     AuthorizedByUserId = deduction.AuthorizedByUserId,
                     SupplierInvoiceId = deduction.SupplierInvoiceId,
                     Observation = deduction.Observation,
+                    // 8.180-T1: vínculo con la sesión de conteo físico (cuando el request lo trae).
+                    StockCountSessionId = stockCountSessionByTarget.TryGetValue(deduction.TargetProductId, out var movementStockCountSessionId)
+                        ? movementStockCountSessionId
+                        : (int?)null,
                     // 8.177-T1: snapshot del costo del producto DESTINO del movimiento (para una
                     // variante con stock compartido, el destino es el padre).
                     UnitCostUSD = productsData.TryGetValue(deduction.TargetProductId, out var targetInfo)

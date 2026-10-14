@@ -44,6 +44,9 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IProductManagementService>(sp => (InventoryService)sp.GetRequiredService<IInventoryService>());
         // 8.179-T1 (S2): CRUD de categorías jerárquicas del catálogo.
         builder.Services.AddScoped<ICategoryService, CategoryService>();
+        // 8.180-T1 (T1): sesiones de conteo físico ciego del Paso 6 — ciclo de vida, descuadre y
+        // apply atómico de ajustes.
+        builder.Services.AddScoped<IStockCountService, StockCountService>();
         // 8.177-T2: Centro de Auditoría del Kardex — consulta unificada activa + archivo, KPIs y
         // exportación con encabezado legal.
         builder.Services.AddScoped<IStockKardexService, StockKardexService>();

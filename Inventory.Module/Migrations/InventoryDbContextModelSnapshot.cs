@@ -281,6 +281,111 @@ namespace Inventory.Module.Migrations
                     b.ToTable("ProductCategories");
                 });
 
+            modelBuilder.Entity("Core.Entities.StockCountItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("CountedQuantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("StockCountSessionId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("TheoreticalStock")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<decimal?>("UnitCostUSD")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("IX_StockCountItems_ProductId");
+
+                    b.HasIndex("StockCountSessionId", "ProductId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_StockCountItems_SessionId_ProductId");
+
+                    b.ToTable("StockCountItems");
+                });
+
+            modelBuilder.Entity("Core.Entities.StockCountSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AppliedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<int?>("ScopeCategoryId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Open");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScopeCategoryId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_StockCountSessions_Status");
+
+                    b.ToTable("StockCountSessions");
+                });
+
             modelBuilder.Entity("Core.Entities.StockMovement", b =>
                 {
                     b.Property<int>("Id")
@@ -327,6 +432,9 @@ namespace Inventory.Module.Migrations
                     b.Property<int?>("SaleId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("StockCountSessionId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("SupplierInvoiceId")
                         .HasColumnType("integer");
 
@@ -353,6 +461,9 @@ namespace Inventory.Module.Migrations
 
                     b.HasIndex("SaleId")
                         .HasDatabaseName("IX_StockMovements_SaleId");
+
+                    b.HasIndex("StockCountSessionId")
+                        .HasDatabaseName("IX_StockMovements_StockCountSessionId");
 
                     b.ToTable("StockMovements");
                 });
@@ -407,6 +518,9 @@ namespace Inventory.Module.Migrations
                         .HasColumnType("character varying(32)");
 
                     b.Property<int?>("SaleId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("StockCountSessionId")
                         .HasColumnType("integer");
 
                     b.Property<int?>("SupplierInvoiceId")
@@ -979,6 +1093,35 @@ namespace Inventory.Module.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("Core.Entities.StockCountItem", b =>
+                {
+                    b.HasOne("Core.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Core.Entities.StockCountSession", "Session")
+                        .WithMany("Items")
+                        .HasForeignKey("StockCountSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Session");
+                });
+
+            modelBuilder.Entity("Core.Entities.StockCountSession", b =>
+                {
+                    b.HasOne("Core.Entities.Category", "ScopeCategory")
+                        .WithMany()
+                        .HasForeignKey("ScopeCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ScopeCategory");
+                });
+
             modelBuilder.Entity("Core.Entities.StockMovement", b =>
                 {
                     b.HasOne("Core.Entities.Product", "Product")
@@ -1105,6 +1248,11 @@ namespace Inventory.Module.Migrations
             modelBuilder.Entity("Core.Entities.Product", b =>
                 {
                     b.Navigation("Variants");
+                });
+
+            modelBuilder.Entity("Core.Entities.StockCountSession", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Core.Entities.Supplier", b =>

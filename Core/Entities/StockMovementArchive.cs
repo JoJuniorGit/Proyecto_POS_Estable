@@ -25,6 +25,10 @@ public class StockMovementArchive : BaseEntity
     public int? SupplierInvoiceId { get; set; }
     public string? Observation { get; set; }
 
+    // 8.180-T1 (S1): espejo del vínculo con la sesión de conteo físico (la consulta del Centro
+    // une activa + archivo, por lo que el archivo debe preservar TODOS los campos de auditoría).
+    public int? StockCountSessionId { get; set; }
+
     /// <summary>
     /// 8.177-T1: mapeo único movimiento → archivo (usado por StockMovementArchiverJob). Copia
     /// todos los campos de auditoría y estampa la marca de archivado.
@@ -49,6 +53,7 @@ public class StockMovementArchive : BaseEntity
             UnitCostUSD = movement.UnitCostUSD,
             SupplierInvoiceId = movement.SupplierInvoiceId,
             Observation = movement.Observation,
+            StockCountSessionId = movement.StockCountSessionId,
             ArchivedAtUtc = DateTime.UtcNow
         };
     }

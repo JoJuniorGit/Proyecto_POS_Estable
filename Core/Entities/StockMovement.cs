@@ -28,4 +28,8 @@ public class StockMovement : BaseEntity
     public decimal? UnitCostUSD { get; set; }
     public int? SupplierInvoiceId { get; set; }
     public string? Observation { get; set; }
+
+    // 8.180-T1 (S1): vínculo con la sesión de conteo físico que aplicó el ajuste (trazabilidad del
+    // Paso 6). Nullable: los movimientos de otros orígenes y los históricos no tienen sesión.
+    public int? StockCountSessionId { get; set; }
 }

@@ -47,6 +47,8 @@ public interface IInventoryService
 // 8.177-T1 (S1): campos de auditoría opcionales para los movimientos del Kardex. Nullable para no
 // clasificar movimientos históricos/legados; los defaults centrales (venta → Sistema/Venta +
 // snapshot de costo) viven en UpdateStockBatchAsync.
+// 8.180-T1 (S1): StockCountSessionId va AL FINAL para no romper llamadas posicionales existentes
+// (WPF/Web y tests); vincula el movimiento con la sesión de conteo físico que lo originó.
 public record StockDeductionRequest(
     int ProductId,
     decimal QuantityChange,
@@ -56,4 +58,5 @@ public record StockDeductionRequest(
     StockMovementReason? ReasonCode = null,
     string? AuthorizedByUserId = null,
     int? SupplierInvoiceId = null,
-    string? Observation = null);
+    string? Observation = null,
+    int? StockCountSessionId = null);
