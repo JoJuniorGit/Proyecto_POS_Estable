@@ -30,6 +30,10 @@ public class ProductImportDto
     public bool HasIndependentPricing { get; set; } = false;
     public decimal ConversionFactor { get; set; } = 1.0000m;
 
+    // 8.179-T1 (S5): ruta jerárquica de categoría separada por '>' (ej. "Alimentos > Lácteos").
+    // Los segmentos inexistentes se auto-crean y el producto queda asignado a la hoja.
+    public string? CategoryPath { get; set; }
+
     // Legacy Aliases for backwards compatibility
     public decimal Cost { get => CostPriceUSD; set => CostPriceUSD = value; }
     public decimal ProfitPercentage { get => ProfitMarginRetail; set => ProfitMarginRetail = value; }

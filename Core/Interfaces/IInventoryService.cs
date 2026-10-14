@@ -26,8 +26,10 @@ public interface IInventoryService
     Task<int> ReserveStockAsync(int productId, decimal quantity, TimeSpan duration, string? referenceId = null, System.Threading.CancellationToken cancellationToken = default);
     Task ConfirmReservationAsync(int reservationId, string reason, System.Threading.CancellationToken cancellationToken = default);
     Task CancelReservationAsync(int reservationId, System.Threading.CancellationToken cancellationToken = default);
-    Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token);
-    Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetProductsPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default);
+    Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token, int? categoryId = null);
+    // 8.179-T1 (S4): categoryId va AL FINAL para no romper llamadas posicionales existentes
+    // (WPF/Web y tests); filtra por el subárbol completo de la categoría.
+    Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetProductsPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default, int? categoryId = null);
     Task<List<Core.DTOs.ProductDto>> GetVariantOptionsAsync(int parentProductId, System.Threading.CancellationToken cancellationToken = default);
     Task<List<Core.DTOs.ProductDto>> GetParentProductsAsync(System.Threading.CancellationToken cancellationToken = default);
     Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetCandidateVariantsPagedAsync(int parentId, string? filter, int page, int pageSize, System.Threading.CancellationToken token = default);

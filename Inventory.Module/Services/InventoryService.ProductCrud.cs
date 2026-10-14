@@ -18,6 +18,9 @@ public partial class InventoryService : IProductManagementService, IReservationS
     {
         EnsureCatalogMutationPermission();
 
+        // 8.179-T1 (S3): validar las categorías ANTES de crear para no dejar un producto a medias.
+        var categoryIds = await ValidateCategoryIdsAsync(request.CategoryIds, cancellationToken);
+
         decimal retailUsd = request.PriceRetailUSD > 0 ? request.PriceRetailUSD : request.PriceUSD;
         decimal todayRate = await GetTodayExchangeRateAsync(cancellationToken);
         decimal canonicalPriceBsS = todayRate > 0
@@ -26,7 +29,13 @@ public partial class InventoryService : IProductManagementService, IReservationS
 
         var product = request.ToEntity(canonicalPriceBsS);
         var created = await CreateProductAsync(product, cancellationToken);
-        return created.ToDto(canViewCost: true);
+
+        if (categoryIds.Count > 0)
+        {
+            await ReplaceProductCategoriesAsync(created.Id, categoryIds, cancellationToken);
+        }
+
+        return created.ToDto(canViewCost: true, await LoadCategoryRefsAsync(created.Id, cancellationToken));
     }
 
     public async Task UpdateProductFromDtoAsync(int id, UpdateProductDto request, System.Threading.CancellationToken cancellationToken = default)
@@ -36,6 +45,12 @@ public partial class InventoryService : IProductManagementService, IReservationS
         var existing = await _context.Products.FindAsync(new object[] { id }, cancellationToken);
         if (existing == null) throw new KeyNotFoundException($"Producto con ID {id} no encontrado.");
 
+        // 8.179-T1 (S3): null = no tocar las asignaciones actuales; lista vacía = quitar todas;
+        // lista con IDs = reemplazar el set completo por esa lista (validada).
+        List<int>? categoryIds = request.CategoryIds != null
+            ? await ValidateCategoryIdsAsync(request.CategoryIds, cancellationToken)
+            : null;
+
         decimal todayRate = await GetTodayExchangeRateAsync(cancellationToken);
         decimal canonicalPriceBsS = (request.PriceRetailUSD > 0 && todayRate > 0)
             ? Core.Helpers.PricingCalculator.ToBsSCeiling(request.PriceRetailUSD, todayRate)
@@ -43,6 +58,11 @@ public partial class InventoryService : IProductManagementService, IReservationS
 
         existing.UpdateFromDto(request, canonicalPriceBsS);
         await UpdateProductAsync(existing, cancellationToken);
+
+        if (categoryIds != null)
+        {
+            await ReplaceProductCategoriesAsync(id, categoryIds, cancellationToken);
+        }
     }
 
     public async Task<ProductDto?> GetProductDtoByIdAsync(int id, System.Threading.CancellationToken cancellationToken = default)
@@ -53,7 +73,59 @@ public partial class InventoryService : IProductManagementService, IReservationS
             .Include(p => p.Variants)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
 
-        return product != null ? product.ToDto(canViewCost: true) : null;
+        if (product == null) return null;
+
+        // 8.179-T1 (S3): Product no tiene navegación inversa al junction (molde SupplierProductCode);
+        // las referencias de categoría se cargan con una consulta dedicada.
+        return product.ToDto(canViewCost: true, await LoadCategoryRefsAsync(id, cancellationToken));
+    }
+
+    // 8.179-T1 (S3): valida que TODOS los CategoryIds existan y deduplica. Null/vacía → sin categorías.
+    private async Task<List<int>> ValidateCategoryIdsAsync(IReadOnlyList<int>? categoryIds, System.Threading.CancellationToken cancellationToken)
+    {
+        if (categoryIds == null || categoryIds.Count == 0)
+        {
+            return new List<int>();
+        }
+
+        var distinctIds = categoryIds.Distinct().ToList();
+        var existingIds = await _context.Categories.AsNoTracking()
+            .Where(c => distinctIds.Contains(c.Id))
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken);
+
+        var missingIds = distinctIds.Except(existingIds).ToList();
+        if (missingIds.Count > 0)
+        {
+            throw new ArgumentException($"Las categorías con ID {string.Join(", ", missingIds)} no existen.");
+        }
+
+        return distinctIds;
+    }
+
+    // 8.179-T1 (S3): el set provisto reemplaza por completo las asignaciones previas del producto.
+    private async Task ReplaceProductCategoriesAsync(int productId, IReadOnlyList<int> categoryIds, System.Threading.CancellationToken cancellationToken)
+    {
+        var current = await _context.ProductCategories
+            .Where(pc => pc.ProductId == productId)
+            .ToListAsync(cancellationToken);
+        _context.ProductCategories.RemoveRange(current);
+
+        foreach (var categoryId in categoryIds)
+        {
+            _context.ProductCategories.Add(new ProductCategory { ProductId = productId, CategoryId = categoryId });
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<List<CategoryRefDto>> LoadCategoryRefsAsync(int productId, System.Threading.CancellationToken cancellationToken)
+    {
+        return await _context.ProductCategories.AsNoTracking()
+            .Where(pc => pc.ProductId == productId)
+            .OrderBy(pc => pc.Category.Name)
+            .Select(pc => new CategoryRefDto(pc.CategoryId, pc.Category.Name))
+            .ToListAsync(cancellationToken);
     }
 
     private async Task<Product> CreateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)

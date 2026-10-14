@@ -52,6 +52,9 @@ public class CreateProductDto
     public bool HasIndependentPricing { get; set; }
     public decimal ConversionFactor { get; set; } = 1.0000m;
     public string? GroupKey { get; set; }
+
+    // 8.179-T1 (S3): categorías a asignar. null o vacío = producto sin categorías.
+    public IReadOnlyList<int>? CategoryIds { get; set; }
 }
 
 public class UpdateProductDto
@@ -102,6 +105,10 @@ public class UpdateProductDto
     public bool HasIndependentPricing { get; set; }
     public decimal ConversionFactor { get; set; } = 1.0000m;
     public string? GroupKey { get; set; }
+
+    // 8.179-T1 (S3): semántica de reemplazo completo — null = no tocar las asignaciones actuales;
+    // lista vacía = quitar todas; lista con IDs = reemplazar el set por esa lista validada.
+    public IReadOnlyList<int>? CategoryIds { get; set; }
 }
 
 public class StatusUpdateDto

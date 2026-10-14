@@ -44,6 +44,7 @@ public partial class ProductsController : ControllerBase
         [FromQuery] string? statusFilter = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] bool isDescending = false,
+        [FromQuery] int? categoryId = null,
         CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
@@ -54,7 +55,8 @@ public partial class ProductsController : ControllerBase
             sortBy = "name";
         }
 
-        var result = await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter, sortBy, isDescending, cancellationToken);
+        // 8.179-T1 (S4): categoryId filtra por la categoría y todo su subárbol.
+        var result = await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter, sortBy, isDescending, cancellationToken, categoryId);
         if (!_currentUserService.CanMutateCatalog)
         {
             result.Items = result.Items.Select(MaskProductDto).ToList();
@@ -293,9 +295,10 @@ public partial class ProductsController : ControllerBase
     }
 
     [HttpGet("suggestions")]
-    public async Task<ActionResult<List<Core.DTOs.ProductQuickInfoDto>>> GetSuggestionsAsync([FromQuery] string filter, [FromQuery] bool activeOnly = true, System.Threading.CancellationToken token = default)
+    public async Task<ActionResult<List<Core.DTOs.ProductQuickInfoDto>>> GetSuggestionsAsync([FromQuery] string filter, [FromQuery] bool activeOnly = true, [FromQuery] int? categoryId = null, System.Threading.CancellationToken token = default)
     {
-        var results = await _inventoryService.GetSuggestionsAsync(filter, activeOnly, token);
+        // 8.179-T1 (S4): búsqueda POS acotada al subárbol de la categoría cuando se provee.
+        var results = await _inventoryService.GetSuggestionsAsync(filter, activeOnly, token, categoryId);
         
         if (!_currentUserService.CanMutateCatalog && results != null)
         {

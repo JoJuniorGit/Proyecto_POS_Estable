@@ -42,6 +42,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
         builder.Services.AddScoped<IInventoryService, InventoryService>();
         builder.Services.AddScoped<IProductManagementService>(sp => (InventoryService)sp.GetRequiredService<IInventoryService>());
+        // 8.179-T1 (S2): CRUD de categorías jerárquicas del catálogo.
+        builder.Services.AddScoped<ICategoryService, CategoryService>();
         // 8.177-T2: Centro de Auditoría del Kardex — consulta unificada activa + archivo, KPIs y
         // exportación con encabezado legal.
         builder.Services.AddScoped<IStockKardexService, StockKardexService>();

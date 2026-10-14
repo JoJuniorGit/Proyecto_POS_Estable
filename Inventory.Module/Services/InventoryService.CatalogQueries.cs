@@ -9,13 +9,20 @@ namespace Inventory.Module.Services;
 
 public partial class InventoryService
 {
-    public async Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token)
+    public async Task<List<Core.DTOs.ProductQuickInfoDto>> GetSuggestionsAsync(string filter, bool activeOnly, System.Threading.CancellationToken token, int? categoryId = null)
     {
         IQueryable<Product> query = _context.Products.AsNoTracking();
 
         if (activeOnly)
         {
             query = query.Where(p => p.IsActive && !p.IsDeleted);
+        }
+
+        // 8.179-T1 (S4): filtro por subárbol completo de la categoría (POS Web).
+        if (categoryId.HasValue)
+        {
+            var subtreeIds = await ResolveCategorySubtreeIdsAsync(categoryId.Value, token);
+            query = query.Where(p => _context.ProductCategories.Any(pc => pc.ProductId == p.Id && subtreeIds.Contains(pc.CategoryId)));
         }
 
         if (!string.IsNullOrWhiteSpace(filter))
@@ -104,9 +111,17 @@ public partial class InventoryService
             .ToListAsync(token);
     }
 
-    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetProductsPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default)
+    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetProductsPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default, int? categoryId = null)
     {
         IQueryable<Product> query = _context.Products.AsNoTracking();
+
+        // 8.179-T1 (S4): categoryId se agrega AL FINAL de la firma para no romper llamadas
+        // posicionales existentes; filtra por la categoría y todas sus descendientes.
+        if (categoryId.HasValue)
+        {
+            var subtreeIds = await ResolveCategorySubtreeIdsAsync(categoryId.Value, token);
+            query = query.Where(p => _context.ProductCategories.Any(pc => pc.ProductId == p.Id && subtreeIds.Contains(pc.CategoryId)));
+        }
 
         if (!string.IsNullOrWhiteSpace(statusFilter))
         {
@@ -204,6 +219,12 @@ public partial class InventoryService
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                     : p.StockQuantity,
+                // 8.179-T1 (S3): subconsulta EF al junction (Product no tiene navegación inversa).
+                Categories = _context.ProductCategories
+                    .Where(pc => pc.ProductId == p.Id)
+                    .OrderBy(pc => pc.Category.Name)
+                    .Select(pc => new Core.DTOs.CategoryRefDto(pc.CategoryId, pc.Category.Name))
+                    .ToList(),
             })
             .ToListAsync(token);
 
@@ -213,5 +234,37 @@ public partial class InventoryService
             TotalCount = totalCount,
             HasMore = (page * pageSize) < totalCount
         };
+    }
+
+    // 8.179-T1 (S4): set categoría + descendientes calculado en memoria (BFS) para ser
+    // provider-agnóstico (InMemory/SQLite/PostgreSQL) sin CTE recursivo. Categoría desconocida → vacío.
+    private async Task<List<int>> ResolveCategorySubtreeIdsAsync(int categoryId, System.Threading.CancellationToken cancellationToken)
+    {
+        var nodes = await _context.Categories.AsNoTracking()
+            .Select(c => new { c.Id, c.ParentCategoryId })
+            .ToListAsync(cancellationToken);
+
+        if (!nodes.Any(n => n.Id == categoryId))
+        {
+            return new List<int>();
+        }
+
+        var subtreeIds = new HashSet<int> { categoryId };
+        var queue = new Queue<int>();
+        queue.Enqueue(categoryId);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var child in nodes.Where(n => n.ParentCategoryId == current))
+            {
+                if (subtreeIds.Add(child.Id))
+                {
+                    queue.Enqueue(child.Id);
+                }
+            }
+        }
+
+        return subtreeIds.ToList();
     }
 }

@@ -23,6 +23,9 @@ public class InventoryDbContext : DbContext
     public DbSet<SupplierProductCode> SupplierProductCodes { get; set; }
     public DbSet<SupplierInvoice> SupplierInvoices { get; set; }
     public DbSet<SupplierInvoiceLine> SupplierInvoiceLines { get; set; }
+    // 8.179-T1 (S1): categorías jerárquicas + junction N:M producto-categoría.
+    public DbSet<Category> Categories { get; set; }
+    public DbSet<ProductCategory> ProductCategories { get; set; }
 
 
 
@@ -246,6 +249,41 @@ public class InventoryDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(c => c.ProductId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // 8.179-T1 (S1): categoría jerárquica. Unicidad de nombre por padre a nivel de servicio
+        // (PostgreSQL trata NULL como distinto en índices únicos, por lo que el índice protege
+        // duplicados entre hermanas no raíz y el servicio cubre las raíces).
+        modelBuilder.Entity<Category>(entity =>
+        {
+            entity.Property(c => c.Name).IsRequired().HasMaxLength(60);
+            entity.Property(c => c.NormalizedName).IsRequired().HasMaxLength(60);
+            entity.HasOne(c => c.ParentCategory)
+                .WithMany(c => c.Children)
+                .HasForeignKey(c => c.ParentCategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(c => c.ParentCategoryId).HasDatabaseName("IX_Categories_ParentCategoryId");
+            entity.HasIndex(c => c.NormalizedName).HasDatabaseName("IX_Categories_NormalizedName");
+            entity.HasIndex(c => new { c.ParentCategoryId, c.NormalizedName })
+                .IsUnique()
+                .HasDatabaseName("IX_Categories_ParentCategoryId_NormalizedName");
+        });
+
+        // 8.179-T1 (S1): junction N:M (molde SupplierProductCode). Product Cascade; Category Restrict.
+        modelBuilder.Entity<ProductCategory>(entity =>
+        {
+            entity.HasIndex(pc => new { pc.ProductId, pc.CategoryId })
+                .IsUnique()
+                .HasDatabaseName("IX_ProductCategories_ProductId_CategoryId");
+            entity.HasIndex(pc => pc.CategoryId).HasDatabaseName("IX_ProductCategories_CategoryId");
+            entity.HasOne(pc => pc.Product)
+                .WithMany()
+                .HasForeignKey(pc => pc.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(pc => pc.Category)
+                .WithMany()
+                .HasForeignKey(pc => pc.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<SupplierProductFactor>(entity =>

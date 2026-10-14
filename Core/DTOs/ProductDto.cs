@@ -39,4 +39,7 @@ public class ProductDto
     public int VariantCount { get; set; }
     public decimal ConsolidatedStock { get; set; }
     public List<ProductDto>? Variants { get; set; }
+
+    // 8.179-T1 (S3): categorías asignadas (id + nombre). Vacío cuando el producto no tiene.
+    public IReadOnlyList<CategoryRefDto> Categories { get; set; } = Array.Empty<CategoryRefDto>();
 }

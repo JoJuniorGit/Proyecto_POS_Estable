@@ -22,6 +22,48 @@ namespace Inventory.Module.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Core.Entities.Category", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<int?>("ParentCategoryId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .HasDatabaseName("IX_Categories_NormalizedName");
+
+                    b.HasIndex("ParentCategoryId")
+                        .HasDatabaseName("IX_Categories_ParentCategoryId");
+
+                    b.HasIndex("ParentCategoryId", "NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Categories_ParentCategoryId_NormalizedName");
+
+                    b.ToTable("Categories");
+                });
+
             modelBuilder.Entity("Core.Entities.ExchangeRateHistory", b =>
                 {
                     b.Property<DateOnly>("Date")
@@ -205,6 +247,38 @@ namespace Inventory.Module.Migrations
 
                             t.HasCheckConstraint("CK_Products_Variant_Flags", "(\"IsGroupHeader\" = TRUE AND \"ParentProductId\" IS NULL) OR (\"IsStockShared\" = FALSE AND \"HasIndependentPricing\" = FALSE)");
                         });
+                });
+
+            modelBuilder.Entity("Core.Entities.ProductCategory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("IX_ProductCategories_CategoryId");
+
+                    b.HasIndex("ProductId", "CategoryId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ProductCategories_ProductId_CategoryId");
+
+                    b.ToTable("ProductCategories");
                 });
 
             modelBuilder.Entity("Core.Entities.StockMovement", b =>
@@ -866,6 +940,16 @@ namespace Inventory.Module.Migrations
                     b.ToTable("SystemSettings");
                 });
 
+            modelBuilder.Entity("Core.Entities.Category", b =>
+                {
+                    b.HasOne("Core.Entities.Category", "ParentCategory")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ParentCategory");
+                });
+
             modelBuilder.Entity("Core.Entities.Product", b =>
                 {
                     b.HasOne("Core.Entities.Product", "ParentProduct")
@@ -874,6 +958,25 @@ namespace Inventory.Module.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ParentProduct");
+                });
+
+            modelBuilder.Entity("Core.Entities.ProductCategory", b =>
+                {
+                    b.HasOne("Core.Entities.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Core.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("Core.Entities.StockMovement", b =>
@@ -992,6 +1095,11 @@ namespace Inventory.Module.Migrations
                     b.Navigation("Product");
 
                     b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("Core.Entities.Category", b =>
+                {
+                    b.Navigation("Children");
                 });
 
             modelBuilder.Entity("Core.Entities.Product", b =>
