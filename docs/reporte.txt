@@ -14924,3 +14924,73 @@ E. COMMITS
 E1. 8.182 en V0.15: bf01c4f (T1 backend) + 746ebcb (T2 WPF) + 012583a (T3 facturas) + commit de este ANEXO
     (docs(8.182); git log).
 ================================================================================
+
+================================================================================
+ANEXO 8.183 - REFACTOR QUIRURGICO: IDEMPOTENCIA DEL REDONDEO (FIX EFECTO TRINQUETE) - 2026-10-15
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/8.183-redondeo-idempotente-ratchet.md, rol Senior Backend
+& Domain Architect): la implementacion 8.182 tenia un defecto financiero critico de Inflacion Acumulativa
+por Redondeo (Efecto Trinquete / Ratchet): los ajustes o redondeos consecutivos (subir por piso de margen
+o cuadrar multiplos de Bs.S) inflaban progresivamente el precio base USD y el margen. Reglas: (1) el
+redondeo en Bs.S jamas muta el USD/margen persistido — evaluacion en caliente; (2) idempotencia matematica
+anclada a Costo x (1 + Margen Objetivo/100) sin redondear; (3) el margen efectivo por redondeo NO
+sobrescribe el margen objetivo persistido; (4) preview USD persistido vs Bs.S redondeado + test
+obligatorio de 10 iteraciones.
+
+A. AUDITORIA - PUNTOS EXACTOS DE LA MUTACION ACUMULATIVA (evidencia pre-fix sobre 8.182)
+
+A1. InventoryService.BulkPrices.cs:387-399 - al redondear, sobrescribia ProfitMarginRetail/Wholesale/
+    ProfitPercentage con el MARGEN EFECTIVO inflado. RAIZ DEL TRIQUETE: todo recalculo posterior basado
+    en margen (ops % sobre margen, confirmacion de facturas) heredaba el % inflado y lo acumulaba por
+    iteracion.
+A2. SupplierInvoiceService.Apply.cs:506-514 - espejo en el confirm de facturas: persistia margenes
+    efectivos del redondeo en cada aplicacion (el ancla cost x (1+margin) de :480 era correcta, pero el
+    margen ya llegaba contaminado por A1/A2).
+A3. InventoryService.BulkPrices.cs:427-442 - la regla VES detal persistia el Bs.S "amigable" en el
+    PriceBsS almacenado (divergencia del canonico 8.104) y SIN gate de cambio de USD (el mayor si
+    gateaba en :446-448), mutando tambien productos no tocados por la operacion.
+A4. Preview 8.182 - reportaba la mutacion VES como cambio persistido, sin separar USD persistido de
+    Bs.S redondeado en caliente (tasa actual).
+Nota de precision: el anclaje `precio = costo x (1+margen)` era correcto en si (:291 bulk, :480
+facturas); el defecto fue la contaminacion del margen persistido (A1/A2) y la persistencia Bs.S (A3).
+Las operaciones % sobre PRECIO siguen compuestas por diseno (no integran el defecto).
+
+B. REFACTORIZACION
+
+B1. T1 backend (commit 3cb31b7): A1 ELIMINADO (margen persistido = objetivo/operado; efectivo solo
+    informativo en la fila); A2 -> ResolveApprovedLinePricing devuelve margenes del revisor verbatim
+    (la salvaguarda solo mueve precios); A3 -> VES convertido a PROYECCION en caliente: el PriceBsS
+    persistido es SIEMPRE el canonico ToBsSCeiling(final USD, tasa) y la proyeccion viaja en el DTO
+    aditivo CashFriendlyAfterBsS (nunca persistida; fuera de HasChanges/ApplyBulkPriceState) +
+    ProjectCashFriendlyBsS en el servicio puro (hook POS por settings = residual v1). Test OBLIGATORIO
+    ApplyRounding_ExecutedTenConsecutiveTimes_ShouldRemainIdempotentAndNotInflatePrice ([Theory]
+    .99/.95/.50 psicologico + VES entero/5/10; apply REAL 10 iteraciones; margen objetivo intacto,
+    canonico estable por iteracion, proyeccion estable). RED 4/4 sobre el codigo 8.182 (contrafactico:
+    habria persistido margen 32.00/30.67 y Bs.S 825 vs canonico 825.37) -> GREEN 6/6 final.
+B2. T2 WPF (commit 17541c0): el preview distingue USD persistido de Bs.S efectivo proyectado (columna
+    "BS.S EFECTIVO (PROY.)", AutomationId BulkPriceEdit_CashFriendlyCell, tooltip de no-persistencia;
+    columnas de redondeo intactas). 2 tests nuevos.
+
+C. VERIFICACION
+
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+C2. Suite completa POR PARTES y SECUENCIAL (regla del mantenedor): Unit 2173/2173 + resto 572/572 +
+    E2E WPF 50/50 = 2795/2795.
+C3. Verificacion independiente read-only (reviewer, evidencia re-ejecutada secuencial): REVISAR sin
+    bloqueantes - R1-R4 CONFORME; carriles 240/240 (~Bulk|~Pricing), 300/300 (~SupplierInvoice), 53/53
+    (~BulkPriceEdit), test obligatorio 4/4; contrafactico del test confirmado por el verificador.
+    H1 [NO BLOQUEANTE] (faltaban aterrizajes .95/.50 en la matriz del Theory) -> resuelto (6/6).
+    H2 [ESTILO] (tooltip de celda en VES-mayor) -> residual.
+
+D. LIMITACIONES ACEPTADAS
+
+D1. Hook POS por settings para VES en caliente: residual v1 (servicio puro y proyeccion listos; la
+    activacion por settings no esta implementada).
+D2. Columna PROY. en VES-mayor duplica el Bs.S informativo de ANTES->DESPUES (claridad cubierta por
+    header + tooltip + docs; tooltip de celda = residual de estilo).
+D3. Verificacion visual runtime del dialogo (sin UI runner en el carril).
+
+E. COMMITS
+
+E1. 8.183 en V0.15: 3cb31b7 (T1 backend) + 17541c0 (T2 WPF) + commit de este ANEXO (docs(8.183); git log).
+================================================================================
