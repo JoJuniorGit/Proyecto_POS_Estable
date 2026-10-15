@@ -145,7 +145,7 @@ public partial class InventoryViewModel
     private async Task OpenAddProduct()
     {
         if (_dialogService == null) return;
-        var dialogVm = new ProductDialogViewModel(_productService, _exchangeRateService, null, UserSession, _dialogService);
+        var dialogVm = new ProductDialogViewModel(_productService, _exchangeRateService, null, UserSession, _dialogService, settingsService: _settingsService);
         
         if (_dialogService.ShowProductDialog(dialogVm) == true)
         {
@@ -179,7 +179,7 @@ public partial class InventoryViewModel
                 return;
             }
 
-            var dialogVm = new ProductDialogViewModel(_productService, _exchangeRateService, product, UserSession, _dialogService);
+            var dialogVm = new ProductDialogViewModel(_productService, _exchangeRateService, product, UserSession, _dialogService, settingsService: _settingsService);
             
             if (_dialogService.ShowProductDialog(dialogVm) == true)
             {
