@@ -2,9 +2,9 @@ A continuación se presenta el **plan de desarrollo secuencial integral de 15 pa
 
 Las ideas originales se presentan **íntegras y textualmente tal como fueron redactadas**, las nuevas ideas sinérgicas adoptan la misma estructura formal, y cada una cuenta con su bloque **Justificación:** detallando el motivo lógico, técnico, la dificultad y el efecto dominó que determinan su ubicación en la secuencia.
 
-> **Sincronización con el código — 2026-10-14 (commits hasta `c464cee`):**
-> Pasos **1, 2, 3, 4, 5, 6, 7, 8 y 9 COMPLETADOS** (marcados `[x]` con evidencia de código/commits).
-> Pasos **10–15 PENDIENTES**, con notas de dependencias actualizadas donde el código ya
+> **Sincronización con el código — 2026-10-15 (commits hasta `012583a`):**
+> Pasos **1, 2, 3, 4, 5, 6, 7, 8, 9 y 10 COMPLETADOS** (marcados `[x]` con evidencia de código/commits).
+> Pasos **11–15 PENDIENTES**, con notas de dependencias actualizadas donde el código ya
 > fusionado cambió el terreno (multi-moneda, auditoría de stock enriquecida, etc.).
 > El informe estratégico completo (correcciones arquitectónicas, funcionalidades sinérgicas y
 > reordenamiento óptimo propuesto) vive en `docs/roadmap-sync-2026-10-13.md`.
@@ -481,6 +481,8 @@ Reduce errores manuales.
 
 ### Paso 10
 
+**[x] COMPLETADO (8.182, verificado 2026-10-15)** — evidencia: commits `bf01c4f` (T1 backend: servicio puro `PricingRoundingPolicyService` + interceptor en el motor bulk con piso de margen, salvaguarda Detal/Mayor y márgenes efectivos persistidos), `746ebcb` (T2 WPF: reglas/pisos en el diálogo + columnas Matemático/Redondeado/Δ/Margen en el preview) y `012583a` (T3 facturas: regla en la confirmación aplicada en `ApplyApprovedLine`); ANEXO 8.182. **Desvíos/residuales:** switch dinámico VesCashFriendly en POS vivo diferido (ley techo 8.104; el servicio queda listo para el hook); pisos por lote sin setting global v1; facturas a nivel factura (per-línea diferido); salvaguarda/piso de un solo escalón.
+
 12. Reglas de precios psicológicos y redondeo comercial inteligente
 Objetivo: Incorporar políticas de redondeo automatizadas durante la edición masiva de precios para evitar centavos imprácticos en efectivo y facilitar el cobro rápido en caja.
 
@@ -804,7 +806,7 @@ flowchart TD
 
     subgraph F5["Fase 5: Operaciones de Precios"]
         P9["✅ 9. Edición Múltiple de Precios (Idea 5)"]
-        P10["10. Precios Psicológicos & Redondeo (Idea 12)"]
+        P10["✅ 10. Precios Psicológicos & Redondeo (Idea 12)"]
         P8 --> P9 --> P10
     end
 

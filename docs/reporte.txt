@@ -14858,3 +14858,69 @@ E. VERIFICACION: local contra PostgreSQL real (suite completa + gates de cobertu
 
 F. COMMITS: 111b97d (deps) + bbe6a3a (migracion) + 9f68fd9 (xmin) + 50d1897 (tests) en V0.15.
 ================================================================================
+
+================================================================================
+ANEXO 8.182 - PASO 10 DEL ROADMAP: MOTOR DE PRECIOS PSICOLOGICOS, REDONDEO COMERCIAL Y PROTECCION DE MARGENES - 2026-10-15
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/paso-10-redondeo-precios.md, spec completa del Paso 10):
+incorporar un motor de politicas de redondeo (PricingRoundingPolicyService) como interceptor limpio sobre
+la edicion masiva de precios (Paso 9) y el recalculo de precios por confirmacion de facturas de proveedor,
+eliminando decimales impracticos para efectivo, protegiendo el piso de rentabilidad y garantizando la
+coherencia entre precios al Detal y al Mayor.
+
+A. ALCANCE Y ENTREGA
+
+A1. Servicio puro (commit bf01c4f): `RoundingRuleType` {ExactMath, UsdPsychological, VesCashFriendlyInteger,
+    VesCashFriendlyStep5, VesCashFriendlyStep10}; `IPricingRoundingPolicyService` (Core/Interfaces) +
+    `PricingRoundingPolicyService` (Inventory.Module, stateless): nearest bidireccional (empate -> escalon
+    inferior salvo rechazo del piso), piso de margen evaluado sobre el precio FINAL (un escalon arriba),
+    nunca <=0, delta con signo, `FindLowerStep` para salvaguardas.
+A2. Interceptor bulk (mismo commit): secuencia operaciones -> derivaciones -> redondeo por canal ->
+    salvaguarda Mayor>=Detal (escalon inferior si queda > costo; imposible -> fila IsError all-or-nothing) ->
+    validacion vigente como ultima palabra -> Bs.S canonico (8.104) desde el USD final -> margen efectivo
+    persistido por canal cuando la regla movio el USD (ProfitPercentage legacy espejo). VES redondea el
+    Bs.S canonico del canal (USD/margen intactos). DTOs: `RetailRoundingRule`/`WholesaleRoundingRule`,
+    `EnforceMinimumMarginFloor`, pisos por lote, `PreRoundingValue`/`RoundingDelta`, `Effective*MarginPct`.
+A3. Desktop WPF (commit 746ebcb): selectores de regla por canal, toggle + pisos por canal con validacion
+    client-side, preview con columnas MATEMATICO / REDONDEADO / delta REDONDEO / MARGEN DETAL % / MARGEN
+    MAYOR % (formato por unidad de regla del canal; identidad Redondeado = Matematico + delta).
+A4. Facturas de proveedor (commit 012583a): `ConfirmSupplierInvoiceRequestDto` + `RoundingRule` (default
+    ExactMath = flujo actual byte-identico; VES/desconocidas -> 400 pre-transaccion); `ApplyApprovedLine`
+    redondea por canal en el recalculo por costo, salvaguarda con degradacion determinista a matematicos
+    cuando no puede mantener el invariante, margenes efectivos persistidos (incl. salvage-only), suggestions
+    finales; combo en el footer de revision (`SupplierInvoice_ConfirmRoundingCombo`).
+A5. Tests: 77 nuevos (50 T1: 37 servicio [Theory] + 13 integracion; 13 T2 VM; 14 T3 aplicar/regresion/
+    integracion). Suite completa por partes: Unit 2157/2157 + resto 572/572 + E2E WPF 50/50 = 2779/2779.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Verificacion independiente read-only (agente reviewer, evidencia re-ejecutada secuencial):
+    REVISAR sin bloqueantes - S1-S7 CONFORME; carriles 226/226 (~Bulk|~Pricing), 51/51 (~BulkPriceEdit),
+    300/300 (~SupplierInvoice); clases de 8.181 sin modificar. Hallazgos [ESTILO] corregidos (comentario
+    stale en BulkPriceRoundingTests, conteo de tests en tracker). [NO BLOQUEANTE] documentado: la rama
+    VES-detalle aplica el barrido de Bs.S a toda la seleccion (intencion de politica, confirmable por el
+    mantenedor); colision de orden de margenes post-redondeo cae en la validacion vigente (IsError) sin
+    test especifico (caso practicamente inalcanzable con costo unico).
+
+C. LIMITACIONES ACEPTADAS
+
+C1. Switch dinamico VesCashFriendly sobre el convertido en vivo en el POS: DIFERIDO (choca con la ley techo
+    8.104 y toca multiples call sites WPF/web; el servicio queda listo para el hook futuro).
+C2. Pisos de margen por lote (sin setting global v1); facturas sin piso (el margen del revisor manda) y
+    regla a nivel factura (per-linea diferido).
+C3. Salvaguarda y piso de un solo escalon (best-effort documentado); VES al mayor informativo (la entidad
+    no tiene columna Bs.S al mayor).
+C4. Instancias `static readonly` del servicio puro en los motores (registro DI = drop-in futuro fuera de las
+    superficies del tramo); render WPF real no verificado (sin runner headless en el carril).
+
+D. ROLLBACK
+
+D1. Revertir los tres commits restaura el estado previo; sin migraciones ni cambios de modelo; contrato DTO
+    retrocompatible (defaults ExactMath/null).
+
+E. COMMITS
+
+E1. 8.182 en V0.15: bf01c4f (T1 backend) + 746ebcb (T2 WPF) + 012583a (T3 facturas) + commit de este ANEXO
+    (docs(8.182); git log).
+================================================================================
