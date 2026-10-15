@@ -26,10 +26,21 @@ public partial class SalesService
         string? requestPath = null)
     {
         var strategy = _context.Database.CreateExecutionStrategy();
+        var isRetry = false;
         return await strategy.ExecuteAsync(async () =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            _context.ChangeTracker.Clear();
+
+            // SRE-08 (8.171): en reintentos se descarta el tracker para no re-aplicar las mutaciones
+            // del intento fallido. En el PRIMER intento NO se limpia: la semántica xmin (8.145) exige
+            // que un caller con estado stale reciba DbUpdateConcurrencyException en vez de re-aplicar
+            // silenciosamente sobre una lectura fresca (protege contra doble entrega desde pantallas viejas).
+            if (isRetry)
+            {
+                _context.ChangeTracker.Clear();
+            }
+
+            isRetry = true;
 
             await using var transaction = _context.Database.IsRelational()
                 ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
