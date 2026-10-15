@@ -124,6 +124,103 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <!-- 8.182-T2 (S6): redondeo comercial/psicológico por canal + protección del piso de
+                     margen. El piso solo aplica con el toggle activo, piso > 0 y costo > 0. -->
+                <Separator Margin="0,4,0,12" Background="#E2E8F0"/>
+
+                <TextBlock Text="2. Redondeo y protección de margen"
+                           FontWeight="SemiBold"
+                           Foreground="#334155"
+                           Margin="0,0,0,10"/>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140"/>
+                        <ColumnDefinition Width="290"/>
+                        <ColumnDefinition Width="130"/>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <CheckBox Grid.Row="0" Grid.ColumnSpan="5"
+                              Content="Proteger piso de margen"
+                              IsChecked="{Binding EnforceMinimumMarginFloor, Mode=TwoWay}"
+                              VerticalAlignment="Center"
+                              Margin="0,0,0,8"
+                              AutomationProperties.AutomationId="BulkPriceEdit_MarginFloorToggle"
+                              ToolTip="Si el redondeo deja el precio por debajo del piso configurado, se usa el siguiente escalón superior (requiere costo y piso mayores a cero)."/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0"
+                               Text="Redondeo Detal"
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               Foreground="#1E293B"
+                               VerticalAlignment="Center"/>
+                    <ComboBox Grid.Row="1" Grid.Column="1"
+                              ItemsSource="{Binding RoundingRuleOptions}"
+                              SelectedValue="{Binding RetailRoundingRule, Mode=TwoWay}"
+                              SelectedValuePath="Rule"
+                              DisplayMemberPath="Label"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              Height="32"
+                              Padding="8,2"
+                              Margin="0,0,10,8"
+                              AutomationProperties.AutomationId="BulkPriceEdit_RetailRoundingCombo"/>
+                    <TextBlock Grid.Row="1" Grid.Column="2"
+                               Text="Piso Detal (%)"
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               Foreground="#1E293B"
+                               VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="1" Grid.Column="3"
+                             Text="{Binding RetailMarginFloorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding EnforceMinimumMarginFloor}"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             materialDesign:HintAssist.Hint="Ej. 25"
+                             materialDesign:HintAssist.IsFloating="True"
+                             Height="32"
+                             Padding="8,2"
+                             Margin="0,0,10,8"
+                             AutomationProperties.AutomationId="BulkPriceEdit_RetailMarginFloorInput"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0"
+                               Text="Redondeo Mayor"
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               Foreground="#1E293B"
+                               VerticalAlignment="Center"/>
+                    <ComboBox Grid.Row="2" Grid.Column="1"
+                              ItemsSource="{Binding RoundingRuleOptions}"
+                              SelectedValue="{Binding WholesaleRoundingRule, Mode=TwoWay}"
+                              SelectedValuePath="Rule"
+                              DisplayMemberPath="Label"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              Height="32"
+                              Padding="8,2"
+                              Margin="0,0,10,0"
+                              AutomationProperties.AutomationId="BulkPriceEdit_WholesaleRoundingCombo"/>
+                    <TextBlock Grid.Row="2" Grid.Column="2"
+                               Text="Piso Mayor (%)"
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               Foreground="#1E293B"
+                               VerticalAlignment="Center"/>
+                    <TextBox Grid.Row="2" Grid.Column="3"
+                             Text="{Binding WholesaleMarginFloorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding EnforceMinimumMarginFloor}"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             materialDesign:HintAssist.Hint="Ej. 15"
+                             materialDesign:HintAssist.IsFloating="True"
+                             Height="32"
+                             Padding="8,2"
+                             AutomationProperties.AutomationId="BulkPriceEdit_WholesaleMarginFloorInput"/>
+                </Grid>
             </StackPanel>
         </Border>
 
@@ -193,9 +290,9 @@
                           VirtualizingStackPanel.VirtualizationMode="Recycling"
                           AutomationProperties.AutomationId="BulkPriceEdit_PreviewGrid">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="PRODUCTO" Binding="{Binding Name}" Width="180"/>
-                        <DataGridTextColumn Header="SKU" Binding="{Binding SKU}" Width="110"/>
-                        <DataGridTemplateColumn Header="ESTADO" Width="230">
+                        <DataGridTextColumn Header="PRODUCTO" Binding="{Binding Name}" Width="160"/>
+                        <DataGridTextColumn Header="SKU" Binding="{Binding SKU}" Width="90"/>
+                        <DataGridTemplateColumn Header="ESTADO" Width="180">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding StatusText}"
@@ -221,10 +318,84 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
+
+                        <!-- 8.182-T2 (S6): columnas nuevas del preview — traza del redondeo
+                             ("Matemático", "Redondeado" y "Δ Redondeo" en la unidad de la regla del
+                             canal) y márgenes efectivos (solo cuando el backend los informa). -->
+                        <DataGridTemplateColumn Header="MATEMÁTICO" Width="110">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding MathText}"
+                                               FontFamily="Consolas, Courier New, monospace"
+                                               FontSize="11"
+                                               Foreground="#475569"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center"
+                                               Margin="0,4"
+                                               AutomationProperties.AutomationId="BulkPriceEdit_MathCell"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="REDONDEADO" Width="110">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding RoundedText}"
+                                               FontFamily="Consolas, Courier New, monospace"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="#1E293B"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center"
+                                               Margin="0,4"
+                                               AutomationProperties.AutomationId="BulkPriceEdit_RoundedCell"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="Δ REDONDEO" Width="100">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding RoundingDeltaText}"
+                                               FontFamily="Consolas, Courier New, monospace"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="#5E35B1"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center"
+                                               Margin="0,4"
+                                               AutomationProperties.AutomationId="BulkPriceEdit_RoundingDeltaCell"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="MARGEN DETAL %" Width="95">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding EffectiveRetailMarginText}"
+                                               FontSize="11"
+                                               Foreground="#1E293B"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"
+                                               Margin="0,4"
+                                               AutomationProperties.AutomationId="BulkPriceEdit_EffectiveRetailMarginCell"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="MARGEN MAYOR %" Width="95">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding EffectiveWholesaleMarginText}"
+                                               FontSize="11"
+                                               Foreground="#1E293B"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"
+                                               Margin="0,4"
+                                               AutomationProperties.AutomationId="BulkPriceEdit_EffectiveWholesaleMarginCell"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <TextBlock Text="Genere la vista previa para ver la comparación Antes vs Después, los omitidos con su motivo y los totales."
+                <TextBlock Text="Genere la vista previa para ver la comparación Antes vs Después, la traza de redondeo, los márgenes efectivos, los omitidos con su motivo y los totales."
                            Foreground="#94A3B8"
                            FontSize="12"
                            HorizontalAlignment="Center"

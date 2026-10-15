@@ -34,6 +34,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     public const int MaxSelectionSize = 1000;
     public const string NoOperationsMessage = "Seleccione al menos una operación para editar.";
     public const string InvalidValueMessage = "Ingrese un valor numérico válido mayor o igual a cero.";
+    public const string InvalidMarginFloorMessage = "Ingrese un piso de margen numérico válido mayor o igual a cero.";
     public const string PreviewRequiredMessage = "Genere la vista previa antes de aplicar los cambios.";
     public const string PreviewErrorMessage = "La vista previa contiene errores que impiden aplicar los cambios.";
     public const string NoChangesMessage = "La vista previa no contiene cambios para aplicar.";
@@ -43,6 +44,17 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         new BulkPriceModeOption(BulkPriceMode.SetFixed, "Fijar valor"),
         new BulkPriceModeOption(BulkPriceMode.IncreasePercent, "Aumentar %"),
         new BulkPriceModeOption(BulkPriceMode.DecreasePercent, "Disminuir %")
+    };
+
+    // 8.182-T2 (S6): reglas de redondeo por canal (mismos labels para ambos combos). El granulado
+    // por sub-opción replica el enum del contrato congelado de T1.
+    private static readonly IReadOnlyList<BulkPriceRoundingOption> SharedRoundingRuleOptions = new[]
+    {
+        new BulkPriceRoundingOption(RoundingRuleType.ExactMath, "Sin redondeo (exacto)"),
+        new BulkPriceRoundingOption(RoundingRuleType.UsdPsychological, "Psicológico USD (.99/.95/.75/.50/.25)"),
+        new BulkPriceRoundingOption(RoundingRuleType.VesCashFriendlyInteger, "Efectivo rápido Bs.S (entero)"),
+        new BulkPriceRoundingOption(RoundingRuleType.VesCashFriendlyStep5, "(múltiplo de 5)"),
+        new BulkPriceRoundingOption(RoundingRuleType.VesCashFriendlyStep10, "(múltiplo de 10)")
     };
 
     private readonly IProductService _productService;
@@ -56,6 +68,9 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     public ObservableCollection<BulkPriceOperationRowViewModel> Operations { get; } = new();
 
     public ObservableCollection<BulkPricePreviewRowViewModel> PreviewRows { get; } = new();
+
+    /// <summary>8.182-T2 (S6): opciones del combo de regla de redondeo (una por sub-opción del enum).</summary>
+    public IReadOnlyList<BulkPriceRoundingOption> RoundingRuleOptions => SharedRoundingRuleOptions;
 
     public int SelectedCount => _selection.SelectedCount;
 
@@ -91,6 +106,25 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
+
+    // 8.182-T2 (S6): configuración de redondeo por canal y piso de margen por lote (contrato T1).
+    // Default ExactMath sin piso = comportamiento 8.181 intacto.
+    [ObservableProperty]
+    private RoundingRuleType _retailRoundingRule = RoundingRuleType.ExactMath;
+
+    [ObservableProperty]
+    private RoundingRuleType _wholesaleRoundingRule = RoundingRuleType.ExactMath;
+
+    [ObservableProperty]
+    private bool _enforceMinimumMarginFloor;
+
+    /// <summary>Piso de margen al detal (%); vacío = sin piso. Se ignora si el toggle está apagado.</summary>
+    [ObservableProperty]
+    private string _retailMarginFloorText = string.Empty;
+
+    /// <summary>Piso de margen al mayor (%); vacío = sin piso. Se ignora si el toggle está apagado.</summary>
+    [ObservableProperty]
+    private string _wholesaleMarginFloorText = string.Empty;
 
     /// <summary>true cuando la vista previa tiene filas bloqueantes (400: negativos, topes, mayor&gt;detal).</summary>
     public bool HasPreviewErrors => PreviewRows.Any(row => row.IsError);
@@ -148,7 +182,12 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        var request = BuildRequest(operations);
+        if (!TryBuildRoundingSettings(out var retailFloor, out var wholesaleFloor))
+        {
+            return;
+        }
+
+        var request = BuildRequest(operations, retailFloor, wholesaleFloor);
         IsBusy = true;
         try
         {
@@ -259,6 +298,21 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     }
 
     private void OnOperationRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        => InvalidatePreviewOnConfigurationChange();
+
+    // 8.182-T2 (S6): hooks generados por [ObservableProperty]; la vista previa solo representa la
+    // configuración con la que se generó, así que cualquier ajuste de reglas/pisos la descarta.
+    partial void OnRetailRoundingRuleChanged(RoundingRuleType value) => InvalidatePreviewOnConfigurationChange();
+
+    partial void OnWholesaleRoundingRuleChanged(RoundingRuleType value) => InvalidatePreviewOnConfigurationChange();
+
+    partial void OnEnforceMinimumMarginFloorChanged(bool value) => InvalidatePreviewOnConfigurationChange();
+
+    partial void OnRetailMarginFloorTextChanged(string value) => InvalidatePreviewOnConfigurationChange();
+
+    partial void OnWholesaleMarginFloorTextChanged(string value) => InvalidatePreviewOnConfigurationChange();
+
+    private void InvalidatePreviewOnConfigurationChange()
     {
         if (!HasPreview)
         {
@@ -299,13 +353,65 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         return true;
     }
 
-    private BulkPriceUpdateRequestDto BuildRequest(List<BulkPriceOperationDto> operations) => new()
+    private BulkPriceUpdateRequestDto BuildRequest(
+        List<BulkPriceOperationDto> operations,
+        decimal? retailFloor,
+        decimal? wholesaleFloor) => new()
     {
         ProductIds = _selection.ProductIds?.ToList(),
         Filter = _selection.Filter,
         SelectAllFiltered = _selection.SelectAllFiltered,
-        Operations = operations
+        Operations = operations,
+        // 8.182-T2 (S6): reglas/pisos del lote; los pisos viajan solo con el toggle activo y valor
+        // válido (vacío = null = sin piso para ese canal).
+        RetailRoundingRule = RetailRoundingRule,
+        WholesaleRoundingRule = WholesaleRoundingRule,
+        EnforceMinimumMarginFloor = EnforceMinimumMarginFloor,
+        RetailMarginFloorPct = retailFloor,
+        WholesaleMarginFloorPct = wholesaleFloor
     };
+
+    /// <summary>
+    /// 8.182-T2 (S6): validación client-side de los pisos de margen. Con el toggle apagado los
+    /// pisos se ignoran (no se validan ni viajan en el request); vacío = sin piso (null).
+    /// </summary>
+    private bool TryBuildRoundingSettings(out decimal? retailFloor, out decimal? wholesaleFloor)
+    {
+        retailFloor = null;
+        wholesaleFloor = null;
+
+        if (!EnforceMinimumMarginFloor)
+        {
+            return true;
+        }
+
+        if (!TryParseOptionalFloor(RetailMarginFloorText, out retailFloor) ||
+            !TryParseOptionalFloor(WholesaleMarginFloorText, out wholesaleFloor))
+        {
+            ErrorMessage = InvalidMarginFloorMessage;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryParseOptionalFloor(string? text, out decimal? floor)
+    {
+        floor = null;
+        var trimmed = text?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return true;
+        }
+
+        if (!TryParseValue(trimmed, out var value) || value < 0m)
+        {
+            return false;
+        }
+
+        floor = value;
+        return true;
+    }
 
     private void ApplyPreviewResult(BulkPriceUpdateRequestDto request, BulkPriceUpdateResultDto result)
     {
@@ -314,7 +420,12 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         PreviewRows.Clear();
         foreach (var row in result.Rows)
         {
-            PreviewRows.Add(BulkPricePreviewRowViewModel.FromDto(row));
+            // 8.182-T2 (S6): la unidad de la traza de redondeo (USD/Bs.S) depende de la regla del
+            // canal con la que se generó la vista previa.
+            PreviewRows.Add(BulkPricePreviewRowViewModel.FromDto(
+                row,
+                request.RetailRoundingRule,
+                request.WholesaleRoundingRule));
         }
 
         PreviewUpdatedCount = result.UpdatedCount;
@@ -366,6 +477,9 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
 
 /// <summary>Opción del combo de modo de operación (Fijar valor / Aumentar % / Disminuir %).</summary>
 public sealed record BulkPriceModeOption(BulkPriceMode Mode, string Label);
+
+/// <summary>8.182-T2 (S6): opción del combo de regla de redondeo de un canal (Detal/Mayor).</summary>
+public sealed record BulkPriceRoundingOption(RoundingRuleType Rule, string Label);
 
 /// <summary>8.181-T2 (S5): fila de configuración de una operación por campo.</summary>
 public partial class BulkPriceOperationRowViewModel : ObservableObject
@@ -421,11 +535,33 @@ public sealed class BulkPriceFieldChangeViewModel
     /// <summary>Bs.S canónico antes → después; el contrato solo lo informa en cambios del precio al detal.</summary>
     public string? BsSText { get; init; }
 
+    /// <summary>8.182-T2 (S6): valor matemático previo al redondeo, en la unidad de la regla del canal.</summary>
+    public decimal? PreRoundingValue { get; init; }
+
+    /// <summary>8.182-T2 (S6): delta con signo (redondeado − matemático), en la unidad de la regla del canal.</summary>
+    public decimal? RoundingDelta { get; init; }
+
+    /// <summary>8.182-T2 (S6): "Matemático" formateado ($ USD o Bs.S según la regla del canal); null si no hay traza.</summary>
+    public string? PreRoundingText { get; init; }
+
+    /// <summary>
+    /// 8.182-T2 (S6): "Redondeado" formateado en la unidad de la regla del canal (matemático + Δ,
+    /// equivalente al valor final del canal: USD en <c>AfterValue</c>; Bs.S en <c>AfterBsS</c>);
+    /// null si no hay traza.
+    /// </summary>
+    public string? RoundedText { get; init; }
+
+    /// <summary>8.182-T2 (S6): "Δ Redondeo" formateado con signo; null si no hay traza.</summary>
+    public string? RoundingDeltaText { get; init; }
+
     public string Summary => BsSText is null
         ? $"{FieldLabel}: {BeforeText} → {AfterText}"
         : $"{FieldLabel}: {BeforeText} → {AfterText} ({BsSText})";
 
-    public static BulkPriceFieldChangeViewModel FromDto(BulkPriceFieldChangeDto dto)
+    public static BulkPriceFieldChangeViewModel FromDto(
+        BulkPriceFieldChangeDto dto,
+        RoundingRuleType retailRule,
+        RoundingRuleType wholesaleRule)
     {
         var isMargin = dto.Field is BulkPriceField.RetailMargin or BulkPriceField.WholesaleMargin;
         string Format(decimal value) => isMargin
@@ -436,6 +572,10 @@ public sealed class BulkPriceFieldChangeViewModel
             ? $"Bs.S {CurrencyDisplay.Number(dto.BeforeBsS ?? 0m)} → {CurrencyDisplay.Number(dto.AfterBsS ?? 0m)}"
             : null;
 
+        // 8.182-T2 (S6): la traza llega solo cuando la regla del canal movió el precio y está
+        // expresada en la unidad de esa regla: USD (psicológico) o Bs.S (efectivo rápido).
+        bool isBsSUnit = IsVesCashFriendlyRule(ResolveChannelRule(dto.Field, retailRule, wholesaleRule));
+
         return new BulkPriceFieldChangeViewModel
         {
             Field = dto.Field,
@@ -444,8 +584,43 @@ public sealed class BulkPriceFieldChangeViewModel
             AfterValue = dto.AfterValue,
             BeforeText = Format(dto.BeforeValue),
             AfterText = Format(dto.AfterValue),
-            BsSText = bsSText
+            BsSText = bsSText,
+            PreRoundingValue = dto.PreRoundingValue,
+            RoundingDelta = dto.RoundingDelta,
+            PreRoundingText = dto.PreRoundingValue.HasValue
+                ? FormatRoundingUnit(dto.PreRoundingValue.Value, isBsSUnit)
+                : null,
+            // Redondeado = matemático + Δ (identidad del backend: el delta es redondeado − matemático).
+            RoundedText = dto.PreRoundingValue.HasValue && dto.RoundingDelta.HasValue
+                ? FormatRoundingUnit(dto.PreRoundingValue.Value + dto.RoundingDelta.Value, isBsSUnit)
+                : null,
+            RoundingDeltaText = dto.RoundingDelta.HasValue
+                ? FormatRoundingDelta(dto.RoundingDelta.Value, isBsSUnit)
+                : null
         };
+    }
+
+    private static RoundingRuleType ResolveChannelRule(
+        BulkPriceField field,
+        RoundingRuleType retailRule,
+        RoundingRuleType wholesaleRule) => field switch
+    {
+        BulkPriceField.WholesalePrice or BulkPriceField.WholesaleMargin => wholesaleRule,
+        _ => retailRule
+    };
+
+    private static bool IsVesCashFriendlyRule(RoundingRuleType rule)
+        => rule is RoundingRuleType.VesCashFriendlyInteger
+            or RoundingRuleType.VesCashFriendlyStep5
+            or RoundingRuleType.VesCashFriendlyStep10;
+
+    private static string FormatRoundingUnit(decimal value, bool isBsS)
+        => isBsS ? $"Bs.S {CurrencyDisplay.Number(value)}" : $"${CurrencyDisplay.Number(value)}";
+
+    private static string FormatRoundingDelta(decimal value, bool isBsS)
+    {
+        var sign = value > 0m ? "+" : value < 0m ? "-" : string.Empty;
+        return $"{sign}{FormatRoundingUnit(Math.Abs(value), isBsS)}";
     }
 
     private static string ResolveFieldLabel(BulkPriceField field) => field switch
@@ -473,7 +648,26 @@ public sealed class BulkPricePreviewRowViewModel
 
     public IReadOnlyList<BulkPriceFieldChangeViewModel> Changes { get; init; } = Array.Empty<BulkPriceFieldChangeViewModel>();
 
+    /// <summary>8.182-T2 (S6): margen efectivo al detal sobre el precio FINAL; null si no aplica.</summary>
+    public decimal? EffectiveRetailMarginPct { get; init; }
+
+    /// <summary>8.182-T2 (S6): margen efectivo al mayor sobre el precio FINAL; null si no aplica.</summary>
+    public decimal? EffectiveWholesaleMarginPct { get; init; }
+
     public bool HasSkipReason => !string.IsNullOrWhiteSpace(SkipReason);
+
+    /// <summary>8.182-T2 (S6): columna "Matemático" (una línea por canal con traza; "—" si no hay).</summary>
+    public string MathText => BuildRoundingTrace(change => change.PreRoundingText);
+
+    /// <summary>8.182-T2 (S6): columna "Redondeado" (una línea por canal con traza; "—" si no hay).</summary>
+    public string RoundedText => BuildRoundingTrace(change => change.RoundedText);
+
+    /// <summary>8.182-T2 (S6): columna "Δ Redondeo" con signo (una línea por canal; "—" si no hay).</summary>
+    public string RoundingDeltaText => BuildRoundingTrace(change => change.RoundingDeltaText);
+
+    public string EffectiveRetailMarginText => FormatMarginPercent(EffectiveRetailMarginPct);
+
+    public string EffectiveWholesaleMarginText => FormatMarginPercent(EffectiveWholesaleMarginPct);
 
     public string StatusText => IsError
         ? $"Error: {SkipReason}"
@@ -487,13 +681,34 @@ public sealed class BulkPricePreviewRowViewModel
         ? "—"
         : string.Join(Environment.NewLine, Changes.Select(change => change.Summary));
 
-    public static BulkPricePreviewRowViewModel FromDto(BulkPricePreviewRowDto dto) => new()
+    public static BulkPricePreviewRowViewModel FromDto(
+        BulkPricePreviewRowDto dto,
+        RoundingRuleType retailRule,
+        RoundingRuleType wholesaleRule) => new()
     {
         ProductId = dto.ProductId,
         SKU = dto.SKU,
         Name = dto.Name,
         SkipReason = dto.SkipReason,
         IsError = dto.IsError,
-        Changes = dto.Changes.Select(BulkPriceFieldChangeViewModel.FromDto).ToList()
+        EffectiveRetailMarginPct = dto.EffectiveRetailMarginPct,
+        EffectiveWholesaleMarginPct = dto.EffectiveWholesaleMarginPct,
+        Changes = dto.Changes
+            .Select(change => BulkPriceFieldChangeViewModel.FromDto(change, retailRule, wholesaleRule))
+            .ToList()
     };
+
+    private string BuildRoundingTrace(Func<BulkPriceFieldChangeViewModel, string?> selector)
+    {
+        var lines = Changes
+            .Select(change => (change.FieldLabel, Value: selector(change)))
+            .Where(entry => entry.Value is not null)
+            .Select(entry => $"{entry.FieldLabel}: {entry.Value}")
+            .ToList();
+
+        return lines.Count == 0 ? "—" : string.Join(Environment.NewLine, lines);
+    }
+
+    private static string FormatMarginPercent(decimal? value)
+        => value.HasValue ? $"{value.Value.ToString("0.##", CultureInfo.InvariantCulture)}%" : "—";
 }
