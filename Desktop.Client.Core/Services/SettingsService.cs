@@ -1,3 +1,4 @@
+using Core.DTOs;
 using System;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -71,6 +72,29 @@ public class SettingsService : ISettingsService
     {
         var request = new { Allowed = allowed };
         using var response = await _httpClient.PutAsJsonAsync("api/settings/allow-negative-stock", request);
+        response.EnsureSuccessStatusCode();
+    }
+
+    // 8.184-T3 (S4): molde allow-negative-stock — lectura al abrir cada superficie; ante error o
+    // respuesta vacía rigen los defaults del sistema (ExactMath / ExactMath / piso activo).
+    public async Task<PricingPoliciesDto> GetPricingPoliciesAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetFromJsonAsync<PricingPoliciesDto>("api/settings/pricing-policies");
+            return response ?? new PricingPoliciesDto();
+        }
+        catch
+        {
+            return new PricingPoliciesDto();
+        }
+    }
+
+    // 8.184-T4 (S2): PUT del bloque completo (regla USD, regla de efectivo Bs.S y toggle de piso)
+    // para el auto-guardado de Ajustes; EnsureSuccessStatusCode deja visible el fallo al ViewModel.
+    public async Task SetPricingPoliciesAsync(PricingPoliciesDto policies)
+    {
+        using var response = await _httpClient.PutAsJsonAsync("api/settings/pricing-policies", policies);
         response.EnsureSuccessStatusCode();
     }
 

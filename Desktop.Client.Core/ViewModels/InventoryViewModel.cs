@@ -21,6 +21,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     private readonly IDialogService? _dialogService;
     private readonly IDispatcherInvoker _dispatcherInvoker;
     private readonly ICategoryService? _categoryService;
+    private readonly ISettingsService? _settingsService;
     private CancellationTokenSource? _cancellationTokenSource;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
 
@@ -214,7 +215,8 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         UserSession? userSession = null,
         IDialogService? dialogService = null,
         IDispatcherInvoker? dispatcherInvoker = null,
-        ICategoryService? categoryService = null)
+        ICategoryService? categoryService = null,
+        ISettingsService? settingsService = null)
     {
         _productService = productService;
         _exchangeRateService = exchangeRateService;
@@ -222,6 +224,9 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         _dialogService = dialogService;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
         _categoryService = categoryService;
+        // 8.184-T3 (S4): el modal de producto precarga las políticas globales de redondeo; el
+        // contenedor DI ya registra ISettingsService, así que el parámetro opcional se resuelve solo.
+        _settingsService = settingsService;
 
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
         {
