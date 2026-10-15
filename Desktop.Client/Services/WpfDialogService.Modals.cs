@@ -712,5 +712,34 @@ public partial class WpfDialogService
 
         return changed;
     }
+
+    /// <summary>
+    /// 8.181-T2 (S5): abre el diálogo modal de edición masiva de precios (configuración de
+    /// operaciones, vista previa y aplicación con confirmación) y devuelve true cuando la
+    /// actualización se aplicó, para que el catálogo se recargue.
+    /// </summary>
+    public bool ShowBulkPriceEditDialog(ViewModels.BulkPriceEditDialogViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (Application.Current == null) return false;
+        using var _ = TrackModal();
+        bool applied = false;
+
+        Action openDialog = () =>
+        {
+            var dialog = new BulkPriceEditDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            applied = dialog.ShowDialog() == true;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return applied;
+    }
 }
 

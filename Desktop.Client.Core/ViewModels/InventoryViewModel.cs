@@ -42,6 +42,9 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _searchText, value))
             {
+                // 8.181-T2 (S5): el modo "todos los filtrados" referencia los filtros vigentes; al
+                // cambiar la búsqueda la selección deja de representarlos.
+                ClearFilteredSelectionOnFilterChange();
                 RestartSearchTimerAsync().SafeFireAndForget("InventoryViewModel.RestartSearchTimer");
             }
         }
@@ -138,6 +141,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedStatusFilter, value))
             {
+                ClearFilteredSelectionOnFilterChange();
                 LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.StatusFilterChanged");
             }
         }
@@ -153,6 +157,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedCategoryFilter, value))
             {
+                ClearFilteredSelectionOnFilterChange();
                 LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.CategoryFilterChanged");
             }
         }
@@ -335,9 +340,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             var newItems = new System.Collections.Generic.List<ProductItemViewModel>();
             foreach (var dto in result.Items)
             {
-                var itemVm = new ProductItemViewModel(dto, _exchangeRateService, OnProductItemChanged);
-                itemVm.NotifyCurrencyChanged(SelectedCurrency);
-                newItems.Add(itemVm);
+                newItems.Add(CreateItemViewModel(dto));
             }
 
             var totalPages = result.TotalCount > 0 ? (int)Math.Ceiling((double)result.TotalCount / PageSize) : 0;
@@ -362,6 +365,8 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 TotalPages = totalPages;
                 PageSummary = pageSummary;
                 UpdatePageNumbers();
+                // 8.181-T2 (S5): dimensión del modo "todos los filtrados" tras cada listado.
+                UpdateFilteredMatchCount(result.TotalCount);
             }
 
             if (!_dispatcherInvoker.CheckAccess())
@@ -417,9 +422,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             {
                 if (!existingSkus.Contains(dto.SKU))
                 {
-                    var itemVm = new ProductItemViewModel(dto, _exchangeRateService, OnProductItemChanged);
-                    itemVm.NotifyCurrencyChanged(SelectedCurrency);
-                    newItemsToAdd.Add(itemVm);
+                    newItemsToAdd.Add(CreateItemViewModel(dto));
                 }
             }
 
@@ -441,6 +444,8 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 }
 
                 HasMore = result.HasMore;
+                // 8.181-T2 (S5): el merge tambien re-dimensiona el modo "todos los filtrados".
+                UpdateFilteredMatchCount(result.TotalCount);
             }
 
             if (!_dispatcherInvoker.CheckAccess())

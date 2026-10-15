@@ -222,4 +222,46 @@ public class ProductService : IProductService
         return System.Text.Json.JsonSerializer.Deserialize<Core.DTOs.ProductDto>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                ?? throw new System.Exception("No se pudo deserializar el producto desvinculado devuelto.");
     }
+
+    public async Task<Core.DTOs.BulkPriceUpdateResultDto> PreviewBulkPricesAsync(Core.DTOs.BulkPriceUpdateRequestDto request, System.Threading.CancellationToken token = default)
+    {
+        // 8.181-T2 (S5): vista previa sin escrituras; comparte el resultado congelado con el apply.
+        var response = await _httpClient.PostAsJsonAsync("api/products/bulk-prices/preview", request, token);
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(token);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
+        }
+
+        var rawJson = await response.Content.ReadAsStringAsync(token);
+        return System.Text.Json.JsonSerializer.Deserialize<Core.DTOs.BulkPriceUpdateResultDto>(
+                   rawJson,
+                   new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+               ?? throw new System.Exception("No se pudo deserializar la vista previa de precios.");
+    }
+
+    public async Task<Core.DTOs.BulkPriceUpdateResultDto> ApplyBulkPricesAsync(Core.DTOs.BulkPriceUpdateRequestDto request, System.Threading.CancellationToken token = default)
+    {
+        // 8.181-T2 (S5): el 409 de concurrencia viaja tipado para que la UI lo distinga de un 400.
+        var response = await _httpClient.PostAsJsonAsync("api/products/bulk-prices/apply", request, token);
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(token);
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                throw new System.Net.Http.HttpRequestException(
+                    ApiErrorParser.FromBody(err, "Conflicto de concurrencia al aplicar la actualización masiva de precios."),
+                    null,
+                    System.Net.HttpStatusCode.Conflict);
+            }
+
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
+        }
+
+        var rawJson = await response.Content.ReadAsStringAsync(token);
+        return System.Text.Json.JsonSerializer.Deserialize<Core.DTOs.BulkPriceUpdateResultDto>(
+                   rawJson,
+                   new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+               ?? throw new System.Exception("No se pudo deserializar el resultado de la actualización masiva de precios.");
+    }
 }

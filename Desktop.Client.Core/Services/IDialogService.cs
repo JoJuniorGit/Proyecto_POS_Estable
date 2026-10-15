@@ -38,6 +38,14 @@ public interface IDialogService
     bool ShowCategoryManagementDialog(ViewModels.CategoryManagementDialogViewModel viewModel) => false;
 
     /// <summary>
+    /// 8.181-T2 (S5): diálogo modal de edición masiva de precios del catálogo (configuración de
+    /// operaciones, vista previa "Antes vs Después" y aplicación con confirmación). Devuelve true
+    /// cuando la actualización se aplicó y persistió, para que el catálogo se refresque.
+    /// La implementación por defecto sin UI (stubs headless) equivale a "sin cambios".
+    /// </summary>
+    bool ShowBulkPriceEditDialog(ViewModels.BulkPriceEditDialogViewModel viewModel) => false;
+
+    /// <summary>
     /// 8.146-T5 (S4): modal de captura del código de barras universal al crear un producto desde una línea de factura.
     /// Implementación por defecto sin UI (stubs headless): null equivale a diálogo cancelado, igual que
     /// <see cref="ShowPartialDeliveryDialogAsync"/>.

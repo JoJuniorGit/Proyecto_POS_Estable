@@ -280,11 +280,86 @@
         <!-- CONTENEDOR PRINCIPAL: TABLA DE PRODUCTOS ESTILIZADA -->
         <Grid Grid.Row="2">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             
+            <!-- 8.181-T2 (S5): barra de seleccion multiple para la edicion masiva de precios.
+                 El estado de seleccion vive en el ViewModel por ProductId (persiste entre paginas);
+                 "Seleccionar todos los filtrados" usa el modo filtro del contrato (Filter + SelectAllFiltered). -->
             <Border Grid.Row="0"
+                    Background="#FFFFFF"
+                    BorderBrush="#E2E8F0"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="12,8"
+                    Margin="0,0,0,10"
+                    Effect="{StaticResource EnterpriseCardShadow}"
+                    Visibility="{Binding Data.UserSession.CanMutateCatalog, Source={StaticResource Proxy}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="CheckAll" Width="18" Height="18" Foreground="#5E35B1" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Edición masiva:" FontWeight="SemiBold" FontSize="12" Foreground="#475569" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="{Binding SelectionSummary}"
+                                   AutomationProperties.AutomationId="Inventory_SelectionSummary"
+                                   FontWeight="Bold"
+                                   FontSize="12"
+                                   Foreground="#1E293B"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="16,0">
+                        <Button Command="{Binding SelectAllFilteredCommand}"
+                                AutomationProperties.AutomationId="Inventory_SelectAllFilteredButton"
+                                Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                Height="32"
+                                Padding="12,0"
+                                Margin="0,0,8,0"
+                                ToolTip="Seleccionar todos los productos que cumplen los filtros vigentes (máx. 1000)">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="FilterVariant" Width="16" Height="16" Margin="0,0,6,0"/>
+                                <TextBlock Text="Seleccionar todos los filtrados" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding ClearSelectionCommand}"
+                                Style="{DynamicResource MaterialDesignFlatButton}"
+                                Height="32"
+                                Padding="10,0"
+                                ToolTip="Quitar la selección actual">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="Close" Width="16" Height="16" Margin="0,0,6,0"/>
+                                <TextBlock Text="Limpiar" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <Button Grid.Column="2"
+                            Command="{Binding OpenBulkPriceEditCommand}"
+                            AutomationProperties.AutomationId="Inventory_BulkPriceEditButton"
+                            IsEnabled="{Binding CanEditSelectedPrices}"
+                            Background="#5E35B1"
+                            BorderBrush="#5E35B1"
+                            Foreground="#FFFFFF"
+                            Height="32"
+                            Padding="14,0"
+                            materialDesign:ButtonAssist.CornerRadius="6"
+                            ToolTip="Editar precios, márgenes o costos de los productos seleccionados">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="CurrencyUsd" Width="16" Height="16" Margin="0,0,6,0" Foreground="#FFFFFF"/>
+                            <TextBlock Text="Editar precios" FontWeight="Bold" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="1"
                     Background="#FFFFFF"
                     BorderBrush="#E2E8F0"
                     BorderThickness="1"
@@ -329,6 +404,23 @@
                     </DataGrid.RowStyle>
 
                     <DataGrid.Columns>
+                        <!-- 0. Selección múltiple para la edición masiva (8.181-T2 S5): estado de UI puro,
+                             el checkbox no dispara el auto-save por fila ni recálculos de precio. -->
+                        <DataGridTemplateColumn Width="44"
+                                                Header="SEL."
+                                                HeaderStyle="{StaticResource CenterAlignedHeader}"
+                                                Visibility="{Binding Data.UserSession.CanMutateCatalog, Source={StaticResource Proxy}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              AutomationProperties.AutomationId="Inventory_SelectRowCheckBox"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              ToolTip="Seleccionar el producto para la edición masiva de precios"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
                         <!-- 1. Nombre del Producto (Absorbe todo el espacio elástico sobrante) -->
                         <DataGridTemplateColumn HeaderStyle="{StaticResource LeftAlignedHeader}" 
                                                 Width="*" 
@@ -809,7 +901,7 @@
             </Border>
 
             <!-- Barra de Paginación Avanzada Centrada (Diseño Enterprise Refinado) -->
-            <Border Grid.Row="1" 
+            <Border Grid.Row="2" 
                     Margin="0,10,0,0" 
                     Padding="8,4" 
                     Background="#FFFFFF" 
