@@ -198,14 +198,22 @@ public class BulkPriceFieldChangeDto
     // Bs.S canónico (tag de catálogo) antes/después; se informa solo en cambios del precio al detal.
     // 8.182-T1: con una regla VES activa sobre el canal al mayor (sin columna Bs.S propia en la
     // entidad) estos campos transportan el Bs.S equivalente informativo de ese canal.
+    // 8.183 (R1): en el detal con regla VES el valor informado es SIEMPRE el canónico almacenado
+    // (nunca el amigable): la proyección de efectivo viaja en CashFriendlyAfterBsS.
     public decimal? BeforeBsS { get; set; }
     public decimal? AfterBsS { get; set; }
 
     // 8.182-T1 (S5): valor matemático previo al redondeo y delta con signo (redondeado − matemático)
     // en la unidad de la regla del canal: USD para UsdPsychological; Bs.S para VesCashFriendly*.
-    // null cuando la regla del canal no alteró este cambio (ExactMath o campo no alcanzado).
+    // 8.183 (R1): para VES la traza describe la PROYECCIÓN en caliente (nunca persistida); null
+    // cuando la regla del canal no generó traza para este cambio (ExactMath o campo no alcanzado).
     public decimal? PreRoundingValue { get; set; }
     public decimal? RoundingDelta { get; set; }
+
+    // 8.183 (R1): proyección en caliente del precio Bs.S con la regla de efectivo del canal y la tasa
+    // del día (friendly = Round(usd × tasa, regla)); NUNCA se persiste — el PriceBsS almacenado es el
+    // canónico 8.104 (techo). null para reglas USD/ExactMath o sin tasa/valor convertible.
+    public decimal? CashFriendlyAfterBsS { get; set; }
 }
 
 public class BulkPricePreviewRowDto
@@ -223,9 +231,9 @@ public class BulkPricePreviewRowDto
     public bool IsError { get; set; }
 
     // 8.182-T1 (S5): margen efectivo (precio final − costo) / costo × 100 del canal, calculado sobre
-    // el precio FINAL; informado solo cuando el precio USD del canal cambió y el costo es > 0. Con
-    // una regla ≠ ExactMath que movió el precio, ese mismo valor se persiste en el margen del canal
-    // (consistencia matemática en la entidad Product).
+    // el precio FINAL; informado solo cuando el precio USD del canal cambió y el costo es > 0.
+    // 8.183 (R3): es SOLO informativo — el margen persistido es siempre el objetivo/operado (el
+    // redondeo jamás lo sobrescribe; el efectivo se deriva del precio final para mostrarlo).
     public decimal? EffectiveRetailMarginPct { get; set; }
     public decimal? EffectiveWholesaleMarginPct { get; set; }
 

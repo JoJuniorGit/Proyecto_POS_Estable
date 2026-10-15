@@ -90,6 +90,26 @@ public sealed class PricingRoundingPolicyService : IPricingRoundingPolicyService
         return previous > 0m ? previous : null;
     }
 
+    public RoundingResult? ProjectCashFriendlyBsS(
+        decimal usdAmount,
+        decimal exchangeRate,
+        RoundingRuleType rule,
+        decimal costUsd,
+        decimal? marginFloorPct,
+        bool enforceFloor)
+    {
+        EnsureKnownRule(rule);
+
+        // Sin importe/tasa convertibles o con una regla que no es de efectivo no hay proyección.
+        if (!IsCashFriendlyRule(rule) || usdAmount <= 0m || exchangeRate <= 0m)
+        {
+            return null;
+        }
+
+        // La guarda de piso compara margen sobre el precio FINAL: precio y costo viajan en Bs.S.
+        return Round(usdAmount * exchangeRate, rule, costUsd * exchangeRate, marginFloorPct, enforceFloor);
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Escaleras.
     // ---------------------------------------------------------------------------------------------
@@ -190,6 +210,12 @@ public sealed class PricingRoundingPolicyService : IPricingRoundingPolicyService
         cost > 0m
             ? PricingCalculator.RoundToDigital((price - cost) / cost * 100m)
             : null;
+
+    // 8.183 (R1): reglas de efectivo (Bs.S) — las únicas que proyectan un valor amigable en caliente.
+    private static bool IsCashFriendlyRule(RoundingRuleType rule) =>
+        rule is RoundingRuleType.VesCashFriendlyInteger
+            or RoundingRuleType.VesCashFriendlyStep5
+            or RoundingRuleType.VesCashFriendlyStep10;
 
     private static void EnsureKnownRule(RoundingRuleType rule)
     {

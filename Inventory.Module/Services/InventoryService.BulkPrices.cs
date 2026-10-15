@@ -18,6 +18,9 @@ namespace Inventory.Module.Services;
 // - Preview y apply comparten ComputeBulkPricePlanItem: mismo motor de cálculo (S4).
 // - Reuso de las MISMAS rutinas del update individual: ValidateAndCalculateProductPrices,
 //   PricingCalculator.RoundPriceUp / ToBsSCeiling (S2).
+// 8.183-T1 (R1/R3): el redondeo no muta datos persistidos — el margen persistido es SIEMPRE el
+// objetivo/operado y el Bs.S almacenado, el canónico 8.104; las reglas VES se exponen como
+// proyección en caliente (CashFriendlyAfterBsS del cambio), nunca como escritura.
 public partial class InventoryService
 {
     private const int MaxBulkPriceSelectionSize = 1000;
@@ -300,6 +303,7 @@ public partial class InventoryService
         bool wholesaleRoundingActive = request.WholesaleRoundingRule != RoundingRuleType.ExactMath;
         decimal? retailPreRounding = null;
         decimal? retailRoundingDelta = null;
+        decimal? retailCashFriendlyAfterBsS = null;
         decimal? wholesalePreRounding = null;
         decimal? wholesaleRoundingDelta = null;
         decimal? wholesaleBsSBefore = null;
@@ -308,7 +312,7 @@ public partial class InventoryService
         bool wholesaleUsdRoundingApplied = false;
 
         // Redondeo USD del canal al detal (UsdPsychological): la rama VES se aplica en la etapa del
-        // Bs.S canónico (más abajo), porque opera sobre la conversión y no sobre el USD.
+        // Bs.S (más abajo), porque opera sobre la conversión y no sobre el USD.
         if (retailRoundingActive && !IsVesCashFriendly(request.RetailRoundingRule))
         {
             decimal retailUsd = EffectiveBulkRetailUsd(scratch);
@@ -379,24 +383,11 @@ public partial class InventoryService
             }
         }
 
-        // Corrección de conformidad S2/S4 (8.182): cuando la regla movió el precio USD del canal (o
-        // la salvaguarda bajó el mayor), el margen del canal se recalcula como MARGEN EFECTIVO REAL
-        // — (precio final − costo) / costo × 100 — para mantener la consistencia matemática en la
-        // entidad Product (el mismo valor que la fila informa). Una regla sin efecto conserva el
-        // margen operado (comportamiento 8.181 intacto). Costo ≤ 0 no tiene margen definido: no se toca.
-        if (scratch.CostPriceUSD > 0m)
-        {
-            if (retailUsdRoundingApplied)
-            {
-                scratch.ProfitMarginRetail = CalculateEffectiveMarginPct(EffectiveBulkRetailUsd(scratch), scratch.CostPriceUSD);
-                scratch.ProfitPercentage = scratch.ProfitMarginRetail;
-            }
-
-            if (wholesaleUsdRoundingApplied && scratch.HasWholesale)
-            {
-                scratch.ProfitMarginWholesale = CalculateEffectiveMarginPct(scratch.PriceWholesaleUSD, scratch.CostPriceUSD);
-            }
-        }
+        // 8.183 (R3): el redondeo NUNCA pisa el margen persistido. El margen de la entidad es siempre
+        // el objetivo/operado (op del lote o del revisor); el efectivo se informa SOLO en la fila del
+        // preview (EffectiveRetailMarginPct/EffectiveWholesaleMarginPct, más abajo). Antes de 8.183
+        // este punto sobrescribía el margen con el efectivo inflado por el redondeo y la siguiente
+        // iteración lo heredaba: la raíz del Efecto Trinquete (inflación acumulativa).
 
         try
         {
@@ -424,25 +415,30 @@ public partial class InventoryService
             newPriceBsS = PricingCalculator.ToBsSCeiling(afterRetail, exchangeRate);
         }
 
-        // 8.182-T1 (S4): regla VES del canal al detal — redondea el Bs.S canónico del canal con la
-        // tasa del día (divergencia deliberada del techo estricto SOLO cuando se elige esta regla);
-        // el USD y el margen no cambian. Sin tasa configurada no hay conversión que redondear.
-        if (retailRoundingActive && IsVesCashFriendly(request.RetailRoundingRule) && exchangeRate > 0m && afterRetail > 0m)
+        // 8.183 (R1): la regla VES del canal al detal NO persiste nada — el Bs.S almacenado es
+        // SIEMPRE el canónico 8.104 calculado arriba (el USD y el margen no cambian). La regla se
+        // evalúa en caliente como proyección de efectivo con la tasa del día y solo se informa en
+        // CashFriendlyAfterBsS del cambio (nunca participa del estado ni de la persistencia).
+        if (retailRoundingActive && IsVesCashFriendly(request.RetailRoundingRule))
         {
-            decimal mathBsS = afterRetail * exchangeRate;
-            var retailVesRounding = RoundingPolicy.Round(
-                mathBsS,
+            var retailCashProjection = RoundingPolicy.ProjectCashFriendlyBsS(
+                afterRetail,
+                exchangeRate,
                 request.RetailRoundingRule,
-                scratch.CostPriceUSD * exchangeRate,
+                scratch.CostPriceUSD,
                 request.RetailMarginFloorPct,
                 request.EnforceMinimumMarginFloor);
-            newPriceBsS = retailVesRounding.RoundedValue;
-            retailPreRounding = retailVesRounding.MathematicalValue;
-            retailRoundingDelta = retailVesRounding.RoundingDelta;
+            if (retailCashProjection != null)
+            {
+                retailCashFriendlyAfterBsS = retailCashProjection.RoundedValue;
+                retailPreRounding = retailCashProjection.MathematicalValue;
+                retailRoundingDelta = retailCashProjection.RoundingDelta;
+            }
         }
 
-        // 8.182-T1 (S4): Bs.S informativo del canal al mayor con regla VES (la entidad no tiene
-        // columna Bs.S propia para ese canal); solo acompaña a un cambio real del precio USD.
+        // 8.182-T1 (S4) / 8.183 (R1): proyección de efectivo del canal al mayor con regla VES (la
+        // entidad no tiene columna Bs.S propia para ese canal); informativa y nunca persistida, solo
+        // acompaña a un cambio real del precio USD.
         if (wholesaleRoundingActive && IsVesCashFriendly(request.WholesaleRoundingRule)
             && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m
             && scratch.PriceWholesaleUSD != product.PriceWholesaleUSD && exchangeRate > 0m)
@@ -464,6 +460,7 @@ public partial class InventoryService
         row.Changes = BuildBulkPriceChanges(product, scratch, newPriceBsS, new BulkPriceRoundingInfo(
             retailPreRounding,
             retailRoundingDelta,
+            retailCashFriendlyAfterBsS,
             wholesalePreRounding,
             wholesaleRoundingDelta,
             wholesaleBsSBefore,
@@ -688,16 +685,19 @@ public partial class InventoryService
             decimal? afterBsS = null;
             decimal? preRounding = null;
             decimal? roundingDelta = null;
+            decimal? cashFriendlyAfterBsS = null;
 
             if (field == BulkPriceField.RetailPrice)
             {
-                // 8.182-T1: el Bs.S del detal es el tag canónico persistido; un cambio solo de Bs.S
-                // (regla VES) también es un cambio accionable de la fila.
+                // 8.183 (R1): el Bs.S del detal es SIEMPRE el canónico persistido; la proyección de
+                // efectivo (VES) viaja aparte en CashFriendlyAfterBsS y se informa aunque el estado
+                // persistido no cambie (nunca participa de HasChanges ni se escribe).
                 beforeBsS = before.PriceBsS;
                 afterBsS = newPriceBsS;
                 preRounding = rounding.RetailPreRoundingValue;
                 roundingDelta = rounding.RetailRoundingDelta;
-                if (beforeValue == afterValue && beforeBsS == afterBsS)
+                cashFriendlyAfterBsS = rounding.RetailCashFriendlyAfterBsS;
+                if (beforeValue == afterValue && beforeBsS == afterBsS && !cashFriendlyAfterBsS.HasValue)
                 {
                     continue;
                 }
@@ -710,10 +710,12 @@ public partial class InventoryService
                 }
 
                 // 8.182-T1: Bs.S informativo del mayor (solo con regla VES activa sobre el canal).
+                // 8.183 (R1): ese Bs.S equivalente ES la proyección de efectivo del canal al mayor.
                 beforeBsS = rounding.WholesaleBsSBefore;
                 afterBsS = rounding.WholesaleBsSAfter;
                 preRounding = rounding.WholesalePreRoundingValue;
                 roundingDelta = rounding.WholesaleRoundingDelta;
+                cashFriendlyAfterBsS = rounding.WholesaleBsSAfter;
             }
             else if (beforeValue == afterValue)
             {
@@ -728,7 +730,8 @@ public partial class InventoryService
                 BeforeBsS = beforeBsS,
                 AfterBsS = afterBsS,
                 PreRoundingValue = preRounding,
-                RoundingDelta = roundingDelta
+                RoundingDelta = roundingDelta,
+                CashFriendlyAfterBsS = cashFriendlyAfterBsS
             });
         }
 
@@ -742,9 +745,12 @@ public partial class InventoryService
         PricingCalculator.RoundToDigital((price - cost) / cost * 100m);
 
     // 8.182-T1: traza del redondeo por fila (unidades: USD para UsdPsychological; Bs.S para VES).
+    // 8.183 (R1): RetailCashFriendlyAfterBsS es la proyección de efectivo del detal (nunca
+    // persistida); en el canal al mayor la proyección viaja como Bs.S informativo (WholesaleBsSAfter).
     private sealed record BulkPriceRoundingInfo(
         decimal? RetailPreRoundingValue,
         decimal? RetailRoundingDelta,
+        decimal? RetailCashFriendlyAfterBsS,
         decimal? WholesalePreRoundingValue,
         decimal? WholesaleRoundingDelta,
         decimal? WholesaleBsSBefore,

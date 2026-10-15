@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
 using Core.DTOs;
+using Core.Helpers;
 using Core.Interfaces;
 using Inventory.Module.Data;
 using Inventory.Module.Services;
@@ -98,7 +99,7 @@ public class BulkPriceRoundingTests
     }
 
     [Fact]
-    public async Task BulkUpdatePricesAsync_UsdPsychological_PersistsRoundedPriceCanonicalBsSAndEffectiveMargin()
+    public async Task BulkUpdatePricesAsync_UsdPsychological_PersistsRoundedPriceCanonicalBsSAndKeepsOperatedMargin()
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();
         var service = CreateService(context);
@@ -118,15 +119,16 @@ public class BulkPriceRoundingTests
         var result = await service.BulkUpdatePricesAsync(request);
 
         Assert.Equal(1, result.UpdatedCount);
-        Assert.Equal(25.00m, Assert.Single(result.Rows).EffectiveRetailMarginPct);
+        Assert.Equal(25.00m, Assert.Single(result.Rows).EffectiveRetailMarginPct); // informativo (precio final)
 
         var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
         Assert.Equal(1.25m, persisted.PriceRetailUSD);
         Assert.Equal(1.25m, persisted.PriceUSD);
         Assert.Equal(125.00m, persisted.PriceBsS); // Bs.S canónico desde el USD final
-        // S2/S4: la regla movió el precio → el margen persistido es el EFECTIVO REAL (precio final vs costo).
-        Assert.Equal(25.00m, persisted.ProfitMarginRetail);
-        Assert.Equal(25.00m, persisted.ProfitPercentage);
+        // 8.183 (R3): la regla movió el precio pero NUNCA pisa el margen operado (20): el margen
+        // efectivo (25) queda solo en la fila informativa del preview.
+        Assert.Equal(20.00m, persisted.ProfitMarginRetail);
+        Assert.Equal(20.00m, persisted.ProfitPercentage);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -134,7 +136,7 @@ public class BulkPriceRoundingTests
     // ---------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task PreviewAndApplyBulkPriceUpdateAsync_VesCashFriendly_RoundsCanonicalBsSKeepingUsd()
+    public async Task PreviewAndApplyBulkPriceUpdateAsync_VesCashFriendly_ProjectsCashFriendlyBsSWithoutPersistingIt()
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();
         var service = CreateService(context);
@@ -153,14 +155,17 @@ public class BulkPriceRoundingTests
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
-        Assert.Equal(1, preview.UpdatedCount);
+        // 8.183 (R1): la regla VES ya no persiste NADA — sin cambio de USD no hay cambio accionable
+        // (la divergencia 8.182 mutaba el Bs.S de productos que la operación no tocó).
+        Assert.Equal(0, preview.UpdatedCount);
         var row = Assert.Single(preview.Rows);
-        Assert.Null(row.SkipReason);
+        Assert.Contains("sin cambios", row.SkipReason, StringComparison.OrdinalIgnoreCase);
         var change = ChangeOf(row, BulkPriceField.RetailPrice);
         Assert.Equal(0.81m, change.BeforeValue);
         Assert.Equal(0.81m, change.AfterValue); // el USD no cambia
-        Assert.Equal(682.20m, change.BeforeBsS);
-        Assert.Equal(680.00m, change.AfterBsS); // 0.81 x 842.21 = 682.1901 -> paso 5: 680
+        Assert.Equal(682.20m, change.BeforeBsS); // Bs.S canónico almacenado (8.104)
+        Assert.Equal(682.20m, change.AfterBsS);  // el canónico persistido no se muta
+        Assert.Equal(680.00m, change.CashFriendlyAfterBsS); // proyección: 0.81 x 842.21 -> paso 5: 680
         Assert.Equal(682.1901m, change.PreRoundingValue);
         Assert.Equal(-2.1901m, change.RoundingDelta);
         Assert.Null(row.EffectiveRetailMarginPct); // el precio USD no cambió
@@ -168,12 +173,15 @@ public class BulkPriceRoundingTests
         var untouched = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
         Assert.Equal(682.20m, untouched.PriceBsS);
 
-        await service.BulkUpdatePricesAsync(request);
+        var applied = await service.BulkUpdatePricesAsync(request);
+        Assert.Equal(0, applied.UpdatedCount);
+        var appliedChange = ChangeOf(RowOf(applied, created.Id), BulkPriceField.RetailPrice);
+        Assert.Equal(680.00m, appliedChange.CashFriendlyAfterBsS); // proyección estable, jamás persistida
         var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
         Assert.Equal(0.81m, persisted.PriceRetailUSD);
         Assert.Equal(0.81m, persisted.PriceUSD);
-        Assert.Equal(680.00m, persisted.PriceBsS);
-        // S4: VES solo toca el Bs.S → el margen operado queda intacto.
+        Assert.Equal(682.20m, persisted.PriceBsS); // canónico 8.104, no el amigable proyectado
+        // S4: VES solo proyecta → el margen operado queda intacto.
         Assert.Equal(35m, persisted.ProfitMarginRetail);
         Assert.Equal(35m, persisted.ProfitPercentage);
     }
@@ -261,10 +269,11 @@ public class BulkPriceRoundingTests
         Assert.Equal(1.25m, persisted.PriceRetailUSD);
         Assert.Equal(0.99m, persisted.PriceWholesaleUSD);
         Assert.Equal(125.00m, persisted.PriceBsS);
-        // S2/S4: ambos canales movidos por la política → margen efectivo real persistido por canal.
-        Assert.Equal(108.33m, persisted.ProfitMarginRetail);   // (1.25 - 0.60) / 0.60 x 100
-        Assert.Equal(65.00m, persisted.ProfitMarginWholesale); // (0.99 - 0.60) / 0.60 x 100
-        Assert.Equal(108.33m, persisted.ProfitPercentage);
+        // 8.183 (R3): la regla y la salvaguarda solo mueven precios — los márgenes persistidos son
+        // los operados originales (100 / 80); el efectivo (108.33 / 65.00) queda solo en la fila.
+        Assert.Equal(100.00m, persisted.ProfitMarginRetail);
+        Assert.Equal(80.00m, persisted.ProfitMarginWholesale);
+        Assert.Equal(100.00m, persisted.ProfitPercentage);
     }
 
     [Fact]
@@ -338,6 +347,8 @@ public class BulkPriceRoundingTests
         Assert.Equal(9.03m, change.AfterValue);
         Assert.Equal(800.00m, change.BeforeBsS);
         Assert.Equal(905.00m, change.AfterBsS); // 903 -> paso 5: 905
+        // 8.183 (R1): el Bs.S equivalente del mayor ES su proyección de efectivo (nunca persistida).
+        Assert.Equal(905.00m, change.CashFriendlyAfterBsS);
         Assert.Equal(903m, change.PreRoundingValue);
         Assert.Equal(2.00m, change.RoundingDelta);
         Assert.Equal(351.50m, row.EffectiveWholesaleMarginPct); // (9.03 - 2.00) / 2.00 x 100
@@ -402,8 +413,8 @@ public class BulkPriceRoundingTests
             Assert.Equal(previewRow.EffectiveRetailMarginPct, appliedRow.EffectiveRetailMarginPct);
             Assert.Equal(previewRow.EffectiveWholesaleMarginPct, appliedRow.EffectiveWholesaleMarginPct);
             Assert.Equal(
-                previewRow.Changes.Select(c => (c.Field, c.BeforeValue, c.AfterValue, c.BeforeBsS, c.AfterBsS, c.PreRoundingValue, c.RoundingDelta)),
-                appliedRow.Changes.Select(c => (c.Field, c.BeforeValue, c.AfterValue, c.BeforeBsS, c.AfterBsS, c.PreRoundingValue, c.RoundingDelta)));
+                previewRow.Changes.Select(c => (c.Field, c.BeforeValue, c.AfterValue, c.BeforeBsS, c.AfterBsS, c.PreRoundingValue, c.RoundingDelta, c.CashFriendlyAfterBsS)),
+                appliedRow.Changes.Select(c => (c.Field, c.BeforeValue, c.AfterValue, c.BeforeBsS, c.AfterBsS, c.PreRoundingValue, c.RoundingDelta, c.CashFriendlyAfterBsS)));
         }
 
         foreach (var row in preview.Rows.Where(r => r.SkipReason == null))
@@ -412,11 +423,10 @@ public class BulkPriceRoundingTests
             var retailChange = row.Changes.Single(c => c.Field == BulkPriceField.RetailPrice);
             Assert.Equal(retailChange.AfterValue, persisted.PriceRetailUSD);
             Assert.Equal(retailChange.AfterBsS, persisted.PriceBsS);
-            // 8.182 (conformidad L3): cuando la regla movió el precio, el margen persistido se reescribe
-            // al margen efectivo del canal; la fila del preview y la entidad deben coincidir.
-            Assert.Equal(row.EffectiveRetailMarginPct, persisted.CostPriceUSD > 0m
-                ? Math.Round((persisted.PriceRetailUSD - persisted.CostPriceUSD) / persisted.CostPriceUSD * 100m, 2, MidpointRounding.AwayFromZero)
-                : (decimal?)null);
+            // 8.183 (R3): el margen persistido es el operado (20 / 100), nunca el efectivo que la
+            // fila informa (25 / 108.33): el redondeo no contamina la fuente del margen.
+            var operatedRetailMargin = row.ProductId == simple.Id ? 20m : 100m;
+            Assert.Equal(operatedRetailMargin, persisted.ProfitMarginRetail);
         }
     }
 
@@ -457,7 +467,7 @@ public class BulkPriceRoundingTests
     }
 
     [Fact]
-    public async Task BulkUpdatePricesAsync_RoundingRuleMovedPrice_OverridesOperatedMarginWithEffectiveMargin()
+    public async Task BulkUpdatePricesAsync_RoundingRuleMovedPrice_KeepsOperatedMarginIntact()
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();
         var service = CreateService(context);
@@ -479,14 +489,14 @@ public class BulkPriceRoundingTests
         var result = await service.BulkUpdatePricesAsync(request);
 
         var row = Assert.Single(result.Rows);
-        Assert.Equal(25.00m, row.EffectiveRetailMarginPct);
-        Assert.Equal(25.00m, ChangeOf(row, BulkPriceField.RetailMargin).AfterValue);
+        Assert.Equal(25.00m, row.EffectiveRetailMarginPct); // informativo (precio final vs costo)
+        Assert.Equal(30.00m, ChangeOf(row, BulkPriceField.RetailMargin).AfterValue); // objetivo operado
 
-        // Consistencia matemática en la entidad: el margen efectivo real pisa al margen operado (30).
+        // 8.183 (R3): el margen operado (30) se persiste tal cual; el efectivo (25) NO lo pisa.
         var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
         Assert.Equal(1.25m, persisted.PriceRetailUSD);
-        Assert.Equal(25.00m, persisted.ProfitMarginRetail);
-        Assert.Equal(25.00m, persisted.ProfitPercentage);
+        Assert.Equal(30.00m, persisted.ProfitMarginRetail);
+        Assert.Equal(30.00m, persisted.ProfitPercentage);
     }
 
     [Fact]
@@ -516,6 +526,111 @@ public class BulkPriceRoundingTests
         var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
         Assert.Equal(1.50m, persisted.PriceRetailUSD);
         Assert.Equal(20m, persisted.ProfitMarginRetail); // margen operado intacto (regla sin efecto)
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // 8.183 (R2/R3): red de regresión del Efecto Trinquete — 10 ejecuciones consecutivas.
+    // ---------------------------------------------------------------------------------------------
+
+    // Por qué esta prueba es la red del trinquete: en 8.182 cada apply pisaba el margen persistido
+    // con el EFECTIVO inflado por el redondeo (y persistía el Bs.S amigable en las reglas VES).
+    // La siguiente iteración partía de ese margen contaminado y lo acumulaba. Con el ancla correcta
+    // (costo × (1 + margen objetivo) sin redondear), el margen persistido siempre objetivo y el
+    // Bs.S almacenado siempre canónico 8.104, diez ejecuciones del mismo apply deben producir
+    // exactamente el mismo precio USD, el mismo Bs.S, el margen objetivo intacto y una proyección
+    // de efectivo (VES) estable que NUNCA se persiste.
+    // Casos del trinquete: regla por canal, costo, precio sembrado (margen 20 de arranque), precio
+    // USD final esperado (margen objetivo 30 re-aplicado) y proyección de efectivo esperada (null
+    // para reglas USD: solo las reglas VES proyectan Bs.S amigable). El psicológico cubre los
+    // aterrizajes .99 / .95 / .50 (matemáticos con techo 0.98 / 1.89 / 0.59) y los VES, múltiplos
+    // de 1 / 5 / 10 Bs.S.
+    public static IEnumerable<object[]> RatchetRoundingCases()
+    {
+        yield return new object[] { RoundingRuleType.UsdPsychological, 0.75m, 0.90m, 0.99m, null! };
+        yield return new object[] { RoundingRuleType.UsdPsychological, 1.45m, 1.74m, 1.95m, null! };
+        yield return new object[] { RoundingRuleType.UsdPsychological, 0.45m, 0.54m, 0.50m, null! };
+        yield return new object[] { RoundingRuleType.VesCashFriendlyInteger, 0.75m, 0.90m, 0.98m, 825m };
+        yield return new object[] { RoundingRuleType.VesCashFriendlyStep5, 0.75m, 0.90m, 0.98m, 825m };
+        yield return new object[] { RoundingRuleType.VesCashFriendlyStep10, 0.75m, 0.90m, 0.98m, 830m };
+    }
+
+    [Theory]
+    [MemberData(nameof(RatchetRoundingCases))]
+    public async Task ApplyRounding_ExecutedTenConsecutiveTimes_ShouldRemainIdempotentAndNotInflatePrice(
+        RoundingRuleType rule,
+        decimal costUsd,
+        decimal seedPriceUsd,
+        decimal expectedRetailUsd,
+        decimal? expectedCashFriendlyBsS)
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        const decimal rate = 842.21m;
+        await SeedRateAsync(context, rate);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = $"Idempotencia {rule}",
+            SKU = $"IDEM-{rule}",
+            CostPriceUSD = costUsd,
+            ProfitMarginRetail = 20m,
+            PriceRetailUSD = seedPriceUsd
+        });
+
+        // El margen objetivo (30%) se re-aplica en cada iteración; el precio debe anclarse SIEMPRE en
+        // costo × (1 + 30/100) con techo y luego en la escalera de la regla del canal.
+        var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailMargin, BulkPriceMode.SetFixed, 30m));
+        request.RetailRoundingRule = rule;
+
+        var usdByIteration = new List<decimal>();
+        var bsSByIteration = new List<decimal>();
+        var projectionByIteration = new List<decimal?>();
+
+        for (var iteration = 1; iteration <= 10; iteration++)
+        {
+            var result = await service.BulkUpdatePricesAsync(request);
+            var row = RowOf(result, created.Id);
+
+            if (iteration == 1)
+            {
+                Assert.Equal(1, result.UpdatedCount);
+                Assert.Null(row.SkipReason);
+            }
+            else
+            {
+                // Desde la segunda ejecución el estado ya está en el objetivo: nada que persistir.
+                Assert.Equal(0, result.UpdatedCount);
+                Assert.Contains("sin cambios", row.SkipReason, StringComparison.OrdinalIgnoreCase);
+            }
+
+            var retailChange = row.Changes.SingleOrDefault(change => change.Field == BulkPriceField.RetailPrice);
+            if (iteration == 1 || expectedCashFriendlyBsS.HasValue)
+            {
+                // La proyección VES viaja como campo informativo del cambio aunque el estado persistido
+                // ya no cambie (nunca participa de HasChanges/UpdatedCount).
+                Assert.NotNull(retailChange);
+            }
+
+            projectionByIteration.Add(retailChange?.CashFriendlyAfterBsS);
+
+            var persisted = await context.Products.AsNoTracking().SingleAsync(product => product.Id == created.Id);
+            usdByIteration.Add(persisted.PriceRetailUSD);
+            bsSByIteration.Add(persisted.PriceBsS);
+        }
+
+        // R2: diez ejecuciones del mismo apply producen el MISMO precio USD (sin inflación acumulativa).
+        Assert.Equal(usdByIteration[0], usdByIteration[9]);
+        Assert.All(usdByIteration, usd => Assert.Equal(expectedRetailUsd, usd));
+
+        // R3: el margen persistido es SIEMPRE el objetivo/operado (30), jamás el efectivo del redondeo.
+        var finalProduct = await context.Products.AsNoTracking().SingleAsync(product => product.Id == created.Id);
+        Assert.Equal(30m, finalProduct.ProfitMarginRetail);
+        Assert.Equal(30m, finalProduct.ProfitPercentage);
+
+        // R1: el Bs.S almacenado es SIEMPRE el canónico 8.104 (ceil) y no diverge entre iteraciones.
+        Assert.All(bsSByIteration, bsS => Assert.Equal(PricingCalculator.ToBsSCeiling(expectedRetailUsd, rate), bsS));
+
+        // R1/R4: la proyección de efectivo (VES) permanece estable y NUNCA se persiste.
+        Assert.All(projectionByIteration, projection => Assert.Equal(expectedCashFriendlyBsS, projection));
     }
 
     // ---------------------------------------------------------------------------------------------

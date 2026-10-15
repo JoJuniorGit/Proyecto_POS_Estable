@@ -151,6 +151,58 @@ public class PricingRoundingPolicyTests
     }
 
     // ---------------------------------------------------------------------------------------------
+    // 8.183 (R1): proyección en caliente del Bs.S de efectivo (JAMÁS persistida).
+    // ---------------------------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(RoundingRuleType.VesCashFriendlyInteger, 1095)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep5, 1095)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep10, 1090)]
+    public void ProjectCashFriendlyBsS_ConvertsUsdWithDailyRateAndRoundsWithChannelRule(RoundingRuleType rule, decimal expected)
+    {
+        // 1.30 × 842.21 = 1094.873 → escalón más cercano en Bs.S (empate hacia el inferior).
+        var projection = Policy.ProjectCashFriendlyBsS(1.30m, 842.21m, rule, 1.00m, null, false);
+
+        Assert.NotNull(projection);
+        Assert.Equal(1094.873m, projection!.MathematicalValue);
+        Assert.Equal(expected, projection.RoundedValue);
+    }
+
+    [Theory]
+    [InlineData(RoundingRuleType.ExactMath)]
+    [InlineData(RoundingRuleType.UsdPsychological)]
+    public void ProjectCashFriendlyBsS_WithNonCashRule_ReturnsNull(RoundingRuleType rule)
+    {
+        Assert.Null(Policy.ProjectCashFriendlyBsS(1.30m, 842.21m, rule, 1m, null, false));
+    }
+
+    [Fact]
+    public void ProjectCashFriendlyBsS_WithoutRateOrConvertibleUsd_ReturnsNull()
+    {
+        Assert.Null(Policy.ProjectCashFriendlyBsS(0m, 842.21m, RoundingRuleType.VesCashFriendlyStep5, 1m, null, false));
+        Assert.Null(Policy.ProjectCashFriendlyBsS(1.30m, 0m, RoundingRuleType.VesCashFriendlyStep5, 1m, null, false));
+    }
+
+    [Fact]
+    public void ProjectCashFriendlyBsS_WithMarginFloor_ProjectsNextStepUp()
+    {
+        // Costo 1.00 → 842.21 Bs.S: el paso 10 de 1094.873 es 1090 (margen 29.42%) y viola el piso
+        // 30% → proyección 1100 (30.61%).
+        var projection = Policy.ProjectCashFriendlyBsS(1.30m, 842.21m, RoundingRuleType.VesCashFriendlyStep10, 1.00m, 30m, true);
+
+        Assert.NotNull(projection);
+        Assert.Equal(1100m, projection!.RoundedValue);
+        Assert.Equal(30.61m, projection.EffectiveMarginPct);
+    }
+
+    [Fact]
+    public void ProjectCashFriendlyBsS_UnknownRule_ThrowsArgumentOutOfRangeException()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => Policy.ProjectCashFriendlyBsS(1.30m, 842.21m, (RoundingRuleType)99, 1m, null, false));
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // Importes no positivos y reglas desconocidas.
     // ---------------------------------------------------------------------------------------------
 

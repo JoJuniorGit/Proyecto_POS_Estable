@@ -409,8 +409,9 @@ public partial class SupplierInvoiceService
         product.Cost = line.UnitCostUSD;
         product.CostPriceUSD = line.UnitCostUSD;
 
-        // 8.182-T3 (S7): precios finales de la línea (redondeo del confirm + salvaguarda Detal/Mayor)
-        // y márgenes efectivos cuando un canal se movió. Con ExactMath = flujo vigente byte a byte.
+        // 8.182-T3 (S7): precios finales de la línea (redondeo del confirm + salvaguarda Detal/Mayor).
+        // 8.183 (R3): los márgenes persistidos son SIEMPRE los del revisor/operados (verbatim); el
+        // redondeo solo mueve precios. Con ExactMath = flujo vigente byte a byte.
         var pricing = ResolveApprovedLinePricing(
             line.UnitCostUSD,
             retailMargin,
@@ -419,7 +420,7 @@ public partial class SupplierInvoiceService
             roundingRule);
         product.ProfitMarginRetail = pricing.RetailMargin;
         product.ProfitMarginWholesale = pricing.WholesaleMargin;
-        // Legacy: ProfitPercentage espeja el margen retail (efectivo si la regla lo movió).
+        // Legacy: ProfitPercentage espeja el margen retail del revisor (nunca el efectivo del redondeo).
         product.ProfitPercentage = pricing.RetailMargin;
         product.PriceRetailUSD = pricing.RetailPrice;
         product.PriceUSD = product.PriceRetailUSD;
@@ -458,17 +459,17 @@ public partial class SupplierInvoiceService
         }
     }
 
-    // 8.182-T3 (S7): margen efectivo digital ((precio − costo) / costo × 100) del canal movido por
-    // la regla de redondeo; mismo cálculo que el servicio puro y el motor bulk.
-    private static decimal CalculateEffectiveMarginPct(decimal price, decimal cost) =>
-        PricingCalculator.RoundToDigital((price - cost) / cost * 100m);
+    // 8.183 (R3): el margen efectivo del redondeo NUNCA se persiste ni se recalcula al confirmar:
+    // los márgenes de la entidad son los del revisor/operados (verbatim). La regla y la salvaguarda
+    // Detal/Mayor solo mueven PRECIOS.
 
     /// <summary>
-    /// 8.182-T3 (S7): resuelve los precios finales de una línea aprobada y —cuando la regla o la
-    /// salvaguarda movieron un canal— los márgenes efectivos del precio final. Los matemáticos usan
-    /// el techo vigente (RoundPriceUp, 8.104); con ExactMath el resultado es idéntico al flujo
-    /// actual. El piso de margen no aplica en facturas v1 (el margen del revisor manda):
-    /// enforceFloor = false.
+    /// 8.182-T3 (S7) / 8.183 (R3): resuelve los precios finales de una línea aprobada. Los
+    /// matemáticos usan el techo vigente (RoundPriceUp, 8.104); la regla de redondeo y la
+    /// salvaguarda Detal/Mayor solo mueven PRECIOS — los márgenes devueltos son verbatim los del
+    /// revisor (el margen efectivo del redondeo no se persiste: raíz del Efecto Trinquete corregida
+    /// en 8.183). Con ExactMath el resultado es idéntico al flujo actual. El piso de margen no
+    /// aplica en facturas v1 (el margen del revisor manda): enforceFloor = false.
     /// </summary>
     private static (decimal RetailPrice, decimal WholesalePrice, decimal RetailMargin, decimal WholesaleMargin) ResolveApprovedLinePricing(
         decimal unitCostUsd,
@@ -503,15 +504,9 @@ public partial class SupplierInvoiceService
             return (retailMath, wholesaleMath, retailMargin, wholesaleMargin);
         }
 
-        // Márgenes efectivos (mismo criterio que el motor bulk): el del canal que la regla —o la
-        // salvaguarda— movió. Costo ≤ 0 no define margen: se conserva el del revisor (no-op).
-        var effectiveRetailMargin = retailMoved && unitCostUsd > 0m
-            ? CalculateEffectiveMarginPct(retailRounding.RoundedValue, unitCostUsd)
-            : retailMargin;
-        var effectiveWholesaleMargin = (wholesaleMoved || guard.Lowered) && unitCostUsd > 0m
-            ? CalculateEffectiveMarginPct(guard.WholesalePrice, unitCostUsd)
-            : wholesaleMargin;
-        return (retailRounding.RoundedValue, guard.WholesalePrice, effectiveRetailMargin, effectiveWholesaleMargin);
+        // 8.183 (R3): los márgenes del revisor viajan verbatim; la regla —o la salvaguarda, que puede
+        // bajar el precio al mayor— solo afecta a los precios del canal.
+        return (retailRounding.RoundedValue, guard.WholesalePrice, retailMargin, wholesaleMargin);
     }
 
     /// <summary>

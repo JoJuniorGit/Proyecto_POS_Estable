@@ -741,10 +741,11 @@ public class SupplierInvoiceApplyTests
     }
 
     [Fact]
-    public async Task ConfirmAsync_WithPsychologicalRounding_RoundsChannelsAndPersistsEffectiveMargins()
+    public async Task ConfirmAsync_WithPsychologicalRounding_RoundsChannelsAndKeepsReviewerMargins()
     {
-        // S7: la regla mueve ambos canales a la escalera psicológica (15.00 → 14.99; 14.00 → 13.99)
-        // y los márgenes persistidos pasan a ser los EFECTIVOS del precio final.
+        // S7 / 8.183 (R3): la regla mueve ambos canales a la escalera psicológica (15.00 → 14.99;
+        // 14.00 → 13.99) y los márgenes persistidos siguen siendo los DEL REVISOR (50 / 40): el
+        // margen efectivo del redondeo no se persiste (raíz del Efecto Trinquete).
         using var context = TestDatabaseFactory.CreateInventoryDbContext();
         var service = CreateService(context);
         var product = CreateProduct("APPLY-RULE-PSY", 0m, 0m, 50m);
@@ -761,11 +762,10 @@ public class SupplierInvoiceApplyTests
         Assert.Equal(14.99m, savedProduct.PriceRetailUSD);
         Assert.Equal(13.99m, savedProduct.PriceWholesaleUSD);
         Assert.Equal(savedProduct.PriceRetailUSD, savedProduct.PriceUSD);
-        // (14.99 − 10) / 10 × 100 = 49.90; (13.99 − 10) / 10 × 100 = 39.90.
-        Assert.Equal(49.90m, savedProduct.ProfitMarginRetail);
-        Assert.Equal(39.90m, savedProduct.ProfitMarginWholesale);
-        // Legacy: ProfitPercentage espeja el margen retail efectivo.
-        Assert.Equal(49.90m, savedProduct.ProfitPercentage);
+        Assert.Equal(50m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(40m, savedProduct.ProfitMarginWholesale);
+        // Legacy: ProfitPercentage espeja el margen retail del revisor.
+        Assert.Equal(50m, savedProduct.ProfitPercentage);
         var savedLine = await context.SupplierInvoiceLines.SingleAsync(candidate => candidate.Id == line.Id);
         Assert.Equal(14.99m, savedLine.SuggestedRetailPriceUSD);
         Assert.Equal(13.99m, savedLine.SuggestedWholesalePriceUSD);
@@ -774,8 +774,8 @@ public class SupplierInvoiceApplyTests
     [Fact]
     public async Task ConfirmAsync_WithPsychologicalRounding_LowersWholesaleToPreviousStepOnCollision()
     {
-        // S7 salvaguarda: ambos canales redondean a 11.99; el Mayor baja al escalón .95 (11.95,
-        // > costo) y su margen efectivo se recalcula sobre el precio ajustado.
+        // S7 salvaguarda / 8.183 (R3): ambos canales redondean a 11.99; el Mayor baja al escalón .95
+        // (11.95, > costo) sin tocar los márgenes del revisor (20 / 20).
         using var context = TestDatabaseFactory.CreateInventoryDbContext();
         var service = CreateService(context);
         var product = CreateProduct("APPLY-RULE-SALVAGE", 0m, 0m, 20m);
@@ -791,16 +791,17 @@ public class SupplierInvoiceApplyTests
         var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
         Assert.Equal(11.99m, savedProduct.PriceRetailUSD);
         Assert.Equal(11.95m, savedProduct.PriceWholesaleUSD);
-        Assert.Equal(19.90m, savedProduct.ProfitMarginRetail);
-        Assert.Equal(19.50m, savedProduct.ProfitMarginWholesale);
-        Assert.Equal(19.90m, savedProduct.ProfitPercentage);
+        Assert.Equal(20m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(20m, savedProduct.ProfitMarginWholesale);
+        Assert.Equal(20m, savedProduct.ProfitPercentage);
     }
 
     [Fact]
-    public async Task ConfirmAsync_WithPsychologicalRounding_PersistsEffectiveMarginWhenSalvageLowersUnmovedWholesale()
+    public async Task ConfirmAsync_WithPsychologicalRounding_KeepsReviewerMarginsWhenSalvageLowersUnmovedWholesale()
     {
-        // S7: la salvaguarda puede mover el Mayor aunque la regla no lo haya movido (12.25 ya era un
-        // escalón); el margen efectivo del canal se recalcula igual sobre el precio final ajustado.
+        // S7 / 8.183 (R3): la salvaguarda puede mover el Mayor aunque la regla no lo haya movido
+        // (12.25 ya era un escalón); los precios se ajustan pero los márgenes del revisor (23 / 22.5)
+        // se conservan verbatim.
         using var context = TestDatabaseFactory.CreateInventoryDbContext();
         var service = CreateService(context);
         var product = CreateProduct("APPLY-RULE-SALVAGE-UNMOVED", 0m, 0m, 23m);
@@ -817,8 +818,9 @@ public class SupplierInvoiceApplyTests
         // Detal: 12.30 → 12.25 (movido). Mayor: 12.25 sin mover, pero colisiona → baja a 11.99.
         Assert.Equal(12.25m, savedProduct.PriceRetailUSD);
         Assert.Equal(11.99m, savedProduct.PriceWholesaleUSD);
-        Assert.Equal(22.50m, savedProduct.ProfitMarginRetail);
-        Assert.Equal(19.90m, savedProduct.ProfitMarginWholesale);
+        Assert.Equal(23m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(22.5m, savedProduct.ProfitMarginWholesale);
+        Assert.Equal(23m, savedProduct.ProfitPercentage);
     }
 
     [Fact]
@@ -863,11 +865,12 @@ public class SupplierInvoiceApplyTests
             RoundingRule: RoundingRuleType.UsdPsychological));
 
         var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
-        // 10×1.10 = 11.00 → 10.99 en ambos canales; margen efectivo 9.90.
+        // 10×1.10 = 11.00 → 10.99 en ambos canales; 8.183 (R3): los márgenes del catálogo (10 / 10)
+        // se conservan verbatim — el efectivo (9.90) no se persiste.
         Assert.Equal(10.99m, savedProduct.PriceRetailUSD);
         Assert.Equal(10.99m, savedProduct.PriceWholesaleUSD);
-        Assert.Equal(9.90m, savedProduct.ProfitMarginRetail);
-        Assert.Equal(9.90m, savedProduct.ProfitMarginWholesale);
+        Assert.Equal(10m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(10m, savedProduct.ProfitMarginWholesale);
     }
 
     [Fact]

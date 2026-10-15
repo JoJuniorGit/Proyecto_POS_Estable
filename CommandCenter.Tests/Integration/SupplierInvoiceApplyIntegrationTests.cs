@@ -431,10 +431,11 @@ public class SupplierInvoiceApplyIntegrationTests
     }
 
     [Fact]
-    public async Task ConfirmAsync_WithPsychologicalRounding_PersistsRoundedPricesAndEffectiveMargins()
+    public async Task ConfirmAsync_WithPsychologicalRounding_PersistsRoundedPricesAndReviewerMargins()
     {
-        // 8.182-T3 (S7): la regla de redondeo del confirm se persiste con la entidad (precios finales
-        // y márgenes efectivos), verificada en un contexto nuevo sin tracking del apply.
+        // 8.182-T3 (S7) / 8.183 (R3): la regla de redondeo del confirm persistida con la entidad son
+        // los PRECIOS finales; los márgenes persistidos son los del revisor (50 / 40) verbatim — el
+        // margen efectivo del redondeo no se escribe. Verificado en un contexto nuevo sin tracking.
         var (context, connection) = TestDatabaseFactory.CreateSqliteInventoryDbContext();
         await using var connectionScope = connection;
         await using var contextScope = context;
@@ -454,9 +455,9 @@ public class SupplierInvoiceApplyIntegrationTests
         Assert.Equal(14.99m, savedProduct.PriceRetailUSD);
         Assert.Equal(14.99m, savedProduct.PriceUSD);
         Assert.Equal(13.99m, savedProduct.PriceWholesaleUSD);
-        Assert.Equal(49.90m, savedProduct.ProfitMarginRetail);
-        Assert.Equal(39.90m, savedProduct.ProfitMarginWholesale);
-        Assert.Equal(49.90m, savedProduct.ProfitPercentage);
+        Assert.Equal(50m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(40m, savedProduct.ProfitMarginWholesale);
+        Assert.Equal(50m, savedProduct.ProfitPercentage);
         var savedLine = await verificationContext.SupplierInvoiceLines.AsNoTracking().SingleAsync(candidate => candidate.Id == line.Id);
         Assert.Equal(14.99m, savedLine.SuggestedRetailPriceUSD);
         Assert.Equal(13.99m, savedLine.SuggestedWholesalePriceUSD);

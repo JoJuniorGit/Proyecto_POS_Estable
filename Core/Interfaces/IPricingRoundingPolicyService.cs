@@ -24,6 +24,16 @@ public interface IPricingRoundingPolicyService
     /// (que operan en Bs.S) devuelven la resolución de centavo en USD.
     /// </summary>
     decimal? FindLowerStep(decimal amount, RoundingRuleType rule);
+
+    /// <summary>
+    /// 8.183 (R1): proyecta EN CALIENTE el Bs.S "de efectivo" de un precio USD con la regla VES del
+    /// canal y la tasa del día — Round(usd × tasa, regla, costo × tasa, piso, enforceFloor) —. NUNCA
+    /// se persiste: el Bs.S almacenado del catálogo es el canónico 8.104 (techo). Devuelve null sin
+    /// tasa, sin USD positivo o con una regla distinta de VesCashFriendly*; queda listo para el hook
+    /// de POS (activación por settings = residual v1) y la edición masiva lo usa para informar
+    /// CashFriendlyAfterBsS.
+    /// </summary>
+    RoundingResult? ProjectCashFriendlyBsS(decimal usdAmount, decimal exchangeRate, RoundingRuleType rule, decimal costUsd, decimal? marginFloorPct, bool enforceFloor);
 }
 
 /// <summary>
