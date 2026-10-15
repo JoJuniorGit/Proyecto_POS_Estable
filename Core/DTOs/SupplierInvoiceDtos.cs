@@ -89,7 +89,12 @@ public sealed record ConfirmSupplierInvoiceRequestDto(
     decimal? AppliedRate = null,
     // 8.176: moneda viva de la cabecera en revisión; null conserva la moneda del staging (contrato previo).
     // Si difiere del snapshot del draft, el confirm conmuta la moneda y renormaliza los costos aprobados.
-    string? Currency = null);
+    string? Currency = null,
+    // 8.182-T3 (S7): regla de redondeo comercial aplicada a los precios recalculados por el confirm
+    // (nivel factura, supuesto v1; per-línea = residual). ExactMath (default) conserva el flujo
+    // vigente intacto; UsdPsychological redondea ambos canales a la escalera .99/.95/.75/.50/.25.
+    // Las reglas VesCashFriendly* no se soportan en este flujo (operan sobre Bs.S) y se rechazan.
+    RoundingRuleType RoundingRule = RoundingRuleType.ExactMath);
 
 public sealed record ConfirmLineDto(
     int LineId,

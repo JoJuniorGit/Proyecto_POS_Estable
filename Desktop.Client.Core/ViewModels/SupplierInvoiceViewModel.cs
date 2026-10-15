@@ -97,6 +97,18 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         }
     }
 
+    // 8.182-T3 (S7): regla de redondeo de los precios recalculados por el confirm (nivel factura,
+    // supuesto v1). ExactMath (default) conserva el flujo vigente; el selector solo ofrece ExactMath
+    // y Psicológico USD porque el backend rechaza las reglas VES en este flujo (operan sobre Bs.S).
+    public IReadOnlyList<SupplierInvoiceRoundingRuleOption> RoundingRuleOptions { get; } = new[]
+    {
+        new SupplierInvoiceRoundingRuleOption(RoundingRuleType.ExactMath, "Sin redondeo (exacto)"),
+        new SupplierInvoiceRoundingRuleOption(RoundingRuleType.UsdPsychological, "Psicológico USD (.99/.95/.75/.50/.25)")
+    };
+
+    [ObservableProperty]
+    private RoundingRuleType _roundingRule = RoundingRuleType.ExactMath;
+
     public bool IsBsSCurrency => string.Equals(SelectedCurrency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
     public bool IsBsSInvoice => string.Equals(StagedInvoice?.Currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
 
@@ -201,6 +213,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     public bool ShowRateValidationHint => IsBsSCurrency && !HasValidAppliedRate;
     public bool IsCurrencyInputEnabled => CanMutateCatalog && !IsBusy;
     public bool IsRateInputEnabled => IsCurrencyInputEnabled && IsBsSCurrency;
+    public bool IsRoundingRuleInputEnabled => CanMutateCatalog && !IsBusy;
 
     public bool CanLoadInvoice => CanMutateCatalog && !IsBusy;
     public bool CanSelectFile => CanMutateCatalog && !IsBusy;
@@ -507,7 +520,8 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             var request = new ConfirmSupplierInvoiceRequestDto(
                 approvedLines.Select(line => line.ToConfirmLine()).ToArray(),
                 confirmAppliedRate,
-                SelectedCurrency);
+                SelectedCurrency,
+                RoundingRule);
             var result = await _invoiceService.ConfirmAsync(StagedInvoice.Id, request, cancellationToken);
             LoadStagedInvoice(result);
             ClearOcrReviewState();
@@ -739,6 +753,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanConfigureOcrScanner));
         OnPropertyChanged(nameof(IsCurrencyInputEnabled));
         OnPropertyChanged(nameof(IsRateInputEnabled));
+        OnPropertyChanged(nameof(IsRoundingRuleInputEnabled));
         LoadInvoiceCommand.NotifyCanExecuteChanged();
         SelectFileCommand.NotifyCanExecuteChanged();
         OpenRegisterSupplierCommand.NotifyCanExecuteChanged();
@@ -755,3 +770,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     private static string? NormalizeInput(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
+
+// 8.182-T3 (S7): opción del selector de regla de redondeo del confirm (label ES para la UI; el valor
+// viaja como entero en el DTO, convención de serialización del repo).
+public sealed record SupplierInvoiceRoundingRuleOption(RoundingRuleType Rule, string Label);

@@ -707,6 +707,230 @@ public class SupplierInvoiceApplyTests
         await AssertNoApplySideEffectsAsync(context, product, line);
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // 8.182-T3 (S7): regla de redondeo en la confirmación de facturas.
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ConfirmAsync_WithExactMathRoundingRule_KeepsCurrentPricesAndMargins()
+    {
+        // Regresión S7: ExactMath (explícito) es el flujo vigente: precios matemáticos con techo
+        // RoundPriceUp y márgenes del revisor intactos (sin margen efectivo reescrito).
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-RULE-EXACT", 0m, 0m, 50m);
+        product.HasWholesale = true;
+        product.ProfitMarginWholesale = 40m;
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 1m, 10m));
+        var line = Assert.Single(invoice.Lines);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(
+            new[] { new ConfirmLineDto(line.Id, true, 50m, 40m) },
+            RoundingRule: RoundingRuleType.ExactMath));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(15.00m, savedProduct.PriceRetailUSD);
+        Assert.Equal(14.00m, savedProduct.PriceWholesaleUSD);
+        Assert.Equal(savedProduct.PriceRetailUSD, savedProduct.PriceUSD);
+        Assert.Equal(50m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(40m, savedProduct.ProfitMarginWholesale);
+        Assert.Equal(50m, savedProduct.ProfitPercentage);
+        var savedLine = await context.SupplierInvoiceLines.SingleAsync(candidate => candidate.Id == line.Id);
+        Assert.Equal(15.00m, savedLine.SuggestedRetailPriceUSD);
+        Assert.Equal(14.00m, savedLine.SuggestedWholesalePriceUSD);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithPsychologicalRounding_RoundsChannelsAndPersistsEffectiveMargins()
+    {
+        // S7: la regla mueve ambos canales a la escalera psicológica (15.00 → 14.99; 14.00 → 13.99)
+        // y los márgenes persistidos pasan a ser los EFECTIVOS del precio final.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-RULE-PSY", 0m, 0m, 50m);
+        product.HasWholesale = true;
+        product.ProfitMarginWholesale = 40m;
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 1m, 10m));
+        var line = Assert.Single(invoice.Lines);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(
+            new[] { new ConfirmLineDto(line.Id, true, 50m, 40m) },
+            RoundingRule: RoundingRuleType.UsdPsychological));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(14.99m, savedProduct.PriceRetailUSD);
+        Assert.Equal(13.99m, savedProduct.PriceWholesaleUSD);
+        Assert.Equal(savedProduct.PriceRetailUSD, savedProduct.PriceUSD);
+        // (14.99 − 10) / 10 × 100 = 49.90; (13.99 − 10) / 10 × 100 = 39.90.
+        Assert.Equal(49.90m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(39.90m, savedProduct.ProfitMarginWholesale);
+        // Legacy: ProfitPercentage espeja el margen retail efectivo.
+        Assert.Equal(49.90m, savedProduct.ProfitPercentage);
+        var savedLine = await context.SupplierInvoiceLines.SingleAsync(candidate => candidate.Id == line.Id);
+        Assert.Equal(14.99m, savedLine.SuggestedRetailPriceUSD);
+        Assert.Equal(13.99m, savedLine.SuggestedWholesalePriceUSD);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithPsychologicalRounding_LowersWholesaleToPreviousStepOnCollision()
+    {
+        // S7 salvaguarda: ambos canales redondean a 11.99; el Mayor baja al escalón .95 (11.95,
+        // > costo) y su margen efectivo se recalcula sobre el precio ajustado.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-RULE-SALVAGE", 0m, 0m, 20m);
+        product.HasWholesale = true;
+        product.ProfitMarginWholesale = 20m;
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 1m, 10m));
+        var line = Assert.Single(invoice.Lines);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(
+            new[] { new ConfirmLineDto(line.Id, true, 20m, 20m) },
+            RoundingRule: RoundingRuleType.UsdPsychological));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(11.99m, savedProduct.PriceRetailUSD);
+        Assert.Equal(11.95m, savedProduct.PriceWholesaleUSD);
+        Assert.Equal(19.90m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(19.50m, savedProduct.ProfitMarginWholesale);
+        Assert.Equal(19.90m, savedProduct.ProfitPercentage);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithPsychologicalRounding_PersistsEffectiveMarginWhenSalvageLowersUnmovedWholesale()
+    {
+        // S7: la salvaguarda puede mover el Mayor aunque la regla no lo haya movido (12.25 ya era un
+        // escalón); el margen efectivo del canal se recalcula igual sobre el precio final ajustado.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-RULE-SALVAGE-UNMOVED", 0m, 0m, 23m);
+        product.HasWholesale = true;
+        product.ProfitMarginWholesale = 22.5m;
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 1m, 10m));
+        var line = Assert.Single(invoice.Lines);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(
+            new[] { new ConfirmLineDto(line.Id, true, 23m, 22.5m) },
+            RoundingRule: RoundingRuleType.UsdPsychological));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        // Detal: 12.30 → 12.25 (movido). Mayor: 12.25 sin mover, pero colisiona → baja a 11.99.
+        Assert.Equal(12.25m, savedProduct.PriceRetailUSD);
+        Assert.Equal(11.99m, savedProduct.PriceWholesaleUSD);
+        Assert.Equal(22.50m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(19.90m, savedProduct.ProfitMarginWholesale);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithPsychologicalRounding_DegradesToUnroundedPricesWhenGuardFallsBelowCost()
+    {
+        // S7 degradación: 15.10×1.01 = 15.251 → 15.26 matemático → 15.25 psicológico; el escalón
+        // inferior del Mayor (14.99) queda bajo el costo (15.10): la línea entera degrada a los
+        // matemáticos y los márgenes del revisor quedan intactos.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-RULE-DEGRADE", 0m, 0m, 1m);
+        product.HasWholesale = true;
+        product.ProfitMarginWholesale = 1m;
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 1m, 15.10m));
+        var line = Assert.Single(invoice.Lines);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(
+            new[] { new ConfirmLineDto(line.Id, true, 1m, 1m) },
+            RoundingRule: RoundingRuleType.UsdPsychological));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(15.26m, savedProduct.PriceRetailUSD);
+        Assert.Equal(15.26m, savedProduct.PriceWholesaleUSD);
+        Assert.Equal(1m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(1m, savedProduct.ProfitMarginWholesale);
+        Assert.Equal(1m, savedProduct.ProfitPercentage);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithPsychologicalRoundingOnRetailOnlyProduct_MirrorsRoundedPriceWithoutSalvage()
+    {
+        // Producto sin mayor habilitado: el precio al mayor es espejo del detal redondeado y la
+        // salvaguarda NO interviene (la igualdad es el invariante del espejo, no una colisión).
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-RULE-MIRROR", 0m, 0m, 10m);
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 1m, 10m));
+        var line = Assert.Single(invoice.Lines);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(
+            new[] { new ConfirmLineDto(line.Id, true, null, null) },
+            RoundingRule: RoundingRuleType.UsdPsychological));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        // 10×1.10 = 11.00 → 10.99 en ambos canales; margen efectivo 9.90.
+        Assert.Equal(10.99m, savedProduct.PriceRetailUSD);
+        Assert.Equal(10.99m, savedProduct.PriceWholesaleUSD);
+        Assert.Equal(9.90m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(9.90m, savedProduct.ProfitMarginWholesale);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithPsychologicalRoundingWithoutMovement_KeepsMarginsIntact()
+    {
+        // Regla sin efecto: 10×1.099 = 10.99 ya está en la escalera psicológica; el precio no se mueve
+        // y el margen del revisor queda intacto (sin reescritura de margen efectivo).
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-RULE-NO-MOVE", 0m, 0m, 9.9m);
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 1m, 10m));
+        var line = Assert.Single(invoice.Lines);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(
+            new[] { new ConfirmLineDto(line.Id, true, null, null) },
+            RoundingRule: RoundingRuleType.UsdPsychological));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(10.99m, savedProduct.PriceRetailUSD);
+        Assert.Equal(10.99m, savedProduct.PriceWholesaleUSD);
+        Assert.Equal(9.9m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(9.9m, savedProduct.ProfitMarginWholesale);
+        Assert.Equal(9.9m, savedProduct.ProfitPercentage);
+    }
+
+    [Theory]
+    [InlineData(RoundingRuleType.VesCashFriendlyInteger)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep5)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep10)]
+    public async Task ConfirmAsync_WithVesRoundingRule_RejectsRequestWithoutApplyingChanges(RoundingRuleType rule)
+    {
+        // S7 v1: las reglas VES (Bs.S) no se soportan en el confirm; se rechazan explícitamente en
+        // vez de ignorarlas en silencio.
+        var (context, product, line, invoice) = await ArrangeCorrectionTestAsync($"APPLY-VES-{rule}");
+        using var contextScope = context;
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(
+                new[] { new ConfirmLineDto(line.Id, true, null, null) },
+                RoundingRule: rule)));
+
+        Assert.Contains("not supported", exception.Message, StringComparison.Ordinal);
+        await AssertNoApplySideEffectsAsync(context, product, line);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithUnknownRoundingRule_RejectsRequestWithoutApplyingChanges()
+    {
+        var (context, product, line, invoice) = await ArrangeCorrectionTestAsync("APPLY-RULE-UNKNOWN");
+        using var contextScope = context;
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(
+                new[] { new ConfirmLineDto(line.Id, true, null, null) },
+                RoundingRule: (RoundingRuleType)99)));
+
+        await AssertNoApplySideEffectsAsync(context, product, line);
+    }
+
     private static async Task<(InventoryDbContext Context, Product Product, SupplierInvoiceLine Line, SupplierInvoice Invoice)> ArrangeCorrectionTestAsync(string sku)
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();

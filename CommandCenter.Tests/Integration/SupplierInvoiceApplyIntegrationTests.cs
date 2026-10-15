@@ -430,6 +430,38 @@ public class SupplierInvoiceApplyIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task ConfirmAsync_WithPsychologicalRounding_PersistsRoundedPricesAndEffectiveMargins()
+    {
+        // 8.182-T3 (S7): la regla de redondeo del confirm se persiste con la entidad (precios finales
+        // y márgenes efectivos), verificada en un contexto nuevo sin tracking del apply.
+        var (context, connection) = TestDatabaseFactory.CreateSqliteInventoryDbContext();
+        await using var connectionScope = connection;
+        await using var contextScope = context;
+        var product = CreateProduct("APPLY-ROUND-PSY-INT", 10m, 0m, 50m);
+        product.HasWholesale = true;
+        product.ProfitMarginWholesale = 40m;
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 1m, 10m));
+        var line = Assert.Single(invoice.Lines);
+        var service = CreateService(context);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(
+            new[] { new ConfirmLineDto(line.Id, true, 50m, 40m) },
+            RoundingRule: RoundingRuleType.UsdPsychological));
+
+        await using var verificationContext = CreateSqliteInventoryDbContext(connection);
+        var savedProduct = await verificationContext.Products.AsNoTracking().SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(14.99m, savedProduct.PriceRetailUSD);
+        Assert.Equal(14.99m, savedProduct.PriceUSD);
+        Assert.Equal(13.99m, savedProduct.PriceWholesaleUSD);
+        Assert.Equal(49.90m, savedProduct.ProfitMarginRetail);
+        Assert.Equal(39.90m, savedProduct.ProfitMarginWholesale);
+        Assert.Equal(49.90m, savedProduct.ProfitPercentage);
+        var savedLine = await verificationContext.SupplierInvoiceLines.AsNoTracking().SingleAsync(candidate => candidate.Id == line.Id);
+        Assert.Equal(14.99m, savedLine.SuggestedRetailPriceUSD);
+        Assert.Equal(13.99m, savedLine.SuggestedWholesalePriceUSD);
+    }
+
     private static SupplierInvoiceService CreateService(
         InventoryDbContext context,
         ICurrentUserService? currentUser = null)
