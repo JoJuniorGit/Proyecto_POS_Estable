@@ -39,8 +39,9 @@ namespace Desktop.Client.Views
         protected override void OnClosing(CancelEventArgs e)
         {
             // 8.181-T2 (fix verificación): bloquear el cierre por chrome (X) con una aplicación en
-            // vuelo; el cierre exitoso se emite desde el VM con IsBusy ya en false.
-            if (ViewModel.IsBusy)
+            // vuelo; el cierre exitoso se emite desde el VM con IsBusy ya en false. Null-safe: si el
+            // ctor falló antes de asignar ViewModel (p.ej. XAML inválido), el cierre no debe crashear.
+            if (ViewModel?.IsBusy == true)
             {
                 e.Cancel = true;
             }

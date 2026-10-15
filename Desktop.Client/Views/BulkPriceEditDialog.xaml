@@ -282,7 +282,6 @@
                           GridLinesVisibility="Horizontal"
                           HorizontalGridLinesBrush="#E2E8F0"
                           ColumnHeaderHeight="36"
-                          RowHeight="Auto"
                           MinRowHeight="34"
                           BorderThickness="0"
                           Background="#FFFFFF"
