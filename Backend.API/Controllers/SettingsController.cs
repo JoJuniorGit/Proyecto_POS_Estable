@@ -1,3 +1,4 @@
+using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -173,6 +174,68 @@ public class SettingsController : ControllerBase
 
         await _settingsService.SetSettingAsync(Core.Constants.SettingKeys.AllowNegativeStock, request.Allowed.ToString());
         return Ok(new AllowNegativeStockResponseDto { Allowed = request.Allowed });
+    }
+
+    // 8.184-T1 (S1): políticas globales de precios y redondeo. GET resuelve defaults si la clave
+    // falta o es ilegible (ExactMath / ExactMath / protección de margen ACTIVADA); PUT valida la
+    // whitelist de enums definidos y persiste por NOMBRE. SIN SignalR v1 (supuesto): la lectura
+    // ocurre al abrir cada superficie (molde allow-negative-stock).
+    [HttpGet("pricing-policies")]
+    public async Task<ActionResult> GetPricingPoliciesAsync(CancellationToken cancellationToken = default)
+    {
+        var usdRule = await GetStoredRoundingRuleAsync(Core.Constants.SettingKeys.Pricing.DefaultUsdRoundingRule, RoundingRuleType.ExactMath);
+        var cashRule = await GetStoredRoundingRuleAsync(Core.Constants.SettingKeys.Pricing.DefaultCashBsRoundingRule, RoundingRuleType.ExactMath);
+
+        var floorValue = await _settingsService.GetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultEnforceMinimumMarginFloor);
+        var enforceFloor = !bool.TryParse(floorValue, out var parsedFloor) || parsedFloor;
+
+        return Ok(new PricingPoliciesDto
+        {
+            UsdRoundingRule = usdRule,
+            CashBsRoundingRule = cashRule,
+            EnforceMinimumMarginFloor = enforceFloor
+        });
+    }
+
+    [HttpPut("pricing-policies")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> SetPricingPoliciesAsync([FromBody] PricingPoliciesDto request, CancellationToken cancellationToken = default)
+    {
+        if (!_currentUserService.CanMutateSettings)
+        {
+            return this.ApiForbidden("Su rol no tiene permisos para actualizar las políticas de precios.");
+        }
+
+        // Whitelist estricta: solo reglas definidas del contrato de redondeo (S1).
+        if (request is null ||
+            !Enum.IsDefined(request.UsdRoundingRule) ||
+            !Enum.IsDefined(request.CashBsRoundingRule))
+        {
+            return this.ApiBadRequest("Las reglas de redondeo deben ser valores válidos del contrato de políticas de precios.");
+        }
+
+        await _settingsService.SetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultUsdRoundingRule, request.UsdRoundingRule.ToString());
+        await _settingsService.SetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultCashBsRoundingRule, request.CashBsRoundingRule.ToString());
+        await _settingsService.SetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultEnforceMinimumMarginFloor, request.EnforceMinimumMarginFloor.ToString());
+
+        return Ok(new PricingPoliciesDto
+        {
+            UsdRoundingRule = request.UsdRoundingRule,
+            CashBsRoundingRule = request.CashBsRoundingRule,
+            EnforceMinimumMarginFloor = request.EnforceMinimumMarginFloor
+        });
+    }
+
+    /// <summary>
+    /// 8.184-T1 (S1): lee una regla de redondeo almacenada por NOMBRE de enum; cualquier valor
+    /// ausente, ilegible o fuera del contrato cae al default indicado.
+    /// </summary>
+    private async Task<RoundingRuleType> GetStoredRoundingRuleAsync(string key, RoundingRuleType fallback)
+    {
+        var stored = await _settingsService.GetSettingAsync(key);
+        return Enum.TryParse<RoundingRuleType>(stored, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+            ? parsed
+            : fallback;
     }
 
     // 8.177-T2 (S3): razón social usada en el encabezado legal de las exportaciones del Kardex.
