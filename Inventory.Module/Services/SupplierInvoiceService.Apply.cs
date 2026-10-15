@@ -22,7 +22,7 @@ public partial class SupplierInvoiceService
     // bulk; instancia static readonly, drop-in para inyección por DI fuera de esta superficie).
     private static readonly IPricingRoundingPolicyService RoundingPolicy = new PricingRoundingPolicyService();
 
-    public Task<SupplierInvoiceDetailDto> ConfirmAsync(
+    public async Task<SupplierInvoiceDetailDto> ConfirmAsync(
         int invoiceId,
         ConfirmSupplierInvoiceRequestDto request,
         CancellationToken cancellationToken = default)
@@ -62,16 +62,41 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("The rounding rule is not recognized.", nameof(request));
         }
 
-        if (request.RoundingRule is RoundingRuleType.VesCashFriendlyInteger
-            or RoundingRuleType.VesCashFriendlyStep5
-            or RoundingRuleType.VesCashFriendlyStep10)
+        if (IsVesCashFriendlyRule(request.RoundingRule))
         {
             throw new ArgumentException(
                 "VesCashFriendly rounding rules are not supported when confirming supplier invoices (v1); use ExactMath or UsdPsychological.",
                 nameof(request));
         }
 
-        return _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        // 8.184-T4 (S7): la regla efectiva de cada línea aprobada es line.RoundingRule ?? request.RoundingRule,
+        // así que una regla VES persistida en la línea (elegida al resolverla contra el catálogo) también se
+        // rechaza con el mismo contrato, ANTES de abrir la transacción (sin efectos). Se validan solo las
+        // líneas aprobadas del request: las no aprobadas no participan del apply.
+        var approvedLineIds = request.Lines
+            .Where(line => line.IsApproved)
+            .Select(line => line.LineId)
+            .ToList();
+        if (approvedLineIds.Count > 0)
+        {
+            var storedLineRules = await _context.SupplierInvoiceLines
+                .AsNoTracking()
+                .Where(line => line.SupplierInvoiceId == invoiceId
+                    && approvedLineIds.Contains(line.Id)
+                    && line.RoundingRule != null)
+                .Select(line => new { line.Id, Rule = line.RoundingRule!.Value })
+                .ToListAsync(cancellationToken);
+
+            var offendingLine = storedLineRules.FirstOrDefault(line => IsVesCashFriendlyRule(line.Rule));
+            if (offendingLine is not null)
+            {
+                throw new ArgumentException(
+                    $"VesCashFriendly rounding rules are not supported when confirming supplier invoices (v1); line {offendingLine.Id} has a stored VES rule. Use ExactMath or UsdPsychological.",
+                    nameof(request));
+            }
+        }
+
+        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             for (var attempt = 0; attempt < MaxConcurrencyAttempts; attempt++)
             {
@@ -244,7 +269,9 @@ public partial class SupplierInvoiceService
                             throw new KeyNotFoundException($"Product {productId} was not found or has been deleted.");
                         }
 
-                        ApplyApprovedLine(invoice.Id, line, product, confirmation, request.RoundingRule);
+                        // 8.184-T4 (S7): precedencia línea ?? factura — la regla persistida al
+                        // resolver la línea contra el catálogo pisa la regla elegida en el confirm.
+                        ApplyApprovedLine(invoice.Id, line, product, confirmation, line.RoundingRule ?? request.RoundingRule);
                         // 8.166: aprende/actualiza el factor caja→unidad por proveedor+producto.
                         UpdateRememberedFactor(factorsByProductId, invoice.SupplierId, productId, line.ConversionFactor);
                         if (!string.IsNullOrWhiteSpace(line.SupplierCode))
@@ -380,6 +407,12 @@ public partial class SupplierInvoiceService
         });
     }
 
+    /// <summary>8.184-T4 (S7): las reglas VES operan sobre el Bs.S y no están soportadas en el confirm (v1).</summary>
+    private static bool IsVesCashFriendlyRule(RoundingRuleType rule) =>
+        rule is RoundingRuleType.VesCashFriendlyInteger
+            or RoundingRuleType.VesCashFriendlyStep5
+            or RoundingRuleType.VesCashFriendlyStep10;
+
     private void ApplyApprovedLine(
         int invoiceId,
         SupplierInvoiceLine line,
@@ -464,12 +497,13 @@ public partial class SupplierInvoiceService
     // Detal/Mayor solo mueven PRECIOS.
 
     /// <summary>
-    /// 8.182-T3 (S7) / 8.183 (R3): resuelve los precios finales de una línea aprobada. Los
-    /// matemáticos usan el techo vigente (RoundPriceUp, 8.104); la regla de redondeo y la
-    /// salvaguarda Detal/Mayor solo mueven PRECIOS — los márgenes devueltos son verbatim los del
-    /// revisor (el margen efectivo del redondeo no se persiste: raíz del Efecto Trinquete corregida
-    /// en 8.183). Con ExactMath el resultado es idéntico al flujo actual. El piso de margen no
-    /// aplica en facturas v1 (el margen del revisor manda): enforceFloor = false.
+    /// 8.182-T3 (S7) / 8.183 (R3) / 8.184-T4 (S7): resuelve los precios finales de una línea
+    /// aprobada a partir de la regla EFECTIVA (línea ?? factura — la precedencia la resuelve el
+    /// llamador). Los matemáticos usan el techo vigente (RoundPriceUp, 8.104); la regla de redondeo
+    /// y la salvaguarda Detal/Mayor solo mueven PRECIOS — los márgenes devueltos son verbatim los
+    /// del revisor (el margen efectivo del redondeo no se persiste: raíz del Efecto Trinquete
+    /// corregida en 8.183). Con ExactMath el resultado es idéntico al flujo actual. El piso de
+    /// margen no aplica en facturas v1 (el margen del revisor manda): enforceFloor = false.
     /// </summary>
     private static (decimal RetailPrice, decimal WholesalePrice, decimal RetailMargin, decimal WholesaleMargin) ResolveApprovedLinePricing(
         decimal unitCostUsd,

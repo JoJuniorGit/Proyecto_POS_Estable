@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Core.Common;
 using Core.DTOs;
 using Core.Interfaces;
+using Core.Logging;
 using Desktop.Client.Services;
 using System;
 using System.Collections.ObjectModel;
@@ -30,10 +31,20 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     private readonly IDialogService _dialogService;
     private readonly IFilePickerDialog _filePicker;
     private readonly IExchangeRateService _exchangeRateService;
+    private readonly ISettingsService? _settingsService;
     private int _disposed;
     private bool _isCreatingProduct;
     private bool _isUpdatingBulkApproval;
     private bool _isPropagatingLinkedGroup;
+
+    /// <summary>
+    /// 8.184-T4 (S7): política USD global vigente; inicializa el combo del confirm y el selector
+    /// del modal de resolución (el mapeo VES → ExactMath se aplica al usar, nunca al leer).
+    /// </summary>
+    private RoundingRuleType _globalUsdRoundingRule = RoundingRuleType.ExactMath;
+
+    /// <summary>Tarea de la lectura de políticas globales al abrir la superficie (awaitable en pruebas).</summary>
+    public Task PricingPoliciesLoadTask { get; private set; } = Task.CompletedTask;
 
     public UserSession UserSession { get; }
     public bool CanMutateCatalog => UserSession.CanMutateCatalog;
@@ -233,7 +244,8 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         UserSession userSession,
         IDialogService dialogService,
         IFilePickerDialog filePicker,
-        IExchangeRateService exchangeRateService)
+        IExchangeRateService exchangeRateService,
+        ISettingsService? settingsService = null)
     {
         ArgumentNullException.ThrowIfNull(invoiceService);
         ArgumentNullException.ThrowIfNull(userSession);
@@ -248,7 +260,48 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         _exchangeRateService = exchangeRateService;
         UserSession.PropertyChanged += OnUserSessionPropertyChanged;
         Lines.CollectionChanged += (_, _) => NotifyMetricsChanged();
+
+        // 8.184-T4 (S7): lectura única al abrir la superficie (molde allow-negative-stock, sin
+        // SignalR v1); el combo del confirm y el selector del modal de resolución arrancan desde
+        // la política global vigente. El fallo es silencioso: rigen los defaults.
+        _settingsService = settingsService;
+        PricingPoliciesLoadTask = LoadPricingPoliciesAsync();
+        PricingPoliciesLoadTask.SafeFireAndForget("SupplierInvoiceViewModel.LoadPricingPolicies");
     }
+
+    /// <summary>
+    /// 8.184-T4 (S7): lee la política global de redondeo y la refleja en el combo de confirmación
+    /// (opciones ExactMath/Psicológico; una regla VES se mapea a ExactMath). El selector del modal
+    /// de resolución consume la misma regla cruda vía <c>_globalUsdRoundingRule</c>.
+    /// </summary>
+    public async Task LoadPricingPoliciesAsync()
+    {
+        if (_settingsService is null)
+        {
+            return;
+        }
+
+        PricingPoliciesDto policies;
+        try
+        {
+            policies = await _settingsService.GetPricingPoliciesAsync() ?? new PricingPoliciesDto();
+        }
+        catch (Exception ex)
+        {
+            // Fallback silencioso: rigen los defaults (ExactMath / sin piso).
+            ClientStateLogger.LogError(
+                $"Fallo al cargar las políticas globales de precios y redondeo: {ex.Message}",
+                nameof(SupplierInvoiceViewModel));
+            return;
+        }
+
+        _globalUsdRoundingRule = policies.UsdRoundingRule;
+        RoundingRule = MapGlobalUsdRoundingRule(policies.UsdRoundingRule);
+    }
+
+    /// <summary>8.184-T4 (S7): el canal USD del confirm solo admite ExactMath o Psicológico; el resto (VES) cae a ExactMath.</summary>
+    private static RoundingRuleType MapGlobalUsdRoundingRule(RoundingRuleType rule) =>
+        rule == RoundingRuleType.UsdPsychological ? RoundingRuleType.UsdPsychological : RoundingRuleType.ExactMath;
 
     partial void OnIsBusyChanged(bool value)
     {

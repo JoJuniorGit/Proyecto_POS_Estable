@@ -104,7 +104,8 @@ public partial class SupplierInvoiceViewModel
                 anchor,
                 IsBsSInvoice,
                 (query, token) => _invoiceService.SearchCatalogProductsAsync(query, token),
-                linkSeeds: linkSeeds);
+                linkSeeds: linkSeeds,
+                globalUsdRoundingRule: _globalUsdRoundingRule);
             if (_dialogService.ShowCreateInvoiceProductDialog(dialogViewModel) != true)
             {
                 return;
@@ -134,19 +135,23 @@ public partial class SupplierInvoiceViewModel
                 {
                     // 8.175-S5: el re-vínculo nunca re-apunta la descripción (el nombre previo
                     // pertenece al vínculo anterior); solo viajan márgenes y filas reemplazadas.
+                    // 8.184-T4 (S7): la regla elegida en el modal viaja en el request (null = hereda
+                    // la regla de la factura al confirmar) y reemplaza la regla previa de la línea.
                     var linkRequest = selectedProductIds.Length > 1
                         ? new LinkInvoiceProductRequestDto(
                             selectedProducts[0].Id,
                             null,
                             selectedProductIds,
                             marginOverrides,
-                            replacedLineIds.Length > 0 ? replacedLineIds : null)
+                            replacedLineIds.Length > 0 ? replacedLineIds : null,
+                            dialogViewModel.SelectedRoundingRule)
                         : new LinkInvoiceProductRequestDto(
                             selectedProducts[0].Id,
                             null,
                             null,
                             marginOverrides,
-                            replacedLineIds.Length > 0 ? replacedLineIds : null);
+                            replacedLineIds.Length > 0 ? replacedLineIds : null,
+                            dialogViewModel.SelectedRoundingRule);
                     var updatedInvoice = await _invoiceService.LinkProductToLineAsync(
                         invoiceId,
                         anchor.LineId,

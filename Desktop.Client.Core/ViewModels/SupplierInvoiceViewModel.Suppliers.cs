@@ -215,7 +215,8 @@ public partial class SupplierInvoiceViewModel
             var dialogViewModel = new CreateInvoiceProductDialogViewModel(
                 line,
                 IsBsSInvoice,
-                (query, token) => _invoiceService.SearchCatalogProductsAsync(query, token));
+                (query, token) => _invoiceService.SearchCatalogProductsAsync(query, token),
+                globalUsdRoundingRule: _globalUsdRoundingRule);
             if (_dialogService.ShowCreateInvoiceProductDialog(dialogViewModel) != true)
             {
                 return;
@@ -241,17 +242,21 @@ public partial class SupplierInvoiceViewModel
                 try
                 {
                     var previousLinesById = Lines.ToDictionary(item => item.LineId);
+                    // 8.184-T4 (S7): la regla elegida en el modal viaja en el request (null = hereda
+                    // la regla de la factura al confirmar) y se persiste en la columna de la línea.
                     var linkRequest = selectedProductIds.Length > 1
                         ? new LinkInvoiceProductRequestDto(
                             primarySelectedProduct.Id,
                             invoiceDescription,
                             selectedProductIds,
-                            marginOverrides)
+                            marginOverrides,
+                            RoundingRule: dialogViewModel.SelectedRoundingRule)
                         : new LinkInvoiceProductRequestDto(
                             primarySelectedProduct.Id,
                             invoiceDescription,
                             null,
-                            marginOverrides);
+                            marginOverrides,
+                            RoundingRule: dialogViewModel.SelectedRoundingRule);
                     var updatedInvoice = await _invoiceService.LinkProductToLineAsync(
                         StagedInvoice.Id,
                         line.LineId,

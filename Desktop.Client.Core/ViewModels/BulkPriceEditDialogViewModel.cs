@@ -146,7 +146,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         ? $"Tasa BCV aplicada: {CurrencyDisplay.Number(ExchangeRate)}"
         : "Sin tasa configurada: se conserva el Bs.S previo de cada producto.";
 
-    public BulkPriceEditDialogViewModel(IProductService productService, IDialogService? dialogService, BulkPriceSelection selection)
+    public BulkPriceEditDialogViewModel(IProductService productService, IDialogService? dialogService, BulkPriceSelection selection, PricingPoliciesDto? pricingPolicies = null)
     {
         ArgumentNullException.ThrowIfNull(productService);
         ArgumentNullException.ThrowIfNull(selection);
@@ -164,6 +164,16 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         foreach (var row in Operations)
         {
             row.PropertyChanged += OnOperationRowPropertyChanged;
+        }
+
+        // 8.184-T4 (S6): la política global pre-inicializa las reglas de lote y el toggle de piso
+        // (el usuario puede cambiarlos igual). Sin políticas rigen los defaults ExactMath/sin piso
+        // = comportamiento 8.181 intacto.
+        if (pricingPolicies is not null)
+        {
+            RetailRoundingRule = pricingPolicies.UsdRoundingRule;
+            WholesaleRoundingRule = pricingPolicies.UsdRoundingRule;
+            EnforceMinimumMarginFloor = pricingPolicies.EnforceMinimumMarginFloor;
         }
     }
 

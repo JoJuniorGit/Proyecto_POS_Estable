@@ -24,6 +24,12 @@ public enum InvoiceProductResolutionMode
 public sealed record InvoiceProductLinkSeed(ProductDto Product, decimal? MarginRetail = null, decimal? MarginWholesale = null);
 
 /// <summary>
+/// 8.184-T4 (S7): opción del selector de regla de redondeo a nivel resolución. Rule null =
+/// "Heredar de la factura" (la regla efectiva se resuelve al confirmar: línea ?? factura).
+/// </summary>
+public sealed record InvoiceProductRoundingOption(RoundingRuleType? Rule, string Label);
+
+/// <summary>
 /// Modal híbrido de resolución de productos desde una línea de factura sin coincidencia:
 /// Modo A — Vincular con Producto Existente (buscador predictivo por Nombre, SKU o Código de Barras local + aprendizaje de alias).
 /// Modo B — Crear Producto Nuevo (captura obligatoria del código de barras universal EAN/UPC).
@@ -123,6 +129,25 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
 
     public bool HasMultipleSelectedProducts => SelectedProducts.Count > 1;
 
+    /// <summary>
+    /// 8.184-T4 (S7): regla de redondeo de la línea a resolver. "Heredar de la factura" (Rule null)
+    /// es una opción disponible pero NO el default: el selector arranca desde la política USD
+    /// global vigente (una regla VES —que aplica al Bs.S— se mapea a "Sin redondeo").
+    /// </summary>
+    public IReadOnlyList<InvoiceProductRoundingOption> RoundingOptions { get; } = new[]
+    {
+        new InvoiceProductRoundingOption(null, "Heredar de la factura"),
+        new InvoiceProductRoundingOption(RoundingRuleType.ExactMath, "Sin redondeo"),
+        new InvoiceProductRoundingOption(RoundingRuleType.UsdPsychological, "Psicológico USD (.99/.95/.75/.50/.25)")
+    };
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedRoundingRule))]
+    private InvoiceProductRoundingOption? _selectedRoundingRuleOption;
+
+    /// <summary>Regla elegida para la línea resuelta; null = hereda la regla de la factura al confirmar.</summary>
+    public RoundingRuleType? SelectedRoundingRule => SelectedRoundingRuleOption?.Rule;
+
     /// <summary>8.175-S3: el modal fue abierto desde el botón Actualizar de una fila ya resuelta (con semillas de vínculo).</summary>
     public bool IsUpdateMode => _linkSeeds is { Count: > 0 };
 
@@ -169,7 +194,8 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
         SupplierInvoiceLineViewModel line,
         bool isBsSCurrency,
         Func<string, CancellationToken, Task<IReadOnlyList<ProductDto>>>? searchProductsAsync = null,
-        IReadOnlyList<InvoiceProductLinkSeed>? linkSeeds = null)
+        IReadOnlyList<InvoiceProductLinkSeed>? linkSeeds = null,
+        RoundingRuleType globalUsdRoundingRule = RoundingRuleType.ExactMath)
     {
         ArgumentNullException.ThrowIfNull(line);
 
@@ -178,6 +204,12 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
         _resolutionMode = searchProductsAsync is not null
             ? InvoiceProductResolutionMode.LinkExisting
             : InvoiceProductResolutionMode.CreateNew;
+
+        // 8.184-T4 (S7): el selector arranca desde la política global vigente (ExactMath o
+        // Psicológico); una regla VES (que opera sobre Bs.S, no sobre este canal USD) se mapea a
+        // "Sin redondeo". "Heredar de la factura" queda disponible para el usuario, no de default.
+        _selectedRoundingRuleOption = RoundingOptions.First(
+            option => option.Rule == MapGlobalUsdRoundingRule(globalUsdRoundingRule));
 
         var effectiveName = !string.IsNullOrWhiteSpace(line.EditName) ? line.EditName : line.Name;
         ProductName = effectiveName ?? string.Empty;
@@ -237,6 +269,10 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
             _suppressSelectionSync = false;
         }
     }
+
+    /// <summary>8.184-T4 (S7): la política global USD solo aporta ExactMath o Psicológico; el resto (VES) cae a ExactMath.</summary>
+    private static RoundingRuleType MapGlobalUsdRoundingRule(RoundingRuleType rule) =>
+        rule == RoundingRuleType.UsdPsychological ? RoundingRuleType.UsdPsychological : RoundingRuleType.ExactMath;
 
     public IReadOnlyList<ProductDto> GetEffectiveSelectedProducts()
     {
