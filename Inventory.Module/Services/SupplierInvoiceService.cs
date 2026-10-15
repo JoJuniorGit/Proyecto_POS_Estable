@@ -98,5 +98,8 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         line.OcrNameConfidence,
         line.OcrQuantityConfidence,
         line.OcrUnitCostConfidence,
-        line.ConversionFactor);
+        line.ConversionFactor,
+        // 8.184-T2 (S5): regla per-línea persistida (null = hereda la regla de la factura); la UI
+        // repobla el selector con este valor al recargar el borrador.
+        line.RoundingRule);
 }

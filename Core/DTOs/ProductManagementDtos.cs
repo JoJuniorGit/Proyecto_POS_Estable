@@ -55,6 +55,11 @@ public class CreateProductDto
 
     // 8.179-T1 (S3): categorías a asignar. null o vacío = producto sin categorías.
     public IReadOnlyList<int>? CategoryIds { get; set; }
+
+    // 8.184-T2 (S5): reglas de redondeo por artículo del modal de producto. null = hereda la
+    // política global de Pricing (los enums viajan como enteros, convención del API).
+    public RoundingRuleType? RoundingRuleUsd { get; set; }
+    public RoundingRuleType? RoundingRuleCashBs { get; set; }
 }
 
 public class UpdateProductDto
@@ -109,6 +114,11 @@ public class UpdateProductDto
     // 8.179-T1 (S3): semántica de reemplazo completo — null = no tocar las asignaciones actuales;
     // lista vacía = quitar todas; lista con IDs = reemplazar el set por esa lista validada.
     public IReadOnlyList<int>? CategoryIds { get; set; }
+
+    // 8.184-T2 (S5): reemplazo completo (molde del resto del DTO) — null = heredar la política
+    // global, es decir, "Heredar global" del selector limpia el override previo del artículo.
+    public RoundingRuleType? RoundingRuleUsd { get; set; }
+    public RoundingRuleType? RoundingRuleCashBs { get; set; }
 }
 
 public class StatusUpdateDto

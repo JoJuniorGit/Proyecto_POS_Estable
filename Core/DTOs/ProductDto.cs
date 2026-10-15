@@ -42,4 +42,9 @@ public class ProductDto
 
     // 8.179-T1 (S3): categorías asignadas (id + nombre). Vacío cuando el producto no tiene.
     public IReadOnlyList<CategoryRefDto> Categories { get; set; } = Array.Empty<CategoryRefDto>();
+
+    // 8.184-T2 (S5): reglas de redondeo del artículo; null = hereda la política global de Pricing
+    // (el selector del modal las muestra como "Heredar global").
+    public RoundingRuleType? RoundingRuleUsd { get; set; }
+    public RoundingRuleType? RoundingRuleCashBs { get; set; }
 }

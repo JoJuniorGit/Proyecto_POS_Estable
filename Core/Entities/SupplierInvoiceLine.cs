@@ -1,3 +1,5 @@
+using Core.DTOs;
+
 namespace Core.Entities;
 
 public class SupplierInvoiceLine : BaseEntity
@@ -50,4 +52,11 @@ public class SupplierInvoiceLine : BaseEntity
     /// factor y la cantidad que entra a stock se multiplica por él. Default 1 (sin conversión).
     /// </summary>
     public decimal ConversionFactor { get; set; } = 1m;
+
+    /// <summary>
+    /// 8.184-T2 (S5): regla de redondeo elegida al resolver la línea contra un producto (misma
+    /// semántica que los overrides de margen). null = hereda la regla de la factura al confirmar
+    /// (precedencia línea ?? factura, 8.184-S7); el re-vínculo reemplaza el valor previo.
+    /// </summary>
+    public RoundingRuleType? RoundingRule { get; set; }
 }

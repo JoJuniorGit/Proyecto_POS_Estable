@@ -1,3 +1,4 @@
+using Core.DTOs;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -10,6 +11,11 @@ public partial class InventoryService
     private async Task UpdateProductAsync(Product product, System.Threading.CancellationToken cancellationToken = default)
     {
         EnsureCatalogMutationPermission();
+
+        // 8.184-T2 (S5): whitelist zero-trust de las reglas de redondeo por artículo (las reglas
+        // reemplazan por completo; null = heredar la política global) antes de persistir.
+        ValidateRoundingRuleValue(product.RoundingRuleUsd, nameof(Product.RoundingRuleUsd));
+        ValidateRoundingRuleValue(product.RoundingRuleCashBs, nameof(Product.RoundingRuleCashBs));
 
         var existing = await _context.Products.FindAsync(new object[] { product.Id }, cancellationToken);
         if (existing == null) throw new KeyNotFoundException($"Product {product.Id} not found");
@@ -200,5 +206,16 @@ public partial class InventoryService
             v.UpdatedAt = DateTime.UtcNow;
         }
         await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    // 8.184-T2 (S5): las reglas de redondeo viajan como enteros desde el cliente (el API no usa
+    // JsonStringEnumConverter); un valor fuera del catálogo se rechaza (400 vía ArgumentException,
+    // molde de la política de redondeo del bulk y del confirm de facturas). null = heredar global.
+    private static void ValidateRoundingRuleValue(RoundingRuleType? value, string parameterName)
+    {
+        if (value.HasValue && !Enum.IsDefined(value.Value))
+        {
+            throw new ArgumentException("La regla de redondeo contiene un valor no reconocido.", parameterName);
+        }
     }
 }

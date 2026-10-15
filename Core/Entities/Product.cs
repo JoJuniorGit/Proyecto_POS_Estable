@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Core.DTOs;
 
 namespace Core.Entities;
 
@@ -52,6 +53,19 @@ public class Product : BaseEntity
 
     public decimal PriceBsS { get; set; } // The "tagged" price in local currency
     public decimal LastConversionRate { get; set; } // The rate used to calculate PriceBsS
+
+    /// <summary>
+    /// 8.184-T2 (S5): regla de redondeo USD por artículo (canal Detal/Mayor del modal de producto).
+    /// null = hereda la política global (Pricing.DefaultUsdRoundingRule).
+    /// </summary>
+    public RoundingRuleType? RoundingRuleUsd { get; set; }
+
+    /// <summary>
+    /// 8.184-T2 (S5): regla de redondeo de efectivo Bs.S por artículo. null = hereda la política
+    /// global (Pricing.DefaultCashBsRoundingRule); el valor VesCashFriendly es una proyección en
+    /// caliente del modal, nunca se persiste sobre el precio Bs.S canónico (8.183-R1/8.184-S4).
+    /// </summary>
+    public RoundingRuleType? RoundingRuleCashBs { get; set; }
 
     [Range(0, 1000000, ErrorMessage = "El costo no puede ser negativo.")]
     public decimal Cost { get; set; }

@@ -60,7 +60,10 @@ public sealed record SupplierInvoiceLineDto(
     decimal? OcrQuantityConfidence,
     decimal? OcrUnitCostConfidence,
     // 8.165: factor de conversión caja→unidad persistido por línea (default 1, sin conversión).
-    decimal ConversionFactor = 1m);
+    decimal ConversionFactor = 1m,
+    // 8.184-T2 (S5): regla de redondeo per-línea persistida; null = hereda la regla de la factura.
+    // La UI la usa para repoblar el selector al recargar el borrador.
+    RoundingRuleType? RoundingRule = null);
 
 public sealed record CreateInvoiceProductRequestDto(
     string Barcode,
@@ -81,7 +84,10 @@ public sealed record LinkInvoiceProductRequestDto(
     IReadOnlyList<LinkedProductMarginOverrideDto>? MarginOverrides = null,
     // 8.175-S5: filas 1:N del vínculo previo que el cliente reemplaza al re-resolver la línea.
     // Vacío/null = resolución simple sin absorción de filas existentes.
-    IReadOnlyList<int>? ReplacedLineIds = null);
+    IReadOnlyList<int>? ReplacedLineIds = null,
+    // 8.184-T2 (S5): regla de redondeo elegida para la línea resuelta (nivel producto). null =
+    // hereda la regla de la factura al confirmar; el re-vínculo reemplaza el valor previo.
+    RoundingRuleType? RoundingRule = null);
 
 public sealed record ConfirmSupplierInvoiceRequestDto(
     IReadOnlyList<ConfirmLineDto> Lines,

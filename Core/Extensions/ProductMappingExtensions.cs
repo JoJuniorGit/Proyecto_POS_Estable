@@ -46,6 +46,9 @@ public static class ProductMappingExtensions
             HasIndependentPricing = product.HasIndependentPricing,
             ConversionFactor = product.ConversionFactor,
             GroupKey = product.GroupKey,
+            // 8.184-T2 (S5): reglas de redondeo por artículo (null = hereda la política global).
+            RoundingRuleUsd = product.RoundingRuleUsd,
+            RoundingRuleCashBs = product.RoundingRuleCashBs,
             VariantCount = product.Variants != null ? product.Variants.Count(v => !v.IsDeleted) : 0,
             ConsolidatedStock = product.IsGroupHeader
                 ? (product.IsStockShared ? product.StockQuantity : (product.Variants?.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
@@ -82,7 +85,10 @@ public static class ProductMappingExtensions
             IsStockShared = request.IsStockShared,
             HasIndependentPricing = request.HasIndependentPricing,
             ConversionFactor = request.ConversionFactor,
-            GroupKey = request.GroupKey
+            GroupKey = request.GroupKey,
+            // 8.184-T2 (S5): null = hereda la política global de redondeo.
+            RoundingRuleUsd = request.RoundingRuleUsd,
+            RoundingRuleCashBs = request.RoundingRuleCashBs
         };
     }
 
@@ -114,6 +120,9 @@ public static class ProductMappingExtensions
         existing.ConversionFactor = request.ConversionFactor;
         existing.GroupKey = request.GroupKey;
         existing.PriceBsS = canonicalPriceBsS;
+        // 8.184-T2 (S5): reemplazo completo — null = "Heredar global" y limpia el override previo.
+        existing.RoundingRuleUsd = request.RoundingRuleUsd;
+        existing.RoundingRuleCashBs = request.RoundingRuleCashBs;
     }
 
     public static ProductDto MaskCosts(this ProductDto item)

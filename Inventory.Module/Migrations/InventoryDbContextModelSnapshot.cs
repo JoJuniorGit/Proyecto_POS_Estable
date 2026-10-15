@@ -194,6 +194,14 @@ namespace Inventory.Module.Migrations
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)");
 
+                    b.Property<string>("RoundingRuleCashBs")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("RoundingRuleUsd")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<string>("SKU")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -826,6 +834,10 @@ namespace Inventory.Module.Migrations
 
                     b.Property<int?>("ResolvedProductId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("RoundingRule")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("Status")
                         .IsRequired()

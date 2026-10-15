@@ -18,6 +18,11 @@ public partial class InventoryService : IProductManagementService, IReservationS
     {
         EnsureCatalogMutationPermission();
 
+        // 8.184-T2 (S5): whitelist zero-trust de las reglas de redondeo por artículo ANTES de crear
+        // (los enums viajan como enteros; un valor fuera del catálogo no debe llegar a la columna).
+        ValidateRoundingRuleValue(request.RoundingRuleUsd, nameof(request.RoundingRuleUsd));
+        ValidateRoundingRuleValue(request.RoundingRuleCashBs, nameof(request.RoundingRuleCashBs));
+
         // 8.179-T1 (S3): validar las categorías ANTES de crear para no dejar un producto a medias.
         var categoryIds = await ValidateCategoryIdsAsync(request.CategoryIds, cancellationToken);
 
