@@ -1,0 +1,32 @@
+change: 2026-10-10-supplier-invoice-review-simplification
+store: openspec
+scope: supplier-invoice-review-simplification-8.160
+created: 2026-10-10
+preflight:
+  pace: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  chain_strategy: stacked-to-main
+phase: verified
+apply:
+  slices: 1/1 (T1 ef84c47; ajuste directo UI 320deb5; partición atómica por contrato DTO compartido)
+  branch: V0.15
+verify: pass_with_warnings
+verify_report: openspec/changes/2026-10-10-supplier-invoice-review-simplification/verify-report.md
+verify_note: "S1-S4 COMPLIANT (verificacion independiente, 0 blockers); suite 2221/2221 SIN PostgreSQL real local (gated early-return; credenciales 28P01); cobertura Core 0.8937/Sales 0.8971/Inventory 0.8708 (exit 0); E2E salud 2/2; 0 vulnerables"
+artifacts:
+  proposal: openspec/changes/2026-10-10-supplier-invoice-review-simplification/proposal.md
+  specs:
+    - openspec/changes/2026-10-10-supplier-invoice-review-simplification/specs/supplier-invoice-ocr-extraction/spec.md
+    - openspec/changes/2026-10-10-supplier-invoice-review-simplification/specs/supplier-invoice-ocr-review/spec.md
+    - openspec/changes/2026-10-10-supplier-invoice-review-simplification/specs/supplier-invoice-staging/spec.md
+  tasks: openspec/changes/2026-10-10-supplier-invoice-review-simplification/tasks.md
+decisions:
+  s4: previews retiradas de punta a punta (sin consumidor tras S1); DetectedInvoiceNumber best-effort reemplaza el payload
+  s2: solo visualizacion; sin persistencia del numero de factura
+  s3: alcance Desktop; prefill/confirm de margenes intactos; sin migraciones
+  ui: numero de factura junto al boton OCR (indicador) y columna Codigo proveedor retirada; ajuste directo del mantenedor sin SDD (320deb5)
+  rdd: off (clone-local + global)
+  branch: V0.15
+  anexo: "8.160"
+next: cierre registrado 2026-10-10; push/PR de la cadena V0.15 pendiente del mantenedor

@@ -91,9 +91,9 @@ public partial class ProductImportService : IProductImportService
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Return empty list if error
+                Core.Logging.ClientStateLogger.LogError($"Error reading Excel headers from '{filePath}': {ex.Message}", nameof(ProductImportService));
             }
             return headers;
         });

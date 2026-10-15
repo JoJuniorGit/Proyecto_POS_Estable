@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.Common;
 using Core.DTOs;
 using System;
 using System.Collections.Generic;
@@ -25,19 +26,7 @@ public partial class SupplierInvoiceViewModel
         "Imágenes (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff)|" +
         "*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tif;*.tiff|PDF (*.pdf)|*.pdf";
 
-    public const double MinOcrZoom = 0.5;
-    public const double MaxOcrZoom = 4.0;
-    private const double OcrZoomStep = 0.25;
-
-    /// <summary>Previews PNG por página (base64) tal como las devuelve el backend; sin tipos WPF.</summary>
-    [ObservableProperty]
-    private IReadOnlyList<string> _ocrPreviewPagesBase64 = [];
-
-    [ObservableProperty]
-    private int _ocrSelectedPageIndex;
-
-    [ObservableProperty]
-    private double _ocrZoom = 1.0;
+    private string? _lastScannedOcrFilePath;
 
     [ObservableProperty]
     private bool _isOcrSource;
@@ -48,66 +37,105 @@ public partial class SupplierInvoiceViewModel
     [ObservableProperty]
     private string? _ocrDetectedSupplierName;
 
-    public bool HasOcrPreviews => OcrPreviewPagesBase64.Count > 0;
-    public bool CanNavigateOcrNextPage =>
-        OcrPreviewPagesBase64.Count > 0 && OcrSelectedPageIndex < OcrPreviewPagesBase64.Count - 1;
-    public bool CanNavigateOcrPreviousPage => OcrSelectedPageIndex > 0;
+    /// <summary>8.160-S2: número de factura best-effort detectado por el OCR; null si no aparece.</summary>
+    [ObservableProperty]
+    private string? _ocrDetectedInvoiceNumber;
 
-    /// <summary>
-    /// 8.147-S5: base64 de la página seleccionada. Propiedad calculada (en vez de un indexer en
-    /// XAML) para garantizar la notificación al cambiar de página y alimentar al converter.
-    /// </summary>
-    public string? OcrSelectedPreviewBase64 => OcrPreviewPagesBase64.Count == 0
-        ? null
-        : OcrPreviewPagesBase64[Math.Clamp(OcrSelectedPageIndex, 0, OcrPreviewPagesBase64.Count - 1)];
+    partial void OnOcrDetectedInvoiceNumberChanged(string? value)
+    {
+        OnPropertyChanged(nameof(DisplayInvoiceNumber));
+    }
 
-    /// <summary>8.147-S5: etiqueta "Página X/Y" del panel de previews; vacía sin páginas.</summary>
-    public string OcrPageLabel => OcrPreviewPagesBase64.Count == 0
-        ? string.Empty
-        : $"Página {OcrSelectedPageIndex + 1}/{OcrPreviewPagesBase64.Count}";
+    /// <summary>8.172: tasa de cambio best-effort detectada por el OCR; null si no aparece o es &lt;= 0.</summary>
+    [ObservableProperty]
+    private decimal? _ocrDetectedExchangeRate;
 
     public bool CanScanInvoice => CanMutateCatalog && !IsBusy && SelectedSupplier is not null;
+    public bool CanConfigureOcrScanner => CanMutateCatalog && !IsBusy && SelectedSupplier is not null;
 
-    /// <summary>8.147-S5/S6: el origen OCR propaga el editor a las líneas ya cargadas.</summary>
+    /// <summary>8.147-S5/S6: el origen OCR propaga el editor a las líneas ya cargadas sin deshabilitar productos inexistentes.</summary>
     partial void OnIsOcrSourceChanged(bool value)
     {
+        OnPropertyChanged(nameof(HasSelectedFilePath));
+        OnPropertyChanged(nameof(IngestionSourceBadge));
+        OnPropertyChanged(nameof(DisplayInvoiceNumber));
         foreach (var line in Lines)
         {
-            line.IsEditorEnabled = value;
+            line.IsEditorEnabled = value || line.CanCreateProduct || line.WasUnresolved;
         }
     }
 
-    partial void OnOcrPreviewPagesBase64Changed(IReadOnlyList<string> value)
+    [RelayCommand(CanExecute = nameof(CanConfigureOcrScanner))]
+    private async Task ConfigureOcrScannerAsync(CancellationToken cancellationToken)
     {
-        var maxIndex = Math.Max(0, value.Count - 1);
-        if (OcrSelectedPageIndex > maxIndex)
+        if (!CanMutateCatalog)
         {
-            OcrSelectedPageIndex = maxIndex;
-        }
-
-        OnPropertyChanged(nameof(HasOcrPreviews));
-        NotifyOcrNavigationChanged();
-    }
-
-    partial void OnOcrSelectedPageIndexChanged(int value)
-    {
-        var maxIndex = Math.Max(0, OcrPreviewPagesBase64.Count - 1);
-        var clamped = Math.Clamp(value, 0, maxIndex);
-        if (clamped != value)
-        {
-            OcrSelectedPageIndex = clamped;
+            ShowAccessDenied();
             return;
         }
 
-        NotifyOcrNavigationChanged();
-    }
-
-    partial void OnOcrZoomChanged(double value)
-    {
-        var clamped = Math.Clamp(value, MinOcrZoom, MaxOcrZoom);
-        if (clamped != value)
+        if (SelectedSupplier is null)
         {
-            OcrZoom = clamped;
+            _dialogService.ShowWarning("Datos incompletos", "Seleccione un proveedor antes de configurar el escáner OCR.");
+            return;
+        }
+
+        SupplierOcrTemplateDto? initialTemplate = SelectedSupplier.OcrTemplate;
+        try
+        {
+            var fetched = await _invoiceService.GetSupplierOcrTemplateAsync(SelectedSupplier.Id, cancellationToken);
+            if (fetched is not null)
+            {
+                initialTemplate = fetched;
+            }
+        }
+        catch
+        {
+            // Usa la plantilla en memoria si la consulta previa no estuvo disponible.
+        }
+
+        var dialogVm = new OcrScannerConfigDialogViewModel(
+            SelectedSupplier.Id,
+            SelectedSupplier.CommercialName,
+            SelectedSupplier.ColumnMapping,
+            initialTemplate,
+            _invoiceService,
+            _filePicker,
+            _lastScannedOcrFilePath);
+
+        _dialogService.ShowOcrScannerConfigDialog(dialogVm);
+
+        if (dialogVm.SavedTemplate is not null && SelectedSupplier is not null)
+        {
+            var updatedSupplier = SelectedSupplier with { OcrTemplate = dialogVm.SavedTemplate };
+            var index = Suppliers.IndexOf(SelectedSupplier);
+            if (index >= 0)
+            {
+                Suppliers[index] = updatedSupplier;
+            }
+
+            SelectedSupplier = updatedSupplier;
+            StatusMessage = $"Plantilla OCR actualizada para {updatedSupplier.CommercialName}.";
+        }
+
+        if (dialogVm.ApplyResultToStaging && dialogVm.LastExtractionResult is not null)
+        {
+            IsBusy = true;
+            ClearOcrReviewState();
+            try
+            {
+                await ProcessOcrExtractionResultAsync(dialogVm.LastExtractionResult, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"No se pudo aplicar el resultado OCR: {ex.Message}";
+                _dialogService.ShowError("Error al aplicar OCR", StatusMessage);
+            }
+            finally
+            {
+                IsBusy = false;
+                RefreshCommandStates();
+            }
         }
     }
 
@@ -154,37 +182,26 @@ public partial class SupplierInvoiceViewModel
             return;
         }
 
+        _lastScannedOcrFilePath = filePath;
         IsBusy = true;
         ClearOcrReviewState();
         StatusMessage = "Extrayendo el texto de la factura escaneada...";
         try
         {
-            var result = await _invoiceService.ExtractOcrAsync(
-                filePath,
-                SelectedSupplier.Id,
-                SelectedSupplier.ColumnMapping,
-                cancellationToken);
+            var result = SelectedSupplier.OcrTemplate is not null
+                ? await _invoiceService.ExtractOcrAsync(
+                    filePath,
+                    SelectedSupplier.Id,
+                    SelectedSupplier.ColumnMapping,
+                    SelectedSupplier.OcrTemplate,
+                    cancellationToken)
+                : await _invoiceService.ExtractOcrAsync(
+                    filePath,
+                    SelectedSupplier.Id,
+                    SelectedSupplier.ColumnMapping,
+                    cancellationToken);
 
-            var lines = BuildOcrStageLines(result.Lines);
-
-            // 8.147-L8: bloquear en vez de stagear filas que el backend descartaría sin aviso.
-            if (lines.Any(line => !HasReadableIdentifier(line)))
-            {
-                StatusMessage = OcrMissingIdentifierMessage;
-                _dialogService.ShowError("Filas OCR incompletas", OcrMissingIdentifierMessage);
-                return;
-            }
-
-            ApplyOcrReviewState(result);
-
-            if (lines.Count == 0)
-            {
-                StatusMessage = "El OCR no detectó líneas legibles en la factura.";
-                _dialogService.ShowWarning("Sin líneas OCR", StatusMessage);
-                return;
-            }
-
-            await StagePreparedLinesAsync(lines, columnMapping: null, ocrSourced: true, cancellationToken);
+            await ProcessOcrExtractionResultAsync(result, cancellationToken);
         }
         catch (Exception exception)
         {
@@ -198,30 +215,37 @@ public partial class SupplierInvoiceViewModel
         }
     }
 
-    [RelayCommand]
-    private void ResetOcrZoom() => OcrZoom = 1.0;
-
-    [RelayCommand]
-    private void OcrZoomIn() => OcrZoom += OcrZoomStep;
-
-    [RelayCommand]
-    private void OcrZoomOut() => OcrZoom -= OcrZoomStep;
-
-    [RelayCommand(CanExecute = nameof(CanNavigateOcrPreviousPage))]
-    private void OcrPreviousPage()
+    private async Task ProcessOcrExtractionResultAsync(
+        OcrExtractionResultDto result,
+        CancellationToken cancellationToken)
     {
-        if (CanNavigateOcrPreviousPage)
+        var lines = BuildOcrStageLines(result.Lines);
+
+        // 8.147-L8: bloquear en vez de stagear filas que el backend descartaría sin aviso.
+        if (lines.Any(line => !HasReadableIdentifier(line)))
         {
-            OcrSelectedPageIndex--;
+            StatusMessage = OcrMissingIdentifierMessage;
+            _dialogService.ShowError("Filas OCR incompletas", OcrMissingIdentifierMessage);
+            return;
         }
-    }
 
-    [RelayCommand(CanExecute = nameof(CanNavigateOcrNextPage))]
-    private void OcrNextPage()
-    {
-        if (CanNavigateOcrNextPage)
+        // 8.174: se registra ANTES de aplicar el estado OCR para poder avisar en el status que la
+        // moneda del documento se ajustó sola por la tasa impresa detectada.
+        var currencyAdjustedForDetectedRate = result.DetectedExchangeRate is > 0m && !IsBsSCurrency;
+        ApplyOcrReviewState(result);
+
+        if (lines.Count == 0)
         {
-            OcrSelectedPageIndex++;
+            StatusMessage = "El OCR no detectó líneas legibles en la factura. Verifique el enfoque y la iluminación de la foto e intente de nuevo.";
+            _dialogService.ShowWarning("Sin líneas OCR", StatusMessage);
+            return;
+        }
+
+        await StagePreparedLinesAsync(lines, columnMapping: null, ocrSourced: true, cancellationToken);
+
+        if (currencyAdjustedForDetectedRate)
+        {
+            StatusMessage += " Moneda ajustada a Bs.S por la tasa detectada en la factura.";
         }
     }
 
@@ -229,12 +253,13 @@ public partial class SupplierInvoiceViewModel
         lines.Select(line => new StageLineDto(
             line.SupplierCode,
             line.Barcode,
-            line.Name,
+            OcrConfidence.SanitizeProductName(line.Name),
             line.Quantity ?? 0m,
             line.UnitCost ?? 0m,
             line.NameConfidence,
             line.QuantityConfidence,
-            line.UnitCostConfidence)).ToArray();
+            line.UnitCostConfidence,
+            line.ExtractedConversionFactor)).ToArray();
 
     private static bool HasReadableIdentifier(StageLineDto line) =>
         !string.IsNullOrWhiteSpace(line.SupplierCode) ||
@@ -243,10 +268,31 @@ public partial class SupplierInvoiceViewModel
 
     private void ApplyOcrReviewState(OcrExtractionResultDto result)
     {
-        OcrPreviewPagesBase64 = result.PreviewPagesBase64 ?? [];
         OcrDetectedRif = NormalizeOcrHint(result.DetectedRif);
         OcrDetectedSupplierName = NormalizeOcrHint(result.DetectedSupplierName);
+        OcrDetectedInvoiceNumber = NormalizeOcrHint(result.DetectedInvoiceNumber);
+        OcrDetectedExchangeRate = result.DetectedExchangeRate is decimal rate && rate > 0m
+            ? Math.Round(rate, 4, MidpointRounding.AwayFromZero)
+            : null;
         IsOcrSource = true;
+
+        // 8.174: la tasa impresa en el documento es evidencia de una factura en Bs.S. Si el selector
+        // aún no está en Bs.S (proveedor sin moneda recordada o primera factura), se ajusta para que
+        // la tasa quede aplicada y editable al terminar el escaneo; toda corrección posterior de la
+        // tasa recalcula los montos de la grilla en vivo (PropagateCurrencyAndRateToLines).
+        if (OcrDetectedExchangeRate is decimal detectedRate)
+        {
+            // 8.178: una nueva detección OCR re-basa la tasa del documento; una corrección manual
+            // previa deja de protegerse (el escaneo más reciente es la referencia).
+            _isRateManuallyEdited = false;
+
+            if (!IsBsSCurrency)
+            {
+                SelectedCurrency = CurrencyCodes.BsS;
+            }
+
+            SetAppliedRateTextProgrammatically(FormatAppliedRateText(detectedRate));
+        }
 
         // Sugerencia best-effort: nunca pisa un valor ya escrito ni selecciona proveedor.
         if (OcrDetectedRif is not null && string.IsNullOrWhiteSpace(SupplierRifOrNit))
@@ -262,22 +308,12 @@ public partial class SupplierInvoiceViewModel
 
     private void ClearOcrReviewState()
     {
-        OcrPreviewPagesBase64 = [];
-        OcrSelectedPageIndex = 0;
-        OcrZoom = 1.0;
         IsOcrSource = false;
         OcrDetectedRif = null;
         OcrDetectedSupplierName = null;
-    }
-
-    private void NotifyOcrNavigationChanged()
-    {
-        OnPropertyChanged(nameof(CanNavigateOcrNextPage));
-        OnPropertyChanged(nameof(CanNavigateOcrPreviousPage));
-        OnPropertyChanged(nameof(OcrPageLabel));
-        OnPropertyChanged(nameof(OcrSelectedPreviewBase64));
-        OcrNextPageCommand.NotifyCanExecuteChanged();
-        OcrPreviousPageCommand.NotifyCanExecuteChanged();
+        OcrDetectedInvoiceNumber = null;
+        OcrDetectedExchangeRate = null;
+        _isRateManuallyEdited = false; // 8.178
     }
 
     private static string? NormalizeOcrHint(string? value) =>

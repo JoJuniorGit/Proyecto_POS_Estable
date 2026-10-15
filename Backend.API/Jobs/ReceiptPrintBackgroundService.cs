@@ -42,7 +42,7 @@ public class ReceiptPrintBackgroundService : BackgroundService
                 try
                 {
                     var format = await ResolveCurrencyFormatAsync();
-                    SaveDocument(_renderer.Render(context, format));
+                    await SaveDocumentAsync(_renderer.Render(context, format), stoppingToken);
                 }
                 catch (Exception ex)
                 {
@@ -66,13 +66,14 @@ public class ReceiptPrintBackgroundService : BackgroundService
             var settingsService = scope.ServiceProvider.GetRequiredService<ISystemSettingsService>();
             return MoneyFormat.ParseFormat(await settingsService.GetSettingAsync("CurrencyFormat"));
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogDebug(ex, "[ReceiptPrint] Error al leer CurrencyFormat; usando formato por defecto.");
             return MoneyDisplayFormat.Venezuelan;
         }
     }
 
-    private static void SaveDocument(ReceiptDocument document)
+    private static async Task SaveDocumentAsync(ReceiptDocument document, CancellationToken cancellationToken)
     {
         if (document.Bytes is null || document.Bytes.Length == 0)
         {
@@ -82,7 +83,7 @@ public class ReceiptPrintBackgroundService : BackgroundService
         var dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Receipts");
         Directory.CreateDirectory(dir);
         var path = Path.Combine(dir, document.FileName);
-        File.WriteAllBytes(path, document.Bytes);
+        await File.WriteAllBytesAsync(path, document.Bytes, cancellationToken);
         AppLogger.LogStart($"[ReceiptPrint] Recibo guardado: {path}");
     }
 }

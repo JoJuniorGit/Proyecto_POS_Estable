@@ -21,6 +21,25 @@ public interface ISupplierInvoiceService
         SupplierColumnMappingDto? columnMapping,
         CancellationToken cancellationToken = default);
 
+    Task<OcrExtractionResultDto> ExtractOcrAsync(
+        string filePath,
+        int? supplierId,
+        SupplierColumnMappingDto? columnMapping,
+        SupplierOcrTemplateDto? ocrTemplate,
+        CancellationToken cancellationToken = default) =>
+        ExtractOcrAsync(filePath, supplierId, columnMapping, cancellationToken);
+
+    Task<SupplierOcrTemplateDto?> GetSupplierOcrTemplateAsync(
+        int supplierId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<SupplierOcrTemplateDto?>(null);
+
+    Task<SupplierOcrTemplateDto> SaveSupplierOcrTemplateAsync(
+        int supplierId,
+        SupplierOcrTemplateDto template,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(template);
+
     Task<IReadOnlyList<SupplierSummaryDto>> GetSuppliersAsync(
         string? rifOrNit,
         string? commercialName,
@@ -48,4 +67,23 @@ public interface ISupplierInvoiceService
         int lineId,
         CreateInvoiceProductRequestDto request,
         CancellationToken cancellationToken = default);
+
+    Task<SupplierInvoiceDetailDto> LinkProductToLineAsync(
+        int invoiceId,
+        int lineId,
+        LinkInvoiceProductRequestDto request,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<ProductDto>> SearchCatalogProductsAsync(
+        string? filter,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<ProductDto>>([]);
+
+    // 8.175-S6: hidratación del modal de actualización — productos del catálogo por id (ruta existente).
+    // Default vacío para no romper mocks/stubs existentes que no lo configuran.
+    Task<IReadOnlyList<ProductDto>> GetCatalogProductsByIdsAsync(
+        IReadOnlyList<int> productIds,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<ProductDto>>([]);
 }
+

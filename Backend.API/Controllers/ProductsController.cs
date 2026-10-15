@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Admin,Manager,Cashier")]
 [ApiController]
 [Route("api/[controller]")]
 public partial class ProductsController : ControllerBase
@@ -21,13 +21,19 @@ public partial class ProductsController : ControllerBase
     private readonly IInventoryService _inventoryService;
     private readonly IProductManagementService _productManagementService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly Backend.API.Services.IdempotencyRequestResolver _idempotencyResolver;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
-    public ProductsController(IInventoryService inventoryService, IProductManagementService productManagementService, ICurrentUserService currentUserService)
+    public ProductsController(
+        IInventoryService inventoryService,
+        IProductManagementService productManagementService,
+        ICurrentUserService currentUserService,
+        IIdempotencyService? idempotencyService = null)
     {
         _inventoryService = inventoryService;
         _productManagementService = productManagementService;
         _currentUserService = currentUserService;
+        _idempotencyResolver = new Backend.API.Services.IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
     [HttpGet]
@@ -38,12 +44,19 @@ public partial class ProductsController : ControllerBase
         [FromQuery] string? statusFilter = null,
         [FromQuery] string? sortBy = null,
         [FromQuery] bool isDescending = false,
+        [FromQuery] int? categoryId = null,
         CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var result = await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter, sortBy, isDescending, cancellationToken);
+        if (!_currentUserService.CanMutateCatalog && string.Equals(sortBy, "cost", System.StringComparison.OrdinalIgnoreCase))
+        {
+            sortBy = "name";
+        }
+
+        // 8.179-T1 (S4): categoryId filtra por la categoría y todo su subárbol.
+        var result = await _inventoryService.GetProductsPagedAsync(filter, page, pageSize, statusFilter, sortBy, isDescending, cancellationToken, categoryId);
         if (!_currentUserService.CanMutateCatalog)
         {
             result.Items = result.Items.Select(MaskProductDto).ToList();
@@ -74,10 +87,6 @@ public partial class ProductsController : ControllerBase
         try
         {
             ProductDto? created = await _productManagementService.CreateProductFromDtoAsync(request, cancellationToken);
-            if (created != null && !_currentUserService.CanMutateCatalog)
-            {
-                created.MaskCosts();
-            }
             return CreatedAtAction(nameof(GetByIdAsync), new { id = created?.Id }, created);
         }
         catch (System.UnauthorizedAccessException)
@@ -186,9 +195,38 @@ public partial class ProductsController : ControllerBase
             return this.ApiForbidden(Core.Constants.InventoryMessages.UnauthorizedAdjustment);
         }
 
+        // 8.177-T1: validación explícita de la clasificación opcional (el ModelState automático no
+        // cubre llamadas directas y el binding numérico admite valores de enum indefinidos).
+        if (dto.ReasonCode.HasValue && !System.Enum.IsDefined(dto.ReasonCode.Value))
+        {
+            return this.ApiBadRequest("El motivo estandarizado del ajuste no es válido.");
+        }
+
+        if (dto.Observation is { Length: > 500 })
+        {
+            return this.ApiBadRequest("La observación no puede exceder los 500 caracteres.");
+        }
+
+        string requestPath = $"/api/products/{id}/adjust-stock";
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(dto));
+        if (idempotency.ShouldStop)
+        {
+            return idempotency.BlockingResult!;
+        }
+
         try
         {
-            await _inventoryService.AdjustStockAsync(id, dto.QuantityChange, dto.Reason, cancellationToken: cancellationToken);
+            await _inventoryService.AdjustStockAsync(
+                id,
+                dto.QuantityChange,
+                dto.Reason,
+                reasonCode: dto.ReasonCode,
+                observation: dto.Observation,
+                cancellationToken: cancellationToken);
+            await _idempotencyResolver.RegisterSuccessAsync(idempotency, requestPath, "", cancellationToken);
             return NoContent();
         }
         catch (System.Collections.Generic.KeyNotFoundException)
@@ -198,6 +236,10 @@ public partial class ProductsController : ControllerBase
         catch (System.UnauthorizedAccessException)
         {
             return this.ApiForbidden("No tiene permisos para realizar esta operación.");
+        }
+        catch (DbUpdateException ex) when (Backend.API.Services.IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
         }
     }
 
@@ -253,9 +295,10 @@ public partial class ProductsController : ControllerBase
     }
 
     [HttpGet("suggestions")]
-    public async Task<ActionResult<List<Core.DTOs.ProductQuickInfoDto>>> GetSuggestionsAsync([FromQuery] string filter, [FromQuery] bool activeOnly = true, System.Threading.CancellationToken token = default)
+    public async Task<ActionResult<List<Core.DTOs.ProductQuickInfoDto>>> GetSuggestionsAsync([FromQuery] string filter, [FromQuery] bool activeOnly = true, [FromQuery] int? categoryId = null, System.Threading.CancellationToken token = default)
     {
-        var results = await _inventoryService.GetSuggestionsAsync(filter, activeOnly, token);
+        // 8.179-T1 (S4): búsqueda POS acotada al subárbol de la categoría cuando se provee.
+        var results = await _inventoryService.GetSuggestionsAsync(filter, activeOnly, token, categoryId);
         
         if (!_currentUserService.CanMutateCatalog && results != null)
         {

@@ -29,22 +29,31 @@ public partial class SalesService
 
         var customer = await _context.Customers.FindAsync(new object[] { request.CustomerId }, cancellationToken);
         if (customer == null) throw new KeyNotFoundException($"Cliente con ID {request.CustomerId} no encontrado.");
+        if (!customer.IsActive)
+            throw new InvalidOperationException("No se puede asignar un cliente inactivo a la venta.");
         
         if (customer.IsDefault || customer.CedulaOrRif == "V-00000000")
             throw new ArgumentException("Las ventas en espera requieren un cliente real identificable. Asigne un cliente distinto al Consumidor Final.");
 
         // 8.6-B3: La tasa del HOLD se ancla a la tasa BCV del día (misma política que CompleteSale).
-        sale.AppliedRate = await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "HoldSale", referenceId: sale.Id);
+        decimal anchoredHoldRate = await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "HoldSale", referenceId: sale.Id);
+        sale.AppliedRate = anchoredHoldRate;
         await RecalculateTotalAsync(sale);
 
         var paymentsToProcess = new List<AddPaymentRequestDto>();
         if (request.InitialPayment != null) paymentsToProcess.Add(request.InitialPayment);
         if (request.InitialPayments != null && request.InitialPayments.Any()) paymentsToProcess.AddRange(request.InitialPayments);
 
+        var preparedInitialEntries = new List<(SalePayment Payment, CashTransaction? CashTx)>();
         if (paymentsToProcess.Any())
         {
             var pMethodIds = paymentsToProcess.Select(p => p.PaymentMethodId).Distinct().ToList();
-            var pMethodsDict = await _context.PaymentMethods.Where(pm => pMethodIds.Contains(pm.Id)).ToDictionaryAsync(pm => pm.Id, cancellationToken);
+            var pMethodsDict = await _context.PaymentMethods
+                .AsNoTracking()
+                .IgnoreQueryFilters()
+                .Where(pm => pMethodIds.Contains(pm.Id))
+                .ToDictionaryAsync(pm => pm.Id, cancellationToken);
+            bool hasConfiguredPaymentMethods = pMethodsDict.Count > 0 || await _context.PaymentMethods.AsNoTracking().IgnoreQueryFilters().AnyAsync(cancellationToken);
 
             foreach (var payment in paymentsToProcess)
             {
@@ -52,6 +61,12 @@ public partial class SalesService
                 if (payment.AmountUSD < 0m || payment.AmountBsS < 0m)
                 {
                     throw new ArgumentException($"La validación del abono (PaymentMethodId={payment.PaymentMethodId}) rechaza montos negativos.");
+                }
+
+                pMethodsDict.TryGetValue(payment.PaymentMethodId, out var pMethodForValidation);
+                if (hasConfiguredPaymentMethods && (pMethodForValidation == null || !pMethodForValidation.IsActive || pMethodForValidation.IsDeleted))
+                {
+                    throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={payment.PaymentMethodId}. Verifique la configuración de métodos de pago.");
                 }
 
                 decimal rate = payment.ExchangeRate > 0
@@ -62,6 +77,11 @@ public partial class SalesService
                     : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
 
                 var (resolvedAmountUsd, resolvedAmountBsS) = ResolveConsistentPaymentAmounts(amountUsd, payment.AmountBsS, rate);
+
+                if (pMethodForValidation != null && pMethodForValidation.IsCash && resolvedAmountBsS % 1 != 0)
+                {
+                    throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
+                }
 
                 var initialPaymentEntity = new SalePayment
                 {
@@ -76,13 +96,14 @@ public partial class SalesService
 
                 sale.Payments.Add(initialPaymentEntity);
 
+                CashTransaction? initialCashTx = null;
                 // H-SAL-5: Asentar ingresos físicos en sesión activa de caja
-                if (resolvedAmountUsd > 0 && pMethodsDict.TryGetValue(payment.PaymentMethodId, out var pMethod) && pMethod.IsCash && _cashDrawerService != null)
+                if (resolvedAmountUsd > 0 && pMethodForValidation != null && pMethodForValidation.IsCash && _cashDrawerService != null)
                 {
                     var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(rate);
                     if (activeSession != null)
                     {
-                        _context.CashTransactions.Add(new CashTransaction
+                        initialCashTx = new CashTransaction
                         {
                             SessionId = activeSession.Id,
                             Type = CashTransactionType.Income,
@@ -95,9 +116,12 @@ public partial class SalesService
                             TransactionTime = DateTime.UtcNow,
                             SaleId = sale.Id,
                             PaymentMethodId = payment.PaymentMethodId
-                        });
+                        };
+                        _context.CashTransactions.Add(initialCashTx);
                     }
                 }
+
+                preparedInitialEntries.Add((initialPaymentEntity, initialCashTx));
             }
         }
 
@@ -114,8 +138,50 @@ public partial class SalesService
             // 8.9-B4: caminar TODA la operación bajo execution strategy para que un fallo
             // transitorio reintente el bloque completo (sales + inventory enrollado) y no
             // quede una escritura a medias entre las dos bases.
+            int holdRetryAttempt = 0;
             await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
             {
+            if (holdRetryAttempt++ > 0)
+            {
+                _context.ChangeTracker.Clear();
+                sale = await GetSaleEntityAsync(saleId);
+                sale.AppliedRate = anchoredHoldRate;
+                sale.CustomerId = customer.Id;
+                sale.CustomerName = customer.Name;
+                sale.CustomerCedula = customer.CedulaOrRif;
+                await RecalculateTotalAsync(sale);
+                foreach (var (prepPayment, prepCashTx) in preparedInitialEntries)
+                {
+                    var clonedPayment = new SalePayment
+                    {
+                        SaleId = sale.Id,
+                        PaymentMethodId = prepPayment.PaymentMethodId,
+                        Amount = prepPayment.Amount,
+                        AmountBsS = prepPayment.AmountBsS,
+                        ExchangeRate = prepPayment.ExchangeRate,
+                        ReferenceNumber = prepPayment.ReferenceNumber,
+                        CreatedAt = prepPayment.CreatedAt
+                    };
+                    sale.Payments.Add(clonedPayment);
+                    if (prepCashTx != null)
+                    {
+                        _context.CashTransactions.Add(new CashTransaction
+                        {
+                            SessionId = prepCashTx.SessionId,
+                            Type = prepCashTx.Type,
+                            Source = prepCashTx.Source,
+                            AmountUsd = prepCashTx.AmountUsd,
+                            ExchangeRate = prepCashTx.ExchangeRate,
+                            AmountLocal = prepCashTx.AmountLocal,
+                            IsPhysicalCash = prepCashTx.IsPhysicalCash,
+                            Description = prepCashTx.Description,
+                            TransactionTime = prepCashTx.TransactionTime,
+                            SaleId = sale.Id,
+                            PaymentMethodId = prepCashTx.PaymentMethodId
+                        });
+                    }
+                }
+            }
             IDbContextTransaction? txn = null;
             if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
             {
@@ -189,8 +255,6 @@ public partial class SalesService
                     Status = "Pending"
                 });
 
-                RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
-
                 if (_cashDrawerService != null && remainingBalanceUsd < -0.05m)
                 {
                     decimal changeUsd = Math.Abs(remainingBalanceUsd);
@@ -231,6 +295,12 @@ public partial class SalesService
                 }
 
                 await _context.SaveChangesAsync(cancellationToken);
+
+                if (!string.IsNullOrWhiteSpace(idempotencyKey) && idempotencyPayloadHash != null)
+                {
+                    RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
 
                 if (txn != null)
                 {
@@ -277,8 +347,12 @@ public partial class SalesService
             ClearHoldClaim(sale);
             sale.Status = SaleStatus.OnHold;
             sale.DeliveryStatus = SaleDeliveryStatus.PendingPickup;
-            RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
             await _context.SaveChangesAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(idempotencyKey) && idempotencyPayloadHash != null)
+            {
+                RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/hold", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
+                await _context.SaveChangesAsync(cancellationToken);
+            }
         }
 
         await NotifyHoldOrdersChangedAsync();
@@ -288,115 +362,158 @@ public partial class SalesService
 
     public async Task<SaleDto> UpdateSaleItemsAsync(int saleId, UpdateSaleItemsRequestDto request, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var sale = await GetSaleEntityAsync(saleId);
-        EnsureHoldClaimAccess(sale, actingUserId);
-        if (sale.Status != SaleStatus.OnHold)
-            throw new InvalidOperationException("Solo se pueden modificar productos en ventas que estén en estado en espera (OnHold).");
-
-        decimal totalPaidUsd = sale.Payments != null ? sale.Payments.Sum(p => p.Amount) : 0;
-
-        // Calcular nuevo total USD a partir de la lista de ítems enviada
-        decimal newTotalUsd = 0;
-        var newItemsList = new List<SaleItem>();
-
-        if (request?.Items != null && request.Items.Any())
+        int updateRetryAttempt = 0;
+        var updatedSale = await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
-            var productIds = request.Items.Where(i => i.Quantity > 0m).Select(i => i.ProductId).Distinct().ToList();
-            var productsDict = new Dictionary<int, SaleProductInfoDto>();
-            if (_inventoryService != null && productIds.Any())
+            if (updateRetryAttempt++ > 0)
             {
-                var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds, cancellationToken);
-                if (fetched != null && fetched.Count > 0)
+                _context.ChangeTracker.Clear();
+            }
+
+            await using var txn = _context.Database.IsNpgsql()
+                ? await _context.Database.BeginTransactionAsync(cancellationToken)
+                : null;
+
+            if (_context.Database.IsNpgsql())
+            {
+                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", new object[] { 2, saleId }, cancellationToken);
+            }
+
+            var sale = await GetSaleEntityAsync(saleId);
+            EnsureHoldClaimAccess(sale, actingUserId);
+            if (sale.Status != SaleStatus.OnHold)
+                throw new InvalidOperationException("Solo se pueden modificar productos en ventas que estén en estado en espera (OnHold).");
+
+            decimal totalPaidUsd = sale.Payments != null ? sale.Payments.Sum(p => p.Amount) : 0;
+
+            // Calcular nuevo total USD a partir de la lista de ítems enviada
+            decimal newTotalUsd = 0;
+            var newItemsList = new List<SaleItem>();
+
+            if (request?.Items != null && request.Items.Any())
+            {
+                var productIds = request.Items.Where(i => i.Quantity > 0m).Select(i => i.ProductId).Distinct().ToList();
+                var productsDict = new Dictionary<int, SaleProductInfoDto>();
+                if (_inventoryService != null && productIds.Any())
                 {
-                    productsDict = fetched.ToDictionary(p => p.Id);
+                    var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds, cancellationToken);
+                    if (fetched != null && fetched.Count > 0)
+                    {
+                        productsDict = fetched.ToDictionary(p => p.Id);
+                    }
+                }
+
+                foreach (var reqItem in request.Items)
+                {
+                    if (reqItem.Quantity <= 0m) continue;
+
+                    productsDict.TryGetValue(reqItem.ProductId, out var product);
+                    if (product == null || !product.IsActive)
+                    {
+                        throw new KeyNotFoundException($"El producto especificado (ID: {reqItem.ProductId}) no existe o está inactivo.");
+                    }
+
+                    if (product.IsGroupHeader)
+                    {
+                        throw new ArgumentException($"El producto '{product.Name}' es un grupo de variantes. Debe seleccionar una variante específica para la venta.");
+                    }
+
+                    decimal adjustedQty = ValidateAndAdjustQuantity(product, reqItem.Quantity);
+
+                    string productName = product.Name;
+                    decimal wholesalePrice = product.PriceWholesaleUSD > 0
+                        ? product.PriceWholesaleUSD
+                        : (product.PriceRetailUSD > 0 ? product.PriceRetailUSD : product.PriceUSD);
+                    decimal retailPrice = product.PriceRetailUSD > 0 ? product.PriceRetailUSD : product.PriceUSD;
+                    decimal minWholesaleQty = product.MinWholesaleQuantity > 0 ? product.MinWholesaleQuantity : 6m;
+                    bool isWholesale = string.Equals(sale.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase)
+                        && product.HasWholesale
+                        && adjustedQty >= minWholesaleQty;
+                    decimal effectivePrice = isWholesale ? wholesalePrice : retailPrice;
+
+                    // 8.149 (SEC-02): rechazo antes de la lógica de precio, con cualquier precio enviado.
+                    if (product.IsCashAdvance)
+                    {
+                        throw new InvalidOperationException(CashAdvanceSaleItemRejectionMessage);
+                    }
+
+                    if (reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice && !isPriceOverrideAuthorized)
+                    {
+                        throw new UnauthorizedAccessException($"Modificación de precio no autorizada para el producto '{productName}'. Se requiere autorización de Administrador o Supervisor.");
+                    }
+
+                    decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : effectivePrice;
+                    decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
+                    decimal unitPriceBsS = PricingCalculator.ToBsSCeiling(unitPriceUsd, sale.AppliedRate);
+                    decimal subtotalBsS = PricingCalculator.RoundToDigital(adjustedQty * unitPriceBsS);
+                    bool isCustomPrice = reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice;
+
+                    newTotalUsd += subtotalUsd;
+
+                    newItemsList.Add(new SaleItem
+                    {
+                        SaleId = sale.Id,
+                        ProductId = reqItem.ProductId,
+                        ProductName = productName,
+                        Quantity = adjustedQty,
+                        UnitCostUSD = product.CostPriceUSD,
+                        UnitPrice = unitPriceUsd,
+                        UnitPriceBsS = unitPriceBsS,
+                        Subtotal = subtotalUsd,
+                        SubtotalBsS = subtotalBsS,
+                        IsCustomPrice = isCustomPrice
+                    });
                 }
             }
 
-            foreach (var reqItem in request.Items)
+            if (sale.Items != null)
             {
-                if (reqItem.Quantity <= 0m) continue;
-
-                productsDict.TryGetValue(reqItem.ProductId, out var product);
-                if (product == null || !product.IsActive)
+                foreach (var existingDelivered in sale.Items.Where(i => i.DeliveredQuantity > 0))
                 {
-                    throw new KeyNotFoundException($"El producto especificado (ID: {reqItem.ProductId}) no existe o está inactivo.");
+                    var replacementItem = newItemsList.FirstOrDefault(n => n.ProductId == existingDelivered.ProductId);
+                    if (replacementItem == null || replacementItem.Quantity < existingDelivered.DeliveredQuantity)
+                    {
+                        throw new InvalidOperationException($"No se puede eliminar ni reducir el producto '{existingDelivered.ProductName}' por debajo de la cantidad ya entregada ({existingDelivered.DeliveredQuantity}).");
+                    }
+                    replacementItem.DeliveredQuantity = existingDelivered.DeliveredQuantity;
                 }
-
-                decimal adjustedQty = ValidateAndAdjustQuantity(product, reqItem.Quantity);
-
-                string productName = product.Name;
-                decimal wholesalePrice = product.PriceWholesaleUSD > 0
-                    ? product.PriceWholesaleUSD
-                    : (product.PriceRetailUSD > 0 ? product.PriceRetailUSD : product.PriceUSD);
-                decimal retailPrice = product.PriceRetailUSD > 0 ? product.PriceRetailUSD : product.PriceUSD;
-                decimal minWholesaleQty = product.MinWholesaleQuantity > 0 ? product.MinWholesaleQuantity : 6m;
-                bool isWholesale = string.Equals(sale.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase)
-                    && product.HasWholesale
-                    && adjustedQty >= minWholesaleQty;
-                decimal effectivePrice = isWholesale ? wholesalePrice : retailPrice;
-
-                // 8.149 (SEC-02): rechazo antes de la lógica de precio, con cualquier precio enviado.
-                if (product.IsCashAdvance)
-                {
-                    throw new InvalidOperationException(CashAdvanceSaleItemRejectionMessage);
-                }
-
-                if (reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice && !isPriceOverrideAuthorized)
-                {
-                    throw new UnauthorizedAccessException($"Modificación de precio no autorizada para el producto '{productName}'. Se requiere autorización de Administrador o Supervisor.");
-                }
-
-                decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : effectivePrice;
-                decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
-                decimal unitPriceBsS = PricingCalculator.ToBsSCeiling(unitPriceUsd, sale.AppliedRate);
-                decimal subtotalBsS = PricingCalculator.RoundToDigital(adjustedQty * unitPriceBsS);
-                bool isCustomPrice = reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice;
-
-                newTotalUsd += subtotalUsd;
-
-                newItemsList.Add(new SaleItem
-                {
-                    SaleId = sale.Id,
-                    ProductId = reqItem.ProductId,
-                    ProductName = productName,
-                    Quantity = adjustedQty,
-                    UnitCostUSD = product.CostPriceUSD,
-                    UnitPrice = unitPriceUsd,
-                    UnitPriceBsS = unitPriceBsS,
-                    Subtotal = subtotalUsd,
-                    SubtotalBsS = subtotalBsS,
-                    IsCustomPrice = isCustomPrice
-                });
             }
-        }
 
-        newTotalUsd = Math.Round(newTotalUsd, 2, MidpointRounding.AwayFromZero);
+            newTotalUsd = Math.Round(newTotalUsd, 2, MidpointRounding.AwayFromZero);
 
-        // 1. Validar que el nuevo total no sea menor a lo ya abonado por el cliente
-        if (newTotalUsd < totalPaidUsd)
-        {
-            throw new ArgumentException($"El nuevo total del pedido (${newTotalUsd:F2} USD) no puede ser menor al monto total ya abonado por el cliente (${totalPaidUsd:F2} USD).");
-        }
+            // 1. Validar que el nuevo total no sea menor a lo ya abonado por el cliente
+            if (newTotalUsd < totalPaidUsd)
+            {
+                throw new ArgumentException($"El nuevo total del pedido (${newTotalUsd:F2} USD) no puede ser menor al monto total ya abonado por el cliente (${totalPaidUsd:F2} USD).");
+            }
 
-        // Reemplazar los ítems existentes
-        if (sale.Items != null && sale.Items.Any())
-        {
-            _context.SaleItems.RemoveRange(sale.Items);
-            sale.Items.Clear();
-        }
+            // Reemplazar los ítems existentes
+            if (sale.Items != null && sale.Items.Any())
+            {
+                _context.SaleItems.RemoveRange(sale.Items);
+                sale.Items.Clear();
+            }
 
-        sale.Items ??= new List<SaleItem>();
-        foreach (var newItem in newItemsList)
-        {
-            sale.Items.Add(newItem);
-        }
+            sale.Items ??= new List<SaleItem>();
+            foreach (var newItem in newItemsList)
+            {
+                sale.Items.Add(newItem);
+            }
 
-        await RecalculateTotalAsync(sale);
-        ValidateHoldSaleTotal(sale);
-        await _context.SaveChangesAsync(cancellationToken);
+            await RecalculateTotalAsync(sale);
+            ValidateHoldSaleTotal(sale);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            if (txn != null)
+            {
+                await txn.CommitAsync(cancellationToken);
+            }
+
+            return sale;
+        }, cancellationToken);
 
         await NotifyHoldOrdersChangedAsync();
-        return MapToDto(sale);
+        return MapToDto(updatedSale);
     }
 
     public async Task<IEnumerable<SaleDto>> GetPendingSalesAsync(int? cashierId = null, int limit = 200, int offset = 0, System.Threading.CancellationToken cancellationToken = default)

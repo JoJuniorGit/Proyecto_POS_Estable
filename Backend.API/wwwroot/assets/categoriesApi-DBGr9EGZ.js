@@ -1,0 +1,1 @@
+import{C as e}from"./AccessDenied-CFGyqWBV.js";async function t(t){let n=await e.get(`/api/categories`,t);return Array.isArray(n)?n:[]}function n(e){return Array.isArray(e)?e.map(e=>({value:String(e.id),label:`${`\xA0\xA0`.repeat(Math.max(0,Number(e.depth)||0))}${e.name??``}`,path:e.path||e.name||``})):[]}export{n,t};

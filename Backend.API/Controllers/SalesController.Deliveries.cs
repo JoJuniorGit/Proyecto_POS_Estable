@@ -35,7 +35,7 @@ public partial class SalesController
 
         try
         {
-            byte[] pdfBytes = _salesService.GetDeliveryNotePdfAsync(id, deliveryId, cancellationToken);
+            byte[] pdfBytes = await _salesService.GetDeliveryNotePdfAsync(id, deliveryId, cancellationToken);
             return File(pdfBytes, "application/pdf");
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)

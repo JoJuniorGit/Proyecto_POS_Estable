@@ -1,4 +1,3 @@
-using System;
 using Core.Helpers;
 
 namespace Desktop.Client.Helpers;

@@ -92,18 +92,14 @@ public partial class PosViewModel
         // Lazy-start: If sale is null, start one now
         if (Cart.CurrentSale == null)
         {
-            System.Diagnostics.Debug.WriteLine("[POS] CurrentSale is null when adding product — attempting lazy StartNewSaleAsync.");
             await StartNewSaleAsync();
 
             // If still null after the attempt, the API is unreachable — abort with visible error
             if (Cart.CurrentSale == null)
             {
-                System.Diagnostics.Debug.WriteLine("[POS] Lazy start FAILED — CurrentSale still null after retry.");
                 if (_dialogService != null) _dialogService.ShowError("Connection Error", "Could not start a sale session. Please check that the server is running and try again.");
                 return;
             }
-
-            System.Diagnostics.Debug.WriteLine("[POS] Lazy start succeeded.");
         }
 
         if (value != null && value.Id > 0 && Cart.CurrentSale != null)

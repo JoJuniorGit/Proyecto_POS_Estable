@@ -30,7 +30,8 @@ public class SettingsService : ISettingsService
     public async Task SetTimeZoneAsync(string timeZoneId)
     {
         var request = new { Id = timeZoneId };
-        await _httpClient.PostAsJsonAsync("api/settings/timezone", request);
+        using var response = await _httpClient.PostAsJsonAsync("api/settings/timezone", request);
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task<string> GetCurrencyFormatAsync()
@@ -49,7 +50,8 @@ public class SettingsService : ISettingsService
     public async Task SetCurrencyFormatAsync(string format)
     {
         var request = new { Format = format };
-        await _httpClient.PutAsJsonAsync("api/settings/currency-format", request);
+        using var response = await _httpClient.PutAsJsonAsync("api/settings/currency-format", request);
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task<bool> GetAllowNegativeStockAsync()
@@ -68,7 +70,8 @@ public class SettingsService : ISettingsService
     public async Task SetAllowNegativeStockAsync(bool allowed)
     {
         var request = new { Allowed = allowed };
-        await _httpClient.PutAsJsonAsync("api/settings/allow-negative-stock", request);
+        using var response = await _httpClient.PutAsJsonAsync("api/settings/allow-negative-stock", request);
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task RestartSystemAsync()

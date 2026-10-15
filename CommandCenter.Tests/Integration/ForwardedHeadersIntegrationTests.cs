@@ -117,7 +117,7 @@ public class ForwardedHeadersIntegrationTests
     }
 
     [Fact]
-    public void PairingController_WhenLocal_AllowsAnonymous()
+    public async Task PairingController_WhenLocal_AllowsAnonymous()
     {
         // Arrange
         var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
@@ -126,7 +126,7 @@ public class ForwardedHeadersIntegrationTests
         controller.ControllerContext = new ControllerContext { HttpContext = context };
 
         // Act
-        var result = controller.GetPairingInfo();
+        var result = await controller.GetPairingInfo();
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result);
@@ -134,7 +134,7 @@ public class ForwardedHeadersIntegrationTests
     }
 
     [Fact]
-    public void PairingController_WhenRemoteAndUnauthenticated_Returns403Forbidden()
+    public async Task PairingController_WhenRemoteAndUnauthenticated_Returns403Forbidden()
     {
         // Arrange
         var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
@@ -144,7 +144,7 @@ public class ForwardedHeadersIntegrationTests
         controller.ControllerContext = new ControllerContext { HttpContext = context };
 
         // Act
-        var result = controller.GetPairingInfo();
+        var result = await controller.GetPairingInfo();
 
         // Assert
         var objectResult = Assert.IsType<ObjectResult>(result);
@@ -152,7 +152,7 @@ public class ForwardedHeadersIntegrationTests
     }
 
     [Fact]
-    public void PairingController_WhenRemoteAndAuthenticated_Returns200OK()
+    public async Task PairingController_WhenRemoteAndAuthenticated_Returns200OK()
     {
 // Arrange
         var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
@@ -168,7 +168,7 @@ public class ForwardedHeadersIntegrationTests
         controller.ControllerContext = new ControllerContext { HttpContext = context };
 
         // Act
-        var result = controller.GetPairingInfo();
+        var result = await controller.GetPairingInfo();
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result);
@@ -199,7 +199,7 @@ public class ForwardedHeadersIntegrationTests
         // Act 2: Execute PairingController
         var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
         controller.ControllerContext = new ControllerContext { HttpContext = context };
-        var result = controller.GetPairingInfo();
+        var result = await controller.GetPairingInfo();
 
         // Assert: The proxy header is processed, remote IP is 192.168.1.100, anonymous access blocked
         var objectResult = Assert.IsType<ObjectResult>(result);
@@ -207,7 +207,7 @@ public class ForwardedHeadersIntegrationTests
     }
 
     [Fact]
-    public void PairingController_WhenHttpsRuntimeEnabled_AdvertisesHttpsPortAndSecurePayload()
+    public async Task PairingController_WhenHttpsRuntimeEnabled_AdvertisesHttpsPortAndSecurePayload()
     {
         // Arrange
         _networkDiscoveryMock
@@ -232,7 +232,7 @@ public class ForwardedHeadersIntegrationTests
         controller.ControllerContext = new ControllerContext { HttpContext = context };
 
         // Act
-        var result = controller.GetPairingInfo();
+        var result = await controller.GetPairingInfo();
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result);
@@ -243,7 +243,7 @@ public class ForwardedHeadersIntegrationTests
     }
 
     [Fact]
-    public void PairingController_WhenHttpsRuntimeDisabled_AdvertisesHttpPortAndInsecurePayload()
+    public async Task PairingController_WhenHttpsRuntimeDisabled_AdvertisesHttpPortAndInsecurePayload()
     {
         // Arrange
         _networkDiscoveryMock
@@ -268,7 +268,7 @@ public class ForwardedHeadersIntegrationTests
         controller.ControllerContext = new ControllerContext { HttpContext = context };
 
         // Act
-        var result = controller.GetPairingInfo();
+        var result = await controller.GetPairingInfo();
 
         // Assert
         var okResult = Assert.IsType<OkObjectResult>(result);

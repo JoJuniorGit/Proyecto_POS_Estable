@@ -140,6 +140,17 @@ public class OcrPageDecoderTests
         Assert.Throws<ArgumentException>(() => decoder.Decode(new byte[] { 9, 8, 7, 6, 5 }));
     }
 
+    [Fact]
+    public void ImagePageDecoder_Decode_DimensionsExceedingMaxImageDimension_ThrowsArgumentException()
+    {
+        var decoder = new ImagePageDecoder(_preprocessor);
+        var oversizedPng = CreateImagePng(ImagePageDecoder.MaxImageDimension + 1, 10);
+
+        var exception = Assert.Throws<ArgumentException>(() => decoder.Decode(oversizedPng));
+
+        Assert.Contains(ImagePageDecoder.MaxImageDimension.ToString(), exception.Message);
+    }
+
     private byte[] CreateImagePng(int width, int height)
     {
         using var image = new Mat(height, width, MatType.CV_8UC3, Scalar.White);

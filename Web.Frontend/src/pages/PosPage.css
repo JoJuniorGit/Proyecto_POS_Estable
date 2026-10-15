@@ -73,3 +73,9 @@
   cursor: pointer;
   transition: all 0.15s ease;
 }
+/* 8.179-T3 (S4): filtro de categoría de las sugerencias POS — tope de ancho para no comprimir el buscador. */
+.pos-category-select {
+  max-width: 170px;
+  min-width: 0;
+  flex-shrink: 0;
+}

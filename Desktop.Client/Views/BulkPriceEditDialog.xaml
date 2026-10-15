@@ -1,0 +1,286 @@
+<Window x:Class="Desktop.Client.Views.BulkPriceEditDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:converters="clr-namespace:Desktop.Client.Converters"
+        mc:Ignorable="d"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Auto"
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        Title="Edición masiva de precios"
+        Height="760" Width="1080"
+        MinHeight="620" MinWidth="920"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        PreviewKeyDown="BulkPriceEditDialog_PreviewKeyDown"
+        AutomationProperties.AutomationId="BulkPriceEditDialog">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+        <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- HEADER -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <TextBlock Text="Edición masiva de precios"
+                       Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
+                       FontWeight="Bold"/>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <materialDesign:PackIcon Kind="CheckAll" Width="16" Height="16" Foreground="#5E35B1" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBlock Text="{Binding SelectionSummary}"
+                           FontWeight="SemiBold"
+                           Foreground="#1E293B"
+                           VerticalAlignment="Center"
+                           AutomationProperties.AutomationId="BulkPriceEdit_SelectionSummary"/>
+            </StackPanel>
+            <TextBlock Text="Configure una o más operaciones, genere la vista previa y aplique los cambios (la actualización es atómica: todo o nada)."
+                       Style="{DynamicResource MaterialDesignCaptionTextBlock}"
+                       Foreground="{DynamicResource MaterialDesignBodyLight}"
+                       TextWrapping="Wrap"
+                       Margin="0,6,0,0"/>
+        </StackPanel>
+
+        <!-- OPERACIONES -->
+        <Border Grid.Row="1"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="12"
+                Background="#F8FAFC"
+                Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="1. Operaciones por campo"
+                           FontWeight="SemiBold"
+                           Foreground="#334155"
+                           Margin="0,0,0,10"/>
+
+                <ItemsControl ItemsSource="{Binding Operations}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28"/>
+                                    <ColumnDefinition Width="140"/>
+                                    <ColumnDefinition Width="180"/>
+                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <CheckBox Grid.Column="0"
+                                          IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          VerticalAlignment="Center"
+                                          ToolTip="Activar esta operación"/>
+
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Label}"
+                                           FontWeight="SemiBold"
+                                           FontSize="12"
+                                           Foreground="#1E293B"
+                                           VerticalAlignment="Center"/>
+
+                                <ComboBox Grid.Column="2"
+                                          ItemsSource="{Binding ModeOptions}"
+                                          SelectedValue="{Binding SelectedMode, Mode=TwoWay}"
+                                          SelectedValuePath="Mode"
+                                          DisplayMemberPath="Label"
+                                          Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                          Height="32"
+                                          Padding="8,2"
+                                          Margin="0,0,10,0"
+                                          AutomationProperties.AutomationId="BulkPriceEdit_ModeCombo"/>
+
+                                <TextBox Grid.Column="3"
+                                         Text="{Binding ValueText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                         materialDesign:HintAssist.Hint="Valor"
+                                         materialDesign:HintAssist.IsFloating="True"
+                                         Height="32"
+                                         Padding="8,2"
+                                         Margin="0,0,10,0"
+                                         AutomationProperties.AutomationId="BulkPriceEdit_ValueInput"/>
+
+                                <TextBlock Grid.Column="4"
+                                           Text="{Binding ValueHint}"
+                                           FontSize="11"
+                                           Foreground="#64748B"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- ACCIONES DE PREVIEW -->
+        <Grid Grid.Row="2" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Command="{Binding PreviewCommand}"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                        Style="{DynamicResource MaterialDesignRaisedButton}"
+                        Background="#5E35B1"
+                        BorderBrush="#5E35B1"
+                        Foreground="#FFFFFF"
+                        Height="34"
+                        Padding="16,0"
+                        AutomationProperties.AutomationId="BulkPriceEdit_PreviewButton"
+                        ToolTip="Calcular los cambios sin escribir nada (máx. 1000 productos)">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="EyeOutline" Width="16" Height="16" Margin="0,0,6,0" Foreground="#FFFFFF"/>
+                        <TextBlock Text="Vista previa" FontWeight="Bold" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+                    </StackPanel>
+                </Button>
+
+                <ProgressBar IsIndeterminate="True"
+                             Value="0"
+                             Width="18" Height="18"
+                             Margin="10,0,0,0"
+                             VerticalAlignment="Center"
+                             Style="{StaticResource MaterialDesignCircularProgressBar}"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisConverter}}"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <TextBlock Text="{Binding PreviewSummary}"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Foreground="#475569"
+                           VerticalAlignment="Center"
+                           Margin="0,0,14,0"/>
+                <TextBlock Text="{Binding ExchangeRateSummary}"
+                           FontSize="12"
+                           Foreground="#64748B"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- GRILLA COMPARATIVA ANTES VS DESPUES -->
+        <Border Grid.Row="3"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Background="#FFFFFF">
+            <Grid>
+                <DataGrid ItemsSource="{Binding PreviewRows}"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          CanUserDeleteRows="False"
+                          IsReadOnly="True"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="Horizontal"
+                          HorizontalGridLinesBrush="#E2E8F0"
+                          ColumnHeaderHeight="36"
+                          RowHeight="Auto"
+                          MinRowHeight="34"
+                          BorderThickness="0"
+                          Background="#FFFFFF"
+                          VirtualizingStackPanel.IsVirtualizing="True"
+                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                          AutomationProperties.AutomationId="BulkPriceEdit_PreviewGrid">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="PRODUCTO" Binding="{Binding Name}" Width="180"/>
+                        <DataGridTextColumn Header="SKU" Binding="{Binding SKU}" Width="110"/>
+                        <DataGridTemplateColumn Header="ESTADO" Width="230">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding StatusText}"
+                                               Foreground="{Binding StatusColor}"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center"
+                                               Margin="0,4"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="ANTES → DESPUÉS (USD / BS.S)" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding ChangesSummary}"
+                                               FontFamily="Consolas, Courier New, monospace"
+                                               FontSize="11"
+                                               Foreground="#1E293B"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center"
+                                               Margin="0,4"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <TextBlock Text="Genere la vista previa para ver la comparación Antes vs Después, los omitidos con su motivo y los totales."
+                           Foreground="#94A3B8"
+                           FontSize="12"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"
+                           MaxWidth="420"
+                           TextAlignment="Center"
+                           Visibility="{Binding HasPreview, Converter={StaticResource InverseBooleanConverter}, FallbackValue=Visible}"/>
+            </Grid>
+        </Border>
+
+        <!-- FOOTER -->
+        <Grid Grid.Row="4" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,14,0">
+                <TextBlock Text="{Binding ErrorMessage}"
+                           Foreground="#DC2626"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}"/>
+                <TextBlock Text="{Binding StatusMessage}"
+                           Foreground="#16A34A"
+                           TextWrapping="Wrap"
+                           Margin="0,4,0,0"
+                           Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
+                <Button Content="Cerrar"
+                        Command="{Binding CloseCommand}"
+                        IsEnabled="{Binding CanClose}"
+                        Style="{DynamicResource MaterialDesignFlatButton}"
+                        Height="36"
+                        Padding="14,0"
+                        Margin="0,0,8,0"
+                        AutomationProperties.AutomationId="BulkPriceEdit_CloseButton"/>
+                <Button Command="{Binding ApplyCommand}"
+                        IsEnabled="{Binding CanApply}"
+                        Style="{DynamicResource MaterialDesignRaisedButton}"
+                        Background="#5E35B1"
+                        BorderBrush="#5E35B1"
+                        Foreground="#FFFFFF"
+                        Height="36"
+                        Padding="18,0"
+                        AutomationProperties.AutomationId="BulkPriceEdit_ApplyButton"
+                        ToolTip="Aplicar los cambios previsualizados con confirmación">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="ContentSave" Width="16" Height="16" Margin="0,0,6,0" Foreground="#FFFFFF"/>
+                        <TextBlock Text="Aplicar cambios" FontWeight="Bold" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

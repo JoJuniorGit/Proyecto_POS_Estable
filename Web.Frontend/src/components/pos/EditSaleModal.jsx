@@ -168,8 +168,14 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
     }
   };
 
+  const handleClose = () => {
+    if (!isSaving) {
+      onClose?.();
+    }
+  };
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`✏️ Editar Productos del Pedido #${sale?.id || ''}`} maxWidth="680px" overflowVisible={true}>
+    <Modal isOpen={isOpen} onClose={handleClose} title={`✏️ Editar Productos del Pedido #${sale?.id || ''}`} maxWidth="680px" overflowVisible={true}>
       {error && (
         <div className="alert alert-danger mb-3 text-sm">
           {error}

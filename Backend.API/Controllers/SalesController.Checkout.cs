@@ -126,6 +126,13 @@ public partial class SalesController
     [HttpPost("{id}/confirm-pickup")]
     public async Task<ActionResult<SaleHistoryDto>> ConfirmPickupAsync(int id, System.Threading.CancellationToken cancellationToken = default)
     {
+        string requestPath = $"/api/sales/{id}/confirm-pickup";
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(this, requestPath, $"{{\"id\":{id}}}");
+        if (idempotency.ShouldStop)
+        {
+            return idempotency.BlockingResult!;
+        }
+
         try
         {
             if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
@@ -134,6 +141,11 @@ public partial class SalesController
             }
 
             var sale = await _salesService.ConfirmPickupAsync(id, GetActorUserId(), cancellationToken);
+            await _idempotencyResolver.RegisterSuccessAsync(
+                idempotency,
+                requestPath,
+                System.Text.Json.JsonSerializer.Serialize(sale),
+                cancellationToken);
             return Ok(sale);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
@@ -143,6 +155,10 @@ public partial class SalesController
         catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
         {
             return this.ApiConflict("Otro usuario modificó el retiro simultáneamente. Actualice la lista e intente de nuevo.");
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (Backend.API.Services.IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
         }
     }
 

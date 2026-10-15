@@ -64,7 +64,10 @@ function RegisterClosePageContent() {
     try {
       const [methodsData, rateData] = await Promise.all([
         getActivePaymentMethods(),
-        api.get('/api/exchange-rate/today').catch(() => ({ Value: 0 })),
+        api.get('/api/exchange-rate/today').catch((err) => {
+          console.warn('[RegisterClosePage] No se pudo obtener tasa del día, usando fallback 0:', err);
+          return { Value: 0 };
+        }),
       ]);
 
       setMethods(methodsData || []);

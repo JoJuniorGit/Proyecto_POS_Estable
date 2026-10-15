@@ -3,8 +3,6 @@ using Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
-using Inventory.Module.Data;
-using Inventory.Module.Services;
 using Backend.API.Services;
 using System;
 using System.Threading;
@@ -23,6 +21,7 @@ public class SettingsController : ControllerBase
     private readonly IExchangeRateWriteService? _writeService;
     private readonly ITimeZoneProvider _timeZoneProvider;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? _hubContext;
+    private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache? _cache;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public SettingsController(
@@ -31,7 +30,8 @@ public class SettingsController : ControllerBase
         IExchangeRateHistoryService historyService,
         IExchangeRateWriteService? writeService = null,
         ITimeZoneProvider? timeZoneProvider = null,
-        Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null)
+        Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? cache = null)
     {
         _settingsService = settingsService;
         _currentUserService = currentUserService;
@@ -39,6 +39,7 @@ public class SettingsController : ControllerBase
         _writeService = writeService;
         _timeZoneProvider = timeZoneProvider ?? new Core.Services.TimeZoneProvider(settingsService);
         _hubContext = hubContext;
+        _cache = cache;
     }
 
     [HttpGet("exchange-rate")]
@@ -82,6 +83,9 @@ public class SettingsController : ControllerBase
         {
             await _writeService.UpsertTodayRateAsync(roundedRate, cancellationToken);
         }
+
+        var todayDate = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
+        _cache?.Remove($"er_today_{todayDate:yyyy-MM-dd}");
 
         return Ok(new SettingValueResponseDto { Value = roundedRate, LastUpdated = DateTime.UtcNow });
     }
@@ -170,6 +174,41 @@ public class SettingsController : ControllerBase
         await _settingsService.SetSettingAsync(Core.Constants.SettingKeys.AllowNegativeStock, request.Allowed.ToString());
         return Ok(new AllowNegativeStockResponseDto { Allowed = request.Allowed });
     }
+
+    // 8.177-T2 (S3): razón social usada en el encabezado legal de las exportaciones del Kardex.
+    [HttpGet("company-name")]
+    public async Task<ActionResult> GetCompanyNameAsync(CancellationToken cancellationToken = default)
+    {
+        var value = await _settingsService.GetSettingAsync("CompanyLegalName");
+        return Ok(new CompanyNameSettingResponseDto
+        {
+            Name = string.IsNullOrWhiteSpace(value) ? "COMMANDCENTER POS" : value
+        });
+    }
+
+    [HttpPost("company-name")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> SetCompanyNameAsync([FromBody] SetCompanyNameRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!_currentUserService.CanMutateSettings)
+        {
+            return this.ApiForbidden("Su rol no tiene permisos para actualizar la razón social.");
+        }
+
+        var value = request?.Name?.Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            return this.ApiBadRequest("La razón social no puede estar vacía.");
+        }
+
+        if (value.Length > 120)
+        {
+            return this.ApiBadRequest("La razón social no puede exceder los 120 caracteres.");
+        }
+
+        await _settingsService.SetSettingAsync("CompanyLegalName", value);
+        return Ok(new CompanyNameSettingResponseDto { Name = value });
+    }
 }
 
 public class SetExchangeRateRequest
@@ -212,4 +251,14 @@ public class CurrencyFormatResponseDto
 public class AllowNegativeStockResponseDto
 {
     public bool Allowed { get; set; }
+}
+
+public class SetCompanyNameRequest
+{
+    public string Name { get; set; } = string.Empty;
+}
+
+public class CompanyNameSettingResponseDto
+{
+    public string Name { get; set; } = string.Empty;
 }

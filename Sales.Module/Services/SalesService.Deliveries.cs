@@ -26,9 +26,31 @@ public partial class SalesService
         string? requestPath = null)
     {
         var strategy = _context.Database.CreateExecutionStrategy();
+        var isRetry = false;
         return await strategy.ExecuteAsync(async () =>
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // SRE-08 (8.171): en reintentos se descarta el tracker para no re-aplicar las mutaciones
+            // del intento fallido. En el PRIMER intento NO se limpia: la semántica xmin (8.145) exige
+            // que un caller con estado stale reciba DbUpdateConcurrencyException en vez de re-aplicar
+            // silenciosamente sobre una lectura fresca (protege contra doble entrega desde pantallas viejas).
+            if (isRetry)
+            {
+                _context.ChangeTracker.Clear();
+            }
+
+            isRetry = true;
+
+            await using var transaction = _context.Database.IsRelational()
+                ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
+                : null;
+
+            if (_context.Database.IsNpgsql())
+            {
+                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", new object[] { 2, saleId }, cancellationToken);
+            }
+
             var sale = await _context.Sales
                 .AsSplitQuery()
                 .Include(s => s.Items)
@@ -74,10 +96,6 @@ public partial class SalesService
 
                 requestedItems.Add((saleItem, requestedItem.Quantity));
             }
-
-            await using var transaction = _context.Database.IsRelational()
-                ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
-                : null;
 
             var deliveredByName = await ResolveDeliveryUserNameAsync(actingUserId, cancellationToken);
             var deliveredAt = DateTime.UtcNow;
@@ -167,26 +185,26 @@ public partial class SalesService
         });
     }
 
-    public byte[] GetDeliveryNotePdfAsync(int saleId, int deliveryId, CancellationToken cancellationToken = default)
+    public async Task<byte[]> GetDeliveryNotePdfAsync(int saleId, int deliveryId, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var delivery = _context.SaleDeliveries
+        var deliveriesThroughEvent = await _context.SaleDeliveries
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(item => item.Items)
-            .FirstOrDefault(item => item.Id == deliveryId && item.SaleId == saleId);
+            .Where(item => item.SaleId == saleId && item.Id <= deliveryId)
+            .ToListAsync(cancellationToken);
+
+        var delivery = deliveriesThroughEvent.FirstOrDefault(item => item.Id == deliveryId);
         if (delivery == null) throw new KeyNotFoundException("Entrega no encontrada.");
 
-        var sale = _context.Sales
+        var sale = await _context.Sales
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(item => item.Items)
-            .FirstOrDefault(item => item.Id == saleId);
+            .FirstOrDefaultAsync(item => item.Id == saleId, cancellationToken);
         if (sale == null) throw new KeyNotFoundException("Entrega no encontrada.");
 
-        var deliveriesThroughEvent = _context.SaleDeliveries
-            .AsNoTracking()
-            .Include(item => item.Items)
-            .Where(item => item.SaleId == saleId && item.Id <= delivery.Id)
-            .ToList();
         var deliveredQuantitiesAtEvent = deliveriesThroughEvent
             .SelectMany(item => item.Items)
             .GroupBy(item => item.SaleItemId)

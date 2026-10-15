@@ -1,4 +1,5 @@
 using Core.DTOs;
+using System.Linq;
 
 namespace Desktop.Client.Services;
 
@@ -29,7 +30,9 @@ public static class ProductClientMapping
         IsStockShared = source.IsStockShared,
         HasIndependentPricing = source.HasIndependentPricing,
         ConversionFactor = source.ConversionFactor,
-        GroupKey = source.GroupKey
+        GroupKey = source.GroupKey,
+        // 8.179-T2 (S3): clonar conserva las categorías del producto origen (semántica de reemplazo).
+        CategoryIds = source.Categories?.Select(c => c.Id).ToList()
     };
 
     public static UpdateProductDto ToUpdateProductDto(ProductDto source) => new()
@@ -57,7 +60,10 @@ public static class ProductClientMapping
         IsStockShared = source.IsStockShared,
         HasIndependentPricing = source.HasIndependentPricing,
         ConversionFactor = source.ConversionFactor,
-        GroupKey = source.GroupKey
+        GroupKey = source.GroupKey,
+        // 8.179-T2 (S3): los flujos que parten de un ProductDto releído (auto-save, variantes)
+        // envían el set completo actual; el GET por Id ya incluye Categories.
+        CategoryIds = source.Categories?.Select(c => c.Id).ToList()
     };
 
     public static UpdateProductDto ToUpdateProductDto(CreateProductDto source, int id) => new()
@@ -85,7 +91,10 @@ public static class ProductClientMapping
         IsStockShared = source.IsStockShared,
         HasIndependentPricing = source.HasIndependentPricing,
         ConversionFactor = source.ConversionFactor,
-        GroupKey = source.GroupKey
+        GroupKey = source.GroupKey,
+        // 8.179-T2 (S3): el diálogo envía SIEMPRE la lista completa mostrada (marcar/desmarcar =
+        // reemplazo); null solo cuando la carga falló y no debe pisar la asignación del servidor.
+        CategoryIds = source.CategoryIds
     };
 
     public static ProductDto Merge(ProductDto target, CreateProductDto source)

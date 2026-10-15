@@ -68,7 +68,10 @@ function RegisterPageContent() {
     try {
       const [sessionData, historyData] = await Promise.all([
         api.get('/api/cashdrawer/active-session'),
-        api.get(`/api/cashdrawer/history?limit=${HISTORY_FETCH_LIMIT}`).catch(() => []),
+        api.get(`/api/cashdrawer/history?limit=${HISTORY_FETCH_LIMIT}`).catch((err) => {
+          console.warn('[RegisterPage] No se pudo cargar historial de caja:', err);
+          return [];
+        }),
       ]);
       setSession(sessionData);
       setHistoryTransactions(historyData || []);
@@ -326,7 +329,7 @@ function RegisterPageContent() {
                       ? `Factura N° ${tx.invoiceNumber}`
                       : (tx.description || getSourceLabel(tx.source));
 
-                    const amountUsd = tx.amountUsd || ((exchangeRate && exchangeRate > 0) ? tx.amountLocal / exchangeRate : 0);
+                    const amountUsd = tx.amountUsd ?? (tx.exchangeRate > 0 ? tx.amountLocal / tx.exchangeRate : 0);
 
                     return (
                       <div
@@ -447,7 +450,7 @@ function RegisterPageContent() {
                       <tbody>
                         {paginatedTransactions.map((tx, idx) => {
                           const isIncome = tx.type === 0;
-                          const amountUsd = tx.amountUsd || ((exchangeRate && exchangeRate > 0) ? tx.amountLocal / exchangeRate : 0);
+                          const amountUsd = tx.amountUsd ?? (tx.exchangeRate > 0 ? tx.amountLocal / tx.exchangeRate : 0);
                           const conceptStr = tx.description || getSourceLabel(tx.source);
 
                           return (

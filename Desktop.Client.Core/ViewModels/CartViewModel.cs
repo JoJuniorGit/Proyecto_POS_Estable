@@ -108,19 +108,19 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         ? LiveTotalBsS
         : CurrentSale?.SubtotalBsS > 0
             ? CurrentSale.SubtotalBsS
-            : PricingHelper.RoundToDigital(Subtotal * _exchangeRateService.CurrentRate);
+            : Core.Helpers.PricingCalculator.RoundToDigital(Subtotal * _exchangeRateService.CurrentRate);
 
     public decimal TotalAmountLocal => IsLivePendingSale
         ? LiveTotalBsS
         : CurrentSale?.TotalBsS > 0
             ? CurrentSale.TotalBsS
-            : PricingHelper.RoundToDigital(TotalUSD * _exchangeRateService.CurrentRate);
+            : Core.Helpers.PricingCalculator.RoundToDigital(TotalUSD * _exchangeRateService.CurrentRate);
 
     private bool IsLivePendingSale => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
 
     public bool HasUncommittedItems => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
 
-    private decimal LiveTotalBsS => PricingHelper.RoundToDigital(CartItems.Sum(c => c.SubtotalBsS));
+    private decimal LiveTotalBsS => Core.Helpers.PricingCalculator.RoundToDigital(CartItems.Sum(c => c.SubtotalBsS));
 
     private SaleDto? _currentSale;
     public SaleDto? CurrentSale
@@ -424,12 +424,12 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         if (CurrentSale == null) return;
         try
         {
-            foreach (var item in CartItems.ToList())
+            var dirtyItems = CartItems.Where(i => i.IsQuantityDirty && i.Model.Quantity > 0m).ToList();
+            if (dirtyItems.Count == 0) return;
+
+            foreach (var item in dirtyItems)
             {
-                if (item.Model.Quantity > 0m)
-                {
-                    await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, item.Model.Quantity, _exchangeRateService.CurrentRate);
-                }
+                await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, item.Model.Quantity, _exchangeRateService.CurrentRate);
             }
             var reloaded = await _salesService.GetSaleAsync(CurrentSale.Id);
             CurrentSale = reloaded;

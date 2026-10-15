@@ -555,7 +555,7 @@ public class CustodyPartialDeliveryTests
         context.SaleDeliveries.Add(delivery);
         await context.SaveChangesAsync();
 
-        var pdf = CreateSalesService(context).GetDeliveryNotePdfAsync(sale.Id, delivery.Id);
+        var pdf = await CreateSalesService(context).GetDeliveryNotePdfAsync(sale.Id, delivery.Id);
 
         Assert.NotEmpty(pdf);
     }
@@ -601,7 +601,7 @@ public class CustodyPartialDeliveryTests
         context.SaleDeliveries.AddRange(earlierDelivery, laterDelivery);
         await context.SaveChangesAsync();
 
-        var pdf = CreateSalesService(context).GetDeliveryNotePdfAsync(sale.Id, earlierDelivery.Id);
+        var pdf = await CreateSalesService(context).GetDeliveryNotePdfAsync(sale.Id, earlierDelivery.Id);
         var content = Encoding.ASCII.GetString(pdf);
 
         Assert.Contains("(6) Tj", content);
@@ -616,7 +616,7 @@ public class CustodyPartialDeliveryTests
         context.Sales.Add(sale);
         await context.SaveChangesAsync();
 
-        var exception = Assert.Throws<KeyNotFoundException>(() =>
+        var exception = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSalesService(context).GetDeliveryNotePdfAsync(sale.Id, 999));
 
         Assert.Equal("Entrega no encontrada.", exception.Message);
@@ -649,7 +649,7 @@ public class CustodyPartialDeliveryTests
         context.SaleDeliveries.Add(delivery);
         await context.SaveChangesAsync();
 
-        var exception = Assert.Throws<KeyNotFoundException>(() =>
+        var exception = await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             CreateSalesService(context).GetDeliveryNotePdfAsync(sale.Id, delivery.Id));
 
         Assert.Equal("Entrega no encontrada.", exception.Message);

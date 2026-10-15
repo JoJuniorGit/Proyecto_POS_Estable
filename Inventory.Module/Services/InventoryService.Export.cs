@@ -40,6 +40,20 @@ public partial class InventoryService
             .Where(p => p.IsGroupHeader && !p.IsDeleted)
             .ToDictionaryAsync(p => p.Id, p => !string.IsNullOrWhiteSpace(p.GroupKey) ? p.GroupKey : p.Name, cancellationToken);
 
+        // 8.179-T1 (S5): "Categorías" = rutas de TODAS las categorías asignadas, separadas por "; ".
+        var categoryPathsById = await BuildCategoryPathMapAsync(cancellationToken);
+        var categoryLinks = await _context.ProductCategories.AsNoTracking()
+            .Select(pc => new { pc.ProductId, pc.CategoryId })
+            .ToListAsync(cancellationToken);
+        var categoriesByProduct = categoryLinks
+            .GroupBy(link => link.ProductId)
+            .ToDictionary(
+                group => group.Key,
+                group => string.Join("; ", group
+                    .Select(link => categoryPathsById.TryGetValue(link.CategoryId, out var path) ? path : null)
+                    .Where(path => !string.IsNullOrEmpty(path))
+                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)));
+
         bool isXlsx = string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase) || string.Equals(format, "excel", StringComparison.OrdinalIgnoreCase);
 
         if (isXlsx)
@@ -52,7 +66,8 @@ public partial class InventoryService
                 "SKU", "Nombre", "Descripción", "CostoUSD", "MargenDetal%",
                 "MargenMayor%", "CantMinMayorista", "HabilitarMayorista",
                 "EsFraccionable", "StockActual", "UmbralMinimo",
-                "TipoProducto", "Grupo", "CompartirStock", "FactorConversion"
+                "TipoProducto", "Grupo", "CompartirStock", "FactorConversion",
+                "Categorías"
             };
 
             for (int col = 0; col < headers.Length; col++)
@@ -82,6 +97,7 @@ public partial class InventoryService
                 worksheet.Cell(row, 13).Value = ResolveGroupName(p, groupKeysById);
                 worksheet.Cell(row, 14).Value = p.IsStockShared ? "SI" : "NO";
                 worksheet.Cell(row, 15).Value = p.ConversionFactor;
+                worksheet.Cell(row, 16).Value = categoriesByProduct.TryGetValue(p.Id, out var categoryPaths) ? categoryPaths : string.Empty;
                 row++;
             }
 
@@ -94,7 +110,7 @@ public partial class InventoryService
         else
         {
             var csvBuilder = new StringBuilder();
-            csvBuilder.AppendLine("SKU;Nombre;Descripción;CostoUSD;MargenDetal%;MargenMayor%;CantMinMayorista;HabilitarMayorista;EsFraccionable;StockActual;UmbralMinimo;TipoProducto;Grupo;CompartirStock;FactorConversion");
+            csvBuilder.AppendLine("SKU;Nombre;Descripción;CostoUSD;MargenDetal%;MargenMayor%;CantMinMayorista;HabilitarMayorista;EsFraccionable;StockActual;UmbralMinimo;TipoProducto;Grupo;CompartirStock;FactorConversion;Categorías");
 
             foreach (var p in products)
             {
@@ -114,7 +130,8 @@ public partial class InventoryService
                     ResolveProductType(p),
                     EscapeCsvField(ResolveGroupName(p, groupKeysById)),
                     p.IsStockShared ? "SI" : "NO",
-                    p.ConversionFactor.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)
+                    p.ConversionFactor.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture),
+                    EscapeCsvField(categoriesByProduct.TryGetValue(p.Id, out var categoryPaths) ? categoryPaths : string.Empty)
                 }));
             }
 
@@ -137,7 +154,8 @@ public partial class InventoryService
                 "SKU", "Nombre", "Descripción", "CostoUSD", "MargenDetal%",
                 "MargenMayor%", "CantMinMayorista", "HabilitarMayorista",
                 "EsFraccionable", "StockActual", "UmbralMinimo",
-                "TipoProducto", "Grupo", "CompartirStock", "FactorConversion"
+                "TipoProducto", "Grupo", "CompartirStock", "FactorConversion",
+                "Categoría"
             };
 
             for (int col = 0; col < headers.Length; col++)
@@ -165,6 +183,7 @@ public partial class InventoryService
             worksheet.Cell(2, 13).Value = "";
             worksheet.Cell(2, 14).Value = "NO";
             worksheet.Cell(2, 15).Value = 1.0000m;
+            worksheet.Cell(2, 16).Value = "";
 
             worksheet.Columns().AdjustToContents();
 
@@ -175,11 +194,18 @@ public partial class InventoryService
         else
         {
             var csvBuilder = new StringBuilder();
-            csvBuilder.AppendLine("SKU;Nombre;Descripción;CostoUSD;MargenDetal%;MargenMayor%;CantMinMayorista;HabilitarMayorista;EsFraccionable;StockActual;UmbralMinimo;TipoProducto;Grupo;CompartirStock;FactorConversion");
-            csvBuilder.AppendLine("1001;Producto Ejemplo;Descripción breve de ejemplo;10.00;30.00;20.00;6.000;SI;NO;100;5;Normal;;NO;1.0000");
+            csvBuilder.AppendLine("SKU;Nombre;Descripción;CostoUSD;MargenDetal%;MargenMayor%;CantMinMayorista;HabilitarMayorista;EsFraccionable;StockActual;UmbralMinimo;TipoProducto;Grupo;CompartirStock;FactorConversion;Categoría");
+            csvBuilder.AppendLine("1001;Producto Ejemplo;Descripción breve de ejemplo;10.00;30.00;20.00;6.000;SI;NO;100;5;Normal;;NO;1.0000;");
 
             return Task.FromResult(Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csvBuilder.ToString())).ToArray());
         }
+    }
+
+    // 8.179-T1 (S5): rutas legibles de todas las categorías, indexadas por Id (helper compartido).
+    private async Task<Dictionary<int, string>> BuildCategoryPathMapAsync(CancellationToken cancellationToken)
+    {
+        var categories = await _context.Categories.AsNoTracking().ToListAsync(cancellationToken);
+        return CategoryHierarchy.BuildPaths(categories);
     }
 
     private static (decimal cost, decimal marginRetail, decimal priceRetail, decimal marginWholesale, decimal priceWholesale, decimal minWholesaleQty, bool hasWholesale) ResolveImportPricing(Core.DTOs.ProductImportDto dto)

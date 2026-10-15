@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Admin,Manager,Cashier")]
 [RequireSecurityStampValidation]
 [ApiController]
 [Route("api/[controller]")]
@@ -66,6 +66,7 @@ public class ReservationsController : ControllerBase
     }
 
     [HttpPost("confirm/{id}")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ConfirmReservationAsync(int id, [FromBody] ConfirmReservationDto dto, CancellationToken cancellationToken = default)
     {
         try

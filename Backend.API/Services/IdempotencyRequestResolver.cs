@@ -37,6 +37,21 @@ public sealed class IdempotencyRequestResolver
             : null;
     }
 
+    public Task<IdempotencyResolution> ResolveIfPresentAsync(
+        ControllerBase controller,
+        string requestPath,
+        string bodyJson,
+        bool parseNumericBodyAsInvoice = false)
+    {
+        string? idempotencyKey = controller.Request?.Headers["Idempotency-Key"].ToString();
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            return Task.FromResult(new IdempotencyResolution(false, null, null, null));
+        }
+
+        return ResolveAsync(controller, requestPath, bodyJson, DefaultMissingKeyMessage, parseNumericBodyAsInvoice);
+    }
+
     public async Task<IdempotencyResolution> ResolveAsync(
         ControllerBase controller,
         string requestPath,
@@ -126,7 +141,9 @@ public sealed class IdempotencyRequestResolver
     {
         return ex.Message.Contains("IX_IdempotentRequests")
             || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true
-            || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505");
+            || (ex.InnerException is Npgsql.PostgresException pg
+                && pg.SqlState == "23505"
+                && (string.IsNullOrEmpty(pg.ConstraintName) || pg.ConstraintName == "IX_IdempotentRequests_Key_RequestPath"));
     }
 
     /// <summary>

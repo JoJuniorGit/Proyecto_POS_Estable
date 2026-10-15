@@ -25,6 +25,7 @@ const PendingOrdersPage = lazy(() => import('./pages/PendingOrdersPage'));
 const PendingPickupsPage = lazy(() => import('./pages/PendingPickupsPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const RegisterClosePage = lazy(() => import('./pages/RegisterClosePage'));
+const StockCountPage = lazy(() => import('./pages/StockCountPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const ExchangeRatePage = lazy(() => import('./pages/ExchangeRatePage'));
 
@@ -186,6 +187,8 @@ function MainApp() {
         return <RegisterPage />;
       case 'closing':
         return <RegisterClosePage />;
+      case 'stock-count':
+        return <StockCountPage />;
       case 'settings':
         return <SettingsPage />;
       case 'exchange':

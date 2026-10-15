@@ -12,6 +12,7 @@ public interface ISalesService
 {
     Task<SaleDto> StartSaleAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> GetSaleAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
+    Task<(string Status, int? CashierId)?> GetSaleAuthMetadataAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
@@ -37,7 +38,7 @@ public interface ISalesService
         string? idempotencyKey = null,
         byte[]? idempotencyPayloadHash = null,
         string? requestPath = null);
-    byte[] GetDeliveryNotePdfAsync(int saleId, int deliveryId, System.Threading.CancellationToken cancellationToken = default);
+    Task<byte[]> GetDeliveryNotePdfAsync(int saleId, int deliveryId, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleHistoryDto> ConfirmPickupAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<IEnumerable<PendingPickupDto>> GetPendingPickupsAsync(int? cashierId = null, int limit = 200, int offset = 0, System.Threading.CancellationToken cancellationToken = default);
     Task<(IEnumerable<SaleHistoryDto> Items, int TotalCount)> GetSalesHistoryAsync(int page, int pageSize, System.DateTime? startDate, System.DateTime? endDate, string? search = null, int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);

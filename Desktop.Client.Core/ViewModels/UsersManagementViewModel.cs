@@ -10,13 +10,21 @@ using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class UsersManagementViewModel : ObservableObject
+public partial class UsersManagementViewModel : ObservableObject, IDisposable
 {
     private readonly IUserService _userService;
     private readonly UserSession _userSession;
     private readonly IDialogService? _dialogService;
+    private bool _disposed;
 
     public CustomerManagementViewModel CustomerViewModel { get; }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        (CustomerViewModel as IDisposable)?.Dispose();
+    }
 
     [ObservableProperty]
     private int _selectedTabIndex = 0; // 0: Users, 1: Customers

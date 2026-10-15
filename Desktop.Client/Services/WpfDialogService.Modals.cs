@@ -156,6 +156,10 @@ public partial class WpfDialogService
         if (Application.Current == null) return null;
         using var _ = TrackModal();
         bool? res = null;
+
+        // 8.179-T2 (S3): la tarjeta "Categorías" necesita el cliente del árbol; se adjunta aquí
+        // porque el ViewModel se construye fuera del contenedor DI.
+        dialogVm.CategoryClient = CategoryClient;
         Action openDialog = () =>
         {
             var dialog = new ProductDialog(dialogVm);
@@ -178,6 +182,44 @@ public partial class WpfDialogService
         {
             var dialog = new CreateInvoiceProductDialog(dialogVm);
             dialog.Owner = Application.Current.MainWindow;
+            res = dialog.ShowDialog();
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return res;
+    }
+
+    public bool? ShowRegisterSupplierDialog(ViewModels.RegisterSupplierDialogViewModel dialogVm)
+    {
+        if (Application.Current == null) return null;
+        using var _ = TrackModal();
+        bool? res = null;
+        Action openDialog = () =>
+        {
+            var dialog = new RegisterSupplierDialog(dialogVm);
+            dialog.Owner = Application.Current.MainWindow;
+            res = dialog.ShowDialog();
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return res;
+    }
+
+    public bool? ShowOcrScannerConfigDialog(ViewModels.OcrScannerConfigDialogViewModel dialogVm)
+    {
+        if (Application.Current == null) return null;
+        using var _ = TrackModal();
+        bool? res = null;
+        Action openDialog = () =>
+        {
+            var dialog = new OcrScannerConfigDialog(dialogVm)
+            {
+                Owner = Application.Current.MainWindow
+            };
             res = dialog.ShowDialog();
         };
 
@@ -211,6 +253,37 @@ public partial class WpfDialogService
         else Application.Current.Dispatcher.Invoke(openDialog);
 
         return (success, qtyChange, reason);
+    }
+
+    /// <summary>
+    /// 8.177-T3 (S1/S4): variante auditada del ajuste manual. El diálogo exige motivo
+    /// estandarizado y observación antes de habilitar el OK; el resultado viaja completo.
+    /// </summary>
+    public AdjustStockDialogResult ShowAdjustStockDialogWithAudit(Core.DTOs.ProductDto product)
+    {
+        if (Application.Current == null) return AdjustStockDialogResult.Cancelled;
+        using var _ = TrackModal();
+        var result = AdjustStockDialogResult.Cancelled;
+
+        Action openDialog = () =>
+        {
+            var dialog = new AdjustStockDialog(product);
+            dialog.Owner = Application.Current.MainWindow;
+            if (dialog.ShowDialog() == true)
+            {
+                result = new AdjustStockDialogResult(
+                    true,
+                    dialog.QuantityChange,
+                    dialog.Reason,
+                    dialog.ReasonCode,
+                    dialog.Observation);
+            }
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return result;
     }
 
     public void ShowInterruptedTransactionDialog(string title, string message)
@@ -320,7 +393,7 @@ public partial class WpfDialogService
 
         ArgumentNullException.ThrowIfNull(pickup);
         PartialDeliveryDialogResult? result = null;
-        var viewModel = new PartialDeliveryDialogViewModel(pickup);
+        using var viewModel = new PartialDeliveryDialogViewModel(pickup);
 
         using var _ = TrackModal();
         Action openDialog = () =>
@@ -522,6 +595,7 @@ public partial class WpfDialogService
         }
 
         bool? dialogResult = null;
+        string? rejectionReason = null;
         // Cancel() del VM vuelve a Idle ANTES de cerrar; se retiene la ultima fase no-idle para
         // mapear Rejected/Expired despues de que ShowDialog retorne.
         var lastNonIdlePhase = AuthorizationWaitPhase.Idle;
@@ -554,6 +628,8 @@ public partial class WpfDialogService
         finally
         {
             viewModel.PropertyChanged -= OnPhaseChanged;
+            rejectionReason = viewModel.RejectionReason;
+            viewModel.Dispose();
         }
 
         if (dialogResult == true)
@@ -564,7 +640,7 @@ public partial class WpfDialogService
         return lastNonIdlePhase switch
         {
             AuthorizationWaitPhase.Rejected => new AuthorizationWaitResult(
-                AuthorizationWaitOutcome.Rejected, null, viewModel.RejectionReason),
+                AuthorizationWaitOutcome.Rejected, null, rejectionReason),
             AuthorizationWaitPhase.Expired => new AuthorizationWaitResult(AuthorizationWaitOutcome.Expired),
             _ => new AuthorizationWaitResult(AuthorizationWaitOutcome.Cancelled)
         };
@@ -597,6 +673,76 @@ public partial class WpfDialogService
         else Application.Current.Dispatcher.Invoke(openDialog);
 
         return System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 8.179-T2 (S3): cliente del árbol de categorías para los diálogos del catálogo. Se construye
+    /// una única vez desde el cliente nombrado "Categories" del pipeline DI (patrón equivalente al
+    /// <c>CreateClient("SalesApi")</c> de PairingQrDialog); sin <c>IHttpClientFactory</c> inyectado
+    /// degrada a null y la tarjeta de categorías queda deshabilitada.
+    /// </summary>
+    public ICategoryService? CategoryClient => _categoryClient ??= CreateCategoryClient();
+
+    private ICategoryService? _categoryClient;
+
+    private ICategoryService? CreateCategoryClient() =>
+        _httpClientFactory is null ? null : new CategoryService(_httpClientFactory.CreateClient("Categories"));
+
+    /// <summary>
+    /// 8.179-T2 (S3): abre el diálogo modal de gestión de categorías y devuelve si hubo cambios
+    /// persistidos (para que ProductDialog refresque su tarjeta preservando la selección).
+    /// </summary>
+    public bool ShowCategoryManagementDialog(ViewModels.CategoryManagementDialogViewModel viewModel)
+    {
+        if (Application.Current == null) return false;
+        using var _ = TrackModal();
+        bool changed = false;
+
+        Action openDialog = () =>
+        {
+            var dialog = new CategoryManagementDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            dialog.ShowDialog();
+            changed = viewModel.HasChanges;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return changed;
+    }
+
+    /// <summary>
+    /// 8.181-T2 (S5): abre el diálogo modal de edición masiva de precios (configuración de
+    /// operaciones, vista previa y aplicación con confirmación) y devuelve true cuando la
+    /// actualización se aplicó, para que el catálogo se recargue.
+    /// </summary>
+    public bool ShowBulkPriceEditDialog(ViewModels.BulkPriceEditDialogViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (Application.Current == null) return false;
+        using var _ = TrackModal();
+        bool applied = false;
+
+        Action openDialog = () =>
+        {
+            var dialog = new BulkPriceEditDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            applied = dialog.ShowDialog() == true;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return applied;
     }
 }
 

@@ -13428,3 +13428,1433 @@ H1. Cadena 8.158 en V0.15: ad93536 (plan) + 14ae597 (T1) + a3ab349 (T2) +
     tracker ODD).
 ================================================================================
 
+================================================================================
+ANEXO 8.160 - REVISION SIMPLIFICADA DE FACTURAS PROVEEDOR: NUMERO DE FACTURA OCR, SIN PREVIEWS Y SIN COLUMNAS DE MARGEN - 2026-10-10
+================================================================================
+Change SDD: openspec/changes/2026-10-10-supplier-invoice-review-simplification/
+(proposal, 3 deltas de specs, tasks, state, verify-report). Pedido del mantenedor
+(verbatim en tracker L1) + ajuste directo posterior sin SDD (L4).
+
+A. ALCANCE Y ENTREGA
+
+A1. Pedido: en Facturas Proveedores (Desktop) retirar la visualizacion de la
+    factura (previews base64 con zoom y paginacion) y mostrar en su lugar el
+    numero de factura detectado por OCR; eliminar las columnas de margen de
+    ganancia (detal y mayor) de la grilla de revision.
+A2. Plan -- 5a6ac28 + 97fc513: tracker ODD + propuesta/specs/tareas del tramo;
+    particion atomica en una sola unidad (el contrato OcrExtractionResultDto es
+    compartido backend<->Desktop: dividir el retiro dejaria el build rojo entre
+    slices).
+A3. T1 -- ef84c47: backend DetectInvoiceNumber best-effort (patron
+    (?i)\bFACTURA\b[^0-9]{0,12}?(\d[\d\-]{3,}); "FACTURA: *0238317" ->
+    "0238317"), OcrExtractionResultDto reemplaza PreviewPagesBase64 por
+    DetectedInvoiceNumber y el endpoint deja de armar previews; Desktop: retiro
+    total de previews/zoom/paginas/converter/wheel del code-behind, columnas
+    "Margen detal %"/"Margen mayor %" fuera; tests de servicio/endpoint/
+    cliente/review actualizados (RED compile-level -> GREEN).
+A4. Ajuste directo del mantenedor (sin SDD) -- 320deb5: columna "Codigo
+    proveedor" retirada visualmente de la grilla; numero de factura reubicado a
+    la derecha del boton "Escanear factura (OCR)" (indicador "N.º de factura:",
+    visible solo con origen OCR).
+A5. Fuera de alcance: persistencia del numero de factura (solo visualizacion;
+    D4 del change); ruta tabular xlsx/csv/xml intacta; prefill/confirm de
+    margenes intactos; sin migraciones.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2221/2221, 0 fallas, 0 omitidas -- SIN PostgreSQL real
+    local: las credenciales (CI postgres/root y dev appsettings) fueron
+    rechazadas por el PG18 local (28P01); los 42 tests gated hacen early-return
+    (no fallan); CI ejecuta la suite con PostgreSQL al push.
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8937 (>=0.70), Sales.Module 0.8971 (>=0.80), Inventory.Module 0.8708
+    (>=0.72).
+B4. Verificacion independiente del slice T1 (read-only, agente separado):
+    S1-S4 CONFORME; 0 blockers / 0 warnings estructurales; previews con cero
+    referencias residuales en fuente/tests; margin/confirm intactos (fuera del
+    diff); sin migracion. Residuales: I1 (riesgo best-effort del patron),
+    I2 (spec base se sincroniza en archive-time), I3 (sin runtime interactivo).
+B5. E2E salud WPF (mock): 2/2, incluye el render de SupplierInvoice_Title de la
+    vista modificada.
+B6. Auditoria de paquetes vulnerables: 0 vulnerables (10 proyectos, exit 0).
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. Suite SIN PostgreSQL real local (credenciales rechazadas 28P01; gated tests
+    en early-return). CI cubre al push.
+D2. Indicador WPF verificado estatico + compilacion + E2E salud; sin ejecucion
+    interactiva del flujo OCR completo en runtime.
+D3. Heuristica de numero de factura best-effort: sin keyword FACTURA -> null;
+    residual I1 documentado (si aparece en uso real, acotar la captura).
+
+E. ROLLBACK
+
+E1. Revertir ef84c47 + 320deb5 restaura previews base64 (con converter), la
+    columna "Codigo proveedor" y las columnas de margen; sin migraciones ni
+    reescrituras de datos.
+
+F. VERIFY SDD
+
+F1. sdd-verify equivalente: PASS WITH WARNINGS -- S1-S4 COMPLIANT (verificacion
+    independiente) + degeneraciones D1/D2 y residual I1 registrados. Reporte:
+    verify-report.md del change.
+
+G. HALLAZGOS Y RECOMENDACIONES
+
+G1. Si se quiere trazabilidad del numero de factura (persistirlo en la factura
+    staged), es un tramo propio con migracion (D4 del change).
+G2. Riesgo residual del patron (p. ej. "FACTURA FECHA: 2026-10-10" dentro de la
+    ventana de 12 no-digitos): acotar la captura si aparece en uso real.
+G3. La UI no tiene tests automatizados de estructura XAML (compilacion + E2E
+    salud); considerar un E2E de escaneo si el flujo se estabiliza.
+
+H. COMMITS
+
+H1. 8.160 en V0.15: 5a6ac28 (plan) + 97fc513 (particion atomica) + ef84c47 (T1)
+    + 320deb5 (ajuste directo UI) + commit de cierre de este ANEXO (git log /
+    L5 del tracker ODD).
+================================================================================
+
+================================================================================
+ANEXO 8.161 - FACTURAS PROVEEDOR: ALTA DE PROVEEDOR EN MODAL Y FILA UNICA (PROVEEDOR / MONEDA / TASA) - 2026-10-10
+================================================================================
+Ejecucion directa pedida por el mantenedor (sin SDD): "Mueve los campos relacionados
+al registro de Proveedores (RIF / NIT) a un modal al que se acceda desde el boton de
+'Registrar proveedor'. haz una unica fila con el proveedor, moneda y tasa", con
+eleccion explicita de la opcion A (el combo carga todos los proveedores al abrir la
+vista con tipeo; "Buscar proveedor" desaparece; el modal solo registra).
+
+A. ALCANCE Y ENTREGA
+
+A1. Desktop: campos RIF/NIT y Nombre comercial movidos al modal "Registrar
+    proveedor" (nuevo RegisterSupplierDialog + RegisterSupplierDialogViewModel,
+    patron CreateInvoiceProductDialog); el boton "Registrar proveedor" lo abre y
+    el modal se precarga con los datos vigentes (incluidas las pistas OCR).
+A2. Desktop: card superior reducido a UNA fila: [Proveedor (combo)] [Moneda]
+    [Tasa aplicada + hint] + boton "Registrar proveedor". "Buscar proveedor"
+    retirado junto con su comando.
+A3. Combo de proveedores: listado completo al abrir la vista (Loaded ->
+    LoadSuppliersCommand) con TextSearch por nombre; la seleccion vigente se
+    preserva por Id con instancia fresca (los DTO son records de igualdad por
+    valor: null-then-set evita seleccion stale — defecto cazado por el test
+    nuevo antes de commitear).
+A4. Backend/cliente: GetSuppliersAsync sin filtros devuelve el listado completo
+    ordenado (backend: cota defensiva de 500; con filtro conserva la cota de 20)
+    y el cliente ya no exige RIF/nombre (ruta api/suppliers sin query string).
+A5. Sin migraciones; prefill/confirm de margenes, flujo OCR y ruta tabular
+    intactos.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2230/2230, 0 fallas (SIN PostgreSQL real local: credenciales
+    locales rechazadas 28P01, gated early-return; CI cubre al push) — 9 tests
+    nuevos (dialog VM x4, listado con preservacion por Id, registro via modal
+    confirmado/cancelado, ruta sin filtros cliente/backend) + adaptacion del
+    test de advertencia por plantilla guardada.
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8937, Sales.Module 0.8971, Inventory.Module 0.8712.
+B4. E2E salud WPF (mock): 2/2 (render de la vista con la fila unica).
+B5. RED compile-level observado antes de implementar (CS1061/CS0246 de los
+    miembros nuevos) -> GREEN; el test de preservacion por Id cazo el defecto de
+    igualdad por valor de los records antes del commit.
+
+C. HOOKS Y GGA
+
+C1. core.hooksPath=.githooks activo; commits sin --no-verify; GGA pre-push
+    opt-in no ejecutado (sin push).
+
+D. LIMITACIONES
+
+D1. Suite sin PostgreSQL real local (misma degeneracion documentada del 8.160).
+D2. UI verificada por compilacion + E2E salud; sin ejecucion interactiva del
+    modal ni del combo en runtime.
+D3. Edicion de proveedores existentes (renombrar/corregir RIF) no incluida: el
+    modal solo registra (fuera de alcance del pedido).
+
+E. ROLLBACK
+
+E1. Revertir el commit del tramo restaura los campos inline + "Buscar
+    proveedor" y el guard de filtros en cliente/backend; sin migraciones ni
+    reescrituras de datos.
+
+F. COMMITS
+
+F1. 8.161 en V0.15: commit unico con implementacion + ANEXO: 04b825e (git log).
+================================================================================
+
+================================================================================
+ANEXO 8.162 - PARSER OCR: SELECCION DEL NUMERO POR CERCANIA AL ANCLA (FACTURAS M Y E / NUEVO VIENTO) - 2026-10-11
+================================================================================
+Cambio autorizado explicitamente por el mantenedor ("1" = autorizo el fix minimo
+del parser) tras el diagnostico que descarto la via de configuracion pura para el
+layout COMERCIAL M Y E (7 columnas contra 5 anclas maximas del mapeo).
+
+A. ALCANCE Y ENTREGA
+
+A1. InvoiceTableParser: la banda conoce la X de su ancla y BuildNumber, cuando el
+    bucket completo NO parsea (texto de columnas sin anclar: % ALIC, % DSCTO,
+    subtotal, rayas manuscritas), elige la palabra parseable mas cercana en X al
+    ancla de la columna (desempate: la mas a la izquierda); la confianza reportada
+    es la de la palabra elegida. Si el bucket completo parsea, se conserva el
+    comportamiento historico de union (numeros partidos en palabras, p. ej. "$" +
+    "4.250" o un signo separado).
+A2. Sin cambios de esquema, UI, DTOs ni migraciones; el mapeo por proveedor sigue
+    siendo la unica configuracion. Con este fix ambos proveedores quedan cubiertos
+    con el mapeo limpio de 3 campos: NameColumnName=DESCRIPCION,
+    QuantityColumnName=CANT., UnitCostColumnName=P.U. (las anclas de separacion
+    ALIC/SUBTTL que necesitaba el Caso B dejan de ser necesarias).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2233/2233, 0 fallas (SIN PostgreSQL real local: gated
+    early-return; CI cubre al push) - 3 tests nuevos con los layouts reales de
+    ambas facturas (7 columnas con ruido ALIC/DSCTO/subtotal y 6 columnas con
+    DESCRIPCION antes de UNIDAD) + regresion de numero partido con signo.
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8937, Sales.Module 0.8971, Inventory.Module 0.8717.
+B4. RED observado antes del fix (los 2 tests de layout real fallaban con el
+    parser previo; 21 en verde) -> GREEN 23/23 del parser y 247/247 del filtro
+    OCR/SupplierInvoice.
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada documentada).
+C2. Una descripcion muy larga puede perder su token de cola si cruza la frontera
+    de banda (editable en la revision OCR del flujo existente).
+C3. Confianza numerica: en el fallback por cercania se reporta la confianza de la
+    palabra elegida, no el minimo de todo el bucket sucio.
+
+D. ROLLBACK
+
+D1. Revertir el commit restaura la union estricta del bucket; sin migraciones ni
+    reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.162 en V0.15: commit de implementacion (fix(8.162)) + commit de este ANEXO
+    (docs(8.162); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.163 - OCR FACTURAS M Y E / NUEVO VIENTO: PIE FISCAL, COMIL LAS Y DECIMALES CON CERO INICIAL - 2026-10-11
+================================================================================
+Fix derivado de reproducir las fotos reales del mantenedor (IMG_20261010_190611
+M Y E y IMG_20261010_190856 NUEVO VIENTO) por el pipeline OCR completo (motor
+Tesseract + parser + preprocesamiento reales) con un harness temporal de
+diagnostico, eliminado antes del commit.
+
+A. ALCANCE Y ENTREGA
+
+A1. InvoiceTableParser + espejo tabular (SupplierInvoiceService.Parsing.cs):
+    (a) la normalizacion numerica descarta comillas tipograficas/rectas de OCR
+    ("“72.00" -> 72.00); (b) la convencion de miles es-VE ya no aplica cuando el
+    entero arranca con cero ("0.614" -> 0,614; antes 614, error x1000);
+    (c) la lectura de la tabla se detiene en el pie fiscal (Sub-Total/TOTAL/
+    Nota/GRACIAS/SALDO/I.V.A/FORMA/TASA por igualdad normalizada; "TOTALCARE"
+    no corta); (d) las filas sin identificador ni numeros (rayas manuscritas,
+    perforaciones, vinetas) dejan de emitirse.
+A2. Mensaje "Sin lineas OCR" ahora guia a re-tomar la foto (enfoque/iluminacion).
+A3. Diagnostico NUEVO VIENTO (foto 190856): imagen lavada/blanda; el motor pierde
+    la tabla (115 palabras; numeros corruptos a nivel pixel: "1.564,22" ->
+    "£4564,22"). Se probaron 5 variantes de binarizado (adaptativo 25/51 con y
+    sin upscale x2, nitidez unsharp, Otsu x2): ninguna produce datos confiables
+    (la mejor recupera texto pero con numeros corruptos). Accion practica:
+    re-tomar esa foto; el formato ya esta cubierto por tests (RealFormatCaseB)
+    y la calidad de M Y E produce el flujo completo sin intervencion.
+
+B. VERIFICACION
+
+B1. Reproduccion real M Y E ANTES del fix: 16 lineas (2 fantasma bloqueantes con
+    "Filas OCR incompletas", linea legal con costo basura 430.689, cantidad null
+    en la fila 1, costo 614 por el punto).
+    DESPUES del fix (misma foto, mismo pipeline): EXACTAMENTE las 6 lineas de
+    items con cantidad y costo correctos (72.00/0.614; 4.00/10.529; 72.00/1.020;
+    20.00/3.619; 5.00/27.69; 10.00/13.479), todas con identificador y 0 filas
+    fantasma.
+B2. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B3. Suite completa: 2235/2235, 0 fallas (SIN PostgreSQL real local: gated
+    early-return; CI cubre al push).
+B4. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8937, Sales.Module 0.8971, Inventory.Module 0.8724.
+B5. RED observado antes del fix (4 tests: parser comilla/cero/pie + espejo +
+    mensaje) -> GREEN.
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada documentada).
+C2. El filtrado de pie compara palabras completas: un item cuyo nombre contenga
+    exactamente "TOTAL"/"NOTA"/etc. como palabra suelta cortaria la lectura (no
+    observado en datos reales; el caso prefijo "TOTALCARE" quedo con test).
+C3. La foto 190856 de NUEVO VIENTO no es recuperable por software; requiere
+    re-foto en la practica.
+
+D. ROLLBACK
+
+D1. Revertir el commit restaura el comportamiento previo del parser y del
+    espejo tabular; sin migraciones ni reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.163 en V0.15: commit de implementacion (fix(8.163)) + commit de este ANEXO
+    (docs(8.163); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.164 - REVISION FACTURAS PROVEEDOR: SIN PRECIOS SUGERIDOS Y PRECIO ESCANEADO EDITABLE EN AMBAS MONEDAS - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: "Elimina las columnas relacionadas a los precios
+sugeridos, permite tambien edicion del precio escaneado por producto".
+
+A. ALCANCE Y ENTREGA
+
+A1. Se retiran de la grilla las columnas "Precio detal sugerido USD" y "Precio
+    mayor sugerido USD" junto con el calculo local del cliente (Pricing.cs del
+    line VM y las propiedades SuggestedRetailPriceUSD/SuggestedWholesalePriceUSD
+    del ViewModel). El backend NO cambia: los campos persistidos Suggested* de la
+    linea y su calculo en staging/creacion siguen intactos (contrato y datos sin
+    migracion; se removio solo la visualizacion del cliente).
+A2. El costo de factura pasa a ser editable por producto en AMBAS monedas: la
+    columna antes "Costo factura (Bs.S)" (visible y editable solo en Bs.S) ahora
+    esta siempre visible con encabezado dinamico ("Costo factura (Bs.S)" /
+    "Costo factura (USD)") y la celda de edicion del precio escaneado aplica a
+    las lineas OCR con la misma correccion zero-trust ya existente hacia confirm.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2234/2234, 0 fallas (SIN PostgreSQL real local; CI cubre al
+    push). RED->GREEN del test nuevo DocumentCostHeader_FollowsInvoiceCurrency;
+    se retiraron los 2 tests del calculo local de sugeridos.
+B3. Cobertura/dominio sin cambios relevantes (UI y ViewModel de cliente).
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada documentada).
+C2. UI verificada por compilacion + tests de ViewModel (sin ejecucion interactiva).
+
+D. ROLLBACK
+
+D1. Revertir el commit restaura las columnas sugeridas y la visibilidad Bs.S-only
+    del costo; sin migraciones ni reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.164 en V0.15: commit de implementacion (feat(8.164)) + commit de este
+    ANEXO (docs(8.164); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.165 - FACTURAS PROVEEDOR: FACTOR DE CONVERSION CAJA-UNIDAD (DIVISOR) POR LINEA - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: "Agrega un factor de conversion (divisor), ya que
+algunos productos son facturados por caja y en el local se venden por unidad".
+
+A. ALCANCE Y ENTREGA
+
+A1. Nueva columna editable "Factor" por linea en la grilla de revision (lineas OCR
+    y tabulares; habilitada para lineas aprobables). Default 1 = sin conversion.
+    El tooltip explica la matematica.
+A2. Al confirmar: costo unitario aplicado = costo documental / factor
+    (renormalizado con el snapshot Currency/AppliedRate de la factura); cantidad a
+    stock y StockMovement = cantidad facturada x factor. El documento queda intacto
+    para auditoria (UnitCostDocument y Quantity conservan lo emitido por el
+    proveedor); el factor se persiste en la linea.
+A3. Zero-trust backend: factor validado (0 < factor <= 10000); rechazo sin efectos
+    (sin mutacion de producto/linea/stock; la factura sigue Draft).
+A4. Migracion EF AddSupplierInvoiceLineConversionFactor: columna numeric(18,2)
+    NOT NULL DEFAULT 1 en SupplierInvoiceLines (la aplica el arranque via
+    DatabaseInitializer.MigrateAsync). DTOs con parametros nuevos con default
+    (SupplierInvoiceLineDto.ConversionFactor=1; ConfirmLineDto.ConversionFactor=null):
+    sin romper call sites existentes.
+A5. Fuera de alcance: factor recordado por producto/proveedor para futuras facturas
+    (se ingresa por linea en cada revision) y visualizacion del costo ya convertido
+    en la grilla (el costo mostrado es el de la factura; la conversion se aplica al
+    confirmar).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2238/2238, 0 fallas (SIN PostgreSQL real local; CI cubre al
+    push) - 4 tests nuevos: division de costo + multiplicacion de stock y movimiento
+    (USD), renormalizacion con tasa snapshot (Bs.S), rechazo de factor no positivo
+    sin efectos, y ToConfirmLine incluye el factor por linea.
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8941, Sales.Module 0.8971, Inventory.Module 0.8730.
+B4. RED observado antes de implementar (compile-level de los miembros nuevos)
+    -> GREEN: focused 193/193 y suite 2238/2238.
+B5. Migracion generada con dotnet-ef 10.0.4 (--configuration Release porque el
+    backend estaba corriendo en Debug y bloqueaba sus binarios; no se toco la app
+    en ejecucion).
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada documentada); la
+    migracion se ejercita con schema real en CI y al reiniciar la app local.
+C2. UI verificada por compilacion + tests de ViewModel (sin ejecucion interactiva).
+C3. La clasificacion [UPDATE]/[UNCHANGED] de la grilla sigue calculada con el costo
+    de factura (pre-factor); el ajuste aplica al confirmar.
+
+D. ROLLBACK
+
+D1. Revertir el commit: el Down de la migracion elimina la columna con
+    dotnet ef database update; sin reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.165 en V0.15: commit de implementacion (feat(8.165)) + commit de este ANEXO
+    (docs(8.165); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.166 - FACTURAS PROVEEDOR: FACTOR DE CONVERSION RECORDADO POR PROVEEDOR+PRODUCTO - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: "Haz que el factor de conversion se recuerde,
+enlazado al proveedro y producto, Sin embrago debe ser editable por algun cambio
+en la facturacion del proveedor".
+
+A. ALCANCE Y ENTREGA
+
+A1. Nueva tabla SupplierProductFactors (SupplierId, ProductId, ConversionFactor
+    numeric(18,2) default 1; indice unico por par; FKs cascade; migracion
+    AddSupplierProductFactor, aplicada por el arranque via MigrateAsync).
+A2. Aprendizaje al confirmar: por cada linea aprobada y resuelta se recuerda el
+    factor aplicado (upsert en memoria dentro de la misma transaccion; el rollback
+    no deja cambios). Volver a 1 actualiza el registro (cambio de facturacion);
+    confirmar 1 sin registro previo no crea filas de ruido.
+A3. Prefijo al stagear: las lineas nuevas que resuelven a un (proveedor, producto)
+    con factor recordado lo reciben en la linea staged; la grilla lo muestra y
+    SIGUE siendo editable por linea (cambio de facturacion del proveedor).
+A4. Semantica de null: ConfirmLineDto.ConversionFactor=null ahora significa "sin
+    cambio" (conserva el factor de la linea) en vez de asumir 1; el cliente actual
+    envia siempre el valor explicito (mismo comportamiento observable).
+A5. Tooltip de la columna Factor actualizado (menciona que se recuerda por
+    proveedor y producto).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2244/2244, 0 fallas (SIN PostgreSQL real local; CI cubre al
+    push) - 6 tests nuevos: prefijo por proveedor+producto al stagear (y 1 en otro
+    producto), recuerdo al confirmar, reset a 1 sobre registro existente, 1 sin
+    registro no crea filas, null conserva el factor de la linea (y lo recuerda), y
+    el VM prefija el factor del DTO.
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8929, Sales.Module 0.8971, Inventory.Module 0.8751.
+B4. RED observado antes de implementar (compile-level: entidad/DbSet nuevos)
+    -> GREEN: focused 188/188 y suite 2244/2244.
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada); la tabla nueva se
+    ejercita con schema real en CI y al reiniciar la app local.
+C2. El recuerdo es por proveedor+producto resuelto: las lineas [NUEVO] sin producto
+    no aprenden hasta resolverse y confirmarse.
+
+D. ROLLBACK
+
+D1. Revertir el commit: el Down de la migracion elimina la tabla; el prefijo y el
+    aprendizaje vuelven a no existir. Sin reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.166 en V0.15: commit de implementacion (feat(8.166)) + commit de este ANEXO
+    (docs(8.166); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.167 - FACTURAS PROVEEDOR: MONEDA DE FACTURA RECORDADA POR PROVEEDOR - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: "Haz que recuerde la moneda de la factura del
+proveedor".
+
+A. ALCANCE Y ENTREGA
+
+A1. Columna nueva Suppliers.InvoiceCurrency (varchar(8), nullable; migracion
+    AddSupplierInvoiceCurrency, aplicada por el arranque via MigrateAsync).
+    null = sin preferencia (no se pisa la eleccion vigente).
+A2. Aprendizaje al confirmar: la moneda del documento confirmado se guarda en el
+    proveedor dentro de la misma transaccion (solo si cambio; UpdatedAt).
+A3. Prefijo al seleccionar el proveedor: la vista aplica la moneda recordada al
+    combo "Moneda del documento" (validada contra las opciones USD/Bs.S; si es
+    Bs.S dispara el prefill de tasa existente). SIN moneda recordada NO se toca la
+    seleccion vigente (cero regresion). Siempre editable a mano.
+A4. SupplierSummaryDto expone InvoiceCurrency (parametro nuevo con default);
+    GetSuppliersAsync y CreateSupplierAsync lo mapean; sin cambios de endpoint.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa: 2247/2247, 0 fallas (SIN PostgreSQL real local; CI cubre al
+    push) - 3 tests nuevos: aprendizaje al confirmar (Bs.S), listado con la moneda
+    recordada, y prefijo en el VM (+ no-pisar sin registro).
+B3. Cobertura (coverage.runsettings + scripts/check-coverage.py, exit 0):
+    Core 0.8931, Sales.Module 0.8971, Inventory.Module 0.8755.
+B4. RED compile-level observado -> GREEN (focused 191/191; suite 2247/2247 con
+    rebuild). Nota: el guard MigrationIndexDriftTests exige rebuild tras generar
+    una migracion (binarios con el modelo nuevo y sin la migracion dan drift
+    correctamente detectado; con el build fresco pasa).
+
+C. LIMITACIONES
+
+C1. Suite sin PostgreSQL real local (degeneracion heredada); la columna nueva se
+    ejercita con schema real en CI y al reiniciar la app local.
+C2. La tasa aplicada NO se recuerda (cambia por dia); sigue manual/prefill del
+    sistema.
+
+D. ROLLBACK
+
+D1. Revertir el commit: el Down de la migracion elimina la columna; sin
+    reescrituras de datos.
+
+E. COMMITS
+
+E1. 8.167 en V0.15: commit de implementacion (feat(8.167)) + commit de este ANEXO
+    (docs(8.167); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.168 - FACTURAS PROVEEDOR: REACTIVIDAD EN VIVO POR FACTOR/COSTO, DECIMALES FLEXIBLES, SANITIZACION OCR Y PULIDO UI - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: reactividad en tiempo real para Factor de
+Conversion y Costo de Factura en la tabla de pre-visualizacion (Staging),
+soporte fluido de decimales (coma/punto sin tooltip de error invasivo),
+sanitizacion OCR de empaques (X leido como % o 4) y mejoras de UI/UX en
+SupplierInvoiceView.
+
+A. ALCANCE Y ENTREGA
+
+A1. Calculo reactivo en cascada en SupplierInvoiceLineViewModel:
+    - UnitCostUSD se recalcula instantaneamente al cambiar EditUnitCostDocument
+      o ConversionFactor (dividiendo por EffectiveConversionFactor y convirtiendo
+      a USD segun la moneda/tasa del documento staged), incluyendo cuando la
+      linea ya viene prefijada con un factor recordado (8.166).
+    - CostComparison ("Costo anterior -> nuevo") y los precios sugeridos
+      (SuggestedRetailPriceUSD y SuggestedWholesalePriceUSD) se recalculan en
+      cascada en cada pulsacion sin recargar del servidor.
+A2. Validacion defensiva del factor de conversion:
+    - EffectiveConversionFactor asume 1 cuando el input esta vacio, en 0 o
+      negativo, previniendo division por cero, NaN o Infinity, y marcando
+      HasInvalidConversionFactor para feedback visual no intrusivo.
+A3. Soporte fluido de decimales (punto y coma, 2 a 4 decimales):
+    - Nuevas propiedades de texto (EditUnitCostDocumentText, ConversionFactorText,
+      EditQuantityText) con TryParseFlexibleDecimal que aceptan tanto "." como ","
+      y preservan estados transitorios ("10.", "10,", ".0", "10,529") sin
+      re-formatear mientras se escribe.
+    - Validation.ErrorTemplate={x:Null} en los TextBox editables de la grilla
+      para eliminar el popup rojo nativo de WPF que tapaba la fila inferior.
+A4. Sanitizacion OCR de empaques en nombres de producto:
+    - OcrConfidence.SanitizeProductName normaliza lecturas corruptas de "X"
+      como "%" entre digitos (36%250GR -> 36X250GR, 1%5 -> 1X5, 10%20 UNI ->
+      10X20 UNI) y "4" como separador de empaque antes de unidad (10420 UNI ->
+      10X20 UNI) sin alterar pesos redondos legitimos (400GR, 140GR) ni
+      porcentajes reales (2% 1L).
+A5. Mejoras de UI/UX en SupplierInvoiceView.xaml:
+    - Se oculta el TextBox de ruta de archivo cuando esta vacio o en origen OCR
+      (HasSelectedFilePath) y se agrega HintAssist.Hint="Archivo cargado".
+    - Se agrega leyenda superior de confianza OCR (Amarillo / Rojo) y ToolTips
+      explicativos en las celdas resaltadas.
+    - Se unifica el boton "Crear Producto" dentro de la columna Estado para
+      filas nuevas y se elimina la columna vacia "Crear Producto", ampliando los
+      anchos de "Codigo de barras" y "Costo anterior -> nuevo" sin truncado.
+    - Se traduce el badge [UPDATE] a [ACTUALIZAR] y se agrega un CheckBox
+      maestro tri-estado en el encabezado de "Aprobar" (AreAllApprovableLinesApproved).
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Tests focalizados SupplierInvoice + OCR: 279/279 en verde (14 tests nuevos
+    cubriendo reactividad por factor/costo, cascada de precios sugeridos,
+    decimales con coma/punto y estados transitorios, validacion defensiva de
+    factor <= 0, aprobacion masiva tri-estado, sanitizacion OCR de empaques y
+    visibilidad de SelectedFilePath).
+
+C. LIMITACIONES
+
+C1. UI verificada por compilacion + tests unitarios de ViewModel y parser OCR.
+
+D. ROLLBACK
+
+D1. Revertir los cambios en Desktop.Client, Desktop.Client.Core, Core e
+    Inventory.Module; sin migraciones ni cambios de esquema en base de datos.
+================================================================================
+
+================================================================================
+ANEXO 8.169 - AUDITORIA 4 FASES Y REMEDIACION INTEGRAL EN FACTURAS DE PROVEEDORES - 2026-10-11
+================================================================================
+Pedido directo del mantenedor: auditoria exhaustiva en 4 fases (DevSecOps,
+Performance/Memoria, Clean Code/Higiene y Concurrencia/SRE) sobre el modulo
+"Facturas de Proveedores" y ejecucion de todas las remediaciones detectadas.
+
+A. ALCANCE Y ENTREGA
+
+A1. Fase 1 (DevSecOps / Zero-Trust):
+    - [RequireSecurityStampValidation] agregado en SupplierInvoicesController y
+      SuppliersController para eliminar la ventana de gracia de 45s de tokens
+      revocados, mas guardia EnsureCatalogMutationPermission() en
+      SupplierInvoiceService.
+    - Cotas superiores estrictas en montos, cantidades, tasas y margenes
+      (MaxInvoiceNumericValue = 10^9, MaxMarginOverrideValue = 10^5) y longitud
+      maxima de columnas de mapeo (MaxColumnNameLength = 128).
+    - Proteccion contra bombas de descompresion de imagen en ImagePageDecoder
+      (MaxImageDimension = 8000, MaxImagePixels = 25 MP) y limites de multipart
+      en SupplierInvoicesController.OcrExtractAsync.
+    - Mapeo en GlobalExceptionHandlerMiddleware de OverflowException y Postgres
+      22003 a 400 Bad Request, mas constraints unicos 23505 de Suppliers,
+      SupplierColumnMappings, SupplierProductCodes y SupplierProductFactors a
+      409 Conflict.
+A2. Fase 2 (Performance / EF Core / Memoria):
+    - Eliminacion de tormenta N+1 en StageAsync (ResolveFuzzyMatchesBatchAsync):
+      deduplicacion de nombres no resueltos y carga batch unica de Products.
+    - Invalidacion de IMemoryCache (product_quick_{SKU}, product_sku_{SKU}) y
+      sincronizacion de Product.Cost al confirmar facturas en ConfirmAsync.
+    - Correccion de fuga de suscripciones PropertyChanged en
+      SupplierInvoiceViewModel.Dispose() (ClearLines + desuscripcion de
+      ColumnMappings) y supresion de notificaciones en aprobacion masiva.
+    - Adquisicion asincrona de semaforo con CancellationToken y Dispose seguro
+      en TesseractOcrEngine.
+A3. Fase 3 (Clean Code / Mantenibilidad):
+    - Calculo canonico PricingCalculator.CalculateInvoiceUnitCostUsd compartido
+      entre StageAsync (aplicando el factor recordado antes de evaluar estado y
+      precios sugeridos), ConfirmAsync y SupplierInvoiceLineViewModel.
+    - Extraccion del parser decimal compartido a Core/Helpers/FlexibleDecimalParser.cs
+      (eliminando ~90 lineas duplicadas entre cliente y OCR).
+    - Particion de archivos mayores a 500 lineas: SupplierInvoiceViewModel.Suppliers.cs
+      e InvoiceTableParser.Helpers.cs (todos los archivos quedan < 500 lineas).
+    - Uso de SafeFireAndForget en PrefillAppliedRateAsync.
+A4. Fase 4 (SRE / Concurrencia / Idempotencia / Observabilidad):
+    - Reintentos xmin en ApplyApprovedLineAsync ampliados a 3 intentos con
+      backoff progresivo y orden determinista en aliasPlan.
+    - Bloqueo de creacion de proveedores duplicados por NormalizedCommercialName
+      cuando no se informa RIF/NIT (evitando bloqueo 409 en ResolveSupplierAsync).
+    - Logging estructurado (ILogger) en StageAsync, ConfirmAsync,
+      CreateProductFromLineAsync, CreateSupplierAsync, reintentos xmin y
+      OcrExtractionService.ExtractAsync.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite de pruebas SupplierInvoice + OCR + GlobalException: 307/307 en verde.
+B3. Todos los archivos modificados/creados cumplen el tope < 500 lineas.
+
+C. LIMITACIONES
+
+C1. Sin migraciones de esquema adicionales requeridas en esta unidad.
+
+D. ROLLBACK
+
+D1. Revertir los cambios en Backend.API, Core, Inventory.Module,
+    Desktop.Client.Core y CommandCenter.Tests.
+================================================================================
+
+================================================================================
+ANEXO 8.170 - MOTOR OCR: ESCALERA DE BINARIZADO POR RESULTADO Y FILTRO DE FILAS BASURA - 2026-10-12
+================================================================================
+Ajustes autorizados por el mantenedor ("Continua con los ajustes al motor, pero
+teniendo en cuenta que la calidad de la imagen puede variar") sobre la verificacion
+previa de las imagenes mejoradas, donde 4D requeria rescate. Numeracion 8.170: el
+tramo paralelo del mantenedor (c1f6df4) uso 8.168/8.169.
+
+A. ALCANCE Y ENTREGA
+
+A1. Escalera de candidatos por RESULTADO (OcrExtractionService): se mantiene el
+    pipeline principal (Preprocess). Si el parseo del DOCUMENTO COMPLETO no produce
+    NINGUNA fila con identificador (nombre/codigo/barras: mismo criterio del
+    cliente) se prueban candidatos de respaldo en orden: raw (pixeles originales) y
+    adaptativo sin deskew (ImagePreprocessor.PreprocessAdaptiveFallback: CLAHE +
+    umbral adaptativo bloque 51/C15). Gana el candidato con mas filas usables;
+    cortocircuito al primer candidato usable + log del fallback elegido.
+A2. El parseo de cada candidato es por documento (no por pagina) para preservar la
+    herencia de anclas entre paginas de continuacion del parser.
+A3. Filtro de filas basura refinado (InvoiceTableParser): sin identificador legible
+    Y sin cantidad -> la fila no se emite (antes solo se descartaba si faltaban
+    tambien TODOS los numeros; una fila del pie con costo suelto bloqueaba el flujo
+    con "Filas OCR incompletas").
+A4. Evidencia de diseno (fotos reales): el deskew sobre las binarizaciones
+    alternativas resulto destructivo en los casos verificados (4D adaptativo CON
+    deskew = 0 filas utiles; SIN deskew = 4 perfectas). De ahi el fallback sin
+    deskew. El cortocircuito evita costo extra de OCR en imagenes buenas.
+
+B. VERIFICACION
+
+B1. Servicio real end-to-end con las 4 imagenes mejoradas (harness temporal
+    eliminado tras la verificacion): MYE 6/6 lineas (una sola pasada de OCR),
+    DISMOLCA 3/3 (una pasada), ROSA ELENA 16 items (una pasada), y 4D 4/4
+    RESCATADA por el fallback raw (codigos, nombres, cantidades y costos exactos;
+    la fila basura 97347 desaparecio con A3). RIF y numero de factura detectados en
+    las cuatro.
+B2. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B3. Suite completa: 2281/2281, 0 fallas (SIN PostgreSQL real local; CI cubre al
+    push), con los 4 tests nuevos: filtro fila-solo-costo, cortocircuito sin
+    costo extra, rescate por candidato raw y limite acotado de intentos.
+B4. Cobertura (exit 0): Core 0.8190, Sales.Module 0.8971, Inventory.Module 0.8777.
+    La caida de Core vs 8.167 proviene del tramo paralelo 8.168/8.169
+    (FlexibleDecimalParser et al.), no de este tramo.
+B5. RED observado antes del fix (4 tests) -> GREEN (focused 293/293).
+
+C. COMPORTAMIENTO POR CALIDAD DE IMAGEN (pedido explicito del mantenedor)
+
+C1. Imagen buena (escaneo nitido o mejorado): el pipeline principal produce filas
+    usables -> comportamiento y costo IDENTICOS a antes (una pasada de OCR).
+C2. Imagen marginal (bajo contraste, impresion tenue): si el principal no produce
+    filas usables se intenta raw (caso 4D) y, si no alcanza, adaptativo sin deskew.
+    Maximo 3 pasadas por documento y solo en el caso degradado.
+C3. Imagen no legible (lavada/borrosa extrema): todos los candidatos fallan ->
+    misma salida segura de siempre (cero lineas + mensaje que guia a re-tomar la
+    foto); nunca se emiten datos basura silenciosos.
+
+D. LIMITACIONES
+
+D1. Suite sin PostgreSQL real local (degeneracion heredada documentada).
+D2. Las filas de pie de ROSA ELENA que caen en la banda de barras (texto) siguen
+    siendo revisables/rechazables en la grilla (futuro posible: ampliar los
+    terminadores con "exento"/"monto").
+D3. Parametros del fallback (bloque 51/C15, sin deskew) calibrados con los casos
+    reales disponibles (4D, NUEVO VIENTO y las fotos portrait originales).
+
+E. ROLLBACK
+
+E1. Revertir el commit restaura el pipeline unico y el filtro previo; sin
+    migraciones ni reescrituras de datos.
+
+F. COMMITS
+
+F1. 8.170 en V0.15: eb73723 (implementacion) + commit de este ANEXO (docs(8.170);
+    git log). Nota de contexto: el tramo paralelo del mantenedor (c1f6df4) uso
+    8.168/8.169; ambos conviven (suite completa en verde).
+================================================================================
+
+================================================================================
+ANEXO - REVISION 8.171: REMEDIACION INTEGRAL DE AUDITORIA FASES 1-4 (SPRINT 1, 2 Y 3)
+================================================================================
+
+A. RESUMEN DE REMEDIACION (27/27 HALLAZGOS CERRADOS)
+
+A1. SPRINT 1 (P0 - Bloqueadores Criticos de Seguridad, Integridad y Concurrencia):
+    - [SEC-09] Bloqueo de mutacion de cantidad y auto-merge en `SalesService.cs` sobre
+      items con `IsCustomPrice == true`.
+    - [SEC-10] RBAC explicito en `ReservationsController`: `Admin,Manager,Cashier` a nivel
+      controlador y `POST confirm/{id}` restringido a `Admin,Manager`.
+    - [SEC-06-RES] Enmascarado ciego para `Cashier` en `CashDrawerController`
+      (`Transactions` vacias y `ExpectedClosingBalanceLocal = null`) y eliminacion de
+      saldos disponibles en mensajes de error de `CashDrawerService`.
+    - [SRE-02b] Purga de registros vencidos (`ExpiresAtUtc <= now`) en
+      `IdempotencyService.CheckAsync` y validacion de expiracion en `HandleConcurrentCollisionAsync`.
+    - [SRE-06] Transaccion serializada con `ExecuteDeleteAsync` condicional en
+      `ReservationService.CancelReservationAsync` para impedir doble descuento de `ReservedQuantity`.
+    - [PERF-R01] Activacion del indice GIN `idx_products_name_trgm` con
+      `EF.Functions.TrigramsAreSimilar` (`%`) en `PostgresSupplierProductSimilaritySearch`.
+    - [PERF-R02] Eliminacion de `SaveChangesAsync()` por linea en `SupplierInvoiceService.Apply.cs`.
+    - [PERF-06] Proyeccion escalar ligera `GetSaleAuthorizationSnapshotAsync` en
+      `SalesController.IsAuthorizedForSaleAsync`.
+    - [PERF-12] Implementacion de `IDisposable` en `AuthorizationHubService` y
+      `DisposeAsync` ordenado en `App.xaml.cs`.
+
+A2. SPRINT 2 (P1 - Endurecimiento Transaccional, Seguridad y Rendimiento):
+    - [SRE-08] `_context.ChangeTracker.Clear()` al inicio de los delegados
+      `CreateExecutionStrategy().ExecuteAsync` en `Sales.Module` e `Inventory.Module`.
+    - [SRE-07] Preservacion de `ReservedQuantity` del padre cuando `IsStockShared == true`
+      en `InventoryService.ProductUpdates.cs`.
+    - [SRE-09] Redireccion de incremento de stock de facturas de proveedor al padre cuando
+      `ParentProduct.IsStockShared == true` y token de concurrencia optimista `xmin` (`RowVersion`)
+      en `SupplierInvoice`.
+    - [SRE-10 / SRE-02a] Resolucion e idempotencia (`ResolveIfPresentAsync` + `RegisterSuccessAsync`
+      + `HandleCollisionAsync`) en `cash-advance`, `shifts/close`, `confirm-pickup` y `adjust-stock`.
+    - [SRE-11] Reordenamiento de `RequestMetricsMiddleware` por fuera de
+      `GlobalExceptionHandlerMiddleware` en `PipelineExtensions.cs`.
+    - [SEC-04-RES] Anclaje de tasa oficial BCV en `OpenSessionAsync`/`CloseSessionAsync`
+      (`CashDrawerController`) y validacion de `PaymentMethod` activo y digital contra BD
+      en `CashAdvanceCoordinator.ProcessAsync`.
+    - [SEC-11 / SEC-12] Validacion de `PaymentMethod.IsActive && !IsDeleted` en `HoldOrders`
+      y `Payments`, y exigencia de declaracion explicita para todos los metodos con movimientos
+      en `DailyClosureService.MergeMissingMethodsWithReport`.
+    - [SEC-13 / SEC-15] Ocultamiento de montos del sistema al `Cashier` en `DailyClosureController`
+      y `ShiftsController`, y politica `[EnableRateLimiting("AuthRateLimit")]` en `local-resolve`.
+    - [SEC-16] Reemplazo de `[Authorize]` generico por `[Authorize(Roles = "Admin,Manager,Cashier")]`
+      para impedir acceso del rol `Driver` a endpoints operativos.
+    - [PERF-07 / R03] Consultas asincronas con `.AsSplitQuery()` en `GetDeliveryNotePdfAsync` y
+      eliminacion de recargas redundantes en `ConfirmPickupAsync`.
+    - [PERF-08 / 09] Precarga por lote en `RecalculateOnHoldSalesAsync`, limpieza de `ChangeTracker`
+      en `StockMovementArchiverJob` y centinela nulo cacheado en `SystemSettingsService`.
+    - [PERF-10 / 11] `IsQuantityDirty` en `CartItemViewModel` para sincronizar solo items
+      modificados en `FlushAllQuantitiesAsync` y verificacion BCrypt fuera de la transaccion
+      serializable en `AuthorizationService.ResolveLocalAsync`.
+
+A3. SPRINT 3 (P1/P2 - Higiene Arquitectonica, Clean Code y Observabilidad):
+    - [CLEAN-05-RES] Uso de saldos restantes canonicos de `checkout-preview` en `CheckoutModal.jsx`,
+      preservacion de 4 decimales BCV en `PaymentForm.jsx` (`Math.round(exchangeRate * 10000)`) y
+      alineacion de tolerancia a `0.01m` en `EditSaleDialogViewModel.cs`.
+    - [CLEAN-06-RES] `using var response = ...; response.EnsureSuccessStatusCode();` en todos los
+      metodos mutacionales de `Desktop.Client.Core/Services/SettingsService.cs`.
+    - [CLEAN-07 / 08] Eliminacion de bloques `catch` mudos en `ProductService`, `SalesService`,
+      `UserService`, `ProductImportService`, `ReceiptsController`, `RegisterPage.jsx` y `RegisterClosePage.jsx`.
+    - [CLEAN-09] Delegacion a `PricingCalculator.CalculateSuggestedPrice` en `VariantManagementViewModel`
+      e invalidacion de cache `er_today_*` en `SettingsController`.
+    - [CLEAN-10 / 11 / 12] Respeto de `isFractional` en `PosView.xaml.cs`, eliminacion de componentes
+      huerfanos (`CheckoutHeader.jsx`, `CheckoutSummary.jsx`) y parser decimal unificado.
+    - [PERF-R04 / 13] Desuscripcion de eventos en `UsersManagementView.xaml.cs` y dialogos de variantes,
+      `using` en `HttpResponseMessage`/`Process` y eliminacion de `ToLower()`/`ToUpper()` en predicados EF Core.
+    - [SRE-12] `AppLogger.LogCrash` reservado exclusivamente para errores `5xx` y emision de logs
+      estructurados con propiedades clave-valor para respuestas `4xx` en `GlobalExceptionHandlerMiddleware`.
+
+B. VERIFICACION
+
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: 2284/2284 tests en verde.
+B3. `npm test -- --run` y `npm run lint` en `Web.Frontend`: 379/379 tests y 0 warnings/errores de lint.
+================================================================================
+
+================================================================================
+ANEXO - REVISION 8.172: VINCULACION DE PRODUCTOS CON APRENDIZAJE DE ALIAS, DETECCION OCR DE TASA Y RECALCULO REACTIVO EN FACTURAS
+================================================================================
+
+A. RESUMEN DE IMPLEMENTACION
+A1. Deteccion de tasa en OCR (`OcrExtractionService.cs`, `SupplierInvoiceDtos.cs`):
+    - `OcrExtractionResultDto` expone `DetectedExchangeRate` y extrae tasas impresas
+      (`TASA BCV`, `TASA DE CAMBIO`, `FACTOR DE CAMBIO`, `TIPO DE CAMBIO`, `TASA:`)
+      descartando porcentajes de IVA.
+A2. Reemplazo automatico y recalculo reactivo en UI (`SupplierInvoiceViewModel.*`):
+    - Al escanear o cambiar a `Bs.S`, `OcrDetectedExchangeRate` reemplaza `AppliedRateText`
+      y propaga cambios de tasa/moneda a todas las lineas (`UnitCostUSD`, `CostComparison`,
+      `SuggestedRetailPriceUSD/BsS`, `SuggestedWholesalePriceUSD/BsS`).
+A3. Resolucion Hibrida y Aprendizaje de Alias (`SupplierInvoicesController.cs`,
+    `SupplierInvoiceService.Creation.cs`, `SupplierInvoiceService.Matching.cs`,
+    `CreateInvoiceProductDialog.*`):
+    - Endpoint `POST /api/supplier-invoices/{id}/lines/{lineId}/link-product` para vincular
+      lineas con productos existentes y persistir alias en `SupplierProductCodes`.
+    - Habilitacion de edicion de campos para lineas `[NUEVO]` y casilla `Aprobar` para omitir
+      filas desmarcadas.
+
+================================================================================
+ANEXO - REVISION 8.173: VINCULACION MULTIPLE (1:N) EN MODO A Y EDICION REACTIVA DE MARGENES DETAL/MAYOR EN FACTURAS DE PROVEEDOR
+================================================================================
+
+A. RESUMEN DE IMPLEMENTACION
+A1. Vinculacion multiple (1:N) en Modo A (`20261012193000_AllowMultiProductSupplierCode`,
+    `InventoryDbContext.cs`, `SupplierInvoiceService.Creation.cs`, `CreateInvoiceProductDialog.*`):
+    - Soporte para asociar una linea de factura de proveedor a multiples productos/sabores del
+      catalogo con distribucion de cantidades y aprendizaje de alias 1:N.
+A2. Edicion reactiva de margenes detal y mayor (`SupplierInvoiceViewModel.Staging.cs`,
+    `SupplierInvoiceService.Apply.cs`):
+    - Recalculo bidireccional de precios sugeridos detal/mayor en USD y Bs.S al modificar
+      margenes por linea y persistencia al confirmar la factura.
+
+================================================================================
+ANEXO - REVISION 8.174: PLANTILLAS DE CONFIGURACION DEL ESCANER OCR POR PROVEEDOR, PREPROCESAMIENTO Y MOTOR TABULAR AVANZADO
+================================================================================
+
+A. RESUMEN DE IMPLEMENTACION
+A1. Entidad y Persistencia de Plantillas OCR (`Core/Entities/SupplierOcrTemplate.cs`,
+    `InventoryDbContext.cs`, `20260425000000_AddSupplierOcrTemplates.cs`,
+    `SupplierInvoiceService.Mapping.cs`):
+    - Nueva entidad `SupplierOcrTemplate` vinculada a `Supplier` para persistir parametros de
+      preprocesamiento visual (rotacion, contraste, brillo, umbral de binarizacion), region de
+      interes (`RoiX`, `RoiY`, `RoiWidth`, `RoiHeight`), palabras ancla de inicio/fin de tabla
+      (`HeaderAnchorKeywords`, `FooterAnchorKeywords`), posicion explicita de columnas
+      (`ProductColumnPosition`, `QuantityColumnPosition`, `UnitCostColumnPosition`,
+      `SupplierCodeColumnPosition`), regla de calculo de costo (`OcrCostAmountRule`:
+      `UnitCost` vs `LineTotalDivideByQty`), regla de separador decimal
+      (`OcrDecimalSeparatorRule`), reemplazos de caracteres (`CharacterReplacementsJson`) y
+      patron de extraccion de factor (`FactorExtractionPattern`).
+A2. Preprocesamiento de Imagen y Motor Tabular OCR (`ImagePreprocessor.cs`,
+    `InvoiceTableParser.cs`, `InvoiceTableParser.Helpers.cs`, `OcrExtractionService.cs`):
+    - Recorte por ROI normalizado, rotacion arbitraria, ajuste de brillo/contraste y
+      binarizacion configurable en `ImagePreprocessor`.
+    - Filtrado por anclas de encabezado y pie, asignacion posicional de columnas, limpieza de
+      caracteres OCR, normalizacion determinista de separadores decimales, calculo automatico
+      de costo unitario desde total de linea (`Total / Cantidad`) y extraccion automatica de
+      factor de empaque (`1X40`, `BTO X N`, `CAJA N UND` o regex personalizada).
+A3. Endpoints API y Sandbox de Prueba (`SupplierInvoicesController.cs`,
+    `SupplierInvoiceService.Staging.cs`, `ISupplierInvoiceService.cs`):
+    - `GET /api/supplier-invoices/suppliers/{supplierId}/ocr-template` y
+      `PUT /api/supplier-invoices/suppliers/{supplierId}/ocr-template` para consultar y guardar
+      la plantilla OCR del proveedor.
+    - `POST /api/supplier-invoices/ocr-preview` para ejecutar pruebas en vivo (sandbox) con
+      plantilla temporal sin crear registros de factura en staging.
+A4. Panel Interactivo "No-Code" en WPF (`OcrScannerConfigDialog.xaml`,
+    `OcrScannerConfigDialog.xaml.cs`, `OcrScannerConfigDialogViewModel.cs`,
+    `SupplierInvoiceView.xaml`, `SupplierInvoiceViewModel.Ocr.cs`, `WpfDialogService.Modals.cs`):
+    - Modal de configuracion avanzada del escaner OCR por proveedor dividido en 6 bloques
+      operativos (Zona de Lectura ROI, Preprocesamiento Visual, Anclas de Tabla, Orden y
+      Calculo de Columnas, Limpieza y Factor de Empaque, y Sandbox de Prueba en Vivo).
+
+B. VERIFICACION
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj -c Release`: 100% superadas
+    (incluyendo nuevas pruebas unitarias en `OcrExtractionServiceTests`, `OcrTableParserTests`,
+    `SupplierInvoiceClientTests` y `SupplierInvoiceCreationTests`).
+================================================================================
+
+================================================================================
+ANEXO 8.175 - FACTURAS DE PROVEEDOR: BOTON "ACTUALIZAR" EN COLUMNA ESTADO CON EDICION DEL VINCULO DESDE EL MODAL DE RESOLUCION - 2026-10-12
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/actualizar-vinculo-producto.md): convertir el
+badge estático [ACTUALIZAR] de la grilla de revisión en un botón interactivo que abre el modal
+existente "Resolver producto desde factura" pre-cargado con el/los producto(s) ya vinculado(s)
+(1:1 o 1:N) y con todas sus capacidades (márgenes en vivo, re-vínculo, ampliación 1:N y creación);
+al guardar, la grilla refresca nombre, comparativa de costo y márgenes listos para el confirm.
+
+A. ALCANCE Y ENTREGA
+
+A1. Contrato backend (Core/DTOs/SupplierInvoiceDtos.cs, SupplierInvoiceService.Creation.cs,
+    nuevo partial SupplierInvoiceService.Resolution.cs):
+    - LinkInvoiceProductRequestDto y CreateInvoiceProductRequestDto aceptan ReplacedLineIds
+      (filas 1:N absorbidas por el vínculo anterior, provistas por el cliente).
+    - PrepareResolutionSlots: validación zero-trust por id (no pertenece a la factura -> 404;
+      igual al ancla / cantidad != 0 / sin resolver -> 400), reuso de extras por Id ascendente,
+      creación de faltantes con el template del ancla y eliminación de sobrantes (contexto +
+      colección). LinkProductToLineAsync y CreateProductFromLineAsync aceptan re-resolución de
+      líneas ya resueltas; en re-vínculo el alias se re-apunta SOLO por código de proveedor
+      (nunca el nombre del producto anterior); las rutas sin resolver quedan sin cambios.
+A2. Cliente (ISupplierInvoiceService, SupplierInvoiceService, CreateInvoiceProductDialogViewModel):
+    - GetCatalogProductsByIdsAsync: GET api/products/{id} por id (404 se omite, orden preservado).
+    - Hidratación del modal con InvoiceProductLinkSeed (producto + márgenes vigentes), IsUpdateMode
+      y label "Actualizar (N) Productos"; SelectedProductMarginViewModel acepta márgenes iniciales
+      por seed (null = margen del catálogo). El mismo componente/modal se reutiliza (sin diálogo nuevo).
+A3. Grilla (SupplierInvoiceViewModel.Staging.cs, nuevo partial SupplierInvoiceViewModel.Links.cs,
+    SupplierInvoiceViewModel.cs, SupplierInvoiceView.xaml):
+    - CanUpdateLink/ShowStaticStatusBadge: botón "Actualizar" (cursor Hand, badge de acción) solo
+      en filas resueltas [ACTUALIZAR]; badge estático para UNCHANGED/CONFLICT; "Crear Producto"
+      intacto; sin re-agregar la columna de código de barras (decisión 8.172 vigente).
+    - UpdateLinkedProductCommand: ancla = fila primaria del grupo 1:N; ReplacedLineIds = miembros;
+      InvoiceDescription null (política de alias); modos vincular y crear; tras guardar, las filas
+      editadas/creadas conservan el estado del servidor y las no editadas preservan ediciones en
+      memoria por LineId; notificación del comando en RefreshCommandStates.
+A4. Tests: backend 10 casos (re-vínculo 1:1, shrink y expand 1:N con reuso/creación, validaciones
+    Theory sin side effects, sin ReplacedIds, create re-resolución, rewrite del rechazo obsoleto);
+    cliente: 8 casos de hidratación/rutas + 6 casos de comando/flujo de grilla.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores (XAML incluido).
+B2. Suite completa POR PARTES (restricción de RAM del mantenedor): Unit 1773/1773 + resto 571/571
+    = 2344/2344, 0 fallas (SIN PostgreSQL real local; CI cubre al push).
+B3. Verificación independiente read-only (agente verifier): S1–S8 CONFORME, 0 blockers;
+    S9 (proceso) cerrado con este ANEXO y el commit de cierre. Residuales analizados y aceptados.
+B4. RED->GREEN observado por carril (backend: guard "already resolves to a product" en
+    Creation.cs:193; cliente y grilla: compile-level), según práctica del repo.
+
+C. LIMITACIONES ACEPTADAS
+
+C1. La agrupación 1:N del cliente es por adyacencia de filas (herencia 8.173): un draft reabierto
+    en otra sesión con extras no adyacentes puede resolver el ancla por la primera fila del run
+    heurístico. El flujo inmediato post-vínculo usa la clave explícita y no se ve afectado.
+C2. Alias en re-vínculo: las descripciones históricas no se corrigen (protege alias compartidos);
+    el backend acepta una InvoiceDescription editada no-null (superficie API), la UI envía null.
+C3. Un override de margen persistido en 0% no se re-semilla al reabrir el modal (usa el margen del
+    catálogo). Caso improbable.
+
+D. ROLLBACK
+
+D1. Revertir los archivos del tramo restaura la grilla y los endpoints previos; sin migraciones.
+
+E. COMMITS
+
+E1. 8.175 en V0.15: 048702c (implementación) + commit de este ANEXO (docs(8.175); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.176 - FACTURAS DE PROVEEDOR: REACTIVIDAD GLOBAL DE LA TABLA STAGING AL CAMBIAR MONEDA O TASA DE CAMBIO - 2026-10-13
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/reactividad-moneda-tasa-staging.md): al modificar la
+moneda del documento (Bs.S/USD) o la tasa aplicada en la cabecera, posterior a la carga o escaneo de
+la factura, la tabla de pre-visualización debe recalcular en tiempo real el Costo USD y los precios
+sugeridos de todas las filas, con título de columna dinámico y salvaguarda de división por cero.
+
+A. ALCANCE Y ENTREGA
+
+A1. Cliente (Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel.cs, .Suppliers.cs, .Staging.cs):
+    - DocumentCostHeader ahora depende de la moneda viva de la cabecera (IsBsSCurrency) y se
+      notifica en OnSelectedCurrencyChanged; LoadStagedInvoice alinea SelectedCurrency con la
+      moneda del documento servido (stage/confirm/link) antes del prefill de tasa y de construir
+      las líneas.
+    - PropagateCurrencyAndRateToLines: la moneda viva manda (se retiró la condición IsBsSInvoice);
+      con Bs.S y tasa inválida (vacía o 0) propaga (Bs.S, 0m) a todas las filas y SyncStagedSnapshot
+      mantiene el snapshot local alineado; el confirm permanece bloqueado por HasValidAppliedRate.
+    - CalculateUnitCostUsd: rama Bs.S sin tasa válida retorna 0m (sin NaN/Infinity; se retiró el
+      fallback por ratio que solo era alcanzable en ese estado).
+    - ConfirmInvoiceAsync envía la moneda viva y la tasa vigente (Bs.S) al contrato de confirm.
+A2. Contrato backend (Core/DTOs/SupplierInvoiceDtos.cs, Inventory.Module/Services/SupplierInvoiceService.Apply.cs):
+    - ConfirmSupplierInvoiceRequestDto.Currency (string?, posicional final, default null;
+      retrocompatible con clientes previos: null conserva la moneda del staging).
+    - Validación zero-trust: la moneda confirmada solo puede ser USD o Bs.S; cambiar el draft a
+      Bs.S exige tasa explícita (>0) — no se reutiliza la tasa de otra interpretación; cambiar a USD
+      fuerza la tasa canónica 1; currencyChanged implica appliedRateChanged y renormaliza las líneas
+      aprobadas (ApplyCorrections/ApplyConversionFactor) con la fórmula compartida de
+      PricingCalculator (la misma del preview: Costo USD = (Costo factura / Tasa) / Factor).
+A3. Tests (CommandCenter.Tests/Unit/SupplierInvoiceCurrencyReactivityTests.cs, nuevo):
+    - 10 casos: título por selector + notificación; alineación al cargar + recálculo; cascada
+      Bs.S<->USD conservando el costo factura (incluye factor > 1 y precios sugeridos); tasa inválida
+      -> 0,00 + confirm bloqueado + restauración con tasa válida; payload de confirm con moneda/tasa
+      vivas (flip a USD y edición de tasa); backend: conmutación a USD y a Bs.S con renormalización
+      de costo/producto, y rechazos de cambio a Bs.S sin tasa y de moneda desconocida.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores (XAML incluido).
+B2. Suite completa POR PARTES (restricción de RAM del mantenedor): Unit 1804/1804 + resto 571/571
+    = 2375/2375, 0 fallas; carril enfocado SupplierInvoice 282/282.
+B3. Verificación independiente read-only (agente reviewer): S1-S4 CONFORME; S5 mecanismo correcto
+    con 2 residuales no bloqueantes (C1-C2); 0 blockers; tests del tramo re-ejecutados 10/10.
+B4. RED->GREEN observado por carril (cliente: 4 fallas por la causa correcta antes de implementar;
+    contrato: compile-level), según práctica del repo.
+
+C. LIMITACIONES ACEPTADAS
+
+C1. SyncStagedSnapshot conserva la tasa previa del snapshot local cuando la tasa de cabecera es
+    inválida: es estado solo-display (el confirm está bloqueado y AppliedRateText manda el valor
+    real); el modal de vínculo podría rotular Bs.S con esa tasa previa. Sin impacto en montos.
+C2. Divergencia de precisión 2 vs 4 decimales pre-existente de PricingCalculator entre preview
+    (UnitCostUSD reactivo) y persistencia (redondeos a 2) con factor > 1 en USD; delta <= 0.005;
+    fuera del alcance de este tramo.
+C3. Un flip de moneda posterior al staging se pierde si el revisor recarga la factura desde el
+    servidor (vínculo/creación) antes de confirmar: la cabecera se re-alinea a la moneda del draft
+    servido y el revisor debe re-elegir. El confirm sí respeta la moneda viva.
+
+D. ROLLBACK
+
+D1. Revertir los archivos del tramo restaura el comportamiento previo; sin migraciones ni cambios
+    de esquema. El contrato nuevo es un campo opcional (null = comportamiento previo).
+
+E. COMMITS
+
+E1. 8.176 en V0.15: 3298d85 (implementación) + commit de este ANEXO (docs(8.176); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.177 - STOCK: CENTRO DE AUDITORIA E INMUTABILIDAD DE AJUSTES (KARDEX DE INVENTARIO) - 2026-10-13
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/kardex-auditoria-stock.md): registro histórico,
+inmutable y auditable de todas las variaciones de inventario sobre StockMovement (metadatos de
+actores, cuantías, valorización, clasificación y referencias), motor de consulta con filtros
+combinables + KPIs + paginación server-side, y exportación CSV/XLSX/PDF con encabezado legal.
+Decisión del mantenedor: el Centro consulta la UNIÓN activa + archivo.
+
+A. ALCANCE Y ENTREGA
+
+A1. Datos (commit 04d5b19):
+    - StockMovement: OriginType, ReasonCode, AuthorizedByUserId, UnitCostUSD numeric(18,4),
+      SupplierInvoiceId y Observation (nullable; históricos sin clasificar). Enums
+      StockMovementOriginType {Manual,Import,System} y StockMovementReason {Sale,PurchaseEntry,
+      Damage,Expiry,PhysicalCountCorrection,Return,InitialLoad,ImportAdjustment} persistidos string(32).
+    - StockMovementArchive: espejo de auditoría + factory FromStockMovement (el archiver preserva
+      TODOS los campos y mantiene la atomicidad INSERT+DELETE).
+    - Migración idempotente 20261013160314_AddStockMovementAuditFieldsRev8177 (guards
+      DO $$/to_regclass/information_schema; columnas e índices ProductId/ReasonCode en ambas tablas;
+      Down preserva el índice ProductId preexistente); snapshot EF consistente
+      (has-pending-model-changes limpio).
+    - Productores clasificados: ajuste manual (validación de motivo/observación solo-cuando-llegan),
+      defaults centrales de venta (SaleId != null -> System/Sale) y snapshot de costo del producto
+      destino en UpdateStockBatchAsync, carga inicial, importación masiva, factura de proveedor
+      (Import/PurchaseEntry + SupplierInvoiceId + costo renormalizado de la línea).
+    - Fix de verificación independiente (bloqueante): snapshot de costo NULL en variantes con stock
+      compartido (el destino es el PADRE) -> carga de padres faltantes + proyección única
+      StockDeductionProductProjection; test RED->GREEN del caso.
+A2. API de consulta y exportación (commit fded8aa):
+    - StockKardexService: unión EF (Concat -> UNION ALL) de StockMovements + StockMovements_Archive
+      con identidad lógica (MovementId = Id activo / OriginalMovementId archivado); filtros de fechas
+      (UTC inclusivos), usuario ejecutor O autorizador, producto, motivos y orígenes sobre el valor
+      EFECTIVO derivado, sentido; paginación server-side (clamp 1..200, default 25) con dos fases
+      documentada cuando hay filtros de clasificación; KPIs (total, volumen neto, entradas/mermas/
+      neto USD con TotalValueUSD redondeado por fila y UnvaluedMovements honesto).
+    - StockMovementKardexClassifier: derivación histórica best-effort (persistidos mandan) para
+      ventas/devoluciones (SaleId), "Ajuste Manual: {keyword}" (merma/daño, vencimiento, conteo,
+      devolución, compra), variantes ("Variante: ... | X"), carga inicial e importación; texto
+      desconocido -> sin clasificar. Fixes post-verificación: prefijo Manual antes de keywords,
+      "importaci" (no "importa"), "compra" por palabra completa.
+    - Export CSV (';'+BOM+escape anti-fórmula), XLSX (ClosedXML, montos numéricos) y PDF (writer
+      propio multi-página estilo cierre de caja, sin dependencias nuevas) con ENCABEZADO LEGAL:
+      razón social (key CompanyLegalName, fallback COMMANDCENTER POS), fecha/hora UTC+local, usuario
+      exportador y resumen de filtros.
+    - StockMovementsController (solo lectura, RBAC Admin/Manager + security stamp) + endpoints
+      GET/POST api/settings/company-name (POST solo Admin).
+A3. UI Desktop y ajuste auditado (commit 48768f6):
+    - StockKardexView + StockKardexViewModel: filtros con atajos Hoy/Esta Semana/Mes Actual (zona
+      legal Venezuela, fin exclusivo compensado con AddTicks(-1) contra el <= inclusivo del API),
+      búsqueda predictiva de producto, KPIs con aviso de movimientos sin costo, grilla paginada
+      server-side (fecha local + UTC en tooltip), export vía SaveFileDialog, gating RBAC; navegación
+      (MainViewModel + MainWindow) y DI (cliente HTTP con ConfigureClient).
+    - AdjustStockDialog: ComboBox de motivo estandarizado (8 etiquetas ES) + Observación obligatoria
+      (<=500) con validación local; flujo auditado expuesto como ShowAdjustStockDialogWithAudit
+      (miembro nuevo con implementación por defecto que delega al legado — evita romper stubs fuera
+      de superficie); ProductService envía ReasonCode numérico + Observation.
+A4. Tests: T1 11 (auditoría de productores, archiver, validaciones, shared-stock) + T2 47
+    (filtros/paginación/KPIs/clasificador/export/controller) + smoke relacional SQLite del Concat +
+    T3 22 (atajos/contrato/paginación/KPIs/export/RBAC y flujo de ajuste) = 80+ casos nuevos.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores (XAML WPF incluido).
+B2. Suite completa POR PARTES (restricción de RAM del mantenedor): Unit 1887/1887 + resto 571/571
+    = 2458/2458, 0 fallas. Carriles enfocados: SupplierInvoice 282/282; Kardex/Inventory 155/155.
+B3. Verificación independiente read-only por tarea (agente reviewer): T1 bloqueó por el snapshot
+    shared-stock (fix aplicado + test); T2 "REVISAR sin bloqueantes" (falsos positivos del
+    clasificador corregidos + smoke SQLite agregado; residuales diferidos: summary sin agregación
+    SQL, export íntegro en memoria, partial de export de 691 líneas); T3 "REVISAR sin bloqueantes"
+    (4 fixes baratos aplicados: comando muerto, IsEntry >0, cancelación de búsqueda en vuelo,
+    MaxLength 200). RED->GREEN observado por carril en cada tarea.
+B4. Migración y gate de cobertura por capas: validables contra PostgreSQL solo en CI (convención
+    del repo: sin PG local); localmente se respetó la restricción de RAM y se validó la suite
+    completa en verde; el gate de cobertura (coverage.runsettings + check-coverage.py) corre en CI
+    al push.
+
+C. LIMITACIONES ACEPTADAS
+
+C1. El clasificador histórico es best-effort: textos legados fuera de los formatos conocidos quedan
+    "sin clasificar" (la heurística no inventa clasificaciones); los ajustes manuales hechos con el
+    cliente previo a T3 dependen de la derivación hasta que se use la UI nueva.
+C2. KPIs valorizados: los movimientos sin costo snapshot (pre-8.177) se cuentan aparte
+    (UnvaluedMovements) y no suman al balance USD — no hay costo histórico recuperable.
+C3. Summary y export materializan las filas filtradas (sin agregación SQL / streaming); aceptado
+    para el volumen actual, a vigilar con el crecimiento del archivo (retención configurable).
+C4. Residuales de estilo diferidos: extracción de tipos de StockKardexViewModel.cs (638 líneas /
+    6 tipos), [Obsolete] al método legado de ajuste (difiere por TreatWarningsAsErrors), filename
+    de export con hora local de máquina.
+C5. Referencia cruzada del Kardex es textual (#venta/#factura); la acción clicable queda para cuando
+    cierre el WIP de la vista de facturas (SupplierInvoiceViewModel*).
+C6. Productores cuyo archivo tiene WIP ajeno (Checkout/HoldOrders) quedan cubiertos por defaults
+    centrales + derivación; el enriquecimiento explícito (incl. AuthorizedByUserId en flujos
+    autorizados) es follow-up post-WIP.
+
+D. ROLLBACK
+
+D1. Revertir los tres commits restaura el comportamiento previo. La migración es aditiva y nullable
+    (Down seguro); no hay cambios destructivos de datos.
+
+E. COMMITS
+
+E1. 8.177 en V0.15: 04d5b19 (T1 datos) + fded8aa (T2 API/export) + 48768f6 (T3 UI/ajuste) + commit
+    de este ANEXO (docs(8.177); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.178 - FACTURAS DE PROVEEDOR: FIX DEL RESET ACCIDENTAL DE LA TASA DE CAMBIO AL USAR "ACTUALIZAR" (MODAL DE VINCULACION) - 2026-10-13
+================================================================================
+Defecto reportado (L1 del tracker odd/tasks/fix-tasa-modal-vinculacion.md): si el OCR detectaba una
+tasa errónea y el revisor la corregía a mano, al guardar el modal "Actualizar" (Resolver producto
+desde factura) la recarga revertía la Tasa aplicada al valor original del escaneo, borrando el
+trabajo del revisor.
+
+A. ALCANCE Y ENTREGA
+
+A1. Diagnóstico (tres vectores encadenados en UpdateLinkedProductAsync -> LoadStagedInvoice):
+    (1) la re-alineación de moneda agregada en 8.176 re-asignaba SelectedCurrency en cada recarga
+        (violaba el aislamiento exigido);
+    (2) esa re-asignación disparaba la rama OCR de OnSelectedCurrencyChanged, que reponía la tasa
+        detectada original sobre la corrección manual (el revert literal reportado);
+    (3) la recarga dejaba el snapshot local (StagedInvoice) con la tasa histórica del staging en
+        lugar de la tasa viva del TextBox.
+A2. Fix (Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel{.cs,.Suppliers.cs,.Ocr.cs}):
+    - LoadStagedInvoice ya NO re-asigna Moneda ni Tasa de la cabecera (aislamiento del flujo de
+      fila; la cabecera es propiedad del revisor). Único carve-out: prefill programático cuando el
+      TextBox de tasa está vacío.
+    - PropagateCurrencyAndRateToLines() al final de LoadStagedInvoice: la interpretación VIVA
+      (moneda/tasa corregida) se inyecta en filas y snapshot local en cada carga/recarga; con
+      Bs.S sin tasa válida las filas quedan en (Bs.S, 0) y el confirm sigue bloqueado (8.176 S4).
+    - Guarda de corrección manual: flags _isRateManuallyEdited/_isApplyingProgrammaticRate +
+      SetAppliedRateTextProgrammatically; la rama OCR de OnSelectedCurrencyChanged solo repone la
+      tasa detectada si el revisor no la editó a mano; un escaneo nuevo re-basa la protección y
+      ClearOcrReviewState la limpia. Los tres productores (carga, prefill, OCR) convergen a un
+      único punto de escritura programática.
+A3. Tests: NUEVO CommandCenter.Tests/Unit/SupplierInvoiceRatePersistenceTests.cs (3 casos:
+    inyección de la tasa viva en filas+snapshot tras el modal; flip-back conserva la corrección;
+    flip + Actualizar no re-asigna la cabecera ni revierte la tasa). Actualizados 5 tests con
+    expectativa vieja (2 reescritos al contrato nuevo — encabezado por selección y aislamiento de
+    carga — y 3 que ahora preseleccionan la moneda del documento, reflejando el flujo real).
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa POR PARTES: Unit 1890/1890 + resto 571/571 = 2461/2461, 0 fallas. Carril
+    SupplierInvoice 286/286.
+B3. Verificación independiente read-only (agente reviewer): S1-S3 CONFORME, ciclo de vida del flag
+    CONFORME, 0 blockers (re-ejecutó 286/286 y 3/3). Residuales: SyncStagedSnapshot conserva la
+    tasa previa en el snapshot cuando la tasa viva es inválida (cosmético, pre-existente 8.176;
+    el confirm está bloqueado y los requests leen el TextBox) y el prefill de carga usa la tasa
+    del staging (idéntico a HEAD, cubierto por el carve-out).
+B4. RED->GREEN observado: SupplierInvoiceRatePersistenceTests 3/3 fallando por las causas exactas
+    antes del fix (revert a "78.45", re-alineación USD->Bs.S, snapshot 78.45) -> 3/3 verde.
+
+C. LIMITACIONES ACEPTADAS
+
+C1. La protección de la corrección manual es de sesión de revisión (se re-basa con cada escaneo y
+    se limpia al limpiar/confirmar); una futura persistencia del estado de revisión entre
+    navegaciones debería reconsiderarla.
+C2. La re-alineación eliminada hacía que una carga directa de una factura Bs.S con selector USD
+    cambiara el título a Bs.S; ahora la cabecera manda siempre (los flujos reales de stage/scan ya
+    la dejan consistente) y los tests quedaron alineados al contrato nuevo.
+
+D. ROLLBACK
+
+D1. Revertir el commit restaura el comportamiento previo; sin migraciones ni cambios de esquema.
+
+E. COMMITS
+
+E1. 8.178 en V0.15: 1bd9f12 (fix + tests) + commit de este ANEXO (docs(8.178); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.179 - PASO 8 DEL ROADMAP: CATEGORIAS JERARQUICAS DEL CATALOGO - 2026-10-13
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/paso-8-categorias.md): implementar el Paso 8 del
+plan de 15 pasos ("Implementar categorías": jerarquía padre/hijas, múltiples por producto,
+asignación en formularios, filtros en catálogo, importación con columna) como habilitador
+estructural de la edición masiva de precios (Paso 9) y de los reportes por categoría (14-15).
+
+A. ALCANCE Y ENTREGA
+
+A1. Backend (commit 2b64f47): entidades Category (self-FK jerárquica) + ProductCategory (N:M, molde
+    SupplierProductCode); migración idempotente 20261014000349_AddProductCategories (guards
+    to_regclass/information_schema; único (ParentCategoryId, NormalizedName), único
+    (ProductId, CategoryId), Restrict self-FK y Category, Cascade Product); CategoryService con
+    validaciones (unicidad por padre incl. raíces, sin ciclos al mover, borrado bloqueado 409) y
+    CategoriesController (GET Admin/Manager/Cashier; mutaciones Admin/Manager + security stamp);
+    productos con categoryIds (Create null/[] = sin categorías; Update null = no tocar, [] =
+    quitar todas, lista = reemplazo) y ProductDto.categories; filtro por SUBÁRBOL en
+    GetProductsPagedAsync y suggestions (set BFS calculado en servicio, provider-agnóstico);
+    import con categoryPath ("A > B", auto-creación raíz→hoja, asigna la hoja) y export/plantilla
+    con columna de categorías ("Categorías" `; ` en export; "Categoría" en template).
+A2. Desktop WPF (commit bf32f71): cliente ICategoryService; partial
+    ProductDialogViewModel.Categories (árbol aplanado con indentación, multi-selección,
+    preselección desde el DTO, reemplazo completo al guardar, null si falla la carga);
+    CategoryManagementDialog (crear/renombrar/mover/borrar con confirmación, 409 legibles,
+    refresco preservando selección); filtro Categoría en InventoryView (sentinel "Todas" → null;
+    aplica también al refresh de catálogo); columna "Categoría" en el importador (XLSX+CSV);
+    DIM ShowCategoryManagementDialog (stubs intactos) y attach del cliente en ShowProductDialog.
+A3. Web (commit ef9ce68): categoriesApi (+toCategoryOptions); filtro de categorías en CatalogPage
+    (categoryId solo con valor, reset a página 1, carga no bloqueante) y selector de categoría en
+    la búsqueda POS (SearchBar/productsApi con parámetro opcional compatible).
+A4. Fixes post-verificación (T2): B1 el selector de padre no se re-anclaba al cambiar de categoría
+    (renombrar una hija podía re-parentarla en silencio) → re-anclaje con tests; B2 el filtro de
+    categorías no cargaba en login fresco (carga solo en ctor pre-login) → recarga en
+    EnsureLoadedAsync con test. Fix de estilo T3: estilos inline del select POS → clase
+    .pos-category-select (§3.3).
+A5. Tests: 40 backend (CategoryServiceTests + regresiones) + 34 desktop + 16 web = 90+ casos nuevos.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores (XAML incluido).
+B2. Suite completa POR PARTES: Unit 1964/1964 + resto 571/571 = 2535/2535, 0 fallas. Carriles
+    enfocados: Categor/Product/Inventory/Catalog 434/434 (T1) y 539/539 (T2). Web: npm test
+    395/395 + npm run lint 0.
+B3. Verificación independiente read-only por tarea (agente reviewer): T1 "REVISAR sin
+    bloqueantes" (40/40 re-ejecutados; snapshot EF limpio); T2 "BLOQUEAR" con 2 defectos reales
+    (B1/B2) corregidos con tests RED→GREEN antes del commit; T3 "REVISAR sin bloqueantes"
+    (22 puntos CONFORME; único hallazgo de estilo corregido). Migración validable contra
+    PostgreSQL solo en CI (sin PG local).
+
+C. LIMITACIONES ACEPTADAS
+
+C1. Bundle web (Backend.API/wwwroot) NO regenerado: un build hornearía el WIP sin commitear de
+    otro tramo dentro de los assets. Pendiente regenerarlo cuando ese WIP cierre; hasta entonces
+    la app servida no incluye el filtro Web (código y tests sí).
+C2. Unicidad de raíces solo a nivel servicio (el índice único PG no cubre ParentCategoryId NULL);
+    carrera teórica multi-usuario, protegida hoy por el servicio.
+C3. Import: segmentos de categoría >60 chars devuelven 500 (rollback íntegro; sugerido 400 con
+    validación futura); round-trip export→import de multi-categoría interpreta la celda "A; B"
+    como UNA ruta (supuesto v1: una categoría por celda); con overwriteMerge=false los productos
+    existentes no reciben categorías.
+C4. Residuales diferidos: índice único parcial de raíces; edge MaxLength(60) del DTO vs trim del
+    servicio; POS sin test del camino de error de carga de categorías; smoke visual WPF pendiente
+    de pasada manual; Merge de la grilla no sincroniza Categories en memoria (inofensivo hoy).
+
+D. ROLLBACK
+
+D1. Revertir los tres commits restaura el estado previo. La migración es aditiva y nullable con
+    Down seguro (drop de tablas nuevas); sin cambios destructivos de datos.
+
+E. COMMITS
+
+E1. 8.179 en V0.15: 2b64f47 (T1 backend) + bf32f71 (T2 WPF) + ef9ce68 (T3 Web) + commit de este
+    ANEXO (docs(8.179); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.180 - PASO 6 DEL ROADMAP: CONTEO FISICO CIEGO E INVENTARIO ROTATIVO CON ESCANER MOVIL - 2026-10-14
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/paso-6-conteo-fisico.md): implementar el Paso 6
+(sesiones de conteo físico ciego con escáner móvil, cálculo de discrepancias y aplicación aprobada
+con trazabilidad completa), como siguiente paso del reordenamiento propuesto del roadmap.
+
+A. ALCANCE Y ENTREGA
+
+A1. Backend (commit 298dbc1): StockCountSession (alcance por subárbol de categoría, ciclo de vida
+    Open/Closed/Applied/Cancelled con guard xmin) + StockCountItem (contado + teórico/costo
+    congelados al cerrar); migración idempotente 20261014030655 (+ StockCountSessionId en
+    StockMovements y StockMovements_Archive, con índice); StockCountService: scan CIEGO por SKU con
+    guards de producto (borrado/adelanto/grupo-individual/variante compartida) y de alcance;
+    close congela; apply ATÓMICO (execution strategy + transacción + guard xmin) con batch
+    UpdateStockBatchAsync auditado (OriginType=Manual, ReasonCode=PhysicalCountCorrection,
+    Observation "Toma física #C-{id}", StockCountSessionId, AuthorizedByUserId), Δ = contado −
+    stock actual (el stock queda exactamente en lo contado), Δ=0 omitidos, no-escaneados intactos;
+    review con preview live (Open) o congelado (Closed/Applied) + totales sobrantes/faltantes/neto;
+    controller con RBAC (clase Admin/Manager/Cashier; mutaciones y review Admin/Manager) +
+    security stamp. El modo ciego es por construcción: los DTOs de conteo no exponen teórico/costo.
+A2. Web (commit ea83e96): vista "Conteo físico" (view stock-count) con lista/filtro por estado,
+    creación Admin (alcance por categoría), detalle CIEGO con input + cámara (BarcodeScannerModal
+    reutilizado con UN solo POST por scan vía promesa compartida), +1/−1/edición/quitar; panel
+    Admin de review con descuadre, totales y Cerrar/Aplicar/Cancelar con confirmaciones;
+    navegación RBAC (VIEW_ORDER/ROLE_VIEWS/Sidebar) con side-tests sincronizados; mobile-first.
+A3. Fix de verificación (T2): el panel review consumía `row.unitCostUsd` mientras el contrato
+    camelCase sirve `unitCostUSD` (los acrónimos finales se preservan en System.Text.Json) → la
+    columna Costo USD mostraba $0,00 en todas las filas; fix + aserción case-sensitive en el test.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa POR PARTES: Unit 2003/2003 + resto 571/571 = 2574/2574, 0 fallas. Carril
+    StockCount/Inventory/StockMovement 125/125 (T1). Web: npm test 415/415 + npm run lint 0.
+B3. Verificación independiente read-only por tarea (agente reviewer): T1 "REVISAR sin
+    bloqueantes" (39/39 re-ejecutados; snapshot EF limpio; micro-fix del mensaje de persistencia
+    aplicado); T2 "BLOQUEAR" con el defecto de casing corregido y test endurecido antes del
+    commit. Migración validable contra PostgreSQL solo en CI (sin PG local).
+
+C. LIMITACIONES ACEPTADAS
+
+C1. Bundle web NO regenerado (misma regla que 8.179: hornearía el WIP ajeno en wwwroot); la vista
+    de conteo llega a la app servida al regenerarse el bundle junto con ese WIP.
+C2. Semántica del apply: el Δ se calcula con lectura previa y escritura aditiva; el guard xmin
+    serializa applies entre sí, no contra ventas concurrentes en esa ventana (venta post-cierre
+    secuencial sí queda cubierta: el stock termina en lo contado).
+C3. Scan ciego: variantes con stock compartido, grupos individuales, adelantos de efectivo y
+    productos borrados se rechazan EN EL SCAN con mensaje claro; el conteo de variantes con stock
+    compartido (conversión por factor) queda para un tramo futuro.
+C4. Residuales diferidos: StockCountService de 667 líneas / Apply con complejidad alta (estilo);
+    scan duplicado concurrente del mismo producto nuevo → 500 posible (probabilidad baja); review
+    de una sesión Cancelada-desde-Open muestra un Δ cosmético (null→0); el vínculo
+    StockCountSessionId no se expone aún en el DTO/UI del Kardex (follow-up); sin smoke visual
+    interactivo de la vista Web.
+C5. Interacción conocida con el WIP ajeno: el guard de ReservedQuantity (sin commitear) no corre
+    en InMemory → el rechazo por reservas activas al aplicar faltantes solo se ejerce en
+    PostgreSQL/CI.
+
+D. ROLLBACK
+
+D1. Revertir los dos commits restaura el estado previo; la migración es aditiva con Down seguro
+    (drop de las tablas nuevas y de la columna StockCountSessionId).
+
+E. COMMITS
+
+E1. 8.180 en V0.15: 298dbc1 (T1 backend) + ea83e96 (T2 Web) + commit de este ANEXO (docs(8.180);
+    git log).
+================================================================================
+
+================================================================================
+ANEXO 8.181 - PASO 9 DEL ROADMAP: EDICION MULTIPLE DE PRECIOS EN EL CATALOGO - 2026-10-14
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/paso-9-precios-masivos.md): implementar el Paso 9 del
+plan de 15 pasos ("Soporte para edición múltiple de precios en el catálogo": selección múltiple,
+operaciones masivas de precios/márgenes/costos con vista previa "Antes vs Después" y aplicación
+atómica), respetando el régimen multi-moneda vigente (Bs.S canónico por techo con la tasa del día,
+8.104) y las reglas de herencia de precios de agrupadores (Paso 7) habilitadas por Categorías (Paso 8).
+
+A. ALCANCE Y ENTREGA
+
+A1. Backend (commit aa2aa55): DTOs `BulkPrice*` (selección por `productIds` 1..1000 o
+    `filter`+`selectAllFiltered`; operaciones {campo, modo, valor}) + `BulkUpdatePricesAsync`
+    (`InventoryService.BulkPrices.cs`) con motor ÚNICO preview/apply: selección explícita o por
+    filtros del listado (subárbol de categoría incluido), 5 campos (Detal/Mayor/márgenes/Costo) × 3
+    modos (fijo/+%/–%) reusando las rutinas del update individual (`ValidateAndCalculateProductPrices`,
+    `RoundPriceUp`, `ToBsSCeiling`); aplicación en UNA transacción con execution strategy
+    (all-or-nothing; 400 ante negativos/mayor>detal/cap; 409 ante conflicto de concurrencia con
+    rollback), sin evadir el token xmin (camino rastreado); canon `PriceBsS` recalculado con la tasa
+    del día en todo producto cuyo precio USD cambie; propagación a variantes heredadas con Bs.S
+    recalculado (corrige el omitido histórico del update individual); exclusión con motivo de grupos
+    `HasIndependentPricing` y de hijos heredados seleccionados; invalidación de cachés post-commit;
+    RBAC Admin/Manager (`CanMutateCatalog`). Controller partial `ProductsController.BulkPrices.cs`
+    (`POST bulk-prices/preview` sin escrituras + `POST bulk-prices/apply`).
+A2. Desktop WPF (commit c464cee): selección múltiple por checkbox en el catálogo (`SEL.`, persistente
+    entre páginas por ProductId, sin disparar el auto-save de fila) + "Seleccionar todos los filtrados"
+    (modo filtro con los filtros vigentes) + contador + guard cliente >1000; `BulkPriceEditDialog`
+    (MVVM vía IDialogService): operaciones por campo × modo con validaciones, vista previa "Antes vs
+    Después" (USD y Bs.S, filas omitidas con motivo, totales) y "Aplicar cambios" con confirmación →
+    feedback + refresco del catálogo (reload + `CatalogUpdatedMessage`). Cliente HTTP en
+    `ProductService` (409 tipado). Fix post-verificación: cierre del diálogo bloqueado con operación
+    en vuelo (`CanClose` + `Close()` + `OnClosing` + emisión del cierre con IsBusy ya en false),
+    con tests.
+A3. Tests: 40 backend (servicio + controller + concurrencia PG-gated) + 38 desktop (36 + 2 del fix)
+    = 78 casos nuevos; RED→GREEN observado en ambos writers.
+A4. Supuesto de alcance (S6): la edición masiva vive en Desktop (el Web no tiene CRUD de producto);
+    el backend queda client-agnóstico para un tramo web futuro.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa POR PARTES: Unit 2081/2081 + resto 571/571 = 2652/2652 (.NET) + E2E WPF 50/50
+    (total 2702/2702, 0 fallas). Web sin cambios (npm n/a). `has-pending-model-changes` limpio
+    (sin migración: cambios aditivos de contrato/UI).
+B3. Verificación independiente read-only por tarea (agentes reviewer): T1 "REVISAR sin bloqueantes"
+    (40/40 re-ejecutados; carril 544/544; EF limpio); T2 "REVISAR sin bloqueantes" (108/108 + E2E;
+    hunks del WIP ajeno verificados intactos por timestamps y análisis de hunks) con 1 hallazgo no
+    bloqueante (race de cierre durante apply → pérdida de feedback e inducción de reintentos
+    duplicadores) corregido con 2 tests antes del commit (carril `~BulkPriceEdit` 38/38 tras el fix).
+
+C. LIMITACIONES ACEPTADAS
+
+C1. Bundle web (Backend.API/wwwroot) NO regenerado: regla vigente hasta cerrar el WIP ajeno de
+    ingesta unificada; la UI del paso llega a la app servida al regenerarse el bundle.
+C2. Retry de la execution strategy con operaciones porcentuales puede re-aplicar el porcentaje
+    (follow-up de hardening sugerido: reload/detach en retry o 409 al segundo intento); `SetFixed`
+    es idempotente y el token xmin mitiga el caso commit-ok/ack-perdido (→409).
+C3. Con tasa 0 (no configurada) el bulk conserva el Bs.S previo por producto (sin referencia no hay
+    canon facturable); visible en la UI ("Sin tasa configurada...").
+C4. `SkippedCount` del preview/UI cuenta filas seleccionadas: los hijos que cambian por propagación
+    del padre no son filas propias (copy del contador mejorable).
+C5. Residuales [ESTILO] diferidos: cap de margen del bulk 1000% vs 10000% del single; IDs ≤0
+    descartados en silencio; bordes "1000 exacto" y guard filtrado >1000 (WPF) sin test; validación
+    de valor a nivel diálogo (no por fila).
+C6. Interacción conocida con el WIP ajeno: los hunks del WIP en `IDialogService.cs` /
+    `WpfDialogService.Modals.cs` siguen sin commitear en el worktree (staging por blob verificado:
+    el staged = HEAD + hunks 8.181; el unstaged = solo el WIP).
+
+D. ROLLBACK
+
+D1. Revertir los tres commits restaura el estado previo; sin migraciones; endpoints, DTOs y UI
+    aditivos. El WIP ajeno queda intacto.
+
+E. COMMITS
+
+E1. 8.181 en V0.15: aa2aa55 (T1 backend) + c464cee (T2 WPF + fix de verificación) + commit de este
+    ANEXO (docs(8.181); git log).
+================================================================================
+
+================================================================================
+ANEXO ENTREGA V0.15 - 2026-10-15: REHABILITACION DE CI DEL PR #37 (CVE SIGNALR + CADENA DE MIGRACIONES + REGRESIONES 8.171)
+================================================================================
+Contexto: la entrega V0.15 (PR #37) quedo con los 4 checks de CI en rojo. Diagnostico y correccion:
+
+A. DEPENDENCIAS (commit 111b97d): CVE-2026-70159 / GHSA-334f-vvp4-7g6p (13/10) marco
+   Microsoft.AspNetCore.SignalR.Common <= 10.0.12 vulnerable; el restore de CI (warnings as
+   errors) fallaba con NU1903 en los 3 jobs. Se subio SignalR.Client 10.0.5 -> 10.0.13 y el
+   tren Microsoft.Extensions.*/AspNetCore.* completo 10.0.5 -> 10.0.13 (pinning central: evita
+   NU1109). Auditoria de vulnerables: 0/10 proyectos (cache de auditoria refrescado).
+
+B. CADENA DE MIGRACIONES (commit bbe6a3a): la migracion 8.174 AddSupplierOcrTemplates tenia
+   id retroactivo 20260425000000, ordenando ANTES de 20261003173222_AddSupplierInvoice (que
+   crea "Suppliers"): en base fresca fallaba con 42P01 y abortaba el arranque de la app en CI
+   (cascada: smoke tests + E2E de autorizacion + WPF E2E). Reordenada a 20261012230000 + Up
+   idempotente (guard to_regclass, estilo 8.179) para que las bases ya migradas con el id
+   viejo la corran como no-op. Evidencia en PostgreSQL real: cadena aplica limpia en base
+   vacia; MigratedSchema_FromEmptyDatabase y MigratedSchema_MatchesModel verdes.
+
+C. REGRESION DE ENTREGA PARCIAL (commit 9f68fd9): 8.171 (SRE-08) agrego ChangeTracker.Clear()
+   incondicional al delegate de reintentos de DeliverPartial, anulando la deteccion xmin
+   (test PG real de 8.145): un caller stale re-aplicaba la entrega en silencio. El Clear ahora
+   corre solo en reintentos; el primer intento conserva DbUpdateConcurrencyException.
+
+D. TESTS DE ADELANTO (commit 50d1897): los 3 envelope tests usaban PaymentMethod id=2
+   ("Efectivo Bs.S", IsCash=true), rechazado por la validacion SEC-04-RES de 8.171; pasan a
+   id=3 "Punto de Venta" (digital del seed).
+
+E. VERIFICACION: local contra PostgreSQL real (suite completa + gates de cobertura OK) y CI:
+   push 38748536470 y PR 38748548663 verdes (Backend 5m29s, WPF E2E 10m57s, Frontend 25s).
+
+F. COMMITS: 111b97d (deps) + bbe6a3a (migracion) + 9f68fd9 (xmin) + 50d1897 (tests) en V0.15.
+================================================================================

@@ -158,8 +158,9 @@ public class HealthController : ControllerBase
                 : System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12FromFile(certPath, password);
             return cert.NotAfter.ToUniversalTime();
         }
-        catch
+        catch (Exception ex)
         {
+            Core.Logging.AppLogger.LogStart($"[HealthController] No se pudo inspeccionar el certificado TLS: {ex.Message}");
             return null;
         }
     }
@@ -171,8 +172,9 @@ public class HealthController : ControllerBase
             var drive = new DriveInfo(_environment.ContentRootPath);
             return Math.Round(drive.AvailableFreeSpace / 1024d / 1024d, 0);
         }
-        catch
+        catch (Exception ex)
         {
+            Core.Logging.AppLogger.LogStart($"[HealthController] No se pudo obtener espacio libre en disco: {ex.Message}");
             return 0;
         }
     }
@@ -184,8 +186,9 @@ public class HealthController : ControllerBase
             var drive = new DriveInfo(_environment.ContentRootPath);
             return Math.Round(drive.TotalSize / 1024d / 1024d, 0);
         }
-        catch
+        catch (Exception ex)
         {
+            Core.Logging.AppLogger.LogStart($"[HealthController] No se pudo obtener tamaño total de disco: {ex.Message}");
             return 0;
         }
     }

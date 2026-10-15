@@ -6,6 +6,7 @@ import {
   PackageCheck,
   Landmark,
   ClipboardCheck,
+  ClipboardList,
   Settings,
   DollarSign,
   User,
@@ -28,6 +29,7 @@ const NAV_SECTIONS = [
     label: 'INVENTARIO',
     items: [
       { id: 'catalog', label: 'Catálogo', icon: Package },
+      { id: 'stock-count', label: 'Conteo físico', icon: ClipboardList },
       { id: 'history', label: 'Historial Ventas', icon: History },
       { id: 'register', label: 'Caja', icon: Landmark },
       { id: 'closing', label: 'Cierre Diario', icon: ClipboardCheck },

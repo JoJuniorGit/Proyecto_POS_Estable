@@ -45,7 +45,7 @@ public class IdempotencyCleanupJob : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[IDEMPOTENCY_CLEANUP] Error no controlado durante el ciclo de purga de idempotencia: {Message}", ex.Message);
+                _logger.LogWarning(ex, "[IDEMPOTENCY_CLEANUP] Error no controlado durante el ciclo de purga de idempotencia.");
             }
 
             try

@@ -1,0 +1,1 @@
+function e(e,t){let n=Number(e)||0,r=Number(t)||0;return n>0&&r>0?Math.ceil(n*r*100)/100:0}function t(e,t){let n=Number(e)||0,r=Number(t)||0;if(r<=0||n<=0)return 0;let i=Math.round(n*100),a=Math.round(r*1e4);return a<=0?0:Math.round(i*1e4/a)/100}export{e as n,t};

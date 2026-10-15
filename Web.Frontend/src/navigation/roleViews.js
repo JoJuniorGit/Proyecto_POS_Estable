@@ -6,14 +6,15 @@ export const VIEW_ORDER = Object.freeze([
   'history',
   'register',
   'closing',
+  'stock-count',
   'settings',
   'exchange',
 ]);
 
 export const ROLE_VIEWS = Object.freeze({
-  Admin: Object.freeze(['pos', 'pending', 'pickups', 'catalog', 'history', 'register', 'closing', 'settings', 'exchange']),
-  Manager: Object.freeze(['pos', 'pending', 'pickups', 'catalog', 'history', 'register', 'closing', 'settings', 'exchange']),
-  Cashier: Object.freeze(['pos', 'pending', 'pickups', 'catalog', 'history', 'register', 'closing']),
+  Admin: Object.freeze(['pos', 'pending', 'pickups', 'catalog', 'history', 'register', 'closing', 'stock-count', 'settings', 'exchange']),
+  Manager: Object.freeze(['pos', 'pending', 'pickups', 'catalog', 'history', 'register', 'closing', 'stock-count', 'settings', 'exchange']),
+  Cashier: Object.freeze(['pos', 'pending', 'pickups', 'catalog', 'history', 'register', 'closing', 'stock-count']),
   Driver: Object.freeze(['pickups', 'history']),
 });
 

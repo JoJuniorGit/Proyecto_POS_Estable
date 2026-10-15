@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,32 +10,13 @@ using Core.Helpers;
 using Core.Interfaces;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Inventory.Module.Services;
 
 public partial class SupplierInvoiceService
 {
-    private readonly ICurrentUserService? _currentUserService;
-
-    public SupplierInvoiceService(
-        InventoryDbContext context,
-        ISystemSettingsService systemSettingsService,
-        ISupplierProductSimilaritySearch similaritySearch,
-        ICurrentUserService currentUserService,
-        IProductManagementService productManagementService)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(systemSettingsService);
-        ArgumentNullException.ThrowIfNull(similaritySearch);
-        ArgumentNullException.ThrowIfNull(currentUserService);
-        ArgumentNullException.ThrowIfNull(productManagementService);
-
-        _context = context;
-        _systemSettingsService = systemSettingsService;
-        _similaritySearch = similaritySearch;
-        _currentUserService = currentUserService;
-        _productManagementService = productManagementService;
-    }
+    private const int MaxConcurrencyAttempts = 3;
 
     public Task<SupplierInvoiceDetailDto> ConfirmAsync(
         int invoiceId,
@@ -53,232 +35,394 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("The confirmation contains duplicate supplier invoice line IDs.", nameof(request));
         }
 
+        // 8.176: la moneda viva de la cabecera en revisión viaja opcional; si viene, debe ser canónica.
+        if (request.Currency is not null
+            && !string.Equals(request.Currency, CurrencyCodes.Usd, StringComparison.Ordinal)
+            && !string.Equals(request.Currency, CurrencyCodes.BsS, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The supplier invoice currency must be USD or Bs.S.", nameof(request));
+        }
+
+        if (request.AppliedRate is decimal requestedRate &&
+            (requestedRate <= 0m || requestedRate > MaxInvoiceNumericValue))
+        {
+            throw new ArgumentException("The applied exchange rate must be positive and within the supported range.", nameof(request));
+        }
+
         return _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            await using var transaction = _context.Database.IsRelational()
-                ? await _context.Database.BeginTransactionAsync(cancellationToken)
-                : null;
-
-            try
+            for (var attempt = 0; attempt < MaxConcurrencyAttempts; attempt++)
             {
-                var invoice = await _context.SupplierInvoices
-                    .AsSplitQuery()
-                    .Include(candidate => candidate.Lines)
-                    .FirstOrDefaultAsync(candidate => candidate.Id == invoiceId, cancellationToken)
-                    ?? throw new KeyNotFoundException($"Supplier invoice {invoiceId} was not found.");
+                _context.ChangeTracker.Clear();
 
-                if (invoice.Status != SupplierInvoiceStatus.Draft)
+                await using var transaction = _context.Database.IsRelational()
+                    ? await _context.Database.BeginTransactionAsync(cancellationToken)
+                    : null;
+
+                try
                 {
-                    throw new InvalidOperationException($"Supplier invoice {invoiceId} is not a draft.");
-                }
+                    var invoice = await _context.SupplierInvoices
+                        .AsSplitQuery()
+                        .Include(candidate => candidate.Lines)
+                        .Include(candidate => candidate.Supplier)
+                        .FirstOrDefaultAsync(candidate => candidate.Id == invoiceId, cancellationToken)
+                        ?? throw new KeyNotFoundException($"Supplier invoice {invoiceId} was not found.");
 
-                var lineIds = invoice.Lines.Select(line => line.Id).ToHashSet();
-                if (request.Lines.Any(confirmation => !lineIds.Contains(confirmation.LineId)))
-                {
-                    throw new ArgumentException("A confirmed line does not belong to this supplier invoice.", nameof(request));
-                }
-
-                var confirmationsByLineId = request.Lines.ToDictionary(confirmation => confirmation.LineId);
-                var orderedLines = SupplierInvoiceApplyOrdering.OrderForApply(invoice.Lines);
-
-                // 8.155 (REQ-AIO-01): precargas batch antes del loop. La re-lectura individual del
-                // retry xmin sobre entidad fresca se conserva (spec supplier-invoice-apply L64-73).
-                var applicableLines = orderedLines
-                    .Where(line => confirmationsByLineId.TryGetValue(line.Id, out var confirmation)
-                        && confirmation.IsApproved
-                        && line.Status != SupplierInvoiceLineStatus.Conflict)
-                    .ToList();
-
-                var applicableProductIds = applicableLines
-                    .Where(line => line.ResolvedProductId is not null)
-                    .Select(line => line.ResolvedProductId!.Value)
-                    .Distinct()
-                    .ToList();
-
-                var productsById = new Dictionary<int, Product>();
-                if (applicableProductIds.Count > 0)
-                {
-                    productsById = await _context.Products
-                        .Where(product => !product.IsDeleted && applicableProductIds.Contains(product.Id))
-                        .ToDictionaryAsync(product => product.Id, cancellationToken);
-                }
-
-                // 8.155 (REQ-AIO-02): alias existentes del proveedor para los códigos candidatos en
-                // UNA lectura trackeada; el upsert se resuelve en memoria y se persiste con el
-                // guardado final (una sola escritura), sin cambios para el flujo de creación.
-                var candidateAliasCodes = applicableLines
-                    .Where(line => !string.IsNullOrWhiteSpace(line.SupplierCode))
-                    .Select(line => line.SupplierCode!.Trim())
-                    .Distinct()
-                    .ToList();
-
-                var aliasesByCode = new Dictionary<string, SupplierProductCode>();
-                if (candidateAliasCodes.Count > 0)
-                {
-                    // Orden por Id + TryAdd: si el arnés no aplica el índice único, gana el alias de
-                    // menor Id, igual que el FirstOrDefaultAsync del upsert por línea previo.
-                    var existingAliases = await _context.SupplierProductCodes
-                        .Where(alias => alias.SupplierId == invoice.SupplierId
-                            && alias.Code != null
-                            && candidateAliasCodes.Contains(alias.Code))
-                        .OrderBy(alias => alias.Id)
-                        .ToListAsync(cancellationToken);
-                    foreach (var alias in existingAliases)
+                    if (invoice.Status != SupplierInvoiceStatus.Draft)
                     {
-                        aliasesByCode.TryAdd(alias.Code!, alias);
-                    }
-                }
-
-                var aliasPlan = new Dictionary<string, int>();
-                foreach (var line in orderedLines)
-                {
-                    if (!confirmationsByLineId.TryGetValue(line.Id, out var confirmation))
-                    {
-                        line.IsApproved = false;
-                        continue;
+                        throw new InvalidOperationException($"Supplier invoice {invoiceId} is not a draft.");
                     }
 
-                    line.IsApproved = confirmation.IsApproved;
-                    if (!confirmation.IsApproved)
+                    var lineIds = invoice.Lines.Select(line => line.Id).ToHashSet();
+                    if (request.Lines.Any(confirmation => !lineIds.Contains(confirmation.LineId)))
                     {
-                        continue;
+                        throw new ArgumentException("A confirmed line does not belong to this supplier invoice.", nameof(request));
                     }
 
-                    ValidateApprovedLine(line, confirmation);
-                    line.MarginRetailOverride = confirmation.MarginRetailOverride;
-                    line.MarginWholesaleOverride = confirmation.MarginWholesaleOverride;
-                    if (line.Status == SupplierInvoiceLineStatus.Conflict || line.ResolvedProductId is not int productId)
+                    // 8.172/8.176: el revisor puede ajustar la tasa y la moneda del documento durante
+                    // la revisión; el confirm conmuta el snapshot del draft (moneda y/o tasa) y fuerza
+                    // la renormalización de los costos aprobados con la interpretación final.
+                    var appliedRateChanged = false;
+                    var targetCurrency = request.Currency ?? invoice.Currency;
+                    var currencyChanged = !string.Equals(targetCurrency, invoice.Currency, StringComparison.Ordinal);
+                    if (string.Equals(targetCurrency, CurrencyCodes.BsS, StringComparison.Ordinal))
                     {
-                        continue;
-                    }
-
-                    ApplyCorrections(line, invoice, confirmation);
-                    if (!productsById.TryGetValue(productId, out var product))
-                    {
-                        throw new KeyNotFoundException($"Product {productId} was not found or has been deleted.");
-                    }
-
-                    // 8.155/W1: el retry puede re-leer una instancia fresca del producto; el caché de
-                    // precarga debe reflejarla para líneas posteriores que compartan el producto.
-                    productsById[productId] = await ApplyApprovedLineAsync(invoice.Id, line, product, confirmation, cancellationToken);
-                    if (!string.IsNullOrWhiteSpace(line.SupplierCode))
-                    {
-                        // 8.146-S5/D8: aprendizaje de alias dentro de la misma transacción;
-                        // el rollback del confirm no deja cambios de alias.
-                        aliasPlan[line.SupplierCode.Trim()] = productId;
-                    }
-                }
-
-                foreach (var aliasPlanEntry in aliasPlan)
-                {
-                    if (aliasesByCode.TryGetValue(aliasPlanEntry.Key, out var alias))
-                    {
-                        if (alias.ProductId != aliasPlanEntry.Value)
+                        if (request.AppliedRate is not decimal overrideRate)
                         {
-                            alias.ProductId = aliasPlanEntry.Value;
+                            // Cambiar la moneda del documento a Bs.S exige una tasa explícita; la tasa
+                            // de un snapshot previo pertenece a otra interpretación y no se reutiliza.
+                            if (currencyChanged)
+                            {
+                                throw new ArgumentException(
+                                    "An applied exchange rate greater than zero is required for supplier invoices in Bs.S.",
+                                    nameof(request));
+                            }
                         }
+                        else
+                        {
+                            var normalizedOverrideRate = Math.Round(overrideRate, 4, MidpointRounding.AwayFromZero);
+                            if (invoice.AppliedRate != normalizedOverrideRate)
+                            {
+                                invoice.AppliedRate = normalizedOverrideRate;
+                                appliedRateChanged = true;
+                            }
+                        }
+                    }
+                    else if (invoice.AppliedRate != 1m)
+                    {
+                        invoice.AppliedRate = 1m;
+                        appliedRateChanged = true;
+                    }
+
+                    if (currencyChanged)
+                    {
+                        invoice.Currency = targetCurrency;
+                        appliedRateChanged = true;
+                    }
+
+                    var confirmationsByLineId = request.Lines.ToDictionary(confirmation => confirmation.LineId);
+                    var orderedLines = SupplierInvoiceApplyOrdering.OrderForApply(invoice.Lines);
+
+                    // 8.155 (REQ-AIO-01): precargas batch antes del loop.
+                    var applicableLines = orderedLines
+                        .Where(line => confirmationsByLineId.TryGetValue(line.Id, out var confirmation)
+                            && confirmation.IsApproved
+                            && line.Status != SupplierInvoiceLineStatus.Conflict)
+                        .ToList();
+
+                    var applicableProductIds = applicableLines
+                        .Where(line => line.ResolvedProductId is not null)
+                        .Select(line => line.ResolvedProductId!.Value)
+                        .Distinct()
+                        .ToList();
+
+                    var productsById = new Dictionary<int, Product>();
+                    if (applicableProductIds.Count > 0)
+                    {
+                        productsById = await _context.Products
+                            .Include(product => product.ParentProduct)
+                            .Where(product => !product.IsDeleted && applicableProductIds.Contains(product.Id))
+                            .ToDictionaryAsync(product => product.Id, cancellationToken);
+                    }
+
+                    // 8.155 (REQ-AIO-02): alias existentes del proveedor para los códigos candidatos en
+                    // UNA lectura trackeada; el upsert se resuelve en memoria y se persiste con el
+                    // guardado final (una sola escritura), sin cambios para el flujo de creación.
+                    var candidateAliasCodes = applicableLines
+                        .Where(line => !string.IsNullOrWhiteSpace(line.SupplierCode))
+                        .Select(line => line.SupplierCode!.Trim())
+                        .Distinct()
+                        .ToList();
+
+                    var aliasesByCode = new Dictionary<string, List<SupplierProductCode>>(StringComparer.Ordinal);
+                    if (candidateAliasCodes.Count > 0)
+                    {
+                        // Orden por Id: si el arnés no aplica el índice único, el primer elemento es el de menor Id.
+                        var existingAliases = await _context.SupplierProductCodes
+                            .Where(alias => alias.SupplierId == invoice.SupplierId
+                                && alias.Code != null
+                                && candidateAliasCodes.Contains(alias.Code))
+                            .OrderBy(alias => alias.Id)
+                            .ToListAsync(cancellationToken);
+                        foreach (var alias in existingAliases)
+                        {
+                            if (!aliasesByCode.TryGetValue(alias.Code!, out var list))
+                            {
+                                list = new List<SupplierProductCode>();
+                                aliasesByCode[alias.Code!] = list;
+                            }
+
+                            list.Add(alias);
+                        }
+                    }
+
+                    // 8.166: factores recordados por proveedor+producto para los candidatos del apply
+                    // (upsert en memoria; se persiste con el guardado final de la transacción).
+                    var factorsByProductId = new Dictionary<int, SupplierProductFactor>();
+                    if (applicableProductIds.Count > 0)
+                    {
+                        var existingFactors = await _context.SupplierProductFactors
+                            .Where(factor => factor.SupplierId == invoice.SupplierId
+                                && applicableProductIds.Contains(factor.ProductId))
+                            .ToListAsync(cancellationToken);
+                        foreach (var factor in existingFactors)
+                        {
+                            factorsByProductId.TryAdd(factor.ProductId, factor);
+                        }
+                    }
+
+                    var aliasPlan = new Dictionary<string, int>(StringComparer.Ordinal);
+                    var multiProductAliasPlan = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+                    foreach (var line in orderedLines)
+                    {
+                        if (!confirmationsByLineId.TryGetValue(line.Id, out var confirmation))
+                        {
+                            line.IsApproved = false;
+                            continue;
+                        }
+
+                        line.IsApproved = confirmation.IsApproved;
+                        if (!confirmation.IsApproved)
+                        {
+                            continue;
+                        }
+
+                        ValidateApprovedLine(line, confirmation);
+                        line.MarginRetailOverride = confirmation.MarginRetailOverride;
+                        line.MarginWholesaleOverride = confirmation.MarginWholesaleOverride;
+                        if (line.Status == SupplierInvoiceLineStatus.Conflict || line.ResolvedProductId is not int productId)
+                        {
+                            continue;
+                        }
+
+                        ApplyCorrections(line, invoice, confirmation);
+                        ApplyConversionFactor(line, invoice, confirmation, appliedRateChanged);
+                        if (!productsById.TryGetValue(productId, out var product))
+                        {
+                            throw new KeyNotFoundException($"Product {productId} was not found or has been deleted.");
+                        }
+
+                        ApplyApprovedLine(invoice.Id, line, product, confirmation);
+                        // 8.166: aprende/actualiza el factor caja→unidad por proveedor+producto.
+                        UpdateRememberedFactor(factorsByProductId, invoice.SupplierId, productId, line.ConversionFactor);
+                        if (!string.IsNullOrWhiteSpace(line.SupplierCode))
+                        {
+                            var normalizedCode = line.SupplierCode.Trim();
+                            if (line.MatchMethod == MatchMethod.SupplierCode)
+                            {
+                                if (!multiProductAliasPlan.TryGetValue(normalizedCode, out var multiProductIds))
+                                {
+                                    multiProductIds = new List<int>();
+                                    multiProductAliasPlan[normalizedCode] = multiProductIds;
+                                }
+
+                                if (!multiProductIds.Contains(productId))
+                                {
+                                    multiProductIds.Add(productId);
+                                }
+                            }
+                            else
+                            {
+                                // 8.146-S5/D8: aprendizaje de alias dentro de la misma transacción;
+                                // el rollback del confirm no deja cambios de alias.
+                                aliasPlan[normalizedCode] = productId;
+                            }
+                        }
+                    }
+
+                    foreach (var aliasPlanEntry in aliasPlan.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+                    {
+                        if (aliasesByCode.TryGetValue(aliasPlanEntry.Key, out var existingList) && existingList.Count > 0)
+                        {
+                            var alias = existingList[0];
+                            if (alias.ProductId != aliasPlanEntry.Value)
+                            {
+                                alias.ProductId = aliasPlanEntry.Value;
+                            }
+                        }
+                        else
+                        {
+                            _context.SupplierProductCodes.Add(new SupplierProductCode
+                            {
+                                SupplierId = invoice.SupplierId,
+                                Code = aliasPlanEntry.Key,
+                                ProductId = aliasPlanEntry.Value
+                            });
+                        }
+                    }
+
+                    foreach (var multiAliasEntry in multiProductAliasPlan.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+                    {
+                        aliasesByCode.TryGetValue(multiAliasEntry.Key, out var existingList);
+                        foreach (var targetProductId in multiAliasEntry.Value)
+                        {
+                            if (existingList is not null && existingList.Any(alias => alias.ProductId == targetProductId))
+                            {
+                                continue;
+                            }
+
+                            var createdAlias = new SupplierProductCode
+                            {
+                                SupplierId = invoice.SupplierId,
+                                Code = multiAliasEntry.Key,
+                                ProductId = targetProductId
+                            };
+                            _context.SupplierProductCodes.Add(createdAlias);
+                            existingList ??= new List<SupplierProductCode>();
+                            aliasesByCode[multiAliasEntry.Key] = existingList;
+                            existingList.Add(createdAlias);
+                        }
+                    }
+
+                    // 8.167: recuerda la moneda facturada por el proveedor (prefijo de la próxima factura).
+                    if (invoice.Supplier is not null
+                        && !string.Equals(invoice.Supplier.InvoiceCurrency, invoice.Currency, StringComparison.Ordinal))
+                    {
+                        invoice.Supplier.InvoiceCurrency = invoice.Currency;
+                        invoice.Supplier.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    invoice.Status = SupplierInvoiceStatus.Applied;
+                    invoice.AppliedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync(cancellationToken);
+                    if (transaction is not null)
+                    {
+                        await transaction.CommitAsync(cancellationToken);
+                    }
+
+                    InvalidateProductCache(productsById.Values
+                        .Concat(productsById.Values
+                            .Where(product => product.ParentProduct is not null)
+                            .Select(product => product.ParentProduct!)));
+                    _logger.LogInformation(
+                        "Confirmed supplier invoice {InvoiceId} for supplier {SupplierId} ({ApprovedCount} approved lines).",
+                        invoice.Id,
+                        invoice.SupplierId,
+                        applicableLines.Count);
+
+                    return ToDetailDto(invoice);
+                }
+                catch (DbUpdateConcurrencyException exception) when (
+                    attempt + 1 < MaxConcurrencyAttempts && exception.Entries.Any(entry => entry.Entity is Product))
+                {
+                    if (transaction is not null)
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+                    }
+
+                    _context.ChangeTracker.Clear();
+                    _logger.LogWarning(
+                        exception,
+                        "Optimistic concurrency conflict applying supplier invoice {InvoiceId} (attempt {Attempt}/{MaxAttempts}).",
+                        invoiceId,
+                        attempt + 1,
+                        MaxConcurrencyAttempts);
+                    await Task.Delay(25 * (attempt + 1), cancellationToken);
+                }
+                catch
+                {
+                    if (transaction is not null)
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
                     }
                     else
                     {
-                        _context.SupplierProductCodes.Add(new SupplierProductCode
-                        {
-                            SupplierId = invoice.SupplierId,
-                            Code = aliasPlanEntry.Key,
-                            ProductId = aliasPlanEntry.Value
-                        });
+                        _context.ChangeTracker.Clear();
                     }
-                }
 
-                invoice.Status = SupplierInvoiceStatus.Applied;
-                invoice.AppliedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync(cancellationToken);
-                if (transaction is not null)
-                {
-                    await transaction.CommitAsync(cancellationToken);
+                    throw;
                 }
-
-                return ToDetailDto(invoice);
             }
-            catch
-            {
-                if (transaction is not null)
-                {
-                    await transaction.RollbackAsync(CancellationToken.None);
-                }
 
-                throw;
-            }
+            throw new InvalidOperationException("8.155/W1: el bucle de retry del apply salió sin resultado.");
         });
     }
 
-    private async Task<Product> ApplyApprovedLineAsync(
+    private void ApplyApprovedLine(
         int invoiceId,
         SupplierInvoiceLine line,
         Product product,
-        ConfirmLineDto confirmation,
-        CancellationToken cancellationToken)
+        ConfirmLineDto confirmation)
     {
-        for (var attempt = 0; attempt < 2; attempt++)
+        var retailMargin = confirmation.MarginRetailOverride ?? product.ProfitMarginRetail;
+        var wholesaleMargin = confirmation.MarginWholesaleOverride
+            ?? (product.HasWholesale ? product.ProfitMarginWholesale : retailMargin);
+        if (confirmation.MarginWholesaleOverride.HasValue && confirmation.MarginWholesaleOverride.Value != retailMargin)
         {
-            if (attempt > 0)
-            {
-                // 8.144/8.155: el retry xmin re-lee la entidad fresca dentro de la transacción;
-                // la precarga batch solo alimenta el intento inicial.
-                var retryProductId = product.Id;
-                product = await _context.Products
-                    .FirstOrDefaultAsync(
-                        candidate => candidate.Id == retryProductId && !candidate.IsDeleted,
-                        cancellationToken)
-                    ?? throw new KeyNotFoundException($"Product {retryProductId} was not found or has been deleted.");
-            }
+            product.HasWholesale = true;
+        }
 
-            var retailMargin = confirmation.MarginRetailOverride ?? product.ProfitMarginRetail;
-            var wholesaleMargin = product.HasWholesale
-                ? confirmation.MarginWholesaleOverride ?? product.ProfitMarginWholesale
-                : retailMargin;
+        // 8.165: la cantidad efectiva que entra a stock respeta el factor caja→unidad de la línea.
+        var appliedQuantity = line.Quantity * line.ConversionFactor;
 
-            product.CostPriceUSD = line.UnitCostUSD;
-            product.ProfitMarginRetail = retailMargin;
-            product.ProfitMarginWholesale = wholesaleMargin;
-            product.ProfitPercentage = retailMargin;
-            product.PriceRetailUSD = PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + retailMargin / 100m));
-            product.PriceUSD = product.PriceRetailUSD;
-            product.PriceWholesaleUSD = PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + wholesaleMargin / 100m));
-            product.StockQuantity += line.Quantity;
-            product.UpdatedAt = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(confirmation.Name)
+            && !string.IsNullOrWhiteSpace(line.Name)
+            && line.OldCostPriceUSD == 0m
+            && line.OldStockQuantity == 0m)
+        {
+            product.Name = line.Name;
+        }
+
+        product.Cost = line.UnitCostUSD;
+        product.CostPriceUSD = line.UnitCostUSD;
+        product.ProfitMarginRetail = retailMargin;
+        product.ProfitMarginWholesale = wholesaleMargin;
+        product.ProfitPercentage = retailMargin;
+        product.PriceRetailUSD = PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + retailMargin / 100m));
+        product.PriceUSD = product.PriceRetailUSD;
+        product.PriceWholesaleUSD = PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + wholesaleMargin / 100m));
+        product.UpdatedAt = DateTime.UtcNow;
+        line.SuggestedRetailPriceUSD = product.PriceRetailUSD;
+        line.SuggestedWholesalePriceUSD = product.PriceWholesaleUSD;
+
+        if (appliedQuantity > 0m)
+        {
+            // SRE-09: Redirect stock increment to shared parent product when applicable.
+            var stockTarget = product.ParentProduct is { IsDeleted: false, IsStockShared: true } parent
+                ? parent
+                : product;
+            stockTarget.StockQuantity += appliedQuantity;
+            stockTarget.UpdatedAt = DateTime.UtcNow;
 
             var movement = new StockMovement
             {
-                Product = product,
-                ProductId = product.Id,
-                QuantityChange = line.Quantity,
-                NewStockLevel = product.StockQuantity,
+                Product = stockTarget,
+                ProductId = stockTarget.Id,
+                QuantityChange = appliedQuantity,
+                NewStockLevel = stockTarget.StockQuantity,
                 Reason = $"Supplier invoice {invoiceId} applied",
                 MovementDate = DateTime.UtcNow,
-                UserId = _currentUserService?.UserId
+                UserId = _currentUserService?.UserId,
+                // 8.177-T1: entrada por factura proveedor = Importación / Entrada por Compra, con
+                // referencia cruzada a la factura y costo unitario renormalizado de la línea
+                // (snapshot Currency/AppliedRate de la factura, nunca la tasa BCV vigente).
+                OriginType = StockMovementOriginType.Import,
+                ReasonCode = StockMovementReason.PurchaseEntry,
+                SupplierInvoiceId = invoiceId,
+                UnitCostUSD = line.UnitCostUSD
             };
             _context.StockMovements.Add(movement);
-
-            try
-            {
-                await _context.SaveChangesAsync(cancellationToken);
-                return product;
-            }
-            catch (DbUpdateConcurrencyException exception) when (
-                attempt == 0 && exception.Entries.Any(entry => entry.Entity is Product))
-            {
-                // 8.144: el savepoint revierte la fila insertada en el intento fallido, pero el
-                // tracker puede dejarla como guardada; se descarta y el reintento crea otra.
-                if (_context.Entry(movement).State != EntityState.Detached)
-                {
-                    _context.Entry(movement).State = EntityState.Detached;
-                }
-
-                _context.Entry(product).State = EntityState.Detached;
-            }
         }
-
-        throw new InvalidOperationException("8.155/W1: el bucle de retry del apply salió sin resultado.");
     }
 
     private static void ValidateApprovedLine(SupplierInvoiceLine line, ConfirmLineDto confirmation)
@@ -288,14 +432,37 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("Approved supplier invoice unit cost cannot be negative.", nameof(line));
         }
 
+        if (line.UnitCostUSD > MaxInvoiceNumericValue)
+        {
+            throw new ArgumentException("Approved supplier invoice unit cost exceeds the maximum supported value.", nameof(line));
+        }
+
         if (line.Quantity < 0m)
         {
             throw new ArgumentException("Approved supplier invoice quantity cannot be negative.", nameof(line));
         }
 
+        if (line.Quantity > MaxInvoiceNumericValue)
+        {
+            throw new ArgumentException("Approved supplier invoice quantity exceeds the maximum supported value.", nameof(line));
+        }
+
         if (confirmation.MarginRetailOverride is < 0m || confirmation.MarginWholesaleOverride is < 0m)
         {
             throw new ArgumentException("Approved supplier invoice margin overrides cannot be negative.", nameof(confirmation));
+        }
+
+        if (confirmation.MarginRetailOverride > MaxMarginOverrideValue ||
+            confirmation.MarginWholesaleOverride > MaxMarginOverrideValue)
+        {
+            throw new ArgumentException("Approved supplier invoice margin overrides exceed the maximum supported value.", nameof(confirmation));
+        }
+
+        // 8.165: el factor de conversión caja→unidad es un divisor: debe ser positivo y acotado.
+        if (confirmation.ConversionFactor is decimal conversionFactor &&
+            (conversionFactor <= 0m || conversionFactor > 10000m))
+        {
+            throw new ArgumentException("The conversion factor must be positive (0 < factor <= 10000).", nameof(confirmation));
         }
     }
 
@@ -327,9 +494,19 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("The corrected quantity cannot be negative.");
         }
 
+        if (confirmation.Quantity > MaxInvoiceNumericValue)
+        {
+            throw new ArgumentException("The corrected quantity exceeds the maximum supported value.");
+        }
+
         if (confirmation.UnitCostDocument is < 0m)
         {
             throw new ArgumentException("The corrected unit cost cannot be negative.");
+        }
+
+        if (confirmation.UnitCostDocument > MaxInvoiceNumericValue)
+        {
+            throw new ArgumentException("The corrected unit cost exceeds the maximum supported value.");
         }
 
         if (correctedName is not null)
@@ -348,10 +525,76 @@ public partial class SupplierInvoiceService
         if (confirmation.UnitCostDocument is decimal correctedUnitCostDocument)
         {
             line.UnitCostDocument = correctedUnitCostDocument;
-            line.UnitCostUSD = invoice.Currency == CurrencyCodes.Usd
-                ? correctedUnitCostDocument
-                : PricingCalculator.ToUSD(correctedUnitCostDocument, invoice.AppliedRate);
+            line.UnitCostUSD = PricingCalculator.CalculateInvoiceUnitCostUsd(
+                correctedUnitCostDocument,
+                1m,
+                invoice.Currency,
+                invoice.AppliedRate);
             line.OcrUnitCostConfidence = null;
         }
+    }
+
+    /// <summary>
+    /// 8.165/8.172: factor de conversión caja→unidad (divisor) y renormalización cuando cambia la
+    /// tasa aplicada de una factura Bs.S. El costo unitario aplicado al producto se divide por el
+    /// factor (renormalizado con el snapshot de la factura) y ApplyApprovedLine multiplica la
+    /// cantidad que entra a stock.
+    /// </summary>
+    private static void ApplyConversionFactor(
+        SupplierInvoiceLine line,
+        SupplierInvoice invoice,
+        ConfirmLineDto confirmation,
+        bool appliedRateChanged = false)
+    {
+        // 8.166: null = "sin cambio": conserva el factor ya prefijado en la línea (recordado).
+        var factor = confirmation.ConversionFactor ?? line.ConversionFactor;
+        line.ConversionFactor = factor;
+        if (factor == 1m && !appliedRateChanged)
+        {
+            return;
+        }
+
+        line.UnitCostUSD = PricingCalculator.CalculateInvoiceUnitCostUsd(
+            line.UnitCostDocument,
+            factor,
+            invoice.Currency,
+            invoice.AppliedRate);
+    }
+
+    /// <summary>
+    /// 8.166: recuerda el factor caja→unidad por proveedor+producto dentro de la misma transacción
+    /// (el rollback del confirm no deja cambios). Se actualiza también cuando el revisor vuelve a 1
+    /// (cambio de facturación); un 1 sin registro previo no crea una fila nueva.
+    /// </summary>
+    private void UpdateRememberedFactor(
+        Dictionary<int, SupplierProductFactor> factorsByProductId,
+        int supplierId,
+        int productId,
+        decimal conversionFactor)
+    {
+        if (factorsByProductId.TryGetValue(productId, out var existing))
+        {
+            if (existing.ConversionFactor != conversionFactor)
+            {
+                existing.ConversionFactor = conversionFactor;
+                existing.UpdatedAt = DateTime.UtcNow;
+            }
+
+            return;
+        }
+
+        if (conversionFactor == 1m)
+        {
+            return;
+        }
+
+        var created = new SupplierProductFactor
+        {
+            SupplierId = supplierId,
+            ProductId = productId,
+            ConversionFactor = conversionFactor
+        };
+        factorsByProductId[productId] = created;
+        _context.SupplierProductFactors.Add(created);
     }
 }

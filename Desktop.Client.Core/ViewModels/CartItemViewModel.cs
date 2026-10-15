@@ -12,6 +12,10 @@ public partial class CartItemViewModel : ObservableObject
     private readonly Func<int, decimal, Task>? _onCommitQuantity;
     private decimal _currentExchangeRate;
     private readonly bool _isHistorical;
+    private readonly decimal _initialQuantity;
+    private bool _wasEdited;
+
+    public bool IsQuantityDirty => _wasEdited || _saleItem.Quantity != _initialQuantity;
 
     private string _quantityText;
     public string QuantityText
@@ -34,6 +38,7 @@ public partial class CartItemViewModel : ObservableObject
         _onCommitQuantity = onCommitQuantity;
         _currentExchangeRate = currentRate;
         _isHistorical = isHistorical;
+        _initialQuantity = saleItem.Quantity;
         
         // Initialize the safe string with current value
         _quantityText = _saleItem.Quantity % 1m == 0m ? $"{_saleItem.Quantity:0.###}" : _saleItem.Quantity.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
@@ -87,6 +92,7 @@ public partial class CartItemViewModel : ObservableObject
 
     private void OnQuantityTextChanged(string value)
     {
+        _wasEdited = true;
         if (decimal.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal q) ||
             decimal.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out q))
         {

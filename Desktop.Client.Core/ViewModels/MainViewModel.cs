@@ -40,6 +40,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly DailyClosureViewModel? _dailyClosureViewModel;
     private readonly UsersManagementViewModel? _usersManagementViewModel;
     private readonly AuthorizationNotificationViewModel? _authorizationNotificationViewModel;
+    private readonly StockKardexViewModel? _stockKardexViewModel;
 
     private readonly IHealthPollingService? _healthPollingService;
     private readonly IExchangeRateService? _exchangeRateService;
@@ -65,7 +66,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IDialogService? dialogService = null,
         IExchangeRateService? exchangeRateService = null,
         SupplierInvoiceViewModel? supplierInvoiceViewModel = null,
-        AuthorizationNotificationViewModel? authorizationNotificationViewModel = null)
+        AuthorizationNotificationViewModel? authorizationNotificationViewModel = null,
+        StockKardexViewModel? stockKardexViewModel = null)
     {
         UserSession = userSession;
         _loginViewModel = loginViewModel;
@@ -82,6 +84,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _dailyClosureViewModel = dailyClosureViewModel;
         _usersManagementViewModel = usersManagementViewModel;
         _authorizationNotificationViewModel = authorizationNotificationViewModel;
+        _stockKardexViewModel = stockKardexViewModel;
         _healthPollingService = healthPollingService;
         _dialogService = dialogService;
         _exchangeRateService = exchangeRateService;
@@ -161,7 +164,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _supplierInvoiceViewModel,
             _dailyClosureViewModel,
             _usersManagementViewModel,
-            _authorizationNotificationViewModel
+            _authorizationNotificationViewModel,
+            _stockKardexViewModel
         };
 
         foreach (var vm in viewModels)
@@ -293,6 +297,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Title = "INVENTORY";
         CurrentViewModel = _inventoryViewModel;
         _inventoryViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToInventory");
+    }
+
+    [RelayCommand]
+    private void NavigateToStockKardex()
+    {
+        if (UserSession == null || !UserSession.IsLoggedIn || !UserSession.CanMutateCatalog || _stockKardexViewModel == null) return;
+        Title = "KARDEX / AUDITORÍA DE INVENTARIO";
+        CurrentViewModel = _stockKardexViewModel;
+        _stockKardexViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToStockKardex");
     }
 
     [RelayCommand]

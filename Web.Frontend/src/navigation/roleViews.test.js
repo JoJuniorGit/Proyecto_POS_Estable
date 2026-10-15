@@ -16,7 +16,7 @@ const ALL_VIEWS = [...VIEW_ORDER];
 const EXPECTED_POLICY = {
   Admin: ALL_VIEWS,
   Manager: ALL_VIEWS,
-  Cashier: ['pos', 'pending', 'pickups', 'catalog', 'history', 'register', 'closing'],
+  Cashier: ['pos', 'pending', 'pickups', 'catalog', 'history', 'register', 'closing', 'stock-count'],
   Driver: ['pickups', 'history'],
 };
 

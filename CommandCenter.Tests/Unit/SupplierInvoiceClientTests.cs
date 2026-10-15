@@ -23,31 +23,51 @@ namespace CommandCenter.Tests.Unit;
 public sealed class SupplierInvoiceClientTests
 {
     [Fact]
-    public void MarginEdit_RecalculatesSuggestedPriceWithoutCallingApi()
+    public void DocumentCostHeader_FollowsHeaderSelection_AndLoadDoesNotReassignIt()
     {
-        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
-        var viewModel = CreateViewModel(service.Object);
-        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1, unitCost: 10m)));
-        var line = Assert.Single(viewModel.Lines);
+        // 8.164/8.178: el encabezado del costo editable acompaña la moneda VIVA de la cabecera;
+        // cargar/recargar la factura no re-asigna la selección (aislamiento del flujo "Actualizar"
+        // y protección de la corrección manual de la tasa).
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        Assert.Equal("Costo factura (USD)", viewModel.DocumentCostHeader);
 
-        line.MarginRetailOverride = 33.333m;
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
+        Assert.Equal("Costo factura (Bs.S)", viewModel.DocumentCostHeader);
 
-        Assert.Equal(PricingCalculator.RoundPriceUp(10m * (1m + 33.333m / 100m)), line.SuggestedRetailPriceUSD);
-        service.VerifyNoOtherCalls();
+        viewModel.LoadStagedInvoice(CreateInvoice(CurrencyCodes.BsS, CreateLine(1)));
+        Assert.Equal("Costo factura (Bs.S)", viewModel.DocumentCostHeader);
+
+        viewModel.SelectedCurrency = CurrencyCodes.Usd;
+        Assert.Equal("Costo factura (USD)", viewModel.DocumentCostHeader);
+
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1)));
+        Assert.Equal("Costo factura (USD)", viewModel.DocumentCostHeader);
     }
 
     [Fact]
-    public void MarginEdit_RaisesPropertyChangeForSuggestedRetailPrice()
+    public void ToConfirmLine_IncludesConversionFactorPerLine()
     {
+        // 8.165: el factor de conversión caja→unidad viaja al confirm por línea (default 1).
         var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
-        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1, unitCost: 10m)));
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1)));
         var line = Assert.Single(viewModel.Lines);
-        var changedProperties = new List<string?>();
-        line.PropertyChanged += (_, eventArgs) => changedProperties.Add(eventArgs.PropertyName);
 
-        line.MarginRetailOverride = 40m;
+        Assert.Equal(1m, line.ConversionFactor);
 
-        Assert.Contains(nameof(SupplierInvoiceLineViewModel.SuggestedRetailPriceUSD), changedProperties);
+        line.ConversionFactor = 12m;
+
+        Assert.Equal(12m, line.ToConfirmLine().ConversionFactor);
+    }
+
+    [Fact]
+    public void StagedLine_UsesDtoConversionFactorForPrefill()
+    {
+        // 8.166: el factor recordado por proveedor+producto llega al VM por la línea staged
+        // (visible y editable en la grilla).
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1) with { ConversionFactor = 12m }));
+
+        Assert.Equal(12m, Assert.Single(viewModel.Lines).ConversionFactor);
     }
 
     [Fact]
@@ -61,12 +81,385 @@ public sealed class SupplierInvoiceClientTests
 
     [Theory]
     [InlineData("New", "[NUEVO]")]
-    [InlineData("Update", "[UPDATE]")]
+    [InlineData("Update", "[ACTUALIZAR]")]
     [InlineData("Unchanged", "[UNCHANGED]")]
     [InlineData("Conflict", "[CONFLICT]")]
     public void StatusBadge_MapsBackendStatus(string status, string expected)
     {
         Assert.Equal(expected, SupplierInvoiceLineViewModel.GetStatusLabel(status));
+    }
+
+    [Fact]
+    public void LiveUnitCostAndComparison_UpdateImmediatelyWhenFactorOrDocumentCostChanges()
+    {
+        // 8.168: caso real reportado (VELAS BIPA 1X40: costo factura 10.529 USD, factor 40,
+        // costo anterior 0.24): Costo USD y Costo anterior → nuevo se recalculan en vivo a 0.2632 (0,26)
+        // y cascadan a los precios sugeridos por margen.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        var dto = CreateLine(1, unitCost: 10.529m, unitCostDocument: 10.529m) with
+        {
+            OldCostPriceUSD = 0.24m,
+            MarginRetailOverride = 30m,
+            MarginWholesaleOverride = 15m,
+            ConversionFactor = 40m
+        };
+        viewModel.LoadStagedInvoice(CreateInvoice(dto));
+
+        var line = Assert.Single(viewModel.Lines);
+        Assert.Equal(0.2632m, line.UnitCostUSD);
+        Assert.Equal($"{0.24m:N2} → {0.2632m:N2}", line.CostComparison);
+        Assert.Equal(PricingCalculator.RoundPriceUp(0.2632m * 1.30m), line.SuggestedRetailPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(0.2632m * 1.15m), line.SuggestedWholesalePriceUSD);
+
+        line.EditUnitCostDocumentText = "20,00";
+        Assert.Equal(20m, line.EditUnitCostDocument);
+        Assert.Equal(0.5m, line.UnitCostUSD);
+        Assert.Equal($"{0.24m:N2} → {0.5m:N2}", line.CostComparison);
+        Assert.Equal(PricingCalculator.RoundPriceUp(0.5m * 1.30m), line.SuggestedRetailPriceUSD);
+
+        line.ConversionFactorText = "10";
+        Assert.Equal(10m, line.ConversionFactor);
+        Assert.Equal(2m, line.UnitCostUSD);
+        Assert.Equal($"{0.24m:N2} → {2m:N2}", line.CostComparison);
+    }
+
+    [Fact]
+    public void LiveUnitCostInBsS_NormalizesEditedCostAndFactorWithAppliedRate()
+    {
+        // 8.168: en facturas Bs.S el cálculo en vivo divide por el factor y convierte con la tasa aplicada.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        var dto = CreateLine(1, unitCost: 10m, unitCostDocument: 365m) with
+        {
+            OldCostPriceUSD = 0.80m
+        };
+        // 8.178: flujo real: la moneda del documento ya está seleccionada antes de cargar.
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
+        viewModel.LoadStagedInvoice(CreateInvoice(CurrencyCodes.BsS, dto));
+
+        var line = Assert.Single(viewModel.Lines);
+        Assert.Equal(10m, line.UnitCostUSD);
+
+        line.ConversionFactorText = "10";
+        Assert.Equal(1m, line.UnitCostUSD);
+        Assert.Equal($"{0.80m:N2} → {1m:N2}", line.CostComparison);
+    }
+
+    [Fact]
+    public void BsSInvoice_ChangingAppliedRateText_ReactivelyUpdatesUnitCostComparisonAndSuggestedPrices()
+    {
+        // 8.172: al cambiar la tasa aplicada en Bs.S, todas las filas recalculan en vivo su Costo USD,
+        // comparación de costo y precios sugeridos (USD y Bs.S) sin necesidad de editar cada fila.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
+        viewModel.AppliedRateText = "36.50";
+        var dto = CreateLine(1, unitCost: 10m, unitCostDocument: 365m) with
+        {
+            OldCostPriceUSD = 8m,
+            MarginRetailOverride = 30m,
+            MarginWholesaleOverride = 15m
+        };
+        viewModel.LoadStagedInvoice(CreateInvoice(CurrencyCodes.BsS, dto));
+
+        var line = Assert.Single(viewModel.Lines);
+        Assert.Equal(10m, line.UnitCostUSD);
+        Assert.Equal(13m, line.SuggestedRetailPriceUSD);
+        Assert.Equal(PricingCalculator.ToBsSCeiling(13m, 36.50m), line.SuggestedRetailPriceBsS);
+
+        viewModel.AppliedRateText = "73,00";
+
+        Assert.Equal(73m, line.AppliedRate);
+        Assert.Equal(5m, line.UnitCostUSD);
+        Assert.Equal($"{8m:N2} → {5m:N2}", line.CostComparison);
+        Assert.Equal(PricingCalculator.RoundPriceUp(5m * 1.30m), line.SuggestedRetailPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(5m * 1.15m), line.SuggestedWholesalePriceUSD);
+        Assert.Equal(PricingCalculator.ToBsSCeiling(line.SuggestedRetailPriceUSD, 73m), line.SuggestedRetailPriceBsS);
+        Assert.Equal(PricingCalculator.ToBsSCeiling(line.SuggestedWholesalePriceUSD, 73m), line.SuggestedWholesalePriceBsS);
+    }
+
+    [Fact]
+    public async Task ScanInvoice_InBsSCurrency_WhenOcrDetectsExchangeRate_ReplacesDisplayedRateAndStagesWithDetectedRate()
+    {
+        // 8.172: cuando la factura está en Bs.S y el OCR detecta la tasa impresa en el documento,
+        // reemplaza la tasa mostrada en la sección (incluso si ya tenía la tasa BCV precargada) y la usa al stagear.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        StageSupplierInvoiceRequestDto? captured = null;
+        var extracted = new OcrExtractionResultDto(
+            new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 784.50m, 92m, 90m, 88m) },
+            "J-123",
+            "Proveedor OCR",
+            "0238317",
+            78.45m);
+        service.Setup(client => client.ExtractOcrAsync(
+                OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(extracted);
+        service.Setup(client => client.StageAsync(
+                It.IsAny<StageSupplierInvoiceRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<StageSupplierInvoiceRequestDto, CancellationToken>((request, _) => captured = request)
+            .ReturnsAsync(new SupplierInvoiceDetailDto(
+                42,
+                7,
+                "Draft",
+                CurrencyCodes.BsS,
+                78.45m,
+                new[] { CreateLine(1, unitCost: 10m, unitCostDocument: 784.50m) }));
+
+        var viewModel = CreateViewModel(
+            service.Object,
+            exchangeRateService: CreateRateService(36.50m),
+            filePicker: PickerReturning(OcrFilePath));
+        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null, CurrencyCodes.BsS);
+        Assert.Equal(CurrencyCodes.BsS, viewModel.SelectedCurrency);
+        Assert.Equal("36.50", viewModel.AppliedRateText);
+
+        await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
+
+        Assert.Equal(78.45m, viewModel.OcrDetectedExchangeRate);
+        Assert.Equal("78.45", viewModel.AppliedRateText);
+        Assert.NotNull(captured);
+        Assert.Equal(CurrencyCodes.BsS, captured!.Currency);
+        Assert.Equal(78.45m, captured.AppliedRate);
+        Assert.Equal(10m, Assert.Single(viewModel.Lines).UnitCostUSD);
+    }
+
+    [Fact]
+    public async Task ScanInvoice_WithUsdSelection_WhenOcrDetectsExchangeRate_SwitchesToBsSAndKeepsAmountsReactiveToRateEdits()
+    {
+        // 8.174: la tasa impresa evidencia una factura en Bs.S. Sin moneda recordada en el proveedor
+        // (selector en USD), el escaneo ajusta la moneda a Bs.S, aplica la tasa detectada y el
+        // revisor puede corregirla después con montos de grilla reactivos antes de confirmar.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        StageSupplierInvoiceRequestDto? captured = null;
+        var extracted = new OcrExtractionResultDto(
+            new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 784.50m, 92m, 90m, 88m) },
+            "J-123",
+            "Proveedor OCR",
+            "0238317",
+            78.45m);
+        service.Setup(client => client.ExtractOcrAsync(
+                OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(extracted);
+        service.Setup(client => client.StageAsync(
+                It.IsAny<StageSupplierInvoiceRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<StageSupplierInvoiceRequestDto, CancellationToken>((request, _) => captured = request)
+            .ReturnsAsync(new SupplierInvoiceDetailDto(
+                42,
+                7,
+                "Draft",
+                CurrencyCodes.BsS,
+                78.45m,
+                new[] { CreateLine(1, unitCost: 10m, unitCostDocument: 784.50m) with { OldCostPriceUSD = 10m } }));
+
+        var viewModel = CreateViewModel(
+            service.Object,
+            exchangeRateService: CreateRateService(36.50m),
+            filePicker: PickerReturning(OcrFilePath));
+        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null, null);
+        Assert.Equal(CurrencyCodes.Usd, viewModel.SelectedCurrency);
+        Assert.Equal(string.Empty, viewModel.AppliedRateText);
+        Assert.False(viewModel.IsRateInputEnabled);
+
+        await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
+
+        Assert.Equal(CurrencyCodes.BsS, viewModel.SelectedCurrency);
+        Assert.True(viewModel.IsRateInputEnabled);
+        Assert.Equal("78.45", viewModel.AppliedRateText);
+        Assert.Contains("Moneda ajustada a Bs.S", viewModel.StatusMessage);
+        Assert.NotNull(captured);
+        Assert.Equal(CurrencyCodes.BsS, captured!.Currency);
+        Assert.Equal(78.45m, captured.AppliedRate);
+
+        var stagedLine = Assert.Single(viewModel.Lines);
+        Assert.Equal(10m, stagedLine.UnitCostUSD);
+
+        viewModel.AppliedRateText = "36,50";
+
+        Assert.Equal(36.50m, viewModel.StagedInvoice!.AppliedRate);
+        Assert.Equal(21.49m, stagedLine.UnitCostUSD);
+        Assert.Equal($"{10m:N2} → {21.49m:N2}", stagedLine.CostComparison);
+    }
+
+    [Fact]
+    public async Task ScanInvoice_WithUsdSelection_WithoutDetectedExchangeRate_KeepsUsdAndCanonicalRateOne()
+    {
+        // 8.174 (guardia): sin tasa impresa el escaneo no cambia la moneda seleccionada ni la tasa.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        StageSupplierInvoiceRequestDto? captured = null;
+        var extracted = new OcrExtractionResultDto(
+            new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 10m, 92m, 90m, 88m) },
+            "J-123",
+            "Proveedor OCR",
+            "0238317");
+        service.Setup(client => client.ExtractOcrAsync(
+                OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(extracted);
+        service.Setup(client => client.StageAsync(
+                It.IsAny<StageSupplierInvoiceRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<StageSupplierInvoiceRequestDto, CancellationToken>((request, _) => captured = request)
+            .ReturnsAsync(new SupplierInvoiceDetailDto(
+                42,
+                7,
+                "Draft",
+                CurrencyCodes.Usd,
+                1m,
+                new[] { CreateLine(1) }));
+
+        var viewModel = CreateViewModel(
+            service.Object,
+            exchangeRateService: CreateRateService(36.50m),
+            filePicker: PickerReturning(OcrFilePath));
+        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null, null);
+
+        await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.OcrDetectedExchangeRate);
+        Assert.Equal(CurrencyCodes.Usd, viewModel.SelectedCurrency);
+        Assert.Equal(string.Empty, viewModel.AppliedRateText);
+        Assert.DoesNotContain("Moneda ajustada", viewModel.StatusMessage);
+        Assert.NotNull(captured);
+        Assert.Equal(CurrencyCodes.Usd, captured!.Currency);
+        Assert.Equal(1m, captured.AppliedRate);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_BsSInvoiceWithUpdatedAppliedRate_RecalculatesProductCostAndPrice()
+    {
+        // 8.172: si el revisor ajusta la tasa aplicada en Bs.S durante la revisión, el confirm
+        // actualiza la tasa de la factura y recalcula el costo en USD y los precios del producto.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var supplier = new Supplier
+        {
+            RifOrNit = "J-555",
+            NormalizedRifOrNit = "J555",
+            CommercialName = "Proveedor BsS",
+            NormalizedCommercialName = "PROVEEDOR BSS"
+        };
+        var product = new ProductBuilder()
+            .WithSku("7590001")
+            .WithName("Café Molido")
+            .WithCostAndMargin(8m, 25m)
+            .WithStock(5m)
+            .Build();
+        context.Suppliers.Add(supplier);
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
+
+        var backendService = CreateBackendService(context);
+        var staged = await backendService.StageAsync(new StageSupplierInvoiceRequestDto(
+            supplier.Id,
+            supplier.RifOrNit,
+            supplier.CommercialName,
+            null,
+            new[] { new StageLineDto("SUP-1", product.SKU, product.Name, 2m, 800m) },
+            CurrencyCodes.BsS,
+            40m,
+            OcrSourced: true));
+        Assert.Equal(20m, Assert.Single(staged.Lines).UnitCostUSD);
+
+        var confirmed = await backendService.ConfirmAsync(
+            staged.Id,
+            new ConfirmSupplierInvoiceRequestDto(
+                new[] { new ConfirmLineDto(staged.Lines[0].Id, true, 25m, 25m) },
+                AppliedRate: 80m));
+
+        Assert.Equal(80m, confirmed.AppliedRate);
+        Assert.Equal(10m, Assert.Single(confirmed.Lines).UnitCostUSD);
+        var updatedProduct = await context.Products.FindAsync(product.Id);
+        Assert.NotNull(updatedProduct);
+        Assert.Equal(10m, updatedProduct!.CostPriceUSD);
+        Assert.Equal(PricingCalculator.RoundPriceUp(10m * 1.25m), updatedProduct.PriceRetailUSD);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("0")]
+    [InlineData("-5")]
+    [InlineData("abc")]
+    public void InvalidOrEmptyConversionFactor_UsesSafeFallbackOneAndFlagsInvalidState(string invalidFactorInput)
+    {
+        // 8.168: nunca divide por cero ni produce NaN/Infinity mientras el usuario borra o edita el factor.
+        var line = new SupplierInvoiceLineViewModel(CreateLine(1, unitCost: 12m, unitCostDocument: 12m));
+
+        line.ConversionFactorText = invalidFactorInput;
+
+        Assert.True(line.HasInvalidConversionFactor);
+        Assert.Equal(1m, line.EffectiveConversionFactor);
+        Assert.Equal(12m, line.UnitCostUSD);
+        Assert.Equal(1m, line.ToConfirmLine().ConversionFactor);
+    }
+
+    [Fact]
+    public void FlexibleDecimalTextBuffers_PreserveTransitoryInputAndAcceptCommaOrDot()
+    {
+        // 8.168: escribir ".0", "10.", "10," o 3-4 decimales no pisa el texto transitorio ni falla.
+        var line = new SupplierInvoiceLineViewModel(CreateLine(1, unitCost: 10.529m, unitCostDocument: 10.529m));
+        Assert.Equal("10.529", line.EditUnitCostDocumentText);
+
+        line.EditUnitCostDocumentText = ".0";
+        Assert.Equal(".0", line.EditUnitCostDocumentText);
+        Assert.Equal(0m, line.EditUnitCostDocument);
+
+        line.EditUnitCostDocumentText = "10.";
+        Assert.Equal("10.", line.EditUnitCostDocumentText);
+        Assert.Equal(10m, line.EditUnitCostDocument);
+
+        line.EditUnitCostDocumentText = "10,5295";
+        Assert.Equal("10,5295", line.EditUnitCostDocumentText);
+        Assert.Equal(10.5295m, line.EditUnitCostDocument);
+
+        line.EditQuantityText = "3,25";
+        Assert.Equal(3.25m, line.EditQuantity);
+    }
+
+    [Fact]
+    public void MasterApprovalCheckbox_TogglesAllApprovableLinesAndReflectsIndeterminateState()
+    {
+        // 8.168: el checkbox maestro en el encabezado de "Aprobar" marca/desmarca todas las líneas
+        // aprobables e ignora las líneas nuevas no resueltas.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.LoadStagedInvoice(CreateInvoice(
+            CreateLine(1, isApproved: true, resolvedProductId: 10),
+            CreateLine(2, isApproved: true, resolvedProductId: 11),
+            CreateLine(3, isApproved: false, resolvedProductId: null, status: "New")));
+
+        Assert.True(viewModel.HasApprovableLines);
+        Assert.Equal(true, viewModel.AreAllApprovableLinesApproved);
+
+        viewModel.Lines[0].IsApproved = false;
+        Assert.Null(viewModel.AreAllApprovableLinesApproved);
+
+        viewModel.AreAllApprovableLinesApproved = false;
+        Assert.Equal(false, viewModel.AreAllApprovableLinesApproved);
+        Assert.False(viewModel.Lines[0].IsApproved);
+        Assert.False(viewModel.Lines[1].IsApproved);
+        Assert.False(viewModel.CanConfirmInvoice);
+
+        viewModel.AreAllApprovableLinesApproved = true;
+        Assert.Equal(true, viewModel.AreAllApprovableLinesApproved);
+        Assert.True(viewModel.Lines[0].IsApproved);
+        Assert.True(viewModel.Lines[1].IsApproved);
+        Assert.False(viewModel.Lines[2].IsApproved);
+        Assert.True(viewModel.CanConfirmInvoice);
+    }
+
+    [Fact]
+    public void HasSelectedFilePath_IsTrueOnlyWhenTabularPathIsPresentAndNotOcr()
+    {
+        // 8.168: el campo de ruta de archivo se oculta cuando está vacío o en flujo OCR.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        Assert.False(viewModel.HasSelectedFilePath);
+
+        viewModel.SelectedFilePath = InvoiceFilePath;
+        Assert.True(viewModel.HasSelectedFilePath);
+
+        viewModel.IsOcrSource = true;
+        Assert.False(viewModel.HasSelectedFilePath);
+
+        viewModel.IsOcrSource = false;
+        viewModel.SelectedFilePath = string.Empty;
+        Assert.False(viewModel.HasSelectedFilePath);
     }
 
     [Fact]
@@ -98,6 +491,8 @@ public sealed class SupplierInvoiceClientTests
     public void BsSInvoice_ExposesDocumentCostAndCurrencyFlag()
     {
         var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        // 8.178: la cabecera es del revisor; en el flujo real el selector ya está en Bs.S antes de cargar.
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
         viewModel.LoadStagedInvoice(CreateInvoice(
             CurrencyCodes.BsS,
             CreateLine(1, unitCost: 10m, unitCostDocument: 365m)));
@@ -239,7 +634,7 @@ public sealed class SupplierInvoiceClientTests
         var line = Assert.Single(viewModel.Lines);
         Assert.True(line.CanApprove);
         Assert.False(line.CanCreateProduct);
-        Assert.Equal("[UPDATE]", line.StatusLabel);
+        Assert.Equal("[ACTUALIZAR]", line.StatusLabel);
     }
 
     [Fact]
@@ -305,20 +700,98 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
-    public async Task LookupSupplier_SingleMatchWithMissingSavedColumns_KeepsSpecificWarning()
+    public void SelectedSupplier_WithMissingSavedColumns_KeepsSpecificWarning()
     {
+        // 8.161: la seleccion ocurre en el combo (listado completo); la advertencia por columnas
+        // guardadas ausentes se conserva al aplicar el mapping del proveedor seleccionado.
         var savedMapping = new SupplierColumnMappingDto("EAN", "Vendor Code", "Item", "Units", "Cost");
         var supplier = new SupplierSummaryDto(7, "J-123", "Supplier", savedMapping);
-        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
-        service.Setup(client => client.GetSuppliersAsync("J-123", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { supplier });
-        var viewModel = CreateViewModel(service.Object);
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
         viewModel.SetFileHeaders(new[] { "EAN", "Vendor Code", "Item", "Units" });
-        viewModel.SupplierRifOrNit = "J-123";
 
-        await viewModel.LookupSupplierCommand.ExecuteAsync(null);
+        viewModel.SelectedSupplier = supplier;
 
         Assert.Contains("no aparecen en el archivo", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public void SelectedSupplier_PrefillsRememberedInvoiceCurrency()
+    {
+        // 8.167: al seleccionar un proveedor con moneda recordada, la vista la prefija; sin
+        // moneda recordada NO se pisa la elección vigente.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null, "Bs.S");
+        Assert.Equal(CurrencyCodes.BsS, viewModel.SelectedCurrency);
+
+        viewModel.SelectedSupplier = new SupplierSummaryDto(8, "J-124", "Otro", null, null);
+        Assert.Equal(CurrencyCodes.BsS, viewModel.SelectedCurrency);
+    }
+
+    [Fact]
+    public async Task LoadSuppliers_PopulatesSelectorAndPreservesSelectionById()
+    {
+        // 8.161: al abrir la vista se lista todo el catalogo de proveedores y la seleccion vigente
+        // se preserva por Id (instancias nuevas del listado).
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        service.Setup(client => client.GetSuppliersAsync(null, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new SupplierSummaryDto(1, "J-1", "Proveedor Alfa", null),
+                new SupplierSummaryDto(2, "J-2", "Proveedor Beta", null)
+            });
+        var viewModel = CreateViewModel(service.Object);
+        viewModel.SelectedSupplier = new SupplierSummaryDto(2, "J-2", "Proveedor Beta", null);
+
+        await viewModel.LoadSuppliersCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, viewModel.Suppliers.Count);
+        Assert.Equal(2, viewModel.SelectedSupplier?.Id);
+        Assert.Same(viewModel.Suppliers[1], viewModel.SelectedSupplier);
+        service.VerifyAll();
+    }
+
+    [Fact]
+    public async Task OpenRegisterSupplier_WithConfirmedDialog_RegistersAndSelects()
+    {
+        // 8.161: el boton "Registrar proveedor" abre el modal; al confirmar, el proveedor se
+        // registra, se agrega al selector y queda seleccionado.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        service.Setup(client => client.CreateSupplierAsync(
+                It.Is<CreateSupplierRequestDto>(request =>
+                    request.RifOrNit == "J-777" && request.CommercialName == "Nuevo Proveedor"),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SupplierSummaryDto(9, "J-777", "Nuevo Proveedor", null));
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(dialogService => dialogService.ShowRegisterSupplierDialog(It.IsAny<RegisterSupplierDialogViewModel>()))
+            .Callback<RegisterSupplierDialogViewModel>(dialogViewModel =>
+            {
+                dialogViewModel.RifOrNit = "J-777";
+                dialogViewModel.CommercialName = "Nuevo Proveedor";
+            })
+            .Returns(true);
+        var viewModel = CreateViewModel(service.Object, dialogService: dialog.Object);
+
+        await viewModel.OpenRegisterSupplierCommand.ExecuteAsync(null);
+
+        Assert.Equal(9, viewModel.SelectedSupplier?.Id);
+        Assert.Contains(viewModel.Suppliers, supplier => supplier.Id == 9);
+        Assert.Contains("registrado", viewModel.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        service.VerifyAll();
+    }
+
+    [Fact]
+    public async Task OpenRegisterSupplier_WithCancelledDialog_DoesNotRegister()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(dialogService => dialogService.ShowRegisterSupplierDialog(It.IsAny<RegisterSupplierDialogViewModel>()))
+            .Returns(false);
+        var viewModel = CreateViewModel(service.Object, dialogService: dialog.Object);
+
+        await viewModel.OpenRegisterSupplierCommand.ExecuteAsync(null);
+
+        service.VerifyNoOtherCalls();
+        Assert.Null(viewModel.SelectedSupplier);
     }
 
     [Fact]
@@ -404,17 +877,24 @@ public sealed class SupplierInvoiceClientTests
             "Barcode;Supplier Code;Name;Quantity;Unit Cost\n" +
             "1;SUP-1;Miles;4.250;1.234.567\n" +
             "2;SUP-2;Decimales;4.25;4.2500\n" +
-            "3;SUP-3;Ambos;1.234,56;1,234.56"));
+            "3;SUP-3;Ambos;1.234,56;1,234.56\n" +
+            "4;SUP-4;CeroInicial;0.500;0.614\n" +
+            "5;SUP-5;Comilla;“72.00;1,50"));
 
         var lines = await service.ParseFileWithMappingAsync(stream, ".csv", Mapping());
 
-        Assert.Equal(3, lines.Count);
+        Assert.Equal(5, lines.Count);
         Assert.Equal(4250m, lines[0].Quantity);
         Assert.Equal(1234567m, lines[0].UnitCostDocument);
         Assert.Equal(4.25m, lines[1].Quantity);
         Assert.Equal(4.25m, lines[1].UnitCostDocument);
         Assert.Equal(1234.56m, lines[2].Quantity);
         Assert.Equal(1234.56m, lines[2].UnitCostDocument);
+        // 8.163: cero inicial = decimal ("0.500" → 0,5) y comillas tipográficas de OCR fuera.
+        Assert.Equal(0.5m, lines[3].Quantity);
+        Assert.Equal(0.614m, lines[3].UnitCostDocument);
+        Assert.Equal(72.00m, lines[4].Quantity);
+        Assert.Equal(1.50m, lines[4].UnitCostDocument);
     }
 
     [Fact]
@@ -547,6 +1027,59 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
+    public async Task SupplierLookup_IncludesRememberedInvoiceCurrency()
+    {
+        // 8.167: el listado de proveedores expone la moneda de facturación recordada.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var supplier = new Supplier
+        {
+            RifOrNit = "J-777",
+            NormalizedRifOrNit = "J777",
+            CommercialName = "Currency Supplier",
+            NormalizedCommercialName = "CURRENCY SUPPLIER",
+            InvoiceCurrency = "Bs.S"
+        };
+        context.Suppliers.Add(supplier);
+        await context.SaveChangesAsync();
+        var service = CreateBackendService(context);
+
+        var result = await service.GetSuppliersAsync("J-777", null);
+
+        Assert.Equal("Bs.S", Assert.Single(result).InvoiceCurrency);
+    }
+
+    [Fact]
+    public async Task GetSuppliersAsync_WithoutFilters_ListsAllFromRootRoute()
+    {
+        // 8.161: sin filtros el cliente consulta el listado completo (sin query string).
+        var supplier = new SupplierSummaryDto(1, "J-1", "Proveedor Alfa", null);
+        var handler = new StubHttpMessageHandler(JsonResponse(new[] { supplier }));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        var suppliers = await service.GetSuppliersAsync(null, null);
+
+        Assert.Equal("/api/suppliers", Assert.Single(handler.RequestPaths));
+        Assert.Equal(1, Assert.Single(suppliers).Id);
+    }
+
+    [Fact]
+    public async Task GetSuppliersAsync_WithoutFilters_ReturnsOrderedFullListing()
+    {
+        // 8.161: el backend sin filtros devuelve el catalogo completo ordenado por nombre
+        // (selector de la vista), sin exigir RIF/nombre.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        context.Suppliers.Add(new Supplier { CommercialName = "Zeta", NormalizedCommercialName = "ZETA" });
+        context.Suppliers.Add(new Supplier { CommercialName = "Alfa", NormalizedCommercialName = "ALFA" });
+        await context.SaveChangesAsync();
+        var service = CreateBackendService(context);
+
+        var result = await service.GetSuppliersAsync(null, null);
+
+        Assert.Equal(new[] { "Alfa", "Zeta" }, result.Select(supplier => supplier.CommercialName));
+    }
+
+    [Fact]
     public async Task CreateSupplierAsync_ReturnsNullMappingWhenNoTemplateExists()
     {
         using var context = TestDatabaseFactory.CreateInventoryDbContext();
@@ -566,9 +1099,9 @@ public sealed class SupplierInvoiceClientTests
         {
             var extracted = new OcrExtractionResultDto(
                 new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 91.5m, 88m, 77.1m) },
-                new[] { "cGFnZTE=" },
                 "J-123",
-                "Proveedor OCR");
+                "Proveedor OCR",
+                "0238317");
             var handler = new MultipartCaptureHandler(JsonResponse(extracted));
             using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
             var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
@@ -579,6 +1112,7 @@ public sealed class SupplierInvoiceClientTests
                 new SupplierColumnMappingDto("EAN", "Vendor Code", "Item", "Units", "Cost"));
 
             Assert.Equal("J-123", result.DetectedRif);
+            Assert.Equal("0238317", result.DetectedInvoiceNumber);
             Assert.Equal("/api/supplier-invoices/ocr-extract", Assert.Single(handler.RequestPaths));
             Assert.Equal("7", handler.GetFieldValue("supplierId"));
             Assert.Equal("Item", handler.GetFieldValue("nameColumn"));
@@ -604,7 +1138,7 @@ public sealed class SupplierInvoiceClientTests
         try
         {
             var handler = new MultipartCaptureHandler(
-                JsonResponse(new OcrExtractionResultDto([], [], null, null)));
+                JsonResponse(new OcrExtractionResultDto([], null, null, null)));
             using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
             var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
 
@@ -631,7 +1165,7 @@ public sealed class SupplierInvoiceClientTests
         try
         {
             var handler = new MultipartCaptureHandler(
-                JsonResponse(new OcrExtractionResultDto([], [], null, null)));
+                JsonResponse(new OcrExtractionResultDto([], null, null, null)));
             using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
             var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
 
@@ -663,9 +1197,9 @@ public sealed class SupplierInvoiceClientTests
                 new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 91.5m, 88m, 77.1m),
                 new OcrExtractedLineDto(null, null, "Sugar", null, null, 55.5m, 0m, 0m)
             },
-            new[] { "cGFnZTE=", "cGFnZTI=" },
             "J-123",
-            "Proveedor OCR");
+            "Proveedor OCR",
+            "0238317");
         service.Setup(client => client.ExtractOcrAsync(
                 OcrFilePath, 7, Mapping(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(extracted);
@@ -693,11 +1227,9 @@ public sealed class SupplierInvoiceClientTests
         Assert.Equal(0m, captured.Lines[1].UnitCostDocument);
         Assert.Equal(55.5m, captured.Lines[1].OcrNameConfidence);
         Assert.True(viewModel.IsOcrSource);
-        Assert.Equal(new[] { "cGFnZTE=", "cGFnZTI=" }, viewModel.OcrPreviewPagesBase64);
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-        Assert.Equal(1.0, viewModel.OcrZoom);
         Assert.Equal("J-123", viewModel.OcrDetectedRif);
         Assert.Equal("Proveedor OCR", viewModel.OcrDetectedSupplierName);
+        Assert.Equal("0238317", viewModel.OcrDetectedInvoiceNumber);
     }
 
     [Fact]
@@ -712,7 +1244,7 @@ public sealed class SupplierInvoiceClientTests
                     new OcrExtractedLineDto(null, null, "Coffee", 2m, 4.25m, 90m, 80m, 70m),
                     new OcrExtractedLineDto(" ", null, null, 1m, 1m, 0m, 0m, 0m)
                 },
-                new[] { "cGFnZTE=" },
+                null,
                 null,
                 null));
         var dialog = new Mock<IDialogService>();
@@ -731,7 +1263,7 @@ public sealed class SupplierInvoiceClientTests
             Times.Once);
         Assert.Null(viewModel.StagedInvoice);
         Assert.False(viewModel.IsOcrSource);
-        Assert.Empty(viewModel.OcrPreviewPagesBase64);
+        Assert.Null(viewModel.OcrDetectedInvoiceNumber);
         service.Verify(client => client.ExtractOcrAsync(
             OcrFilePath, 7, Mapping(), It.IsAny<CancellationToken>()), Times.Once);
         service.VerifyNoOtherCalls();
@@ -745,9 +1277,9 @@ public sealed class SupplierInvoiceClientTests
                 OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OcrExtractionResultDto(
                 new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 90m, 80m, 70m) },
-                new[] { "cGFnZTE=" },
                 "J-999",
-                "Proveedor Detectado"));
+                "Proveedor Detectado",
+                null));
         service.Setup(client => client.StageAsync(
                 It.IsAny<StageSupplierInvoiceRequestDto>(),
                 It.IsAny<CancellationToken>()))
@@ -771,9 +1303,9 @@ public sealed class SupplierInvoiceClientTests
                 OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OcrExtractionResultDto(
                 new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 90m, 80m, 70m) },
-                new[] { "cGFnZTE=" },
                 "J-999",
-                "Proveedor Detectado"));
+                "Proveedor Detectado",
+                null));
         service.Setup(client => client.StageAsync(
                 It.IsAny<StageSupplierInvoiceRequestDto>(),
                 It.IsAny<CancellationToken>()))
@@ -792,67 +1324,23 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
-    public void OcrZoom_ClampsToRangeAndCommandsStepAndReset()
+    public async Task ScanInvoice_WithNoExtractedLines_ShowsActionableGuidance()
     {
-        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        // 8.163: sin líneas extraíbles el mensaje guía a re-tomar la foto en vez de dejar al
+        // operador sin contexto.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        service.Setup(client => client.ExtractOcrAsync(
+                OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OcrExtractionResultDto(Array.Empty<OcrExtractedLineDto>(), null, null, null));
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowWarning("Sin líneas OCR", It.IsAny<string>()));
+        var viewModel = CreateViewModel(service.Object, dialogService: dialog.Object, filePicker: PickerReturning(OcrFilePath));
+        viewModel.SelectedSupplier = new SupplierSummaryDto(7, "J-123", "Proveedor", null);
 
-        viewModel.OcrZoom = 0.1;
-        Assert.Equal(0.5, viewModel.OcrZoom);
+        await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
 
-        viewModel.OcrZoom = 10.0;
-        Assert.Equal(4.0, viewModel.OcrZoom);
-
-        viewModel.OcrZoomOutCommand.Execute(null);
-        Assert.Equal(3.75, viewModel.OcrZoom);
-
-        viewModel.OcrZoomInCommand.Execute(null);
-        Assert.Equal(4.0, viewModel.OcrZoom);
-
-        viewModel.OcrZoomInCommand.Execute(null);
-        Assert.Equal(4.0, viewModel.OcrZoom);
-
-        viewModel.ResetOcrZoomCommand.Execute(null);
-        Assert.Equal(1.0, viewModel.OcrZoom);
-
-        viewModel.OcrZoom = 0.5;
-        viewModel.OcrZoomOutCommand.Execute(null);
-        Assert.Equal(0.5, viewModel.OcrZoom);
-    }
-
-    [Fact]
-    public void OcrPageNavigation_ClampsBetweenPagesAndResetsOnSourceChange()
-    {
-        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
-
-        Assert.False(viewModel.HasOcrPreviews);
-        Assert.False(viewModel.CanNavigateOcrNextPage);
-        Assert.False(viewModel.CanNavigateOcrPreviousPage);
-        viewModel.OcrNextPageCommand.Execute(null);
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-
-        viewModel.OcrPreviewPagesBase64 = new[] { "a", "b", "c" };
-
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-        Assert.False(viewModel.CanNavigateOcrPreviousPage);
-        Assert.True(viewModel.CanNavigateOcrNextPage);
-
-        viewModel.OcrNextPageCommand.Execute(null);
-        viewModel.OcrNextPageCommand.Execute(null);
-        Assert.Equal(2, viewModel.OcrSelectedPageIndex);
-        Assert.False(viewModel.CanNavigateOcrNextPage);
-
-        viewModel.OcrNextPageCommand.Execute(null);
-        Assert.Equal(2, viewModel.OcrSelectedPageIndex);
-
-        viewModel.OcrPreviousPageCommand.Execute(null);
-        Assert.Equal(1, viewModel.OcrSelectedPageIndex);
-        Assert.True(viewModel.CanNavigateOcrNextPage);
-
-        viewModel.OcrSelectedPageIndex = 99;
-        Assert.Equal(2, viewModel.OcrSelectedPageIndex);
-
-        viewModel.OcrPreviewPagesBase64 = new[] { "a" };
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
+        Assert.Contains("enfoque", viewModel.StatusMessage);
+        dialog.Verify(d => d.ShowWarning("Sin líneas OCR", It.IsAny<string>()), Times.Once);
     }
 
     [Fact]
@@ -864,9 +1352,9 @@ public sealed class SupplierInvoiceClientTests
                 OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OcrExtractionResultDto(
                 new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 90m, 80m, 70m) },
-                new[] { "cGFnZTE=", "cGFnZTI=" },
                 null,
-                null));
+                null,
+                "0238317"));
         service.Setup(client => client.StageAsync(
                 It.IsAny<StageSupplierInvoiceRequestDto>(),
                 It.IsAny<CancellationToken>()))
@@ -883,15 +1371,14 @@ public sealed class SupplierInvoiceClientTests
 
         await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
         Assert.True(viewModel.IsOcrSource);
+        Assert.Equal("0238317", viewModel.OcrDetectedInvoiceNumber);
 
         await viewModel.ConfirmInvoiceAsync();
 
         Assert.False(viewModel.IsOcrSource);
-        Assert.Empty(viewModel.OcrPreviewPagesBase64);
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-        Assert.Equal(1.0, viewModel.OcrZoom);
         Assert.Null(viewModel.OcrDetectedRif);
         Assert.Null(viewModel.OcrDetectedSupplierName);
+        Assert.Null(viewModel.OcrDetectedInvoiceNumber);
     }
 
     [Fact]
@@ -902,9 +1389,9 @@ public sealed class SupplierInvoiceClientTests
                 OcrFilePath, 7, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OcrExtractionResultDto(
                 new[] { new OcrExtractedLineDto("SUP-1", "12345", "Coffee", 2m, 4.25m, 90m, 80m, 70m) },
-                new[] { "cGFnZTE=", "cGFnZTI=" },
                 "J-123",
-                "Proveedor OCR"));
+                "Proveedor OCR",
+                "0238317"));
         service.Setup(client => client.StageAsync(
                 It.IsAny<StageSupplierInvoiceRequestDto>(),
                 It.IsAny<CancellationToken>()))
@@ -918,17 +1405,14 @@ public sealed class SupplierInvoiceClientTests
 
         await viewModel.ScanInvoiceCommand.ExecuteAsync(null);
         Assert.True(viewModel.IsOcrSource);
-        viewModel.OcrSelectedPageIndex = 1;
-        viewModel.OcrZoom = 3.0;
+        Assert.Equal("0238317", viewModel.OcrDetectedInvoiceNumber);
 
         await viewModel.LoadFileAsync(TabularFilePath);
 
         Assert.False(viewModel.IsOcrSource);
-        Assert.Empty(viewModel.OcrPreviewPagesBase64);
-        Assert.Equal(0, viewModel.OcrSelectedPageIndex);
-        Assert.Equal(1.0, viewModel.OcrZoom);
         Assert.Null(viewModel.OcrDetectedRif);
         Assert.Null(viewModel.OcrDetectedSupplierName);
+        Assert.Null(viewModel.OcrDetectedInvoiceNumber);
     }
 
     [Fact]
@@ -941,6 +1425,47 @@ public sealed class SupplierInvoiceClientTests
         Assert.Equal("Name", request.ColumnMapping!.NameColumnName);
         Assert.Equal("Quantity", request.ColumnMapping.QuantityColumnName);
         Assert.Equal("Unit Cost", request.ColumnMapping.UnitCostColumnName);
+    }
+
+    [Fact]
+    public void Dispose_ClearsLinesAndColumnMappings()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var viewModel = CreateViewModel(service.Object);
+        viewModel.SetFileHeaders(new[] { "Barcode", "Name", "Quantity", "Unit Cost" });
+        viewModel.LoadStagedInvoice(CreateInvoice(CreateLine(1)));
+
+        Assert.NotEmpty(viewModel.ColumnMappings);
+        Assert.NotEmpty(viewModel.Lines);
+
+        viewModel.Dispose();
+
+        Assert.Empty(viewModel.ColumnMappings);
+        Assert.Empty(viewModel.Lines);
+    }
+
+    [Fact]
+    public void SupplierControllers_EnforceSecurityStampValidationAndOcrUploadSizeLimits()
+    {
+        Assert.NotNull(Attribute.GetCustomAttribute(
+            typeof(Backend.API.Controllers.SupplierInvoicesController),
+            typeof(Backend.API.Attributes.RequireSecurityStampValidationAttribute)));
+        Assert.NotNull(Attribute.GetCustomAttribute(
+            typeof(Backend.API.Controllers.SuppliersController),
+            typeof(Backend.API.Attributes.RequireSecurityStampValidationAttribute)));
+
+        var ocrMethod = typeof(Backend.API.Controllers.SupplierInvoicesController)
+            .GetMethod(nameof(Backend.API.Controllers.SupplierInvoicesController.OcrExtractAsync));
+        Assert.NotNull(ocrMethod);
+        var sizeLimit = Attribute.GetCustomAttribute(
+            ocrMethod!,
+            typeof(Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute)) as Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute;
+        var formLimits = Attribute.GetCustomAttribute(
+            ocrMethod!,
+            typeof(Microsoft.AspNetCore.Mvc.RequestFormLimitsAttribute)) as Microsoft.AspNetCore.Mvc.RequestFormLimitsAttribute;
+        Assert.NotNull(sizeLimit);
+        Assert.NotNull(formLimits);
+        Assert.Equal(Inventory.Module.Services.Ocr.OcrExtractionService.MaxFileBytes + 4L * 1024 * 1024, formLimits!.MultipartBodyLengthLimit);
     }
 
     private const string InvoiceFilePath = "C:\\facturas\\factura.csv";
@@ -985,6 +1510,1172 @@ public sealed class SupplierInvoiceClientTests
             .ReturnsAsync((rate, (DateTime?)null));
         return rateService.Object;
     }
+
+    [Fact]
+    public async Task UnresolvedLine_AllowsModifyingAllFieldsAndPreservesEditsAcrossCreateProductAndConfirm()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var unresolvedLine = CreateLine(1, unitCost: 10m, isApproved: false, resolvedProductId: null, status: "New", unitCostDocument: 365m);
+        var existingLine = CreateLine(2, unitCost: 5m, isApproved: true, resolvedProductId: 20, status: "Update", unitCostDocument: 182.5m);
+        var staged = CreateInvoice(CurrencyCodes.BsS, unresolvedLine, existingLine);
+        var refreshedAfterCreate = CreateInvoice(
+            CurrencyCodes.BsS,
+            CreateLine(1, unitCost: 10m, isApproved: false, resolvedProductId: 99, status: "Update", unitCostDocument: 365m),
+            existingLine);
+
+        CreateInvoiceProductDialogViewModel? capturedDialogVm = null;
+        ConfirmSupplierInvoiceRequestDto? capturedConfirm = null;
+
+        service.Setup(client => client.CreateProductFromLineAsync(
+                staged.Id,
+                1,
+                It.IsAny<CreateInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(refreshedAfterCreate);
+        service.Setup(client => client.ConfirmAsync(
+                staged.Id,
+                It.IsAny<ConfirmSupplierInvoiceRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, ConfirmSupplierInvoiceRequestDto, CancellationToken>((_, req, _) => capturedConfirm = req)
+            .ReturnsAsync(refreshedAfterCreate with { Status = "Applied" });
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(vm =>
+            {
+                capturedDialogVm = vm;
+                vm.Barcode = "7591234567890";
+            })
+            .Returns(true);
+        dialog.Setup(d => d.ShowConfirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        // 8.178: flujo real: la moneda del documento ya está seleccionada antes de cargar.
+        viewModel.SelectedCurrency = CurrencyCodes.BsS;
+        viewModel.LoadStagedInvoice(staged);
+
+        var line1 = viewModel.Lines[0];
+        var line2 = viewModel.Lines[1];
+
+        // Unresolved product has editor enabled even when IsOcrSource is false
+        Assert.True(line1.IsEditorEnabled);
+        Assert.False(line2.IsEditorEnabled);
+
+        // Modify fields on the nonexistent product BEFORE clicking "Crear Producto"
+        line1.EditName = "Harina P.A.N. Amarilla 1kg";
+        line1.EditQuantityText = "6";
+        line1.EditUnitCostDocumentText = "730";
+        line1.ConversionFactorText = "2";
+        line1.MarginRetailOverride = 30m;
+        line1.MarginWholesaleOverride = 15m;
+
+        // Also modify factor/margins on the second line to ensure sibling edits are preserved
+        line2.ConversionFactorText = "4";
+        line2.MarginRetailOverride = 25m;
+
+        await viewModel.CreateProductCommand.ExecuteAsync(line1);
+
+        Assert.NotNull(capturedDialogVm);
+        Assert.Equal("Harina P.A.N. Amarilla 1kg", capturedDialogVm!.Name);
+        Assert.Contains("Bs.S 730", capturedDialogVm.CostInfo);
+        Assert.Contains("6", capturedDialogVm.CostInfo);
+
+        var reloadedLine1 = viewModel.Lines[0];
+        var reloadedLine2 = viewModel.Lines[1];
+
+        // Edits are preserved and line1 remains editable and approved after creating the product
+        Assert.True(reloadedLine1.IsEditorEnabled);
+        Assert.True(reloadedLine1.IsApproved);
+        Assert.Equal("Harina P.A.N. Amarilla 1kg", reloadedLine1.EditName);
+        Assert.Equal(6m, reloadedLine1.EditQuantity);
+        Assert.Equal(730m, reloadedLine1.EditUnitCostDocument);
+        Assert.Equal(2m, reloadedLine1.ConversionFactor);
+        Assert.Equal(30m, reloadedLine1.MarginRetailOverride);
+        Assert.Equal(15m, reloadedLine1.MarginWholesaleOverride);
+        Assert.Equal(4m, reloadedLine2.ConversionFactor);
+        Assert.Equal(25m, reloadedLine2.MarginRetailOverride);
+
+        // Further modify quantity after product creation and confirm
+        reloadedLine1.EditQuantityText = "8";
+        await viewModel.ConfirmInvoiceAsync();
+
+        Assert.NotNull(capturedConfirm);
+        var confirmLine1 = Assert.Single(capturedConfirm!.Lines, l => l.LineId == 1);
+        Assert.Equal("Harina P.A.N. Amarilla 1kg", confirmLine1.Name);
+        Assert.Equal(8m, confirmLine1.Quantity);
+        Assert.Equal(730m, confirmLine1.UnitCostDocument);
+        Assert.Equal(2m, confirmLine1.ConversionFactor);
+        Assert.Equal(30m, confirmLine1.MarginRetailOverride);
+        Assert.Equal(15m, confirmLine1.MarginWholesaleOverride);
+    }
+
+    [Fact]
+    public async Task CreateProductCommand_ModeA_LinkExistingProduct_SearchesPredictivelyAssociatesProductUpdatesStatusAndRecalculatesCostComparison()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var unresolvedLine = CreateLine(1, unitCost: 10.50m, isApproved: true, resolvedProductId: null, status: "New", unitCostDocument: 10.50m) with
+        {
+            OldCostPriceUSD = null
+        };
+        var staged = CreateInvoice(unresolvedLine);
+        var catalogMatch = new ProductDto
+        {
+            Id = 45,
+            SKU = "7591234000011",
+            Name = "Harina P.A.N. 1kg",
+            CostPriceUSD = 8.20m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m,
+            StockQuantity = 24m
+        };
+        var refreshedAfterLink = CreateInvoice(
+            CreateLine(1, unitCost: 10.50m, isApproved: true, resolvedProductId: 45, status: "Update", unitCostDocument: 10.50m) with
+            {
+                Name = catalogMatch.Name,
+                OldCostPriceUSD = catalogMatch.CostPriceUSD,
+                OldProfitMarginRetail = catalogMatch.ProfitMarginRetail,
+                OldProfitMarginWholesale = catalogMatch.ProfitMarginWholesale,
+                MarginRetailOverride = catalogMatch.ProfitMarginRetail,
+                MarginWholesaleOverride = catalogMatch.ProfitMarginWholesale
+            });
+
+        LinkInvoiceProductRequestDto? capturedLink = null;
+        service.Setup(client => client.SearchCatalogProductsAsync("Harina", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { catalogMatch });
+        service.Setup(client => client.LinkProductToLineAsync(
+                staged.Id,
+                1,
+                It.IsAny<LinkInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, LinkInvoiceProductRequestDto, CancellationToken>((_, _, req, _) => capturedLink = req)
+            .ReturnsAsync(refreshedAfterLink);
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(vm =>
+            {
+                Assert.True(vm.IsLinkExistingMode);
+                vm.SearchQuery = "Harina";
+                var match = Assert.Single(vm.SearchResults);
+                vm.SelectedProduct = match;
+                vm.SaveCommand.Execute(null);
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.CreateProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        Assert.NotNull(capturedLink);
+        Assert.Equal(45, capturedLink!.ProductId);
+
+        var linkedLine = Assert.Single(viewModel.Lines);
+        Assert.Equal(45, linkedLine.ResolvedProductId);
+        Assert.Equal("Update", linkedLine.Status);
+        Assert.Equal("[ACTUALIZAR]", linkedLine.StatusLabel);
+        Assert.Equal(8.20m, linkedLine.OldCostPriceUSD);
+        Assert.Equal($"{8.20m:N2} → {10.50m:N2}", linkedLine.CostComparison);
+
+        // Live recalculation of CostComparison when document cost changes
+        linkedLine.EditUnitCostDocumentText = "12.00";
+        Assert.Equal($"{8.20m:N2} → {12.00m:N2}", linkedLine.CostComparison);
+    }
+
+    [Fact]
+    public async Task CreateProductCommand_ModeA_MultiProductLink_ExpandsRowsAndPropagatesCostAndFactorReactively()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var unresolvedLine = CreateLine(1, unitCost: 24.00m, isApproved: true, resolvedProductId: null, status: "New", unitCostDocument: 24.00m) with
+        {
+            SupplierCode = "PROV-REFRESCO-CAJA",
+            Name = "REFRESCO SURTIDO CAJA",
+            Quantity = 5m,
+            OldCostPriceUSD = null
+        };
+        var staged = CreateInvoice(unresolvedLine);
+
+        var productA = new ProductDto
+        {
+            Id = 101,
+            SKU = "7591000001011",
+            Name = "Refresco Cola 2L",
+            CostPriceUSD = 1.50m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m,
+            StockQuantity = 10m
+        };
+        var productB = new ProductDto
+        {
+            Id = 102,
+            SKU = "7591000001028",
+            Name = "Refresco Naranja 2L",
+            CostPriceUSD = 1.40m,
+            ProfitMarginRetail = 25m,
+            ProfitMarginWholesale = 15m,
+            StockQuantity = 4m
+        };
+
+        var refreshedAfterMultiLink = CreateInvoice(
+            CreateLine(1, unitCost: 24.00m, isApproved: true, resolvedProductId: 101, status: "Update", unitCostDocument: 24.00m) with
+            {
+                SupplierCode = "PROV-REFRESCO-CAJA",
+                Name = productA.Name,
+                Quantity = 5m,
+                MatchMethod = "SupplierCode",
+                OldCostPriceUSD = productA.CostPriceUSD,
+                OldProfitMarginRetail = productA.ProfitMarginRetail,
+                OldProfitMarginWholesale = productA.ProfitMarginWholesale,
+                MarginRetailOverride = productA.ProfitMarginRetail,
+                MarginWholesaleOverride = productA.ProfitMarginWholesale
+            },
+            CreateLine(2, unitCost: 24.00m, isApproved: true, resolvedProductId: 102, status: "Update", unitCostDocument: 24.00m) with
+            {
+                SupplierCode = "PROV-REFRESCO-CAJA",
+                Name = productB.Name,
+                Quantity = 0m,
+                MatchMethod = "SupplierCode",
+                OldCostPriceUSD = productB.CostPriceUSD,
+                OldProfitMarginRetail = productB.ProfitMarginRetail,
+                OldProfitMarginWholesale = productB.ProfitMarginWholesale,
+                MarginRetailOverride = productB.ProfitMarginRetail,
+                MarginWholesaleOverride = productB.ProfitMarginWholesale
+            });
+
+        LinkInvoiceProductRequestDto? capturedLink = null;
+        service.Setup(client => client.SearchCatalogProductsAsync("Refresco", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { productA, productB });
+        service.Setup(client => client.LinkProductToLineAsync(
+                staged.Id,
+                1,
+                It.IsAny<LinkInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, LinkInvoiceProductRequestDto, CancellationToken>((_, _, req, _) => capturedLink = req)
+            .ReturnsAsync(refreshedAfterMultiLink);
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(vm =>
+            {
+                vm.SearchQuery = "Refresco";
+                Assert.Equal(2, vm.SelectableSearchResults.Count);
+                vm.SelectableSearchResults[0].IsSelected = true;
+                vm.SelectableSearchResults[1].IsSelected = true;
+                Assert.Equal(2, vm.SelectedProducts.Count);
+                vm.SaveCommand.Execute(null);
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.CreateProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        Assert.NotNull(capturedLink);
+        Assert.Equal(101, capturedLink!.ProductId);
+        Assert.Equal(new[] { 101, 102 }, capturedLink.ProductIds);
+
+        Assert.Equal(2, viewModel.Lines.Count);
+        var lineA = viewModel.Lines[0];
+        var lineB = viewModel.Lines[1];
+
+        Assert.Equal(5m, lineA.EditQuantity);
+        Assert.Equal(0m, lineB.EditQuantity);
+        Assert.True(lineA.IsLinkedGroupMember);
+        Assert.True(lineB.IsLinkedGroupMember);
+
+        // Editing ConversionFactor on lineA propagates reactively to lineB
+        lineA.ConversionFactorText = "12";
+        Assert.Equal(12m, lineB.ConversionFactor);
+        Assert.Equal(2.00m, lineA.UnitCostUSD);
+        Assert.Equal(2.00m, lineB.UnitCostUSD);
+        Assert.Equal($"{1.50m:N2} → {2.00m:N2}", lineA.CostComparison);
+        Assert.Equal($"{1.40m:N2} → {2.00m:N2}", lineB.CostComparison);
+
+        // Editing EditUnitCostDocumentText on lineB propagates reactively back to lineA
+        lineB.EditUnitCostDocumentText = "36.00";
+        Assert.Equal(36.00m, lineA.EditUnitCostDocument);
+        Assert.Equal(3.00m, lineA.UnitCostUSD);
+        Assert.Equal(3.00m, lineB.UnitCostUSD);
+    }
+
+    [Fact]
+    public async Task CreateProductCommand_ModeA_ReactiveMargins_CalculatesLivePricesAppliesBulkValidatesCoherenceAndPropagatesToStaging()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var unresolvedLine = CreateLine(1, unitCost: 10.00m, isApproved: true, resolvedProductId: null, status: "New", unitCostDocument: 10.00m) with
+        {
+            SupplierCode = "PROV-BEBIDA-SURTIDA",
+            Name = "BEBIDA SABORES SURTIDOS",
+            Quantity = 4m,
+            OldCostPriceUSD = null
+        };
+        var staged = CreateInvoice(unresolvedLine);
+
+        var productA = new ProductDto
+        {
+            Id = 201,
+            SKU = "7592000002011",
+            Name = "Bebida Uva 1.5L",
+            CostPriceUSD = 8.00m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m,
+            HasWholesale = true,
+            StockQuantity = 12m
+        };
+        var productB = new ProductDto
+        {
+            Id = 202,
+            SKU = "7592000002028",
+            Name = "Bebida Piña 1.5L",
+            CostPriceUSD = 7.80m,
+            ProfitMarginRetail = 25m,
+            ProfitMarginWholesale = 12m,
+            HasWholesale = true,
+            StockQuantity = 6m
+        };
+
+        var refreshedAfterMultiLink = CreateInvoice(
+            CreateLine(1, unitCost: 10.00m, isApproved: true, resolvedProductId: 201, status: "Update", unitCostDocument: 10.00m) with
+            {
+                SupplierCode = "PROV-BEBIDA-SURTIDA",
+                Name = productA.Name,
+                Quantity = 4m,
+                MatchMethod = "SupplierCode",
+                OldCostPriceUSD = productA.CostPriceUSD,
+                OldProfitMarginRetail = productA.ProfitMarginRetail,
+                OldProfitMarginWholesale = productA.ProfitMarginWholesale,
+                MarginRetailOverride = productA.ProfitMarginRetail,
+                MarginWholesaleOverride = productA.ProfitMarginWholesale
+            },
+            CreateLine(2, unitCost: 10.00m, isApproved: true, resolvedProductId: 202, status: "Update", unitCostDocument: 10.00m) with
+            {
+                SupplierCode = "PROV-BEBIDA-SURTIDA",
+                Name = productB.Name,
+                Quantity = 0m,
+                MatchMethod = "SupplierCode",
+                OldCostPriceUSD = productB.CostPriceUSD,
+                OldProfitMarginRetail = productB.ProfitMarginRetail,
+                OldProfitMarginWholesale = productB.ProfitMarginWholesale,
+                MarginRetailOverride = productB.ProfitMarginRetail,
+                MarginWholesaleOverride = productB.ProfitMarginWholesale
+            });
+
+        LinkInvoiceProductRequestDto? capturedLink = null;
+        service.Setup(client => client.SearchCatalogProductsAsync("Bebida", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { productA, productB });
+        service.Setup(client => client.LinkProductToLineAsync(
+                staged.Id,
+                1,
+                It.IsAny<LinkInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, LinkInvoiceProductRequestDto, CancellationToken>((_, _, req, _) => capturedLink = req)
+            .ReturnsAsync(refreshedAfterMultiLink);
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(vm =>
+            {
+                // 1. Calculation base context in modal header
+                Assert.Equal(10.00m, vm.LineUnitCostUSD);
+                Assert.Contains("$10", vm.LineUnitCostHeaderText);
+
+                vm.SearchQuery = "Bebida";
+                vm.SelectableSearchResults[0].IsSelected = true;
+                vm.SelectableSearchResults[1].IsSelected = true;
+                Assert.Equal(2, vm.SelectedProductMargins.Count);
+
+                var marginA = vm.SelectedProductMargins[0];
+                var marginB = vm.SelectedProductMargins[1];
+
+                // 2. Initial current margins & live suggested prices loaded from ProductDto
+                Assert.Equal(30m, marginA.MarginRetail);
+                Assert.Equal(15m, marginA.MarginWholesale);
+                Assert.Equal(13.00m, marginA.SuggestedRetailPriceUSD);
+                Assert.Equal(11.50m, marginA.SuggestedWholesalePriceUSD);
+
+                // 3. Smooth decimal typing (with comma and trailing separator) + reactive calculation
+                marginA.MarginRetailText = "35,";
+                Assert.Equal("35,", marginA.MarginRetailText);
+                Assert.Equal(35m, marginA.MarginRetail);
+                Assert.Equal(13.50m, marginA.SuggestedRetailPriceUSD);
+
+                marginA.MarginRetailText = "35,5";
+                Assert.Equal(35.5m, marginA.MarginRetail);
+                Assert.Equal(PricingCalculator.RoundPriceUp(10.00m * 1.355m), marginA.SuggestedRetailPriceUSD);
+
+                // 4. Commercial coherence warning when Wholesale Margin > Retail Margin
+                marginA.MarginWholesaleText = "40";
+                Assert.True(marginA.HasMarginCoherenceWarning);
+                Assert.True(vm.HasAnyMarginCoherenceWarning);
+                Assert.NotEmpty(marginA.MarginCoherenceWarningMessage);
+
+                // Fix wholesale margin and verify warning clears
+                marginA.MarginWholesaleText = "20";
+                Assert.False(marginA.HasMarginCoherenceWarning);
+                Assert.False(vm.HasAnyMarginCoherenceWarning);
+
+                // 5. Bulk margin application copies to all selected products, then allows independent edit
+                vm.BulkMarginRetailText = "40";
+                vm.BulkMarginWholesaleText = "20";
+                vm.ApplyBulkMarginsCommand.Execute(null);
+
+                Assert.Equal(40m, marginA.MarginRetail);
+                Assert.Equal(20m, marginA.MarginWholesale);
+                Assert.Equal(14.00m, marginA.SuggestedRetailPriceUSD);
+                Assert.Equal(12.00m, marginA.SuggestedWholesalePriceUSD);
+
+                Assert.Equal(40m, marginB.MarginRetail);
+                Assert.Equal(20m, marginB.MarginWholesale);
+                Assert.Equal(14.00m, marginB.SuggestedRetailPriceUSD);
+                Assert.Equal(12.00m, marginB.SuggestedWholesalePriceUSD);
+
+                // Independent edit on second product after bulk apply
+                marginB.MarginRetailText = "50";
+                marginB.MarginWholesaleText = "25";
+                Assert.Equal(40m, marginA.MarginRetail);
+                Assert.Equal(50m, marginB.MarginRetail);
+                Assert.Equal(15.00m, marginB.SuggestedRetailPriceUSD);
+                Assert.Equal(12.50m, marginB.SuggestedWholesalePriceUSD);
+
+                vm.SaveCommand.Execute(null);
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.CreateProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        // 6. Propagation to LinkInvoiceProductRequestDto and Staging Table [UPDATE] rows
+        Assert.NotNull(capturedLink);
+        Assert.NotNull(capturedLink!.MarginOverrides);
+        Assert.Equal(2, capturedLink.MarginOverrides!.Count);
+        Assert.Equal(new LinkedProductMarginOverrideDto(201, 40m, 20m), capturedLink.MarginOverrides[0]);
+        Assert.Equal(new LinkedProductMarginOverrideDto(202, 50m, 25m), capturedLink.MarginOverrides[1]);
+
+        Assert.Equal(2, viewModel.Lines.Count);
+        var stagedLineA = viewModel.Lines[0];
+        var stagedLineB = viewModel.Lines[1];
+
+        Assert.Equal(40m, stagedLineA.MarginRetailOverride);
+        Assert.Equal(20m, stagedLineA.MarginWholesaleOverride);
+        Assert.Equal(14.00m, stagedLineA.SuggestedRetailPriceUSD);
+        Assert.Equal(12.00m, stagedLineA.SuggestedWholesalePriceUSD);
+
+        Assert.Equal(50m, stagedLineB.MarginRetailOverride);
+        Assert.Equal(25m, stagedLineB.MarginWholesaleOverride);
+        Assert.Equal(15.00m, stagedLineB.SuggestedRetailPriceUSD);
+        Assert.Equal(12.50m, stagedLineB.SuggestedWholesalePriceUSD);
+    }
+
+    [Fact]
+    public async Task ConfirmInvoiceAsync_WithUncheckedNewProductRow_IgnoresUnresolvedRowAndProcessesRemainingLines()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var resolvedLine = CreateLine(1, unitCost: 10m, isApproved: true, resolvedProductId: 10, status: "Update");
+        var newUnlinkedLine = CreateLine(2, unitCost: 5m, isApproved: true, resolvedProductId: null, status: "New");
+        var staged = CreateInvoice(resolvedLine, newUnlinkedLine);
+
+        ConfirmSupplierInvoiceRequestDto? capturedConfirm = null;
+        service.Setup(client => client.ConfirmAsync(
+                staged.Id,
+                It.IsAny<ConfirmSupplierInvoiceRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, ConfirmSupplierInvoiceRequestDto, CancellationToken>((_, req, _) => capturedConfirm = req)
+            .ReturnsAsync(staged with { Status = "Applied" });
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowConfirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        // Initially, newUnlinkedLine has IsApproved = true, so Confirm blocks with warning
+        await viewModel.ConfirmInvoiceAsync();
+        Assert.Null(capturedConfirm);
+        dialog.Verify(d => d.ShowWarning("Productos nuevos sin resolver", It.IsAny<string>()), Times.Once);
+
+        // User unchecks Aprobar on the new/unlinked product row to omit it
+        viewModel.Lines[1].IsApproved = false;
+
+        await viewModel.ConfirmInvoiceAsync();
+
+        Assert.NotNull(capturedConfirm);
+        var confirmedLine = Assert.Single(capturedConfirm!.Lines);
+        Assert.Equal(1, confirmedLine.LineId);
+        Assert.True(confirmedLine.IsApproved);
+    }
+
+    [Fact]
+    public async Task LinkProductToLineAsync_AndSearchCatalogProductsAsync_UseExpectedClientRoutes()
+    {
+        var invoice = CreateInvoice(CreateLine(1));
+        var pagedProducts = new PagedResultDto<ProductDto>
+        {
+            Items = new List<ProductDto> { new() { Id = 45, SKU = "7591234", Name = "Harina" } },
+            TotalCount = 1
+        };
+
+        var handler = new StubHttpMessageHandler(
+            JsonResponse(pagedProducts),
+            JsonResponse(invoice));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        var found = await service.SearchCatalogProductsAsync("Harina PAN");
+        var updated = await service.LinkProductToLineAsync(
+            invoice.Id,
+            15,
+            new LinkInvoiceProductRequestDto(45, "HARINA PAN 1KG"));
+
+        Assert.Equal(45, Assert.Single(found).Id);
+        Assert.Equal(invoice.Id, updated.Id);
+        Assert.Equal(
+            new[]
+            {
+                "/api/products?filter=Harina%20PAN&page=1&pageSize=20&statusFilter=active",
+                $"/api/supplier-invoices/{invoice.Id}/lines/15/link-product"
+            },
+            handler.RequestPaths);
+    }
+
+    [Fact]
+    public async Task GetCatalogProductsByIdsAsync_RequestsEachIdAndSkipsMissing()
+    {
+        // 8.175-S6: la hidratación del modal de actualización consulta GET api/products/{id} por id
+        // (ruta existente), deduplicando ids y saltando los que no resuelven (404) sin abortar los demás.
+        var product = new ProductDto { Id = 1, Name = "Harina", SKU = "7591234" };
+        var handler = new StubHttpMessageHandler(
+            JsonResponse(product),
+            new HttpResponseMessage(HttpStatusCode.NotFound));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        var found = await service.GetCatalogProductsByIdsAsync(new[] { 1, 2, 1, 2 });
+
+        Assert.Equal(1, Assert.Single(found).Id);
+        Assert.Equal(new[] { "/api/products/1", "/api/products/2" }, handler.RequestPaths);
+    }
+
+    [Fact]
+    public async Task LinkProductToLineAsync_SerializesReplacedLineIds()
+    {
+        // 8.175-S5: la re-resolución reemplaza el grupo 1:N previo; las filas absorbidas viajan en el body.
+        var invoice = CreateInvoice(CreateLine(1));
+        var handler = new StubHttpMessageHandler(JsonResponse(invoice));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        await service.LinkProductToLineAsync(
+            invoice.Id,
+            1,
+            new LinkInvoiceProductRequestDto(45, "HARINA PAN 1KG", ReplacedLineIds: new[] { 7, 8 }));
+
+        Assert.Contains("\"replacedLineIds\":[7,8]", Assert.Single(handler.RequestBodies));
+    }
+
+    [Fact]
+    public async Task UpdateLinkedProduct_GroupMemberClick_OpensHydratedDialogAnchoredToPrimaryAndReLinksWithReplacedIds()
+    {
+        // 8.175-S1/S2/S4/S7: clic en [ACTUALIZAR] de un miembro del grupo 1:N abre el modal
+        // existente hidratado con el/los producto(s) vinculado(s) anclado a la fila primaria;
+        // al guardar, la re-resolución viaja con los ids de las filas reemplazadas.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var primaryLine = CreateLine(1, unitCost: 24m, resolvedProductId: 101, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            Name = "REFRESCO SURTIDO CAJA",
+            MatchMethod = "SupplierCode",
+            MarginRetailOverride = 30m,
+            MarginWholesaleOverride = 15m
+        };
+        var memberLine = CreateLine(2, unitCost: 24m, resolvedProductId: 102, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            Name = "REFRESCO NARANJA CAJA",
+            Quantity = 0m,
+            MatchMethod = "SupplierCode",
+            MarginRetailOverride = 25m,
+            MarginWholesaleOverride = 12m
+        };
+        var untouchedLine = CreateLine(3, unitCost: 5m, resolvedProductId: 30, status: "Unchanged") with
+        {
+            SupplierCode = "PROV-OTRO",
+            Name = "Sin tocar"
+        };
+        var staged = CreateInvoice(primaryLine, memberLine, untouchedLine);
+
+        var productA = new ProductDto
+        {
+            Id = 101,
+            SKU = "7591000001011",
+            Name = "Refresco Cola 2L",
+            CostPriceUSD = 1.50m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m,
+            StockQuantity = 10m
+        };
+        var productB = new ProductDto
+        {
+            Id = 102,
+            SKU = "7591000001028",
+            Name = "Refresco Naranja 2L",
+            CostPriceUSD = 1.40m,
+            ProfitMarginRetail = 25m,
+            ProfitMarginWholesale = 12m,
+            StockQuantity = 4m
+        };
+
+        var refreshedAfterReLink = CreateInvoice(
+            primaryLine with
+            {
+                Name = productA.Name,
+                OldCostPriceUSD = productA.CostPriceUSD,
+                OldProfitMarginRetail = productA.ProfitMarginRetail,
+                OldProfitMarginWholesale = productA.ProfitMarginWholesale,
+                MarginRetailOverride = 40m,
+                MarginWholesaleOverride = 20m
+            },
+            memberLine with
+            {
+                Name = productB.Name,
+                OldCostPriceUSD = productB.CostPriceUSD,
+                OldProfitMarginRetail = productB.ProfitMarginRetail,
+                OldProfitMarginWholesale = productB.ProfitMarginWholesale
+            },
+            untouchedLine);
+
+        IReadOnlyList<int>? requestedProductIds = null;
+        LinkInvoiceProductRequestDto? capturedLink = null;
+        var capturedLinkLineId = 0;
+        service.Setup(client => client.GetCatalogProductsByIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<int>, CancellationToken>((productIds, _) => requestedProductIds = productIds)
+            .ReturnsAsync(new[] { productA, productB });
+        service.Setup(client => client.LinkProductToLineAsync(
+                staged.Id,
+                It.IsAny<int>(),
+                It.IsAny<LinkInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, LinkInvoiceProductRequestDto, CancellationToken>((_, lineId, request, _) =>
+            {
+                capturedLinkLineId = lineId;
+                capturedLink = request;
+            })
+            .ReturnsAsync(refreshedAfterReLink);
+
+        CreateInvoiceProductDialogViewModel? capturedDialog = null;
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(dialogViewModel =>
+            {
+                capturedDialog = dialogViewModel;
+                Assert.True(dialogViewModel.IsUpdateMode);
+                Assert.Equal(new[] { 101, 102 }, dialogViewModel.SelectedProducts.Select(product => product.Id).ToArray());
+                Assert.Equal(101, dialogViewModel.SelectedProduct?.Id);
+                Assert.Equal(2, dialogViewModel.SelectedProductMargins.Count);
+                Assert.Equal(30m, dialogViewModel.SelectedProductMargins[0].MarginRetail);
+                Assert.Equal(15m, dialogViewModel.SelectedProductMargins[0].MarginWholesale);
+                Assert.Equal(25m, dialogViewModel.SelectedProductMargins[1].MarginRetail);
+                Assert.Equal(12m, dialogViewModel.SelectedProductMargins[1].MarginWholesale);
+
+                // 8.175-S4: el revisor ajusta los márgenes del producto primario en vivo.
+                dialogViewModel.SelectedProductMargins[0].MarginRetail = 40m;
+                dialogViewModel.SelectedProductMargins[0].MarginWholesale = 20m;
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        var primaryRow = viewModel.Lines[0];
+        var memberRow = viewModel.Lines[1];
+        Assert.NotNull(primaryRow.LinkedGroupKey);
+        Assert.Equal(primaryRow.LinkedGroupKey, memberRow.LinkedGroupKey);
+        Assert.True(memberRow.CanUpdateLink);
+        Assert.False(memberRow.ShowStaticStatusBadge);
+        Assert.True(viewModel.UpdateLinkedProductCommand.CanExecute(memberRow));
+
+        // Edición en memoria de una fila ajena al grupo: debe sobrevivir a la recarga.
+        viewModel.Lines[2].EditQuantityText = "7";
+        viewModel.Lines[2].MarginRetailOverride = 33m;
+
+        await viewModel.UpdateLinkedProductCommand.ExecuteAsync(memberRow);
+
+        Assert.NotNull(capturedDialog);
+        Assert.Equal(new[] { 101, 102 }, requestedProductIds!);
+        Assert.NotNull(capturedLink);
+        Assert.Equal(1, capturedLinkLineId);
+        Assert.Equal(101, capturedLink!.ProductId);
+        Assert.Equal(new[] { 101, 102 }, capturedLink.ProductIds!);
+        Assert.Equal(new[] { 2 }, capturedLink.ReplacedLineIds!);
+        Assert.Null(capturedLink.InvoiceDescription);
+        Assert.NotNull(capturedLink.MarginOverrides);
+        Assert.Contains(new LinkedProductMarginOverrideDto(101, 40m, 20m), capturedLink.MarginOverrides!);
+        Assert.Contains("Vínculo actualizado: 2 producto(s).", viewModel.StatusMessage);
+
+        var reloadedPrimary = viewModel.Lines[0];
+        Assert.Equal(40m, reloadedPrimary.MarginRetailOverride);
+        Assert.Equal(20m, reloadedPrimary.MarginWholesaleOverride);
+        Assert.Equal(productA.CostPriceUSD, reloadedPrimary.OldCostPriceUSD);
+        Assert.Equal(7m, viewModel.Lines[2].EditQuantity);
+        Assert.Equal(33m, viewModel.Lines[2].MarginRetailOverride);
+    }
+
+    [Fact]
+    public void CanUpdateLink_And_ShowStaticStatusBadge_ReflectResolutionAndStatus()
+    {
+        // 8.175-S1: solo las filas resueltas con estado Update ofrecen el botón Actualizar;
+        // el badge estático se conserva para Unchanged/Conflict y las filas sin resolver.
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        viewModel.LoadStagedInvoice(CreateInvoice(
+            CreateLine(1, resolvedProductId: 9, status: "Update"),
+            CreateLine(2, resolvedProductId: 9, status: "Unchanged"),
+            CreateLine(3, resolvedProductId: 9, status: "Conflict"),
+            CreateLine(4, resolvedProductId: null, status: "New")));
+
+        var updateRow = viewModel.Lines[0];
+        var unchangedRow = viewModel.Lines[1];
+        var conflictRow = viewModel.Lines[2];
+        var unresolvedRow = viewModel.Lines[3];
+
+        Assert.True(updateRow.CanUpdateLink);
+        Assert.False(updateRow.ShowStaticStatusBadge);
+
+        Assert.False(unchangedRow.CanUpdateLink);
+        Assert.True(unchangedRow.ShowStaticStatusBadge);
+
+        Assert.False(conflictRow.CanUpdateLink);
+        Assert.True(conflictRow.ShowStaticStatusBadge);
+
+        Assert.False(unresolvedRow.CanUpdateLink);
+        Assert.False(unresolvedRow.ShowStaticStatusBadge);
+    }
+
+    [Fact]
+    public async Task UpdateLinkedProduct_CreateMode_CallsCreateProductWithReplacedIds()
+    {
+        // 8.175-S4: desde la vista pre-cargada el revisor puede cambiar a Modo B; la creación
+        // re-resuelve el ancla y absorbe las filas 1:N reemplazadas.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var primaryLine = CreateLine(1, unitCost: 24m, resolvedProductId: 101, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            Name = "REFRESCO SURTIDO CAJA",
+            MatchMethod = "SupplierCode"
+        };
+        var memberLine = CreateLine(2, unitCost: 24m, resolvedProductId: 102, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            Name = "REFRESCO NARANJA CAJA",
+            Quantity = 0m,
+            MatchMethod = "SupplierCode"
+        };
+        var staged = CreateInvoice(primaryLine, memberLine);
+        var refreshedAfterCreate = CreateInvoice(
+            primaryLine with { Name = "Harina Nueva 1kg", OldCostPriceUSD = 0m });
+
+        var productA = new ProductDto
+        {
+            Id = 101,
+            SKU = "7591000001011",
+            Name = "Refresco Cola 2L",
+            CostPriceUSD = 1.50m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m
+        };
+        var productB = new ProductDto
+        {
+            Id = 102,
+            SKU = "7591000001028",
+            Name = "Refresco Naranja 2L",
+            CostPriceUSD = 1.40m,
+            ProfitMarginRetail = 25m,
+            ProfitMarginWholesale = 12m
+        };
+
+        CreateInvoiceProductRequestDto? capturedCreate = null;
+        var capturedCreateLineId = 0;
+        service.Setup(client => client.GetCatalogProductsByIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { productA, productB });
+        service.Setup(client => client.CreateProductFromLineAsync(
+                staged.Id,
+                It.IsAny<int>(),
+                It.IsAny<CreateInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, CreateInvoiceProductRequestDto, CancellationToken>((_, lineId, request, _) =>
+            {
+                capturedCreateLineId = lineId;
+                capturedCreate = request;
+            })
+            .ReturnsAsync(refreshedAfterCreate);
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(dialogViewModel =>
+            {
+                Assert.True(dialogViewModel.IsUpdateMode);
+                dialogViewModel.ResolutionMode = InvoiceProductResolutionMode.CreateNew;
+                dialogViewModel.Barcode = "7591234567890";
+                dialogViewModel.Name = "Harina Nueva 1kg";
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.UpdateLinkedProductCommand.ExecuteAsync(viewModel.Lines[1]);
+
+        Assert.NotNull(capturedCreate);
+        Assert.Equal(1, capturedCreateLineId);
+        Assert.Equal("7591234567890", capturedCreate!.Barcode);
+        Assert.Equal("Harina Nueva 1kg", capturedCreate.Name);
+        Assert.Equal(new[] { 2 }, capturedCreate.ReplacedLineIds!);
+        Assert.Contains("Harina Nueva 1kg", viewModel.StatusMessage);
+        service.Verify(client => client.LinkProductToLineAsync(
+            It.IsAny<int>(),
+            It.IsAny<int>(),
+            It.IsAny<LinkInvoiceProductRequestDto>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateLinkedProduct_WhenCatalogFetchIncomplete_DoesNotOpenDialog()
+    {
+        // 8.175-S6: si un producto del vínculo ya no resuelve en el catálogo, el comando aborta
+        // con error visible y no abre el modal (no se guarda una re-resolución que perdería el producto).
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var primaryLine = CreateLine(1, unitCost: 24m, resolvedProductId: 101, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            MatchMethod = "SupplierCode"
+        };
+        var memberLine = CreateLine(2, unitCost: 24m, resolvedProductId: 102, status: "Update") with
+        {
+            SupplierCode = "PROV-CAJA",
+            Quantity = 0m,
+            MatchMethod = "SupplierCode"
+        };
+        var staged = CreateInvoice(primaryLine, memberLine);
+        var onlyProductA = new ProductDto { Id = 101, SKU = "7591000001011", Name = "Refresco Cola 2L" };
+
+        service.Setup(client => client.GetCatalogProductsByIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { onlyProductA });
+
+        var dialog = new Mock<IDialogService>();
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.UpdateLinkedProductCommand.ExecuteAsync(viewModel.Lines[1]);
+
+        dialog.Verify(
+            d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()),
+            Times.Never);
+        dialog.Verify(d => d.ShowError(It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+        Assert.Contains(
+            "No se pudieron cargar todos los productos vinculados de la línea",
+            viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task UpdateLinkedProduct_WhenDialogCancelled_MakesNoServiceCall()
+    {
+        // 8.175-S2: cancelar el modal pre-cargado no dispara ninguna re-resolución.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var staged = CreateInvoice(CreateLine(1, resolvedProductId: 101, status: "Update"));
+        var productA = new ProductDto { Id = 101, SKU = "7591000001011", Name = "Refresco Cola 2L" };
+
+        service.Setup(client => client.GetCatalogProductsByIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { productA });
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Returns(false);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.UpdateLinkedProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        service.Verify(client => client.LinkProductToLineAsync(
+            It.IsAny<int>(),
+            It.IsAny<int>(),
+            It.IsAny<LinkInvoiceProductRequestDto>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        service.Verify(client => client.CreateProductFromLineAsync(
+            It.IsAny<int>(),
+            It.IsAny<int>(),
+            It.IsAny<CreateInvoiceProductRequestDto>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Single(viewModel.Lines);
+    }
+
+    [Fact]
+    public async Task UpdateLinkedProduct_SingleResolvedLine_ReLinksWithoutReplacedIds()
+    {
+        // 8.175-S4/S7: una fila 1:1 puede re-vincularse a otro producto existente sin filas
+        // reemplazadas; la grilla refresca el producto nuevo y su comparativa de costo.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var stagedLine = CreateLine(1, unitCost: 24m, resolvedProductId: 101, status: "Update") with
+        {
+            SupplierCode = "PROV-BEBIDA",
+            Name = "BEBIDA SURTIDA",
+            MatchMethod = "SupplierCode",
+            MarginRetailOverride = 30m,
+            MarginWholesaleOverride = 15m
+        };
+        var staged = CreateInvoice(stagedLine);
+        var productA = new ProductDto
+        {
+            Id = 101,
+            SKU = "7591000001011",
+            Name = "Bebida Uva 1.5L",
+            CostPriceUSD = 8.00m,
+            ProfitMarginRetail = 30m,
+            ProfitMarginWholesale = 15m
+        };
+        var productB = new ProductDto
+        {
+            Id = 102,
+            SKU = "7591000001028",
+            Name = "Bebida Piña 1.5L",
+            CostPriceUSD = 7.80m,
+            ProfitMarginRetail = 28m,
+            ProfitMarginWholesale = 12m
+        };
+        var refreshedAfterReLink = CreateInvoice(stagedLine with
+        {
+            ResolvedProductId = 102,
+            Name = productB.Name,
+            OldCostPriceUSD = productB.CostPriceUSD,
+            OldProfitMarginRetail = productB.ProfitMarginRetail,
+            OldProfitMarginWholesale = productB.ProfitMarginWholesale,
+            MarginRetailOverride = 28m,
+            MarginWholesaleOverride = 12m
+        });
+
+        LinkInvoiceProductRequestDto? capturedLink = null;
+        service.Setup(client => client.GetCatalogProductsByIdsAsync(
+                It.IsAny<IReadOnlyList<int>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { productA });
+        service.Setup(client => client.LinkProductToLineAsync(
+                staged.Id,
+                It.IsAny<int>(),
+                It.IsAny<LinkInvoiceProductRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, int, LinkInvoiceProductRequestDto, CancellationToken>((_, _, request, _) => capturedLink = request)
+            .ReturnsAsync(refreshedAfterReLink);
+
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowCreateInvoiceProductDialog(It.IsAny<CreateInvoiceProductDialogViewModel>()))
+            .Callback<CreateInvoiceProductDialogViewModel>(dialogViewModel =>
+            {
+                Assert.Equal(new[] { 101 }, dialogViewModel.SelectedProducts.Select(product => product.Id).ToArray());
+                dialogViewModel.RemoveSelectedProductCommand.Execute(productA);
+                dialogViewModel.ToggleProductSelectionCommand.Execute(productB);
+            })
+            .Returns(true);
+
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(staged);
+
+        await viewModel.UpdateLinkedProductCommand.ExecuteAsync(Assert.Single(viewModel.Lines));
+
+        Assert.NotNull(capturedLink);
+        Assert.Equal(102, capturedLink!.ProductId);
+        Assert.Null(capturedLink.ProductIds);
+        Assert.Null(capturedLink.ReplacedLineIds);
+        Assert.Null(capturedLink.InvoiceDescription);
+        Assert.Equal("Vínculo actualizado: 1 producto(s).", viewModel.StatusMessage);
+
+        var reloadedLine = Assert.Single(viewModel.Lines);
+        Assert.Equal(102, reloadedLine.ResolvedProductId);
+        Assert.Equal(productB.CostPriceUSD, reloadedLine.OldCostPriceUSD);
+        Assert.Equal(28m, reloadedLine.MarginRetailOverride);
+    }
+
+    [Fact]
+    public async Task OcrScannerConfigDialogViewModel_BuildsTemplateRunsLiveTestAndSavesTemplate()
+    {
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        var filePicker = Mock.Of<IFilePickerDialog>();
+
+        SupplierOcrTemplateDto? capturedTestTemplate = null;
+        service.Setup(s => s.ExtractOcrAsync(
+                "C:\\temp\\test.png",
+                7,
+                null,
+                It.IsAny<SupplierOcrTemplateDto?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<string, int?, SupplierColumnMappingDto?, SupplierOcrTemplateDto?, CancellationToken>(
+                (_, _, _, tpl, _) => capturedTestTemplate = tpl)
+            .ReturnsAsync(new OcrExtractionResultDto(
+                new[]
+                {
+                    new OcrExtractedLineDto("COD-1", null, "HARINA PAN 1X40", 2m, 40m, 95m, 90m, 88m, ExtractedConversionFactor: 40m)
+                },
+                "J-123",
+                "Proveedor OCR",
+                "00099",
+                RawExtractedText: "COD-1 HARINA PAN 1X40 2 40.00",
+                PreprocessedPreviewPng: new byte[] { 1, 2, 3 }));
+
+        SupplierOcrTemplateDto? savedTemplate = null;
+        service.Setup(s => s.SaveSupplierOcrTemplateAsync(
+                7,
+                It.IsAny<SupplierOcrTemplateDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, SupplierOcrTemplateDto, CancellationToken>((_, tpl, _) => savedTemplate = tpl)
+            .ReturnsAsync((int _, SupplierOcrTemplateDto tpl, CancellationToken _) => tpl);
+
+        var vm = new OcrScannerConfigDialogViewModel(
+            7,
+            "Proveedor OCR",
+            null,
+            null,
+            service.Object,
+            filePicker,
+            "C:\\temp\\test.png");
+
+        vm.RoiX = 0.05;
+        vm.RoiY = 0.10;
+        vm.RoiWidth = 0.85;
+        vm.RoiHeight = 0.70;
+        vm.RotateRightCommand.Execute(null);
+        vm.ContrastFactor = 1.3;
+        vm.BrightnessDelta = -15;
+        vm.UseCustomBinarizationThreshold = true;
+        vm.BinarizationThreshold = 145;
+        vm.HeaderAnchorKeywords = "RENGLON, DETALLE";
+        vm.FooterAnchorKeywords = "SUBTOTAL, IVA";
+        vm.SupplierCodeColumnPosition = 1;
+        vm.QuantityColumnPosition = 2;
+        vm.ProductColumnPosition = 3;
+        vm.UnitCostColumnPosition = 4;
+        vm.IsCostRuleLineTotal = true;
+        vm.IsDecimalComma = true;
+        vm.SelectedFactorPatternKey = "AUTO";
+        vm.NewReplacementFrom = "O";
+        vm.NewReplacementTo = "0";
+        vm.AddReplacementRuleCommand.Execute(null);
+
+        await vm.TestExtractionCommand.ExecuteAsync(null);
+
+        Assert.NotNull(capturedTestTemplate);
+        Assert.Equal(90, capturedTestTemplate!.RotationDegrees);
+        Assert.Equal(145, capturedTestTemplate.BinarizationThreshold);
+        Assert.Equal(OcrCostAmountRule.LineTotal, capturedTestTemplate.CostAmountRule);
+        Assert.Equal(OcrDecimalSeparatorRule.Comma, capturedTestTemplate.DecimalSeparator);
+        Assert.Equal("AUTO", capturedTestTemplate.FactorExtractionPattern);
+        Assert.Single(vm.SandboxLines);
+        Assert.Equal(40m, vm.SandboxLines[0].ExtractedConversionFactor);
+        Assert.Contains("HARINA PAN 1X40", vm.RawExtractedText);
+        Assert.Equal(new byte[] { 1, 2, 3 }, vm.PreprocessedPreviewBytes);
+
+        await vm.ApplyToInvoiceCommand.ExecuteAsync(null);
+
+        Assert.True(vm.ApplyResultToStaging);
+        Assert.NotNull(savedTemplate);
+        Assert.Equal(OcrCostAmountRule.LineTotal, savedTemplate!.CostAmountRule);
+    }
+
+    [Fact]
+    public async Task ClientSupplierInvoiceService_GetAndSaveOcrTemplateRoutesAndMultipartOcrTemplateJson()
+    {
+        var template = new SupplierOcrTemplateDto(
+            RoiX: 0.1,
+            CostAmountRule: OcrCostAmountRule.LineTotal,
+            FactorExtractionPattern: "AUTO");
+        var handler = new StubHttpMessageHandler(
+            JsonResponse(template),
+            JsonResponse(template));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        var loaded = await service.GetSupplierOcrTemplateAsync(7);
+        var saved = await service.SaveSupplierOcrTemplateAsync(7, template);
+
+        Assert.NotNull(loaded);
+        Assert.Equal(OcrCostAmountRule.LineTotal, loaded!.CostAmountRule);
+        Assert.Equal("AUTO", saved.FactorExtractionPattern);
+        Assert.Equal(
+            new[]
+            {
+                "/api/supplier-invoices/suppliers/7/ocr-template",
+                "/api/supplier-invoices/suppliers/7/ocr-template"
+            },
+            handler.RequestPaths);
+    }
+
+    [Fact]
+    public void CostChangeKind_And_PillText_ReflectCostDifferencesSemantically()
+    {
+        // 1. New product (unresolved or no old cost)
+        var newLineDto = CreateLine(1, unitCost: 10m, resolvedProductId: null) with { OldCostPriceUSD = null };
+        var lineVm1 = new SupplierInvoiceLineViewModel(newLineDto);
+        Assert.Equal(CostChangeKind.NewProduct, lineVm1.CostChangeKind);
+        Assert.Equal($"Nuevo: {10m:N2}", lineVm1.CostComparisonPillText);
+
+        // 2. Unchanged (same cost after rounding to 2 decimals)
+        var unchangedDto = CreateLine(2, unitCost: 10.002m, resolvedProductId: 5) with { OldCostPriceUSD = 10.004m };
+        var lineVm2 = new SupplierInvoiceLineViewModel(unchangedDto);
+        Assert.Equal(CostChangeKind.Unchanged, lineVm2.CostChangeKind);
+        Assert.Equal($"Sin cambio · {10m:N2}", lineVm2.CostComparisonPillText);
+
+        // 3. Decreased
+        var decreasedDto = CreateLine(3, unitCost: 8m, resolvedProductId: 5) with { OldCostPriceUSD = 10m };
+        var lineVm3 = new SupplierInvoiceLineViewModel(decreasedDto);
+        Assert.Equal(CostChangeKind.Decreased, lineVm3.CostChangeKind);
+        Assert.Equal($"${10m:N2} → {8m:N2}", lineVm3.CostComparisonPillText);
+
+        // 4. Increased Drastic (>= 1.5x)
+        var drasticDto = CreateLine(4, unitCost: 15m, resolvedProductId: 5) with { OldCostPriceUSD = 10m };
+        var lineVm4 = new SupplierInvoiceLineViewModel(drasticDto);
+        Assert.Equal(CostChangeKind.IncreasedDrastic, lineVm4.CostChangeKind);
+        Assert.Equal($"${10m:N2} → {15m:N2}", lineVm4.CostComparisonPillText);
+
+        // 5. Increased Moderate (< 1.5x)
+        var moderateDto = CreateLine(5, unitCost: 12m, resolvedProductId: 5) with { OldCostPriceUSD = 10m };
+        var lineVm5 = new SupplierInvoiceLineViewModel(moderateDto);
+        Assert.Equal(CostChangeKind.IncreasedModerate, lineVm5.CostChangeKind);
+        Assert.Equal($"${10m:N2} → {12m:N2}", lineVm5.CostComparisonPillText);
+    }
+
+    [Fact]
+    public void SupplierInvoiceViewModel_SummaryMetrics_CalculateAccuratelyAndReactively()
+    {
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        Assert.Equal(0, viewModel.LinesToUpdateCount);
+        Assert.Equal(0, viewModel.LinesToCreateCount);
+        Assert.Equal(string.Empty, viewModel.SummaryMetricsText);
+        Assert.False(viewModel.HasSummaryMetrics);
+
+        var lineUpdate = CreateLine(1, unitCost: 10m, resolvedProductId: 42);
+        var lineCreate = CreateLine(2, unitCost: 5m, resolvedProductId: null);
+        viewModel.LoadStagedInvoice(CreateInvoice(lineUpdate, lineCreate));
+
+        Assert.Equal(1, viewModel.LinesToUpdateCount);
+        Assert.Equal(1, viewModel.LinesToCreateCount);
+        Assert.Equal("2 líneas · 1 por actualizar · 1 por crear", viewModel.SummaryMetricsText);
+        Assert.True(viewModel.HasSummaryMetrics);
+
+        viewModel.ClearInvoiceCommand.Execute(null);
+
+        Assert.Equal(0, viewModel.LinesToUpdateCount);
+        Assert.Equal(0, viewModel.LinesToCreateCount);
+        Assert.Equal(string.Empty, viewModel.SummaryMetricsText);
+        Assert.False(viewModel.HasSummaryMetrics);
+    }
+
 
     private static void PrepareStageableInvoice(SupplierInvoiceViewModel viewModel)
     {

@@ -20,13 +20,17 @@ public class ShiftsController : ControllerBase
 {
     private readonly IDailyClosureService _dailyClosureService;
     private readonly ICurrentUserService _currentUserService;
+    private readonly Backend.API.Services.IdempotencyRequestResolver _idempotencyResolver;
 
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public ShiftsController(
         IDailyClosureService dailyClosureService,
-        ICurrentUserService currentUserService)
+        ICurrentUserService currentUserService,
+        IIdempotencyService? idempotencyService = null)
     {
         _dailyClosureService = dailyClosureService;
         _currentUserService = currentUserService;
+        _idempotencyResolver = new Backend.API.Services.IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
     [RequireSecurityStampValidation]
@@ -52,6 +56,16 @@ public class ShiftsController : ControllerBase
             return this.ApiBadRequest($"El desglose contiene métodos de pago duplicados: {string.Join(", ", duplicatedMethodIds)}.");
         }
 
+        const string requestPath = "/api/shifts/close";
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(request));
+        if (idempotency.ShouldStop)
+        {
+            return idempotency.BlockingResult!;
+        }
+
         try
         {
             string? userId = _currentUserService.UserId
@@ -67,6 +81,7 @@ public class ShiftsController : ControllerBase
                     .ToList());
 
             var result = await _dailyClosureService.CreateClosureFromCommandAsync(command, cancellationToken);
+            bool isElevated = User.IsInRole(nameof(Core.Entities.UserRole.Admin)) || User.IsInRole(nameof(Core.Entities.UserRole.Manager));
 
             var report = new ShiftReportDto
             {
@@ -81,11 +96,17 @@ public class ShiftsController : ControllerBase
                     PaymentMethodName = d.PaymentMethodName,
                     Currency = d.Currency,
                     DeclaredAmount = d.DeclaredAmount,
-                    SystemAmount = d.SystemAmount,
-                    Difference = d.Difference,
-                    Status = d.Status
+                    SystemAmount = isElevated ? d.SystemAmount : 0m,
+                    Difference = isElevated ? d.Difference : 0m,
+                    Status = isElevated ? d.Status : "Blind"
                 }).ToList()
             };
+
+            await _idempotencyResolver.RegisterSuccessAsync(
+                idempotency,
+                requestPath,
+                System.Text.Json.JsonSerializer.Serialize(report),
+                cancellationToken);
 
             return Ok(report);
         }
@@ -97,8 +118,12 @@ public class ShiftsController : ControllerBase
         {
             return this.ApiBadRequest(ex.Message);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex)
         {
+            if (Backend.API.Services.IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+            {
+                return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
+            }
             return this.ApiConflict("Conflicto de concurrencia al registrar el cierre del turno. Es posible que ya se haya ejecutado otro cierre en paralelo.");
         }
     }
@@ -147,6 +172,15 @@ public class ShiftsController : ControllerBase
         }
 
         var details = ShiftReportMapper.MapDetails(closure.Details, closure.ExchangeRate);
+        if (!isElevated)
+        {
+            foreach (var d in details)
+            {
+                d.SystemAmount = 0m;
+                d.Difference = 0m;
+                d.Status = "Blind";
+            }
+        }
 
         string cashierName = closure.UserId ?? "Cajero Activo";
         if (int.TryParse(closure.UserId, out int parsedId))

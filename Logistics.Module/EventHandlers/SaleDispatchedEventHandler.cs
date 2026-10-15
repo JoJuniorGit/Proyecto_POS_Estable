@@ -45,7 +45,7 @@ public class SaleDispatchedEventHandler : INotificationHandler<SaleDispatchedEve
         };
 
         await _deliveryService.RegisterDeliveryOrderAsync(deliveryOrder, cancellationToken);
-        _logger?.LogInformation("[Logistics] Evento SaleDispatchedEvent procesado: creado pedido de entrega #{SaleId} para '{Address}'.",
-            notification.SaleId, notification.DeliveryAddress);
+        _logger?.LogInformation("[Logistics] Evento SaleDispatchedEvent procesado: creado pedido de entrega #{SaleId} (HasAddress: {HasAddress}).",
+            notification.SaleId, !string.IsNullOrWhiteSpace(notification.DeliveryAddress));
     }
 }

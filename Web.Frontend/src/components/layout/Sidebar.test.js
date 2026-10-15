@@ -27,6 +27,7 @@ const ALL_LABELS = [
   'Cuentas Abiertas',
   'Retiros Pendientes',
   'Catálogo',
+  'Conteo físico',
   'Historial Ventas',
   'Caja',
   'Cierre Diario',
@@ -37,7 +38,7 @@ const ALL_LABELS = [
 const EXPECTED_LABELS = {
   Admin: ALL_LABELS,
   Manager: ALL_LABELS,
-  Cashier: ['Punto de Venta', 'Cuentas Abiertas', 'Retiros Pendientes', 'Catálogo', 'Historial Ventas', 'Caja', 'Cierre Diario'],
+  Cashier: ['Punto de Venta', 'Cuentas Abiertas', 'Retiros Pendientes', 'Catálogo', 'Conteo físico', 'Historial Ventas', 'Caja', 'Cierre Diario'],
   Driver: ['Retiros Pendientes', 'Historial Ventas'],
 };
 

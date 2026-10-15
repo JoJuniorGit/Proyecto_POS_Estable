@@ -17,7 +17,11 @@ public static class ServiceCollectionExtensions
     public static WebApplicationBuilder AddBackendServices(this WebApplicationBuilder builder, string? connectionString)
     {
         builder.Services.AddDbContext<InventoryDbContext>(options =>
-            options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3))
+            options.UseNpgsql(connectionString, npgsql =>
+            {
+                npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+                npgsql.EnableRetryOnFailure(3);
+            })
                 .ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
         builder.Services.AddDbContext<Sales.Module.Data.SalesDbContext>(options =>
@@ -42,6 +46,14 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
         builder.Services.AddScoped<IInventoryService, InventoryService>();
         builder.Services.AddScoped<IProductManagementService>(sp => (InventoryService)sp.GetRequiredService<IInventoryService>());
+        // 8.179-T1 (S2): CRUD de categorías jerárquicas del catálogo.
+        builder.Services.AddScoped<ICategoryService, CategoryService>();
+        // 8.180-T1 (T1): sesiones de conteo físico ciego del Paso 6 — ciclo de vida, descuadre y
+        // apply atómico de ajustes.
+        builder.Services.AddScoped<IStockCountService, StockCountService>();
+        // 8.177-T2: Centro de Auditoría del Kardex — consulta unificada activa + archivo, KPIs y
+        // exportación con encabezado legal.
+        builder.Services.AddScoped<IStockKardexService, StockKardexService>();
         builder.Services.AddScoped<ISupplierProductSimilaritySearch, PostgresSupplierProductSimilaritySearch>();
         builder.Services.AddScoped<ISupplierInvoiceService, SupplierInvoiceService>();
         // 8.147-T2: OCR de facturas de proveedor — motor Tesseract, preprocesado OpenCV y

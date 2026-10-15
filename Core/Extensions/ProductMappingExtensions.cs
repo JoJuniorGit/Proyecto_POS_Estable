@@ -7,7 +7,12 @@ namespace Core.Extensions;
 
 public static class ProductMappingExtensions
 {
-    public static ProductDto ToDto(this Product product, bool canViewCost = true)
+    /// <summary>
+    /// 8.179-T1 (S3): el mapeo de categorías se alimenta desde afuera (no hay navegación inversa en
+    /// Product, molde SupplierProductCode): los sitios de proyección EF pasan la subconsulta
+    /// ProductCategories → CategoryRefDto y GetById carga las referencias antes de mapear.
+    /// </summary>
+    public static ProductDto ToDto(this Product product, bool canViewCost = true, IEnumerable<CategoryRefDto>? categories = null)
     {
         return new ProductDto
         {
@@ -45,6 +50,7 @@ public static class ProductMappingExtensions
             ConsolidatedStock = product.IsGroupHeader
                 ? (product.IsStockShared ? product.StockQuantity : (product.Variants?.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                 : product.StockQuantity,
+            Categories = categories?.ToList() ?? new List<CategoryRefDto>(),
             Variants = product.Variants?.Select(v => v.ToDto(canViewCost)).ToList()
         };
     }
@@ -117,6 +123,7 @@ public static class ProductMappingExtensions
         item.ProfitMarginWholesale = 0m;
         item.Cost = 0m;
         item.ProfitPercentage = 0m;
+        // 8.179-T1: Categories es metadata pública del catálogo y se preserva al enmascarar costos.
         if (item.Variants != null)
         {
             foreach (var v in item.Variants)

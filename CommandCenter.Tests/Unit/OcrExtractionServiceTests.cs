@@ -16,13 +16,12 @@ namespace CommandCenter.Tests.Unit;
 /// <summary>
 /// 8.147-T4/D12: pruebas del orquestador de extracción OCR con motor stub (sin nativos de
 /// Tesseract) y decodificadores/preprocesador reales. Cubren happy path de imagen y PDF,
-/// previews en orden de página, pistas RIF/nombre, fallback genérico vs. plantilla y guardas
-/// de subida con sus mensajes exactos.
+/// pistas RIF/nombre/número de factura, fallback genérico vs. plantilla y guardas de subida
+/// con sus mensajes exactos.
 /// </summary>
 public class OcrExtractionServiceTests
 {
     private const double DefaultHeight = 10;
-    private static readonly byte[] PngSignature = { 0x89, 0x50, 0x4E, 0x47 };
 
     private readonly ImagePreprocessor _preprocessor = new();
 
@@ -52,7 +51,7 @@ public class OcrExtractionServiceTests
     ];
 
     [Fact]
-    public async Task ExtractAsync_Image_ReturnsLinesWithConfidencesPreviewsAndHints()
+    public async Task ExtractAsync_Image_ReturnsLinesWithConfidencesAndHints()
     {
         var engine = new StubOcrEngine(_ => Page([
             Word("COMERCIAL", 20, 5),
@@ -76,11 +75,7 @@ public class OcrExtractionServiceTests
         Assert.Equal(70.4m, line.UnitCostConfidence);      // 70.44 → 70.4
         Assert.Equal("J-12345678-9", result.DetectedRif);
         Assert.Equal("COMERCIAL ESQUINA", result.DetectedSupplierName);
-
-        // Preview = PNG original decodificado (3 canales), antes del preprocesamiento (1 canal).
-        var preview = Assert.Single(result.PreviewPagesBase64);
-        using var decoded = DecodePreview(preview);
-        Assert.Equal(3, decoded.Channels());
+        Assert.Null(result.DetectedInvoiceNumber);
     }
 
     [Fact]
@@ -122,7 +117,51 @@ public class OcrExtractionServiceTests
     }
 
     [Fact]
-    public async Task ExtractAsync_Pdf_ReturnsLinesAndPreviewsInPageOrder()
+    public async Task ExtractAsync_WhenPrimaryYieldsNoUsableLines_FallsBackToRawResult()
+    {
+        // 8.170: si el pipeline actual no produce filas con identificador, se intenta el candidato
+        // raw y gana si aporta filas usables (caso real: la factura 4D mejorada).
+        var engine = new StubOcrEngine(call => call switch
+        {
+            0 => Page(Word("123", 40, 100), Word("456", 200, 100)),
+            1 => Page([.. GenericHeader(), .. DataRow("Café", "2", "4,50", 130)]),
+            _ => Page()
+        });
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Equal("Café", Assert.Single(result.Lines).Name);
+        Assert.Equal(2, engine.Calls);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_WhenPrimaryHasUsableLines_DoesNotRunFallback()
+    {
+        // Cortocircuito: con filas usables del pipeline actual no hay costo extra de OCR.
+        var engine = new StubOcrEngine(_ => Page([.. GenericHeader(), .. DataRow("Café", "2", "4,50", 130)]));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Single(result.Lines);
+        Assert.Equal(1, engine.Calls);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_WhenAllCandidatesFail_ReturnsEmptyAfterBoundedAttempts()
+    {
+        var engine = new StubOcrEngine(_ => Page(Word("123", 40, 100), Word("456", 200, 100)));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Empty(result.Lines);
+        Assert.Equal(3, engine.Calls);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_Pdf_ReturnsLinesInPageOrder()
     {
         var pdf = CreatePdf(3);
         var engine = new StubOcrEngine(call => call switch
@@ -143,16 +182,6 @@ public class OcrExtractionServiceTests
         Assert.Equal("Uno", result.Lines[0].Name);
         Assert.Equal("Dos", result.Lines[1].Name);
         Assert.Equal("Tres", result.Lines[2].Name);
-        Assert.Equal(3, result.PreviewPagesBase64.Count);
-
-        // Cada preview es el PNG decodificado de su página, en orden y sin preprocesar.
-        var decoder = new DocumentPageDecoder(new ImagePageDecoder(_preprocessor), new PdfPageDecoder(72));
-        var decodedPages = decoder.DecodePages(pdf, ".pdf");
-        Assert.Equal(decodedPages.Count, result.PreviewPagesBase64.Count);
-        for (var index = 0; index < decodedPages.Count; index++)
-        {
-            Assert.Equal(Convert.ToBase64String(decodedPages[index].EncodedBytes), result.PreviewPagesBase64[index]);
-        }
     }
 
     [Fact]
@@ -169,6 +198,83 @@ public class OcrExtractionServiceTests
         Assert.Empty(result.Lines);
         Assert.Null(result.DetectedRif);
         Assert.Null(result.DetectedSupplierName);
+        Assert.Null(result.DetectedInvoiceNumber);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_DetectsInvoiceNumberAfterFacturaKeyword()
+    {
+        // "FACTURA: *0238317" → la ventana de no-dígitos cubre ": *" y se captura el número.
+        var engine = new StubOcrEngine(_ => Page(
+            Word("FACTURA:", 40, 5),
+            Word("*0238317", 160, 5)));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Equal("0238317", result.DetectedInvoiceNumber);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_WithoutFacturaKeyword_ReturnsNullInvoiceNumber()
+    {
+        var engine = new StubOcrEngine(_ => Page(
+            Word("123", 40, 100),
+            Word("456", 200, 100),
+            Word("789", 340, 100)));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Null(result.DetectedInvoiceNumber);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_DetectsInvoiceNumberAfterLabelSuffix()
+    {
+        // "FACTURA NRO. 000123" → el texto intermedio entra en la ventana acotada de no-dígitos.
+        var engine = new StubOcrEngine(_ => Page(
+            Word("FACTURA", 40, 5),
+            Word("NRO.", 140, 5),
+            Word("000123", 240, 5)));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Equal("000123", result.DetectedInvoiceNumber);
+    }
+
+    [Theory]
+    [InlineData("TASA BCV:", "78,45", 78.45)]
+    [InlineData("TASA DE CAMBIO", "36.50", 36.50)]
+    [InlineData("FACTOR DE CAMBIO:", "42,1250", 42.125)]
+    [InlineData("TASA:", "Bs. 54,20", 54.20)]
+    public async Task ExtractAsync_DetectsExchangeRatePrintedOnInvoice(string label, string value, decimal expectedRate)
+    {
+        var engine = new StubOcrEngine(_ => Page(
+            Word(label, 40, 10),
+            Word(value, 180, 10)));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Equal(expectedRate, result.DetectedExchangeRate);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_IgnoresVatPercentageAndDetectsRealExchangeRate()
+    {
+        var engine = new StubOcrEngine(_ => Page(
+            Word("TASA", 40, 10),
+            Word("IVA", 90, 10),
+            Word("16%", 140, 10),
+            Word("TASA BCV:", 200, 10),
+            Word("79,80", 300, 10)));
+        var service = CreateService(engine);
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(CreatePng(), "factura.png", null, null));
+
+        Assert.Equal(79.80m, result.DetectedExchangeRate);
     }
 
     [Fact]
@@ -238,6 +344,65 @@ public class OcrExtractionServiceTests
         Assert.DoesNotContain(parameterTypes, name => name.Contains("DbContext", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void PreprocessWithTemplate_AppliesCropRotationContrastBrightnessAndFixedThreshold()
+    {
+        using var source = new Mat(100, 200, MatType.CV_8UC3, Scalar.White);
+        Cv2.Rectangle(source, new Rect(20, 20, 80, 40), new Scalar(80, 80, 80), thickness: -1);
+
+        var template = new SupplierOcrTemplateDto(
+            RotationDegrees: 90,
+            ContrastFactor: 1.4,
+            BrightnessDelta: -10,
+            BinarizationThreshold: 150,
+            RoiX: 0.10,
+            RoiY: 0.10,
+            RoiWidth: 0.50,
+            RoiHeight: 0.80);
+
+        using var processed = _preprocessor.PreprocessWithTemplate(source, template);
+
+        // 200x100 rotated around center (200x100) then cropped to 50%x80% = 100x80
+        Assert.Equal(100, processed.Cols);
+        Assert.Equal(80, processed.Rows);
+        Assert.Equal(MatType.CV_8UC1, processed.Type());
+    }
+
+    [Fact]
+    public async Task ExtractAsync_WithOcrTemplate_UsesTemplatePreprocessorAndPopulatesRawTextAndPreviewPng()
+    {
+        var engine = new StubOcrEngine(_ => Page([
+            .. GenericHeader(),
+            Word("HARINA PAN 1X40 UND", 40, 130),
+            Word("2", 200, 130),
+            Word("80,00", 340, 130)
+        ]));
+        var service = CreateService(engine);
+        var ocrTemplate = new SupplierOcrTemplateDto
+        {
+            CostAmountRule = OcrCostAmountRule.LineTotal,
+            FactorExtractionPattern = "AUTO"
+        };
+
+        var result = await service.ExtractAsync(new OcrExtractionRequestDto(
+            CreatePng(),
+            "factura.png",
+            7,
+            null,
+            ocrTemplate));
+
+        var line = Assert.Single(result.Lines);
+        Assert.Equal("HARINA PAN 1X40 UND", line.Name);
+        Assert.Equal(2m, line.Quantity);
+        Assert.Equal(40m, line.UnitCost);
+        Assert.Equal(40m, line.ExtractedConversionFactor);
+        Assert.NotNull(result.RawExtractedText);
+        Assert.Contains("HARINA PAN 1X40 UND", result.RawExtractedText);
+        Assert.NotNull(result.PreprocessedPreviewPng);
+        Assert.NotEmpty(result.PreprocessedPreviewPng!);
+        Assert.Equal(1, engine.Calls);
+    }
+
     private OcrExtractionService CreateService(IOcrEngine engine)
     {
         var documentDecoder = new DocumentPageDecoder(new ImagePageDecoder(_preprocessor), new PdfPageDecoder(72));
@@ -251,15 +416,6 @@ public class OcrExtractionServiceTests
         return _preprocessor.EncodePng(image);
     }
 
-    private static Mat DecodePreview(string base64)
-    {
-        var bytes = Convert.FromBase64String(base64);
-        Assert.Equal(PngSignature, bytes.Take(PngSignature.Length));
-        var decoded = Cv2.ImDecode(bytes, ImreadModes.Unchanged);
-        Assert.False(decoded.Empty(), "la preview debe ser un PNG decodificable");
-        return decoded;
-    }
-
     private sealed class StubOcrEngine : IOcrEngine
     {
         private readonly Func<int, OcrPage> _pageFactory;
@@ -269,6 +425,9 @@ public class OcrExtractionServiceTests
         {
             _pageFactory = pageFactory;
         }
+
+        /// <summary>8.170: llamadas acumuladas (verificación del cortocircuito de candidatos).</summary>
+        public int Calls => _calls;
 
         public Task<OcrPage> RecognizeAsync(OcrImage image, CancellationToken cancellationToken = default)
         {

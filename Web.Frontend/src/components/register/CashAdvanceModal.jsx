@@ -38,18 +38,24 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
   const [successInfo, setSuccessInfo] = useState(null);
 
   useEffect(() => {
-    if (isOpen) {
-      getActivePaymentMethods()
-        .then((methods) => {
-          // Filter out physical cash
-          const electronic = (methods || []).filter(m => !m.isCash && m.name.toLowerCase() !== 'efectivo');
-          setPaymentMethods(electronic);
-          if (electronic.length > 0) {
-            setSelectedMethodId(String(electronic[0].id));
-          }
-        })
-        .catch(err => console.error('Error cargando métodos de pago:', err));
-    }
+    if (!isOpen) return undefined;
+    let cancelled = false;
+    getActivePaymentMethods()
+      .then((methods) => {
+        if (cancelled) return;
+        // Filter out physical cash
+        const electronic = (methods || []).filter(m => !m.isCash && m.name.toLowerCase() !== 'efectivo');
+        setPaymentMethods(electronic);
+        if (electronic.length > 0) {
+          setSelectedMethodId((prev) => (prev && electronic.some(m => String(m.id) === String(prev)) ? prev : String(electronic[0].id)));
+        }
+      })
+      .catch(err => {
+        if (!cancelled) console.error('Error cargando métodos de pago:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen]);
 
   const handleClose = () => {

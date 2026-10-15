@@ -1,13 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
+import { getCategories, toCategoryOptions } from '../services/categoriesApi';
 import { Package, Search, Loader2, RefreshCw, Tag, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD, resolveBsSPrice } from '../utils/formatters';
+import { usdToBs } from '../utils/money';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import useDebounce from '../hooks/useDebounce';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
 import './CatalogPage.css';
+
+/**
+ * 8.179-T3 (S4): URL del fetch paginado del catálogo. `categoryId` viaja sólo cuando hay
+ * selección; el backend filtra por la categoría y todo su subárbol.
+ */
+export function buildProductsQuery({ page, pageSize, filter, sortBy, isDescending, categoryId }) {
+  const filterParam = filter ? `&filter=${encodeURIComponent(filter)}` : '';
+  const sortParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}&isDescending=${isDescending}` : '';
+  const categoryParam = categoryId ? `&categoryId=${encodeURIComponent(categoryId)}` : '';
+  return `/api/products?page=${page}&pageSize=${pageSize}${filterParam}${sortParam}${categoryParam}`;
+}
+
+/** Al cambiar el filtro de categoría ('' = Todas las categorías) se vuelve a la página 1. */
+export function resolveCategorySelection(value) {
+  return { categoryId: value || '', page: 1 };
+}
 
 export default function CatalogPage() {
   return (
@@ -45,15 +63,41 @@ function CatalogPageContent() {
   // sort/paginación/búsqueda solo cambian estado; el efecto dispara un único fetch por cambio.
   const [reloadToken, setReloadToken] = useState(0);
 
-  const toBsSCeiling = (usd, rate) => (usd > 0 && rate > 0 ? Math.ceil(usd * rate * 100) / 100 : 0);
+  // 8.179-T3 (S4): filtro de categorías. La carga es no bloqueante: si falla, el select
+  // queda sólo con "Todas las categorías" y el catálogo sigue operativo.
+  const [categories, setCategories] = useState([]);
+  const [categoryId, setCategoryId] = useState('');
+  const categoryOptions = toCategoryOptions(categories);
+
+  const toBsSCeiling = usdToBs;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getCategories(controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted) setCategories(data);
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          console.error('[CatalogPage] Error cargando categorías:', err);
+        }
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
-    const filterParam = debouncedSearch ? `&filter=${encodeURIComponent(debouncedSearch)}` : '';
-    const sortParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}&isDescending=${sortDescending}` : '';
+    const url = buildProductsQuery({
+      page: currentPage,
+      pageSize,
+      filter: debouncedSearch,
+      sortBy,
+      isDescending: sortDescending,
+      categoryId,
+    });
 
-    api.get(`/api/products?page=${currentPage}&pageSize=${pageSize}${filterParam}${sortParam}`, controller.signal)
+    api.get(url, controller.signal)
       .then((data) => {
         const items = data?.items || (Array.isArray(data) ? data : []);
         const total = data?.totalCount ?? items.length;
@@ -79,7 +123,7 @@ function CatalogPageContent() {
       });
 
     return () => controller.abort();
-  }, [debouncedSearch, sortBy, sortDescending, currentPage, reloadToken]);
+  }, [debouncedSearch, sortBy, sortDescending, currentPage, reloadToken, categoryId]);
 
   const handleSort = useCallback((column) => {
     if (sortBy === column) {
@@ -120,6 +164,12 @@ function CatalogPageContent() {
     setCurrentPage(1);
   };
 
+  const handleCategoryChange = (e) => {
+    const next = resolveCategorySelection(e.target.value);
+    setCategoryId(next.categoryId);
+    setCurrentPage(next.page);
+  };
+
   return (
     <div className="catalog-page">
       {/* ── Encabezado Principal ── */}
@@ -156,6 +206,24 @@ function CatalogPageContent() {
               <Search size={18} className="cat-search-icon opacity-50" />
             </div>
           </form>
+
+          {/* ── Filtro de Categorías del Catálogo (incluye subcategorías) ── */}
+          <div className="flex-align-center cat-gap-6">
+            <span className="text-xs text-muted font-medium text-nowrap">Categoría:</span>
+            <select
+              className="form-control form-control-sm cat-select-category"
+              value={categoryId}
+              onChange={handleCategoryChange}
+              title="Filtrar por categoría (incluye subcategorías)"
+            >
+              <option value="">Todas las categorías</option>
+              {categoryOptions.map((option) => (
+                <option key={option.value} value={option.value} title={option.path}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
           {/* ── 1. Selector Desplegable de Moneda (Bs.S por defecto) ── */}
           <div className="flex-align-center cat-gap-6">

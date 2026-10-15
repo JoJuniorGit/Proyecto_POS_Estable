@@ -77,6 +77,10 @@ public partial class InventoryService
             // AUD-23: identificador de lote compartido por todos los movimientos de esta llamada.
             var importReason = $"Importación masiva IMP-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
 
+            // 8.179-T1 (S5): índice de categorías por ruta normalizada ("A>B") para resolver o
+            // auto-crear la jerarquía del archivo dentro de la misma transacción.
+            var categoriesByPath = await BuildCategoryIndexByPathAsync(cancellationToken);
+
             foreach (var dto in productList)
             {
                 if (!IsImportable(dto)) continue; // 8I-M3: validación en servidor, no dto.IsValid
@@ -224,11 +228,19 @@ public partial class InventoryService
                                 Reason = importReason,
                                 SaleId = null,
                                 MovementDate = DateTime.UtcNow,
-                                UserId = _currentUserService?.UserId
+                                UserId = _currentUserService?.UserId,
+                                // 8.177-T1: la importación masiva carga/ajusta stock desde archivo
+                                // sin factura proveedor asociada; se clasifica Importación + Ajuste
+                                // de importación (no Entrada por Compra: esa exige referencia de
+                                // factura y se emite en SupplierInvoiceService.Apply).
+                                OriginType = StockMovementOriginType.Import,
+                                ReasonCode = StockMovementReason.ImportAdjustment,
+                                UnitCostUSD = existingProduct.CostPriceUSD
                             });
                         }
 
                         existingProduct.UpdatedAt = DateTime.UtcNow;
+                        await ApplyImportedCategoryAsync(dto, existingProduct, categoriesByPath, cancellationToken);
                         updated++;
                     }
                 }
@@ -356,12 +368,18 @@ public partial class InventoryService
                             Reason = importReason,
                             SaleId = null,
                             MovementDate = DateTime.UtcNow,
-                            UserId = _currentUserService?.UserId
+                            UserId = _currentUserService?.UserId,
+                            // 8.177-T1: mismo criterio que el merge de importación (ver arriba):
+                            // origen Importación + ajuste por archivo, sin referencia de factura.
+                            OriginType = StockMovementOriginType.Import,
+                            ReasonCode = StockMovementReason.ImportAdjustment,
+                            UnitCostUSD = newProduct.CostPriceUSD
                         });
                     }
 
                     _context.Products.Add(newProduct);
                     existingProducts[skuClean] = newProduct;
+                    await ApplyImportedCategoryAsync(dto, newProduct, categoriesByPath, cancellationToken);
                     added++;
                 }
             }
@@ -384,6 +402,103 @@ public partial class InventoryService
                 throw;
             }
         });
+    }
+
+    /// <summary>
+    /// 8.179-T1 (S5): índice de categorías por ruta normalizada ("ALIMENTOS>LÁCTEOS") construido
+    /// en memoria; las creadas por el lote se agregan al mismo índice (con navegación al padre aún
+    /// sin Id, EF fija el FK al guardar).
+    /// </summary>
+    private async Task<Dictionary<string, Category>> BuildCategoryIndexByPathAsync(CancellationToken cancellationToken)
+    {
+        var categories = await _context.Categories.ToListAsync(cancellationToken);
+        var paths = CategoryHierarchy.BuildPaths(categories, normalized: true);
+
+        var index = new Dictionary<string, Category>(StringComparer.OrdinalIgnoreCase);
+        foreach (var category in categories)
+        {
+            index[paths[category.Id]] = category;
+        }
+
+        return index;
+    }
+
+    /// <summary>
+    /// 8.179-T1 (S5): resuelve la ruta jerárquica separada por '>' contra el índice (case-insensitive
+    /// vía NormalizedName) y auto-crea los segmentos faltantes de raíz a hoja. Devuelve la hoja.
+    /// </summary>
+    private Category? ResolveOrCreateCategoryPath(string? categoryPath, Dictionary<string, Category> categoriesByPath)
+    {
+        if (string.IsNullOrWhiteSpace(categoryPath))
+        {
+            return null;
+        }
+
+        var segments = categoryPath
+            .Split('>', StringSplitOptions.RemoveEmptyEntries)
+            .Select(segment => segment.Trim())
+            .Where(segment => segment.Length > 0)
+            .ToList();
+
+        if (segments.Count == 0)
+        {
+            return null;
+        }
+
+        Category? parent = null;
+        var path = string.Empty;
+        foreach (var segment in segments)
+        {
+            var normalized = segment.ToUpperInvariant();
+            path = path.Length == 0 ? normalized : path + ">" + normalized;
+
+            if (!categoriesByPath.TryGetValue(path, out var category))
+            {
+                category = new Category
+                {
+                    Name = segment,
+                    NormalizedName = normalized,
+                    ParentCategory = parent
+                };
+                _context.Categories.Add(category);
+                categoriesByPath[path] = category;
+            }
+
+            parent = category;
+        }
+
+        return parent;
+    }
+
+    /// <summary>
+    /// 8.179-T1 (S5): asigna la categoría HOJA de la ruta al producto importado, reemplazando las
+    /// asignaciones previas cuando el archivo trae categoría (celda vacía = no tocar).
+    /// </summary>
+    private async Task ApplyImportedCategoryAsync(Core.DTOs.ProductImportDto dto, Product product, Dictionary<string, Category> categoriesByPath, CancellationToken cancellationToken)
+    {
+        var leaf = ResolveOrCreateCategoryPath(dto.CategoryPath, categoriesByPath);
+        if (leaf == null)
+        {
+            return;
+        }
+
+        if (product.Id != 0)
+        {
+            var previous = await _context.ProductCategories
+                .Where(pc => pc.ProductId == product.Id)
+                .ToListAsync(cancellationToken);
+            _context.ProductCategories.RemoveRange(previous);
+        }
+        else
+        {
+            // Producto nuevo aún sin Id: purgar asignaciones pendientes del mismo lote por navegación.
+            var pending = _context.ProductCategories.Local
+                .Where(pc => ReferenceEquals(pc.Product, product))
+                .ToList();
+            _context.ProductCategories.RemoveRange(pending);
+        }
+
+        _context.ProductCategories.Add(new ProductCategory { Product = product, Category = leaf });
     }
 
 }

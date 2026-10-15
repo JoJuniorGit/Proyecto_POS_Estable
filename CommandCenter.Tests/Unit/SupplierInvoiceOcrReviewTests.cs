@@ -18,8 +18,8 @@ using ClientSupplierInvoiceService = Desktop.Client.Services.ISupplierInvoiceSer
 namespace CommandCenter.Tests.Unit;
 
 /// <summary>
-/// 8.147-S4/S5/S6 (T7): edición de campos OCR con bandas de confianza, correcciones al confirm,
-/// etiqueta de página del panel de previews y gating de comandos sin UI (headless).
+/// 8.147-S4/S5/S6 (T7) + 8.160-S2: edición de campos OCR con bandas de confianza, correcciones
+/// al confirm, número de factura detectado y gating de comandos sin UI (headless).
 /// </summary>
 public sealed class SupplierInvoiceOcrReviewTests
 {
@@ -245,41 +245,22 @@ public sealed class SupplierInvoiceOcrReviewTests
     }
 
     [Fact]
-    public void OcrPageLabel_AndSelectedPreview_TrackPagesAndIndex()
-    {
-        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
-
-        Assert.Equal(string.Empty, viewModel.OcrPageLabel);
-        Assert.Null(viewModel.OcrSelectedPreviewBase64);
-
-        viewModel.OcrPreviewPagesBase64 = new[] { "p1", "p2", "p3" };
-
-        Assert.Equal("Página 1/3", viewModel.OcrPageLabel);
-        Assert.Equal("p1", viewModel.OcrSelectedPreviewBase64);
-
-        viewModel.OcrNextPageCommand.Execute(null);
-
-        Assert.Equal("Página 2/3", viewModel.OcrPageLabel);
-        Assert.Equal("p2", viewModel.OcrSelectedPreviewBase64);
-
-        viewModel.OcrPreviewPagesBase64 = new[] { "solo" };
-
-        Assert.Equal("Página 1/1", viewModel.OcrPageLabel);
-        Assert.Equal("solo", viewModel.OcrSelectedPreviewBase64);
-    }
-
-    [Fact]
-    public void OcrPageLabel_RaisesPropertyChangedOnIndexAndPageCountChanges()
+    public void OcrDetectedInvoiceNumber_TracksValueAndRaisesPropertyChanged()
     {
         var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
         var changed = new List<string?>();
         viewModel.PropertyChanged += (_, eventArgs) => changed.Add(eventArgs.PropertyName);
 
-        viewModel.OcrPreviewPagesBase64 = new[] { "p1", "p2" };
-        viewModel.OcrNextPageCommand.Execute(null);
+        Assert.Null(viewModel.OcrDetectedInvoiceNumber);
 
-        Assert.Contains(nameof(SupplierInvoiceViewModel.OcrPageLabel), changed);
-        Assert.Contains(nameof(SupplierInvoiceViewModel.OcrSelectedPreviewBase64), changed);
+        viewModel.OcrDetectedInvoiceNumber = "0238317";
+
+        Assert.Equal("0238317", viewModel.OcrDetectedInvoiceNumber);
+        Assert.Contains(nameof(SupplierInvoiceViewModel.OcrDetectedInvoiceNumber), changed);
+
+        viewModel.OcrDetectedInvoiceNumber = null;
+
+        Assert.Null(viewModel.OcrDetectedInvoiceNumber);
     }
 
     [Fact]
@@ -394,7 +375,7 @@ public sealed class SupplierInvoiceOcrReviewTests
             FileContentType = multipart.First().Headers.ContentType?.MediaType;
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = JsonContent.Create(new OcrExtractionResultDto([], [], null, null))
+                Content = JsonContent.Create(new OcrExtractionResultDto([], null, null, null))
             });
         }
     }

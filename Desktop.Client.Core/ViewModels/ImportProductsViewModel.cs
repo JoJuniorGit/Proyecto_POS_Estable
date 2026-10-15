@@ -105,7 +105,8 @@ public partial class ImportProductsViewModel : ObservableObject
         "ProductType",
         "GroupNameOrKey",
         "IsStockShared",
-        "ConversionFactor"
+        "ConversionFactor",
+        "CategoryPath"
     };
 
     public static string MapHeaderToProperty(string header)
@@ -188,6 +189,14 @@ public partial class ImportProductsViewModel : ObservableObject
             cleanHeader.Contains("ConversionFactor", StringComparison.OrdinalIgnoreCase) ||
             cleanHeader.Contains("Equivalencia", StringComparison.OrdinalIgnoreCase))
             return "ConversionFactor";
+
+        // 8.179-T2 (S5-UI): ruta jerárquica separada por '>' (ej. "Alimentos > Lácteos"); el backend
+        // auto-crea los segmentos inexistentes. El detector es Contains para cubrir la columna
+        // "Categoría"/"Categorías"/"Category" del export y de la plantilla.
+        if (cleanHeader.Contains("Categoría", StringComparison.OrdinalIgnoreCase) ||
+            cleanHeader.Contains("Categoria", StringComparison.OrdinalIgnoreCase) ||
+            cleanHeader.Contains("Category", StringComparison.OrdinalIgnoreCase))
+            return "CategoryPath";
 
         return "Ignore";
     }

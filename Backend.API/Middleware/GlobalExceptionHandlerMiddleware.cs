@@ -55,6 +55,10 @@ public class GlobalExceptionHandlerMiddleware
                     "IX_Products_Barcode" => "El código de barras ya está asignado a otro producto registrado.",
                     "IX_Products_SKU" => "El código SKU ya está registrado en el inventario.",
                     "IX_Customers_CedulaOrRif" => "Ya existe un cliente registrado con esta cédula o RIF.",
+                    "IX_Suppliers_NormalizedRifOrNit" => "Ya existe un proveedor registrado con ese RIF o NIT.",
+                    "IX_SupplierColumnMappings_SupplierId" => "El proveedor ya posee una plantilla de mapeo de columnas registrada.",
+                    "IX_SupplierProductCodes_Supplier_Code" => "El código de proveedor ya está asociado a un producto para este proveedor.",
+                    "IX_SupplierProductFactors_Supplier_Product" => "El factor de conversión ya está registrado para este proveedor y producto.",
                     _ => "El registro ya existe o infringe una restricción de unicidad en el sistema."
                 };
 
@@ -100,6 +104,22 @@ public class GlobalExceptionHandlerMiddleware
                     "Bad Request",
                     "https://tools.ietf.org/html/rfc7231#section-6.5.1",
                     "ForeignKeyViolation",
+                    friendlyMessage,
+                    friendlyMessage,
+                    requestPath,
+                    sqlState);
+                return;
+            }
+
+            if (sqlState == "22003") // numeric_value_out_of_range
+            {
+                string friendlyMessage = "Uno o más valores numéricos exceden el rango permitido por el sistema.";
+                await WriteProblemDetailsAsync(
+                    context,
+                    StatusCodes.Status400BadRequest,
+                    "Bad Request",
+                    "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                    "NumericValueOutOfRange",
                     friendlyMessage,
                     friendlyMessage,
                     requestPath,
@@ -192,10 +212,10 @@ public class GlobalExceptionHandlerMiddleware
             return;
         }
 
-        // 3. Known domain & business exceptions
+        // 3. Known domain & business exceptions (SRE-12: log 4xx as warning, reserve LogCrash for 5xx)
         if (exception is KeyNotFoundException)
         {
-            AppLogger.LogCrash(exception, $"Handled KeyNotFoundException in Request: {requestPath}");
+            AppLogger.LogWarn($"Handled KeyNotFoundException (404) in Request: {requestPath} - {exception.Message}", nameof(GlobalExceptionHandlerMiddleware));
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status404NotFound,
@@ -211,7 +231,7 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is UnauthorizedAccessException)
         {
-            AppLogger.LogCrash(exception, $"Handled UnauthorizedAccessException in Request: {requestPath}");
+            AppLogger.LogWarn($"Handled UnauthorizedAccessException (403) in Request: {requestPath} - {exception.Message}", nameof(GlobalExceptionHandlerMiddleware));
             await WriteProblemDetailsAsync(
                 context,
                 StatusCodes.Status403Forbidden,
@@ -225,9 +245,26 @@ public class GlobalExceptionHandlerMiddleware
             return;
         }
 
+        if (exception is OverflowException)
+        {
+            AppLogger.LogWarn($"Handled OverflowException (400) in Request: {requestPath} - {exception.Message}", nameof(GlobalExceptionHandlerMiddleware));
+            string msg = "Uno o más valores numéricos exceden el rango permitido por el sistema.";
+            await WriteProblemDetailsAsync(
+                context,
+                StatusCodes.Status400BadRequest,
+                "Bad Request",
+                "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                "NumericValueOutOfRange",
+                msg,
+                msg,
+                requestPath,
+                null);
+            return;
+        }
+
         if (exception is ArgumentException)
         {
-            AppLogger.LogCrash(exception, $"Handled ArgumentException in Request: {requestPath}");
+            AppLogger.LogWarn($"Handled ArgumentException (400) in Request: {requestPath} - {exception.Message}", nameof(GlobalExceptionHandlerMiddleware));
             bool isDomain = IsDomainException(exception);
             string msg = isDomain ? exception.Message : "Parámetros de entrada inválidos.";
             await WriteProblemDetailsAsync(
@@ -245,7 +282,7 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
         {
-            AppLogger.LogCrash(exception, $"Handled DbUpdateConcurrencyException in Request: {requestPath}");
+            AppLogger.LogWarn($"Handled DbUpdateConcurrencyException (409) in Request: {requestPath} - {exception.Message}", nameof(GlobalExceptionHandlerMiddleware));
             string msg = "El registro fue modificado concurrentemente por otro usuario o proceso. Por favor recargue e intente nuevamente.";
             await WriteProblemDetailsAsync(
                 context,
@@ -262,7 +299,7 @@ public class GlobalExceptionHandlerMiddleware
 
         if (exception is InvalidOperationException)
         {
-            AppLogger.LogCrash(exception, $"Handled InvalidOperationException in Request: {requestPath}");
+            AppLogger.LogWarn($"Handled InvalidOperationException (409) in Request: {requestPath} - {exception.Message}", nameof(GlobalExceptionHandlerMiddleware));
             bool isDomain = IsDomainException(exception);
             string msg = isDomain ? exception.Message : "Operación inválida debido al estado actual del sistema.";
             await WriteProblemDetailsAsync(

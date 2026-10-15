@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { formatNumberEs, amountToCents } from '../../utils/formatters';
+import { bsToUsd } from '../../utils/money';
 import './PaymentForm.css';
 
 export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAddPayment }) {
@@ -65,14 +66,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
   }, [hasDecimalError, amountText, isValidNum]);
 
   const finalAmountBsS = parsedCents / 100;
-  const usdPreview = (() => {
-    if (exchangeRate <= 0 || parsedCents <= 0) return '0.00';
-    // Equivalencia USD redondeada a 2 decimales en escala entera (evita drift de punto flotante)
-    const rateCents = Math.round(exchangeRate * 100);
-    if (rateCents <= 0) return '0.00';
-    const usdCents = Math.round((parsedCents * 100) / rateCents);
-    return (usdCents / 100).toFixed(2);
-  })();
+  const usdPreview = bsToUsd(finalAmountBsS, exchangeRate).toFixed(2);
 
   const handleSubmit = (e) => {
     e.preventDefault();

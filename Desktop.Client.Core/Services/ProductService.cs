@@ -84,9 +84,11 @@ public class ProductService : IProductService
 
     private class DeleteResultResponse { public string? Result { get; set; } }
 
-    public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason)
+    public async Task AdjustStockAsync(int productId, decimal quantityChange, string reason, Core.Entities.StockMovementReason? reasonCode = null, string? observation = null)
     {
-        var dto = new { QuantityChange = quantityChange, Reason = reason };
+        // 8.177-T3 (S1): el motivo estandarizado viaja numérico (contrato T1/T2) y la observación
+        // es obligatoria en la UI; los defaults preservan las llamadas legadas.
+        var dto = new { QuantityChange = quantityChange, Reason = reason, ReasonCode = reasonCode, Observation = observation };
         var response = await _httpClient.PostAsJsonAsync($"api/products/{productId}/adjust-stock", dto);
         if (!response.IsSuccessStatusCode)
         {
@@ -127,7 +129,7 @@ public class ProductService : IProductService
         }
     }
 
-    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default)
+    public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default, int? categoryId = null)
     {
         var url = $"api/products?filter={System.Uri.EscapeDataString(filter ?? string.Empty)}&page={page}&pageSize={pageSize}";
         if (!string.IsNullOrWhiteSpace(statusFilter))
@@ -137,6 +139,11 @@ public class ProductService : IProductService
         if (!string.IsNullOrWhiteSpace(sortBy))
         {
             url += $"&sortBy={System.Uri.EscapeDataString(sortBy)}&isDescending={isDescending}";
+        }
+        // 8.179-T2 (S4): filtro por categoría (subárbol) solo cuando hay selección; "Todas" viaja null.
+        if (categoryId.HasValue)
+        {
+            url += $"&categoryId={categoryId.Value}";
         }
         return await _httpClient.GetFromJsonAsync<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>>(url, token)
                ?? new Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>();
@@ -149,8 +156,9 @@ public class ProductService : IProductService
             return await _httpClient.GetFromJsonAsync<List<Core.DTOs.ProductDto>>($"api/products/{parentProductId}/variants")
                    ?? new List<Core.DTOs.ProductDto>();
         }
-        catch
+        catch (System.Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogError($"Error loading variants for parent {parentProductId}: {ex.Message}", nameof(ProductService));
             return new List<Core.DTOs.ProductDto>();
         }
     }
@@ -162,8 +170,9 @@ public class ProductService : IProductService
             return await _httpClient.GetFromJsonAsync<List<Core.DTOs.ProductDto>>("api/products/parents")
                    ?? new List<Core.DTOs.ProductDto>();
         }
-        catch
+        catch (System.Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogError($"Error loading parent products: {ex.Message}", nameof(ProductService));
             return new List<Core.DTOs.ProductDto>();
         }
     }
@@ -212,5 +221,47 @@ public class ProductService : IProductService
         var rawJson = await response.Content.ReadAsStringAsync(token);
         return System.Text.Json.JsonSerializer.Deserialize<Core.DTOs.ProductDto>(rawJson, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
                ?? throw new System.Exception("No se pudo deserializar el producto desvinculado devuelto.");
+    }
+
+    public async Task<Core.DTOs.BulkPriceUpdateResultDto> PreviewBulkPricesAsync(Core.DTOs.BulkPriceUpdateRequestDto request, System.Threading.CancellationToken token = default)
+    {
+        // 8.181-T2 (S5): vista previa sin escrituras; comparte el resultado congelado con el apply.
+        var response = await _httpClient.PostAsJsonAsync("api/products/bulk-prices/preview", request, token);
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(token);
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
+        }
+
+        var rawJson = await response.Content.ReadAsStringAsync(token);
+        return System.Text.Json.JsonSerializer.Deserialize<Core.DTOs.BulkPriceUpdateResultDto>(
+                   rawJson,
+                   new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+               ?? throw new System.Exception("No se pudo deserializar la vista previa de precios.");
+    }
+
+    public async Task<Core.DTOs.BulkPriceUpdateResultDto> ApplyBulkPricesAsync(Core.DTOs.BulkPriceUpdateRequestDto request, System.Threading.CancellationToken token = default)
+    {
+        // 8.181-T2 (S5): el 409 de concurrencia viaja tipado para que la UI lo distinga de un 400.
+        var response = await _httpClient.PostAsJsonAsync("api/products/bulk-prices/apply", request, token);
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync(token);
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                throw new System.Net.Http.HttpRequestException(
+                    ApiErrorParser.FromBody(err, "Conflicto de concurrencia al aplicar la actualización masiva de precios."),
+                    null,
+                    System.Net.HttpStatusCode.Conflict);
+            }
+
+            throw new System.Exception(ApiErrorParser.FromBody(err, $"Error HTTP {(int)response.StatusCode}"));
+        }
+
+        var rawJson = await response.Content.ReadAsStringAsync(token);
+        return System.Text.Json.JsonSerializer.Deserialize<Core.DTOs.BulkPriceUpdateResultDto>(
+                   rawJson,
+                   new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+               ?? throw new System.Exception("No se pudo deserializar el resultado de la actualización masiva de precios.");
     }
 }

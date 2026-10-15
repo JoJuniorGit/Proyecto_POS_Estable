@@ -51,8 +51,9 @@ public partial class SupplierInvoiceService
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         var supplierCodes = lines
-            .Select(line => line.SupplierCode)
-            .OfType<string>()
+            .SelectMany(line => new[] { line.SupplierCode, line.Name })
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code!.Trim())
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
@@ -74,7 +75,7 @@ public partial class SupplierInvoiceService
             }
         }
 
-        var productsBySupplierCode = new Dictionary<string, Product>(StringComparer.Ordinal);
+        var productsBySupplierCode = new Dictionary<string, List<Product>>(StringComparer.OrdinalIgnoreCase);
         if (supplierCodes.Length > 0)
         {
             var supplierCodeProducts = await (
@@ -90,9 +91,20 @@ public partial class SupplierInvoiceService
 
             foreach (var entry in supplierCodeProducts)
             {
-                if (entry.Code is not null)
+                if (entry.Code is null)
                 {
-                    productsBySupplierCode.TryAdd(entry.Code, entry.Product);
+                    continue;
+                }
+
+                if (!productsBySupplierCode.TryGetValue(entry.Code, out var matchedList))
+                {
+                    matchedList = new List<Product>();
+                    productsBySupplierCode[entry.Code] = matchedList;
+                }
+
+                if (matchedList.All(existing => existing.Id != entry.Product.Id))
+                {
+                    matchedList.Add(entry.Product);
                 }
             }
         }
@@ -101,8 +113,8 @@ public partial class SupplierInvoiceService
     }
 
     /// <summary>
-    /// Prioridad barcode > supplierCode sobre los diccionarios precargados; null cuando no hay
-    /// match exacto y corresponde evaluar el fallback fuzzy.
+    /// Prioridad barcode > supplierCode/alias de descripción sobre los diccionarios precargados;
+    /// null cuando no hay match exacto y corresponde evaluar el fallback fuzzy.
     /// </summary>
     private static ProductMatch? TryResolveExactMatch(MatchLookups lookups, StageLineDto line)
     {
@@ -113,60 +125,100 @@ public partial class SupplierInvoiceService
         }
 
         if (line.SupplierCode is not null
-            && lookups.ProductsBySupplierCode.TryGetValue(line.SupplierCode, out var supplierCodeProduct))
+            && lookups.ProductsBySupplierCode.TryGetValue(line.SupplierCode, out var supplierCodeProducts)
+            && supplierCodeProducts.Count > 0)
         {
-            return new ProductMatch(supplierCodeProduct, MatchMethod.SupplierCode);
+            return new ProductMatch(
+                supplierCodeProducts[0],
+                MatchMethod.SupplierCode,
+                supplierCodeProducts.Count > 1 ? supplierCodeProducts.Skip(1).ToArray() : null);
+        }
+
+        if (line.Name is not null
+            && lookups.ProductsBySupplierCode.TryGetValue(line.Name, out var supplierNameProducts)
+            && supplierNameProducts.Count > 0)
+        {
+            return new ProductMatch(
+                supplierNameProducts[0],
+                MatchMethod.SupplierCode,
+                supplierNameProducts.Count > 1 ? supplierNameProducts.Skip(1).ToArray() : null);
         }
 
         return null;
     }
 
-    private async Task<ProductMatch> FallbackFuzzyMatchAsync(
-        string? productName,
+    /// <summary>
+    /// 8.169/PERF-01: deduplica los nombres sin match exacto por stage y materializa los productos
+    /// candidatos en una única consulta <c>WHERE Id IN (...)</c>.
+    /// </summary>
+    private async Task<Dictionary<string, ProductMatch>> ResolveFuzzyMatchesBatchAsync(
+        IReadOnlyList<string> unmatchedNames,
         double similarityThreshold,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(productName))
-        {
-            return new ProductMatch(null, MatchMethod.None);
-        }
-
-        var candidates = await _similaritySearch.FindCandidatesAsync(
-            productName,
-            similarityThreshold,
-            cancellationToken);
-        var eligibleCandidates = candidates
-            .Where(candidate => candidate.ProductId > 0
-                && double.IsFinite(candidate.Similarity)
-                && candidate.Similarity >= similarityThreshold
-                && candidate.Similarity <= 1d)
-            .OrderByDescending(candidate => candidate.Similarity)
-            .ThenBy(candidate => candidate.ProductId)
-            .ToList();
-
-        if (eligibleCandidates.Count == 0)
-        {
-            return new ProductMatch(null, MatchMethod.None);
-        }
-
-        var candidateIds = eligibleCandidates
-            .Select(candidate => candidate.ProductId)
-            .Distinct()
+        var matchesByName = new Dictionary<string, ProductMatch>(StringComparer.Ordinal);
+        var distinctNames = unmatchedNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.Ordinal)
             .ToArray();
+        if (distinctNames.Length == 0)
+        {
+            return matchesByName;
+        }
+
+        var candidatesByName = new Dictionary<string, List<SupplierProductSimilarityCandidate>>(StringComparer.Ordinal);
+        var allCandidateIds = new HashSet<int>();
+        foreach (var productName in distinctNames)
+        {
+            var candidates = await _similaritySearch.FindCandidatesAsync(
+                productName,
+                similarityThreshold,
+                cancellationToken);
+            var eligibleCandidates = candidates
+                .Where(candidate => candidate.ProductId > 0
+                    && double.IsFinite(candidate.Similarity)
+                    && candidate.Similarity >= similarityThreshold
+                    && candidate.Similarity <= 1d)
+                .OrderByDescending(candidate => candidate.Similarity)
+                .ThenBy(candidate => candidate.ProductId)
+                .ToList();
+
+            if (eligibleCandidates.Count == 0)
+            {
+                continue;
+            }
+
+            candidatesByName[productName] = eligibleCandidates;
+            foreach (var candidate in eligibleCandidates)
+            {
+                allCandidateIds.Add(candidate.ProductId);
+            }
+        }
+
+        if (allCandidateIds.Count == 0)
+        {
+            return matchesByName;
+        }
+
+        var candidateIds = allCandidateIds.ToArray();
         var productsById = await _context.Products
             .AsNoTracking()
             .Where(product => !product.IsDeleted && candidateIds.Contains(product.Id))
             .ToDictionaryAsync(product => product.Id, cancellationToken);
 
-        foreach (var candidate in eligibleCandidates)
+        foreach (var (productName, eligibleCandidates) in candidatesByName)
         {
-            if (productsById.TryGetValue(candidate.ProductId, out var product))
+            foreach (var candidate in eligibleCandidates)
             {
-                return new ProductMatch(product, MatchMethod.Fuzzy);
+                if (productsById.TryGetValue(candidate.ProductId, out var product))
+                {
+                    matchesByName[productName] = new ProductMatch(product, MatchMethod.Fuzzy);
+                    break;
+                }
             }
         }
 
-        return new ProductMatch(null, MatchMethod.None);
+        return matchesByName;
     }
 
     private static SupplierInvoiceLine CreateStagedLine(
@@ -233,9 +285,9 @@ public partial class SupplierInvoiceService
 
     private sealed record MatchLookups(
         Dictionary<string, Product> ProductsByBarcode,
-        Dictionary<string, Product> ProductsBySupplierCode);
+        Dictionary<string, List<Product>> ProductsBySupplierCode);
 
-    private sealed record ProductMatch(Product? Product, MatchMethod Method);
+    private sealed record ProductMatch(Product? Product, MatchMethod Method, IReadOnlyList<Product>? AdditionalProducts = null);
 }
 
 public sealed class PostgresSupplierProductSimilaritySearch : ISupplierProductSimilaritySearch
@@ -270,7 +322,10 @@ public sealed class PostgresSupplierProductSimilaritySearch : ISupplierProductSi
 
         return await _context.Products
             .AsNoTracking()
-            .Where(product => !product.IsDeleted)
+            .Where(product => !product.IsDeleted
+                && product.IsActive
+                && !product.IsGroupHeader
+                && EF.Functions.TrigramsAreSimilar(product.Name, productName))
             .Select(product => new
             {
                 product.Id,

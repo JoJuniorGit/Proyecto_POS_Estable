@@ -116,6 +116,62 @@ public class SupplierInvoiceStagingBatchingTests
     }
 
     [Fact]
+    public async Task StageAsync_DuplicateUnmatchedNames_DeduplicatesFuzzyLookupsAndBatchesProductFetch()
+    {
+        await using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var interceptor = new CountingCommandInterceptor();
+        await using var context = await CreateSqliteContextAsync(connection, interceptor);
+        var similaritySearch = new Mock<ISupplierProductSimilaritySearch>();
+        var service = CreateService(context, similaritySearch);
+
+        var supplier = await AddSupplierAsync(context);
+        var firstProduct = CreateProduct("Fuzzy Match Alpha", "FUZ-A", 10m);
+        var secondProduct = CreateProduct("Fuzzy Match Beta", "FUZ-B", 15m);
+        context.Products.AddRange(firstProduct, secondProduct);
+        await context.SaveChangesAsync();
+
+        similaritySearch.Setup(search => search.FindCandidatesAsync(
+                "Harina Pan 1kg",
+                Threshold,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new SupplierProductSimilarityCandidate(firstProduct.Id, 0.85d) });
+        similaritySearch.Setup(search => search.FindCandidatesAsync(
+                "Arroz Mary 1kg",
+                Threshold,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new SupplierProductSimilarityCandidate(secondProduct.Id, 0.78d) });
+
+        interceptor.Reset();
+
+        var invoice = await service.StageAsync(new StageSupplierInvoiceRequestDto(
+            supplier.Id,
+            null,
+            null,
+            CreateMapping(),
+            new[]
+            {
+                new StageLineDto(null, null, "Harina Pan 1kg", 2m, 10m),
+                new StageLineDto(null, null, "Harina Pan 1kg", 3m, 10m),
+                new StageLineDto(null, null, "Arroz Mary 1kg", 1m, 15m),
+                new StageLineDto(null, null, "Arroz Mary 1kg", 4m, 15m)
+            },
+            CurrencyCodes.Usd,
+            1m));
+
+        Assert.Equal(4, invoice.Lines.Count);
+        Assert.All(invoice.Lines, line => Assert.Equal("Fuzzy", line.MatchMethod));
+        similaritySearch.Verify(
+            search => search.FindCandidatesAsync("Harina Pan 1kg", Threshold, It.IsAny<CancellationToken>()),
+            Times.Once);
+        similaritySearch.Verify(
+            search => search.FindCandidatesAsync("Arroz Mary 1kg", Threshold, It.IsAny<CancellationToken>()),
+            Times.Once);
+        similaritySearch.VerifyNoOtherCalls();
+        Assert.True(interceptor.SelectReaderCount <= 6, $"Expected bounded SELECT queries, observed {interceptor.SelectReaderCount}.");
+    }
+
+    [Fact]
     public async Task StageAsync_DuplicateBarcodeOrSupplierCode_ChoosesLowestProductIdOnEveryRun()
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();
@@ -145,8 +201,8 @@ public class SupplierInvoiceStagingBatchingTests
         var firstInvoice = await service.StageAsync(CreateRequest(supplier.Id, lines));
         var secondInvoice = await service.StageAsync(CreateRequest(supplier.Id, lines, includeMapping: false));
 
-        AssertLowestIdChoices(firstInvoice.Lines, firstBarcodeProduct.Id, firstCodeProduct.Id);
-        AssertLowestIdChoices(secondInvoice.Lines, firstBarcodeProduct.Id, firstCodeProduct.Id);
+        AssertLowestIdChoices(firstInvoice.Lines, firstBarcodeProduct.Id, firstCodeProduct.Id, secondCodeProduct.Id);
+        AssertLowestIdChoices(secondInvoice.Lines, firstBarcodeProduct.Id, firstCodeProduct.Id, secondCodeProduct.Id);
     }
 
     private static async Task<int> CountStageReaderCommandsAsync(int barcodeLineCount, int supplierCodeLineCount)
@@ -289,7 +345,8 @@ public class SupplierInvoiceStagingBatchingTests
     private static void AssertLowestIdChoices(
         IReadOnlyList<SupplierInvoiceLineDto> lines,
         int expectedBarcodeProductId,
-        int expectedSupplierCodeProductId)
+        int expectedFirstSupplierCodeProductId,
+        int expectedSecondSupplierCodeProductId)
     {
         Assert.Collection(
             lines,
@@ -300,8 +357,15 @@ public class SupplierInvoiceStagingBatchingTests
             },
             line =>
             {
-                Assert.Equal(expectedSupplierCodeProductId, line.ResolvedProductId);
+                Assert.Equal(expectedFirstSupplierCodeProductId, line.ResolvedProductId);
                 Assert.Equal("SupplierCode", line.MatchMethod);
+                Assert.Equal(1m, line.Quantity);
+            },
+            line =>
+            {
+                Assert.Equal(expectedSecondSupplierCodeProductId, line.ResolvedProductId);
+                Assert.Equal("SupplierCode", line.MatchMethod);
+                Assert.Equal(0m, line.Quantity);
             });
     }
 

@@ -45,13 +45,13 @@ public partial class SalesService
         while (true)
         {
             List<Sale> batch;
+            int batchCount;
 
             try
             {
                 batch = await _context.Sales
                     .AsSplitQuery()
                     .Include(s => s.Items)
-                    .Include(s => s.Payments)
                     .Where(s => s.Status == SaleStatus.OnHold && s.Id > lastId)
                     .OrderBy(s => s.Id)
                     .Take(batchSize)
@@ -60,13 +60,37 @@ public partial class SalesService
                 if (batch.Count == 0)
                     break;
 
-                foreach (var sale in batch)
+                Dictionary<int, SaleProductInfoDto>? batchProducts = null;
+                if (_inventoryService != null)
                 {
-                    sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(newExchangeRate);
-                    await RecalculateTotalAsync(sale);
+                    var batchProductIds = batch
+                        .Where(s => s.Items != null)
+                        .SelectMany(s => s.Items)
+                        .Select(i => i.ProductId)
+                        .Distinct()
+                        .ToList();
+                    if (batchProductIds.Count > 0)
+                    {
+                        var fetched = await _inventoryService.GetSaleProductsByIdsAsync(batchProductIds, cancellationToken);
+                        if (fetched != null && fetched.Count > 0)
+                        {
+                            batchProducts = fetched.ToDictionary(p => p.Id);
+                        }
+                    }
                 }
 
+                var roundedRate = PricingCalculator.RoundExchangeRateCeiling(newExchangeRate);
+                foreach (var sale in batch)
+                {
+                    sale.AppliedRate = roundedRate;
+                    await RecalculateTotalAsync(sale, batchProducts);
+                }
+
+                batchCount = batch.Count;
+                lastId = batch[batchCount - 1].Id;
+
                 await _context.SaveChangesAsync(cancellationToken);
+                _context.ChangeTracker.Clear();
             }
             catch (Exception ex)
             {
@@ -74,10 +98,9 @@ public partial class SalesService
                 throw;
             }
 
-            totalUpdated += batch.Count;
-            lastId = batch[batch.Count - 1].Id;
+            totalUpdated += batchCount;
 
-            _logger?.LogInformation("[RecalculateOnHold] Página recalculada: {PageCount} ventas OnHold (acumulado: {TotalUpdated}).", batch.Count, totalUpdated);
+            _logger?.LogInformation("[RecalculateOnHold] Página recalculada: {PageCount} ventas OnHold (acumulado: {TotalUpdated}).", batchCount, totalUpdated);
         }
 
         _logger?.LogInformation("[RecalculateOnHold] Recálculo completado: {TotalUpdated} ventas OnHold actualizadas con la nueva tasa.", totalUpdated);
@@ -128,15 +151,15 @@ public partial class SalesService
         return MapToDto(sale);
     }
 
-    private async Task RecalculateTotalAsync(Sale sale)
+    private async Task RecalculateTotalAsync(Sale sale, Dictionary<int, SaleProductInfoDto>? preloadedProducts = null)
     {
         if (sale.Items != null && sale.Items.Any())
         {
-            var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
-            var products = new Dictionary<int, SaleProductInfoDto>();
+            var products = preloadedProducts ?? new Dictionary<int, SaleProductInfoDto>();
 
-            if (_inventoryService != null)
+            if (preloadedProducts == null && _inventoryService != null)
             {
+                var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
                 var fetched = await _inventoryService.GetSaleProductsByIdsAsync(productIds);
                 if (fetched != null && fetched.Count > 0)
                 {

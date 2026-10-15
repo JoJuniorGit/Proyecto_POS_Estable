@@ -43,4 +43,11 @@ public class SupplierInvoiceLine : BaseEntity
     /// 8.147-S6/D10: confianza (0–100, 1 decimal) del costo unitario extraído por OCR; null en filas tabulares.
     /// </summary>
     public decimal? OcrUnitCostConfidence { get; set; }
+
+    /// <summary>
+    /// 8.165: factor de conversión caja→unidad (divisor). La factura puede venir por caja/bulto y
+    /// el local vender por unidad: al confirmar, el costo unitario aplicado se divide por el
+    /// factor y la cantidad que entra a stock se multiplica por él. Default 1 (sin conversión).
+    /// </summary>
+    public decimal ConversionFactor { get; set; } = 1m;
 }

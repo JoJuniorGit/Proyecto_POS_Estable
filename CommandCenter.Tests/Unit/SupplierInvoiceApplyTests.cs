@@ -7,6 +7,7 @@ using Core.Interfaces;
 using Inventory.Module.Data;
 using Inventory.Module.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using Xunit;
 
@@ -43,6 +44,213 @@ public class SupplierInvoiceApplyTests
         Assert.Equal(7m, savedRejected.CostPriceUSD);
         Assert.Equal(8m, savedRejected.StockQuantity);
         Assert.Equal(1, await context.StockMovements.CountAsync());
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithConversionFactor_DividesUnitCostAndMultipliesStock()
+    {
+        // 8.165: producto facturado por caja (P.U. 12 por caja de 2 unidades): el factor divide el
+        // costo unitario aplicado al producto y multiplica la cantidad que entra a stock; el
+        // documento conserva lo emitido por el proveedor (auditoría).
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-FACTOR", 4m, 10m, 20m);
+        var line = CreateLine(product, 5m, 12m);
+        line.UnitCostDocument = 12m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 2m)
+        }));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(6m, savedProduct.CostPriceUSD);
+        Assert.Equal(20m, savedProduct.StockQuantity);
+        var movement = await context.StockMovements.SingleAsync();
+        Assert.Equal(10m, movement.QuantityChange);
+        var persistedLine = await context.SupplierInvoiceLines.SingleAsync(candidate => candidate.Id == line.Id);
+        Assert.Equal(2m, persistedLine.ConversionFactor);
+        Assert.Equal(12m, persistedLine.UnitCostDocument);
+        Assert.Equal(5m, persistedLine.Quantity);
+        Assert.Equal(6m, persistedLine.UnitCostUSD);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithConversionFactorInBsS_NormalizesDividedCostWithSnapshotRate()
+    {
+        // 8.165: en Bs.S el costo dividido por el factor se renormaliza con el snapshot de la
+        // factura (Currency/AppliedRate), nunca con una tasa vigente.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-FACTOR-BSS", 1m, 0m, 30m);
+        var line = CreateLine(product, 3m, 1200m);
+        line.UnitCostDocument = 1200m;
+        line.UnitCostUSD = 3m;
+        var invoice = await AddInvoiceAsync(context, CurrencyCodes.BsS, 400m, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 3m)
+        }));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        // 1200 / 3 = 400 Bs.S por unidad -> 1 USD con la tasa del documento (400).
+        Assert.Equal(1m, savedProduct.CostPriceUSD);
+        Assert.Equal(9m, savedProduct.StockQuantity);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RejectsNonPositiveConversionFactorWithoutApplyingChanges()
+    {
+        var (context, product, line, invoice) = await ArrangeCorrectionTestAsync("APPLY-FACTOR-REJECT");
+        using var contextScope = context;
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 0m)
+            })));
+
+        Assert.Equal(
+            "The conversion factor must be positive (0 < factor <= 10000). (Parameter 'confirmation')",
+            exception.Message);
+        await AssertNoApplySideEffectsAsync(context, product, line);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RemembersConversionFactorBySupplierAndProduct()
+    {
+        // 8.166: el factor confirmado se recuerda por proveedor+producto para las próximas facturas.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-REMEMBER", 4m, 0m, 20m);
+        var line = CreateLine(product, 5m, 12m);
+        line.UnitCostDocument = 12m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 12m)
+        }));
+
+        var remembered = await context.SupplierProductFactors.SingleAsync();
+        Assert.Equal(invoice.SupplierId, remembered.SupplierId);
+        Assert.Equal(product.Id, remembered.ProductId);
+        Assert.Equal(12m, remembered.ConversionFactor);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_UpdatesRememberedFactorWhenInvoicingChangesBackToOne()
+    {
+        // 8.166: volver a 1 (cambio de facturación) actualiza lo recordado sin crear una fila nueva.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-REMEMBER-RESET", 4m, 0m, 20m);
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
+        var line = CreateLine(product, 5m, 12m);
+        line.UnitCostDocument = 12m;
+        var invoice = await AddInvoiceAsync(context, line);
+        context.SupplierProductFactors.Add(new SupplierProductFactor
+        {
+            SupplierId = invoice.SupplierId,
+            ProductId = product.Id,
+            ConversionFactor = 12m
+        });
+        await context.SaveChangesAsync();
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 1m)
+        }));
+
+        var remembered = await context.SupplierProductFactors.SingleAsync();
+        Assert.Equal(1m, remembered.ConversionFactor);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_DoesNotRememberFactorOneWithoutPreviousRecord()
+    {
+        // 8.166: confirmar 1 sin registro previo no crea filas de ruido.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-NO-NOISE", 4m, 0m, 20m);
+        var line = CreateLine(product, 5m, 12m);
+        line.UnitCostDocument = 12m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null, ConversionFactor: 1m)
+        }));
+
+        Assert.Empty(await context.SupplierProductFactors.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_WithNullConversionFactor_KeepsLineFactorAndRemembersIt()
+    {
+        // 8.166: null significa "sin cambio": clientes que no envían el campo no pisan el factor
+        // prefijado (recordado).
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var product = CreateProduct("APPLY-KEEP", 4m, 0m, 20m);
+        var line = CreateLine(product, 4m, 12m);
+        line.UnitCostDocument = 12m;
+        line.ConversionFactor = 4m;
+        var invoice = await AddInvoiceAsync(context, line);
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(3m, savedProduct.CostPriceUSD);
+        Assert.Equal(16m, savedProduct.StockQuantity);
+        var remembered = await context.SupplierProductFactors.SingleAsync();
+        Assert.Equal(4m, remembered.ConversionFactor);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RemembersSupplierInvoiceCurrency()
+    {
+        // 8.167: al confirmar, el proveedor recuerda la moneda facturada para prefijarla después.
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        var supplier = new Supplier
+        {
+            CommercialName = "Currency Supplier",
+            NormalizedCommercialName = "CURRENCY SUPPLIER"
+        };
+        context.Suppliers.Add(supplier);
+        await context.SaveChangesAsync();
+        var product = CreateProduct("APPLY-CURRENCY", 4m, 0m, 20m);
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
+        var line = CreateLine(product, 1m, 400m);
+        line.UnitCostDocument = 400m;
+        var invoice = new SupplierInvoice
+        {
+            Supplier = supplier,
+            Status = SupplierInvoiceStatus.Draft,
+            Currency = CurrencyCodes.BsS,
+            AppliedRate = 400m,
+            Lines = new List<SupplierInvoiceLine> { line }
+        };
+        context.SupplierInvoices.Add(invoice);
+        await context.SaveChangesAsync();
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        var savedSupplier = await context.Suppliers.SingleAsync(candidate => candidate.Id == supplier.Id);
+        Assert.Equal(CurrencyCodes.BsS, savedSupplier.InvoiceCurrency);
     }
 
     [Fact]
@@ -168,7 +376,7 @@ public class SupplierInvoiceApplyTests
         var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
         var movement = await context.StockMovements.SingleAsync();
         Assert.Equal(6.5m, savedProduct.StockQuantity);
-        Assert.Equal(91m, savedProduct.Cost);
+        Assert.Equal(3.5m, savedProduct.Cost);
         Assert.Equal(123.45m, savedProduct.PriceBsS);
         Assert.Equal(36.5m, savedProduct.LastConversionRate);
         Assert.Equal(product.Id, movement.ProductId);
@@ -176,6 +384,66 @@ public class SupplierInvoiceApplyTests
         Assert.Equal(6.5m, movement.NewStockLevel);
         Assert.Equal($"Supplier invoice {invoice.Id} applied", movement.Reason);
         Assert.Equal("supplier-invoice-user", movement.UserId);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_EvictsProductCacheKeysAndSyncsLegacyCostProperty()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        using var memoryCache = new Microsoft.Extensions.Caching.Memory.MemoryCache(
+            new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions());
+        var service = CreateService(context, memoryCache: memoryCache);
+        var product = CreateProduct("Abc-123", 4m, 2m, 25m);
+        product.Cost = 99m;
+        var invoice = await AddInvoiceAsync(context, CreateLine(product, 3m, 7.25m));
+        var line = Assert.Single(invoice.Lines);
+
+        memoryCache.Set("product_quick_Abc-123", new object());
+        memoryCache.Set("product_quick_ABC-123", new object());
+        memoryCache.Set("product_sku_ABC-123", new object());
+
+        await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
+        {
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        var savedProduct = await context.Products.SingleAsync(candidate => candidate.Id == product.Id);
+        Assert.Equal(7.25m, savedProduct.CostPriceUSD);
+        Assert.Equal(7.25m, savedProduct.Cost);
+        Assert.False(memoryCache.TryGetValue("product_quick_Abc-123", out _));
+        Assert.False(memoryCache.TryGetValue("product_quick_ABC-123", out _));
+        Assert.False(memoryCache.TryGetValue("product_sku_ABC-123", out _));
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RejectsNumericValuesExceedingUpperBound()
+    {
+        var (context, product, line, invoice) = await ArrangeCorrectionTestAsync("APPLY-OVERFLOW-GUARD");
+        using var contextScope = context;
+        var service = CreateService(context);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, 100_001m, null)
+            })));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, Quantity: 1_000_000_001m)
+            })));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(new[]
+            {
+                new ConfirmLineDto(line.Id, true, null, null, UnitCostDocument: 1_000_000_001m)
+            })));
+
+        await AssertNoApplySideEffectsAsync(context, product, line);
     }
 
     [Fact]
@@ -473,7 +741,8 @@ public class SupplierInvoiceApplyTests
 
     private static SupplierInvoiceService CreateService(
         InventoryDbContext context,
-        ICurrentUserService? currentUser = null)
+        ICurrentUserService? currentUser = null,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? memoryCache = null)
     {
         var settings = Mock.Of<ISystemSettingsService>();
         var similaritySearch = Mock.Of<ISupplierProductSimilaritySearch>();
@@ -483,7 +752,8 @@ public class SupplierInvoiceApplyTests
             settings,
             similaritySearch,
             currentUser,
-            Mock.Of<IProductManagementService>());
+            Mock.Of<IProductManagementService>(),
+            memoryCache);
     }
 
     private static async Task<SupplierInvoice> AddInvoiceAsync(

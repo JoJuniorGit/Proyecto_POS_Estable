@@ -23,7 +23,9 @@ public sealed record StageLineDto(
     // 8.147-S6/D10: confianza OCR por campo (0–100, 1 decimal); omitidas/null en filas tabulares.
     decimal? OcrNameConfidence = null,
     decimal? OcrQuantityConfidence = null,
-    decimal? OcrUnitCostConfidence = null);
+    decimal? OcrUnitCostConfidence = null,
+    // Factor de conversión caja→unidad extraído por plantilla OCR o preconfigurado (default null = 1).
+    decimal? ConversionFactor = null);
 
 public sealed record SupplierInvoiceDetailDto(
     int Id,
@@ -56,11 +58,38 @@ public sealed record SupplierInvoiceLineDto(
     // 8.147-S6/D10: confianzas OCR persistidas (0–100); null en filas tabulares.
     decimal? OcrNameConfidence,
     decimal? OcrQuantityConfidence,
-    decimal? OcrUnitCostConfidence);
+    decimal? OcrUnitCostConfidence,
+    // 8.165: factor de conversión caja→unidad persistido por línea (default 1, sin conversión).
+    decimal ConversionFactor = 1m);
 
-public sealed record CreateInvoiceProductRequestDto(string Barcode, string Name);
+public sealed record CreateInvoiceProductRequestDto(
+    string Barcode,
+    string Name,
+    // 8.175-S5: filas 1:N del vínculo previo que el cliente reemplaza al re-resolver la línea.
+    // Vacío/null = resolución simple sin absorción de filas existentes.
+    IReadOnlyList<int>? ReplacedLineIds = null);
 
-public sealed record ConfirmSupplierInvoiceRequestDto(IReadOnlyList<ConfirmLineDto> Lines);
+public sealed record LinkedProductMarginOverrideDto(
+    int ProductId,
+    decimal MarginRetail,
+    decimal MarginWholesale);
+
+public sealed record LinkInvoiceProductRequestDto(
+    int ProductId,
+    string? InvoiceDescription = null,
+    IReadOnlyList<int>? ProductIds = null,
+    IReadOnlyList<LinkedProductMarginOverrideDto>? MarginOverrides = null,
+    // 8.175-S5: filas 1:N del vínculo previo que el cliente reemplaza al re-resolver la línea.
+    // Vacío/null = resolución simple sin absorción de filas existentes.
+    IReadOnlyList<int>? ReplacedLineIds = null);
+
+public sealed record ConfirmSupplierInvoiceRequestDto(
+    IReadOnlyList<ConfirmLineDto> Lines,
+    // 8.172: permite actualizar la tasa aplicada a una factura en Bs.S durante la revisión antes de confirmar.
+    decimal? AppliedRate = null,
+    // 8.176: moneda viva de la cabecera en revisión; null conserva la moneda del staging (contrato previo).
+    // Si difiere del snapshot del draft, el confirm conmuta la moneda y renormaliza los costos aprobados.
+    string? Currency = null);
 
 public sealed record ConfirmLineDto(
     int LineId,
@@ -71,7 +100,9 @@ public sealed record ConfirmLineDto(
     // de confirm las valida zero-trust y renormaliza el costo documental con el snapshot de la factura.
     string? Name = null,
     decimal? Quantity = null,
-    decimal? UnitCostDocument = null);
+    decimal? UnitCostDocument = null,
+    // 8.165: factor de conversión caja→unidad (divisor); null = sin conversión (1).
+    decimal? ConversionFactor = null);
 
 public sealed record SupplierColumnMappingDto(
     string? BarcodeColumnName,
@@ -80,9 +111,46 @@ public sealed record SupplierColumnMappingDto(
     string QuantityColumnName,
     string UnitCostColumnName);
 
+public enum OcrCostAmountRule
+{
+    UnitCost = 0,
+    LineTotal = 1
+}
+
+public enum OcrDecimalSeparatorRule
+{
+    Auto = 0,
+    Comma = 1,
+    Dot = 2
+}
+
+public sealed record OcrCharacterReplacementRuleDto(
+    string From,
+    string To);
+
+public sealed record SupplierOcrTemplateDto(
+    double RotationDegrees = 0d,
+    double ContrastFactor = 1.0d,
+    double BrightnessDelta = 0d,
+    int BinarizationThreshold = 0,
+    double? RoiX = null,
+    double? RoiY = null,
+    double? RoiWidth = null,
+    double? RoiHeight = null,
+    string? HeaderAnchorKeywords = null,
+    string? FooterAnchorKeywords = null,
+    int? ProductColumnPosition = null,
+    int? QuantityColumnPosition = null,
+    int? UnitCostColumnPosition = null,
+    int? SupplierCodeColumnPosition = null,
+    OcrCostAmountRule CostAmountRule = OcrCostAmountRule.UnitCost,
+    OcrDecimalSeparatorRule DecimalSeparator = OcrDecimalSeparatorRule.Auto,
+    IReadOnlyList<OcrCharacterReplacementRuleDto>? CharacterReplacements = null,
+    string? FactorExtractionPattern = null);
+
 // 8.147-T3: fila extraída por el parser heurístico de word-boxes OCR. Confianzas 0–100 (1
 // decimal); un campo no resuelto lleva valor null y confianza 0. T4 la expone en la respuesta
-// del endpoint de extracción (junto con previews y pistas de proveedor).
+// del endpoint de extracción (junto con las pistas de proveedor).
 public sealed record OcrExtractedLineDto(
     string? SupplierCode,
     string? Barcode,
@@ -91,7 +159,8 @@ public sealed record OcrExtractedLineDto(
     decimal? UnitCost,
     decimal NameConfidence,
     decimal QuantityConfidence,
-    decimal UnitCostConfidence);
+    decimal UnitCostConfidence,
+    decimal? ExtractedConversionFactor = null);
 
 // 8.147-T4/D12: entrada del endpoint de extracción OCR (multipart ya materializado). El mapping
 // es opcional: solo lo envía el cliente cuando hay plantilla del proveedor; sin él el parser usa
@@ -100,12 +169,18 @@ public sealed record OcrExtractionRequestDto(
     byte[] FileBytes,
     string FileName,
     int? SupplierId,
-    SupplierColumnMappingDto? ColumnMapping);
+    SupplierColumnMappingDto? ColumnMapping,
+    SupplierOcrTemplateDto? OcrTemplate = null);
 
-// 8.147-T4/D12/S5: respuesta de extracción con filas (confianza por campo), una preview PNG por
-// página procesada (base64, en orden) y pistas detectadas.
+// 8.160-S2/S4 + 8.172: respuesta de extracción con filas (confianza por campo) y pistas best-effort de
+// RIF, nombre de proveedor, número de factura y tasa de cambio detectada. El payload de previews por
+// página se retiró por decisión del mantenedor: la revisión Desktop ya no muestra la imagen escaneada.
 public sealed record OcrExtractionResultDto(
     IReadOnlyList<OcrExtractedLineDto> Lines,
-    IReadOnlyList<string> PreviewPagesBase64,
     string? DetectedRif,
-    string? DetectedSupplierName);
+    string? DetectedSupplierName,
+    string? DetectedInvoiceNumber,
+    decimal? DetectedExchangeRate = null,
+    string? RawExtractedText = null,
+    byte[]? PreprocessedPreviewPng = null);
+

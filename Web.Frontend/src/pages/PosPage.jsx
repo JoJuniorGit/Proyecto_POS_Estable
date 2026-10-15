@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { useCartState, useCartActions } from '../context/CartContext';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { usePosHotkeys } from '../hooks/usePosHotkeys';
@@ -16,6 +16,7 @@ import BarcodeScannerModal from '../components/pos/BarcodeScannerModal';
 import VariantSelectorModal from '../components/pos/VariantSelectorModal';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import { getProductBySku } from '../services/productsApi';
+import { getCategories, toCategoryOptions } from '../services/categoriesApi';
 import { isValidBarcode } from '../utils/barcodeValidator';
 import { Edit2, ScanLine } from 'lucide-react';
 import RoleGuard from '../navigation/RoleGuard';
@@ -60,6 +61,11 @@ function PosPageContent({
   const resolveScannedProduct = useCallback((code) => resolveProductRefDeduped(code), []);
   const { syncBcvRate } = useExchangeRate();
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
+
+  // 8.179-T3 (S4): categorías para filtrar las sugerencias de búsqueda. Carga no bloqueante:
+  // si falla, el selector no se renderiza y el POS sigue operativo ("Todas" implícito).
+  const [categories, setCategories] = useState([]);
+  const [categoryId, setCategoryId] = useState('');
 
   const {
     currentSale,
@@ -165,6 +171,22 @@ function PosPageContent({
     enabled: true,
   });
 
+  useEffect(() => {
+    const controller = new AbortController();
+    getCategories(controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted) setCategories(data);
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          console.error('[PosPage] Error cargando categorías para el filtro:', err);
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  const categoryOptions = toCategoryOptions(categories);
+
   const handleSelectProduct = (product) => {
     if (product?.isGroupHeader) {
       setVariantParentProduct(product);
@@ -256,8 +278,27 @@ return (
           <SearchBar
             ref={searchBarRef}
             onSelectProduct={handleSelectProduct}
+            categoryId={categoryId}
           />
         </div>
+        {/* 8.179-T3 (S4): filtro de categoría de las sugerencias. El tope de ancho evita
+            comprimir el buscador en pantallas angostas. */}
+        {categoryOptions.length > 0 && (
+          <select
+            className="form-select pos-category-select"
+            aria-label="Filtrar sugerencias por categoría"
+            title="Filtrar sugerencias por categoría (incluye subcategorías)"
+            value={categoryId}
+            onChange={(e) => setCategoryId(e.target.value)}
+          >
+            <option value="">Todas</option>
+            {categoryOptions.map((option) => (
+              <option key={option.value} value={option.value} title={option.path}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        )}
         <button
           type="button"
           aria-label="Escanear código de barras con la cámara"

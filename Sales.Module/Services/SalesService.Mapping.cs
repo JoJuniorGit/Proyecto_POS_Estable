@@ -23,6 +23,17 @@ namespace Sales.Module.Services;
 public partial class SalesService
 {
 
+    public async Task<(string Status, int? CashierId)?> GetSaleAuthMetadataAsync(int saleId, System.Threading.CancellationToken cancellationToken = default)
+    {
+        var meta = await _context.Sales
+            .AsNoTracking()
+            .Where(s => s.Id == saleId)
+            .Select(s => new { s.Status, s.CashierId })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return meta is null ? null : (meta.Status.ToString(), meta.CashierId);
+    }
+
     private SaleDto MapToDto(Sale sale)
     {
         var totalPaidUsd = sale.Payments.Sum(p => p.Amount);

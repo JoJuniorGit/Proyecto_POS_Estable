@@ -184,6 +184,24 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }));
 
+        // 8.179-T2 (S3): cliente tipado del árbol de categorías (filtro de inventario y diálogos) +
+        // cliente nombrado que WpfDialogService usa para adjuntarlo al diálogo de producto.
+        ConfigureClient(builder.Services.AddHttpClient<ICategoryService, CategoryService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
+        ConfigureClient(builder.Services.AddHttpClient("Categories", client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
+        // 8.177-T3 (S2/S3): cliente del Centro de Auditoría de Kardex (mismo pipeline HTTP).
+        ConfigureClient(builder.Services.AddHttpClient<IStockKardexClientService, StockKardexClientService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
         ConfigureClient(builder.Services.AddHttpClient("SalesApi", client =>
         {
             client.BaseAddress = baseAddressUri;
@@ -245,6 +263,7 @@ public partial class App : Application
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddSingleton<PosViewModel>();
         builder.Services.AddSingleton<InventoryViewModel>();
+        builder.Services.AddSingleton<StockKardexViewModel>();
         builder.Services.AddSingleton<SalesHistoryViewModel>();
         builder.Services.AddSingleton<PendingOrdersViewModel>(sp => new Desktop.Client.ViewModels.PendingOrdersViewModel(
             sp.GetRequiredService<Desktop.Client.Services.ISalesService>(),
@@ -445,6 +464,26 @@ public partial class App : Application
             catch (Exception ex)
             {
                 Core.Logging.AppLogger.LogCrash(ex, "App.StopServicesAsync.DisposeExchangeRate");
+            }
+
+            try
+            {
+                Core.Logging.AppLogger.LogStart("Disponiendo servicio de hub de autorizaciones y cerrando SignalR...");
+                var authorizationHubService = _host.Services.GetService<IAuthorizationHubService>();
+                if (authorizationHubService is IAsyncDisposable asyncAuthHub)
+                {
+                    await asyncAuthHub.DisposeAsync();
+                    Core.Logging.AppLogger.LogStart("Servicio de hub de autorizaciones dispuesto con éxito.");
+                }
+                else if (authorizationHubService is IDisposable disposableAuthHub)
+                {
+                    disposableAuthHub.Dispose();
+                    Core.Logging.AppLogger.LogStart("Servicio de hub de autorizaciones dispuesto con éxito.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.StopServicesAsync.DisposeAuthorizationHub");
             }
 
             try

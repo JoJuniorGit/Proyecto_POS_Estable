@@ -170,7 +170,11 @@ public partial class DailyClosureService : IDailyClosureService
         }
 
         var strategy = _context.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync(() => ExecuteClosureCommandAsync(command, exchangeRate, cancellationToken));
+        return await strategy.ExecuteAsync(() =>
+        {
+            _context.ChangeTracker.Clear();
+            return ExecuteClosureCommandAsync(command, exchangeRate, cancellationToken);
+        });
     }
 
     private async Task<IDbContextTransaction?> OpenSerializableTransactionAsync(CancellationToken cancellationToken)

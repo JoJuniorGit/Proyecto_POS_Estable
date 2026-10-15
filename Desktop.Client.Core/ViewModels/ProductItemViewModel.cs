@@ -14,6 +14,19 @@ public partial class ProductItemViewModel : ObservableObject
 
     public int Id => _dto.Id;
 
+    /// <summary>
+    /// 8.181-T2 (S5): marca de selección de la edición masiva de precios. Es estado de UI puro:
+    /// NO dispara persistencia ni recálculos (a diferencia de <see cref="OnProfitPercentageChanged"/>);
+    /// el contenedor decide qué hacer con el cambio vía <see cref="SelectionChanged"/>.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSelected;
+
+    /// <summary>Callback de cambio de selección; lo asigna el contenedor dueño de la grilla.</summary>
+    public Action<ProductItemViewModel>? SelectionChanged { get; set; }
+
+    partial void OnIsSelectedChanged(bool value) => SelectionChanged?.Invoke(this);
+
     [ObservableProperty]
     private string _name = string.Empty;
 
@@ -338,7 +351,7 @@ public partial class ProductItemViewModel : ObservableObject
 
         try
         {
-            PriceUSD = Math.Round(Cost * (1 + (value / 100m)), 2, MidpointRounding.AwayFromZero);
+            PriceUSD = Core.Helpers.PricingCalculator.CalculateSuggestedPrice(Cost, value);
             PriceBsS = Helpers.PricingHelper.ToBsSCeiling(PriceUSD, _exchangeRateService.CurrentRate);
             
             _dto.ProfitPercentage = value;

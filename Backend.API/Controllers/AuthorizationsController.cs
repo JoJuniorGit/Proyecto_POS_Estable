@@ -171,6 +171,8 @@ public class AuthorizationsController : ControllerBase
     }
 
     [HttpPost("{id:int}/local-resolve")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("AuthRateLimit")]
     public async Task<IActionResult> ResolveLocalAsync(
         int id,
         [FromBody] LocalResolveAuthorizationRequest request,

@@ -1,6 +1,9 @@
 using Core.DTOs;
 using Core.Interfaces;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenCvSharp;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace Inventory.Module.Services.Ocr;
@@ -8,8 +11,8 @@ namespace Inventory.Module.Services.Ocr;
 /// <summary>
 /// 8.147-T4/D12: orquesta la extracción OCR de una factura de proveedor: guardas de subida
 /// (archivo/tipo/tamaño), decodificación (imagen o PDF ≤5 páginas), preprocesamiento, motor OCR,
-/// parser heurístico de word-boxes y pistas best-effort de RIF/nombre. No toca la base de datos
-/// ni aplica nada: la revisión y el confirm siguen en el flujo existente.
+/// parser heurístico de word-boxes y pistas best-effort de RIF/nombre/número de factura. No
+/// toca la base de datos ni aplica nada: la revisión y el confirm siguen en el flujo existente.
 /// </summary>
 public sealed class OcrExtractionService : IOcrExtractionService
 {
@@ -33,16 +36,33 @@ public sealed class OcrExtractionService : IOcrExtractionService
     /// </summary>
     internal const string RifPattern = @"(?i)\b[JGVEP]-?\d{8,9}-?\d?\b";
 
+    /// <summary>
+    /// 8.160-S2/S4: patrón best-effort del número de factura (keyword FACTURA + ventana acotada
+    /// de no-dígitos + al menos 4 dígitos con guiones internos; ej. "FACTURA: *0238317" →
+    /// "0238317"). Es solo una pista de visualización: nunca selecciona ni persiste nada.
+    /// </summary>
+    internal const string InvoiceNumberPattern = @"(?i)\bFACTURA\b[^0-9]{0,12}?(\d[\d\-]{3,})";
+
+    /// <summary>
+    /// 8.172: patrón best-effort de la tasa de cambio impresa en la factura (ej. "TASA BCV: 78,45",
+    /// "TASA DE CAMBIO: 36.50", "FACTOR DE CAMBIO: 42,1250", "TASA: Bs. 54,20"). Excluye alícuotas
+    /// de IVA o porcentajes seguidos de '%'.
+    /// </summary>
+    internal const string ExchangeRatePattern =
+        @"(?i)\b(?:TASA(?:\s+(?:DE\s+CAMBIO|CAMBIO|DEL\s+D[IÍ]A|BCV|REF(?:ERENCIAL)?|OFICIAL|USD|D[OÓ]LAR(?:ES)?|\$))?(?!\s*(?:IVA|IMP(?:UESTO)?|AL[IÍ]CUOTA|G\b|R\b|A\b))|(?:FACTOR|TIPO)\s+DE\s+CAMBIO|CAMBIO\s+(?:BCV|DEL\s+D[IÍ]A|OFICIAL|USD|\$))\b[^0-9%\r\n]{0,20}?(\d{1,6}(?:[.,]\d{1,4})?)(?!\s*%)";
+
     private readonly DocumentPageDecoder _documentDecoder;
     private readonly ImagePreprocessor _preprocessor;
     private readonly IOcrEngine _ocrEngine;
     private readonly InvoiceTableParser _parser;
+    private readonly ILogger<OcrExtractionService> _logger;
 
     public OcrExtractionService(
         DocumentPageDecoder documentDecoder,
         ImagePreprocessor preprocessor,
         IOcrEngine ocrEngine,
-        InvoiceTableParser parser)
+        InvoiceTableParser parser,
+        ILogger<OcrExtractionService>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(documentDecoder);
         ArgumentNullException.ThrowIfNull(preprocessor);
@@ -52,6 +72,7 @@ public sealed class OcrExtractionService : IOcrExtractionService
         _preprocessor = preprocessor;
         _ocrEngine = ocrEngine;
         _parser = parser;
+        _logger = logger ?? NullLogger<OcrExtractionService>.Instance;
     }
 
     public async Task<OcrExtractionResultDto> ExtractAsync(
@@ -60,15 +81,91 @@ public sealed class OcrExtractionService : IOcrExtractionService
     {
         ArgumentNullException.ThrowIfNull(request);
         var fileBytes = Validate(request);
+        var extension = Path.GetExtension(request.FileName);
 
-        // Previews: los PNG originales decodificados (S5 "imagen original escaneada"), en orden
-        // de página y antes del preprocesamiento; el motor OCR recibe la versión procesada.
-        var pages = _documentDecoder.DecodePages(fileBytes, Path.GetExtension(request.FileName));
-        var previews = pages
-            .Select(page => Convert.ToBase64String(page.EncodedBytes))
-            .ToArray();
+        var pages = _documentDecoder.DecodePages(fileBytes, extension);
 
+        // 8.170: la calidad de la imagen varía. Si el pipeline principal (binarizado automático o
+        // plantilla OCR del proveedor) no produce NINGUNA fila con identificador se escalan
+        // candidatos de respaldo por RESULTADO (raw y luego adaptativo sin deskew), con cortocircuito:
+        // en imágenes buenas el costo de OCR no cambia.
+        var (ocrPages, primaryPreviewPng) = await RecognizeDocumentAsync(
+            pages,
+            OcrPreprocessingMode.Primary,
+            request.OcrTemplate,
+            cancellationToken);
+        var previewPng = primaryPreviewPng;
+        var lines = _parser.Parse(ocrPages, request.ColumnMapping, request.OcrTemplate);
+        if (CountUsableLines(lines) == 0 && (request.OcrTemplate is null || request.OcrTemplate.BinarizationThreshold is < 1 or > 254))
+        {
+            foreach (var mode in new[] { OcrPreprocessingMode.Raw, OcrPreprocessingMode.AdaptiveFallback })
+            {
+                var (candidatePages, candidatePreviewPng) = await RecognizeDocumentAsync(
+                    pages,
+                    mode,
+                    request.OcrTemplate,
+                    cancellationToken);
+                var candidateLines = _parser.Parse(candidatePages, request.ColumnMapping, request.OcrTemplate);
+                if (CountUsableLines(candidateLines) > CountUsableLines(lines))
+                {
+                    ocrPages = candidatePages;
+                    lines = candidateLines;
+                    previewPng = candidatePreviewPng ?? previewPng;
+                    _logger.LogInformation(
+                        "OCR fallback {Mode} selected for '{FileName}': primary pipeline yielded no usable lines.",
+                        mode,
+                        request.FileName);
+                }
+
+                if (CountUsableLines(lines) > 0)
+                {
+                    break;
+                }
+            }
+        }
+
+        var rawText = FormatRawText(ocrPages);
+        var result = new OcrExtractionResultDto(
+            lines,
+            DetectRif(ocrPages),
+            DetectSupplierName(ocrPages),
+            DetectInvoiceNumber(ocrPages),
+            DetectExchangeRate(ocrPages),
+            rawText,
+            previewPng);
+
+        _logger.LogInformation(
+            "OCR extracted {LineCount} candidate lines across {PageCount} page(s) from '{FileName}' ({FileSizeBytes} bytes).",
+            lines.Count,
+            pages.Count,
+            request.FileName,
+            fileBytes.Length);
+
+        return result;
+    }
+
+    /// <summary>8.170: modos de preprocesamiento candidatos para la escalera de respaldo.</summary>
+    private enum OcrPreprocessingMode
+    {
+        Primary,
+        Raw,
+        AdaptiveFallback
+    }
+
+    /// <summary>
+    /// 8.170: reconoce el documento completo con el modo de preprocesamiento indicado. El parseo
+    /// se hace por DOCUMENTO (no por página) para conservar la herencia de anclas entre páginas
+    /// de continuación del parser.
+    /// </summary>
+    private async Task<(IReadOnlyList<OcrPage> Pages, byte[]? FirstPagePreviewPng)> RecognizeDocumentAsync(
+        IReadOnlyList<OcrImage> pages,
+        OcrPreprocessingMode mode,
+        SupplierOcrTemplateDto? ocrTemplate,
+        CancellationToken cancellationToken)
+    {
         var ocrPages = new List<OcrPage>(pages.Count);
+        byte[]? firstPagePreviewPng = null;
+
         foreach (var page in pages)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -78,18 +175,73 @@ public sealed class OcrExtractionService : IOcrExtractionService
                 throw new ArgumentException("No se pudo decodificar una página del documento para el OCR.");
             }
 
-            using var processed = _preprocessor.Preprocess(decoded);
-            var processedPng = _preprocessor.EncodePng(processed);
-            var image = new OcrImage(processedPng, processed.Width, processed.Height);
+            using var processed = mode switch
+            {
+                OcrPreprocessingMode.Raw => null,
+                OcrPreprocessingMode.AdaptiveFallback => _preprocessor.PreprocessAdaptiveFallback(decoded),
+                _ => ocrTemplate is not null
+                    ? _preprocessor.PreprocessWithTemplate(decoded, ocrTemplate)
+                    : _preprocessor.Preprocess(decoded)
+            };
+            var sourceImage = processed ?? decoded;
+            var encodedPng = _preprocessor.EncodePng(sourceImage);
+            firstPagePreviewPng ??= encodedPng;
+            var image = new OcrImage(encodedPng, sourceImage.Width, sourceImage.Height);
             ocrPages.Add(await _ocrEngine.RecognizeAsync(image, cancellationToken).ConfigureAwait(false));
         }
 
-        return new OcrExtractionResultDto(
-            _parser.Parse(ocrPages, request.ColumnMapping),
-            previews,
-            DetectRif(ocrPages),
-            DetectSupplierName(ocrPages));
+        return (ocrPages, firstPagePreviewPng);
     }
+
+    private static string? FormatRawText(IReadOnlyList<OcrPage> pages)
+    {
+        if (pages.Count == 0)
+        {
+            return null;
+        }
+
+        var lines = new List<string>();
+        foreach (var page in pages)
+        {
+            var visible = page.Words.Where(word => !string.IsNullOrWhiteSpace(word.Text)).ToList();
+            if (visible.Count == 0)
+            {
+                continue;
+            }
+
+            var tolerance = ComputeRowTolerance(visible);
+            var ordered = visible.OrderBy(CenterY).ThenBy(CenterX).ToList();
+            var current = new List<OcrWord> { ordered[0] };
+            var centerSum = CenterY(ordered[0]);
+
+            for (var index = 1; index < ordered.Count; index++)
+            {
+                var word = ordered[index];
+                if (Math.Abs(CenterY(word) - (centerSum / current.Count)) <= tolerance)
+                {
+                    current.Add(word);
+                    centerSum += CenterY(word);
+                }
+                else
+                {
+                    lines.Add(JoinRowText(current));
+                    current = [word];
+                    centerSum = CenterY(word);
+                }
+            }
+
+            lines.Add(JoinRowText(current));
+        }
+
+        return lines.Count == 0 ? null : string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>Filas con identificador legible (nombre/código/barras): mismo criterio que el cliente.</summary>
+    private static int CountUsableLines(IReadOnlyList<OcrExtractedLineDto> lines) =>
+        lines.Count(line =>
+            !string.IsNullOrWhiteSpace(line.Name) ||
+            !string.IsNullOrWhiteSpace(line.SupplierCode) ||
+            !string.IsNullOrWhiteSpace(line.Barcode));
 
     /// <summary>Guardas zero-trust de subida: nombre, contenido, extensión y tamaño (S4/S7).</summary>
     private static byte[] Validate(OcrExtractionRequestDto request)
@@ -127,6 +279,38 @@ public sealed class OcrExtractionService : IOcrExtractionService
         var text = string.Join(' ', pages.SelectMany(page => page.Words).Select(word => word.Text));
         var match = Regex.Match(text, RifPattern);
         return match.Success ? match.Value : null;
+    }
+
+    /// <summary>Primer número tras la keyword FACTURA; null si no aparece; nunca lanza.</summary>
+    private static string? DetectInvoiceNumber(IReadOnlyList<OcrPage> pages)
+    {
+        var text = string.Join(' ', pages.SelectMany(page => page.Words).Select(word => word.Text));
+        var match = Regex.Match(text, InvoiceNumberPattern);
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    /// <summary>
+    /// 8.172: primera tasa de cambio positiva reconocida en las palabras crudas del documento;
+    /// null si no aparece ninguna o no es válida.
+    /// </summary>
+    private static decimal? DetectExchangeRate(IReadOnlyList<OcrPage> pages)
+    {
+        var text = string.Join(' ', pages.SelectMany(page => page.Words).Select(word => word.Text));
+        foreach (Match match in Regex.Matches(text, ExchangeRatePattern))
+        {
+            var rawRate = match.Groups[1].Value.Replace(',', '.');
+            if (decimal.TryParse(
+                    rawRate,
+                    NumberStyles.AllowDecimalPoint,
+                    CultureInfo.InvariantCulture,
+                    out var parsed)
+                && parsed > 0m)
+            {
+                return Math.Round(parsed, 4, MidpointRounding.AwayFromZero);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

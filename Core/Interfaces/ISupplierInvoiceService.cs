@@ -26,6 +26,12 @@ public interface ISupplierInvoiceService
         CreateInvoiceProductRequestDto request,
         CancellationToken cancellationToken = default);
 
+    Task<SupplierInvoiceDetailDto> LinkProductToLineAsync(
+        int invoiceId,
+        int lineId,
+        LinkInvoiceProductRequestDto request,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<SupplierSummaryDto>> GetSuppliersAsync(
         string? rifOrNit,
         string? commercialName,
@@ -34,12 +40,26 @@ public interface ISupplierInvoiceService
     Task<SupplierSummaryDto> CreateSupplierAsync(
         CreateSupplierRequestDto request,
         CancellationToken cancellationToken = default);
+
+    Task<SupplierOcrTemplateDto?> GetSupplierOcrTemplateAsync(
+        int supplierId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<SupplierOcrTemplateDto?>(null);
+
+    Task<SupplierOcrTemplateDto> SaveSupplierOcrTemplateAsync(
+        int supplierId,
+        SupplierOcrTemplateDto template,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(template);
 }
 
 public sealed record SupplierSummaryDto(
     int Id,
     string? RifOrNit,
     string CommercialName,
-    SupplierColumnMappingDto? ColumnMapping = null);
+    SupplierColumnMappingDto? ColumnMapping = null,
+    // 8.167: moneda de facturación recordada del proveedor (null = sin preferencia).
+    string? InvoiceCurrency = null,
+    SupplierOcrTemplateDto? OcrTemplate = null);
 
 public sealed record CreateSupplierRequestDto(string? RifOrNit, string CommercialName);

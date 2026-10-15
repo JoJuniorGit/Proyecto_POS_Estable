@@ -2,6 +2,17 @@ A continuación se presenta el **plan de desarrollo secuencial integral de 15 pa
 
 Las ideas originales se presentan **íntegras y textualmente tal como fueron redactadas**, las nuevas ideas sinérgicas adoptan la misma estructura formal, y cada una cuenta con su bloque **Justificación:** detallando el motivo lógico, técnico, la dificultad y el efecto dominó que determinan su ubicación en la secuencia.
 
+> **Sincronización con el código — 2026-10-14 (commits hasta `c464cee`):**
+> Pasos **1, 2, 3, 4, 5, 6, 7, 8 y 9 COMPLETADOS** (marcados `[x]` con evidencia de código/commits).
+> Pasos **10–15 PENDIENTES**, con notas de dependencias actualizadas donde el código ya
+> fusionado cambió el terreno (multi-moneda, auditoría de stock enriquecida, etc.).
+> El informe estratégico completo (correcciones arquitectónicas, funcionalidades sinérgicas y
+> reordenamiento óptimo propuesto) vive en `docs/roadmap-sync-2026-10-13.md`.
+> El historial además contiene funcionalidades fusionadas **fuera de esta secuencia** (OCR de
+> facturas de proveedor con plantillas por proveedor, multi-moneda Bs.S/tasa BCV, caja/turnos/
+> cierres con arqueo, adelantos de efectivo, retiros parciales/custodia) — impacto analizado en
+> el informe estratégico §2.
+
 ---
 
 # Plan de Desarrollo Secuencial Integral (15 Pasos)
@@ -11,6 +22,8 @@ Las ideas originales se presentan **íntegras y textualmente tal como fueron red
 ## FASE 1: Estabilidad de Cliente, Ciclo de Vida y Persistencia de Carritos
 
 ### Paso 1
+
+**[x] COMPLETADO (verificado 2026-10-13)** — evidencia: cierre seguro y recuperación de estado en Web y WPF (8.120 → `7f0c18c`; `useShutdownGuard` + `SaleRecoveryModal`/`saleRecovery`, `SaleRecoveryStore` en WPF), abstracción `IAppShutdown` y cierre no bloqueante (8.84 → `f127609`), liberación de SignalR/servicios vía `StopServicesAsync` y disposición de `IDisposable`s.
 
 2. Mejorar comportamiento de cierre
 Objetivo: Asegurar que la aplicación se cierre de forma ordenada, guardando el estado crítico y liberando recursos adecuadamente.
@@ -61,6 +74,8 @@ Mejora la experiencia general del usuario.
 
 ### Paso 2
 
+**[x] COMPLETADO (verificado 2026-10-13)** — evidencia: hold multiestación con claims (8.129 → `4d2a187`; migración `20260914053810_AddHoldOrderClaimsToSales`; `SalesService.HoldOrders`/`HoldClaims` + `IHoldOrderNotifier` SignalR), pantallas de pendientes en WPF y Web (`PendingOrdersView`/`PendingOrdersPage`), F4 en `usePosHotkeys`, expiración/liberación y recuperación con tasa vigente (8.143 → `3949dcf`).
+
 9. Venta en espera multiterminal / Carritos compartidos y persistentes (Parked Orders)
 Objetivo: Permitir pausar ventas en curso y almacenarlas en el servidor para que cualquier terminal de la red local pueda retomarlas, evitando cuellos de botella en la fila de cobro.
 
@@ -103,6 +118,8 @@ Mayor fluidez operativa en horas pico.
 ## FASE 2: Seguridad, Control de Sesiones y Autorizaciones Remotas
 
 ### Paso 3
+
+**[x] COMPLETADO con matiz (verificado 2026-10-13)** — evidencia: invalidación de sesiones por security stamp en alta/edición/password/estado de usuario (`UsersController` → `InvalidateUserSessionsAsync`), revocación con push SignalR `ForceDisconnect` + IHubFilter (8.157 → `53731df`), JWT 720 min (8.143 → `1102254`). **Matiz:** no existe vista de sesiones activas por dispositivo (IP/fecha/kick individual); la revocación/kick es por usuario (ver informe estratégico §3).
 
 1. Implementar controles de sesión para cerrar sesión al iniciar o cambiar contraseña del sistema, visualizar usuarios activos
 Objetivo: Fortalecer la seguridad y administración de la aplicación mediante la gestión centralizada de sesiones de usuario.
@@ -152,6 +169,8 @@ Facilidad para auditar sesiones activas.
 
 ### Paso 4
 
+**[x] COMPLETADO (verificado 2026-10-13)** — evidencia: hub de autorizaciones + REST + notifier SignalR + job de expiración (8.150 → `541124d`, `75ce3a2`), clientes WPF/Web con espera bloqueante, autorización local y retry por token (8.150 → `4e9e5f1`, `a7e6770`), E2E full-stack con Postgres real (`c372d3b`), cierre de residuales (8.151) y revocación de sesiones (8.157).
+
 10. Alertas administrativas y autorizaciones remotas en tiempo real (SignalR)
 Objetivo: Permitir a los administradores autorizar operaciones críticas de caja (descuentos especiales, mermas altas, créditos excepcionales) de forma remota desde su equipo, sin necesidad de desplazarse físicamente a la caja.
 
@@ -194,6 +213,8 @@ Asegura el principio de mínimo privilegio para cajeros sin frenar el negocio.
 ## FASE 3: Control de Inventario y Auditoría de Stock
 
 ### Paso 5
+
+**[x] COMPLETADO (8.177, verificado 2026-10-13)** — evidencia: commits `04d5b19` + `fded8aa` + `48768f6`; ANEXO 8.177. **DESVÍO DE DISEÑO ACEPTADO:** no se creó la tabla `StockAdjustmentsAudit`; la auditoría se implementó **enriqueciendo `StockMovement`** (`OriginType`, `ReasonCode`, `AuthorizedByUserId`, `UnitCostUSD` histórico, `SupplierInvoiceId`, `Observation`) con espejo completo en `StockMovements_Archive` (el archivador preserva toda la auditoría). Consulta: filtros combinables + KPIs + paginación server-side sobre la **unión activa + archivo**, export CSV/XLSX/PDF con encabezado legal y trazabilidad cuantitativa antes/Δ/después. RBAC Admin/Manager (no existe un rol "Auditor" de solo consulta — ver informe estratégico §3).
 
 6. Agregar sección de auditoría de ajustes de stock
 Objetivo: Mantener un registro detallado y consultable de todos los ajustes de inventario realizados manualmente o automáticamente.
@@ -254,6 +275,8 @@ Cumplimiento normativo.
 
 ### Paso 6
 
+**[x] COMPLETADO (8.180, verificado 2026-10-14)** — evidencia: commits `298dbc1` (backend: `StockCountSession`/`StockCountItem` + migración + scan CIEGO por SKU con guards y alcance por subárbol + close congelando + apply atómico auditado como `PhysicalCountCorrection` con vínculo a la sesión) + `ea83e96` (Web: vista "Conteo físico" con cámara reutilizada y panel Admin de descuadre/aplicación) + ANEXO 8.180. **Desvíos:** todo el flujo vive en Web (el Kardex WPF ya muestra los movimientos); las variantes con stock compartido se rechazan en el scan (conversión por factor = futuro); bundle Web pendiente de regenerar al cierre del WIP ajeno.
+
 11. Conteo físico ciego e inventario rotativo asistido por escáner móvil
 Objetivo: Agilizar la toma física de inventario periódica utilizando la cámara de dispositivos móviles en modo ciego para detectar discrepancias reales sin sesgar al personal.
 
@@ -296,6 +319,8 @@ Convierte la auditoría de stock en un proceso ágil y periódico.
 ## FASE 4: Jerarquía del Catálogo y Presentación de Variantes
 
 ### Paso 7
+
+**[x] COMPLETADO (verificado 2026-10-13)** — evidencia: modelo final de variantes (migración `20260831204333_AddProductVariantsFinal` + `ProductVariantsTests`), agrupación y badges en catálogo Web (`CatalogPage`: badge "N variantes", grupo, stock consolidado, precios independientes), gestión WPF (`VariantManagementDialog`) y selector automático en POS (`VariantSelectorModal` Web / `VariantSelectionDialog` WPF).
 
 8. Estilizar los grupos de presentaciones para que se agrupen automáticamente visualmente
 Objetivo: Mejorar la visualización de productos agrupados (variantes) en el catálogo y en el punto de venta, agrupándolos visualmente bajo su producto padre.
@@ -343,6 +368,8 @@ Mejora la experiencia del usuario.
 ---
 
 ### Paso 8
+
+**[x] COMPLETADO (8.179, verificado 2026-10-13)** — evidencia: commits `2b64f47` (backend: `Category`/`ProductCategory` + migración idempotente + CRUD validado sin ciclos + filtro por subárbol + import con ruta `>` / export con columna), `bf32f71` (WPF: card multi-selección en el formulario de producto + diálogo de gestión + filtro en Inventario + columna en importador), `ef9ce68` (Web: filtro en catálogo + categoría en búsqueda POS); ANEXO 8.179. **Desvíos:** la gestión vive en Desktop (el Web no tiene CRUD de producto); bundle Web pendiente de regenerar al cierre del WIP ajeno.
 
 7. Implementar categorías
 Objetivo: Organizar los productos en categorías jerárquicas para mejorar la navegación y el análisis.
@@ -396,6 +423,8 @@ Análisis más granular.
 ## FASE 5: Operaciones Comerciales Masivas y Políticas de Precios
 
 ### Paso 9
+
+**[x] COMPLETADO (8.181, verificado 2026-10-14)** — evidencia: commits `aa2aa55` (backend: `BulkUpdatePricesAsync` con motor único preview/apply, selección por IDs o "todos los filtrados", 5 campos × 3 modos reusando el motor del update individual, canon Bs.S con la tasa del día, guardas de variantes, 400/409, cachés) y `c464cee` (WPF: selección múltiple por checkbox en el catálogo + diálogo "Antes vs Después" con vista previa y aplicación con confirmación); ANEXO 8.181. Integra la nota original: el régimen multi-moneda (techo con la tasa del día, 8.104) y los filtros por categoría del Paso 8 quedaron respetados. **Desvíos:** la edición masiva vive en Desktop (el Web no tiene CRUD de producto); bundle Web pendiente de regenerar al cierre del WIP ajeno.
 
 5. Soporte para edición múltiple de precios en el catálogo
 Objetivo: Permitir modificar masivamente precios y márgenes de un conjunto de productos sin tener que editarlos uno a uno.
@@ -493,6 +522,8 @@ Incrementa la efectividad comercial del punto de venta.
 
 ### Paso 11
 
+**[ ] PENDIENTE** — nota: la base ya cuenta con clientes y multi-moneda con snapshots de tasa; el crédito debe nacer con la regla de inmutabilidad histórica vigente (tasa de emisión persistida) y apoyarse en las autorizaciones del Paso 4 para excepciones (sobregiro).
+
 3. Agregar soporte para ventas a crédito
 Objetivo: Permitir a clientes autorizados realizar compras sin pago inmediato, registrando la deuda y facilitando su posterior cobro.
 
@@ -553,6 +584,8 @@ Mejora el control financiero.
 
 ### Paso 12
 
+**[ ] PENDIENTE** — nota: `IExchangeRateService`/`ExchangeRateHistory` y el patrón de snapshots (`AppliedRate` histórico) ya existen; reutilizarlos evita andamiaje nuevo.
+
 13. Cuentas por cobrar indexadas a moneda dura (Crédito Bimonetario Seguro)
 Objetivo: Proteger el capital del negocio frente a la devaluación en ventas a crédito, indexando la deuda en USD y recalculando el saldo en Bs.S al cambio oficial del día de cada abono.
 
@@ -591,6 +624,8 @@ Claridad y confianza absoluta para el cliente en los cobros.
 ---
 
 ### Paso 13
+
+**[ ] PENDIENTE** — nota: turnos y `DailyClosure` ya existen (arqueo anclado a sesión física, 8.137); la caja chica debe integrarse a ese arqueo y al comprobante de cierre para no descuadrar los totales.
 
 14. Gastos operativos de caja chica en turno (Petty Cash Expenses)
 Objetivo: Registrar salidas de dinero menores de la gaveta durante el turno (compras de insumos, fletes, servicios) para cuadrar con exactitud el arqueo de caja y alimentar el cálculo de ganancia neta.
@@ -634,6 +669,8 @@ Aporte indispensable para calcular el resultado neto real del negocio.
 ## FASE 7: Analítica Avanzada y Optimización de Rentabilidad
 
 ### Paso 14
+
+**[ ] PENDIENTE** — nota: puede nutrirse del Kardex (Paso 5) para el costo de mercancía vendida usando el `UnitCostUSD` histórico por movimiento, en lugar de recalcular desde el catálogo actual.
 
 4. Agregar cálculo de ganancias diarias, semanales y mensuales
 Objetivo: Proporcionar una herramienta de análisis de rentabilidad que permita visualizar las ganancias en diferentes períodos.
@@ -698,6 +735,8 @@ Mejora de la rentabilidad.
 
 ### Paso 15
 
+**[ ] PENDIENTE** — nota: el Kardex del Paso 5 ya expone la serie histórica de movimientos (unión activa+archivo) que las métricas de rotación necesitan; el puente a liquidación masiva requiere el Paso 9.
+
 15. Análisis de rotación de inventario y detección de stock inmovilizado ("Stock Muerto")
 Objetivo: Identificar productos con baja o nula rotación para sugerir liquidaciones masivas y optimizar el capital de trabajo inmovilizado en el inventario.
 
@@ -740,31 +779,31 @@ Cierra el ciclo completo entre inventario, precios, ventas y analítica.
 ```mermaid
 flowchart TD
     subgraph F1["Fase 1: Estabilidad & Persistencia"]
-        P1["1. Comportamiento de Cierre (Idea 2)"]
-        P2["2. Carritos en Espera / Parked Orders (Idea 9)"]
+        P1["✅ 1. Comportamiento de Cierre (Idea 2)"]
+        P2["✅ 2. Carritos en Espera / Parked Orders (Idea 9)"]
         P1 --> P2
     end
 
     subgraph F2["Fase 2: Seguridad & Autorizaciones"]
-        P3["3. Controles de Sesión & JWT (Idea 1)"]
-        P4["4. Autorizaciones Remotas SignalR (Idea 10)"]
+        P3["✅ 3. Controles de Sesión & JWT (Idea 1)"]
+        P4["✅ 4. Autorizaciones Remotas SignalR (Idea 10)"]
         P2 --> P3 --> P4
     end
 
     subgraph F3["Fase 3: Control & Auditoría de Stock"]
-        P5["5. Auditoría de Ajustes de Stock (Idea 6)"]
-        P6["6. Conteo Físico Ciego Móvil (Idea 11)"]
+        P5["✅ 5. Auditoría de Ajustes de Stock (Idea 6) — Kardex 8.177"]
+        P6["✅ 6. Conteo Físico Ciego Móvil (Idea 11)"]
         P4 --> P5 --> P6
     end
 
     subgraph F4["Fase 4: Catálogo & Presentación"]
-        P7["7. Estilización de Grupos/Variantes (Idea 8)"]
-        P8["8. Categorías Jerárquicas (Idea 7)"]
+        P7["✅ 7. Estilización de Grupos/Variantes (Idea 8)"]
+        P8["✅ 8. Categorías Jerárquicas (Idea 7)"]
         P6 --> P7 --> P8
     end
 
     subgraph F5["Fase 5: Operaciones de Precios"]
-        P9["9. Edición Múltiple de Precios (Idea 5)"]
+        P9["✅ 9. Edición Múltiple de Precios (Idea 5)"]
         P10["10. Precios Psicológicos & Redondeo (Idea 12)"]
         P8 --> P9 --> P10
     end

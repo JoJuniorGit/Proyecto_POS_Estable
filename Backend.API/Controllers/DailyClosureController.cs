@@ -88,6 +88,16 @@ public class DailyClosureController : ControllerBase
                     .ToList());
 
             var result = await _closureService.CreateClosureFromCommandAsync(command, cancellationToken);
+            bool isElevated = User.IsInRole(nameof(Core.Entities.UserRole.Admin)) || User.IsInRole(nameof(Core.Entities.UserRole.Manager));
+            if (!isElevated && result?.Details != null)
+            {
+                result = result with
+                {
+                    Details = result.Details
+                        .Select(d => d with { SystemAmount = 0m, Difference = 0m, Status = "Blind" })
+                        .ToList()
+                };
+            }
 
             if (idempotency.HasValue && requestPath != null)
             {

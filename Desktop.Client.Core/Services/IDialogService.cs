@@ -15,6 +15,7 @@ public interface IDialogService
     void ShowError(string title, string message);
     void ShowWarning(string title, string message);
     void ShowInfo(string title, string message);
+    void ShowMessage(string title, string message) => ShowWarning(title, message);
     Task<string?> ShowTextInputAsync(string prompt, string hint);
     Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync();
     decimal? ShowCashAdvanceDialog();
@@ -30,13 +31,54 @@ public interface IDialogService
     bool? ShowProductDialog(ViewModels.ProductDialogViewModel dialogVm);
 
     /// <summary>
+    /// 8.179-T2 (S3): gestión del árbol de categorías del catálogo (crear/renombrar/mover/borrar)
+    /// abierta desde la tarjeta "Categorías" del diálogo de producto. Devuelve true cuando hubo
+    /// cambios persistidos, para que el llamador refresque su listado preservando la selección.
+    /// La implementación por defecto sin UI (stubs headless) equivale a "sin cambios".
+    /// </summary>
+    bool ShowCategoryManagementDialog(ViewModels.CategoryManagementDialogViewModel viewModel) => false;
+
+    /// <summary>
+    /// 8.181-T2 (S5): diálogo modal de edición masiva de precios del catálogo (configuración de
+    /// operaciones, vista previa "Antes vs Después" y aplicación con confirmación). Devuelve true
+    /// cuando la actualización se aplicó y persistió, para que el catálogo se refresque.
+    /// La implementación por defecto sin UI (stubs headless) equivale a "sin cambios".
+    /// </summary>
+    bool ShowBulkPriceEditDialog(ViewModels.BulkPriceEditDialogViewModel viewModel) => false;
+
+    /// <summary>
     /// 8.146-T5 (S4): modal de captura del código de barras universal al crear un producto desde una línea de factura.
     /// Implementación por defecto sin UI (stubs headless): null equivale a diálogo cancelado, igual que
     /// <see cref="ShowPartialDeliveryDialogAsync"/>.
     /// </summary>
     bool? ShowCreateInvoiceProductDialog(ViewModels.CreateInvoiceProductDialogViewModel dialogVm) => null;
 
+    /// <summary>
+    /// 8.161: modal de alta de proveedor (RIF/NIT + nombre comercial) desde la vista de facturas.
+    /// Implementacion por defecto sin UI (stubs headless): null equivale a dialogo cancelado.
+    /// </summary>
+    bool? ShowRegisterSupplierDialog(ViewModels.RegisterSupplierDialogViewModel dialogVm) => null;
+
+    /// <summary>
+    /// Panel interactivo de configuración avanzada del escáner OCR y plantillas por proveedor.
+    /// Implementación por defecto sin UI (stubs headless): null equivale a diálogo cancelado.
+    /// </summary>
+    bool? ShowOcrScannerConfigDialog(ViewModels.OcrScannerConfigDialogViewModel dialogVm) => null;
+
     (bool success, decimal quantityChange, string reason) ShowAdjustStockDialog(ProductDto product);
+
+    /// <summary>
+    /// 8.177-T3 (S1/S4): variante auditada de <see cref="ShowAdjustStockDialog"/> — devuelve además
+    /// el motivo estandarizado y la observación obligatoria del ajuste manual. La implementación por
+    /// defecto (stubs headless) delega en el método legado y completa los campos nuevos con null;
+    /// el flujo de inventario usa siempre esta sobrecarga.
+    /// </summary>
+    AdjustStockDialogResult ShowAdjustStockDialogWithAudit(ProductDto product)
+    {
+        var (success, quantityChange, reason) = ShowAdjustStockDialog(product);
+        return new AdjustStockDialogResult(success, quantityChange, reason, null, null);
+    }
+
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();
     Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(System.Collections.Generic.List<PaymentMethodDto> paymentMethods, decimal? availableCashLocal);
@@ -94,3 +136,17 @@ public class PartialDeliveryDialogResult
     public string? Notes { get; set; }
 }
 
+/// <summary>
+/// 8.177-T3 (S1): resultado del ajuste manual con los campos de auditoría capturados por el
+/// diálogo (motivo estandarizado + observación). <see cref="Cancelled"/> representa diálogo
+/// cancelado o stub headless sin UI.
+/// </summary>
+public sealed record AdjustStockDialogResult(
+    bool Success,
+    decimal QuantityChange,
+    string Reason,
+    Core.Entities.StockMovementReason? ReasonCode,
+    string? Observation)
+{
+    public static AdjustStockDialogResult Cancelled { get; } = new(false, 0m, string.Empty, null, null);
+}

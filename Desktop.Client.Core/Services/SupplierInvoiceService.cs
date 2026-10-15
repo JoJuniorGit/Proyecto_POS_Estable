@@ -40,14 +40,12 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
             query.Add($"commercialName={Uri.EscapeDataString(commercialName.Trim())}");
         }
 
-        if (query.Count == 0)
-        {
-            throw new ArgumentException("A supplier RIF/NIT or commercial name is required.");
-        }
-
-        using var response = await _httpClient.GetAsync(
-            $"api/suppliers?{string.Join("&", query)}",
-            cancellationToken);
+        // 8.161: sin filtros consulta el listado completo (selector de la vista); con RIF/NIT o
+        // nombre conserva la busqueda exacta.
+        var route = query.Count == 0
+            ? "api/suppliers"
+            : $"api/suppliers?{string.Join("&", query)}";
+        using var response = await _httpClient.GetAsync(route, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<List<SupplierSummaryDto>>(
                    cancellationToken: cancellationToken)
@@ -67,6 +65,13 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         return await ReadRequiredResponseAsync<SupplierSummaryDto>(response, cancellationToken);
     }
 
+    public Task<OcrExtractionResultDto> ExtractOcrAsync(
+        string filePath,
+        int? supplierId,
+        SupplierColumnMappingDto? columnMapping,
+        CancellationToken cancellationToken = default) =>
+        ExtractOcrAsync(filePath, supplierId, columnMapping, null, cancellationToken);
+
     // 8.147-T6/D12: sube la imagen/PDF al endpoint de extracción OCR. El mapping viaja como
     // campos planos y solo cuando hay plantilla del proveedor; sin él el parser usa keywords
     // genéricas. El archivo va como stream con nombre para conservar la extensión.
@@ -74,6 +79,7 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         string filePath,
         int? supplierId,
         SupplierColumnMappingDto? columnMapping,
+        SupplierOcrTemplateDto? ocrTemplate,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
@@ -107,12 +113,48 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
             }
         }
 
+        if (ocrTemplate is not null)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(ocrTemplate);
+            content.Add(new StringContent(json), "ocrTemplateJson");
+        }
+
         using var response = await _httpClient.PostAsync(
             "api/supplier-invoices/ocr-extract",
             content,
             cancellationToken);
         response.EnsureSuccessStatusCode();
         return await ReadRequiredResponseAsync<OcrExtractionResultDto>(response, cancellationToken);
+    }
+
+    public async Task<SupplierOcrTemplateDto?> GetSupplierOcrTemplateAsync(
+        int supplierId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            $"api/supplier-invoices/suppliers/{supplierId}/ocr-template",
+            cancellationToken);
+        if (response.StatusCode is HttpStatusCode.NoContent or HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<SupplierOcrTemplateDto>(cancellationToken: cancellationToken);
+    }
+
+    public async Task<SupplierOcrTemplateDto> SaveSupplierOcrTemplateAsync(
+        int supplierId,
+        SupplierOcrTemplateDto template,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        using var response = await _httpClient.PutAsJsonAsync(
+            $"api/supplier-invoices/suppliers/{supplierId}/ocr-template",
+            template,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await ReadRequiredResponseAsync<SupplierOcrTemplateDto>(response, cancellationToken);
     }
 
     private static string ResolveOcrContentType(string filePath) =>
@@ -185,6 +227,74 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         return await ReadRequiredResponseAsync<SupplierInvoiceDetailDto>(response, cancellationToken);
     }
 
+    public async Task<SupplierInvoiceDetailDto> LinkProductToLineAsync(
+        int invoiceId,
+        int lineId,
+        LinkInvoiceProductRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using var response = await _httpClient.PostAsJsonAsync(
+            $"api/supplier-invoices/{invoiceId}/lines/{lineId}/link-product",
+            request,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await ReadRequiredResponseAsync<SupplierInvoiceDetailDto>(response, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ProductDto>> SearchCatalogProductsAsync(
+        string? filter,
+        CancellationToken cancellationToken = default)
+    {
+        var queryFilter = Uri.EscapeDataString((filter ?? string.Empty).Trim());
+        var url = $"api/products?filter={queryFilter}&page=1&pageSize=20&statusFilter=active";
+        using var response = await _httpClient.GetAsync(url, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var paged = await response.Content.ReadFromJsonAsync<PagedResultDto<ProductDto>>(
+            cancellationToken: cancellationToken);
+        return paged?.Items?.ToList() ?? [];
+    }
+
+    // 8.175-S6: hidratación del modal de actualización. Deduplica ids (> 0) preservando el orden de
+    // primera aparición; un 404 se salta (producto eliminado) y el resto de estados propaga el error.
+    public async Task<IReadOnlyList<ProductDto>> GetCatalogProductsByIdsAsync(
+        IReadOnlyList<int> productIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+
+        var orderedIds = new List<int>(productIds.Count);
+        var seenIds = new HashSet<int>();
+        foreach (var productId in productIds)
+        {
+            if (productId > 0 && seenIds.Add(productId))
+            {
+                orderedIds.Add(productId);
+            }
+        }
+
+        var found = new List<ProductDto>(orderedIds.Count);
+        foreach (var productId in orderedIds)
+        {
+            using var response = await _httpClient.GetAsync($"api/products/{productId}", cancellationToken);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                continue;
+            }
+
+            response.EnsureSuccessStatusCode();
+            var product = await response.Content.ReadFromJsonAsync<ProductDto>(
+                cancellationToken: cancellationToken);
+            if (product is not null)
+            {
+                found.Add(product);
+            }
+        }
+
+        return found;
+    }
+
+
     private static async Task<TResponse> ReadRequiredResponseAsync<TResponse>(
         HttpResponseMessage response,
         CancellationToken cancellationToken)
@@ -192,3 +302,4 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken: cancellationToken)
         ?? throw new InvalidOperationException("The supplier invoice API returned an empty response.");
 }
+

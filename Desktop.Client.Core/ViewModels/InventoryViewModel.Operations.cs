@@ -55,6 +55,7 @@ public partial class InventoryViewModel
 
             if (SelectedStatusFilter != "all")
             {
+                RemoveFromSelection(item.Id);
                 Products.Remove(item);
             }
         }
@@ -76,6 +77,7 @@ public partial class InventoryViewModel
             
             if (SelectedStatusFilter != "all")
             {
+                RemoveFromSelection(item.Id);
                 Products.Remove(item);
             }
             _dialogService?.ShowSuccessDialog($"Producto '{item.Name}' restaurado exitosamente a estado Activo.");
@@ -115,6 +117,7 @@ public partial class InventoryViewModel
                 var res = await _productService.DeleteAsync(item.Id, hardDelete: true);
                 if (res == "hard_deleted")
                 {
+                    RemoveFromSelection(item.Id);
                     Products.Remove(item);
                     _dialogService.ShowSuccessDialog($"Producto '{item.Name}' eliminado permanentemente de la base de datos.");
                 }
@@ -124,6 +127,7 @@ public partial class InventoryViewModel
                     item.IsDeleted = true;
                     if (SelectedStatusFilter == "active")
                     {
+                        RemoveFromSelection(item.Id);
                         Products.Remove(item);
                     }
                     _dialogService.ShowWarning("Archivado por Auditoría", $"El producto '{item.Name}' posee ventas registradas en el historial. Ha sido archivado en 'Eliminados - Archivo Contable' para preservar la integridad de los datos.");
@@ -150,8 +154,7 @@ public partial class InventoryViewModel
                 var createdProduct = await _productService.CreateAsync(dialogVm.ResultProduct);
                 
                 // Add to list and select
-                var viewModelItem = new ProductItemViewModel(createdProduct, _exchangeRateService, OnProductItemChanged);
-                Products.Insert(0, viewModelItem);
+                Products.Insert(0, CreateItemViewModel(createdProduct));
                 
                 _dialogService.ShowSuccessDialog($"Producto '{createdProduct.Name}' agregado exitosamente.");
             }
@@ -186,7 +189,7 @@ public partial class InventoryViewModel
                 var index = Products.IndexOf(item);
                 if (index != -1)
                 {
-                    Products[index] = new ProductItemViewModel(updatedDto, _exchangeRateService, OnProductItemChanged);
+                    Products[index] = CreateItemViewModel(updatedDto);
                 }
                 
                 _dialogService.ShowSuccessDialog($"Producto '{dialogVm.ResultProduct.Name}' actualizado con éxito.");
@@ -217,10 +220,11 @@ public partial class InventoryViewModel
                 return;
             }
 
-            var (success, qtyChange, reason) = _dialogService.ShowAdjustStockDialog(product);
+            // 8.177-T3 (S1/S4): el flujo manual exige motivo estandarizado + observación desde la UI.
+            var (success, qtyChange, reason, reasonCode, observation) = _dialogService.ShowAdjustStockDialogWithAudit(product);
             if (success)
             {
-                await _productService.AdjustStockAsync(product.Id, qtyChange, reason);
+                await _productService.AdjustStockAsync(product.Id, qtyChange, reason, reasonCode, observation);
                 // The item in our list needs to show updated stock
                 var dto = item.GetDto();
                 dto.StockQuantity += qtyChange;
@@ -228,7 +232,7 @@ public partial class InventoryViewModel
                 var index = Products.IndexOf(item);
                 if (index != -1)
                 {
-                    Products[index] = new ProductItemViewModel(dto, _exchangeRateService, OnProductItemChanged);
+                    Products[index] = CreateItemViewModel(dto);
                 }
             }
         }

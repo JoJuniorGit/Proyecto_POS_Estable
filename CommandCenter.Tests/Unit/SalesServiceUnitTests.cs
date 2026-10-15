@@ -607,5 +607,75 @@ public class SalesServiceUnitTests
         Assert.Equal(0, vm.DetailTotalBsS);
         Assert.Equal(string.Empty, vm.DetailDateLocalFormatted);
     }
+
+    [Fact]
+    public async Task AddItemAsync_WhenExistingLineHasCustomPrice_CreatesSeparateStandardLineInsteadOfMerging()
+    {
+        var (service, context, inventoryMock, _, _) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var product = new ProductBuilder().WithId(10).WithSku("SKU-10").WithName("Harina").WithCostAndMargin(8.00m, 25.00m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(10)).ReturnsAsync(product);
+
+        var sale = await service.StartSaleAsync();
+        var saleEntity = await context.Sales.Include(s => s.Items).FirstAsync(s => s.Id == sale.Id);
+        saleEntity.Items.Add(new SaleItem
+        {
+            SaleId = sale.Id,
+            ProductId = 10,
+            ProductName = product.Name,
+            Quantity = 1m,
+            UnitPrice = 1.00m,
+            UnitPriceBsS = 50.00m,
+            Subtotal = 1.00m,
+            SubtotalBsS = 50.00m,
+            IsCustomPrice = true,
+            IsWholesaleApplied = false,
+            UnitOfMeasure = UnitOfMeasureType.Und
+        });
+        await context.SaveChangesAsync();
+
+        var updated = await service.AddItemAsync(sale.Id, 10, 5m, 50.00m);
+
+        Assert.Equal(2, updated.Items.Count);
+        var customLine = updated.Items.Single(i => i.IsCustomPrice);
+        var standardLine = updated.Items.Single(i => !i.IsCustomPrice);
+        Assert.Equal(1m, customLine.Quantity);
+        Assert.Equal(1.00m, customLine.UnitPrice);
+        Assert.Equal(5m, standardLine.Quantity);
+        Assert.Equal(product.PriceRetailUSD, standardLine.UnitPrice);
+    }
+
+    [Fact]
+    public async Task UpdateItemQuantityAsync_WhenLineHasCustomPrice_ThrowsUnauthorizedAccessException()
+    {
+        var (service, context, inventoryMock, _, _) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var product = new ProductBuilder().WithId(10).WithSku("SKU-10").WithName("Harina").WithCostAndMargin(8.00m, 25.00m).BuildSaleProductInfo();
+        inventoryMock.Setup(i => i.GetSaleProductByIdAsync(10)).ReturnsAsync(product);
+
+        var sale = await service.StartSaleAsync();
+        var saleEntity = await context.Sales.Include(s => s.Items).FirstAsync(s => s.Id == sale.Id);
+        var customItem = new SaleItem
+        {
+            SaleId = sale.Id,
+            ProductId = 10,
+            ProductName = product.Name,
+            Quantity = 1m,
+            UnitPrice = 1.00m,
+            UnitPriceBsS = 50.00m,
+            Subtotal = 1.00m,
+            SubtotalBsS = 50.00m,
+            IsCustomPrice = true,
+            IsWholesaleApplied = false,
+            UnitOfMeasure = UnitOfMeasureType.Und
+        };
+        saleEntity.Items.Add(customItem);
+        await context.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.UpdateItemQuantityAsync(sale.Id, customItem.Id, 10m, 50.00m));
+    }
 }
 

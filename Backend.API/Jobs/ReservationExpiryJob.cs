@@ -47,7 +47,7 @@ public class ReservationExpiryJob : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[RESERVATION_EXPIRY] Error no controlado durante el ciclo de expiración de reservas: {Message}", ex.Message);
+                _logger.LogWarning(ex, "[RESERVATION_EXPIRY] Error no controlado durante el ciclo de expiración de reservas.");
             }
 
             try
@@ -99,7 +99,7 @@ public class ReservationExpiryJob : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[RESERVATION_EXPIRY] Fallo al liberar la reserva expirada #{ReservationId}: {Message}", reservationId, ex.Message);
+                _logger.LogWarning(ex, "[RESERVATION_EXPIRY] Fallo al liberar la reserva expirada #{ReservationId}.", reservationId);
             }
         }
 

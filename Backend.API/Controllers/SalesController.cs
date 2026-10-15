@@ -79,23 +79,36 @@ public partial class SalesController : ControllerBase
 
         if (User.IsInRole("Driver")) return false;
 
-        SaleDto? target;
+        (string Status, int? CashierId)? meta;
         try
         {
-            target = await _salesService.GetSaleAsync(saleId, cancellationToken);
+            meta = await _salesService.GetSaleAuthMetadataAsync(saleId, cancellationToken);
+            if (meta == null)
+            {
+                var target = await _salesService.GetSaleAsync(saleId, cancellationToken);
+                if (target != null)
+                {
+                    meta = (target.Status, target.CashierId);
+                }
+            }
         }
         catch (System.Collections.Generic.KeyNotFoundException)
         {
             return true;
         }
 
-        if (target == null) return true;
+        if (meta == null) return true;
 
-        if (string.Equals(target.Status, "OnHold", StringComparison.Ordinal)) return true;
+        if (string.Equals(meta.Value.Status, "OnHold", StringComparison.Ordinal)) return true;
 
-        if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid))
+        if (!string.IsNullOrEmpty(_currentUserService.UserId))
         {
-            return target.CashierId == uid;
+            return int.TryParse(_currentUserService.UserId, out int uid) && meta.Value.CashierId == uid;
+        }
+
+        if (User?.Identity?.IsAuthenticated == true || meta.Value.CashierId.HasValue)
+        {
+            return false;
         }
 
         return true;

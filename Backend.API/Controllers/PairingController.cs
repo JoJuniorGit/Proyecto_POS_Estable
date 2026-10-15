@@ -13,12 +13,18 @@ public class PairingController : ControllerBase
     private readonly INetworkDiscoveryService _networkDiscoveryService;
     private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
     private readonly HttpsRuntimeInfo _httpsRuntimeInfo;
+    private readonly ISecurityStampValidator? _stampValidator;
 
-    public PairingController(INetworkDiscoveryService networkDiscoveryService, Microsoft.Extensions.Configuration.IConfiguration configuration, HttpsRuntimeInfo httpsRuntimeInfo)
+    public PairingController(
+        INetworkDiscoveryService networkDiscoveryService,
+        Microsoft.Extensions.Configuration.IConfiguration configuration,
+        HttpsRuntimeInfo httpsRuntimeInfo,
+        ISecurityStampValidator? stampValidator = null)
     {
         _networkDiscoveryService = networkDiscoveryService;
         _configuration = configuration;
         _httpsRuntimeInfo = httpsRuntimeInfo;
+        _stampValidator = stampValidator;
     }
 
     /// <summary>
@@ -27,7 +33,7 @@ public class PairingController : ControllerBase
     /// </summary>
     [HttpGet("info")]
     [AllowAnonymous]
-    public IActionResult GetPairingInfo()
+    public async System.Threading.Tasks.Task<IActionResult> GetPairingInfo()
     {
         // 1. Verificar si la petición es local (Loopback / Localhost)
         // Preferir HttpContext.Connection.LocalIpAddress si se usa X-Forwarded-For para evitar spoofing.
@@ -57,24 +63,42 @@ public class PairingController : ControllerBase
             return this.ApiForbidden("El acceso a la información de emparejamiento está restringido a la máquina local o usuarios autenticados.");
         }
 
-        if (!isLocal && !User.IsInRole("Admin") && !User.IsInRole("Manager"))
+        if (!isLocal)
         {
-            return this.ApiForbidden("El acceso a la información de emparejamiento requiere rol de Administrador o Supervisor.");
+            if (string.Equals(User.FindFirst("must_change_password")?.Value, "true", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return this.ApiUnauthorized("Debe cambiar su contraseña antes de continuar.");
+            }
+
+            var validator = _stampValidator
+                ?? HttpContext?.RequestServices?.GetService(typeof(ISecurityStampValidator)) as ISecurityStampValidator;
+            var stampClaim = User.FindFirst("security_stamp")?.Value;
+            if (validator != null && !string.IsNullOrEmpty(stampClaim))
+            {
+                var idClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                           ?? User.FindFirst("sub")?.Value;
+                if (!int.TryParse(idClaim, out int uid)
+                    || !await validator.ValidateStampAsync(uid, stampClaim, forceImmediateCheck: true))
+                {
+                    return this.ApiUnauthorized("Sesión inválida o revocada.");
+                }
+            }
+
+            if (!User.IsInRole("Admin") && !User.IsInRole("Manager"))
+            {
+                return this.ApiForbidden("El acceso a la información de emparejamiento requiere rol de Administrador o Supervisor.");
+            }
         }
 
         bool isHttps = _httpsRuntimeInfo.Enabled || Request.IsHttps;
 
         int httpPort = _httpsRuntimeInfo.HttpPort;
         int httpsPort = _httpsRuntimeInfo.HttpsPort;
-        try 
+        if (_configuration != null) 
         {
-            if (_configuration != null) 
-            {
-                if (int.TryParse(_configuration["Ports:Http"], out int configHttp)) httpPort = configHttp;
-                if (int.TryParse(_configuration["Ports:Https"], out int configHttps)) httpsPort = configHttps;
-            }
-        } 
-        catch { }
+            if (int.TryParse(_configuration["Ports:Http"], out int configHttp)) httpPort = configHttp;
+            if (int.TryParse(_configuration["Ports:Https"], out int configHttps)) httpsPort = configHttps;
+        }
 
         var info = _networkDiscoveryService.GetPairingInfo(httpPort: httpPort, httpsPort: httpsPort, isHttpsEnabled: isHttps);
         return Ok(info);

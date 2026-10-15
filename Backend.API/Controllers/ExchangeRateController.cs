@@ -1,8 +1,6 @@
 using Core.Entities;
 using Core.Interfaces;
 using Core.Logging;
-using Inventory.Module.Data;
-using Inventory.Module.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
@@ -16,7 +14,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Admin,Manager,Cashier")]
 [ApiController]
 [Route("api/exchange-rate")]
 public class ExchangeRateController : ControllerBase

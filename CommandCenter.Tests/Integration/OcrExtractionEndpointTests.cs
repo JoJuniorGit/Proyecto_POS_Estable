@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
@@ -30,7 +31,8 @@ namespace CommandCenter.Tests.Integration;
 /// <summary>
 /// 8.147-T4/D12: contrato HTTP del endpoint POST /api/supplier-invoices/ocr-extract con el
 /// pipeline real de MVC + DI (motor OCR stub, sin nativos de Tesseract): happy path con filas y
-/// previews, RBAC Cashier 403, tipo/tamaño rechazados con ProblemDetails y cero persistencia.
+/// número de factura detectado (sin previews), RBAC Cashier 403, tipo/tamaño rechazados con
+/// ProblemDetails y cero persistencia.
 /// </summary>
 [Collection(PostgresRealCollection.Name)]
 public class OcrExtractionEndpointTests
@@ -38,7 +40,7 @@ public class OcrExtractionEndpointTests
     private const string Route = "/api/supplier-invoices/ocr-extract";
 
     [Fact]
-    public async Task OcrExtract_AdminUploadsImage_ReturnsLinesPreviewsAndPersistsNothing()
+    public async Task OcrExtract_AdminUploadsImage_ReturnsLinesAndInvoiceNumberAndPersistsNothing()
     {
         var (context, connection) = TestDatabaseFactory.CreateSqliteInventoryDbContext();
         await using var connectionScope = connection;
@@ -51,7 +53,11 @@ public class OcrExtractionEndpointTests
         using var response = await PostFileAsync(client, "factura.jpg", CreateJpeg());
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var result = await response.Content.ReadFromJsonAsync<OcrExtractionResultDto>();
+        var raw = await response.Content.ReadAsStringAsync();
+        using var payload = JsonDocument.Parse(raw);
+        Assert.Equal("0238317", payload.RootElement.GetProperty("detectedInvoiceNumber").GetString());
+        Assert.False(payload.RootElement.TryGetProperty("previewPagesBase64", out _));
+        var result = JsonSerializer.Deserialize<OcrExtractionResultDto>(raw, JsonSerializerOptions.Web);
         Assert.NotNull(result);
         var line = Assert.Single(result.Lines);
         Assert.Equal("Café", line.Name);
@@ -60,10 +66,6 @@ public class OcrExtractionEndpointTests
         Assert.Equal(95.0m, line.QuantityConfidence);
         Assert.Equal("J-12345678-9", result.DetectedRif);
         Assert.Equal("COMERCIAL ESQUINA", result.DetectedSupplierName);
-
-        var preview = Assert.Single(result.PreviewPagesBase64);
-        using var decoded = Cv2.ImDecode(Convert.FromBase64String(preview), ImreadModes.Unchanged);
-        Assert.False(decoded.Empty(), "la respuesta debe incluir una preview PNG decodificable");
         Assert.Equal(1, engine.Calls);
 
         // La extracción no persiste: la BD de la aplicación queda intacta.
@@ -224,6 +226,8 @@ public class OcrExtractionEndpointTests
                 new OcrWord("COMERCIAL", 20, 5, 40, 10, 90),
                 new OcrWord("ESQUINA", 160, 5, 40, 10, 90),
                 new OcrWord("J-12345678-9", 320, 5, 40, 10, 90),
+                new OcrWord("FACTURA:", 20, 45, 50, 10, 90),
+                new OcrWord("*0238317", 160, 45, 60, 10, 90),
                 new OcrWord("Descripción", 40, 100, 40, 10, 90),
                 new OcrWord("Cantidad", 200, 100, 40, 10, 90),
                 new OcrWord("Precio", 340, 100, 40, 10, 90),

@@ -10,6 +10,9 @@ namespace Inventory.Module.Services.Ocr;
 /// </summary>
 public sealed class ImagePageDecoder
 {
+    public const int MaxImageDimension = 8000;
+    public const long MaxImagePixels = 25_000_000L;
+
     private readonly ImagePreprocessor _preprocessor;
 
     public ImagePageDecoder(ImagePreprocessor preprocessor)
@@ -26,6 +29,17 @@ public sealed class ImagePageDecoder
         if (decoded.Empty())
         {
             throw new ArgumentException("Los bytes no corresponden a una imagen PNG/JPG válida.", nameof(fileBytes));
+        }
+
+        var pixelCount = (long)decoded.Width * decoded.Height;
+        if (decoded.Width <= 0 || decoded.Height <= 0
+            || decoded.Width > MaxImageDimension
+            || decoded.Height > MaxImageDimension
+            || pixelCount > MaxImagePixels)
+        {
+            throw new ArgumentException(
+                $"Las dimensiones de la imagen ({decoded.Width}x{decoded.Height}) superan el límite permitido de {MaxImageDimension}px o {MaxImagePixels / 1_000_000} megapíxeles.",
+                nameof(fileBytes));
         }
 
         var png = _preprocessor.EncodePng(decoded);

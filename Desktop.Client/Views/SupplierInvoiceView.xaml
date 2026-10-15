@@ -16,13 +16,27 @@
              TextOptions.TextRenderingMode="Auto"
              Background="Transparent"
              FontFamily="{DynamicResource MaterialDesignFont}"
-             d:DataContext="{d:DesignInstance Type=vm:SupplierInvoiceViewModel}">
+             d:DataContext="{d:DesignInstance Type=vm:SupplierInvoiceViewModel}"
+             AllowDrop="True"
+             Drop="UserControl_Drop"
+             DragOver="UserControl_DragOver"
+             PreviewKeyDown="UserControl_PreviewKeyDown">
 
     <UserControl.Resources>
         <helpers:BindingProxy x:Key="ViewModelProxy" Data="{Binding}" />
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
-        <converters:Base64PngToImageSourceConverter x:Key="Base64PngToImageSourceConverter" />
         <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis" />
+
+        <Style x:Key="RightAlignedColumnHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+            <Setter Property="HorizontalContentAlignment" Value="Right" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="10,8" />
+        </Style>
+        <Style x:Key="CenterAlignedColumnHeader" TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="10,8" />
+        </Style>
     </UserControl.Resources>
 
     <Grid Margin="20">
@@ -48,57 +62,32 @@
                            AutomationProperties.AutomationId="SupplierInvoice_Title"
                            Style="{DynamicResource MaterialDesignHeadline5TextBlock}"
                            FontWeight="Bold" />
-                <TextBlock Text="Revise costos, márgenes y coincidencias antes de procesar los cambios."
+                <TextBlock Text="Revise costos y coincidencias antes de procesar los cambios."
                            Style="{DynamicResource MaterialDesignSubtitle2TextBlock}"
                            Foreground="{DynamicResource MaterialDesignTextBoxBorder}" />
             </StackPanel>
         </StackPanel>
 
         <materialDesign:Card Grid.Row="1" Padding="16" Margin="0,0,0,12">
+            <!-- 8.161: fila unica de seleccion (proveedor, moneda, tasa); el alta de proveedor
+                 (RIF/NIT + nombre comercial) vive en el modal del boton "Registrar proveedor". -->
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
 
-                <TextBox Grid.Row="0" Grid.Column="0"
-                         Text="{Binding SupplierRifOrNit, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                         materialDesign:HintAssist.Hint="RIF / NIT"
-                         IsEnabled="{Binding CanMutateCatalog}"
-                         Margin="0,0,10,8" />
-                <TextBox Grid.Row="0" Grid.Column="1"
-                         Text="{Binding SupplierCommercialName, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                         materialDesign:HintAssist.Hint="Nombre comercial"
-                         IsEnabled="{Binding CanMutateCatalog}"
-                         Margin="0,0,10,8" />
-                <Button Grid.Row="0" Grid.Column="2"
-                        Command="{Binding LookupSupplierCommand}"
-                        Content="Buscar proveedor"
-                        Style="{StaticResource MaterialDesignOutlinedButton}"
-                        IsEnabled="{Binding CanLookupSupplier}"
-                        Margin="0,0,8,8" />
-                <Button Grid.Row="0" Grid.Column="3"
-                        Command="{Binding CreateSupplierCommand}"
-                        Content="Registrar proveedor"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
-                        IsEnabled="{Binding CanCreateSupplier}"
-                        Margin="0,0,0,8" />
-
-                <ComboBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
+                <ComboBox Grid.Column="0"
                           ItemsSource="{Binding Suppliers}"
                           SelectedItem="{Binding SelectedSupplier, Mode=TwoWay}"
                           Style="{StaticResource MaterialDesignOutlinedComboBox}"
                           materialDesign:HintAssist.Hint="Seleccione el proveedor"
-                          IsEnabled="{Binding CanMutateCatalog}">
+                          TextSearch.TextPath="CommercialName"
+                          IsEnabled="{Binding CanMutateCatalog}"
+                          VerticalAlignment="Top"
+                          Margin="0,0,10,0">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal">
@@ -110,14 +99,17 @@
                     </ComboBox.ItemTemplate>
                 </ComboBox>
 
-                <ComboBox Grid.Row="2" Grid.Column="0"
+                <ComboBox Grid.Column="1"
                           ItemsSource="{Binding CurrencyOptions}"
                           SelectedItem="{Binding SelectedCurrency, Mode=TwoWay}"
                           Style="{StaticResource MaterialDesignOutlinedComboBox}"
                           materialDesign:HintAssist.Hint="Moneda del documento"
                           IsEnabled="{Binding IsCurrencyInputEnabled}"
-                          Margin="0,8,10,0" />
-                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,8,10,0">
+                          MinWidth="170"
+                          VerticalAlignment="Top"
+                          Margin="0,0,10,0" />
+
+                <StackPanel Grid.Column="2" MinWidth="190" VerticalAlignment="Top" Margin="0,0,10,0">
                     <TextBox Text="{Binding AppliedRateText, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource MaterialDesignOutlinedTextBox}"
                              materialDesign:HintAssist.Hint="Tasa aplicada (Bs.S)"
@@ -127,6 +119,24 @@
                                Foreground="#DC2626" FontSize="11" Margin="4,4,0,0"
                                Visibility="{Binding ShowRateValidationHint, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
+
+                <Button Grid.Column="3"
+                        Command="{Binding OpenRegisterSupplierCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        BorderBrush="#D1D5DB"
+                        Foreground="#4B5563"
+                        materialDesign:ButtonAssist.CornerRadius="6"
+                        Padding="12,0"
+                        Height="38"
+                        IsEnabled="{Binding CanOpenRegisterSupplier}"
+                        VerticalAlignment="Top"
+                        Cursor="Hand"
+                        AutomationProperties.Name="Registrar proveedor de facturas">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="Plus" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="Registrar proveedor" VerticalAlignment="Center" FontWeight="Medium" />
+                    </StackPanel>
+                </Button>
             </Grid>
         </materialDesign:Card>
 
@@ -138,32 +148,63 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Button Grid.Column="0"
-                    Command="{Binding SelectFileCommand}"
-                    Style="{StaticResource MaterialDesignRaisedButton}"
-                    IsEnabled="{Binding CanSelectFile}"
+                    Command="{Binding LoadInvoiceCommand}"
+                    Style="{StaticResource MaterialDesignFlatButton}"
+                    Background="#F3E8FD"
+                    Foreground="#6B21A8"
+                    BorderThickness="0"
+                    materialDesign:ButtonAssist.CornerRadius="8"
+                    Padding="14,8"
+                    Cursor="Hand"
+                    IsEnabled="{Binding CanLoadInvoice}"
+                    ToolTip="Cargar factura desde archivo estructurado (.xlsx, .csv, .xml) o imagen/PDF escaneado (OCR)"
+                    AutomationProperties.Name="Cargar factura de proveedor"
                     Margin="0,0,12,0">
-                <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="FileUploadOutline" VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBlock Text="Seleccionar factura (.xlsx, .csv, .xml)" VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <materialDesign:PackIcon Kind="FileUploadOutline" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="#6B21A8" />
+                    <TextBlock Text="Cargar Factura (Archivo o Imagen)" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="#6B21A8" />
                 </StackPanel>
             </Button>
-            <Button Grid.Column="1"
-                    Command="{Binding ScanInvoiceCommand}"
-                    Style="{StaticResource MaterialDesignRaisedButton}"
-                    IsEnabled="{Binding CanScanInvoice}"
-                    ToolTip="Cargar una imagen o PDF escaneado y extraer las líneas con OCR"
-                    AutomationProperties.Name="Escanear factura con OCR"
-                    Margin="0,0,12,0">
-                <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="ScanHelper" VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBlock Text="Escanear factura (OCR)" VerticalAlignment="Center" />
-                </StackPanel>
-            </Button>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                        Margin="0,0,12,0">
+                <Border Background="{DynamicResource MaterialDesignCardBackground}"
+                        BorderBrush="{DynamicResource MaterialDesignDivider}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="6,2"
+                        Margin="0,0,8,0"
+                        VerticalAlignment="Center"
+                        Visibility="{Binding HasSelectedFilePath, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding IngestionSourceBadge}"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="N.º de factura:" VerticalAlignment="Center" Margin="0,0,6,0"
+                           Foreground="{DynamicResource MaterialDesignBodyLight}" />
+                <TextBlock Text="{Binding DisplayInvoiceNumber}"
+                           FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <Button Command="{Binding ConfigureOcrScannerCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Padding="8,0" Height="28"
+                        Visibility="{Binding IsOcrSource, Converter={StaticResource BoolToVis}}"
+                        ToolTip="Abrir el configurador visual de OCR para ajustar el recorte, anclas o verificar la lectura"
+                        AutomationProperties.Name="Ajustar Escaneo / Ver Imagen">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="TuneVariant" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="Ajustar Escaneo / Ver Imagen" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
             <TextBox Grid.Column="2"
                      Text="{Binding SelectedFilePath}"
                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                     materialDesign:HintAssist.Hint="Archivo cargado"
                      IsReadOnly="True"
-                     VerticalContentAlignment="Center" />
+                     VerticalContentAlignment="Center"
+                     Visibility="{Binding HasSelectedFilePath, Converter={StaticResource BoolToVis}}"
+                     AutomationProperties.Name="Ruta del archivo cargado" />
             <ProgressBar Grid.Column="3"
                          IsIndeterminate="{Binding IsBusy}"
                          Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
@@ -199,7 +240,7 @@
                 </ItemsControl>
                 <Button Command="{Binding StageInvoiceCommand}"
                         Content="Preparar factura para revisión"
-                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
                         IsEnabled="{Binding CanStageInvoice}"
                         HorizontalAlignment="Right"
                         Margin="0,4,0,0" />
@@ -207,88 +248,45 @@
         </materialDesign:Card>
 
         <Grid Grid.Row="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-            <!-- 8.147-S5 (T7): revisión lado a lado solo cuando la factura staged viene de OCR;
-                 sin origen OCR la columna colapsa y la grilla conserva su layout de siempre. -->
-            <materialDesign:Card Grid.Column="0" Width="460" Margin="0,0,12,0"
-                                 Visibility="{Binding IsOcrSource, Converter={StaticResource BoolToVis}}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="8,8,8,4">
-                        <Button Command="{Binding OcrPreviousPageCommand}"
-                                Style="{StaticResource MaterialDesignIconButton}"
-                                ToolTip="Página anterior"
-                                AutomationProperties.Name="Página anterior de la factura escaneada">
-                            <materialDesign:PackIcon Kind="ChevronLeft" />
-                        </Button>
-                        <TextBlock Text="{Binding OcrPageLabel}" VerticalAlignment="Center"
-                                   FontWeight="SemiBold" Margin="6,0" />
-                        <Button Command="{Binding OcrNextPageCommand}"
-                                Style="{StaticResource MaterialDesignIconButton}"
-                                ToolTip="Página siguiente"
-                                AutomationProperties.Name="Página siguiente de la factura escaneada">
-                            <materialDesign:PackIcon Kind="ChevronRight" />
-                        </Button>
-                        <Border Width="1" Background="{DynamicResource MaterialDesignDivider}" Margin="10,4" />
-                        <Button Command="{Binding OcrZoomOutCommand}"
-                                Style="{StaticResource MaterialDesignIconButton}"
-                                ToolTip="Alejar"
-                                AutomationProperties.Name="Alejar preview">
-                            <materialDesign:PackIcon Kind="MagnifyMinus" />
-                        </Button>
-                        <Button Command="{Binding ResetOcrZoomCommand}"
-                                Style="{StaticResource MaterialDesignIconButton}"
-                                ToolTip="Restablecer zoom (100%)"
-                                AutomationProperties.Name="Restablecer zoom del preview">
-                            <materialDesign:PackIcon Kind="Restore" />
-                        </Button>
-                        <Button Command="{Binding OcrZoomInCommand}"
-                                Style="{StaticResource MaterialDesignIconButton}"
-                                ToolTip="Acercar"
-                                AutomationProperties.Name="Acercar preview">
-                            <materialDesign:PackIcon Kind="MagnifyPlus" />
-                        </Button>
-                        <TextBlock Text="{Binding OcrZoom, Mode=OneWay, StringFormat={}{0:P0}}"
-                                   VerticalAlignment="Center" Margin="6,0,0,0"
-                                   Foreground="{DynamicResource MaterialDesignBodyLight}" />
+            <!-- 8.168: leyenda semántica del resaltado por confianza de lectura OCR -->
+            <Border Grid.Row="0"
+                    Margin="0,0,0,8"
+                    Padding="12,8"
+                    CornerRadius="6"
+                    Background="{DynamicResource MaterialDesignCardBackground}"
+                    BorderBrush="{DynamicResource MaterialDesignDivider}"
+                    BorderThickness="1"
+                    Visibility="{Binding IsOcrSource, Converter={StaticResource BoolToVis}}">
+                <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Confianza de lectura OCR:"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               Margin="0,0,14,0" />
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,18,0">
+                        <Ellipse Width="8" Height="8" Fill="#F59E0B" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Text="Amarillo: confianza media (verificar dato contra la factura)"
+                                   VerticalAlignment="Center" FontSize="12" Foreground="#4B5563" />
                     </StackPanel>
-                    <ScrollViewer Grid.Row="1"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  VerticalScrollBarVisibility="Auto"
-                                  PreviewMouseWheel="OcrPreview_MouseWheel"
-                                  Background="#FAFAFA">
-                        <Image Source="{Binding OcrSelectedPreviewBase64, Mode=OneWay, Converter={StaticResource Base64PngToImageSourceConverter}}"
-                               Stretch="None"
-                               SnapsToDevicePixels="True"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center">
-                            <Image.LayoutTransform>
-                                <ScaleTransform ScaleX="{Binding OcrZoom, Mode=OneWay}"
-                                                ScaleY="{Binding OcrZoom, Mode=OneWay}" />
-                            </Image.LayoutTransform>
-                        </Image>
-                    </ScrollViewer>
-                    <TextBlock Grid.Row="2" Margin="8,6,8,8" FontSize="11" TextWrapping="Wrap"
-                               Foreground="{DynamicResource MaterialDesignBodyLight}"
-                               Text="Verifique los campos resaltados en amarillo o rojo contra la imagen antes de aprobar." />
-                </Grid>
-            </materialDesign:Card>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="8" Height="8" Fill="#EF4444" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBlock Text="Rojo: confianza baja (requiere revisión o corrección manual)"
+                                   VerticalAlignment="Center" FontSize="12" Foreground="#4B5563" />
+                    </StackPanel>
+                </WrapPanel>
+            </Border>
 
-            <DataGrid Grid.Column="1"
+            <DataGrid Grid.Row="1"
                   ItemsSource="{Binding Lines}"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False"
                   CanUserDeleteRows="False"
                   IsReadOnly="False"
-                  HeadersVisibility="All"
+                  HeadersVisibility="Column"
                   Background="{DynamicResource MaterialDesignPaper}"
                   VirtualizingStackPanel.IsVirtualizing="True"
                   VirtualizingStackPanel.VirtualizationMode="Recycling"
@@ -296,226 +294,592 @@
                   EnableColumnVirtualization="True"
                   ScrollViewer.CanContentScroll="True"
                   ScrollViewer.IsDeferredScrollingEnabled="False">
+            <DataGrid.Resources>
+                <!-- Slim modern scrollbar style (6px thumb, rounded, transparent track, no arrow buttons) -->
+                <Style TargetType="{x:Type ScrollBar}">
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="Width" Value="6" />
+                    <Style.Triggers>
+                        <Trigger Property="Orientation" Value="Horizontal">
+                            <Setter Property="Width" Value="Auto" />
+                            <Setter Property="Height" Value="6" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="{x:Type ScrollBar}">
+                                        <Grid Background="Transparent">
+                                            <Track x:Name="PART_Track">
+                                                <Track.DecreaseRepeatButton>
+                                                    <RepeatButton Focusable="False" Command="{x:Static ScrollBar.PageLeftCommand}">
+                                                        <RepeatButton.Template>
+                                                            <ControlTemplate TargetType="{x:Type RepeatButton}">
+                                                                <Rectangle Fill="Transparent" />
+                                                            </ControlTemplate>
+                                                        </RepeatButton.Template>
+                                                    </RepeatButton>
+                                                </Track.DecreaseRepeatButton>
+                                                <Track.Thumb>
+                                                    <Thumb>
+                                                        <Thumb.Template>
+                                                            <ControlTemplate TargetType="{x:Type Thumb}">
+                                                                <Border Background="#CBD5E1" CornerRadius="3" />
+                                                            </ControlTemplate>
+                                                        </Thumb.Template>
+                                                    </Thumb>
+                                                </Track.Thumb>
+                                                <Track.IncreaseRepeatButton>
+                                                    <RepeatButton Focusable="False" Command="{x:Static ScrollBar.PageRightCommand}">
+                                                        <RepeatButton.Template>
+                                                            <ControlTemplate TargetType="{x:Type RepeatButton}">
+                                                                <Rectangle Fill="Transparent" />
+                                                            </ControlTemplate>
+                                                        </RepeatButton.Template>
+                                                    </RepeatButton>
+                                                </Track.IncreaseRepeatButton>
+                                            </Track>
+                                        </Grid>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <Trigger Property="Orientation" Value="Vertical">
+                            <Setter Property="Width" Value="6" />
+                            <Setter Property="Height" Value="Auto" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="{x:Type ScrollBar}">
+                                        <Grid Background="Transparent">
+                                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                                <Track.DecreaseRepeatButton>
+                                                    <RepeatButton Focusable="False" Command="{x:Static ScrollBar.PageUpCommand}">
+                                                        <RepeatButton.Template>
+                                                            <ControlTemplate TargetType="{x:Type RepeatButton}">
+                                                                <Rectangle Fill="Transparent" />
+                                                            </ControlTemplate>
+                                                        </RepeatButton.Template>
+                                                    </RepeatButton>
+                                                </Track.DecreaseRepeatButton>
+                                                <Track.Thumb>
+                                                    <Thumb>
+                                                        <Thumb.Template>
+                                                            <ControlTemplate TargetType="{x:Type Thumb}">
+                                                                <Border Background="#CBD5E1" CornerRadius="3" />
+                                                            </ControlTemplate>
+                                                        </Thumb.Template>
+                                                    </Thumb>
+                                                </Track.Thumb>
+                                                <Track.IncreaseRepeatButton>
+                                                    <RepeatButton Focusable="False" Command="{x:Static ScrollBar.PageDownCommand}">
+                                                        <RepeatButton.Template>
+                                                            <ControlTemplate TargetType="{x:Type RepeatButton}">
+                                                                <Rectangle Fill="Transparent" />
+                                                            </ControlTemplate>
+                                                        </RepeatButton.Template>
+                                                    </RepeatButton>
+                                                </Track.IncreaseRepeatButton>
+                                            </Track>
+                                        </Grid>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.Resources>
             <DataGrid.RowStyle>
                 <Style TargetType="DataGridRow" BasedOn="{StaticResource MaterialDesignDataGridRow}">
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding CanCreateProduct}" Value="True">
                             <Setter Property="Opacity" Value="0.9" />
-                            <Setter Property="ToolTip" Value="Producto nuevo: use 'Crear Producto' para capturar el código de barras y resolver la línea." />
+                            <Setter Property="ToolTip" Value="Producto nuevo: use 'Crear Producto' en la columna Estado para capturar el código de barras y resolver la línea." />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
             </DataGrid.RowStyle>
             <DataGrid.Columns>
-                <DataGridTemplateColumn Header="Producto" Width="*" MinWidth="160">
-                    <DataGridTemplateColumn.CellStyle>
-                        <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding NameConfidenceBand}" Value="Yellow">
-                                    <Setter Property="Background" Value="#FFF3C4" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding NameConfidenceBand}" Value="Red">
-                                    <Setter Property="Background" Value="#FFD6D6" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGridTemplateColumn.CellStyle>
+                <!-- 1. Producto -->
+                <DataGridTemplateColumn Header="Producto" Width="2*" MinWidth="180">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Grid>
+                            <Grid VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Name}"
                                            VerticalAlignment="Center"
                                            Margin="8,0"
                                            TextTrimming="CharacterEllipsis"
                                            Visibility="{Binding IsEditorEnabled, Converter={StaticResource InverseBoolToVis}}" />
-                                <TextBox Text="{Binding EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                         IsEnabled="{Binding IsEditorEnabled}"
-                                         Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}"
-                                         Padding="5,2"
-                                         VerticalContentAlignment="Center"
-                                         AutomationProperties.Name="Nombre OCR editable" />
+                                <Border Background="White"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Margin="4,2"
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="#E0E0E0" />
+                                            <Setter Property="Background" Value="White" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                                    <Setter Property="BorderBrush" Value="#6B21A8" />
+                                                    <Setter Property="BorderThickness" Value="1.5" />
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding NameConfidenceBand}" Value="Yellow">
+                                                    <Setter Property="Background" Value="#FEF9C3" />
+                                                    <Setter Property="BorderBrush" Value="#F59E0B" />
+                                                    <Setter Property="BorderThickness" Value="3,1,1,1" />
+                                                    <Setter Property="ToolTip" Value="Confianza OCR media (60–84 %): verifique el nombre contra la factura física. Al editarlo se marca como revisado." />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding NameConfidenceBand}" Value="Red">
+                                                    <Setter Property="Background" Value="#FEE2E2" />
+                                                    <Setter Property="BorderBrush" Value="#EF4444" />
+                                                    <Setter Property="BorderThickness" Value="3,1,1,1" />
+                                                    <Setter Property="ToolTip" Value="Confianza OCR baja (&lt; 60 %): lectura incierta, revise o corrija manualmente el nombre." />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBox Text="{Binding EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Padding="6,4"
+                                             VerticalAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             Validation.ErrorTemplate="{x:Null}"
+                                             IsEnabled="{Binding IsEditorEnabled}"
+                                             AutomationProperties.Name="Nombre OCR editable" />
+                                </Border>
                             </Grid>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Código proveedor" Binding="{Binding SupplierCode}" Width="130" />
-                <DataGridTextColumn Header="Código de barras" Binding="{Binding Barcode}" Width="130" />
-                <DataGridTemplateColumn Header="Estado" Width="115">
+
+                <!-- 2. Estado -->
+                <DataGridTemplateColumn Header="Estado" Width="140" MinWidth="130" HeaderStyle="{StaticResource CenterAlignedColumnHeader}">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Border Padding="7,3" CornerRadius="8" HorizontalAlignment="Center">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Background" Value="#E3F2FD" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[NUEVO]">
-                                                <Setter Property="Background" Value="#E8F5E9" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[UPDATE]">
-                                                <Setter Property="Background" Value="#FFF3E0" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[UNCHANGED]">
-                                                <Setter Property="Background" Value="#ECEFF1" />
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding StatusLabel}" Value="[CONFLICT]">
-                                                <Setter Property="Background" Value="#FFEBEE" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold" />
-                            </Border>
+                            <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <!-- 8.175-S1: las filas resueltas con coincidencia de catálogo ofrecen la
+                                     edición del vínculo; el badge estático queda para Unchanged/Conflict. -->
+                                <Button Content="Actualizar"
+                                        Command="{Binding Data.UpdateLinkedProductCommand, Source={StaticResource ViewModelProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Background="#FFF3E0" BorderBrush="#FB8C00" Foreground="#1F2937"
+                                        FontSize="11" FontWeight="SemiBold" Padding="10,2"
+                                        Cursor="Hand"
+                                        Visibility="{Binding CanUpdateLink, Converter={StaticResource BoolToVis}}"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        ToolTip="Editar el vínculo con el catálogo: márgenes, re-vinculación (1:1 o 1:N) o crear un producto nuevo."
+                                        AutomationProperties.Name="Actualizar producto vinculado" />
+                                <Border Padding="8,3" CornerRadius="8" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Visibility="{Binding ShowStaticStatusBadge, Converter={StaticResource BoolToVis}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#E3F2FD" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding StatusLabel}" Value="[NUEVO]">
+                                                    <Setter Property="Background" Value="#E8F5E9" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusLabel}" Value="[ACTUALIZAR]">
+                                                    <Setter Property="Background" Value="#FFF3E0" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusLabel}" Value="[UNCHANGED]">
+                                                    <Setter Property="Background" Value="#ECEFF1" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding StatusLabel}" Value="[CONFLICT]">
+                                                    <Setter Property="Background" Value="#FFEBEE" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding StatusLabel}" FontWeight="SemiBold" Foreground="#1F2937" VerticalAlignment="Center" />
+                                </Border>
+                                <Button Content="Crear Producto"
+                                        Command="{Binding Data.CreateProductCommand, Source={StaticResource ViewModelProxy}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Visibility="{Binding CanCreateProduct, Converter={StaticResource BoolToVis}}"
+                                        IsEnabled="{Binding CanCreateProduct}"
+                                        FontSize="11"
+                                        Padding="8,2"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        ToolTip="Producto nuevo en el catálogo: haga clic para registrar su código de barras y habilitar la línea."
+                                        AutomationProperties.Name="Crear producto desde la línea" />
+                            </Grid>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="Cantidad" Width="90">
-                    <DataGridTemplateColumn.CellStyle>
-                        <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding QuantityConfidenceBand}" Value="Yellow">
-                                    <Setter Property="Background" Value="#FFF3C4" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding QuantityConfidenceBand}" Value="Red">
-                                    <Setter Property="Background" Value="#FFD6D6" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGridTemplateColumn.CellStyle>
+
+                <!-- 3. Cantidad -->
+                <DataGridTemplateColumn Header="Cantidad" Width="105" MinWidth="90" HeaderStyle="{StaticResource RightAlignedColumnHeader}">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Grid>
+                            <Grid VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Quantity, StringFormat={}{0:N3}}"
                                            VerticalAlignment="Center"
                                            HorizontalAlignment="Right"
                                            Margin="8,0"
                                            Visibility="{Binding IsEditorEnabled, Converter={StaticResource InverseBoolToVis}}" />
-                                <TextBox Text="{Binding EditQuantity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                         IsEnabled="{Binding IsEditorEnabled}"
-                                         Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}"
-                                         HorizontalContentAlignment="Right"
-                                         Padding="5,2"
-                                         VerticalContentAlignment="Center"
-                                         AutomationProperties.Name="Cantidad OCR editable" />
+                                <Border Background="White"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Margin="4,2"
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="#E0E0E0" />
+                                            <Setter Property="Background" Value="White" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                                    <Setter Property="BorderBrush" Value="#6B21A8" />
+                                                    <Setter Property="BorderThickness" Value="1.5" />
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding QuantityConfidenceBand}" Value="Yellow">
+                                                    <Setter Property="Background" Value="#FEF9C3" />
+                                                    <Setter Property="BorderBrush" Value="#F59E0B" />
+                                                    <Setter Property="BorderThickness" Value="3,1,1,1" />
+                                                    <Setter Property="ToolTip" Value="Confianza OCR media (60–84 %): verifique la cantidad contra la factura física. Al editarla se marca como revisada." />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding QuantityConfidenceBand}" Value="Red">
+                                                    <Setter Property="Background" Value="#FEE2E2" />
+                                                    <Setter Property="BorderBrush" Value="#EF4444" />
+                                                    <Setter Property="BorderThickness" Value="3,1,1,1" />
+                                                    <Setter Property="ToolTip" Value="Confianza OCR baja (&lt; 60 %): lectura incierta, revise o corrija manualmente la cantidad." />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBox Text="{Binding EditQuantityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Padding="6,4"
+                                             HorizontalAlignment="Stretch"
+                                             HorizontalContentAlignment="Right"
+                                             VerticalAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             MinWidth="65"
+                                             Validation.ErrorTemplate="{x:Null}"
+                                             IsEnabled="{Binding IsEditorEnabled}"
+                                             AutomationProperties.Name="Cantidad OCR editable" />
+                                </Border>
                             </Grid>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Costo USD" Binding="{Binding UnitCostUSD, StringFormat={}{0:N2}}" Width="100" />
-                <DataGridTemplateColumn Header="Costo factura (Bs.S)"
-                                        Width="130"
-                                        Visibility="{Binding Data.IsBsSInvoice, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
-                    <DataGridTemplateColumn.CellStyle>
-                        <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding UnitCostConfidenceBand}" Value="Yellow">
-                                    <Setter Property="Background" Value="#FFF3C4" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding UnitCostConfidenceBand}" Value="Red">
-                                    <Setter Property="Background" Value="#FFD6D6" />
-                                </DataTrigger>
-                            </Style.Triggers>
+
+                <!-- 4. Costo USD -->
+                <DataGridTextColumn Header="Costo USD"
+                                    Binding="{Binding UnitCostUSD, Mode=OneWay, StringFormat={}{0:N2}}"
+                                    Width="110" MinWidth="95"
+                                    HeaderStyle="{StaticResource RightAlignedColumnHeader}">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="HorizontalAlignment" Value="Right" />
+                            <Setter Property="VerticalAlignment" Value="Center" />
+                            <Setter Property="Margin" Value="0,0,8,0" />
                         </Style>
-                    </DataGridTemplateColumn.CellStyle>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+
+                <!-- 5. Costo factura -->
+                <DataGridTemplateColumn Header="{Binding Data.DocumentCostHeader, Source={StaticResource ViewModelProxy}}"
+                                        Width="155" MinWidth="140"
+                                        HeaderStyle="{StaticResource RightAlignedColumnHeader}">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <Grid>
+                            <Grid VerticalAlignment="Center">
                                 <TextBlock Text="{Binding UnitCostDocument, Mode=OneWay, StringFormat={}{0:N2}}"
                                            VerticalAlignment="Center"
                                            HorizontalAlignment="Right"
                                            Margin="8,0"
                                            Visibility="{Binding IsEditorEnabled, Converter={StaticResource InverseBoolToVis}}" />
-                                <TextBox Text="{Binding EditUnitCostDocument, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                         IsEnabled="{Binding IsEditorEnabled}"
-                                         Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}"
-                                         HorizontalContentAlignment="Right"
-                                         Padding="5,2"
-                                         VerticalContentAlignment="Center"
-                                         AutomationProperties.Name="Costo factura OCR editable" />
+                                <Border Background="White"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Margin="4,2"
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding IsEditorEnabled, Converter={StaticResource BoolToVis}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="#E0E0E0" />
+                                            <Setter Property="Background" Value="White" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                                    <Setter Property="BorderBrush" Value="#6B21A8" />
+                                                    <Setter Property="BorderThickness" Value="1.5" />
+                                                </Trigger>
+                                                <DataTrigger Binding="{Binding UnitCostConfidenceBand}" Value="Yellow">
+                                                    <Setter Property="Background" Value="#FEF9C3" />
+                                                    <Setter Property="BorderBrush" Value="#F59E0B" />
+                                                    <Setter Property="BorderThickness" Value="3,1,1,1" />
+                                                    <Setter Property="ToolTip" Value="Confianza OCR media (60–84 %): verifique el costo unitario contra la factura física. Al editarlo se marca como revisado." />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding UnitCostConfidenceBand}" Value="Red">
+                                                    <Setter Property="Background" Value="#FEE2E2" />
+                                                    <Setter Property="BorderBrush" Value="#EF4444" />
+                                                    <Setter Property="BorderThickness" Value="3,1,1,1" />
+                                                    <Setter Property="ToolTip" Value="Confianza OCR baja (&lt; 60 %): lectura incierta, revise o corrija manualmente el costo unitario." />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBox Text="{Binding EditUnitCostDocumentText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Padding="6,4"
+                                             HorizontalAlignment="Stretch"
+                                             HorizontalContentAlignment="Right"
+                                             VerticalAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             MinWidth="85"
+                                             Validation.ErrorTemplate="{x:Null}"
+                                             IsEnabled="{Binding IsEditorEnabled}"
+                                             AutomationProperties.Name="Costo factura OCR editable" />
+                                </Border>
                             </Grid>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Costo anterior → nuevo" Binding="{Binding CostComparison}" Width="160" />
-                <DataGridTemplateColumn Header="Margen detal %" Width="125"
+
+                <!-- 6. Factor -->
+                <DataGridTemplateColumn Header="Factor" Width="95" MinWidth="80"
+                                        HeaderStyle="{StaticResource RightAlignedColumnHeader}"
                                         Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <TextBox Text="{Binding MarginRetailOverride, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                     IsEnabled="{Binding CanApprove}"
-                                     HorizontalContentAlignment="Right"
-                                     Padding="5,2" />
+                            <Border Background="White"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Margin="4,2"
+                                    VerticalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="BorderBrush" Value="#E0E0E0" />
+                                        <Setter Property="Background" Value="White" />
+                                        <Setter Property="ToolTip" Value="Factor de conversión (divisor): la factura viene por caja/bulto y el local vende por unidad. Al confirmar: costo unitario ÷ factor y cantidad × factor. Se recuerda por proveedor y producto para las próximas facturas." />
+                                        <Style.Triggers>
+                                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                                <Setter Property="BorderBrush" Value="#6B21A8" />
+                                                <Setter Property="BorderThickness" Value="1.5" />
+                                            </Trigger>
+                                            <DataTrigger Binding="{Binding HasInvalidConversionFactor}" Value="True">
+                                                <Setter Property="BorderBrush" Value="#DC2626" />
+                                                <Setter Property="ToolTip" Value="El factor debe ser un número mayor a cero (mientras esté vacío o en 0 se usa 1 como divisor seguro)." />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBox Text="{Binding ConversionFactorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         Padding="6,4"
+                                         HorizontalAlignment="Stretch"
+                                         HorizontalContentAlignment="Right"
+                                         VerticalAlignment="Center"
+                                         VerticalContentAlignment="Center"
+                                         MinWidth="60"
+                                         Validation.ErrorTemplate="{x:Null}"
+                                         IsEnabled="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}}"
+                                         AutomationProperties.Name="Factor de conversion por producto" />
+                            </Border>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Precio detal sugerido USD" Binding="{Binding SuggestedRetailPriceUSD, StringFormat={}{0:N2}}" Width="150" />
-                <DataGridTemplateColumn Header="Margen mayor %" Width="125"
-                                        Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
+
+                <!-- 7. Costo anterior → nuevo (Semantic Pill) -->
+                <DataGridTemplateColumn Header="Costo anterior → nuevo" Width="195" MinWidth="180"
+                                        HeaderStyle="{StaticResource CenterAlignedColumnHeader}">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <TextBox Text="{Binding MarginWholesaleOverride, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                     IsEnabled="{Binding CanApprove}"
-                                     HorizontalContentAlignment="Right"
-                                     Padding="5,2" />
+                            <Border CornerRadius="12"
+                                    Padding="8,3"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#F3F4F6" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.Decreased}">
+                                                <Setter Property="Background" Value="#DCFCE7" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.Unchanged}">
+                                                <Setter Property="Background" Value="#F3F4F6" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.IncreasedModerate}">
+                                                <Setter Property="Background" Value="#FEF3C7" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.IncreasedDrastic}">
+                                                <Setter Property="Background" Value="#FEE2E2" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.NewProduct}">
+                                                <Setter Property="Background" Value="#EEF2FF" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="TrendingDown"
+                                                             Width="14" Height="14"
+                                                             Foreground="#16A34A"
+                                                             VerticalAlignment="Center"
+                                                             Margin="0,0,4,0">
+                                        <materialDesign:PackIcon.Style>
+                                            <Style TargetType="materialDesign:PackIcon">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.Decreased}">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </materialDesign:PackIcon.Style>
+                                    </materialDesign:PackIcon>
+
+                                    <materialDesign:PackIcon Kind="TrendingUp"
+                                                             Width="14" Height="14"
+                                                             Foreground="#D97706"
+                                                             VerticalAlignment="Center"
+                                                             Margin="0,0,4,0">
+                                        <materialDesign:PackIcon.Style>
+                                            <Style TargetType="materialDesign:PackIcon">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.IncreasedModerate}">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </materialDesign:PackIcon.Style>
+                                    </materialDesign:PackIcon>
+
+                                    <materialDesign:PackIcon Kind="TrendingUp"
+                                                             Width="14" Height="14"
+                                                             Foreground="#DC2626"
+                                                             VerticalAlignment="Center"
+                                                             Margin="0,0,4,0">
+                                        <materialDesign:PackIcon.Style>
+                                            <Style TargetType="materialDesign:PackIcon">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.IncreasedDrastic}">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </materialDesign:PackIcon.Style>
+                                    </materialDesign:PackIcon>
+
+                                    <TextBlock Text="{Binding CostComparisonPillText}"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#6B7280" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.Decreased}">
+                                                        <Setter Property="Foreground" Value="#16A34A" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.Unchanged}">
+                                                        <Setter Property="Foreground" Value="#6B7280" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.IncreasedModerate}">
+                                                        <Setter Property="Foreground" Value="#D97706" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.IncreasedDrastic}">
+                                                        <Setter Property="Foreground" Value="#DC2626" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding CostChangeKind}" Value="{x:Static vm:CostChangeKind.NewProduct}">
+                                                        <Setter Property="Foreground" Value="#4F46E5" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Precio mayor sugerido USD" Binding="{Binding SuggestedWholesalePriceUSD, StringFormat={}{0:N2}}" Width="160" />
-                <DataGridTemplateColumn Header="Aprobar" Width="85"
+
+                <!-- 8. Aprobar -->
+                <DataGridTemplateColumn Width="115" MinWidth="105"
+                                        HeaderStyle="{StaticResource CenterAlignedColumnHeader}"
                                         Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
+                    <DataGridTemplateColumn.Header>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <CheckBox IsChecked="{Binding Data.AreAllApprovableLinesApproved, Source={StaticResource ViewModelProxy}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      IsEnabled="{Binding Data.HasApprovableLines, Source={StaticResource ViewModelProxy}}"
+                                      VerticalAlignment="Center"
+                                      ToolTip="Marcar o desmarcar todas las líneas aprobables"
+                                      AutomationProperties.Name="Aprobar todas las líneas" />
+                            <TextBlock Text="Aprobar" VerticalAlignment="Center" Margin="6,0,0,0" />
+                        </StackPanel>
+                    </DataGridTemplateColumn.Header>
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <CheckBox IsChecked="{Binding IsApproved, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                      IsEnabled="{Binding CanApprove}"
+                                      IsEnabled="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}}"
                                       HorizontalAlignment="Center"
                                       VerticalAlignment="Center"
+                                      ToolTip="Aprobar línea para procesamiento (desmarque en productos nuevos para omitir la línea sin crear ni vincular)."
                                       AutomationProperties.Name="Aprobar línea de factura" />
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
-                <DataGridTemplateColumn Header="Crear Producto" Width="140"
-                                        Visibility="{Binding Data.CanMutateCatalog, Source={StaticResource ViewModelProxy}, Converter={StaticResource BoolToVis}}">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Button Content="Crear Producto"
-                                    Command="{Binding Data.CreateProductCommand, Source={StaticResource ViewModelProxy}}"
-                                    CommandParameter="{Binding}"
-                                    Style="{StaticResource MaterialDesignOutlinedButton}"
-                                    Visibility="{Binding CanCreateProduct, Converter={StaticResource BoolToVis}}"
-                                    IsEnabled="{Binding CanCreateProduct}"
-                                    FontSize="11"
-                                    Padding="8,2"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.Name="Crear producto desde la línea" />
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
+
             </DataGrid.Columns>
             </DataGrid>
         </Grid>
 
-        <Grid Grid.Row="5" Margin="0,12,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
-                       Foreground="{DynamicResource PrimaryHueMidBrush}"
-                       VerticalAlignment="Center" FontWeight="SemiBold" />
-            <Button Grid.Column="1" Command="{Binding ClearInvoiceCommand}"
-                    Content="Limpiar" Style="{StaticResource MaterialDesignFlatButton}"
-                    Margin="0,0,12,0" />
-            <Button Grid.Column="2" Command="{Binding ConfirmInvoiceCommand}"
-                    Content="Confirmar y Procesar Factura"
-                    Style="{StaticResource MaterialDesignRaisedButton}"
-                    IsEnabled="{Binding CanConfirmInvoice}"
-                    FontWeight="Bold" />
-        </Grid>
+        <Border Grid.Row="5"
+                Background="White"
+                BorderBrush="#E5E7EB"
+                BorderThickness="0,1,0,0"
+                Padding="20,12"
+                Margin="-20,12,-20,-20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
+                           Foreground="{DynamicResource PrimaryHueMidBrush}"
+                           VerticalAlignment="Center" FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" Margin="0,0,16,0" />
+                <Border Grid.Column="1"
+                        Background="#F3F4F6"
+                        BorderBrush="#E5E7EB"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="10,5"
+                        Margin="0,0,16,0"
+                        VerticalAlignment="Center"
+                        Visibility="{Binding HasSummaryMetrics, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding SummaryMetricsText}"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#374151"
+                               VerticalAlignment="Center" />
+                </Border>
+                <Button Grid.Column="2" Command="{Binding ClearInvoiceCommand}"
+                        Content="Limpiar" Style="{StaticResource MaterialDesignFlatButton}"
+                        Margin="0,0,12,0" VerticalAlignment="Center" />
+                <Button Grid.Column="3" Command="{Binding ConfirmInvoiceCommand}"
+                        Content="Confirmar y Procesar Factura"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Background="#6B21A8"
+                        Foreground="White"
+                        IsEnabled="{Binding CanConfirmInvoice}"
+                        FontWeight="Bold"
+                        Padding="16,8"
+                        Height="38"
+                        materialDesign:ButtonAssist.CornerRadius="6"
+                        VerticalAlignment="Center" />
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

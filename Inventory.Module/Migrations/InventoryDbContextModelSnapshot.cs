@@ -22,6 +22,48 @@ namespace Inventory.Module.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Core.Entities.Category", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<int?>("ParentCategoryId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .HasDatabaseName("IX_Categories_NormalizedName");
+
+                    b.HasIndex("ParentCategoryId")
+                        .HasDatabaseName("IX_Categories_ParentCategoryId");
+
+                    b.HasIndex("ParentCategoryId", "NormalizedName")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Categories_ParentCategoryId_NormalizedName");
+
+                    b.ToTable("Categories");
+                });
+
             modelBuilder.Entity("Core.Entities.ExchangeRateHistory", b =>
                 {
                     b.Property<DateOnly>("Date")
@@ -207,6 +249,143 @@ namespace Inventory.Module.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Core.Entities.ProductCategory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("IX_ProductCategories_CategoryId");
+
+                    b.HasIndex("ProductId", "CategoryId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ProductCategories_ProductId_CategoryId");
+
+                    b.ToTable("ProductCategories");
+                });
+
+            modelBuilder.Entity("Core.Entities.StockCountItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("CountedQuantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("StockCountSessionId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("TheoreticalStock")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<decimal?>("UnitCostUSD")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("IX_StockCountItems_ProductId");
+
+                    b.HasIndex("StockCountSessionId", "ProductId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_StockCountItems_SessionId_ProductId");
+
+                    b.ToTable("StockCountItems");
+                });
+
+            modelBuilder.Entity("Core.Entities.StockCountSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AppliedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<int?>("ScopeCategoryId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Open");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScopeCategoryId");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_StockCountSessions_Status");
+
+                    b.ToTable("StockCountSessions");
+                });
+
             modelBuilder.Entity("Core.Entities.StockMovement", b =>
                 {
                     b.Property<int>("Id")
@@ -214,6 +393,9 @@ namespace Inventory.Module.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AuthorizedByUserId")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -224,6 +406,13 @@ namespace Inventory.Module.Migrations
                     b.Property<decimal>("NewStockLevel")
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)");
+
+                    b.Property<string>("Observation")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OriginType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<int>("ProductId")
                         .HasColumnType("integer");
@@ -236,8 +425,22 @@ namespace Inventory.Module.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<int?>("SaleId")
                         .HasColumnType("integer");
+
+                    b.Property<int?>("StockCountSessionId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SupplierInvoiceId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("UnitCostUSD")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -250,10 +453,17 @@ namespace Inventory.Module.Migrations
                     b.HasIndex("MovementDate")
                         .HasDatabaseName("IX_StockMovements_MovementDate");
 
-                    b.HasIndex("ProductId");
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("IX_StockMovements_ProductId");
+
+                    b.HasIndex("ReasonCode")
+                        .HasDatabaseName("IX_StockMovements_ReasonCode");
 
                     b.HasIndex("SaleId")
                         .HasDatabaseName("IX_StockMovements_SaleId");
+
+                    b.HasIndex("StockCountSessionId")
+                        .HasDatabaseName("IX_StockMovements_StockCountSessionId");
 
                     b.ToTable("StockMovements");
                 });
@@ -269,6 +479,9 @@ namespace Inventory.Module.Migrations
                     b.Property<DateTime>("ArchivedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("AuthorizedByUserId")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -278,6 +491,13 @@ namespace Inventory.Module.Migrations
                     b.Property<decimal>("NewStockLevel")
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)");
+
+                    b.Property<string>("Observation")
+                        .HasColumnType("text");
+
+                    b.Property<string>("OriginType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<int>("OriginalMovementId")
                         .HasColumnType("integer");
@@ -293,8 +513,22 @@ namespace Inventory.Module.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<int?>("SaleId")
                         .HasColumnType("integer");
+
+                    b.Property<int?>("StockCountSessionId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SupplierInvoiceId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("UnitCostUSD")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -309,6 +543,12 @@ namespace Inventory.Module.Migrations
 
                     b.HasIndex("OriginalMovementId")
                         .HasDatabaseName("IX_StockMovements_Archive_OriginalMovementId");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("IX_StockMovements_Archive_ProductId");
+
+                    b.HasIndex("ReasonCode")
+                        .HasDatabaseName("IX_StockMovements_Archive_ReasonCode");
 
                     b.ToTable("StockMovements_Archive", (string)null);
                 });
@@ -376,6 +616,10 @@ namespace Inventory.Module.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InvoiceCurrency")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
 
                     b.Property<string>("NormalizedCommercialName")
                         .IsRequired()
@@ -515,6 +759,12 @@ namespace Inventory.Module.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<decimal>("ConversionFactor")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(1m);
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -621,6 +871,98 @@ namespace Inventory.Module.Migrations
                     b.ToTable("SupplierInvoiceLines");
                 });
 
+            modelBuilder.Entity("Core.Entities.SupplierOcrTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BinarizationThreshold")
+                        .HasColumnType("integer");
+
+                    b.Property<double>("BrightnessDelta")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("CharacterReplacementsJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<double>("ContrastFactor")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("CostAmountRule")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("UnitCost");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecimalSeparator")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Auto");
+
+                    b.Property<string>("FactorExtractionPattern")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("FooterAnchorKeywords")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("HeaderAnchorKeywords")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int?>("ProductColumnPosition")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("QuantityColumnPosition")
+                        .HasColumnType("integer");
+
+                    b.Property<double?>("RoiHeight")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("RoiWidth")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("RoiX")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("RoiY")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("RotationDegrees")
+                        .HasColumnType("double precision");
+
+                    b.Property<int?>("SupplierCodeColumnPosition")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SupplierId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("UnitCostColumnPosition")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplierId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_SupplierOcrTemplates_SupplierId");
+
+                    b.ToTable("SupplierOcrTemplates");
+                });
+
             modelBuilder.Entity("Core.Entities.SupplierProductCode", b =>
                 {
                     b.Property<int>("Id")
@@ -648,12 +990,49 @@ namespace Inventory.Module.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.HasIndex("SupplierId", "Code")
+                    b.HasIndex("SupplierId", "Code", "ProductId")
                         .IsUnique()
                         .HasDatabaseName("IX_SupplierProductCodes_Supplier_Code")
                         .HasFilter("\"Code\" IS NOT NULL");
 
                     b.ToTable("SupplierProductCodes");
+                });
+
+            modelBuilder.Entity("Core.Entities.SupplierProductFactor", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("ConversionFactor")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(1m);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SupplierId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("SupplierId", "ProductId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_SupplierProductFactors_Supplier_Product");
+
+                    b.ToTable("SupplierProductFactors");
                 });
 
             modelBuilder.Entity("Core.Entities.SystemSetting", b =>
@@ -675,6 +1054,16 @@ namespace Inventory.Module.Migrations
                     b.ToTable("SystemSettings");
                 });
 
+            modelBuilder.Entity("Core.Entities.Category", b =>
+                {
+                    b.HasOne("Core.Entities.Category", "ParentCategory")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ParentCategory");
+                });
+
             modelBuilder.Entity("Core.Entities.Product", b =>
                 {
                     b.HasOne("Core.Entities.Product", "ParentProduct")
@@ -683,6 +1072,54 @@ namespace Inventory.Module.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ParentProduct");
+                });
+
+            modelBuilder.Entity("Core.Entities.ProductCategory", b =>
+                {
+                    b.HasOne("Core.Entities.Category", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Core.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Core.Entities.StockCountItem", b =>
+                {
+                    b.HasOne("Core.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Core.Entities.StockCountSession", "Session")
+                        .WithMany("Items")
+                        .HasForeignKey("StockCountSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Session");
+                });
+
+            modelBuilder.Entity("Core.Entities.StockCountSession", b =>
+                {
+                    b.HasOne("Core.Entities.Category", "ScopeCategory")
+                        .WithMany()
+                        .HasForeignKey("ScopeCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ScopeCategory");
                 });
 
             modelBuilder.Entity("Core.Entities.StockMovement", b =>
@@ -754,6 +1191,17 @@ namespace Inventory.Module.Migrations
                     b.Navigation("SupplierInvoice");
                 });
 
+            modelBuilder.Entity("Core.Entities.SupplierOcrTemplate", b =>
+                {
+                    b.HasOne("Core.Entities.Supplier", "Supplier")
+                        .WithOne("OcrTemplate")
+                        .HasForeignKey("Core.Entities.SupplierOcrTemplate", "SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Supplier");
+                });
+
             modelBuilder.Entity("Core.Entities.SupplierProductCode", b =>
                 {
                     b.HasOne("Core.Entities.Product", "Product")
@@ -773,9 +1221,38 @@ namespace Inventory.Module.Migrations
                     b.Navigation("Supplier");
                 });
 
+            modelBuilder.Entity("Core.Entities.SupplierProductFactor", b =>
+                {
+                    b.HasOne("Core.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Core.Entities.Supplier", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Supplier");
+                });
+
+            modelBuilder.Entity("Core.Entities.Category", b =>
+                {
+                    b.Navigation("Children");
+                });
+
             modelBuilder.Entity("Core.Entities.Product", b =>
                 {
                     b.Navigation("Variants");
+                });
+
+            modelBuilder.Entity("Core.Entities.StockCountSession", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Core.Entities.Supplier", b =>
@@ -783,6 +1260,8 @@ namespace Inventory.Module.Migrations
                     b.Navigation("ColumnMapping");
 
                     b.Navigation("Invoices");
+
+                    b.Navigation("OcrTemplate");
 
                     b.Navigation("ProductCodes");
                 });
