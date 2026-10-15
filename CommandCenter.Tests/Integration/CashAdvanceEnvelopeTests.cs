@@ -95,8 +95,8 @@ public class CashAdvanceEnvelopeTests : IDisposable
             var result = await coordinator.ProcessAsync(
                 sessionId: session.Id,
                 requestedAmountLocal: 1000m,
-                paymentMethodId: 2,
-                paymentMethodName: "Transferencia Bancaria",
+                paymentMethodId: 3,
+                paymentMethodName: "Punto de Venta",
                 isTransfer: true,
                 exchangeRate: 50.0m
             );
@@ -150,8 +150,8 @@ public class CashAdvanceEnvelopeTests : IDisposable
                 coordinator.ProcessAsync(
                     sessionId: session.Id,
                     requestedAmountLocal: 1000m,
-                    paymentMethodId: 2,
-                    paymentMethodName: "Transferencia Bancaria",
+                    paymentMethodId: 3,
+                    paymentMethodName: "Punto de Venta",
                     isTransfer: true,
                     exchangeRate: 50.0m
                 ));
@@ -211,8 +211,8 @@ public class CashAdvanceEnvelopeTests : IDisposable
                 coordinator.ProcessAsync(
                     sessionId: session.Id,
                     requestedAmountLocal: 1000m,
-                    paymentMethodId: 2,
-                    paymentMethodName: "Transferencia Bancaria",
+                    paymentMethodId: 3,
+                    paymentMethodName: "Punto de Venta",
                     isTransfer: true,
                     exchangeRate: 50.0m
                 ));
