@@ -15016,3 +15016,71 @@ B. FIX (commit 541eb12):
    B3. Evidencia: build slnx 0/0; carril ~BulkPriceEdit 53/53; verificacion runtime = reintento del
        mantenedor (start.bat con dotnet run recompila).
 ================================================================================
+
+================================================================================
+ANEXO 8.184 - POLITICAS DE PRECIOS GLOBALES + REDONDEO INTELIGENTE EN EL MODAL DE PRODUCTO - 2026-10-15
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/8.184-politicas-precios-globales.md): integrar el motor de
+redondeo del Paso 10 al formulario individual de Crear/Editar Producto y agregar una Configuracion Global
+de Politicas de Precios (Ajustes del Sistema) que defina el comportamiento por defecto del sistema,
+inicializando los selectores en tres puntos (Producto, Edicion Multiple Paso 9, Resolucion de facturas).
+
+A. ALCANCE Y ENTREGA
+
+A1. Config global (commit 8deeff5): relocalizacion del algoritmo puro a Core/Helpers/PricingRoundingPolicy
+    (el servicio de Inventory delega; paridad byte-identica verificada mecanicamente 4455/4455) + claves
+    Pricing.DefaultUsdRoundingRule / DefaultCashBsRoundingRule / DefaultEnforceMinimumMarginFloor
+    (defaults ExactMath / ExactMath / true) + GET/PUT /api/settings/pricing-policies (RBAC, whitelist,
+    storage por nombre).
+A2. Persistencia por articulo/linea (commit e720c90): migracion idempotente 20261015193613
+    (Products.RoundingRuleUsd/CashBs y SupplierInvoiceLines.RoundingRule nullable, conversion por nombre;
+    null = heredar global); plumbing DTOs/mapping (Update = reemplazo completo)/validaciones; linea de
+    factura con persistencia molde MarginOverrides + exposicion en el DTO (ToLineDto).
+A3. Modal de producto (commit c804416 + wiring): dos selectores por articulo ("Heredar global (X)",
+    Sin redondeo, reglas) con calculo vivo on-blur: base anclada costo x (1 + margen objetivo) o precio
+    manual -> redondeo USD con piso = margen objetivo del canal y toggle global -> campo redondeado;
+    margen re-derivado del redondeado en gatillo manual; proyeccion Bs.S en caliente (nunca persistida);
+    trazas por canal (Matematico/Delta/Margen Efectivo %); salvaguarda Detal/Mayor con aviso; margen
+    objetivo conservado (8.183); ExactMath byte-identico. ProductClientMapping reenvia los overrides
+    (obligacion critica de T2) en update/create/Merge.
+A4. Ajustes + defaults de los 3 puntos (commit 675c638): seccion "Politicas de Precios y Redondeo"
+    (2 combos + toggle proteccion de margen default true) con auto-guardado/revert; el masivo inicializa
+    reglas/toggle desde la global; la resolucion de facturas gana selector (Heredar de la factura no
+    default, init desde global con VES->ExactMath) propagado en AMBOS flujos; el confirm inicializa su
+    combo desde la global; SERVIDOR: precedencia regla de linea ?? regla de factura + rechazo VES
+    per-linea pre-transaccion sin efectos.
+A5. Tests: 102 nuevos (30 T1 + 15 T2 + 22 T3 + 35 T4). Suite completa POR PARTES y secuencial:
+    Unit 2275/2275 + resto 572/572 + E2E WPF 50/50 = 2897/2897.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Verificacion independiente read-only (agente reviewer, evidencia re-ejecutada secuencial): REVISAR
+    sin bloqueantes - paridad del algoritmo byte-identica (4455/4455 normalizado), S1-S7 CONFORME,
+    has-pending limpio (Inventory/Sales), tope SELECT 5->6 del batching validado (constante, 6/6/6 plano,
+    invariante intacto). Hallazgos: [NO BLOQUEANTE] autosave de settings sin serializacion de PUTs
+    (ventana de reordenamiento; sin impacto financiero) y 2 [ESTILO].
+
+C. LIMITACIONES ACEPTADAS
+
+C1. Sin SignalR de politicas (v1): se leen al abrir cada superficie; un cambio global no re-inicializa
+    un dialogo ya abierto.
+C2. Repoblacion del selector de resolucion desde SupplierInvoiceLineDto al recargar el borrador: residual
+    (el DTO ya transporta la regla y el confirm la aplica).
+C3. XAML verificado por compilacion (sin runner de UI en el carril); smoke visual recomendado al
+    mantenedor (precedente hotfix 8.181 del dialogo bulk).
+C4. Migracion no aplicada contra PostgreSQL real local (smoke gated silent-pass; CI/arranque la aplican);
+    has-pending limpio como evidencia de modelo. Per-article rules no afectan flujos server (bulk/
+    facturas conservan sus selectores) - supuesto de spec.
+C5. Hallazgos menores de B2 (serializacion de autosave, ventana fire-and-forget del load) como follow-ups.
+
+D. ROLLBACK
+
+D1. Revertir los 4 commits (+ completitud) restaura el estado previo; la migracion es aditiva nullable
+    con Down espejo; contratos DTO retrocompatibles (defaults ExactMath/true/null).
+
+E. COMMITS
+
+E1. 8.184 en V0.15: 8deeff5 (T1) + e720c90 (T2) + c804416 (T3 + wiring) + 675c638 (T4) + commit de este
+    ANEXO (docs(8.184); git log).
+================================================================================
