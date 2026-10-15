@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Core.DTOs;
 using Core.Entities;
 using Core.Helpers;
+using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Module.Services;
@@ -22,6 +23,9 @@ public partial class InventoryService
     private const int MaxBulkPriceSelectionSize = 1000;
     private const decimal MaxBulkPriceAmount = 1_000_000m;
     private const decimal MaxBulkPriceMargin = 1000m;
+
+    // 8.182-T1 (S1): política pura y stateless (drop-in para inyección futura por DI).
+    private static readonly IPricingRoundingPolicyService RoundingPolicy = new PricingRoundingPolicyService();
 
     public async Task<BulkPriceUpdateResultDto> PreviewBulkPriceUpdateAsync(BulkPriceUpdateRequestDto request, CancellationToken cancellationToken = default)
     {
@@ -41,7 +45,7 @@ public partial class InventoryService
             .OrderBy(p => p.Id)
             .ToListAsync(cancellationToken);
 
-        var plan = await BuildBulkPricePlanAsync(products, request.Operations, exchangeRate, cancellationToken);
+        var plan = await BuildBulkPricePlanAsync(products, request, exchangeRate, cancellationToken);
         return BuildBulkPriceResult(exchangeRate, selectionIds.Count, plan);
     }
 
@@ -70,7 +74,7 @@ public partial class InventoryService
                 .OrderBy(p => p.Id)
                 .ToListAsync(cancellationToken);
 
-            var plan = await BuildBulkPricePlanAsync(products, request.Operations, exchangeRate, cancellationToken);
+            var plan = await BuildBulkPricePlanAsync(products, request, exchangeRate, cancellationToken);
 
             var errorItem = plan.FirstOrDefault(item => item.Row.IsError);
             if (errorItem != null)
@@ -146,6 +150,17 @@ public partial class InventoryService
                 throw new ArgumentException("El valor de cada operación debe ser mayor o igual a cero.");
             }
         }
+
+        // 8.182-T1 (S5): contrato de la política de redondeo y de los pisos de margen por lote.
+        if (!Enum.IsDefined(request.RetailRoundingRule) || !Enum.IsDefined(request.WholesaleRoundingRule))
+        {
+            throw new ArgumentException("La política de redondeo contiene una regla no reconocida.");
+        }
+
+        if (request.RetailMarginFloorPct < 0m || request.WholesaleMarginFloorPct < 0m)
+        {
+            throw new ArgumentException("El piso de margen no puede ser negativo.");
+        }
     }
 
     private async Task<List<int>> ResolveBulkPriceSelectionIdsAsync(BulkPriceUpdateRequestDto request, CancellationToken cancellationToken)
@@ -192,7 +207,7 @@ public partial class InventoryService
     // Motor compartido de cálculo (S2/S3/S4).
     // ---------------------------------------------------------------------------------------------
 
-    private async Task<List<BulkPricePlanItem>> BuildBulkPricePlanAsync(IReadOnlyList<Product> products, IReadOnlyList<BulkPriceOperationDto> operations, decimal exchangeRate, CancellationToken cancellationToken)
+    private async Task<List<BulkPricePlanItem>> BuildBulkPricePlanAsync(IReadOnlyList<Product> products, BulkPriceUpdateRequestDto request, decimal exchangeRate, CancellationToken cancellationToken)
     {
         var parentIds = products
             .Where(p => p.ParentProductId.HasValue)
@@ -211,14 +226,15 @@ public partial class InventoryService
         foreach (var product in products)
         {
             parentsById.TryGetValue(product.ParentProductId ?? 0, out var parent);
-            plan.Add(ComputeBulkPricePlanItem(product, parent, operations, exchangeRate));
+            plan.Add(ComputeBulkPricePlanItem(product, parent, request, exchangeRate));
         }
 
         return plan;
     }
 
-    private static BulkPricePlanItem ComputeBulkPricePlanItem(Product product, Product? parent, IReadOnlyList<BulkPriceOperationDto> operations, decimal exchangeRate)
+    private static BulkPricePlanItem ComputeBulkPricePlanItem(Product product, Product? parent, BulkPriceUpdateRequestDto request, decimal exchangeRate)
     {
+        var operations = request.Operations;
         var scratch = CreateBulkPriceScratch(product);
 
         // S3: un agrupador con precios independientes no posee precios propios (invariante en cero).
@@ -275,6 +291,113 @@ public partial class InventoryService
             scratch.PriceWholesaleUSD = PricingCalculator.RoundPriceUp(scratch.CostPriceUSD * (1m + scratch.ProfitMarginWholesale / 100m));
         }
 
+        // -----------------------------------------------------------------------------------------
+        // 8.182-T1 (S4): interceptor — redondeo por canal (S1/S2) y salvaguarda Detal/Mayor (S3)
+        // ANTES de la validación vigente: `ValidateAndCalculateProductPrices` sigue siendo la
+        // última palabra (negativos / mayor≤detal / cap). Con ExactMath todo queda como en 8.181.
+        // -----------------------------------------------------------------------------------------
+        bool retailRoundingActive = request.RetailRoundingRule != RoundingRuleType.ExactMath;
+        bool wholesaleRoundingActive = request.WholesaleRoundingRule != RoundingRuleType.ExactMath;
+        decimal? retailPreRounding = null;
+        decimal? retailRoundingDelta = null;
+        decimal? wholesalePreRounding = null;
+        decimal? wholesaleRoundingDelta = null;
+        decimal? wholesaleBsSBefore = null;
+        decimal? wholesaleBsSAfter = null;
+        bool retailUsdRoundingApplied = false;
+        bool wholesaleUsdRoundingApplied = false;
+
+        // Redondeo USD del canal al detal (UsdPsychological): la rama VES se aplica en la etapa del
+        // Bs.S canónico (más abajo), porque opera sobre la conversión y no sobre el USD.
+        if (retailRoundingActive && !IsVesCashFriendly(request.RetailRoundingRule))
+        {
+            decimal retailUsd = EffectiveBulkRetailUsd(scratch);
+            if (retailUsd > 0m)
+            {
+                var retailRounding = RoundingPolicy.Round(
+                    retailUsd,
+                    request.RetailRoundingRule,
+                    scratch.CostPriceUSD,
+                    request.RetailMarginFloorPct,
+                    request.EnforceMinimumMarginFloor);
+                if (retailRounding.RoundedValue != retailUsd)
+                {
+                    scratch.PriceRetailUSD = retailRounding.RoundedValue;
+                    retailPreRounding = retailRounding.MathematicalValue;
+                    retailRoundingDelta = retailRounding.RoundingDelta;
+                    retailUsdRoundingApplied = true;
+                }
+            }
+        }
+
+        // Redondeo USD del canal al mayor (UsdPsychological). VES al mayor no tiene columna Bs.S
+        // propia: su Bs.S informativo se calcula en la etapa del Bs.S canónico.
+        if (wholesaleRoundingActive && !IsVesCashFriendly(request.WholesaleRoundingRule) && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m)
+        {
+            var wholesaleRounding = RoundingPolicy.Round(
+                scratch.PriceWholesaleUSD,
+                request.WholesaleRoundingRule,
+                scratch.CostPriceUSD,
+                request.WholesaleMarginFloorPct,
+                request.EnforceMinimumMarginFloor);
+            if (wholesaleRounding.RoundedValue != scratch.PriceWholesaleUSD)
+            {
+                scratch.PriceWholesaleUSD = wholesaleRounding.RoundedValue;
+                wholesalePreRounding = wholesaleRounding.MathematicalValue;
+                wholesaleRoundingDelta = wholesaleRounding.RoundingDelta;
+                wholesaleUsdRoundingApplied = true;
+            }
+        }
+
+        // S3: si tras el redondeo el Mayor queda ≥ al Detal, se baja al escalón inmediato inferior de
+        // su regla, siempre que quede por encima del costo; si no es posible, la fila bloquea el apply
+        // (all-or-nothing). Solo interviene cuando una regla USD movió realmente un precio; si no,
+        // rige la validación 8.181 sin cambios.
+        if ((retailUsdRoundingApplied || wholesaleUsdRoundingApplied) && scratch.HasWholesale)
+        {
+            decimal retailUsd = EffectiveBulkRetailUsd(scratch);
+            if (retailUsd > 0m && scratch.PriceWholesaleUSD > 0m && scratch.PriceWholesaleUSD >= retailUsd)
+            {
+                decimal wholesaleBeforeSalvage = scratch.PriceWholesaleUSD;
+                decimal? lowered = RoundingPolicy.FindLowerStep(wholesaleBeforeSalvage, request.WholesaleRoundingRule);
+                if (lowered is > 0m && (scratch.CostPriceUSD <= 0m || lowered.Value > scratch.CostPriceUSD))
+                {
+                    scratch.PriceWholesaleUSD = lowered.Value;
+                    wholesaleUsdRoundingApplied = true;
+                    if (!IsVesCashFriendly(request.WholesaleRoundingRule))
+                    {
+                        // El ajuste de la salvaguarda también se reporta como delta del canal.
+                        wholesalePreRounding ??= wholesaleBeforeSalvage;
+                        wholesaleRoundingDelta = scratch.PriceWholesaleUSD - wholesalePreRounding.Value;
+                    }
+                }
+                else
+                {
+                    return BulkPriceError(product, scratch,
+                        $"El precio al mayor resultante (${wholesaleBeforeSalvage:F2}) no puede ser mayor o igual al detal (${retailUsd:F2}) ni pudo ajustarse al escalón inferior sin bajar del costo (${scratch.CostPriceUSD:F2}).");
+                }
+            }
+        }
+
+        // Corrección de conformidad S2/S4 (8.182): cuando la regla movió el precio USD del canal (o
+        // la salvaguarda bajó el mayor), el margen del canal se recalcula como MARGEN EFECTIVO REAL
+        // — (precio final − costo) / costo × 100 — para mantener la consistencia matemática en la
+        // entidad Product (el mismo valor que la fila informa). Una regla sin efecto conserva el
+        // margen operado (comportamiento 8.181 intacto). Costo ≤ 0 no tiene margen definido: no se toca.
+        if (scratch.CostPriceUSD > 0m)
+        {
+            if (retailUsdRoundingApplied)
+            {
+                scratch.ProfitMarginRetail = CalculateEffectiveMarginPct(EffectiveBulkRetailUsd(scratch), scratch.CostPriceUSD);
+                scratch.ProfitPercentage = scratch.ProfitMarginRetail;
+            }
+
+            if (wholesaleUsdRoundingApplied && scratch.HasWholesale)
+            {
+                scratch.ProfitMarginWholesale = CalculateEffectiveMarginPct(scratch.PriceWholesaleUSD, scratch.CostPriceUSD);
+            }
+        }
+
         try
         {
             // MISMAS rutinas del update individual (S2): precedencias, derivaciones y validaciones.
@@ -301,9 +424,59 @@ public partial class InventoryService
             newPriceBsS = PricingCalculator.ToBsSCeiling(afterRetail, exchangeRate);
         }
 
+        // 8.182-T1 (S4): regla VES del canal al detal — redondea el Bs.S canónico del canal con la
+        // tasa del día (divergencia deliberada del techo estricto SOLO cuando se elige esta regla);
+        // el USD y el margen no cambian. Sin tasa configurada no hay conversión que redondear.
+        if (retailRoundingActive && IsVesCashFriendly(request.RetailRoundingRule) && exchangeRate > 0m && afterRetail > 0m)
+        {
+            decimal mathBsS = afterRetail * exchangeRate;
+            var retailVesRounding = RoundingPolicy.Round(
+                mathBsS,
+                request.RetailRoundingRule,
+                scratch.CostPriceUSD * exchangeRate,
+                request.RetailMarginFloorPct,
+                request.EnforceMinimumMarginFloor);
+            newPriceBsS = retailVesRounding.RoundedValue;
+            retailPreRounding = retailVesRounding.MathematicalValue;
+            retailRoundingDelta = retailVesRounding.RoundingDelta;
+        }
+
+        // 8.182-T1 (S4): Bs.S informativo del canal al mayor con regla VES (la entidad no tiene
+        // columna Bs.S propia para ese canal); solo acompaña a un cambio real del precio USD.
+        if (wholesaleRoundingActive && IsVesCashFriendly(request.WholesaleRoundingRule)
+            && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m
+            && scratch.PriceWholesaleUSD != product.PriceWholesaleUSD && exchangeRate > 0m)
+        {
+            var wholesaleVesRounding = RoundingPolicy.Round(
+                scratch.PriceWholesaleUSD * exchangeRate,
+                request.WholesaleRoundingRule,
+                scratch.CostPriceUSD * exchangeRate,
+                request.WholesaleMarginFloorPct,
+                request.EnforceMinimumMarginFloor);
+            wholesaleBsSBefore = PricingCalculator.ToBsSCeiling(product.PriceWholesaleUSD, exchangeRate);
+            wholesaleBsSAfter = wholesaleVesRounding.RoundedValue;
+            wholesalePreRounding = wholesaleVesRounding.MathematicalValue;
+            wholesaleRoundingDelta = wholesaleVesRounding.RoundingDelta;
+        }
+
         bool stateChanged = BulkPriceStateChanged(product, scratch, newPriceBsS);
         var row = CreateBulkPriceRow(product);
-        row.Changes = BuildBulkPriceChanges(product, scratch, newPriceBsS);
+        row.Changes = BuildBulkPriceChanges(product, scratch, newPriceBsS, new BulkPriceRoundingInfo(
+            retailPreRounding,
+            retailRoundingDelta,
+            wholesalePreRounding,
+            wholesaleRoundingDelta,
+            wholesaleBsSBefore,
+            wholesaleBsSAfter));
+
+        // S5: margen efectivo (precio final vs costo) del canal, solo cuando el precio USD cambió.
+        row.EffectiveRetailMarginPct = afterRetail != beforeRetail && scratch.CostPriceUSD > 0m
+            ? CalculateEffectiveMarginPct(afterRetail, scratch.CostPriceUSD)
+            : null;
+        row.EffectiveWholesaleMarginPct = scratch.HasWholesale && scratch.PriceWholesaleUSD != product.PriceWholesaleUSD && scratch.CostPriceUSD > 0m
+            ? CalculateEffectiveMarginPct(scratch.PriceWholesaleUSD, scratch.CostPriceUSD)
+            : null;
+
         if (!stateChanged)
         {
             row.SkipReason = "Sin cambios: los valores resultantes son iguales a los actuales.";
@@ -496,7 +669,7 @@ public partial class InventoryService
         || before.ProfitPercentage != after.ProfitPercentage
         || before.PriceBsS != newPriceBsS;
 
-    private static List<BulkPriceFieldChangeDto> BuildBulkPriceChanges(Product before, Product after, decimal newPriceBsS)
+    private static List<BulkPriceFieldChangeDto> BuildBulkPriceChanges(Product before, Product after, decimal newPriceBsS, BulkPriceRoundingInfo rounding)
     {
         var changes = new List<BulkPriceFieldChangeDto>();
         foreach (var field in Enum.GetValues<BulkPriceField>())
@@ -510,7 +683,39 @@ public partial class InventoryService
 
             decimal beforeValue = ReadBulkPriceField(before, field);
             decimal afterValue = ReadBulkPriceField(after, field);
-            if (beforeValue == afterValue)
+
+            decimal? beforeBsS = null;
+            decimal? afterBsS = null;
+            decimal? preRounding = null;
+            decimal? roundingDelta = null;
+
+            if (field == BulkPriceField.RetailPrice)
+            {
+                // 8.182-T1: el Bs.S del detal es el tag canónico persistido; un cambio solo de Bs.S
+                // (regla VES) también es un cambio accionable de la fila.
+                beforeBsS = before.PriceBsS;
+                afterBsS = newPriceBsS;
+                preRounding = rounding.RetailPreRoundingValue;
+                roundingDelta = rounding.RetailRoundingDelta;
+                if (beforeValue == afterValue && beforeBsS == afterBsS)
+                {
+                    continue;
+                }
+            }
+            else if (field == BulkPriceField.WholesalePrice)
+            {
+                if (beforeValue == afterValue)
+                {
+                    continue;
+                }
+
+                // 8.182-T1: Bs.S informativo del mayor (solo con regla VES activa sobre el canal).
+                beforeBsS = rounding.WholesaleBsSBefore;
+                afterBsS = rounding.WholesaleBsSAfter;
+                preRounding = rounding.WholesalePreRoundingValue;
+                roundingDelta = rounding.WholesaleRoundingDelta;
+            }
+            else if (beforeValue == afterValue)
             {
                 continue;
             }
@@ -520,13 +725,30 @@ public partial class InventoryService
                 Field = field,
                 BeforeValue = beforeValue,
                 AfterValue = afterValue,
-                BeforeBsS = field == BulkPriceField.RetailPrice ? before.PriceBsS : null,
-                AfterBsS = field == BulkPriceField.RetailPrice ? newPriceBsS : null
+                BeforeBsS = beforeBsS,
+                AfterBsS = afterBsS,
+                PreRoundingValue = preRounding,
+                RoundingDelta = roundingDelta
             });
         }
 
         return changes;
     }
+
+    private static bool IsVesCashFriendly(RoundingRuleType rule) =>
+        rule is RoundingRuleType.VesCashFriendlyInteger or RoundingRuleType.VesCashFriendlyStep5 or RoundingRuleType.VesCashFriendlyStep10;
+
+    private static decimal CalculateEffectiveMarginPct(decimal price, decimal cost) =>
+        PricingCalculator.RoundToDigital((price - cost) / cost * 100m);
+
+    // 8.182-T1: traza del redondeo por fila (unidades: USD para UsdPsychological; Bs.S para VES).
+    private sealed record BulkPriceRoundingInfo(
+        decimal? RetailPreRoundingValue,
+        decimal? RetailRoundingDelta,
+        decimal? WholesalePreRoundingValue,
+        decimal? WholesaleRoundingDelta,
+        decimal? WholesaleBsSBefore,
+        decimal? WholesaleBsSAfter);
 
     private static BulkPricePreviewRowDto CreateBulkPriceRow(Product product) => new()
     {

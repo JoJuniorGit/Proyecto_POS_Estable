@@ -136,6 +136,18 @@ public enum BulkPriceMode
     DecreasePercent = 2
 }
 
+// 8.182-T1 (S1): reglas de redondeo comercial/psicológico de la edición masiva. Granularidad por
+// sub-opción (entero / paso 5 / paso 10) para no agregar campos extra de configuración al DTO.
+// ExactMath (default) conserva el comportamiento 8.181 intacto.
+public enum RoundingRuleType
+{
+    ExactMath = 0,
+    UsdPsychological = 1,
+    VesCashFriendlyInteger = 2,
+    VesCashFriendlyStep5 = 3,
+    VesCashFriendlyStep10 = 4
+}
+
 public class BulkPriceOperationDto
 {
     public BulkPriceField Field { get; set; }
@@ -164,6 +176,15 @@ public class BulkPriceUpdateRequestDto
     public bool SelectAllFiltered { get; set; }
 
     public List<BulkPriceOperationDto> Operations { get; set; } = new();
+
+    // 8.182-T1 (S5): política de redondeo por canal (default ExactMath = comportamiento 8.181) y piso
+    // de margen por lote (supuesto v1: sin setting global). El piso solo se evalúa con
+    // EnforceMinimumMarginFloor activo, piso > 0 y costo > 0; VES redondea el Bs.S canónico del canal.
+    public RoundingRuleType RetailRoundingRule { get; set; } = RoundingRuleType.ExactMath;
+    public RoundingRuleType WholesaleRoundingRule { get; set; } = RoundingRuleType.ExactMath;
+    public bool EnforceMinimumMarginFloor { get; set; }
+    public decimal? RetailMarginFloorPct { get; set; }
+    public decimal? WholesaleMarginFloorPct { get; set; }
 }
 
 public class BulkPriceFieldChangeDto
@@ -175,8 +196,16 @@ public class BulkPriceFieldChangeDto
     public decimal AfterValue { get; set; }
 
     // Bs.S canónico (tag de catálogo) antes/después; se informa solo en cambios del precio al detal.
+    // 8.182-T1: con una regla VES activa sobre el canal al mayor (sin columna Bs.S propia en la
+    // entidad) estos campos transportan el Bs.S equivalente informativo de ese canal.
     public decimal? BeforeBsS { get; set; }
     public decimal? AfterBsS { get; set; }
+
+    // 8.182-T1 (S5): valor matemático previo al redondeo y delta con signo (redondeado − matemático)
+    // en la unidad de la regla del canal: USD para UsdPsychological; Bs.S para VesCashFriendly*.
+    // null cuando la regla del canal no alteró este cambio (ExactMath o campo no alcanzado).
+    public decimal? PreRoundingValue { get; set; }
+    public decimal? RoundingDelta { get; set; }
 }
 
 public class BulkPricePreviewRowDto
@@ -192,6 +221,13 @@ public class BulkPricePreviewRowDto
     // el apply completo con 400 (resultado negativo, mayor>detal, cap excedido).
     public string? SkipReason { get; set; }
     public bool IsError { get; set; }
+
+    // 8.182-T1 (S5): margen efectivo (precio final − costo) / costo × 100 del canal, calculado sobre
+    // el precio FINAL; informado solo cuando el precio USD del canal cambió y el costo es > 0. Con
+    // una regla ≠ ExactMath que movió el precio, ese mismo valor se persiste en el margen del canal
+    // (consistencia matemática en la entidad Product).
+    public decimal? EffectiveRetailMarginPct { get; set; }
+    public decimal? EffectiveWholesaleMarginPct { get; set; }
 
     public List<BulkPriceFieldChangeDto> Changes { get; set; } = new();
 }
