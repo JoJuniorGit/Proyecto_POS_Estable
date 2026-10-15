@@ -14824,3 +14824,37 @@ E. COMMITS
 E1. 8.181 en V0.15: aa2aa55 (T1 backend) + c464cee (T2 WPF + fix de verificación) + commit de este
     ANEXO (docs(8.181); git log).
 ================================================================================
+
+================================================================================
+ANEXO ENTREGA V0.15 - 2026-10-15: REHABILITACION DE CI DEL PR #37 (CVE SIGNALR + CADENA DE MIGRACIONES + REGRESIONES 8.171)
+================================================================================
+Contexto: la entrega V0.15 (PR #37) quedo con los 4 checks de CI en rojo. Diagnostico y correccion:
+
+A. DEPENDENCIAS (commit 111b97d): CVE-2026-70159 / GHSA-334f-vvp4-7g6p (13/10) marco
+   Microsoft.AspNetCore.SignalR.Common <= 10.0.12 vulnerable; el restore de CI (warnings as
+   errors) fallaba con NU1903 en los 3 jobs. Se subio SignalR.Client 10.0.5 -> 10.0.13 y el
+   tren Microsoft.Extensions.*/AspNetCore.* completo 10.0.5 -> 10.0.13 (pinning central: evita
+   NU1109). Auditoria de vulnerables: 0/10 proyectos (cache de auditoria refrescado).
+
+B. CADENA DE MIGRACIONES (commit bbe6a3a): la migracion 8.174 AddSupplierOcrTemplates tenia
+   id retroactivo 20260425000000, ordenando ANTES de 20261003173222_AddSupplierInvoice (que
+   crea "Suppliers"): en base fresca fallaba con 42P01 y abortaba el arranque de la app en CI
+   (cascada: smoke tests + E2E de autorizacion + WPF E2E). Reordenada a 20261012230000 + Up
+   idempotente (guard to_regclass, estilo 8.179) para que las bases ya migradas con el id
+   viejo la corran como no-op. Evidencia en PostgreSQL real: cadena aplica limpia en base
+   vacia; MigratedSchema_FromEmptyDatabase y MigratedSchema_MatchesModel verdes.
+
+C. REGRESION DE ENTREGA PARCIAL (commit 9f68fd9): 8.171 (SRE-08) agrego ChangeTracker.Clear()
+   incondicional al delegate de reintentos de DeliverPartial, anulando la deteccion xmin
+   (test PG real de 8.145): un caller stale re-aplicaba la entrega en silencio. El Clear ahora
+   corre solo en reintentos; el primer intento conserva DbUpdateConcurrencyException.
+
+D. TESTS DE ADELANTO (commit 50d1897): los 3 envelope tests usaban PaymentMethod id=2
+   ("Efectivo Bs.S", IsCash=true), rechazado por la validacion SEC-04-RES de 8.171; pasan a
+   id=3 "Punto de Venta" (digital del seed).
+
+E. VERIFICACION: local contra PostgreSQL real (suite completa + gates de cobertura OK) y CI:
+   push 38748536470 y PR 38748548663 verdes (Backend 5m29s, WPF E2E 10m57s, Frontend 25s).
+
+F. COMMITS: 111b97d (deps) + bbe6a3a (migracion) + 9f68fd9 (xmin) + 50d1897 (tests) en V0.15.
+================================================================================
