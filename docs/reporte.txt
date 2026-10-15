@@ -14994,3 +14994,25 @@ E. COMMITS
 
 E1. 8.183 en V0.15: 3cb31b7 (T1 backend) + 17541c0 (T2 WPF) + commit de este ANEXO (docs(8.183); git log).
 ================================================================================
+
+================================================================================
+ANEXO HOTFIX POST-ENTREGA 8.181/8.182/8.183 - CRASH DEL DIALOGO DE EDICION MASIVA - 2026-10-15
+================================================================================
+Reportado por el mantenedor (campo, primera ejecucion real del dialogo): "la edicion de precios masiva
+colapsa y cierra la WPF local".
+
+A. DIAGNOSTICO (crash.log del Desktop Client + eventos):
+   XamlParseException al abrir BulkPriceEditDialog -> Inner: System.ArgumentException "Auto is not a
+   valid value for Double": DataGrid.RowHeight es double y no acepta "Auto"
+   (Desktop.Client/Views/BulkPriceEditDialog.xaml:285, introducido en c464cee - 8.181-T2). El dialogo
+   NUNCA pudo abrirse en runtime; los residuales "render WPF real no verificado" de 8.181/8.182/8.183
+   lo dejaron pasar (los tests de VM no cargan XAML). Sintoma secundario: NullReferenceException en
+   BulkPriceEditDialog.OnClosing al cerrar tras la falla del ctor (ViewModel sin asignar) y excepciones
+   de cierre en cascada (MainWindow.OnClosingShutdown).
+
+B. FIX (commit 541eb12):
+   B1. RowHeight="Auto" eliminado (default = auto); unica aparicion del patron en Desktop.Client.
+   B2. OnClosing null-safe (ViewModel?.IsBusy == true) para que un ctor fallido no derive en NRE al cerrar.
+   B3. Evidencia: build slnx 0/0; carril ~BulkPriceEdit 53/53; verificacion runtime = reintento del
+       mantenedor (start.bat con dotnet run recompila).
+================================================================================
