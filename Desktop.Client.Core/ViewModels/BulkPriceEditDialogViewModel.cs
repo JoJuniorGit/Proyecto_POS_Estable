@@ -554,6 +554,18 @@ public sealed class BulkPriceFieldChangeViewModel
     /// <summary>8.182-T2 (S6): "Δ Redondeo" formateado con signo; null si no hay traza.</summary>
     public string? RoundingDeltaText { get; init; }
 
+    /// <summary>
+    /// 8.183-T2 (R4): proyección en caliente del Bs.S de efectivo del canal (regla VES + tasa del
+    /// día); null si el cambio no lleva proyección. NUNCA refleja un valor persistido.
+    /// </summary>
+    public decimal? CashFriendlyAfterBsS { get; init; }
+
+    /// <summary>
+    /// 8.183-T2 (R4): proyección formateada con el patrón Bs.S vigente del diálogo
+    /// ("Bs.S 825,00"); null si no hay proyección.
+    /// </summary>
+    public string? CashFriendlyText { get; init; }
+
     public string Summary => BsSText is null
         ? $"{FieldLabel}: {BeforeText} → {AfterText}"
         : $"{FieldLabel}: {BeforeText} → {AfterText} ({BsSText})";
@@ -596,6 +608,12 @@ public sealed class BulkPriceFieldChangeViewModel
                 : null,
             RoundingDeltaText = dto.RoundingDelta.HasValue
                 ? FormatRoundingDelta(dto.RoundingDelta.Value, isBsSUnit)
+                : null,
+            // 8.183-T2 (R4): la proyección llega aparte del estado persistido (incluidas las filas
+            // VES informativas donde el USD no cambia) y se muestra siempre en Bs.S.
+            CashFriendlyAfterBsS = dto.CashFriendlyAfterBsS,
+            CashFriendlyText = dto.CashFriendlyAfterBsS.HasValue
+                ? FormatRoundingUnit(dto.CashFriendlyAfterBsS.Value, isBsS: true)
                 : null
         };
     }
@@ -664,6 +682,13 @@ public sealed class BulkPricePreviewRowViewModel
 
     /// <summary>8.182-T2 (S6): columna "Δ Redondeo" con signo (una línea por canal; "—" si no hay).</summary>
     public string RoundingDeltaText => BuildRoundingTrace(change => change.RoundingDeltaText);
+
+    /// <summary>
+    /// 8.183-T2 (R4): columna "Bs.S efectivo (proy.)" — proyección en caliente por canal con la tasa
+    /// del día (una línea por canal; "—" si ningún canal tiene proyección). Es informativa: nunca
+    /// representa un valor persistido (el Bs.S guardado sigue siendo el canónico 8.104).
+    /// </summary>
+    public string CashFriendlyText => BuildRoundingTrace(change => change.CashFriendlyText);
 
     public string EffectiveRetailMarginText => FormatMarginPercent(EffectiveRetailMarginPct);
 

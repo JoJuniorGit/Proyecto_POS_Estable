@@ -14,7 +14,7 @@
         Background="{DynamicResource MaterialDesignPaper}"
         FontFamily="{DynamicResource MaterialDesignFont}"
         Title="Edición masiva de precios"
-        Height="760" Width="1080"
+        Height="760" Width="1120"
         MinHeight="620" MinWidth="920"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
@@ -290,9 +290,9 @@
                           VirtualizingStackPanel.VirtualizationMode="Recycling"
                           AutomationProperties.AutomationId="BulkPriceEdit_PreviewGrid">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="PRODUCTO" Binding="{Binding Name}" Width="160"/>
-                        <DataGridTextColumn Header="SKU" Binding="{Binding SKU}" Width="90"/>
-                        <DataGridTemplateColumn Header="ESTADO" Width="180">
+                        <DataGridTextColumn Header="PRODUCTO" Binding="{Binding Name}" Width="140"/>
+                        <DataGridTextColumn Header="SKU" Binding="{Binding SKU}" Width="85"/>
+                        <DataGridTemplateColumn Header="ESTADO" Width="135">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding StatusText}"
@@ -363,6 +363,31 @@
                                                VerticalAlignment="Center"
                                                Margin="0,4"
                                                AutomationProperties.AutomationId="BulkPriceEdit_RoundingDeltaCell"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <!-- 8.183-T2 (R4): proyección en caliente del Bs.S de efectivo (regla VES del
+                             canal + tasa del día). Es informativa y NUNCA se persiste: el PriceBsS
+                             guardado sigue siendo el canónico 8.104. -->
+                        <DataGridTemplateColumn Width="110">
+                            <DataGridTemplateColumn.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="BS.S EFECTIVO (PROY.)"
+                                               VerticalAlignment="Center"
+                                               ToolTip="Proyección con la tasa del día y la regla de efectivo del canal. NO se persiste: el Bs.S guardado es el canónico 8.104."/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.HeaderTemplate>
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding CashFriendlyText}"
+                                               FontFamily="Consolas, Courier New, monospace"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="#0F766E"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center"
+                                               Margin="0,4"
+                                               AutomationProperties.AutomationId="BulkPriceEdit_CashFriendlyCell"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
