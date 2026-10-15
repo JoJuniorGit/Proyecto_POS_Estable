@@ -14745,3 +14745,82 @@ E. COMMITS
 E1. 8.180 en V0.15: 298dbc1 (T1 backend) + ea83e96 (T2 Web) + commit de este ANEXO (docs(8.180);
     git log).
 ================================================================================
+
+================================================================================
+ANEXO 8.181 - PASO 9 DEL ROADMAP: EDICION MULTIPLE DE PRECIOS EN EL CATALOGO - 2026-10-14
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/paso-9-precios-masivos.md): implementar el Paso 9 del
+plan de 15 pasos ("Soporte para edición múltiple de precios en el catálogo": selección múltiple,
+operaciones masivas de precios/márgenes/costos con vista previa "Antes vs Después" y aplicación
+atómica), respetando el régimen multi-moneda vigente (Bs.S canónico por techo con la tasa del día,
+8.104) y las reglas de herencia de precios de agrupadores (Paso 7) habilitadas por Categorías (Paso 8).
+
+A. ALCANCE Y ENTREGA
+
+A1. Backend (commit aa2aa55): DTOs `BulkPrice*` (selección por `productIds` 1..1000 o
+    `filter`+`selectAllFiltered`; operaciones {campo, modo, valor}) + `BulkUpdatePricesAsync`
+    (`InventoryService.BulkPrices.cs`) con motor ÚNICO preview/apply: selección explícita o por
+    filtros del listado (subárbol de categoría incluido), 5 campos (Detal/Mayor/márgenes/Costo) × 3
+    modos (fijo/+%/–%) reusando las rutinas del update individual (`ValidateAndCalculateProductPrices`,
+    `RoundPriceUp`, `ToBsSCeiling`); aplicación en UNA transacción con execution strategy
+    (all-or-nothing; 400 ante negativos/mayor>detal/cap; 409 ante conflicto de concurrencia con
+    rollback), sin evadir el token xmin (camino rastreado); canon `PriceBsS` recalculado con la tasa
+    del día en todo producto cuyo precio USD cambie; propagación a variantes heredadas con Bs.S
+    recalculado (corrige el omitido histórico del update individual); exclusión con motivo de grupos
+    `HasIndependentPricing` y de hijos heredados seleccionados; invalidación de cachés post-commit;
+    RBAC Admin/Manager (`CanMutateCatalog`). Controller partial `ProductsController.BulkPrices.cs`
+    (`POST bulk-prices/preview` sin escrituras + `POST bulk-prices/apply`).
+A2. Desktop WPF (commit c464cee): selección múltiple por checkbox en el catálogo (`SEL.`, persistente
+    entre páginas por ProductId, sin disparar el auto-save de fila) + "Seleccionar todos los filtrados"
+    (modo filtro con los filtros vigentes) + contador + guard cliente >1000; `BulkPriceEditDialog`
+    (MVVM vía IDialogService): operaciones por campo × modo con validaciones, vista previa "Antes vs
+    Después" (USD y Bs.S, filas omitidas con motivo, totales) y "Aplicar cambios" con confirmación →
+    feedback + refresco del catálogo (reload + `CatalogUpdatedMessage`). Cliente HTTP en
+    `ProductService` (409 tipado). Fix post-verificación: cierre del diálogo bloqueado con operación
+    en vuelo (`CanClose` + `Close()` + `OnClosing` + emisión del cierre con IsBusy ya en false),
+    con tests.
+A3. Tests: 40 backend (servicio + controller + concurrencia PG-gated) + 38 desktop (36 + 2 del fix)
+    = 78 casos nuevos; RED→GREEN observado en ambos writers.
+A4. Supuesto de alcance (S6): la edición masiva vive en Desktop (el Web no tiene CRUD de producto);
+    el backend queda client-agnóstico para un tramo web futuro.
+
+B. VERIFICACIÓN
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa POR PARTES: Unit 2081/2081 + resto 571/571 = 2652/2652 (.NET) + E2E WPF 50/50
+    (total 2702/2702, 0 fallas). Web sin cambios (npm n/a). `has-pending-model-changes` limpio
+    (sin migración: cambios aditivos de contrato/UI).
+B3. Verificación independiente read-only por tarea (agentes reviewer): T1 "REVISAR sin bloqueantes"
+    (40/40 re-ejecutados; carril 544/544; EF limpio); T2 "REVISAR sin bloqueantes" (108/108 + E2E;
+    hunks del WIP ajeno verificados intactos por timestamps y análisis de hunks) con 1 hallazgo no
+    bloqueante (race de cierre durante apply → pérdida de feedback e inducción de reintentos
+    duplicadores) corregido con 2 tests antes del commit (carril `~BulkPriceEdit` 38/38 tras el fix).
+
+C. LIMITACIONES ACEPTADAS
+
+C1. Bundle web (Backend.API/wwwroot) NO regenerado: regla vigente hasta cerrar el WIP ajeno de
+    ingesta unificada; la UI del paso llega a la app servida al regenerarse el bundle.
+C2. Retry de la execution strategy con operaciones porcentuales puede re-aplicar el porcentaje
+    (follow-up de hardening sugerido: reload/detach en retry o 409 al segundo intento); `SetFixed`
+    es idempotente y el token xmin mitiga el caso commit-ok/ack-perdido (→409).
+C3. Con tasa 0 (no configurada) el bulk conserva el Bs.S previo por producto (sin referencia no hay
+    canon facturable); visible en la UI ("Sin tasa configurada...").
+C4. `SkippedCount` del preview/UI cuenta filas seleccionadas: los hijos que cambian por propagación
+    del padre no son filas propias (copy del contador mejorable).
+C5. Residuales [ESTILO] diferidos: cap de margen del bulk 1000% vs 10000% del single; IDs ≤0
+    descartados en silencio; bordes "1000 exacto" y guard filtrado >1000 (WPF) sin test; validación
+    de valor a nivel diálogo (no por fila).
+C6. Interacción conocida con el WIP ajeno: los hunks del WIP en `IDialogService.cs` /
+    `WpfDialogService.Modals.cs` siguen sin commitear en el worktree (staging por blob verificado:
+    el staged = HEAD + hunks 8.181; el unstaged = solo el WIP).
+
+D. ROLLBACK
+
+D1. Revertir los tres commits restaura el estado previo; sin migraciones; endpoints, DTOs y UI
+    aditivos. El WIP ajeno queda intacto.
+
+E. COMMITS
+
+E1. 8.181 en V0.15: aa2aa55 (T1 backend) + c464cee (T2 WPF + fix de verificación) + commit de este
+    ANEXO (docs(8.181); git log).
+================================================================================

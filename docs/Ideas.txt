@@ -2,9 +2,9 @@ A continuación se presenta el **plan de desarrollo secuencial integral de 15 pa
 
 Las ideas originales se presentan **íntegras y textualmente tal como fueron redactadas**, las nuevas ideas sinérgicas adoptan la misma estructura formal, y cada una cuenta con su bloque **Justificación:** detallando el motivo lógico, técnico, la dificultad y el efecto dominó que determinan su ubicación en la secuencia.
 
-> **Sincronización con el código — 2026-10-14 (commits hasta `ea83e96`):**
-> Pasos **1, 2, 3, 4, 5, 6, 7 y 8 COMPLETADOS** (marcados `[x]` con evidencia de código/commits).
-> Pasos **9–15 PENDIENTES**, con notas de dependencias actualizadas donde el código ya
+> **Sincronización con el código — 2026-10-14 (commits hasta `c464cee`):**
+> Pasos **1, 2, 3, 4, 5, 6, 7, 8 y 9 COMPLETADOS** (marcados `[x]` con evidencia de código/commits).
+> Pasos **10–15 PENDIENTES**, con notas de dependencias actualizadas donde el código ya
 > fusionado cambió el terreno (multi-moneda, auditoría de stock enriquecida, etc.).
 > El informe estratégico completo (correcciones arquitectónicas, funcionalidades sinérgicas y
 > reordenamiento óptimo propuesto) vive en `docs/roadmap-sync-2026-10-13.md`.
@@ -424,7 +424,7 @@ Análisis más granular.
 
 ### Paso 9
 
-**[ ] PENDIENTE** — nota: la edición masiva debe respetar el régimen multi-moneda vigente (precio Bs.S canónico por techo con la tasa del día, 8.104) además de los filtros por categoría del Paso 8.
+**[x] COMPLETADO (8.181, verificado 2026-10-14)** — evidencia: commits `aa2aa55` (backend: `BulkUpdatePricesAsync` con motor único preview/apply, selección por IDs o "todos los filtrados", 5 campos × 3 modos reusando el motor del update individual, canon Bs.S con la tasa del día, guardas de variantes, 400/409, cachés) y `c464cee` (WPF: selección múltiple por checkbox en el catálogo + diálogo "Antes vs Después" con vista previa y aplicación con confirmación); ANEXO 8.181. Integra la nota original: el régimen multi-moneda (techo con la tasa del día, 8.104) y los filtros por categoría del Paso 8 quedaron respetados. **Desvíos:** la edición masiva vive en Desktop (el Web no tiene CRUD de producto); bundle Web pendiente de regenerar al cierre del WIP ajeno.
 
 5. Soporte para edición múltiple de precios en el catálogo
 Objetivo: Permitir modificar masivamente precios y márgenes de un conjunto de productos sin tener que editarlos uno a uno.
@@ -803,7 +803,7 @@ flowchart TD
     end
 
     subgraph F5["Fase 5: Operaciones de Precios"]
-        P9["9. Edición Múltiple de Precios (Idea 5)"]
+        P9["✅ 9. Edición Múltiple de Precios (Idea 5)"]
         P10["10. Precios Psicológicos & Redondeo (Idea 12)"]
         P8 --> P9 --> P10
     end
