@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { formatNumberEs, amountToCents } from '../../utils/formatters';
+import { bsToUsd } from '../../utils/money';
 import './PaymentForm.css';
 
 export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAddPayment }) {
@@ -65,14 +66,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
   }, [hasDecimalError, amountText, isValidNum]);
 
   const finalAmountBsS = parsedCents / 100;
-  const usdPreview = (() => {
-    if (exchangeRate <= 0 || parsedCents <= 0) return '0.00';
-    // 8.168 (CLEAN-05-RES): preservar 4 decimales de la tasa oficial BCV en escala entera (evita truncar a 2 decimales).
-    const rateScaled = Math.round(exchangeRate * 10000);
-    if (rateScaled <= 0) return '0.00';
-    const usdCents = Math.round((parsedCents * 10000) / rateScaled);
-    return (usdCents / 100).toFixed(2);
-  })();
+  const usdPreview = bsToUsd(finalAmountBsS, exchangeRate).toFixed(2);
 
   const handleSubmit = (e) => {
     e.preventDefault();

@@ -4,6 +4,7 @@ import { getCategories, toCategoryOptions } from '../services/categoriesApi';
 import { Package, Search, Loader2, RefreshCw, Tag, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { formatBsS, formatUSD, resolveBsSPrice } from '../utils/formatters';
+import { usdToBs } from '../utils/money';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import useDebounce from '../hooks/useDebounce';
 import Pagination from '../components/ui/Pagination';
@@ -68,7 +69,7 @@ function CatalogPageContent() {
   const [categoryId, setCategoryId] = useState('');
   const categoryOptions = toCategoryOptions(categories);
 
-  const toBsSCeiling = (usd, rate) => (usd > 0 && rate > 0 ? Math.ceil(usd * rate * 100) / 100 : 0);
+  const toBsSCeiling = usdToBs;
 
   useEffect(() => {
     const controller = new AbortController();

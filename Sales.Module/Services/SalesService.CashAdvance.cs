@@ -72,19 +72,19 @@ public partial class SalesService
         int? resolvedCashierId = cashierId;
         if (!resolvedCashierId.HasValue && !string.IsNullOrWhiteSpace(userName))
         {
-            var matchedUser = await _context.Users.FirstOrDefaultAsync(u => u.Name == userName || u.FullName == userName || u.Cedula == userName, cancellationToken);
+            var matchedUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Name == userName || u.FullName == userName || u.Cedula == userName, cancellationToken);
             resolvedCashierId = matchedUser?.Id;
         }
 
         if (!resolvedCashierId.HasValue)
         {
-            var defaultUser = await _context.Users.FirstOrDefaultAsync(u => u.IsActive, cancellationToken);
+            var defaultUser = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.IsActive, cancellationToken);
             resolvedCashierId = defaultUser?.Id;
         }
 
         // 3. Obtener cliente por defecto
-        var defaultCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.IsDefault, cancellationToken)
-                           ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1, cancellationToken);
+        var defaultCustomer = await _context.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.IsDefault, cancellationToken)
+                           ?? await _context.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == 1, cancellationToken);
 
         int customerId = defaultCustomer?.Id ?? 1;
         string customerName = defaultCustomer?.Name ?? "CLIENTE CONTADO";

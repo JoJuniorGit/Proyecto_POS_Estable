@@ -101,9 +101,14 @@ public partial class SalesController : ControllerBase
 
         if (string.Equals(meta.Value.Status, "OnHold", StringComparison.Ordinal)) return true;
 
-        if (_currentUserService.UserId != null && int.TryParse(_currentUserService.UserId, out int uid))
+        if (!string.IsNullOrEmpty(_currentUserService.UserId))
         {
-            return meta.Value.CashierId == uid;
+            return int.TryParse(_currentUserService.UserId, out int uid) && meta.Value.CashierId == uid;
+        }
+
+        if (User?.Identity?.IsAuthenticated == true || meta.Value.CashierId.HasValue)
+        {
+            return false;
         }
 
         return true;

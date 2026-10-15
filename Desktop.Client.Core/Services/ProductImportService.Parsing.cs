@@ -142,9 +142,9 @@ public partial class ProductImportService
                     results.Add(dto);
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // General file read error
+                Core.Logging.ClientStateLogger.LogError($"Error al leer el archivo de importación '{filePath}': {ex.Message}", nameof(ProductImportService));
             }
 
             return results;

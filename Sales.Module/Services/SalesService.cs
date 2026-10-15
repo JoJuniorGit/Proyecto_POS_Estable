@@ -260,13 +260,13 @@ public partial class SalesService : ISalesService
 
     private static void EnsureCustomPricesNonNegative(decimal? customUnitPriceUsd, decimal? customUnitPriceLocal)
     {
-        if (customUnitPriceUsd.HasValue && customUnitPriceUsd.Value < 0m)
+        if (customUnitPriceUsd.HasValue && customUnitPriceUsd.Value <= 0m)
         {
-            throw new ArgumentException("El precio no puede ser negativo.", nameof(customUnitPriceUsd));
+            throw new ArgumentException("El precio debe ser mayor a cero.", nameof(customUnitPriceUsd));
         }
-        if (customUnitPriceLocal.HasValue && customUnitPriceLocal.Value < 0m)
+        if (customUnitPriceLocal.HasValue && customUnitPriceLocal.Value <= 0m)
         {
-            throw new ArgumentException("El precio en moneda local no puede ser negativo.", nameof(customUnitPriceLocal));
+            throw new ArgumentException("El precio en moneda local debe ser mayor a cero.", nameof(customUnitPriceLocal));
         }
     }
 
@@ -423,23 +423,49 @@ public partial class SalesService : ISalesService
 
     public async Task CancelSaleAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var sale = await GetSaleEntityAsync(saleId);
-        EnsureHoldClaimAccess(sale, actingUserId);
-        if (sale.Status == SaleStatus.Completed) 
-            throw new InvalidOperationException("No se puede anular una venta que ya ha sido completada.");
-        // 8.149 (SRE-02): anulación idempotente — una venta ya anulada retorna éxito sin
-        // repetir efectos (status, claim y notificación quedan intactos). Los demás
-        // precondiciones (abonos, entrega) se conservan para ventas no anuladas.
-        if (sale.Status == SaleStatus.Cancelled) 
-            return;
-        if (sale.Payments != null && sale.Payments.Any()) 
-            throw new InvalidOperationException("No se puede anular un pedido que posee abonos acumulados. Reembolse o reversa los abonos antes de anular.");
-        if (sale.DeliveryStatus == SaleDeliveryStatus.Delivered && sale.PickupDate.HasValue) 
-            throw new InvalidOperationException("No se puede anular un pedido que ya ha sido entregado al cliente.");
+        int cancelRetryAttempt = 0;
+        bool wasCancelled = await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
+        {
+            if (cancelRetryAttempt++ > 0)
+            {
+                _context.ChangeTracker.Clear();
+            }
 
-        sale.Status = SaleStatus.Cancelled;
-        ClearHoldClaim(sale);
-        await _context.SaveChangesAsync(cancellationToken);
+            await using var txn = _context.Database.IsNpgsql()
+                ? await _context.Database.BeginTransactionAsync(cancellationToken)
+                : null;
+
+            if (_context.Database.IsNpgsql())
+            {
+                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", new object[] { 2, saleId }, cancellationToken);
+            }
+
+            var sale = await GetSaleEntityAsync(saleId);
+            EnsureHoldClaimAccess(sale, actingUserId);
+            if (sale.Status == SaleStatus.Completed) 
+                throw new InvalidOperationException("No se puede anular una venta que ya ha sido completada.");
+            // 8.149 (SRE-02): anulación idempotente — una venta ya anulada retorna éxito sin
+            // repetir efectos (status, claim y notificación quedan intactos). Los demás
+            // precondiciones (abonos, entrega) se conservan para ventas no anuladas.
+            if (sale.Status == SaleStatus.Cancelled) 
+                return false;
+            if (sale.Payments != null && sale.Payments.Any()) 
+                throw new InvalidOperationException("No se puede anular un pedido que posee abonos acumulados. Reembolse o reversa los abonos antes de anular.");
+            if (sale.DeliveryStatus == SaleDeliveryStatus.Delivered && sale.PickupDate.HasValue) 
+                throw new InvalidOperationException("No se puede anular un pedido que ya ha sido entregado al cliente.");
+
+            sale.Status = SaleStatus.Cancelled;
+            ClearHoldClaim(sale);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            if (txn != null)
+            {
+                await txn.CommitAsync(cancellationToken);
+            }
+            return true;
+        }, cancellationToken);
+
+        if (!wasCancelled) return;
         _logger?.LogInformation("Pedido #{SaleId} fue anulado exitosamente.", saleId);
         await NotifyHoldOrdersChangedAsync();
     }

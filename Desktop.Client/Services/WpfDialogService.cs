@@ -146,6 +146,11 @@ public partial class WpfDialogService : IDialogService
         ShowNotificationDialog(title, message, CustomDialogType.Info, "ShowInfo");
     }
 
+    public void ShowMessage(string title, string message)
+    {
+        ShowWarning(title, message);
+    }
+
     private void ShowNotificationDialog(string title, string message, CustomDialogType type, string methodName)
     {
         if (Application.Current == null)

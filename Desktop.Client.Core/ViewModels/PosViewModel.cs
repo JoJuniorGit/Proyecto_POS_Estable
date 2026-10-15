@@ -316,19 +316,15 @@ public partial class PosViewModel : ObservableObject, IDisposable
     {
         if (_userSession != null && !_userSession.IsLoggedIn) return;
 
-        System.Diagnostics.Debug.WriteLine("[POS] StartNewSaleAsync: calling StartSaleAsync...");
         IsProcessing = true;
         try
         {
             var newSale = await _salesService.StartSaleAsync(_userSession?.CurrentUser?.Id);
-            System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync: sale started OK, Id={newSale.Id}");
             Cart.CurrentSale = newSale;
             RecentScannedProducts.Clear();
-            System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync: Cart.CurrentSale set. IsNull={Cart.CurrentSale == null}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[POS] StartNewSaleAsync FAILED: {ex.GetType().Name}: {ex.Message}");
             Core.Logging.ClientStateLogger.LogError($"Error al iniciar la venta: {ex.Message}", nameof(PosViewModel));
             if (_dialogService != null) _dialogService.ShowError("Error de Venta", "No se pudo iniciar la venta. Verifique la conexión con el servidor e intente nuevamente.");
         }

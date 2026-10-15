@@ -101,7 +101,7 @@ public partial class InventoryService
                     {
                         // Conditional decrement preventing negative stock
                         int rows = await _context.Products
-                            .Where(p => p.Id == deduction.TargetProductId && (p.StockQuantity + deduction.QuantityChange) >= 0)
+                            .Where(p => p.Id == deduction.TargetProductId && (p.StockQuantity - p.ReservedQuantity + deduction.QuantityChange) >= 0)
                             .ExecuteUpdateAsync(setters => setters
                                 .SetProperty(p => p.StockQuantity, p => p.StockQuantity + deduction.QuantityChange)
                                 .SetProperty(p => p.UpdatedAt, DateTime.UtcNow), cancellationToken);
@@ -501,7 +501,7 @@ public partial class InventoryService
 
                 // 2) Descuento condicional: no permite quedarse en negativo.
                 int updated = await _context.Products
-                    .Where(p => p.Id == reservation.ProductId && p.ReservedQuantity >= reservation.Quantity)
+                    .Where(p => p.Id == reservation.ProductId && p.ReservedQuantity >= reservation.Quantity && p.StockQuantity >= reservation.Quantity)
                     .ExecuteUpdateAsync(s => s
                         .SetProperty(p => p.StockQuantity, p => p.StockQuantity - reservation.Quantity)
                         .SetProperty(p => p.ReservedQuantity, p => p.ReservedQuantity - reservation.Quantity), cancellationToken);

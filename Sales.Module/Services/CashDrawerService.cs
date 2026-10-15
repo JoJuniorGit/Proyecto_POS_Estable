@@ -60,6 +60,7 @@ public class CashDrawerService : ICashDrawerService
         if (session != null) return MapSession(session);
 
         var lastSession = await _context.CashDrawerSessions
+            .AsNoTracking()
             .OrderByDescending(s => s.ClosedAt ?? s.OpenedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -278,6 +279,21 @@ public class CashDrawerService : ICashDrawerService
 
             try
             {
+                if (source != CashTransactionSource.Closing)
+                {
+                    var targetSession = await _context.CashDrawerSessions
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(s => s.Id == sessionId, cancellationToken);
+                    if (targetSession != null && targetSession.Status != CashDrawerStatus.Open)
+                    {
+                        throw new InvalidOperationException("No se pueden registrar movimientos en una sesión de caja cerrada.");
+                    }
+                    if (targetSession == null && await _context.CashDrawerSessions.AsNoTracking().AnyAsync(cancellationToken))
+                    {
+                        throw new InvalidOperationException("La sesión de caja indicada no existe.");
+                    }
+                }
+
                 if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
                 {
                     if (!isInMemory)

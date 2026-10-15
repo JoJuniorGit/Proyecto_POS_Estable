@@ -43,29 +43,32 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
   const wasOpenRef = useRef(false);
 
   useEffect(() => {
+    let retryTimer = null;
+    let cancelled = false;
     if (isOpen) {
       loadCustomers('');
       // 8.5-WEB3: reintento ante fallo transitorio de payment-methods.
       const loadMethods = (attempt) => {
         getActivePaymentMethods()
           .then(res => {
+            if (cancelled) return;
             setPaymentMethods(res || []);
             if (res && res.length > 0) setPaymentMethodId(res[0].id.toString());
           })
           .catch(err => {
+            if (cancelled) return;
             console.error('[HoldSaleModal] Error al cargar métodos de pago:', err);
             if (attempt < 1) {
-              setTimeout(() => loadMethods(attempt + 1), 800);
+              retryTimer = setTimeout(() => loadMethods(attempt + 1), 800);
             }
           });
       };
       loadMethods(0);
 
-      if (currentCustomer && !currentCustomer.isDefault && currentCustomer.cedulaOrRif !== 'V-00000000') {
-        setSelectedCustomer(currentCustomer);
-      } else {
-        setSelectedCustomer(null);
-      }
+      const nextCustomer = (currentCustomer && !currentCustomer.isDefault && currentCustomer.cedulaOrRif !== 'V-00000000')
+        ? currentCustomer
+        : null;
+      setSelectedCustomer(prev => (prev?.id === nextCustomer?.id && prev?.cedulaOrRif === nextCustomer?.cedulaOrRif ? prev : nextCustomer));
 
       setError(null);
       setCents(0);
@@ -78,6 +81,10 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
       setQuery('');
       customerAbortRef.current?.abort();
     }
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, currentCustomer?.id, currentCustomer?.cedulaOrRif, currentCustomer?.isDefault]);
 

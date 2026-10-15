@@ -295,11 +295,12 @@ public class UserService : IUserService
         }
 
         var temporaryPassword = _passwordPolicyService.GenerateSecureTemporaryPassword(12);
+        var temporaryPasswordHash = PasswordHasher.HashPassword(temporaryPassword);
 
         await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync(cancellationToken) : null;
-            user.PasswordHash = PasswordHasher.HashPassword(temporaryPassword);
+            user.PasswordHash = temporaryPasswordHash;
             user.MustChangePassword = true;
             user.SecurityStamp = Guid.NewGuid().ToString("N");
             user.AccessFailedCount = 0;

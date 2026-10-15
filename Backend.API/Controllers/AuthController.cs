@@ -91,9 +91,11 @@ public class AuthController : ControllerBase
     {
         var idClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
                    ?? User.FindFirst("sub")?.Value;
-        if (int.TryParse(idClaim, out int uid))
+        if (int.TryParse(idClaim, out int uid) && _stampValidator != null)
         {
-            if (_stampValidator != null)
+            var stampClaim = User.FindFirst("security_stamp")?.Value;
+            if (string.IsNullOrEmpty(stampClaim)
+                || await _stampValidator.ValidateStampAsync(uid, stampClaim, forceImmediateCheck: true))
             {
                 await _stampValidator.RevokeUserStampAsync(uid);
             }

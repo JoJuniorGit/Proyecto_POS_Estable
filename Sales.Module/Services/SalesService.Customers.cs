@@ -83,6 +83,7 @@ public partial class SalesService
 
         var customer = await _context.Customers.FindAsync(new object[] { customerId }, cancellationToken);
         if (customer == null) throw new KeyNotFoundException($"Cliente con ID {customerId} no encontrado.");
+        if (!customer.IsActive) throw new InvalidOperationException("No se puede asignar un cliente inactivo a la venta.");
 
         sale.CustomerId = customer.Id;
         sale.CustomerName = customer.Name;

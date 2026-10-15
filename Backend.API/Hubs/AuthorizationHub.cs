@@ -18,6 +18,9 @@ public class AuthorizationHub : Hub
 {
     public const string ElevatedGroup = "role:elevated";
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, System.Collections.Concurrent.ConcurrentDictionary<string, byte>> UserConnections = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> ConnectionUsers = new();
+
     private readonly IAuthorizationCoordinator _coordinator;
 
     public AuthorizationHub(IAuthorizationCoordinator coordinator)
@@ -28,10 +31,29 @@ public class AuthorizationHub : Hub
 
     public static string UserGroup(int userId) => $"user:{userId}";
 
+    internal static System.Collections.Generic.IReadOnlyCollection<string> DrainUserConnections(int userId)
+    {
+        if (!UserConnections.TryRemove(userId, out var set))
+        {
+            return System.Array.Empty<string>();
+        }
+
+        foreach (var connectionId in set.Keys)
+        {
+            ConnectionUsers.TryRemove(connectionId, out _);
+        }
+
+        return set.Keys.ToArray();
+    }
+
     public override async Task OnConnectedAsync()
     {
         if (TryReadIdentity(Context.User, out var identity))
         {
+            var userSet = UserConnections.GetOrAdd(identity.UserId, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, byte>());
+            userSet[Context.ConnectionId] = 0;
+            ConnectionUsers[Context.ConnectionId] = identity.UserId;
+
             await Groups.AddToGroupAsync(Context.ConnectionId, UserGroup(identity.UserId));
 
             if (AuthorizationService.IsElevatedRole(identity.Role))
@@ -41,6 +63,17 @@ public class AuthorizationHub : Hub
         }
 
         await base.OnConnectedAsync();
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        if (ConnectionUsers.TryRemove(Context.ConnectionId, out var userId)
+            && UserConnections.TryGetValue(userId, out var set))
+        {
+            set.TryRemove(Context.ConnectionId, out _);
+        }
+
+        return base.OnDisconnectedAsync(exception);
     }
 
     [HubMethodName("RequestAuthorization")]

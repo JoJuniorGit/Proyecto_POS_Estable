@@ -71,7 +71,26 @@ public class BcvExchangeRateJob : BackgroundService
         try
         {
             using var scope = _scopeFactory.CreateScope();
+            var scraperService = scope.ServiceProvider.GetRequiredService<BcvScraperService>();
+            var rateWriteService = scope.ServiceProvider.GetRequiredService<IExchangeRateWriteService>();
             var dbContext = scope.ServiceProvider.GetRequiredService<InventoryDbContext>();
+
+            var rawRate = await scraperService.GetOfficialUsdRateAsync(cancellationToken);
+            if (!rawRate.HasValue)
+            {
+                _logger.LogWarning("[BCV Scraper Audit] Scraper returned null. BCV site might be unreachable or unresponsive. Active system rate is preserved.");
+                return;
+            }
+
+            // Defensive range validation
+            if (rawRate.Value <= 0 || rawRate.Value >= 1_000_000m)
+            {
+                _logger.LogWarning("[BCV Scraper Audit] Scraped rate {RawRate} was rejected because it is outside the valid range (0, 1000000). Current system rate is preserved.", rawRate.Value);
+                return;
+            }
+
+            // Ceiling rounding to 2 decimal places (redondeo hacia arriba, guia §2.4: ej. 804.63005 -> 804.64)
+            decimal roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rawRate.Value);
 
             bool isNpgsql = dbContext.Database.IsNpgsql();
             bool lockAcquired = false;
@@ -91,65 +110,45 @@ public class BcvExchangeRateJob : BackgroundService
                         return;
                     }
 
-await ExecuteSyncInternalAsync(scope, cancellationToken);
+                    await PersistSyncedRateAsync(rateWriteService, roundedRate, cancellationToken);
                 }
-                    finally
+                finally
+                {
+                    if (lockAcquired)
                     {
-                        if (lockAcquired)
-                        {
-                            try
-                            {
-                                await dbContext.Database.ExecuteSqlRawAsync("SELECT pg_advisory_unlock({0})", BcvSyncLockId);
-                            }
-                            catch (Exception unlockEx)
-                            {
-                                _logger.LogWarning(unlockEx, "[BCV Job] Advertencia al liberar advisory lock del BCV.");
-                            }
-                        }
-
                         try
                         {
-                            await dbContext.Database.CloseConnectionAsync();
+                            await dbContext.Database.ExecuteSqlRawAsync("SELECT pg_advisory_unlock({0})", BcvSyncLockId);
                         }
-                        catch (Exception closeEx)
+                        catch (Exception unlockEx)
                         {
-                            _logger.LogWarning(closeEx, "[BCV Job] Advertencia al cerrar conexión del advisory lock.");
+                            _logger.LogWarning(unlockEx, "[BCV Job] Advertencia al liberar advisory lock del BCV.");
                         }
                     }
+
+                    try
+                    {
+                        await dbContext.Database.CloseConnectionAsync();
+                    }
+                    catch (Exception closeEx)
+                    {
+                        _logger.LogWarning(closeEx, "[BCV Job] Advertencia al cerrar conexión del advisory lock.");
+                    }
+                }
             }
             else
             {
-                await ExecuteSyncInternalAsync(scope, cancellationToken);
+                await PersistSyncedRateAsync(rateWriteService, roundedRate, cancellationToken);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[BCV Scraper Audit] Error syncing BCV exchange rate in background job: {Message}. Active rate is preserved.", ex.Message);
+            _logger.LogWarning(ex, "[BCV Scraper Audit] Error syncing BCV exchange rate in background job. Active rate is preserved.");
         }
     }
 
-    private async Task ExecuteSyncInternalAsync(IServiceScope scope, CancellationToken cancellationToken)
+    private async Task PersistSyncedRateAsync(IExchangeRateWriteService rateWriteService, decimal roundedRate, CancellationToken cancellationToken)
     {
-        var scraperService = scope.ServiceProvider.GetRequiredService<BcvScraperService>();
-        var rateWriteService = scope.ServiceProvider.GetRequiredService<IExchangeRateWriteService>();
-
-        var rawRate = await scraperService.GetOfficialUsdRateAsync(cancellationToken);
-        if (!rawRate.HasValue)
-        {
-            _logger.LogWarning("[BCV Scraper Audit] Scraper returned null. BCV site might be unreachable or unresponsive. Active system rate is preserved.");
-            return;
-        }
-
-        // Defensive range validation
-        if (rawRate.Value <= 0 || rawRate.Value >= 1_000_000m)
-        {
-            _logger.LogWarning("[BCV Scraper Audit] Scraped rate {RawRate} was rejected because it is outside the valid range (0, 1000000). Current system rate is preserved.", rawRate.Value);
-            return;
-        }
-
-        // Ceiling rounding to 2 decimal places (redondeo hacia arriba, guia §2.4: ej. 804.63005 -> 804.64)
-        decimal roundedRate = Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(rawRate.Value);
-
         // 8.7-M3: upsert + invalidación de caché + recálculo OnHold + broadcast centralizados.
         bool changed = await rateWriteService.UpsertTodayRateAsync(roundedRate, cancellationToken);
 

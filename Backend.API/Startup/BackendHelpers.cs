@@ -125,7 +125,7 @@ public static class BackendHelpers
             catch (Exception ex)
             {
                 // 8B-B4: catch vacío convertido en aviso; se continúa con las SAN ya acumuladas.
-                Console.WriteLine($"[HTTPS] Aviso: no se pudieron enumerar las IPs para el certificado autofirmado: {ex.Message}");
+                AppLogger.LogStart($"[HTTPS] Aviso: no se pudieron enumerar las IPs para el certificado autofirmado: {ex.Message}");
             }
 
             certRequest.CertificateExtensions.Add(sanBuilder.Build());

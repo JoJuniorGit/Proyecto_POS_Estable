@@ -321,9 +321,6 @@ export async function apiFetch(endpoint, options = {}) {
         localStorage.removeItem('pos_user');
         localStorage.removeItem('pos_token');
         sessionStorage.clear();
-        if (!endpoint.includes('api/auth/logout')) {
-          fetch(`${getBaseUrl()}/api/auth/logout`, { credentials: 'include', method: 'POST' }).catch(() => {});
-        }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('pos_unauthorized'));
         }

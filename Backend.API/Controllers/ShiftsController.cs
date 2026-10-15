@@ -81,6 +81,7 @@ public class ShiftsController : ControllerBase
                     .ToList());
 
             var result = await _dailyClosureService.CreateClosureFromCommandAsync(command, cancellationToken);
+            bool isElevated = User.IsInRole(nameof(Core.Entities.UserRole.Admin)) || User.IsInRole(nameof(Core.Entities.UserRole.Manager));
 
             var report = new ShiftReportDto
             {
@@ -95,9 +96,9 @@ public class ShiftsController : ControllerBase
                     PaymentMethodName = d.PaymentMethodName,
                     Currency = d.Currency,
                     DeclaredAmount = d.DeclaredAmount,
-                    SystemAmount = d.SystemAmount,
-                    Difference = d.Difference,
-                    Status = d.Status
+                    SystemAmount = isElevated ? d.SystemAmount : 0m,
+                    Difference = isElevated ? d.Difference : 0m,
+                    Status = isElevated ? d.Status : "Blind"
                 }).ToList()
             };
 
@@ -171,6 +172,15 @@ public class ShiftsController : ControllerBase
         }
 
         var details = ShiftReportMapper.MapDetails(closure.Details, closure.ExchangeRate);
+        if (!isElevated)
+        {
+            foreach (var d in details)
+            {
+                d.SystemAmount = 0m;
+                d.Difference = 0m;
+                d.Status = "Blind";
+            }
+        }
 
         string cashierName = closure.UserId ?? "Cajero Activo";
         if (int.TryParse(closure.UserId, out int parsedId))

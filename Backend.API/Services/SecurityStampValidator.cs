@@ -72,10 +72,10 @@ public class SecurityStampValidator : ISecurityStampValidator
         var user = await _db.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => new { u.SecurityStamp, u.IsActive })
+            .Select(u => new { u.SecurityStamp, u.IsActive, u.LockoutEndUtc })
             .FirstOrDefaultAsync();
 
-        if (user == null || !user.IsActive)
+        if (user == null || !user.IsActive || (user.LockoutEndUtc.HasValue && user.LockoutEndUtc.Value > DateTime.UtcNow))
         {
             _cache.Remove(cacheKey);
             return false;
@@ -160,6 +160,49 @@ public class SecurityStampValidator : ISecurityStampValidator
         string group = AuthorizationHub.UserGroup(userId);
         await TrySendForceDisconnectAsync(_authorizationHub, group, userId, nameof(AuthorizationHub));
         await TrySendForceDisconnectAsync(_exchangeRateHub, group, userId, nameof(ExchangeRateHub));
+
+        await TryEvictConnectionsFromGroupsAsync(
+            _authorizationHub,
+            AuthorizationHub.DrainUserConnections(userId),
+            new[] { group, AuthorizationHub.ElevatedGroup },
+            userId,
+            nameof(AuthorizationHub));
+        await TryEvictConnectionsFromGroupsAsync(
+            _exchangeRateHub,
+            ExchangeRateHub.DrainUserConnections(userId),
+            new[] { group },
+            userId,
+            nameof(ExchangeRateHub));
+    }
+
+    private static async Task TryEvictConnectionsFromGroupsAsync<T>(
+        IHubContext<T>? hub,
+        System.Collections.Generic.IReadOnlyCollection<string> connectionIds,
+        string[] groups,
+        int userId,
+        string hubName) where T : Hub
+    {
+        if (hub?.Groups is null || connectionIds.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var connectionId in connectionIds)
+            {
+                foreach (var group in groups)
+                {
+                    await hub.Groups.RemoveFromGroupAsync(connectionId, group);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLogger.LogWarn(
+                $"[SIGNALR] Group eviction failed for UserId={userId} on hub {hubName}: {ex.Message}",
+                "SecurityStampValidator");
+        }
     }
 
     private static async Task TrySendForceDisconnectAsync<T>(

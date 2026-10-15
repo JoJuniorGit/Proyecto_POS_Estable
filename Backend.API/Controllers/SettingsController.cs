@@ -3,8 +3,6 @@ using Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
-using Inventory.Module.Data;
-using Inventory.Module.Services;
 using Backend.API.Services;
 using System;
 using System.Threading;

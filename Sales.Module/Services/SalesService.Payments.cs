@@ -23,10 +23,14 @@ public partial class SalesService
 
     public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var sale = await GetSaleEntityAsync(saleId);
-        EnsureHoldClaimAccess(sale, actingUserId);
-        if (sale.Status != SaleStatus.OnHold)
-            throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
+        Sale? sale = null;
+        if (!_context.Database.IsRelational())
+        {
+            sale = await GetSaleEntityAsync(saleId);
+            EnsureHoldClaimAccess(sale, actingUserId);
+            if (sale.Status != SaleStatus.OnHold)
+                throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
+        }
 
         // 8.9-B4: envolver en execution strategy (reintento completo ante fallos transitorios).
         int paymentRetryAttempt = 0;
@@ -36,6 +40,9 @@ public partial class SalesService
         {
             _context.ChangeTracker.Clear();
             sale = await GetSaleEntityAsync(saleId);
+            EnsureHoldClaimAccess(sale, actingUserId);
+            if (sale.Status != SaleStatus.OnHold)
+                throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
         }
         IDbContextTransaction? dbTransaction = null;
         if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
@@ -71,7 +78,7 @@ public partial class SalesService
 
             var paymentEntity = new SalePayment
             {
-                SaleId = sale.Id,
+                SaleId = sale!.Id,
                 PaymentMethodId = request.PaymentMethodId,
                 Amount = Math.Round(input.AmountUsd, 2, MidpointRounding.AwayFromZero),
                 AmountBsS = Math.Round(input.AmountBsS, 2, MidpointRounding.AwayFromZero),
@@ -143,10 +150,14 @@ public partial class SalesService
         if (payments.Count > 50)
             throw new ArgumentException("El lote de abonos supera el máximo permitido (50).");
 
-        var sale = await GetSaleEntityAsync(saleId);
-        EnsureHoldClaimAccess(sale, actingUserId);
-        if (sale.Status != SaleStatus.OnHold)
-            throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
+        Sale? sale = null;
+        if (!_context.Database.IsRelational())
+        {
+            sale = await GetSaleEntityAsync(saleId);
+            EnsureHoldClaimAccess(sale, actingUserId);
+            if (sale.Status != SaleStatus.OnHold)
+                throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
+        }
 
         // 8.9-B4: execution strategy para reintentos completos del lote ante fallos transitorios.
         int batchRetryAttempt = 0;
@@ -156,6 +167,9 @@ public partial class SalesService
             {
                 _context.ChangeTracker.Clear();
                 sale = await GetSaleEntityAsync(saleId);
+                EnsureHoldClaimAccess(sale, actingUserId);
+                if (sale.Status != SaleStatus.OnHold)
+                    throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
             }
             IDbContextTransaction? dbTransaction = null;
             if (_context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
@@ -187,19 +201,35 @@ public partial class SalesService
                     .Where(sp => sp.SaleId == saleId)
                     .SumAsync(sp => (decimal?)sp.Amount, cancellationToken) ?? 0m;
 
+                var requestedMethodIds = payments.Select(p => p.PaymentMethodId).Distinct().ToList();
+                var preloadedMethods = await _context.PaymentMethods
+                    .AsNoTracking()
+                    .IgnoreQueryFilters()
+                    .Where(pm => requestedMethodIds.Contains(pm.Id))
+                    .ToDictionaryAsync(pm => pm.Id, cancellationToken);
+                bool hasConfiguredPaymentMethods = preloadedMethods.Count > 0
+                    || await _context.PaymentMethods.AsNoTracking().IgnoreQueryFilters().AnyAsync(cancellationToken);
+
                 var computedInputs = new List<(AddPaymentRequestDto Request, ComputedPaymentInput Input)>(payments.Count);
                 foreach (var request in payments)
                 {
-                    var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.AppliedRate, runningPaidUsd, request, "AddPaymentsBatchToHoldSale");
+                    var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.AppliedRate, runningPaidUsd, request, "AddPaymentsBatchToHoldSale", preloadedMethods, hasConfiguredPaymentMethods);
                     runningPaidUsd += input.AmountUsd;
                     computedInputs.Add((request, input));
+                }
+
+                CashDrawerSessionResponseDto? activeSession = null;
+                var firstCashInput = computedInputs.FirstOrDefault(ci => ci.Input.Method != null && ci.Input.Method.IsCash && ci.Input.AmountUsd > 0);
+                if (firstCashInput.Input != null && _cashDrawerService != null)
+                {
+                    activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(firstCashInput.Input.Rate, cancellationToken);
                 }
 
                 foreach (var (request, input) in computedInputs)
                 {
                     var paymentEntity = new SalePayment
                     {
-                        SaleId = sale.Id,
+                        SaleId = sale!.Id,
                         PaymentMethodId = request.PaymentMethodId,
                         Amount = Math.Round(input.AmountUsd, 2, MidpointRounding.AwayFromZero),
                         AmountBsS = Math.Round(input.AmountBsS, 2, MidpointRounding.AwayFromZero),
@@ -210,9 +240,8 @@ public partial class SalesService
 
                     _context.SalePayments.Add(paymentEntity);
 
-                    if (input.Method != null && input.Method.IsCash && input.AmountUsd > 0 && _cashDrawerService != null)
+                    if (input.Method != null && input.Method.IsCash && input.AmountUsd > 0 && activeSession != null)
                     {
-                        var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(input.Rate);
                         var cashTx = new CashTransaction
                         {
                             SessionId = activeSession.Id,
@@ -231,7 +260,7 @@ public partial class SalesService
                     }
                 }
 
-                RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/payments/batch", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale)), actingUserId);
+                RegisterIdempotencyRecord(idempotencyKey, idempotencyPayloadHash, $"/api/sales/{saleId}/payments/batch", System.Text.Json.JsonSerializer.Serialize(MapToDto(sale!)), actingUserId);
 
                 await _context.SaveChangesAsync(cancellationToken);
 
@@ -241,7 +270,7 @@ public partial class SalesService
                 }
 
                 await NotifyHoldOrdersChangedAsync();
-                return MapToDto(sale);
+                return MapToDto(sale!);
             }
             catch (Exception ex)
             {
@@ -262,7 +291,15 @@ public partial class SalesService
     // Cálculo y validación compartidos de un abono individual (tasa anclada BCV, montos,
     // límite acumulado y regla de efectivo a montos enteros). Se usa tanto en el flujo de
     // abono simple como en el batch; `runningPaidUsd` es lo ya abonado + abonos del lote.
-    private async Task<ComputedPaymentInput> ComputePaymentInputsAsync(int saleId, decimal saleTotalUsd, decimal saleAppliedRate, decimal runningPaidUsd, AddPaymentRequestDto request, string contextLabel)
+    private async Task<ComputedPaymentInput> ComputePaymentInputsAsync(
+        int saleId,
+        decimal saleTotalUsd,
+        decimal saleAppliedRate,
+        decimal runningPaidUsd,
+        AddPaymentRequestDto request,
+        string contextLabel,
+        Dictionary<int, PaymentMethod>? preloadedMethods = null,
+        bool? preloadedHasConfiguredMethods = null)
     {
         // 8.6-B3/8.5-A5: Tasa del abono anclada a la BCV del día cuando el cliente la envía.
         decimal rate = request.ExchangeRate > 0
@@ -285,10 +322,22 @@ public partial class SalesService
         }
 
         // SEC-11: Validate payment method is active and not soft-deleted.
-        var method = await _context.PaymentMethods
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(pm => pm.Id == request.PaymentMethodId);
-        bool hasConfiguredPaymentMethods = method != null || await _context.PaymentMethods.IgnoreQueryFilters().AnyAsync();
+        PaymentMethod? method;
+        bool hasConfiguredPaymentMethods;
+        if (preloadedMethods != null)
+        {
+            preloadedMethods.TryGetValue(request.PaymentMethodId, out method);
+            hasConfiguredPaymentMethods = preloadedHasConfiguredMethods
+                ?? (method != null || await _context.PaymentMethods.AsNoTracking().IgnoreQueryFilters().AnyAsync());
+        }
+        else
+        {
+            method = await _context.PaymentMethods
+                .AsNoTracking()
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(pm => pm.Id == request.PaymentMethodId);
+            hasConfiguredPaymentMethods = method != null || await _context.PaymentMethods.AsNoTracking().IgnoreQueryFilters().AnyAsync();
+        }
         if (hasConfiguredPaymentMethods && (method == null || !method.IsActive || method.IsDeleted))
         {
             throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={request.PaymentMethodId}. Verifique la configuración de métodos de pago.");

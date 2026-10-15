@@ -15,6 +15,7 @@ public interface IDialogService
     void ShowError(string title, string message);
     void ShowWarning(string title, string message);
     void ShowInfo(string title, string message);
+    void ShowMessage(string title, string message) => ShowWarning(title, message);
     Task<string?> ShowTextInputAsync(string prompt, string hint);
     Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync();
     decimal? ShowCashAdvanceDialog();

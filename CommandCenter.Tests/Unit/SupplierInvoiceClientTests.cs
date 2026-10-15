@@ -2616,6 +2616,66 @@ public sealed class SupplierInvoiceClientTests
             handler.RequestPaths);
     }
 
+    [Fact]
+    public void CostChangeKind_And_PillText_ReflectCostDifferencesSemantically()
+    {
+        // 1. New product (unresolved or no old cost)
+        var newLineDto = CreateLine(1, unitCost: 10m, resolvedProductId: null) with { OldCostPriceUSD = null };
+        var lineVm1 = new SupplierInvoiceLineViewModel(newLineDto);
+        Assert.Equal(CostChangeKind.NewProduct, lineVm1.CostChangeKind);
+        Assert.Equal($"Nuevo: {10m:N2}", lineVm1.CostComparisonPillText);
+
+        // 2. Unchanged (same cost after rounding to 2 decimals)
+        var unchangedDto = CreateLine(2, unitCost: 10.002m, resolvedProductId: 5) with { OldCostPriceUSD = 10.004m };
+        var lineVm2 = new SupplierInvoiceLineViewModel(unchangedDto);
+        Assert.Equal(CostChangeKind.Unchanged, lineVm2.CostChangeKind);
+        Assert.Equal($"Sin cambio · {10m:N2}", lineVm2.CostComparisonPillText);
+
+        // 3. Decreased
+        var decreasedDto = CreateLine(3, unitCost: 8m, resolvedProductId: 5) with { OldCostPriceUSD = 10m };
+        var lineVm3 = new SupplierInvoiceLineViewModel(decreasedDto);
+        Assert.Equal(CostChangeKind.Decreased, lineVm3.CostChangeKind);
+        Assert.Equal($"${10m:N2} → {8m:N2}", lineVm3.CostComparisonPillText);
+
+        // 4. Increased Drastic (>= 1.5x)
+        var drasticDto = CreateLine(4, unitCost: 15m, resolvedProductId: 5) with { OldCostPriceUSD = 10m };
+        var lineVm4 = new SupplierInvoiceLineViewModel(drasticDto);
+        Assert.Equal(CostChangeKind.IncreasedDrastic, lineVm4.CostChangeKind);
+        Assert.Equal($"${10m:N2} → {15m:N2}", lineVm4.CostComparisonPillText);
+
+        // 5. Increased Moderate (< 1.5x)
+        var moderateDto = CreateLine(5, unitCost: 12m, resolvedProductId: 5) with { OldCostPriceUSD = 10m };
+        var lineVm5 = new SupplierInvoiceLineViewModel(moderateDto);
+        Assert.Equal(CostChangeKind.IncreasedModerate, lineVm5.CostChangeKind);
+        Assert.Equal($"${10m:N2} → {12m:N2}", lineVm5.CostComparisonPillText);
+    }
+
+    [Fact]
+    public void SupplierInvoiceViewModel_SummaryMetrics_CalculateAccuratelyAndReactively()
+    {
+        var viewModel = CreateViewModel(Mock.Of<ClientSupplierInvoiceService>());
+        Assert.Equal(0, viewModel.LinesToUpdateCount);
+        Assert.Equal(0, viewModel.LinesToCreateCount);
+        Assert.Equal(string.Empty, viewModel.SummaryMetricsText);
+        Assert.False(viewModel.HasSummaryMetrics);
+
+        var lineUpdate = CreateLine(1, unitCost: 10m, resolvedProductId: 42);
+        var lineCreate = CreateLine(2, unitCost: 5m, resolvedProductId: null);
+        viewModel.LoadStagedInvoice(CreateInvoice(lineUpdate, lineCreate));
+
+        Assert.Equal(1, viewModel.LinesToUpdateCount);
+        Assert.Equal(1, viewModel.LinesToCreateCount);
+        Assert.Equal("2 líneas · 1 por actualizar · 1 por crear", viewModel.SummaryMetricsText);
+        Assert.True(viewModel.HasSummaryMetrics);
+
+        viewModel.ClearInvoiceCommand.Execute(null);
+
+        Assert.Equal(0, viewModel.LinesToUpdateCount);
+        Assert.Equal(0, viewModel.LinesToCreateCount);
+        Assert.Equal(string.Empty, viewModel.SummaryMetricsText);
+        Assert.False(viewModel.HasSummaryMetrics);
+    }
+
 
     private static void PrepareStageableInvoice(SupplierInvoiceViewModel viewModel)
     {

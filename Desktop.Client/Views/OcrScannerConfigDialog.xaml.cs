@@ -80,8 +80,9 @@ public partial class OcrScannerConfigDialog : Window
             EmptyPreviewPlaceholder.Visibility = Visibility.Collapsed;
             Dispatcher.BeginInvoke(new Action(UpdateRoiRectangleVisual));
         }
-        catch
+        catch (Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogWarning($"[OcrScannerConfigDialog] No se pudo decodificar la vista previa de imagen: {ex.Message}");
             SamplePreviewImage.Source = null;
             EmptyPreviewPlaceholder.Visibility = Visibility.Visible;
         }

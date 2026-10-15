@@ -9,8 +9,10 @@ using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class PartialDeliveryDialogViewModel : ObservableObject
+public partial class PartialDeliveryDialogViewModel : ObservableObject, IDisposable
 {
+    private bool _disposed;
+
     [ObservableProperty]
     private string? _notes;
 
@@ -78,6 +80,16 @@ public partial class PartialDeliveryDialogViewModel : ObservableObject
 
     [RelayCommand]
     private void Cancel() => Result = null;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        foreach (var line in Items)
+        {
+            line.PropertyChanged -= OnLinePropertyChanged;
+        }
+    }
 }
 
 public partial class PartialDeliveryLineViewModel : ObservableObject

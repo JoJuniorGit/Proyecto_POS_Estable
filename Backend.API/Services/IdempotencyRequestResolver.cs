@@ -141,7 +141,9 @@ public sealed class IdempotencyRequestResolver
     {
         return ex.Message.Contains("IX_IdempotentRequests")
             || ex.InnerException?.Message.Contains("IX_IdempotentRequests") == true
-            || (ex.InnerException is Npgsql.PostgresException pg && pg.SqlState == "23505");
+            || (ex.InnerException is Npgsql.PostgresException pg
+                && pg.SqlState == "23505"
+                && (string.IsNullOrEmpty(pg.ConstraintName) || pg.ConstraintName == "IX_IdempotentRequests_Key_RequestPath"));
     }
 
     /// <summary>

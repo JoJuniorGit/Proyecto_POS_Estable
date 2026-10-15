@@ -141,12 +141,14 @@ public class AuthService : IAuthService
             return new PasswordChangeResult(PasswordChangeOutcome.PolicyViolation, PolicyError: policyError);
         }
 
+        var newPasswordHash = PasswordHasher.HashPassword(newPassword);
+
         await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var tx = _db.Database.IsRelational() ? await _db.Database.BeginTransactionAsync(cancellationToken) : null;
             user.AccessFailedCount = 0;
             user.LockoutEndUtc = null;
-            user.PasswordHash = PasswordHasher.HashPassword(newPassword);
+            user.PasswordHash = newPasswordHash;
             user.MustChangePassword = false;
             user.SecurityStamp = Guid.NewGuid().ToString("N");
             await _db.SaveChangesAsync(cancellationToken);

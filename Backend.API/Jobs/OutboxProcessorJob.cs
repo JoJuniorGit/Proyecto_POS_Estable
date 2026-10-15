@@ -277,7 +277,7 @@ return totalPurged;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[OutboxProcessor] Error al procesar lote de mensajes Outbox: {Message}", ex.Message);
+            _logger.LogWarning(ex, "[OutboxProcessor] Error al procesar lote de mensajes Outbox.");
         }
     }
 

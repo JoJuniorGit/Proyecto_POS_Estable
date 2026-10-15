@@ -393,7 +393,7 @@ public partial class WpfDialogService
 
         ArgumentNullException.ThrowIfNull(pickup);
         PartialDeliveryDialogResult? result = null;
-        var viewModel = new PartialDeliveryDialogViewModel(pickup);
+        using var viewModel = new PartialDeliveryDialogViewModel(pickup);
 
         using var _ = TrackModal();
         Action openDialog = () =>
@@ -595,6 +595,7 @@ public partial class WpfDialogService
         }
 
         bool? dialogResult = null;
+        string? rejectionReason = null;
         // Cancel() del VM vuelve a Idle ANTES de cerrar; se retiene la ultima fase no-idle para
         // mapear Rejected/Expired despues de que ShowDialog retorne.
         var lastNonIdlePhase = AuthorizationWaitPhase.Idle;
@@ -627,6 +628,8 @@ public partial class WpfDialogService
         finally
         {
             viewModel.PropertyChanged -= OnPhaseChanged;
+            rejectionReason = viewModel.RejectionReason;
+            viewModel.Dispose();
         }
 
         if (dialogResult == true)
@@ -637,7 +640,7 @@ public partial class WpfDialogService
         return lastNonIdlePhase switch
         {
             AuthorizationWaitPhase.Rejected => new AuthorizationWaitResult(
-                AuthorizationWaitOutcome.Rejected, null, viewModel.RejectionReason),
+                AuthorizationWaitOutcome.Rejected, null, rejectionReason),
             AuthorizationWaitPhase.Expired => new AuthorizationWaitResult(AuthorizationWaitOutcome.Expired),
             _ => new AuthorizationWaitResult(AuthorizationWaitOutcome.Cancelled)
         };

@@ -8,6 +8,15 @@ using System.Linq;
 
 namespace Desktop.Client.ViewModels;
 
+public enum CostChangeKind
+{
+    NewProduct,
+    Decreased,
+    Unchanged,
+    IncreasedDrastic,
+    IncreasedModerate
+}
+
 public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
 {
     private const string BandNone = "None";
@@ -44,6 +53,50 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     public string StatusLabel => ResolvedProductId is null ? "[NUEVO]" : GetStatusLabel(Status);
     public int? ResolvedProductId => _source.ResolvedProductId;
     public decimal? OldCostPriceUSD => _source.OldCostPriceUSD;
+
+    /// <summary>
+    /// Clasificación semántica de la variación de costo contra el catálogo.
+    /// </summary>
+    public CostChangeKind CostChangeKind
+    {
+        get
+        {
+            if (ResolvedProductId is null || CanCreateProduct || !OldCostPriceUSD.HasValue)
+            {
+                return CostChangeKind.NewProduct;
+            }
+
+            if (Math.Round(UnitCostUSD, 2, MidpointRounding.AwayFromZero) == Math.Round(OldCostPriceUSD.Value, 2, MidpointRounding.AwayFromZero))
+            {
+                return CostChangeKind.Unchanged;
+            }
+
+            if (UnitCostUSD < OldCostPriceUSD.Value)
+            {
+                return CostChangeKind.Decreased;
+            }
+
+            if (OldCostPriceUSD.Value > 0m && (UnitCostUSD / OldCostPriceUSD.Value) >= 1.5m)
+            {
+                return CostChangeKind.IncreasedDrastic;
+            }
+
+            return CostChangeKind.IncreasedModerate;
+        }
+    }
+
+    /// <summary>
+    /// Texto formateado para el pill semántico de comparación de costos.
+    /// </summary>
+    public string CostComparisonPillText => CostChangeKind switch
+    {
+        CostChangeKind.Decreased => $"${OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
+        CostChangeKind.Unchanged => $"Sin cambio · {UnitCostUSD:N2}",
+        CostChangeKind.IncreasedDrastic => $"${OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
+        CostChangeKind.IncreasedModerate => $"${OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
+        CostChangeKind.NewProduct => $"Nuevo: {UnitCostUSD:N2}",
+        _ => UnitCostUSD.ToString("N2")
+    };
 
     /// <summary>
     /// 8.168: comparación reactiva del costo anterior contra el nuevo costo unitario en USD.
@@ -586,6 +639,8 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(UnitCostUSD));
         OnPropertyChanged(nameof(CostComparison));
+        OnPropertyChanged(nameof(CostChangeKind));
+        OnPropertyChanged(nameof(CostComparisonPillText));
         OnPropertyChanged(nameof(SuggestedRetailPriceUSD));
         OnPropertyChanged(nameof(SuggestedWholesalePriceUSD));
         OnPropertyChanged(nameof(SuggestedRetailPriceBsS));

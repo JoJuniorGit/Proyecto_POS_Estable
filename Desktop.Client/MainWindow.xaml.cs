@@ -50,13 +50,7 @@ public partial class MainWindow : Window
                     "¿Desea cerrar la aplicación de todos modos? La venta en curso quedará pendiente y podrá recuperarse en el próximo inicio si el cierre no fue confirmado.";
             }
 
-            var result = MessageBox.Show(this,
-                message,
-                "Confirmar cierre",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-
-            if (result != MessageBoxResult.Yes)
+            if (!_dialogService.ShowConfirm("Confirmar cierre", message))
             {
                 e.Cancel = true;
                 return;

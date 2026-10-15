@@ -41,6 +41,11 @@ public partial class SupplierInvoiceViewModel
     [ObservableProperty]
     private string? _ocrDetectedInvoiceNumber;
 
+    partial void OnOcrDetectedInvoiceNumberChanged(string? value)
+    {
+        OnPropertyChanged(nameof(DisplayInvoiceNumber));
+    }
+
     /// <summary>8.172: tasa de cambio best-effort detectada por el OCR; null si no aparece o es &lt;= 0.</summary>
     [ObservableProperty]
     private decimal? _ocrDetectedExchangeRate;
@@ -52,6 +57,8 @@ public partial class SupplierInvoiceViewModel
     partial void OnIsOcrSourceChanged(bool value)
     {
         OnPropertyChanged(nameof(HasSelectedFilePath));
+        OnPropertyChanged(nameof(IngestionSourceBadge));
+        OnPropertyChanged(nameof(DisplayInvoiceNumber));
         foreach (var line in Lines)
         {
             line.IsEditorEnabled = value || line.CanCreateProduct || line.WasUnresolved;

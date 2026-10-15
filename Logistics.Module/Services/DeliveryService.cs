@@ -18,6 +18,7 @@ namespace Logistics.Module.Services;
 /// </summary>
 public class DeliveryService : IDeliveryService
 {
+    private const int MaxRetainedOrders = 1000;
     private readonly ConcurrentDictionary<int, DeliveryOrderDto> _deliveries = new();
     private readonly IMediator _mediator;
     private readonly ILogger<DeliveryService>? _logger;
@@ -37,6 +38,7 @@ public class DeliveryService : IDeliveryService
             throw new ArgumentException("El OrderId debe ser mayor a 0.", nameof(order));
         }
 
+        PruneCompletedDeliveriesIfNeeded();
         _deliveries[order.OrderId] = order;
         // 8C-M4: sin PII en logs — CustomerName/DeliveryAddress completos son datos personales;
         // solo se registran el id y un fragmento no sensible del nombre.
@@ -46,6 +48,26 @@ public class DeliveryService : IDeliveryService
             order.OrderId, nameFragment + "…", !string.IsNullOrWhiteSpace(order.DeliveryAddress));
 
         return Task.FromResult(order);
+    }
+
+    private void PruneCompletedDeliveriesIfNeeded()
+    {
+        if (_deliveries.Count < MaxRetainedOrders)
+        {
+            return;
+        }
+
+        var completedToEvict = _deliveries.Values
+            .Where(d => d.Status == OrderStatus.Delivered || d.Status == OrderStatus.Cancelled)
+            .OrderBy(d => d.DeliveredAtUtc ?? d.CreatedAtUtc)
+            .Take(Math.Max(1, _deliveries.Count - MaxRetainedOrders + 100))
+            .Select(d => d.OrderId)
+            .ToList();
+
+        foreach (var id in completedToEvict)
+        {
+            _deliveries.TryRemove(id, out _);
+        }
     }
 
     public Task<DeliveryOrderDto?> GetDeliveryOrderAsync(int orderId, CancellationToken cancellationToken = default)

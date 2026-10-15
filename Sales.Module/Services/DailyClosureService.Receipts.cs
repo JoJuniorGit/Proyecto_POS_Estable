@@ -90,7 +90,11 @@ public partial class DailyClosureService
             if (_systemSettingsService != null)
             {
                 try { format = MoneyFormat.ParseFormat(await _systemSettingsService.GetSettingAsync("CurrencyFormat")); }
-                catch { format = MoneyDisplayFormat.Venezuelan; }
+                catch (Exception ex)
+                {
+                    Core.Logging.AppLogger.LogStart($"[DailyClosureReceipts] Error al leer CurrencyFormat ({ex.Message}); usando formato por defecto.");
+                    format = MoneyDisplayFormat.Venezuelan;
+                }
             }
 
             string txtContent = GenerateReceiptContent(closure, isBlind, format);

@@ -69,6 +69,7 @@ public partial class InventoryService : IProductManagementService, IReservationS
     {
         var product = await _context.Products
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(p => p.ParentProduct)
             .Include(p => p.Variants)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);

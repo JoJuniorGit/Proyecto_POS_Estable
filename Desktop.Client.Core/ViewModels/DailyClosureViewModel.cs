@@ -79,11 +79,12 @@ public partial class ClosureDetailRow : ObservableObject
     }
 }
 
-public partial class DailyClosureViewModel : ObservableObject
+public partial class DailyClosureViewModel : ObservableObject, IDisposable
 {
     private readonly IDailyClosureClientService _closureService;
     private readonly IDialogService _dialogService;
     private readonly IFilePickerDialog _filePicker;
+    private bool _disposed;
     public UserSession? UserSession { get; }
 
     public bool CanToggleBlindClosing => UserSession?.IsAdmin == true;
@@ -109,6 +110,13 @@ public partial class DailyClosureViewModel : ObservableObject
                 row.NotifyCurrencyFormatChanged();
             }
         });
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 
     // 8.6-M7: instante único de cierre en la zona legal (Venezuela). La API recibe UTC y el
@@ -381,7 +389,7 @@ public partial class DailyClosureViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ExportClosureReceipt()
+    private async Task ExportClosureReceiptAsync()
     {
         if (!DetailRows.Any())
         {
@@ -450,7 +458,7 @@ public partial class DailyClosureViewModel : ObservableObject
 
             if (!string.IsNullOrEmpty(savePath))
             {
-                System.IO.File.WriteAllText(savePath, sb.ToString());
+                await System.IO.File.WriteAllTextAsync(savePath, sb.ToString());
                 _dialogService.ShowInfo("Comprobante Guardado", $"El comprobante se guardó correctamente en:\n{savePath}");
             }
         }

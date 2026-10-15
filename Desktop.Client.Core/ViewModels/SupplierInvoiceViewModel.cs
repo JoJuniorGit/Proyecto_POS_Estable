@@ -17,6 +17,15 @@ namespace Desktop.Client.ViewModels;
 
 public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
 {
+    public const string UnifiedInvoiceFileFilter =
+        "Todos los formatos de factura soportados (*.xlsx;*.xls;*.csv;*.xml;*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tiff;*.tif;*.pdf)|" +
+        "*.xlsx;*.xls;*.csv;*.xml;*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tiff;*.tif;*.pdf|" +
+        "Formatos estructurados (*.xlsx;*.xls;*.csv;*.xml)|" +
+        "*.xlsx;*.xls;*.csv;*.xml|" +
+        "Imágenes y PDF (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tiff;*.tif;*.pdf)|" +
+        "*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.tiff;*.tif;*.pdf|" +
+        "Todos los archivos (*.*)|*.*";
+
     private readonly ClientSupplierInvoiceService _invoiceService;
     private readonly IDialogService _dialogService;
     private readonly IFilePickerDialog _filePicker;
@@ -40,6 +49,9 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _selectedFilePath = string.Empty;
+
+    [ObservableProperty]
+    private string? _invoiceNumber;
 
     [ObservableProperty]
     private string _supplierRifOrNit = string.Empty;
@@ -93,6 +105,36 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
 
     /// <summary>8.168: oculta el campo de ruta de archivo cuando está vacío o en flujo OCR.</summary>
     public bool HasSelectedFilePath => !string.IsNullOrWhiteSpace(SelectedFilePath) && !IsOcrSource;
+
+    public string IngestionSourceBadge =>
+        IsOcrSource
+            ? "Lectura OCR"
+            : (HasSelectedFilePath ? "Excel / XML" : string.Empty);
+
+    public string DisplayInvoiceNumber =>
+        IsOcrSource
+            ? (!string.IsNullOrWhiteSpace(OcrDetectedInvoiceNumber) ? OcrDetectedInvoiceNumber : "No detectado")
+            : (!string.IsNullOrWhiteSpace(InvoiceNumber) ? InvoiceNumber : "No asignado");
+
+    partial void OnInvoiceNumberChanged(string? value)
+    {
+        OnPropertyChanged(nameof(DisplayInvoiceNumber));
+    }
+
+    public int LinesToUpdateCount => Lines.Count(l => l.ResolvedProductId != null);
+    public int LinesToCreateCount => Lines.Count(l => l.ResolvedProductId == null);
+    public string SummaryMetricsText => Lines.Count == 0
+        ? string.Empty
+        : $"{Lines.Count} líneas · {LinesToUpdateCount} por actualizar · {LinesToCreateCount} por crear";
+    public bool HasSummaryMetrics => !string.IsNullOrEmpty(SummaryMetricsText);
+
+    private void NotifyMetricsChanged()
+    {
+        OnPropertyChanged(nameof(LinesToUpdateCount));
+        OnPropertyChanged(nameof(LinesToCreateCount));
+        OnPropertyChanged(nameof(SummaryMetricsText));
+        OnPropertyChanged(nameof(HasSummaryMetrics));
+    }
 
     /// <summary>8.168: indica si existen líneas resueltas que pueden aprobarse masivamente.</summary>
     public bool HasApprovableLines => Lines.Any(line => line.CanApprove);
@@ -160,6 +202,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     public bool IsCurrencyInputEnabled => CanMutateCatalog && !IsBusy;
     public bool IsRateInputEnabled => IsCurrencyInputEnabled && IsBsSCurrency;
 
+    public bool CanLoadInvoice => CanMutateCatalog && !IsBusy;
     public bool CanSelectFile => CanMutateCatalog && !IsBusy;
 
     /// <summary>8.161: el alta de proveedor vive en un modal; el boton solo exige permiso y no estar ocupado.</summary>
@@ -191,6 +234,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         _filePicker = filePicker;
         _exchangeRateService = exchangeRateService;
         UserSession.PropertyChanged += OnUserSessionPropertyChanged;
+        Lines.CollectionChanged += (_, _) => NotifyMetricsChanged();
     }
 
     partial void OnIsBusyChanged(bool value)
@@ -201,6 +245,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     partial void OnSelectedFilePathChanged(string value)
     {
         OnPropertyChanged(nameof(HasSelectedFilePath));
+        OnPropertyChanged(nameof(IngestionSourceBadge));
         RefreshCommandStates();
     }
 
@@ -210,6 +255,22 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsBsSInvoice));
         OnPropertyChanged(nameof(DocumentCostHeader));
         ConfirmInvoiceCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanLoadInvoice))]
+    private async Task LoadInvoiceAsync(CancellationToken cancellationToken)
+    {
+        if (!CanMutateCatalog)
+        {
+            ShowAccessDenied();
+            return;
+        }
+
+        var filePath = _filePicker.PickFilePath("Cargar factura de proveedor", UnifiedInvoiceFileFilter);
+        if (!string.IsNullOrWhiteSpace(filePath))
+        {
+            await ProcessFileAsync(filePath, cancellationToken);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanSelectFile))]
@@ -226,8 +287,50 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             "Facturas compatibles (*.xlsx;*.csv;*.xml)|*.xlsx;*.csv;*.xml|Excel (*.xlsx)|*.xlsx|CSV (*.csv)|*.csv|XML (*.xml)|*.xml");
         if (!string.IsNullOrWhiteSpace(filePath))
         {
-            await LoadFileAsync(filePath, cancellationToken);
+            await ProcessFileAsync(filePath, cancellationToken);
         }
+    }
+
+    public async Task ProcessFileAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+        if (!CanMutateCatalog)
+        {
+            ShowAccessDenied();
+            return;
+        }
+
+        var extension = System.IO.Path.GetExtension(filePath);
+        if (string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".xls", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".csv", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".xml", StringComparison.OrdinalIgnoreCase))
+        {
+            await LoadFileAsync(filePath, cancellationToken);
+            return;
+        }
+
+        if (string.Equals(extension, ".png", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".jpg", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".jpeg", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".webp", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".bmp", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".tif", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".tiff", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            if (SelectedSupplier is null)
+            {
+                _dialogService.ShowMessage("Proveedor requerido", "Por favor, seleccione el proveedor antes de escanear la factura con OCR.");
+                return;
+            }
+
+            await ScanOcrFileAsync(filePath, cancellationToken);
+            return;
+        }
+
+        _dialogService.ShowMessage("Formato no compatible", $"El formato '{extension}' no es compatible con el importador de facturas.");
     }
 
     public async Task LoadFileAsync(string filePath, CancellationToken cancellationToken = default)
@@ -463,6 +566,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasApprovableLines));
         OnPropertyChanged(nameof(AreAllApprovableLinesApproved));
         OnPropertyChanged(nameof(CanConfirmInvoice));
+        NotifyMetricsChanged();
         RefreshCommandStates();
 
         // 8.178: inyecta el estado VIVO de la cabecera (moneda/tasa corregida por el revisor) en
@@ -566,6 +670,13 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (eventArgs.PropertyName is nameof(SupplierInvoiceLineViewModel.ResolvedProductId)
+            or nameof(SupplierInvoiceLineViewModel.CanCreateProduct))
+        {
+            NotifyMetricsChanged();
+            return;
+        }
+
         if (_isPropagatingLinkedGroup
             || sender is not SupplierInvoiceLineViewModel changedLine
             || string.IsNullOrWhiteSpace(changedLine.LinkedGroupKey))
@@ -614,10 +725,12 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         Lines.Clear();
         OnPropertyChanged(nameof(HasApprovableLines));
         OnPropertyChanged(nameof(AreAllApprovableLinesApproved));
+        NotifyMetricsChanged();
     }
 
     private void RefreshCommandStates()
     {
+        OnPropertyChanged(nameof(CanLoadInvoice));
         OnPropertyChanged(nameof(CanSelectFile));
         OnPropertyChanged(nameof(CanOpenRegisterSupplier));
         OnPropertyChanged(nameof(CanStageInvoice));
@@ -626,6 +739,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanConfigureOcrScanner));
         OnPropertyChanged(nameof(IsCurrencyInputEnabled));
         OnPropertyChanged(nameof(IsRateInputEnabled));
+        LoadInvoiceCommand.NotifyCanExecuteChanged();
         SelectFileCommand.NotifyCanExecuteChanged();
         OpenRegisterSupplierCommand.NotifyCanExecuteChanged();
         StageInvoiceCommand.NotifyCanExecuteChanged();

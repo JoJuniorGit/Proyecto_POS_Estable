@@ -17,7 +17,11 @@ public static class ServiceCollectionExtensions
     public static WebApplicationBuilder AddBackendServices(this WebApplicationBuilder builder, string? connectionString)
     {
         builder.Services.AddDbContext<InventoryDbContext>(options =>
-            options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3))
+            options.UseNpgsql(connectionString, npgsql =>
+            {
+                npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+                npgsql.EnableRetryOnFailure(3);
+            })
                 .ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
         builder.Services.AddDbContext<Sales.Module.Data.SalesDbContext>(options =>

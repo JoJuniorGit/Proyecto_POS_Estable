@@ -39,8 +39,9 @@ public partial class PairingQrDialog : Window
         {
             Clipboard.SetText(textToCopy);
         }
-        catch
+        catch (Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogWarning($"[PairingQrDialog] Error al copiar al portapapeles: {ex.Message}");
         }
     }
 
@@ -51,8 +52,9 @@ public partial class PairingQrDialog : Window
             await _viewModel.InitializeAsync();
             RenderQrCode();
         }
-        catch
+        catch (Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogWarning($"[PairingQrDialog] Error al inicializar el código QR de emparejamiento: {ex.Message}");
         }
     }
 

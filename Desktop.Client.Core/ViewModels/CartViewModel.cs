@@ -108,19 +108,19 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         ? LiveTotalBsS
         : CurrentSale?.SubtotalBsS > 0
             ? CurrentSale.SubtotalBsS
-            : PricingHelper.RoundToDigital(Subtotal * _exchangeRateService.CurrentRate);
+            : Core.Helpers.PricingCalculator.RoundToDigital(Subtotal * _exchangeRateService.CurrentRate);
 
     public decimal TotalAmountLocal => IsLivePendingSale
         ? LiveTotalBsS
         : CurrentSale?.TotalBsS > 0
             ? CurrentSale.TotalBsS
-            : PricingHelper.RoundToDigital(TotalUSD * _exchangeRateService.CurrentRate);
+            : Core.Helpers.PricingCalculator.RoundToDigital(TotalUSD * _exchangeRateService.CurrentRate);
 
     private bool IsLivePendingSale => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
 
     public bool HasUncommittedItems => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
 
-    private decimal LiveTotalBsS => PricingHelper.RoundToDigital(CartItems.Sum(c => c.SubtotalBsS));
+    private decimal LiveTotalBsS => Core.Helpers.PricingCalculator.RoundToDigital(CartItems.Sum(c => c.SubtotalBsS));
 
     private SaleDto? _currentSale;
     public SaleDto? CurrentSale

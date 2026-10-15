@@ -173,6 +173,7 @@ public partial class SupplierInvoiceService
 
         var query = _context.Suppliers
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(supplier => supplier.ColumnMapping)
             .Include(supplier => supplier.OcrTemplate)
             .AsQueryable();

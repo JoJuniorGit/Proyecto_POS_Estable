@@ -69,6 +69,11 @@ public partial class SalesService
 
             try
             {
+                if (_context.Database.IsNpgsql())
+                {
+                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", new object[] { 2, saleId }, cancellationToken);
+                }
+
                 if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
                     throw new InvalidOperationException("La venta no se encuentra en estado Pendiente o En Espera.");
 
@@ -360,7 +365,10 @@ public partial class SalesService
                 });
             }
 
-            _logger?.LogInformation("[EF CORE ENTITY DEBUG] Persistiendo Sale ID: {SaleId}. Entidades SalePayment reales: {@Payments}", sale.Id, sale.Payments);
+            _logger?.LogInformation(
+                "[EF CORE ENTITY DEBUG] Persistiendo Sale ID: {SaleId}. Entidades SalePayment reales: {@Payments}",
+                sale.Id,
+                sale.Payments.Select(p => new { p.PaymentMethodId, p.Amount, p.AmountBsS }));
 
             await _context.SaveChangesAsync(cancellationToken);
             if (transaction != null)

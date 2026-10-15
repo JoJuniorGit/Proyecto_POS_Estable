@@ -15,7 +15,7 @@ public partial class PendingPickupsViewModel : ObservableObject
 {
     private readonly ISalesService _salesService;
     private readonly IDialogService _dialogService;
-    private readonly Action<DeliveryReceiptClientDto, byte[]> _openDeliveryNote;
+    private readonly Action<DeliveryReceiptClientDto, byte[]>? _openDeliveryNote;
 
     [ObservableProperty]
     private bool _isLoading;
@@ -55,7 +55,7 @@ public partial class PendingPickupsViewModel : ObservableObject
     {
         _salesService = salesService;
         _dialogService = dialogService;
-        _openDeliveryNote = openDeliveryNote ?? SaveAndOpenDeliveryNote;
+        _openDeliveryNote = openDeliveryNote;
     }
 
     public async Task EnsureLoadedAsync()
@@ -238,7 +238,14 @@ public partial class PendingPickupsViewModel : ObservableObject
                 return;
             }
 
-            _openDeliveryNote(receipt, bytes);
+            if (_openDeliveryNote != null)
+            {
+                _openDeliveryNote(receipt, bytes);
+            }
+            else
+            {
+                await SaveAndOpenDeliveryNoteAsync(receipt, bytes);
+            }
         }
         catch (Exception ex)
         {
@@ -246,14 +253,14 @@ public partial class PendingPickupsViewModel : ObservableObject
         }
     }
 
-    private static void SaveAndOpenDeliveryNote(DeliveryReceiptClientDto receipt, byte[] bytes)
+    private static async Task SaveAndOpenDeliveryNoteAsync(DeliveryReceiptClientDto receipt, byte[] bytes)
     {
         var directory = Path.Combine(Path.GetTempPath(), "CommandCenterDeliveryNotes");
         Directory.CreateDirectory(directory);
         var filePath = Path.Combine(
             directory,
             $"Nota_Despacho_{receipt.SaleId}_{receipt.DeliveryId}_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
-        File.WriteAllBytes(filePath, bytes);
+        await File.WriteAllBytesAsync(filePath, bytes);
         Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
     }
 }
