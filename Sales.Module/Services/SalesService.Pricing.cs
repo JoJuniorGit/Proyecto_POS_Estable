@@ -167,6 +167,15 @@ public partial class SalesService
                 }
             }
 
+            // 8.185-T2 (S5): la regla cash viaja en el snapshot de la línea; el toggle vigente se
+            // lee UNA vez y solo si alguna línea no-custom tiene política cash (ExactMath/null ⇒
+            // techo canónico 8.104 como hoy, S7 default-safe).
+            bool neverRoundDown = true;
+            if (sale.Items.Any(i => !i.IsCustomPrice && IsCashFriendlyRule(i.RoundingRuleCashBs)))
+            {
+                neverRoundDown = await ResolveNeverRoundDownAsync();
+            }
+
             foreach (var item in sale.Items)
             {
                 // Regla 1: Lookup O(1) desde el batch fetch
@@ -204,7 +213,7 @@ public partial class SalesService
                     throw new KeyNotFoundException($"Producto #{item.ProductId} no encontrado en la base de datos.");
                 }
 
-                item.UnitPriceBsS = PricingCalculator.ToBsSCeiling(item.UnitPrice, sale.AppliedRate);
+                item.UnitPriceBsS = ApplyCashRoundingPolicy(item, sale.AppliedRate, neverRoundDown);
                 item.Subtotal = Math.Round(item.Quantity * item.UnitPrice, 4, MidpointRounding.AwayFromZero);
                 item.SubtotalBsS = PricingCalculator.RoundToDigital(item.Quantity * item.UnitPriceBsS);
             }
@@ -220,6 +229,31 @@ public partial class SalesService
             sale.TotalBsS = PricingCalculator.RoundToDigital(sale.TotalUSD * sale.AppliedRate);
             sale.SubtotalBsS = sale.TotalBsS;
         }
+    }
+
+    /// <summary>
+    /// 8.185-T2 (S5): Bs.S efectivo por línea con paridad de persistencia. Las líneas con precio
+    /// manual (IsCustomPrice) y las sin regla cash conservan el techo canónico 8.104; las cash se
+    /// proyectan con la regla del snapshot y el toggle vigente (decisión A: neverRoundDown ⇒
+    /// escalón inmediato superior).
+    /// </summary>
+    private static decimal ApplyCashRoundingPolicy(SaleItem item, decimal appliedRate, bool neverRoundDown)
+    {
+        if (!item.IsCustomPrice && IsCashFriendlyRule(item.RoundingRuleCashBs))
+        {
+            var projected = PricingRoundingPolicy.ProjectCashFriendlyBsS(
+                item.UnitPrice,
+                appliedRate,
+                item.RoundingRuleCashBs!.Value,
+                neverRoundDown);
+
+            if (projected != null)
+            {
+                return projected.RoundedValue;
+            }
+        }
+
+        return PricingCalculator.ToBsSCeiling(item.UnitPrice, appliedRate);
     }
 
     private void ValidateHoldSaleTotal(Sale sale)

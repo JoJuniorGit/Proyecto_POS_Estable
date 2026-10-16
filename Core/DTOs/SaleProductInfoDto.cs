@@ -17,4 +17,8 @@ public sealed record SaleProductInfoDto
     public bool IsFractional { get; init; }
     public Core.Entities.UnitOfMeasureType UnitOfMeasure { get; init; } = Core.Entities.UnitOfMeasureType.Und;
     public decimal? CostPriceUSD { get; init; }
+
+    // 8.185-T2 (S5): override de efectivo del artículo (null = hereda el default global de
+    // Pricing). SalesService resuelve la regla efectiva al agregar y la persiste en la línea.
+    public RoundingRuleType? RoundingRuleCashBs { get; init; }
 }

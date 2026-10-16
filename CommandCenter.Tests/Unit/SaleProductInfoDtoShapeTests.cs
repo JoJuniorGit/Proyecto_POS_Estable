@@ -25,7 +25,10 @@ public class SaleProductInfoDtoShapeTests
         "IsGroupHeader",
         "IsFractional",
         "UnitOfMeasure",
-        "CostPriceUSD"
+        "CostPriceUSD",
+        // 8.185-T2 (S5): 16º miembro — override de efectivo del artículo que SalesService resuelve
+        // al agregar la línea (override ?? default global). No amplía la exposición de costo/margen.
+        "RoundingRuleCashBs"
     };
 
     [Fact]
@@ -35,7 +38,7 @@ public class SaleProductInfoDtoShapeTests
     }
 
     [Fact]
-    public void SaleProductInfoDto_ExposesExactlyTheFifteenMembersSalesConsumes()
+    public void SaleProductInfoDto_ExposesExactlyTheSixteenMembersSalesConsumes()
     {
         var actual = typeof(SaleProductInfoDto)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -47,6 +50,15 @@ public class SaleProductInfoDtoShapeTests
         var expected = ExpectedMembers.OrderBy(n => n, StringComparer.Ordinal).ToArray();
 
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void SaleProductInfoDto_RoundingRuleCashBsIsNullableRoundingRule()
+    {
+        var property = typeof(SaleProductInfoDto).GetProperty(nameof(SaleProductInfoDto.RoundingRuleCashBs));
+
+        Assert.NotNull(property);
+        Assert.Equal(typeof(RoundingRuleType?), property!.PropertyType);
     }
 
     [Fact]

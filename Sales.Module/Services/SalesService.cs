@@ -78,6 +78,44 @@ public partial class SalesService : ISalesService
         return bool.TryParse(value, out var allowed) && allowed;
     }
 
+    // 8.185-T2 (S2/S5): la clave global de efectivo se lee SOLO cuando el artículo no trae
+    // override; el lector resuelve ExactMath ante ausencia/valor ilegible (contrato 8.184 de
+    // SettingKeys). Null-safe: composiciones del repo pasan null! como ISystemSettingsService.
+    private async Task<RoundingRuleType> ResolveEffectiveCashRuleAsync(SaleProductInfoDto? product)
+    {
+        if (product?.RoundingRuleCashBs is { } productRule)
+        {
+            return productRule;
+        }
+
+        if (_settingsService == null)
+        {
+            return RoundingRuleType.ExactMath;
+        }
+
+        var value = await _settingsService.GetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultCashBsRoundingRule);
+        return Enum.TryParse<RoundingRuleType>(value, ignoreCase: true, out var rule) && Enum.IsDefined(rule)
+            ? rule
+            : RoundingRuleType.ExactMath;
+    }
+
+    // Toggle vigente (default true, contrato del lector 8.184) leído solo cuando hay líneas cash.
+    private async Task<bool> ResolveNeverRoundDownAsync()
+    {
+        if (_settingsService == null)
+        {
+            return true;
+        }
+
+        var value = await _settingsService.GetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultEnforceMinimumMarginFloor);
+        return !bool.TryParse(value, out var enforceFloor) || enforceFloor;
+    }
+
+    private static bool IsCashFriendlyRule(RoundingRuleType? rule) =>
+        rule is RoundingRuleType.VesCashFriendlyInteger
+            or RoundingRuleType.VesCashFriendlyStep5
+            or RoundingRuleType.VesCashFriendlyStep10;
+
     private async Task<int> GenerateNextInvoiceNumberAsync()
     {
         if (_context.Database.IsNpgsql())
@@ -224,15 +262,19 @@ public partial class SalesService : ISalesService
 
         sale.AppliedRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "AddItem", referenceId: sale.Id);
 
+        // 8.185-T2 (S5/S8): regla efectiva (override ?? default global) resuelta UNA vez al agregar
+        // y persistida como snapshot de la línea nueva/mergeada. Sin consultas extra de producto.
+        var effectiveCashRule = await ResolveEffectiveCashRuleAsync(product);
+
         var existingItem = sale.Items.FirstOrDefault(i => i.ProductId == productId && (!i.IsCustomPrice || customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue))
             ?? sale.Items.FirstOrDefault(i => i.ProductId == productId);
         if (existingItem != null)
         {
-            await UpdateOrSplitExistingItemAsync(sale, saleId, productId, product, existingItem, quantity, customUnitPriceUsd, customUnitPriceLocal, cancellationToken);
+            await UpdateOrSplitExistingItemAsync(sale, saleId, productId, product, existingItem, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule, cancellationToken);
         }
         else
         {
-            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, quantity, customUnitPriceUsd, customUnitPriceLocal, cancellationToken));
+            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule, cancellationToken));
         }
 
         await RecalculateTotalAsync(sale);
@@ -270,12 +312,12 @@ public partial class SalesService : ISalesService
         }
     }
 
-    private async Task UpdateOrSplitExistingItemAsync(Sale sale, int saleId, int productId, SaleProductInfoDto? product, SaleItem existingItem, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, System.Threading.CancellationToken cancellationToken)
+    private async Task UpdateOrSplitExistingItemAsync(Sale sale, int saleId, int productId, SaleProductInfoDto? product, SaleItem existingItem, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule, System.Threading.CancellationToken cancellationToken)
     {
         // SEC-09: Do not merge a standard item addition into an existing item with an authorized custom price.
         if (existingItem.IsCustomPrice && !customUnitPriceUsd.HasValue && !customUnitPriceLocal.HasValue)
         {
-            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, quantity, null, null, cancellationToken));
+            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, quantity, null, null, effectiveCashRule, cancellationToken));
             return;
         }
 
@@ -290,15 +332,16 @@ public partial class SalesService : ISalesService
                 UnitPriceBsS = customUnitPriceLocal.HasValue ? Math.Round(customUnitPriceLocal.Value, 4) : 0,
                 Quantity = quantity,
                 UnitCostUSD = product?.CostPriceUSD,
-                IsCustomPrice = true
+                IsCustomPrice = true,
+                RoundingRuleCashBs = effectiveCashRule
             });
             return;
         }
 
-        await MergeExistingItemAsync(existingItem, productId, quantity, customUnitPriceUsd, customUnitPriceLocal, cancellationToken);
+        await MergeExistingItemAsync(existingItem, productId, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule, cancellationToken);
     }
 
-    private async Task MergeExistingItemAsync(SaleItem existingItem, int productId, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, System.Threading.CancellationToken cancellationToken)
+    private async Task MergeExistingItemAsync(SaleItem existingItem, int productId, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule, System.Threading.CancellationToken cancellationToken)
     {
         existingItem.Quantity += quantity;
         var productInfo = (customUnitPriceUsd.HasValue && customUnitPriceLocal.HasValue)
@@ -311,9 +354,10 @@ public partial class SalesService : ISalesService
         existingItem.UnitPrice = Math.Round(grossPrice, 4);
         existingItem.UnitPriceBsS = Math.Round(grossPriceBsS, 4);
         existingItem.IsCustomPrice = existingItem.IsCustomPrice || customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue;
+        existingItem.RoundingRuleCashBs = effectiveCashRule;
     }
 
-    private async Task<SaleItem> BuildNewSaleItemAsync(int saleId, int productId, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, System.Threading.CancellationToken cancellationToken)
+    private async Task<SaleItem> BuildNewSaleItemAsync(int saleId, int productId, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule, System.Threading.CancellationToken cancellationToken)
     {
         var fetchedProduct = await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
         if (fetchedProduct == null) throw new KeyNotFoundException($"Product {productId} not found.");
@@ -335,7 +379,8 @@ public partial class SalesService : ISalesService
             UnitPriceBsS = Math.Round(grossPriceBsS, 4),
             Quantity = quantity,
             UnitCostUSD = fetchedProduct.CostPriceUSD,
-            IsCustomPrice = customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue
+            IsCustomPrice = customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue,
+            RoundingRuleCashBs = effectiveCashRule
         };
     }
 

@@ -32,6 +32,10 @@ public class ProductQuickInfoDto
     public int VariantCount { get; set; }
     public decimal ConsolidatedStock { get; set; }
 
+    // 8.185-T2 (S1/S2/S6): regla de efectivo RESUELTA por el servidor (override del artículo ??
+    // default global de Pricing). No sensible (no expone costo/margen) y sobrevive al masking de Cashier.
+    public RoundingRuleType? RoundingRuleCashBs { get; set; }
+
     // 8.143: convención es-VE determinista del producto (MoneyFormat), independiente de la cultura del SO.
     public string DisplayPriceBsS => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : MoneyFormat.N2(PriceBsS);
     public string DisplayPriceUSD => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : $"${MoneyFormat.N2(PriceUSD)}";
