@@ -108,10 +108,15 @@ public partial class SalesService : ISalesService
         }
 
         var value = await _settingsService.GetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultEnforceMinimumMarginFloor);
-        return !bool.TryParse(value, out var enforceFloor) || enforceFloor;
+        return ResolveNeverRoundDownFrom(value);
     }
 
-    private static bool IsCashFriendlyRule(RoundingRuleType? rule) =>
+    // 8.185-T3 (S5): contrato único del toggle neverRoundDown (default true ante ausencia o valor
+    // ilegible); lo comparten el completar venta y el preview espejo del checkout.
+    internal static bool ResolveNeverRoundDownFrom(string? value) =>
+        !bool.TryParse(value, out var enforceFloor) || enforceFloor;
+
+    internal static bool IsCashFriendlyRule(RoundingRuleType? rule) =>
         rule is RoundingRuleType.VesCashFriendlyInteger
             or RoundingRuleType.VesCashFriendlyStep5
             or RoundingRuleType.VesCashFriendlyStep10;

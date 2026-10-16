@@ -232,19 +232,20 @@ public partial class SalesService
     }
 
     /// <summary>
-    /// 8.185-T2 (S5): Bs.S efectivo por línea con paridad de persistencia. Las líneas con precio
-    /// manual (IsCustomPrice) y las sin regla cash conservan el techo canónico 8.104; las cash se
-    /// proyectan con la regla del snapshot y el toggle vigente (decisión A: neverRoundDown ⇒
-    /// escalón inmediato superior).
+    /// 8.185-T2/T3 (S5): Bs.S efectivo por línea con paridad de persistencia Y de preview. Las
+    /// líneas con precio manual (IsCustomPrice) y las sin regla cash conservan el techo canónico
+    /// 8.104; las cash se proyectan con la regla del snapshot y el toggle vigente (decisión A:
+    /// neverRoundDown ⇒ escalón inmediato superior). Único punto de derivación por línea: lo
+    /// consume RecalculateTotalAsync y lo espeja CheckoutCalculationService en el preview.
     /// </summary>
-    private static decimal ApplyCashRoundingPolicy(SaleItem item, decimal appliedRate, bool neverRoundDown)
+    internal static decimal ApplyCashRoundingPolicy(decimal unitPriceUsd, bool isCustomPrice, RoundingRuleType? roundingRuleCashBs, decimal appliedRate, bool neverRoundDown)
     {
-        if (!item.IsCustomPrice && IsCashFriendlyRule(item.RoundingRuleCashBs))
+        if (!isCustomPrice && IsCashFriendlyRule(roundingRuleCashBs))
         {
             var projected = PricingRoundingPolicy.ProjectCashFriendlyBsS(
-                item.UnitPrice,
+                unitPriceUsd,
                 appliedRate,
-                item.RoundingRuleCashBs!.Value,
+                roundingRuleCashBs!.Value,
                 neverRoundDown);
 
             if (projected != null)
@@ -253,8 +254,11 @@ public partial class SalesService
             }
         }
 
-        return PricingCalculator.ToBsSCeiling(item.UnitPrice, appliedRate);
+        return PricingCalculator.ToBsSCeiling(unitPriceUsd, appliedRate);
     }
+
+    private static decimal ApplyCashRoundingPolicy(SaleItem item, decimal appliedRate, bool neverRoundDown) =>
+        ApplyCashRoundingPolicy(item.UnitPrice, item.IsCustomPrice, item.RoundingRuleCashBs, appliedRate, neverRoundDown);
 
     private void ValidateHoldSaleTotal(Sale sale)
     {

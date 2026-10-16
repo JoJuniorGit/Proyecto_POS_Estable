@@ -120,9 +120,22 @@ public partial class SalesService
             decimal totalPaidUsd = Math.Round(existingPaidUsd + newPaymentsPaidUsd, 2, MidpointRounding.AwayFromZero);
             decimal remainingBalanceUsd = Math.Round(sale.TotalUSD - totalPaidUsd, 2, MidpointRounding.AwayFromZero);
 
+            // 8.185-T3 (S4/S5): remanente ESPEJO en el dominio Bs.S contra el TotalBsS EFECTIVO
+            // (derivado por línea en RecalculateTotalAsync). Los pagos aportan su monto local y los
+            // solo-USD se convierten por la tasa anclada; la venta se rechaza solo si falta cobertura
+            // en AMBOS dominios (0.05 USD por dominio), de modo que un pago exacto del total
+            // efectivo —aunque difiera del canónico— liquida la venta sin falsos descuadres.
+            decimal existingPaidBsS = sale.Payments.Sum(p => p.AmountBsS > 0m ? p.AmountBsS : PricingCalculator.ToBsS(p.Amount, exchangeRate));
+            decimal newPaymentsPaidBsS = payments != null
+                ? payments.Sum(p => p.AmountLocal > 0m ? p.AmountLocal : PricingCalculator.ToBsS(p.Amount, exchangeRate))
+                : 0m;
+            decimal totalPaidBsSDomain = PricingCalculator.RoundToDigital(existingPaidBsS + newPaymentsPaidBsS);
+            decimal remainingBalanceBsS = PricingCalculator.RoundToDigital(sale.TotalBsS - totalPaidBsSDomain);
+            bool isUnderpaidInBothDomains = remainingBalanceUsd > 0.05m && remainingBalanceBsS > 0.05m * exchangeRate;
+
             if (isPendingPickup)
             {
-                if (remainingBalanceUsd > 0.05m)
+                if (isUnderpaidInBothDomains)
                 {
                     throw new ArgumentException("Para registrar un apartado en custodia (Mercancía Pendiente por Retirar), la venta debe estar pagada al 100% (saldo restante $0.00).");
                 }
@@ -215,17 +228,21 @@ public partial class SalesService
             // H-SAL-3: Registro de vuelto como egreso (Expense) y validación de límites de sobrepago
             // 8.6-C1: El vuelto pasa por CashDrawerService.RecordSaleChangeAsync, que aplica advisory lock
             // y verifica que la caja tenga saldo para cubrirlo (evita saldo negativo).
-            if (remainingBalanceUsd < -0.05m)
+            // 8.185-T3 (decisión mantenedor): el vuelto es DUAL — el exceso se mide contra el total
+            // EFECTIVO Bs.S (pagos USD acreditados a la tasa anclada), no contra el canónico. Pagar
+            // exacto el efectivo publicado no devuelve el escalón de la política (queda en caja) y un
+            // pago por encima devuelve SOLO el exceso contra el efectivo. Con ExactMath (efectivo ==
+            // canónico) el resultado coincide con el contrato previo (tolerancia 0.05 USD escalada).
+            if (remainingBalanceBsS < -0.05m * exchangeRate)
             {
-                decimal changeUsd = Math.Abs(remainingBalanceUsd);
+                decimal changeBsS = Math.Abs(remainingBalanceBsS);
+                decimal changeUsd = PricingCalculator.ToUSD(changeBsS, exchangeRate);
                 if (changeUsd > 100m && changeUsd > sale.TotalUSD)
                 {
                     throw new ArgumentException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
                 }
 
                 int? cashMethodId = sale.Payments.FirstOrDefault(p => paymentMethodsDict.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)?.PaymentMethodId;
-
-                decimal changeBsS = Math.Round(changeUsd * exchangeRate, 2, MidpointRounding.AwayFromZero);
 
                 // Ingresos cash de la venta aún en el tracker (persistidos junto con todo el cobro): se informan
                 // al chequeo de saldo para que el vuelto NO se rechace por no verlos aún en la BD.
@@ -268,7 +285,7 @@ public partial class SalesService
                 sale.Payments.Remove(payment);
             }
 
-            if (remainingBalanceUsd > 0.05m)
+            if (isUnderpaidInBothDomains)
             {
                 throw new ArgumentException("El monto ingresado no cubre la totalidad de la venta. El flujo de cobro requiere liquidación al 100%. Para abonos parciales o guardar pedidos en espera, utilice la opción 'Guardar en Espera'.");
             }

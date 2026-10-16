@@ -59,7 +59,7 @@ public partial class SalesService
 
             var freshSale = await _context.Sales
                 .Where(s => s.Id == saleId)
-                .Select(s => new { s.Status, s.TotalUSD, s.AppliedRate })
+                .Select(s => new { s.Status, s.TotalUSD, s.TotalBsS, s.AppliedRate })
                 .FirstOrDefaultAsync(cancellationToken);
             if (freshSale == null)
             {
@@ -70,11 +70,15 @@ public partial class SalesService
                 throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
             }
 
-            decimal runningPaidUsd = await _context.SalePayments
+            // 8.185-T3 (guard dual): remanentes en ambos dominios contra el total EFECTIVO Bs.S.
+            var existingPayments = await _context.SalePayments
                 .Where(sp => sp.SaleId == saleId)
-                .SumAsync(sp => (decimal?)sp.Amount, cancellationToken) ?? 0m;
+                .Select(sp => new { sp.Amount, sp.AmountBsS })
+                .ToListAsync(cancellationToken);
+            decimal runningPaidUsd = existingPayments.Sum(p => p.Amount);
+            decimal runningPaidBsS = existingPayments.Sum(p => p.AmountBsS > 0m ? p.AmountBsS : PricingCalculator.ToBsS(p.Amount, freshSale.AppliedRate));
 
-            var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.AppliedRate, runningPaidUsd, request, "AddPaymentToHoldSale");
+            var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentToHoldSale");
 
             var paymentEntity = new SalePayment
             {
@@ -186,7 +190,7 @@ public partial class SalesService
 
                 var freshSale = await _context.Sales
                     .Where(s => s.Id == saleId)
-                    .Select(s => new { s.Status, s.TotalUSD, s.AppliedRate })
+                    .Select(s => new { s.Status, s.TotalUSD, s.TotalBsS, s.AppliedRate })
                     .FirstOrDefaultAsync(cancellationToken);
                 if (freshSale == null)
                 {
@@ -197,9 +201,13 @@ public partial class SalesService
                     throw new InvalidOperationException("Solo se pueden agregar abonos a ventas en estado en espera.");
                 }
 
-                decimal runningPaidUsd = await _context.SalePayments
+                // 8.185-T3 (guard dual): remanentes en ambos dominios contra el total EFECTIVO Bs.S.
+                var existingPayments = await _context.SalePayments
                     .Where(sp => sp.SaleId == saleId)
-                    .SumAsync(sp => (decimal?)sp.Amount, cancellationToken) ?? 0m;
+                    .Select(sp => new { sp.Amount, sp.AmountBsS })
+                    .ToListAsync(cancellationToken);
+                decimal runningPaidUsd = existingPayments.Sum(p => p.Amount);
+                decimal runningPaidBsS = existingPayments.Sum(p => p.AmountBsS > 0m ? p.AmountBsS : PricingCalculator.ToBsS(p.Amount, freshSale.AppliedRate));
 
                 var requestedMethodIds = payments.Select(p => p.PaymentMethodId).Distinct().ToList();
                 var preloadedMethods = await _context.PaymentMethods
@@ -213,8 +221,9 @@ public partial class SalesService
                 var computedInputs = new List<(AddPaymentRequestDto Request, ComputedPaymentInput Input)>(payments.Count);
                 foreach (var request in payments)
                 {
-                    var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.AppliedRate, runningPaidUsd, request, "AddPaymentsBatchToHoldSale", preloadedMethods, hasConfiguredPaymentMethods);
+                    var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentsBatchToHoldSale", preloadedMethods, hasConfiguredPaymentMethods);
                     runningPaidUsd += input.AmountUsd;
+                    runningPaidBsS += input.AmountBsS;
                     computedInputs.Add((request, input));
                 }
 
@@ -290,12 +299,15 @@ public partial class SalesService
 
     // Cálculo y validación compartidos de un abono individual (tasa anclada BCV, montos,
     // límite acumulado y regla de efectivo a montos enteros). Se usa tanto en el flujo de
-    // abono simple como en el batch; `runningPaidUsd` es lo ya abonado + abonos del lote.
+    // abono simple como en el batch; `runningPaidUsd`/`runningPaidBsS` son lo ya abonado +
+    // abonos del lote en cada dominio.
     private async Task<ComputedPaymentInput> ComputePaymentInputsAsync(
         int saleId,
         decimal saleTotalUsd,
+        decimal saleTotalBsS,
         decimal saleAppliedRate,
         decimal runningPaidUsd,
+        decimal runningPaidBsS,
         AddPaymentRequestDto request,
         string contextLabel,
         Dictionary<int, PaymentMethod>? preloadedMethods = null,
@@ -316,7 +328,13 @@ public partial class SalesService
 
         var (resolvedAmountUsd, resolvedAmountBsS) = ResolveConsistentPaymentAmounts(amountUsd, request.AmountBsS, rate);
 
-        if (runningPaidUsd + resolvedAmountUsd > saleTotalUsd + 0.05m)
+        // 8.185-T3 (decisión mantenedor): guard DUAL — el exceso en USD que proviene del escalón de
+        // la política cash no rechaza si el dominio Bs.S todavía cubre el total EFECTIVO (misma
+        // familia que el gate de cobertura del completar venta). Con ExactMath (efectivo == canónico)
+        // el comportamiento queda como hoy; subpagos y lote conservan su semántica.
+        bool exceedsUsd = runningPaidUsd + resolvedAmountUsd > saleTotalUsd + 0.05m;
+        bool exceedsBsS = runningPaidBsS + resolvedAmountBsS > saleTotalBsS + 0.05m * rate;
+        if (exceedsUsd && exceedsBsS)
         {
             throw new ArgumentException("El monto del abono excede el total pendiente de la venta.");
         }
