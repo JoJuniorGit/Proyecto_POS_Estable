@@ -190,11 +190,18 @@ public class BulkPriceUpdateRequestDto
 
     public List<BulkPriceOperationDto> Operations { get; set; } = new();
 
-    // 8.182-T1 (S5): política de redondeo por canal (default ExactMath = comportamiento 8.181) y piso
-    // de margen por lote (supuesto v1: sin setting global). El piso solo se evalúa con
-    // EnforceMinimumMarginFloor activo, piso > 0 y costo > 0; VES redondea el Bs.S canónico del canal.
+    // 8.182-T1 (S5) + Spec V0.15: redondeo USD por canal (default ExactMath = comportamiento 8.181).
+    // La proyección Bs.S de efectivo vive en CashBsRoundingRule (capa independiente). Pisos de margen
+    // por lote (supuesto v1: sin setting global): se evalúan con EnforceMinimumMarginFloor activo,
+    // piso > 0 y costo > 0.
     public RoundingRuleType RetailRoundingRule { get; set; } = RoundingRuleType.ExactMath;
     public RoundingRuleType WholesaleRoundingRule { get; set; } = RoundingRuleType.ExactMath;
+
+    // Spec V0.15: capa de proyección Bs.S en caliente (columna BS.S EFECTIVO (PROY.)) con las reglas
+    // VesCashFriendly*; ExactMath (default) = sin proyección. NUNCA se persiste. Un caller viejo que
+    // envíe una regla VES en el canal ya no proyecta: esa vía quedó defensiva en el motor.
+    public RoundingRuleType CashBsRoundingRule { get; set; } = RoundingRuleType.ExactMath;
+
     public bool EnforceMinimumMarginFloor { get; set; }
     public decimal? RetailMarginFloorPct { get; set; }
     public decimal? WholesaleMarginFloorPct { get; set; }

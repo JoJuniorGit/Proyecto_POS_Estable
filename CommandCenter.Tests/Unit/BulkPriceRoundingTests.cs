@@ -151,7 +151,8 @@ public class BulkPriceRoundingTests
         });
 
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 0.81m));
-        request.RetailRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        // Spec V0.15: la proyección cash se configura por la capa dedicada del contrato.
+        request.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -337,13 +338,19 @@ public class BulkPriceRoundingTests
         });
 
         var request = Request(new[] { created.Id }, Op(BulkPriceField.WholesalePrice, BulkPriceMode.SetFixed, 9.03m));
-        request.WholesaleRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        request.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
 
         var result = await service.PreviewBulkPriceUpdateAsync(request);
 
         var row = Assert.Single(result.Rows);
-        var change = Assert.Single(row.Changes);
-        Assert.Equal(BulkPriceField.WholesalePrice, change.Field);
+        // Spec V0.15: la capa cash es de lote (global) — junto al cambio del mayor viaja la
+        // proyección informativa del detal, con el USD intacto y sin tocar el estado.
+        var retailProjection = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(10.00m, retailProjection.BeforeValue);
+        Assert.Equal(10.00m, retailProjection.AfterValue); // el USD del detal no cambia
+        Assert.Equal(1000.00m, retailProjection.CashFriendlyAfterBsS); // 10.00 × 100 ya múltiplo de 5
+
+        var change = ChangeOf(row, BulkPriceField.WholesalePrice);
         Assert.Equal(9.03m, change.AfterValue);
         Assert.Equal(800.00m, change.BeforeBsS);
         Assert.Equal(905.00m, change.AfterBsS); // 903 -> paso 5: 905
@@ -579,7 +586,15 @@ public class BulkPriceRoundingTests
         // El margen objetivo (30%) se re-aplica en cada iteración; el precio debe anclarse SIEMPRE en
         // costo × (1 + 30/100) con techo y luego en la escalera de la regla del canal.
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailMargin, BulkPriceMode.SetFixed, 30m));
-        request.RetailRoundingRule = rule;
+        // Spec V0.15: cada capa viaja por su campo — psicológico USD por canal; VES por la capa cash.
+        if (rule is RoundingRuleType.VesCashFriendlyInteger or RoundingRuleType.VesCashFriendlyStep5 or RoundingRuleType.VesCashFriendlyStep10)
+        {
+            request.CashBsRoundingRule = rule;
+        }
+        else
+        {
+            request.RetailRoundingRule = rule;
+        }
 
         var usdByIteration = new List<decimal>();
         var bsSByIteration = new List<decimal>();
@@ -874,6 +889,68 @@ public class BulkPriceRoundingTests
         Assert.Equal(30.00m, persisted.ProfitMarginRetail); // el redondeo no pisa el margen objetivo
         Assert.Equal(0.99m, persisted.PriceRetailUSD);
         Assert.Equal(99.00m, persisted.PriceBsS); // techo canónico con tasa 100
+    }
+
+    [Fact]
+    public async Task PreviewBulkPriceUpdateAsync_WithBothLayers_CashProjectionRidesTheUsdRoundedPrice()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Dos capas",
+            SKU = "DOSCAP1",
+            CostPriceUSD = 1.00m,
+            ProfitMarginRetail = 20m,
+            PriceRetailUSD = 1.20m
+        });
+
+        // Capa USD: 1.37 → 1.25 (psicológico). Capa cash: proyecta el USD FINAL 1.25 en Bs.S (paso 5).
+        var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m));
+        request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+
+        var result = await service.PreviewBulkPriceUpdateAsync(request);
+
+        var row = RowOf(result, created.Id);
+        var change = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(1.25m, change.AfterValue); // redondeo USD aplicado
+        Assert.Equal(125.00m, change.AfterBsS); // canónico del USD final
+        Assert.Equal(125.00m, change.CashFriendlyAfterBsS); // 1.25 × 100 = 125 (ya múltiplo de 5)
+        // Spec V0.15: con la capa cash activa la traza viaja en Bs.S (la proyección reemplaza la traza
+        // USD del psicológico; la unidad del preview se resuelve por CashBsRoundingRule).
+        Assert.Equal(125.00m, change.PreRoundingValue);
+        Assert.Equal(0m, change.RoundingDelta);
+    }
+
+    [Fact]
+    public async Task PreviewBulkPriceUpdateAsync_LegacyVesChannelRule_NoLongerProjects()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Legacy VES",
+            SKU = "LEGACY1",
+            CostPriceUSD = 1.00m,
+            ProfitMarginRetail = 20m,
+            PriceRetailUSD = 1.20m
+        });
+
+        // Spec V0.15: la vía VES por regla de canal quedó defensiva — ese caller viejo ya no proyecta.
+        var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m));
+        request.RetailRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+
+        var result = await service.PreviewBulkPriceUpdateAsync(request);
+
+        var row = RowOf(result, created.Id);
+        var change = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(1.37m, change.AfterValue); // sin redondeo USD ni proyección cash
+        Assert.Null(change.PreRoundingValue);
+        Assert.Null(change.CashFriendlyAfterBsS);
+        Assert.Equal(37.00m, row.EffectiveRetailMarginPct); // (1.37 − 1.00) / 1.00 x 100
     }
 
     // ---------------------------------------------------------------------------------------------

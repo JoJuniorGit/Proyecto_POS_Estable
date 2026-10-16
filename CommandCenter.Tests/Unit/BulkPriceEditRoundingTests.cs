@@ -121,7 +121,7 @@ public class BulkPriceEditRoundingTests
                 EffectiveWholesaleMarginPct = 12.25m,
                 Changes =
                 {
-                    // Detal con regla psicológica USD: 1.46 matemático → .50 redondeado (+0.04).
+                    // Spec V0.15: con la capa cash activa la traza viaja en Bs.S (detal: 73 → 75).
                     new BulkPriceFieldChangeDto
                     {
                         Field = BulkPriceField.RetailPrice,
@@ -129,10 +129,10 @@ public class BulkPriceEditRoundingTests
                         AfterValue = 1.50m,
                         BeforeBsS = 73.50m,
                         AfterBsS = 75m,
-                        PreRoundingValue = 1.46m,
-                        RoundingDelta = 0.04m
+                        PreRoundingValue = 73.00m,
+                        RoundingDelta = 2.00m
                     },
-                    // Mayor con regla VES paso 5: Bs.S matemático 61 → escalón 60 hacia abajo (−1).
+                    // Mayor con la capa cash paso 5: Bs.S matemático 61 → escalón 60 hacia abajo (−1).
                     new BulkPriceFieldChangeDto
                     {
                         Field = BulkPriceField.WholesalePrice,
@@ -156,26 +156,35 @@ public class BulkPriceEditRoundingTests
     };
 
     [Fact]
-    public void RoundingOptions_ExposeSpanishLabelsInOrder_AndDefaultsAreExactMathUnenforced()
+    public void RoundingOptions_SplitUsdAndCashLists_AndDefaultsAreExactMathUnenforced()
     {
         var vm = CreateViewModel();
 
+        // Spec V0.15: el redondeo USD por canal es USD-only (exacto / psicológico).
         Assert.Equal(
-            new[] { "Sin redondeo (exacto)", "Psicológico USD (.99/.95/.75/.50/.25)", "Efectivo rápido Bs.S (entero)", "(múltiplo de 5)", "(múltiplo de 10)" },
-            vm.RoundingRuleOptions.Select(option => option.Label).ToArray());
+            new[] { "Sin redondeo (exacto)", "Psicológico USD (.99/.95/.75/.50/.25)" },
+            vm.UsdRoundingRuleOptions.Select(option => option.Label).ToArray());
+        Assert.Equal(
+            new[] { RoundingRuleType.ExactMath, RoundingRuleType.UsdPsychological },
+            vm.UsdRoundingRuleOptions.Select(option => option.Rule).ToArray());
+
+        // Y la proyección Bs.S es una capa aparte con sus propias sub-opciones.
+        Assert.Equal(
+            new[] { "Sin redondeo", "Efectivo rápido Bs.S (entero)", "(múltiplo de 5)", "(múltiplo de 10)" },
+            vm.CashBsRoundingRuleOptions.Select(option => option.Label).ToArray());
         Assert.Equal(
             new[]
             {
                 RoundingRuleType.ExactMath,
-                RoundingRuleType.UsdPsychological,
                 RoundingRuleType.VesCashFriendlyInteger,
                 RoundingRuleType.VesCashFriendlyStep5,
                 RoundingRuleType.VesCashFriendlyStep10
             },
-            vm.RoundingRuleOptions.Select(option => option.Rule).ToArray());
+            vm.CashBsRoundingRuleOptions.Select(option => option.Rule).ToArray());
 
         Assert.Equal(RoundingRuleType.ExactMath, vm.RetailRoundingRule);
         Assert.Equal(RoundingRuleType.ExactMath, vm.WholesaleRoundingRule);
+        Assert.Equal(RoundingRuleType.ExactMath, vm.CashBsRoundingRule);
         Assert.False(vm.EnforceMinimumMarginFloor);
         Assert.Equal(string.Empty, vm.RetailMarginFloorText);
         Assert.Equal(string.Empty, vm.WholesaleMarginFloorText);
@@ -195,6 +204,7 @@ public class BulkPriceEditRoundingTests
         Assert.NotNull(captured);
         Assert.Equal(RoundingRuleType.ExactMath, captured!.RetailRoundingRule);
         Assert.Equal(RoundingRuleType.ExactMath, captured.WholesaleRoundingRule);
+        Assert.Equal(RoundingRuleType.ExactMath, captured.CashBsRoundingRule);
         Assert.False(captured.EnforceMinimumMarginFloor);
         Assert.Null(captured.RetailMarginFloorPct);
         Assert.Null(captured.WholesaleMarginFloorPct);
@@ -209,7 +219,8 @@ public class BulkPriceEditRoundingTests
         var vm = CreateViewModel();
         EnableRetailPriceOperation(vm);
         vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
-        vm.WholesaleRoundingRule = RoundingRuleType.VesCashFriendlyStep10;
+        vm.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        vm.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep10;
         vm.EnforceMinimumMarginFloor = true;
         vm.RetailMarginFloorText = "25";
         vm.WholesaleMarginFloorText = "12,5";
@@ -218,7 +229,8 @@ public class BulkPriceEditRoundingTests
 
         Assert.NotNull(captured);
         Assert.Equal(RoundingRuleType.UsdPsychological, captured!.RetailRoundingRule);
-        Assert.Equal(RoundingRuleType.VesCashFriendlyStep10, captured.WholesaleRoundingRule);
+        Assert.Equal(RoundingRuleType.UsdPsychological, captured.WholesaleRoundingRule);
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep10, captured.CashBsRoundingRule);
         Assert.True(captured.EnforceMinimumMarginFloor);
         Assert.Equal(25m, captured.RetailMarginFloorPct);
         Assert.Equal(12.5m, captured.WholesaleMarginFloorPct);
@@ -292,29 +304,34 @@ public class BulkPriceEditRoundingTests
     }
 
     [Fact]
-    public async Task Preview_MapsMathDeltaAndEffectiveMargins_UsingEachChannelRuleUnit()
+    public async Task Preview_MapsRoundingTraceInBsSUnit_WhenCashProjectionIsActive()
     {
-        SetupPreview(RoundingPreviewResult());
+        BulkPriceUpdateRequestDto? captured = null;
+        SetupPreview(RoundingPreviewResult(), capture: request => captured = request);
 
         var vm = CreateViewModel();
         EnableRetailPriceOperation(vm);
         vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
-        vm.WholesaleRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        vm.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        vm.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
 
         await vm.PreviewCommand.ExecuteAsync(null);
+
+        // Spec V0.15: la capa cash viaja en el contrato y define la unidad de la traza (Bs.S).
+        Assert.NotNull(captured);
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep5, captured!.CashBsRoundingRule);
 
         var updatedRow = vm.PreviewRows.Single(r => r.ProductId == 1);
         var retailChange = updatedRow.Changes.Single(c => c.Field == BulkPriceField.RetailPrice);
         var wholesaleChange = updatedRow.Changes.Single(c => c.Field == BulkPriceField.WholesalePrice);
 
-        // Unidad USD (regla psicológica): matemático, redondeado y delta con signo.
-        Assert.Equal(1.46m, retailChange.PreRoundingValue);
-        Assert.Equal(0.04m, retailChange.RoundingDelta);
-        Assert.Equal($"${CurrencyDisplay.Number(1.46m)}", retailChange.PreRoundingText);
-        Assert.Equal($"${CurrencyDisplay.Number(1.50m)}", retailChange.RoundedText);
-        Assert.Equal($"+${CurrencyDisplay.Number(0.04m)}", retailChange.RoundingDeltaText);
+        // Capa cash activa: matemático/redondeado/Δ en Bs.S para AMBOS canales.
+        Assert.Equal(73.00m, retailChange.PreRoundingValue);
+        Assert.Equal(2.00m, retailChange.RoundingDelta);
+        Assert.Equal($"Bs.S {CurrencyDisplay.Number(73.00m)}", retailChange.PreRoundingText);
+        Assert.Equal($"Bs.S {CurrencyDisplay.Number(75.00m)}", retailChange.RoundedText);
+        Assert.Equal($"+Bs.S {CurrencyDisplay.Number(2.00m)}", retailChange.RoundingDeltaText);
 
-        // Unidad Bs.S (regla efectivo rápido): redondeado = matemático + Δ (escalón 60 hacia abajo).
         Assert.Equal(61m, wholesaleChange.PreRoundingValue);
         Assert.Equal(-1m, wholesaleChange.RoundingDelta);
         Assert.Equal($"Bs.S {CurrencyDisplay.Number(61m)}", wholesaleChange.PreRoundingText);
@@ -323,13 +340,13 @@ public class BulkPriceEditRoundingTests
 
         // Columnas agregadas por fila: una línea por canal con traza.
         Assert.Equal(
-            $"Detal: ${CurrencyDisplay.Number(1.46m)}{Environment.NewLine}Mayor: Bs.S {CurrencyDisplay.Number(61m)}",
+            $"Detal: Bs.S {CurrencyDisplay.Number(73.00m)}{Environment.NewLine}Mayor: Bs.S {CurrencyDisplay.Number(61m)}",
             updatedRow.MathText);
         Assert.Equal(
-            $"Detal: ${CurrencyDisplay.Number(1.50m)}{Environment.NewLine}Mayor: Bs.S {CurrencyDisplay.Number(60m)}",
+            $"Detal: Bs.S {CurrencyDisplay.Number(75.00m)}{Environment.NewLine}Mayor: Bs.S {CurrencyDisplay.Number(60m)}",
             updatedRow.RoundedText);
         Assert.Equal(
-            $"Detal: +${CurrencyDisplay.Number(0.04m)}{Environment.NewLine}Mayor: -Bs.S {CurrencyDisplay.Number(1m)}",
+            $"Detal: +Bs.S {CurrencyDisplay.Number(2.00m)}{Environment.NewLine}Mayor: -Bs.S {CurrencyDisplay.Number(1m)}",
             updatedRow.RoundingDeltaText);
 
         // Márgenes efectivos (solo cuando el backend los informa).
@@ -348,6 +365,53 @@ public class BulkPriceEditRoundingTests
     }
 
     [Fact]
+    public async Task Preview_MapsRoundingTraceInUsdUnit_WhenCashProjectionIsExactMath()
+    {
+        var result = new BulkPriceUpdateResultDto
+        {
+            ExchangeRate = 50m,
+            SelectedCount = 1,
+            UpdatedCount = 1,
+            SkippedCount = 0,
+            Rows =
+            {
+                new BulkPricePreviewRowDto
+                {
+                    ProductId = 1,
+                    SKU = "A-1",
+                    Name = "Arroz",
+                    Changes =
+                    {
+                        // Traza del redondeo psicológico USD (la capa cash está apagada).
+                        new BulkPriceFieldChangeDto
+                        {
+                            Field = BulkPriceField.RetailPrice,
+                            BeforeValue = 1.47m,
+                            AfterValue = 1.50m,
+                            BeforeBsS = 73.50m,
+                            AfterBsS = 75m,
+                            PreRoundingValue = 1.46m,
+                            RoundingDelta = 0.04m
+                        }
+                    }
+                }
+            }
+        };
+        SetupPreview(result);
+
+        var vm = CreateViewModel();
+        EnableRetailPriceOperation(vm);
+        vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        var change = vm.PreviewRows.Single().Changes.Single();
+        Assert.Equal($"${CurrencyDisplay.Number(1.46m)}", change.PreRoundingText);
+        Assert.Equal($"${CurrencyDisplay.Number(1.50m)}", change.RoundedText);
+        Assert.Equal($"+${CurrencyDisplay.Number(0.04m)}", change.RoundingDeltaText);
+    }
+
+    [Fact]
     public async Task EditingRoundingRuleAfterPreview_InvalidatesPreview()
     {
         SetupPreview();
@@ -359,6 +423,25 @@ public class BulkPriceEditRoundingTests
         Assert.True(vm.CanApply);
 
         vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+
+        Assert.False(vm.HasPreview);
+        Assert.False(vm.CanApply);
+        Assert.Empty(vm.PreviewRows);
+    }
+
+    [Fact]
+    public async Task EditingCashBsRoundingRuleAfterPreview_InvalidatesPreview()
+    {
+        SetupPreview();
+
+        var vm = CreateViewModel();
+        EnableRetailPriceOperation(vm);
+        await vm.PreviewCommand.ExecuteAsync(null);
+        Assert.True(vm.HasPreview);
+        Assert.True(vm.CanApply);
+
+        // Spec V0.15: la capa cash es configuración del lote — cambiarla descarta la vista previa.
+        vm.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyInteger;
 
         Assert.False(vm.HasPreview);
         Assert.False(vm.CanApply);
@@ -399,6 +482,7 @@ public class BulkPriceEditRoundingTests
         var vm = CreateViewModel();
         EnableRetailPriceOperation(vm);
         vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        vm.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep10;
         vm.EnforceMinimumMarginFloor = true;
         vm.RetailMarginFloorText = "20";
 
@@ -408,6 +492,7 @@ public class BulkPriceEditRoundingTests
         Assert.Same(previewRequest, applyRequest);
         Assert.NotNull(applyRequest);
         Assert.Equal(RoundingRuleType.UsdPsychological, applyRequest!.RetailRoundingRule);
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep10, applyRequest.CashBsRoundingRule);
         Assert.True(applyRequest.EnforceMinimumMarginFloor);
         Assert.Equal(20m, applyRequest.RetailMarginFloorPct);
         Assert.True(vm.HasApplied);
@@ -483,5 +568,72 @@ public class BulkPriceEditRoundingTests
         priceRow.IsEnabled = true;
         priceRow.SelectedMode = BulkPriceMode.IncreasePercent;
         Assert.Equal("Porcentaje sobre el valor actual", priceRow.ValueHint);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Spec V0.15: los pisos de margen se muestran SOLO con redondeo psicológico USD + protección
+    // activa (por canal). Ocultar el input no borra el valor tipeado: sigue viajando y aplicando al
+    // clamp de reducciones de margen (la visibilidad es cosmética).
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public void FloorVisibility_HiddenWithExactMathEvenWhenProtectionIsOn()
+    {
+        var vm = CreateViewModel();
+        vm.EnforceMinimumMarginFloor = true;
+
+        Assert.False(vm.ShowRetailFloorInput);
+        Assert.False(vm.ShowWholesaleFloorInput);
+    }
+
+    [Fact]
+    public void FloorVisibility_HiddenWhenProtectionIsOffEvenWithPsychologicalRules()
+    {
+        var vm = CreateViewModel();
+        vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        vm.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+
+        Assert.False(vm.EnforceMinimumMarginFloor);
+        Assert.False(vm.ShowRetailFloorInput);
+        Assert.False(vm.ShowWholesaleFloorInput);
+    }
+
+    [Fact]
+    public void FloorVisibility_ShownOnlyWithPsychologicalUsdAndProtection_PerChannel()
+    {
+        var vm = CreateViewModel();
+        vm.EnforceMinimumMarginFloor = true;
+
+        vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        Assert.True(vm.ShowRetailFloorInput);
+        Assert.False(vm.ShowWholesaleFloorInput); // el canal al mayor sigue en exacto
+
+        vm.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        Assert.True(vm.ShowWholesaleFloorInput);
+
+        // Sin psicológico el piso jamás se muestra, aunque el toggle esté activo.
+        vm.RetailRoundingRule = RoundingRuleType.ExactMath;
+        Assert.False(vm.ShowRetailFloorInput);
+        Assert.True(vm.ShowWholesaleFloorInput);
+    }
+
+    [Fact]
+    public void FloorVisibility_RaisesPropertyChangedOnToggleAndRuleChanges()
+    {
+        var vm = CreateViewModel();
+        var changed = new List<string>();
+        vm.PropertyChanged += (_, args) => changed.Add(args.PropertyName ?? string.Empty);
+
+        vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.ShowRetailFloorInput), changed);
+        changed.Clear();
+
+        vm.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.ShowWholesaleFloorInput), changed);
+        changed.Clear();
+
+        vm.EnforceMinimumMarginFloor = true;
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.ShowRetailFloorInput), changed);
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.ShowWholesaleFloorInput), changed);
     }
 }

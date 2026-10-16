@@ -39,6 +39,7 @@ public class BulkPriceEditPricingPoliciesTests
 
         Assert.Equal(RoundingRuleType.UsdPsychological, vm.RetailRoundingRule);
         Assert.Equal(RoundingRuleType.UsdPsychological, vm.WholesaleRoundingRule);
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep5, vm.CashBsRoundingRule);
         Assert.True(vm.EnforceMinimumMarginFloor);
         // La preselección no inventa una vista previa.
         Assert.False(vm.HasPreview);
@@ -54,6 +55,7 @@ public class BulkPriceEditPricingPoliciesTests
 
         Assert.Equal(RoundingRuleType.ExactMath, vm.RetailRoundingRule);
         Assert.Equal(RoundingRuleType.ExactMath, vm.WholesaleRoundingRule);
+        Assert.Equal(RoundingRuleType.ExactMath, vm.CashBsRoundingRule);
         Assert.False(vm.EnforceMinimumMarginFloor);
         Assert.False(vm.HasPreview);
     }
@@ -77,6 +79,7 @@ public class BulkPriceEditPricingPoliciesTests
         Assert.NotNull(opened);
         Assert.Equal(RoundingRuleType.UsdPsychological, opened!.RetailRoundingRule);
         Assert.Equal(RoundingRuleType.UsdPsychological, opened.WholesaleRoundingRule);
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep5, opened.CashBsRoundingRule);
         Assert.True(opened.EnforceMinimumMarginFloor);
         // 8.185-T4 (S2): el catálogo suma una lectura al iniciar el VM (Bs.S efectivo de las filas);
         // la apertura del diálogo conserva su lectura fresca propia (molde 8.184: al menos una).

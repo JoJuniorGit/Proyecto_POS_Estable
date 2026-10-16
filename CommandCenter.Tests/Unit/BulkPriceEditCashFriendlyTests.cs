@@ -93,8 +93,8 @@ public class BulkPriceEditCashFriendlyTests
 
         var vm = CreateViewModel();
         EnableRetailPriceOperation(vm);
-        vm.RetailRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
-        vm.WholesaleRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        // Spec V0.15: la proyección cash viaja por la capa dedicada (independiente del USD).
+        vm.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
 
         await vm.PreviewCommand.ExecuteAsync(null);
 

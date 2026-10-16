@@ -68,6 +68,18 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!-- Spec V0.15: borde en reposo unificado de la tarjeta 2 (mirror de la sección 1); el morado
+             queda reservado para el focus/dropdown del template Material. -->
+        <Style x:Key="BulkPriceSettingsCombo" TargetType="ComboBox"
+               BasedOn="{StaticResource MaterialDesignOutlinedComboBox}">
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+        </Style>
+
+        <Style x:Key="BulkPriceSettingsInput" TargetType="TextBox"
+               BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="20">
@@ -195,14 +207,18 @@
                                Foreground="#334155"
                                Margin="0,0,0,10"/>
 
-                    <!-- 8.182-T2 (S6): redondeo comercial/psicológico por canal + protección del piso de
-                         margen. El piso solo aplica con el toggle activo, piso > 0 y costo > 0. -->
+                    <!-- 8.182-T2 (S6) + Spec V0.15: capas separadas — arriba el redondeo USD por canal
+                         (psicológico) con su piso visible solo con protección activa; abajo la
+                         proyección Bs.S de efectivo, independiente del precio USD. -->
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -219,18 +235,18 @@
                                   ToolTip="Si el redondeo deja el precio por debajo del piso configurado, se usa el siguiente escalón superior (requiere costo y piso mayores a cero)."/>
 
                         <TextBlock Grid.Row="1" Grid.Column="0"
-                                   Text="Redondeo Detal"
+                                   Text="Redondeo Detal (USD)"
                                    FontWeight="SemiBold"
                                    FontSize="12"
                                    Foreground="#1E293B"
                                    VerticalAlignment="Center"
                                    Margin="0,0,10,0"/>
                         <ComboBox Grid.Row="1" Grid.Column="1"
-                                  ItemsSource="{Binding RoundingRuleOptions}"
+                                  ItemsSource="{Binding UsdRoundingRuleOptions}"
                                   SelectedValue="{Binding RetailRoundingRule, Mode=TwoWay}"
                                   SelectedValuePath="Rule"
                                   DisplayMemberPath="Label"
-                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                  Style="{StaticResource BulkPriceSettingsCombo}"
                                   Height="32"
                                   Padding="8,2"
                                   Margin="0,0,0,8"
@@ -242,31 +258,33 @@
                                    FontSize="12"
                                    Foreground="#1E293B"
                                    VerticalAlignment="Center"
-                                   Margin="0,0,10,0"/>
+                                   Margin="0,0,10,0"
+                                   Visibility="{Binding ShowRetailFloorInput, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                         <TextBox Grid.Row="2" Grid.Column="1"
                                  Text="{Binding RetailMarginFloorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  IsEnabled="{Binding EnforceMinimumMarginFloor}"
-                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                 Style="{StaticResource BulkPriceSettingsInput}"
                                  materialDesign:HintAssist.Hint="Ej. 25"
                                  materialDesign:HintAssist.IsFloating="True"
                                  Height="32"
                                  Padding="8,2"
                                  Margin="0,0,0,8"
+                                 Visibility="{Binding ShowRetailFloorInput, Converter={StaticResource BooleanToVisibilityConverter}}"
                                  AutomationProperties.AutomationId="BulkPriceEdit_RetailMarginFloorInput"/>
 
                         <TextBlock Grid.Row="3" Grid.Column="0"
-                                   Text="Redondeo Mayor"
+                                   Text="Redondeo Mayor (USD)"
                                    FontWeight="SemiBold"
                                    FontSize="12"
                                    Foreground="#1E293B"
                                    VerticalAlignment="Center"
                                    Margin="0,0,10,0"/>
                         <ComboBox Grid.Row="3" Grid.Column="1"
-                                  ItemsSource="{Binding RoundingRuleOptions}"
+                                  ItemsSource="{Binding UsdRoundingRuleOptions}"
                                   SelectedValue="{Binding WholesaleRoundingRule, Mode=TwoWay}"
                                   SelectedValuePath="Rule"
                                   DisplayMemberPath="Label"
-                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                  Style="{StaticResource BulkPriceSettingsCombo}"
                                   Height="32"
                                   Padding="8,2"
                                   Margin="0,0,0,8"
@@ -278,16 +296,49 @@
                                    FontSize="12"
                                    Foreground="#1E293B"
                                    VerticalAlignment="Center"
-                                   Margin="0,0,10,0"/>
+                                   Margin="0,0,10,0"
+                                   Visibility="{Binding ShowWholesaleFloorInput, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                         <TextBox Grid.Row="4" Grid.Column="1"
                                  Text="{Binding WholesaleMarginFloorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  IsEnabled="{Binding EnforceMinimumMarginFloor}"
-                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                 Style="{StaticResource BulkPriceSettingsInput}"
                                  materialDesign:HintAssist.Hint="Ej. 15"
                                  materialDesign:HintAssist.IsFloating="True"
                                  Height="32"
                                  Padding="8,2"
+                                 Margin="0,0,0,8"
+                                 Visibility="{Binding ShowWholesaleFloorInput, Converter={StaticResource BooleanToVisibilityConverter}}"
                                  AutomationProperties.AutomationId="BulkPriceEdit_WholesaleMarginFloorInput"/>
+
+                        <!-- Separador sutil entre capas: redondeo USD (arriba) vs proyección Bs.S (abajo). -->
+                        <Rectangle Grid.Row="5" Grid.ColumnSpan="2"
+                                   Height="1"
+                                   Fill="#E2E8F0"
+                                   Margin="0,2,0,10"/>
+
+                        <TextBlock Grid.Row="6" Grid.Column="0"
+                                   Text="Redondeo Bs.S (Proyección)"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Foreground="#1E293B"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,10,0"/>
+                        <ComboBox Grid.Row="6" Grid.Column="1"
+                                  ItemsSource="{Binding CashBsRoundingRuleOptions}"
+                                  SelectedValue="{Binding CashBsRoundingRule, Mode=TwoWay}"
+                                  SelectedValuePath="Rule"
+                                  DisplayMemberPath="Label"
+                                  Style="{StaticResource BulkPriceSettingsCombo}"
+                                  Height="32"
+                                  Padding="8,2"
+                                  AutomationProperties.AutomationId="BulkPriceEdit_CashBsRoundingCombo"/>
+
+                        <TextBlock Grid.Row="7" Grid.ColumnSpan="2"
+                                   Text="Calcula en caliente la columna BS.S EFECTIVO (PROY.) por techo — no modifica el precio USD."
+                                   FontSize="11"
+                                   Foreground="#64748B"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0"/>
                     </Grid>
                 </StackPanel>
             </Border>

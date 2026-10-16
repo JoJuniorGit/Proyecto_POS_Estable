@@ -24,6 +24,9 @@ namespace Inventory.Module.Services;
 // Spec V0.15: los márgenes Detal/Mayor operan en PUNTOS PORCENTUALES aditivos (actual ± Δ) y sus
 // reducciones se clipean al piso del canal o a 0; precios/costo conservan su semántica vigente y el
 // pipeline de redondeo/piso/Bs.S queda intacto aguas abajo (solo cambia el INPUT del margen).
+// Spec V0.15 (split de capas): el redondeo USD usa las reglas por canal (RetailRoundingRule/
+// WholesaleRoundingRule) y la proyección Bs.S en caliente usa CashBsRoundingRule (etapa
+// independiente, nunca persistida; VES en la regla del canal quedó como vía defensiva sin efecto).
 public partial class InventoryService
 {
     private const int MaxBulkPriceSelectionSize = 1000;
@@ -307,8 +310,9 @@ public partial class InventoryService
         bool retailUsdRoundingApplied = false;
         bool wholesaleUsdRoundingApplied = false;
 
-        // Redondeo USD del canal al detal (UsdPsychological): la rama VES se aplica en la etapa del
-        // Bs.S (más abajo), porque opera sobre la conversión y no sobre el USD.
+        // Redondeo USD del canal al detal (UsdPsychological). Spec V0.15: la proyección Bs.S vive en
+        // una etapa aparte gobernada por request.CashBsRoundingRule; la guarda !IsVesCashFriendly es
+        // defensiva — un caller viejo que envíe VES en la regla del canal ya no proyecta nada.
         if (retailRoundingActive && !IsVesCashFriendly(request.RetailRoundingRule))
         {
             decimal retailUsd = EffectiveBulkRetailUsd(scratch);
@@ -330,8 +334,8 @@ public partial class InventoryService
             }
         }
 
-        // Redondeo USD del canal al mayor (UsdPsychological). VES al mayor no tiene columna Bs.S
-        // propia: su Bs.S informativo se calcula en la etapa del Bs.S canónico.
+        // Redondeo USD del canal al mayor (UsdPsychological); misma guarda defensiva que el detal.
+        // El Bs.S informativo del mayor se calcula en la etapa de proyección cash (más abajo).
         if (wholesaleRoundingActive && !IsVesCashFriendly(request.WholesaleRoundingRule) && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m)
         {
             var wholesaleRounding = RoundingPolicy.Round(
@@ -411,16 +415,16 @@ public partial class InventoryService
             newPriceBsS = PricingCalculator.ToBsSCeiling(afterRetail, exchangeRate);
         }
 
-        // 8.183 (R1): la regla VES del canal al detal NO persiste nada — el Bs.S almacenado es
-        // SIEMPRE el canónico 8.104 calculado arriba (el USD y el margen no cambian). La regla se
-        // evalúa en caliente como proyección de efectivo con la tasa del día y solo se informa en
+        // 8.183 (R1) + Spec V0.15: la proyección Bs.S del detal NO persiste nada — el Bs.S almacenado
+        // es SIEMPRE el canónico 8.104 calculado arriba (el USD y el margen no cambian). La capa cash
+        // (request.CashBsRoundingRule) se evalúa en caliente con la tasa del día y solo se informa en
         // CashFriendlyAfterBsS del cambio (nunca participa del estado ni de la persistencia).
-        if (retailRoundingActive && IsVesCashFriendly(request.RetailRoundingRule))
+        if (IsVesCashFriendly(request.CashBsRoundingRule))
         {
             var retailCashProjection = RoundingPolicy.ProjectCashFriendlyBsS(
                 afterRetail,
                 exchangeRate,
-                request.RetailRoundingRule,
+                request.CashBsRoundingRule,
                 scratch.CostPriceUSD,
                 request.RetailMarginFloorPct,
                 request.EnforceMinimumMarginFloor);
@@ -432,16 +436,16 @@ public partial class InventoryService
             }
         }
 
-        // 8.182-T1 (S4) / 8.183 (R1): proyección de efectivo del canal al mayor con regla VES (la
-        // entidad no tiene columna Bs.S propia para ese canal); informativa y nunca persistida, solo
-        // acompaña a un cambio real del precio USD.
-        if (wholesaleRoundingActive && IsVesCashFriendly(request.WholesaleRoundingRule)
+        // 8.182-T1 (S4) / 8.183 (R1) + Spec V0.15: proyección cash del canal al mayor con la capa
+        // request.CashBsRoundingRule (la entidad no tiene columna Bs.S propia para ese canal);
+        // informativa y nunca persistida, solo acompaña a un cambio real del precio USD.
+        if (IsVesCashFriendly(request.CashBsRoundingRule)
             && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m
             && scratch.PriceWholesaleUSD != product.PriceWholesaleUSD && exchangeRate > 0m)
         {
             var wholesaleVesRounding = RoundingPolicy.Round(
                 scratch.PriceWholesaleUSD * exchangeRate,
-                request.WholesaleRoundingRule,
+                request.CashBsRoundingRule,
                 scratch.CostPriceUSD * exchangeRate,
                 request.WholesaleMarginFloorPct,
                 request.EnforceMinimumMarginFloor);
