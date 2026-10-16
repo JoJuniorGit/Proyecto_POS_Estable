@@ -15084,3 +15084,96 @@ E. COMMITS
 E1. 8.184 en V0.15: 8deeff5 (T1) + e720c90 (T2) + c804416 (T3 + wiring) + 675c638 (T4) + commit de este
     ANEXO (docs(8.184); git log).
 ================================================================================
+
+================================================================================
+ANEXO 8.185 - HOOK VIVO VESCASHFRIENDLY: PRECIO EFECTIVO Bs.S UNIFICADO (CATALOGO = MODAL = POS = CARRITO) + PARIDAD BACKEND - 2026-10-15
+================================================================================
+Pedido del mantenedor (L1/L5 del tracker odd/tasks/8.185-hook-vivo-pos-carrito.md, rol Principal .NET
+Architect): activar en vivo la politica VesCashFriendly (Sin redondeo / Entero / x5 / x10) con precios
+100% sincronizados entre pantallas (cero desfase) y paridad matematica en el backend, sin mutar el
+canonico 8.104 ni exponer costo/margen al POS.
+
+A. DECISIONES DEL MANTENEDOR
+
+A1. Fork de piso/masking: OPCION A - piso geometrico sin costo. Con EnforceMinimumMarginFloor ON el
+    efectivo Bs.S nunca redondea hacia abajo (escalon inmediato superior); OFF = mas cercano. Sin costo
+    (en POS esta enmascarado por diseno), identico para todos los roles y entre cliente/backend;
+    equivalencia demostrada contra el piso costo-aware (test de propiedad; borde 2dp documentado).
+A2. Fork de vuelto: OPCION 1 - semantica dual. El cambio se registra solo por encima del total EFECTIVO
+    (el escalon queda en caja); la misma forma "excede en AMBOS dominios" rige cobro, apartado y guard
+    de abonos.
+
+B. ALCANCE Y ENTREGA
+
+B1. Motor (commit 9d78e8d): overload PricingRoundingPolicy.ProjectCashFriendlyBsS(usd, rate, rule,
+    neverRoundDown) con AggressiveInlining; nearest + NextStepUp si el candidato queda por debajo del
+    matematico; empate del nearest -> sube; coincidencia exacta queda; firma 8.184 de 6 argumentos
+    intacta. 21 tests nuevos (incl. propiedad de equivalencia sobre 72 combos).
+B2. Contratos y persistencia (commit 7c7a2e9): SaleItem.RoundingRuleCashBs (regla RESUELTA al agregar =
+    override ?? default global) + migracion idempotente 20261016020937_AddSaleItemRoundingRuleRev8185
+    en Sales.Module (multi-DbContext: la tabla SaleItems pertenece a SalesDbContext; guards to_regclass/
+    information_schema) + snapshot regenerado (drift test verde); ProductQuickInfoDto.RoundingRuleCashBs
+    RESUELTA server-side en ambos paths de sugerencias + quick-check (accessor ISystemSettingsService
+    opcional null-safe); SaleProductInfoDto shape 15->16 (guard actualizado con justificacion);
+    MaskQuickInfoDto copia la regla (masking de costo/margen intacto); SaleItemDto + mapping;
+    AddItemAsync resuelve y persiste la regla; RecalculateTotalAsync policy-aware via
+    ApplyCashRoundingPolicy (punto unico de derivacion por linea).
+B3. Checkout backend (commit 1a2aa41): gate dual-dominio (rechaza solo si el remanente USD > 0.05 Y el
+    remanente Bs.S contra el total efectivo > 0.05 x tasa) en cobro y apartado; preview espejo
+    (CheckoutCalculationService: total efectivo + IsFullyPaid dual); vuelto dual (cambio solo por encima
+    del efectivo; pago exacto del publicado => vuelto 0 y caja = efectivo); guard dual de abonos (simple
+    y lote); snapshots coherentes (TotalBsS efectivo, FinalPaidAmountBsS, RoundingAdjustment literal).
+B4. Cliente - display unificado (commit 7dbfc36): helper unico EffectivePriceVesHelper.EffectiveBsS
+    (AggressiveInlining; null/ExactMath/tasa<=0 => techo canonico 8.104) consumido por Catalogo
+    (ProductItemViewModel deta/mayor + UpdateExchangeRate; persistencia canonica _dto.PriceBsS intacta),
+    Modal (solo la proyeccion efectiva; trazas costo-aware 8.184 intactas) y POS (sugerencias con regla
+    resuelta + toggle). Refrescos en memoria S2: PricingPoliciesChangedMessage (emision solo post-PUT
+    exitoso; catalogo aplica payload, POS re-ejecuta busqueda activa) y ProductRoundingChangedMessage
+    (override editado; parche sin consultas); fetch de politicas unico por VM.
+B5. Cliente - carrito y checkout (commit fcc85fa): CartItemViewModel.UnitPriceBsS efectivo (regla
+    snapshot por linea + toggle; null pre-8.185 inmutable); CartViewModel recomputa por tasa/politicas;
+    panel de ultimos escaneados unificado; CheckoutViewModel cobra/exhibe el total efectivo del preview;
+    pagos con par USD<->Bs.S derivado de una pata (consistencia 0.01 USD, sin clamp);
+    RoundToCash/RoundToDigital solo residuales (pesables/Sin redondeo).
+B6. Tests: motor 21; contratos/persistencia/quick-info/masking/shape (7+7+7+5); matriz backend 8 casos +
+    paridad preview<->complete + integraciones (PartialPaymentFlow, BatchPayment); PARIDAD
+    TRI-SUPERFICIE 3 superficies x 4 reglas (mandato S4); carrito/pagos (par consistente, mixtos,
+    RoundToCash residual).
+
+C. VERIFICACION
+
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+C2. Suite completa POR PARTES y secuencial: CommandCenter.Tests 2954/2954 + E2E WPF 50/50 = 3004/3004.
+C3. Verificacion independiente read-only (agente verify sobre el rango 0d67117..e623541): PASS CON
+    HALLAZGOS, 0 bloqueantes; re-ejecuto 267 tests en 3 corridas (149/149 + 74/74 + 44/44). Cazas
+    adversariales: sin subpago por debajo del canonico en ningun dominio; vuelto dual no manipulable;
+    anti-trinquete verificado (ningun camino muta precio/margen desde el efectivo); masking intacto;
+    default-safe ExactMath; migracion idempotente + drift verde.
+C4. Hallazgos no bloqueantes (H1-H6): H1 - un cash Bs.S entre el canonico y el efectivo cierra por el
+    dominio USD (literal a la formula dual aprobada; nunca bajo el canonico USD; tolerancia confirmada
+    por diseno); H2 - borde de cuantizacion 2dp del margen en la equivalencia S3 (sin riesgo de dinero;
+    la definicion geometrica es la canonica); H3 - tasa del preview sin ceiling solo con BCV >2dp (no
+    operativo); H4 - fallback de UI con toggle default; H5 - micro-cache de settings 30s (0 queries en
+    regimen); H6 - comportamiento pre-existente de SetAmountToRemainingBalance (informativo).
+
+D. LIMITACIONES ACEPTADAS
+
+D1. Quick-check quick-info cacheado (15s/5min): la regla resuelta puede quedar vieja tras un cambio
+    global hasta expirar; las sugerencias POS no estan cacheadas y el toggle va fresco por mensaje.
+D2. Tasas con decimales no alineados: el vuelto Bs.S pasa a ser el exceso fisico exacto (mejora de
+    exactitud, verificado analiticamente por T6).
+D3. Recibo/historial usan TotalBsS efectivo sin rediseno; ManualPriceDialog no previsualiza la politica;
+    alta de producto nuevo no emite mensaje de override (visible tras re-busqueda).
+D4. XAML verificado por compilacion; smoke visual del mantenedor recomendado (precedente hotfix 8.181).
+D5. Migracion no aplicada contra PostgreSQL real local (CI/arranque la aplican; drift tests verdes).
+
+E. ROLLBACK
+
+E1. Revertir los commits T1-T5 restaura el estado previo; migracion aditiva nullable con Down espejo;
+    contratos retrocompatibles (defaults ExactMath/toggle true/null => techo canonico).
+
+F. COMMITS
+
+F1. 8.185 en V0.15: 9d78e8d (T1) + 7c7a2e9 (T2) + 1a2aa41 (T3) + 7dbfc36 (T4) + fcc85fa (T5) +
+    commits de tracker/ANEXO (docs(8.185); git log).
+================================================================================
