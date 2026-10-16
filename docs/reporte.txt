@@ -15292,3 +15292,46 @@ B1. Build Release 0/0; BulkPrice 135/135; BulkPriceEdit 66/66; Rounding 267/267;
 B2. RED observado (CS1061/CS0117 enumerando la API faltante + 1 fallo de preview con la fila
     informativa del detal en requests solo-mayor) -> GREEN con la semantica mandatada.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (IV) - MODO "SOLO REDONDEO" (GUARDA OR) + VISTA PREVIA CONSOLIDADA (5 COLUMNAS) + COMPACTACION - 2026-10-16
+================================================================================
+Pedido del mantenedor (Principal .NET & WPF Architect): permitir al ajuste masivo operar solo con
+configuracion de redondeo/proteccion (sin operaciones por campo), corregir el overlay de estado
+vacio, consolidar la tabla de vista previa de 10 a 5 columnas y compactar verticalmente las
+tarjetas superiores.
+
+A. GUARDA OR + MODO SOLO REDONDEO (commit d86a1fa)
+
+A1. VM: CanPreview/CanApply habilitan con operacion valida O configuracion activa en la tarjeta 2
+    (regla USD del canal != exacto, regla Bs.S != exacto, o piso definido > 0 con el toggle);
+    notificaciones en checks/reglas/toggle/pisos/IsBusy. El motor valida lo mismo (mensaje claro si
+    nada aplica).
+A2. Motor -- modo "Solo Redondeo": un canal sin operaciones de su familia pero con regla USD activa
+    re-ancla su base a Costo x (1 + Margen Objetivo) (techo 2dp; guard: sin costo NI margen
+    objetivo => precio actual, evita saltos) y la alimenta al interceptor de redondeo existente
+    (sin duplicar pipeline). Resultado != estado previo => Actualiza; ya en la terminacion =>
+    Omitido; reglas Bs.S puras => proyeccion informativa sin persistir (Omitido).
+A3. Tests motor (4): ancla+redondeo -> Actualiza; idempotencia -> Omitido; sin costo -> base actual;
+    cash-only -> sin cambios persistidos con proyeccion visible.
+
+B. VISTA PREVIA Y COMPACTACION
+
+B1. Overlay "Genere la vista previa..." colapsado por HasPreviewItems (filas reales) -- sin
+    superposicion.
+B2. Tabla consolidada a 5 columnas: PRODUCTO (nombre + SKU), ESTADO (badge), PRECIO USD (antes ->
+    despues por canal), BS.S EFECTIVO (PROY.) (delta entre parentesis; matematico exacto en ToolTip)
+    y MARGEN EFECTIVO % (Detal/Mayor en dos lineas). MATEMATICO/REDONDEADO/DELTA REDONDEO eliminados.
+B3. Compactacion: pisos inline junto a su combo (solo con psicologico + toggle), indicador de
+    seleccion en la linea del titulo, margins/paddings reducidos en todo el formulario; ganancia
+    estimada ~174px de altura para el DataGrid. Sin "Auto" en propiedades double.
+
+C. EVIDENCIA
+
+C1. Build Release 0/0; BulkPrice 147/147; BulkPriceEdit 74/74; Rounding 279/279; suite completa
+    2989/2989. Tests VM nuevos (8) para guarda OR, columnas, tooltips y estado vacio.
+C2. RED observado: runtime (validador del motor bloqueando el modo) + CS1061/CS0117 de la API VM.
+C3. AutomationIds consolidados: se removieron los de columnas eliminadas y se agrego
+    BulkPriceEdit_UsdTransitionCell / BulkPriceEdit_EffectiveMarginsCell (sin referencias en
+    tests/E2E -- verificado). El delta 0 no se muestra entre parentesis (decision UX reportada).
+================================================================================
