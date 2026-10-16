@@ -99,9 +99,15 @@ public partial class PosViewModel
                         PriceWholesaleUSD = variant.PriceWholesaleUSD,
                         PriceBsS = variant.PriceBsS,
                         StockQuantity = variant.StockQuantity,
-                        IsActive = variant.IsActive
+                        IsActive = variant.IsActive,
+                        // 8.185-T5 (S1): la variante conserva su regla cash para el display efectivo.
+                        RoundingRuleCashBs = variant.RoundingRuleCashBs
                     };
                 }
+
+                // 8.185-T5 (S1): mismo punto único de cálculo que las sugerencias — el panel de
+                // últimos escaneados muestra el Bs.S efectivo con la regla resuelta + toggle.
+                RewriteEffectivePriceBsS(product);
 
                 IsProcessing = true;
                 try
