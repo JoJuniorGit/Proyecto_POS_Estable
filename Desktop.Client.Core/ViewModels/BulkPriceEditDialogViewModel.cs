@@ -518,9 +518,14 @@ public partial class BulkPriceOperationRowViewModel : ObservableObject
     [ObservableProperty]
     private string _valueText = string.Empty;
 
-    /// <summary>Pista del valor esperado según el modo (absoluto en la unidad del campo o porcentaje).</summary>
+    /// <summary>Spec V0.15: true para las filas de margen, cuyo Δ en modos porcentuales se expresa en puntos porcentuales aditivos.</summary>
+    public bool IsMarginField => Field is BulkPriceField.RetailMargin or BulkPriceField.WholesaleMargin;
+
+    /// <summary>Pista del valor esperado según el modo (absoluto en la unidad del campo o porcentaje/puntos porcentuales).</summary>
     public string ValueHint => IsEnabled && SelectedMode != BulkPriceMode.SetFixed
-        ? "Porcentaje sobre el valor actual"
+        ? IsMarginField
+            ? "Puntos porcentuales sobre el margen actual"
+            : "Porcentaje sobre el valor actual"
         : $"Valor absoluto ({_unitHint})";
 
     public BulkPriceOperationRowViewModel(BulkPriceField field, string label, string unitHint, IReadOnlyList<BulkPriceModeOption> modeOptions)
@@ -591,8 +596,10 @@ public sealed class BulkPriceFieldChangeViewModel
         RoundingRuleType wholesaleRule)
     {
         var isMargin = dto.Field is BulkPriceField.RetailMargin or BulkPriceField.WholesaleMargin;
+        // Spec V0.15: la transición de márgenes se muestra con el formato 2dp del diálogo
+        // (CurrencyDisplay, p. ej. "10,00% → 20,00%") para reflejar la semántica de pp aditivos.
         string Format(decimal value) => isMargin
-            ? $"{value.ToString("0.##", CultureInfo.InvariantCulture)}%"
+            ? $"{CurrencyDisplay.Number(value)}%"
             : $"${CurrencyDisplay.Number(value)}";
 
         string? bsSText = dto.BeforeBsS.HasValue || dto.AfterBsS.HasValue

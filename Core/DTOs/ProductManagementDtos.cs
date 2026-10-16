@@ -163,7 +163,10 @@ public class BulkPriceOperationDto
     public BulkPriceField Field { get; set; }
     public BulkPriceMode Mode { get; set; }
 
-    // SetFixed: valor absoluto. IncreasePercent/DecreasePercent: porcentaje aplicado al valor actual.
+    // SetFixed: valor absoluto. IncreasePercent/DecreasePercent: en precio/costo el valor es un
+    // porcentaje multiplicativo sobre el valor actual; en los márgenes (RetailMargin/WholesaleMargin)
+    // se interpreta SIEMPRE como puntos porcentuales aditivos (actual ± Δ; p. ej. 10 + 10 = 20) y las
+    // reducciones se clipean al piso del canal o a 0 (nunca quedan negativas).
     public decimal Value { get; set; }
 }
 

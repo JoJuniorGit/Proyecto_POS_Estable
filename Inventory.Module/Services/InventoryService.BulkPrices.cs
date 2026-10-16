@@ -21,6 +21,9 @@ namespace Inventory.Module.Services;
 // 8.183-T1 (R1/R3): el redondeo no muta datos persistidos — el margen persistido es SIEMPRE el
 // objetivo/operado y el Bs.S almacenado, el canónico 8.104; las reglas VES se exponen como
 // proyección en caliente (CashFriendlyAfterBsS del cambio), nunca como escritura.
+// Spec V0.15: los márgenes Detal/Mayor operan en PUNTOS PORCENTUALES aditivos (actual ± Δ) y sus
+// reducciones se clipean al piso del canal o a 0; precios/costo conservan su semántica vigente y el
+// pipeline de redondeo/piso/Bs.S queda intacto aguas abajo (solo cambia el INPUT del margen).
 public partial class InventoryService
 {
     private const int MaxBulkPriceSelectionSize = 1000;
@@ -262,14 +265,7 @@ public partial class InventoryService
 
         foreach (var operation in operations)
         {
-            decimal current = ReadBulkPriceField(scratch, operation.Field);
-            decimal raw = operation.Mode switch
-            {
-                BulkPriceMode.SetFixed => operation.Value,
-                BulkPriceMode.IncreasePercent => current * (1m + operation.Value / 100m),
-                BulkPriceMode.DecreasePercent => current * (1m - operation.Value / 100m),
-                _ => current
-            };
+            var raw = ComputeBulkPriceOperationValue(scratch, request, operation);
             WriteBulkPriceField(scratch, operation.Field, RoundBulkPriceField(operation.Field, raw));
         }
 
@@ -617,6 +613,42 @@ public partial class InventoryService
         BulkPriceField.RetailPrice or BulkPriceField.WholesalePrice => PricingCalculator.RoundPriceUp(value),
         _ => PricingCalculator.RoundToDigital(value)
     };
+
+    // Spec V0.15: valor resultante de UNA operación del lote sobre el scratch.
+    // Los campos de margen (Detal/Mayor) operan en PUNTOS PORCENTUALES aditivos: aumentar/reducir
+    // suma/resta Δ al margen actual (10 + 10 pp = 20; antes el modo % era multiplicativo y daba 11).
+    // Fijar valor sigue siendo Δ exacto. Precio Detal/Mayor y Costo conservan intacta la variación
+    // porcentual multiplicativa (o la suma/resta fija en USD) del lote 8.181.
+    private static decimal ComputeBulkPriceOperationValue(Product scratch, BulkPriceUpdateRequestDto request, BulkPriceOperationDto operation)
+    {
+        decimal current = ReadBulkPriceField(scratch, operation.Field);
+        bool isMargin = operation.Field is BulkPriceField.RetailMargin or BulkPriceField.WholesaleMargin;
+
+        decimal raw = operation.Mode switch
+        {
+            BulkPriceMode.SetFixed => operation.Value,
+            BulkPriceMode.IncreasePercent when isMargin => current + operation.Value,
+            BulkPriceMode.DecreasePercent when isMargin => current - operation.Value,
+            BulkPriceMode.IncreasePercent => current * (1m + operation.Value / 100m),
+            BulkPriceMode.DecreasePercent => current * (1m - operation.Value / 100m),
+            _ => current
+        };
+
+        // Salvaguarda SOLO en REDUCCIONES de margen (incrementar/fijar no cambian): el margen nunca
+        // queda bajo el piso del canal con el toggle activo (piso null/≤0 ⇒ cota 0) ni bajo 0 sin
+        // él. Clamp literal (max): si el margen actual YA está bajo el piso, una reducción lo SUBE
+        // al piso — no existe reducción efectiva por debajo de esa cota.
+        if (isMargin && operation.Mode == BulkPriceMode.DecreasePercent)
+        {
+            decimal? channelFloor = operation.Field == BulkPriceField.RetailMargin
+                ? request.RetailMarginFloorPct
+                : request.WholesaleMarginFloorPct;
+            decimal floor = request.EnforceMinimumMarginFloor ? channelFloor ?? 0m : 0m;
+            raw = Math.Max(raw, floor);
+        }
+
+        return raw;
+    }
 
     private static string? FindNegativeBulkPriceField(Product scratch)
     {

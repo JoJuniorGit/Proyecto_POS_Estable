@@ -634,6 +634,249 @@ public class BulkPriceRoundingTests
     }
 
     // ---------------------------------------------------------------------------------------------
+    // Spec V0.15: márgenes del ajuste masivo en PUNTOS PORCENTUALES aditivos (actual ± Δ) con
+    // salvaguarda en reducciones (piso del canal o 0) y aislamiento monetario (precio/costo
+    // conservan su % multiplicativo). El pipeline de redondeo/piso/Bs.S queda intacto aguas abajo:
+    // solo cambia el INPUT del margen.
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task PreviewBulkPriceUpdateAsync_RetailMarginIncreasePercent_AddsPercentagePoints()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Margen pp",
+            SKU = "MPP-01",
+            CostPriceUSD = 1.00m,
+            ProfitMarginRetail = 10m,
+            PriceRetailUSD = 1.10m
+        });
+
+        var result = await service.PreviewBulkPriceUpdateAsync(
+            Request(new[] { created.Id }, Op(BulkPriceField.RetailMargin, BulkPriceMode.IncreasePercent, 10m)));
+
+        var row = RowOf(result, created.Id);
+        Assert.Null(row.SkipReason);
+        var marginChange = ChangeOf(row, BulkPriceField.RetailMargin);
+        Assert.Equal(10m, marginChange.BeforeValue);
+        Assert.Equal(20m, marginChange.AfterValue); // 10 + 10 pp, NO 10 x 1.10 = 11
+
+        var priceChange = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(1.10m, priceChange.BeforeValue);
+        Assert.Equal(1.20m, priceChange.AfterValue); // 1.00 x (1 + 0.20) = 1.20
+    }
+
+    [Fact]
+    public async Task PreviewBulkPriceUpdateAsync_RetailMarginDecreasePercent_SubtractsPercentagePoints()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Margen pp",
+            SKU = "MPP-02",
+            CostPriceUSD = 1.00m,
+            ProfitMarginRetail = 10m,
+            PriceRetailUSD = 1.10m
+        });
+
+        var result = await service.PreviewBulkPriceUpdateAsync(
+            Request(new[] { created.Id }, Op(BulkPriceField.RetailMargin, BulkPriceMode.DecreasePercent, 5m)));
+
+        var row = RowOf(result, created.Id);
+        var marginChange = ChangeOf(row, BulkPriceField.RetailMargin);
+        Assert.Equal(10m, marginChange.BeforeValue);
+        Assert.Equal(5m, marginChange.AfterValue); // 10 − 5 pp
+
+        var priceChange = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(1.10m, priceChange.BeforeValue);
+        Assert.Equal(1.05m, priceChange.AfterValue); // 1.00 x (1 + 0.05) = 1.05
+    }
+
+    [Fact]
+    public async Task PreviewBulkPriceUpdateAsync_WholesaleMarginSetFixed_KeepsAbsoluteValueSemantics()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Mayor fijo",
+            SKU = "MAYF01",
+            CostPriceUSD = 2.00m,
+            ProfitMarginRetail = 100m,
+            PriceRetailUSD = 4.00m,
+            ProfitMarginWholesale = 80m,
+            PriceWholesaleUSD = 3.60m,
+            HasWholesale = true
+        });
+
+        var result = await service.PreviewBulkPriceUpdateAsync(
+            Request(new[] { created.Id }, Op(BulkPriceField.WholesaleMargin, BulkPriceMode.SetFixed, 40m)));
+
+        var row = RowOf(result, created.Id);
+        var marginChange = ChangeOf(row, BulkPriceField.WholesaleMargin);
+        Assert.Equal(80m, marginChange.BeforeValue);
+        Assert.Equal(40m, marginChange.AfterValue); // Fijar valor = Δ exacto (semántica sin cambios)
+
+        var priceChange = ChangeOf(row, BulkPriceField.WholesalePrice);
+        Assert.Equal(3.60m, priceChange.BeforeValue);
+        Assert.Equal(2.80m, priceChange.AfterValue); // 2.00 x (1 + 0.40) = 2.80
+    }
+
+    public static IEnumerable<object[]> MarginDecreaseFloorClampCases()
+    {
+        // Caso nominal: 30 − 25 = 5 → el piso 20 lo clipea a 20.
+        yield return new object[] { 30m, 25m, 20m, 20m };
+        // Borde documentado: el margen actual (15) YA está bajo el piso (25): la reducción de 5 pp
+        // lo SUBE al piso (25) — el clamp literal max no permite quedar bajo la cota.
+        yield return new object[] { 15m, 5m, 25m, 25m };
+    }
+
+    [Theory]
+    [MemberData(nameof(MarginDecreaseFloorClampCases))]
+    public async Task PreviewBulkPriceUpdateAsync_MarginDecrease_WithFloorEnforced_ClampsToChannelFloor(
+        decimal startMargin,
+        decimal decrease,
+        decimal floorPct,
+        decimal expectedMargin)
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Piso",
+            SKU = "PISO-PP",
+            CostPriceUSD = 1.00m,
+            ProfitMarginRetail = startMargin,
+            PriceRetailUSD = 1.00m * (1m + (startMargin / 100m))
+        });
+
+        var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailMargin, BulkPriceMode.DecreasePercent, decrease));
+        request.EnforceMinimumMarginFloor = true;
+        request.RetailMarginFloorPct = floorPct;
+
+        var result = await service.PreviewBulkPriceUpdateAsync(request);
+
+        var row = RowOf(result, created.Id);
+        Assert.False(row.IsError);
+        var marginChange = ChangeOf(row, BulkPriceField.RetailMargin);
+        Assert.Equal(startMargin, marginChange.BeforeValue);
+        Assert.Equal(expectedMargin, marginChange.AfterValue);
+
+        var priceChange = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(1.00m * (1m + (expectedMargin / 100m)), priceChange.AfterValue);
+    }
+
+    [Fact]
+    public async Task PreviewBulkPriceUpdateAsync_MarginDecrease_WithoutEnforcement_ClampsToZero()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Cero",
+            SKU = "CERO-PP",
+            CostPriceUSD = 2.00m,
+            ProfitMarginRetail = 10m,
+            PriceRetailUSD = 2.20m
+        });
+
+        // Sin enforce (default) el piso no participa: la reducción se clipea a 0, nunca negativa.
+        var result = await service.PreviewBulkPriceUpdateAsync(
+            Request(new[] { created.Id }, Op(BulkPriceField.RetailMargin, BulkPriceMode.DecreasePercent, 30m)));
+
+        var row = RowOf(result, created.Id);
+        Assert.False(row.IsError);
+        var marginChange = ChangeOf(row, BulkPriceField.RetailMargin);
+        Assert.Equal(10m, marginChange.BeforeValue);
+        Assert.Equal(0m, marginChange.AfterValue); // 10 − 30 = −20 → max(−20, 0)
+
+        var priceChange = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(2.20m, priceChange.BeforeValue);
+        Assert.Equal(2.00m, priceChange.AfterValue); // 2.00 x (1 + 0.00) = 2.00
+    }
+
+    [Fact]
+    public async Task PreviewBulkPriceUpdateAsync_MonetaryFields_KeepMultiplicativePercentSemantics()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Monetario",
+            SKU = "MON-01",
+            CostPriceUSD = 2.00m,
+            ProfitMarginRetail = 50m,
+            PriceRetailUSD = 3.00m
+        });
+
+        var result = await service.PreviewBulkPriceUpdateAsync(
+            Request(new[] { created.Id },
+                Op(BulkPriceField.RetailPrice, BulkPriceMode.IncreasePercent, 10m),
+                Op(BulkPriceField.CostPrice, BulkPriceMode.IncreasePercent, 10m)));
+
+        var row = RowOf(result, created.Id);
+        var priceChange = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(3.00m, priceChange.BeforeValue);
+        Assert.Equal(3.30m, priceChange.AfterValue); // 3.00 x 1.10: el precio sigue multiplicativo
+
+        var costChange = ChangeOf(row, BulkPriceField.CostPrice);
+        Assert.Equal(2.00m, costChange.BeforeValue);
+        Assert.Equal(2.20m, costChange.AfterValue); // el costo sigue multiplicativo
+
+        // Sin operación de margen, las filas de margen no viajan como cambio (aislamiento).
+        Assert.DoesNotContain(row.Changes, change =>
+            change.Field is BulkPriceField.RetailMargin or BulkPriceField.WholesaleMargin);
+    }
+
+    [Fact]
+    public async Task PreviewAndApplyBulkPriceUpdateAsync_MarginIncreasePercent_FeedsPriceMathThenChannelRounding()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Cadena",
+            SKU = "CADENA1",
+            CostPriceUSD = 0.75m,
+            ProfitMarginRetail = 20m,
+            PriceRetailUSD = 0.90m
+        });
+
+        // 20 + 10 pp = 30 → matemático 0.75 x 1.30 = 0.975 → techo 0.98 → psicológico 0.99.
+        var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailMargin, BulkPriceMode.IncreasePercent, 10m));
+        request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+
+        var preview = await service.PreviewBulkPriceUpdateAsync(request);
+        var row = RowOf(preview, created.Id);
+        var marginChange = ChangeOf(row, BulkPriceField.RetailMargin);
+        Assert.Equal(20m, marginChange.BeforeValue);
+        Assert.Equal(30m, marginChange.AfterValue);
+
+        var priceChange = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(0.90m, priceChange.BeforeValue);
+        Assert.Equal(0.99m, priceChange.AfterValue);
+        Assert.Equal(0.98m, priceChange.PreRoundingValue);
+        Assert.Equal(0.01m, priceChange.RoundingDelta);
+        Assert.Equal(32.00m, row.EffectiveRetailMarginPct); // (0.99 − 0.75) / 0.75 x 100
+
+        await service.BulkUpdatePricesAsync(request);
+        var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
+        Assert.Equal(30.00m, persisted.ProfitMarginRetail); // el redondeo no pisa el margen objetivo
+        Assert.Equal(0.99m, persisted.PriceRetailUSD);
+        Assert.Equal(99.00m, persisted.PriceBsS); // techo canónico con tasa 100
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // S5: validación del contrato (400) de los campos nuevos.
     // ---------------------------------------------------------------------------------------------
 

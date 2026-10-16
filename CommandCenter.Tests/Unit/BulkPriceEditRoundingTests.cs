@@ -412,4 +412,76 @@ public class BulkPriceEditRoundingTests
         Assert.Equal(20m, applyRequest.RetailMarginFloorPct);
         Assert.True(vm.HasApplied);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Spec V0.15: la columna Antes → Después de márgenes refleja la transición en pp con formato
+    // 2dp (CurrencyDisplay) y las filas de margen declaran la semántica de puntos porcentuales;
+    // las filas monetarias conservan el hint porcentual.
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Preview_MapsMarginChangesWithTwoDecimalsAndSummaryTransition()
+    {
+        var result = new BulkPriceUpdateResultDto
+        {
+            ExchangeRate = 50m,
+            SelectedCount = 1,
+            UpdatedCount = 1,
+            SkippedCount = 0,
+            Rows =
+            {
+                new BulkPricePreviewRowDto
+                {
+                    ProductId = 1,
+                    SKU = "A-1",
+                    Name = "Arroz",
+                    Changes =
+                    {
+                        new BulkPriceFieldChangeDto
+                        {
+                            Field = BulkPriceField.RetailMargin,
+                            BeforeValue = 10m,
+                            AfterValue = 20m
+                        }
+                    }
+                }
+            }
+        };
+        SetupPreview(result);
+
+        var vm = CreateViewModel();
+        var row = vm.Operations.Single(r => r.Field == BulkPriceField.RetailMargin);
+        row.IsEnabled = true;
+        row.SelectedMode = BulkPriceMode.IncreasePercent;
+        row.ValueText = "10";
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        var change = Assert.Single(vm.PreviewRows.Single().Changes);
+        Assert.Equal($"{CurrencyDisplay.Number(10m)}%", change.BeforeText);
+        Assert.Equal($"{CurrencyDisplay.Number(20m)}%", change.AfterText);
+        Assert.Equal($"Margen Detal: {CurrencyDisplay.Number(10m)}% → {CurrencyDisplay.Number(20m)}%", change.Summary);
+    }
+
+    [Fact]
+    public void OperationRows_HintPercentagePointsForMargins_AndPercentageForMonetaryFields()
+    {
+        var vm = CreateViewModel();
+
+        var marginRow = vm.Operations.Single(r => r.Field == BulkPriceField.RetailMargin);
+        marginRow.IsEnabled = true;
+        marginRow.SelectedMode = BulkPriceMode.IncreasePercent;
+        Assert.Equal("Puntos porcentuales sobre el margen actual", marginRow.ValueHint);
+
+        marginRow.SelectedMode = BulkPriceMode.DecreasePercent;
+        Assert.Equal("Puntos porcentuales sobre el margen actual", marginRow.ValueHint);
+
+        marginRow.SelectedMode = BulkPriceMode.SetFixed;
+        Assert.Equal("Valor absoluto (%)", marginRow.ValueHint);
+
+        var priceRow = vm.Operations.Single(r => r.Field == BulkPriceField.RetailPrice);
+        priceRow.IsEnabled = true;
+        priceRow.SelectedMode = BulkPriceMode.IncreasePercent;
+        Assert.Equal("Porcentaje sobre el valor actual", priceRow.ValueHint);
+    }
 }
