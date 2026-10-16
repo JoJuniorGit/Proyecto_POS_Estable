@@ -229,6 +229,11 @@ public partial class InventoryService
                 HasIndependentPricing = p.HasIndependentPricing,
                 ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
+                // 8.185-fix: las reglas de redondeo por articulo viajan en el listado paginado del
+                // catalogo — sin estas dos columnas la grilla WPF las pierde (regla null => Bs.S
+                // canonico en pantalla mientras el POS, que resuelve server-side, muestra el efectivo).
+                RoundingRuleUsd = p.RoundingRuleUsd,
+                RoundingRuleCashBs = p.RoundingRuleCashBs,
                 VariantCount = p.IsGroupHeader ? p.Variants.Count(v => !v.IsDeleted) : 0,
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))

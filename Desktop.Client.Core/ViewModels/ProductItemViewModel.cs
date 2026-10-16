@@ -306,6 +306,10 @@ public partial class ProductItemViewModel : ObservableObject
             _dto.ConsolidatedStock = dto.ConsolidatedStock;
             _dto.ParentProductId = dto.ParentProductId;
             _dto.ReservedQuantity = dto.ReservedQuantity;
+            // 8.185-fix: el refresh in-place (MergeProductsAsync) conservaba la regla vieja — las dos
+            // columnas de redondeo deben viajar tambien para mantener la sincronia catalogo<->venta.
+            _dto.RoundingRuleUsd = dto.RoundingRuleUsd;
+            _dto.RoundingRuleCashBs = dto.RoundingRuleCashBs;
 
             Name = dto.Name;
             SKU = dto.SKU;
