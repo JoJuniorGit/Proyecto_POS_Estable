@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using Core.DTOs;
 using Core.Interfaces;
 
@@ -109,6 +110,46 @@ public static class PricingRoundingPolicy
 
         // La guarda de piso compara margen sobre el precio FINAL: precio y costo viajan en Bs.S.
         return Round(usdAmount * exchangeRate, rule, costUsd * exchangeRate, marginFloorPct, enforceFloor);
+    }
+
+    /// <summary>
+    /// 8.185-T1 (S3): proyección geométrica del Bs.S de efectivo SIN costo ni margen (decisión A).
+    /// Con <paramref name="neverRoundDown"/> (toggle ON) el resultado nunca queda por debajo del
+    /// valor matemático: si el escalón más cercano queda por debajo se usa el inmediato superior
+    /// (coincidencia exacta con un escalón queda; empate del nearest → inferior → sube). OFF =
+    /// más cercano (puede bajar). Los guards de 8.183 se conservan: regla no-cash, USD ≤ 0 o
+    /// tasa ≤ 0 → null.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static RoundingResult? ProjectCashFriendlyBsS(
+        decimal usdAmount,
+        decimal exchangeRate,
+        RoundingRuleType rule,
+        bool neverRoundDown)
+    {
+        EnsureKnownRule(rule);
+
+        // Sin importe/tasa convertibles o con una regla que no es de efectivo no hay proyección.
+        if (!IsCashFriendlyRule(rule) || usdAmount <= 0m || exchangeRate <= 0m)
+        {
+            return null;
+        }
+
+        decimal mathematical = usdAmount * exchangeRate;
+        var nearest = Round(mathematical, rule, cost: 0m, marginFloorPct: null, enforceFloor: false);
+
+        // Decisión A: con el toggle ON el escalón elegido nunca queda por debajo del matemático;
+        // coincidencia exacta (o nearest ya superior) queda tal cual. Sin costo ⇒ sin EffectiveMarginPct.
+        if (neverRoundDown && nearest.RoundedValue < mathematical)
+        {
+            decimal? next = NextStepUp(nearest.RoundedValue, rule);
+            if (next.HasValue)
+            {
+                return new RoundingResult(mathematical, next.Value, next.Value - mathematical, null);
+            }
+        }
+
+        return nearest;
     }
 
     // ---------------------------------------------------------------------------------------------

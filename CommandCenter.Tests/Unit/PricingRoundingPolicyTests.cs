@@ -1,5 +1,6 @@
 using System;
 using Core.DTOs;
+using Core.Helpers;
 using Inventory.Module.Services;
 using Xunit;
 
@@ -251,5 +252,124 @@ public class PricingRoundingPolicyTests
     {
         Assert.Throws<ArgumentOutOfRangeException>(
             () => Policy.FindLowerStep(1.50m, (RoundingRuleType)99));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // 8.185-T1 (S3): decisión A — proyección geométrica SIN costo (toggle ON ⇒ nunca hacia abajo).
+    // Mismos guards que la proyección 8.183: sin regla de efectivo, sin USD positivo o sin tasa → null.
+    // ---------------------------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(RoundingRuleType.ExactMath)]
+    [InlineData(RoundingRuleType.UsdPsychological)]
+    public void ProjectCashFriendlyBsS_NeverRoundDown_WithNonCashRule_ReturnsNull(RoundingRuleType rule)
+    {
+        Assert.Null(PricingRoundingPolicy.ProjectCashFriendlyBsS(1.30m, 842.21m, rule, neverRoundDown: true));
+    }
+
+    [Fact]
+    public void ProjectCashFriendlyBsS_NeverRoundDown_WithoutRateOrConvertibleUsd_ReturnsNull()
+    {
+        Assert.Null(PricingRoundingPolicy.ProjectCashFriendlyBsS(0m, 842.21m, RoundingRuleType.VesCashFriendlyStep5, neverRoundDown: true));
+        Assert.Null(PricingRoundingPolicy.ProjectCashFriendlyBsS(-1m, 842.21m, RoundingRuleType.VesCashFriendlyStep5, neverRoundDown: true));
+        Assert.Null(PricingRoundingPolicy.ProjectCashFriendlyBsS(1.30m, 0m, RoundingRuleType.VesCashFriendlyStep5, neverRoundDown: true));
+        Assert.Null(PricingRoundingPolicy.ProjectCashFriendlyBsS(1.30m, -5m, RoundingRuleType.VesCashFriendlyStep5, neverRoundDown: true));
+    }
+
+    [Theory]
+    // Tasa 1: el importe matemático coincide con el Bs.S indicado (foco en la escalera, no en la conversión).
+    [InlineData(RoundingRuleType.VesCashFriendlyInteger, 682.19, 683)] // nearest 682 queda por debajo ⇒ sube
+    [InlineData(RoundingRuleType.VesCashFriendlyInteger, 682.50, 683)] // empate del nearest (682) ⇒ sube
+    [InlineData(RoundingRuleType.VesCashFriendlyStep5, 682.19, 685)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep5, 682.50, 685)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep10, 682.19, 690)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep10, 682.50, 690)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep5, 2.00, 5)] // sin escalón inferior positivo
+    public void ProjectCashFriendlyBsS_NeverRoundDown_UsesSmallestStepAtOrAboveTheMathValue(RoundingRuleType rule, decimal amountBsS, decimal expected)
+    {
+        var projection = PricingRoundingPolicy.ProjectCashFriendlyBsS(amountBsS, 1m, rule, neverRoundDown: true);
+
+        Assert.NotNull(projection);
+        Assert.Equal(amountBsS, projection!.MathematicalValue);
+        Assert.Equal(expected, projection.RoundedValue);
+        Assert.Equal(expected - amountBsS, projection.RoundingDelta);
+    }
+
+    [Theory]
+    [InlineData(RoundingRuleType.VesCashFriendlyInteger, 682, 682)] // coincidencia exacta con el escalón: no sube
+    [InlineData(RoundingRuleType.VesCashFriendlyStep5, 685, 685)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep10, 680, 680)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep5, 682.60, 685)] // el nearest ya es superior: queda
+    public void ProjectCashFriendlyBsS_NeverRoundDown_OnExactOrUpperStep_KeepsTheStep(RoundingRuleType rule, decimal amountBsS, decimal expected)
+    {
+        var projection = PricingRoundingPolicy.ProjectCashFriendlyBsS(amountBsS, 1m, rule, neverRoundDown: true);
+
+        Assert.NotNull(projection);
+        Assert.Equal(expected, projection!.RoundedValue);
+    }
+
+    [Theory]
+    [InlineData(RoundingRuleType.VesCashFriendlyInteger, 682.19, 682)]
+    [InlineData(RoundingRuleType.VesCashFriendlyInteger, 682.50, 682)] // empate ⇒ inferior
+    [InlineData(RoundingRuleType.VesCashFriendlyStep5, 682.19, 680)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep5, 682.50, 680)]
+    [InlineData(RoundingRuleType.VesCashFriendlyStep10, 682.19, 680)]
+    public void ProjectCashFriendlyBsS_WithoutNeverRoundDown_KeepsTheNearestStep(RoundingRuleType rule, decimal amountBsS, decimal expected)
+    {
+        var projection = PricingRoundingPolicy.ProjectCashFriendlyBsS(amountBsS, 1m, rule, neverRoundDown: false);
+
+        Assert.NotNull(projection);
+        Assert.Equal(expected, projection!.RoundedValue);
+        Assert.Equal(expected - amountBsS, projection.RoundingDelta);
+    }
+
+    [Fact]
+    public void ProjectCashFriendlyBsS_NeverRoundDown_UnknownRule_ThrowsArgumentOutOfRangeException()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => PricingRoundingPolicy.ProjectCashFriendlyBsS(1.30m, 842.21m, (RoundingRuleType)99, neverRoundDown: true));
+    }
+
+    [Fact]
+    public void ProjectCashFriendlyBsS_NeverRoundDown_MatchesTheMarginFloorEngineForAmountsAboveCost()
+    {
+        // S3: para amount > cost > 0 el piso geométrico equivale a enforzar como piso el margen
+        // vigente del valor matemático con el motor costo-aware. Divergencia deliberada única:
+        // productos bajo costo (margen ≤ 0), donde el motor actual no enforza y 8.185 sí sube.
+        var rules = new[]
+        {
+            RoundingRuleType.VesCashFriendlyInteger,
+            RoundingRuleType.VesCashFriendlyStep5,
+            RoundingRuleType.VesCashFriendlyStep10
+        };
+        var rates = new[] { 36.50m, 60.75m, 842.21m };
+        var prices = new[] { 0.75m, 1.30m, 2.99m, 8.55m };
+        var costFactors = new[] { 0.5m, 0.6m };
+
+        foreach (var rule in rules)
+        {
+            foreach (var rate in rates)
+            {
+                foreach (var price in prices)
+                {
+                    foreach (var factor in costFactors)
+                    {
+                        decimal amount = price * rate;
+                        decimal costBsS = price * factor * rate;
+                        decimal floorPct = PricingCalculator.RoundToDigital((amount - costBsS) / costBsS * 100m);
+
+                        var expected = PricingRoundingPolicy.Round(amount, rule, costBsS, floorPct, enforceFloor: true);
+                        var actual = PricingRoundingPolicy.ProjectCashFriendlyBsS(price, rate, rule, neverRoundDown: true);
+
+                        Assert.NotNull(actual);
+                        Assert.Equal(expected.MathematicalValue, actual!.MathematicalValue);
+                        Assert.Equal(expected.RoundedValue, actual.RoundedValue);
+                        Assert.True(
+                            actual.RoundedValue >= amount,
+                            $"{rule} {price}×{rate}: el efectivo nunca queda por debajo del matemático.");
+                    }
+                }
+            }
+        }
     }
 }
