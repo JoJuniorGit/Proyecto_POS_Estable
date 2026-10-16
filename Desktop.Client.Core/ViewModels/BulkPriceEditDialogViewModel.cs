@@ -32,7 +32,7 @@ public sealed record BulkPriceSelection(
 public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposable
 {
     public const int MaxSelectionSize = 1000;
-    public const string NoOperationsMessage = "Seleccione al menos una operación para editar.";
+    public const string NoOperationsMessage = "Configure al menos una operación o una modificación en Redondeo y protección de margen.";
     public const string InvalidValueMessage = "Ingrese un valor numérico válido mayor o igual a cero.";
     public const string InvalidMarginFloorMessage = "Ingrese un piso de margen numérico válido mayor o igual a cero.";
     public const string PreviewRequiredMessage = "Genere la vista previa antes de aplicar los cambios.";
@@ -94,6 +94,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     private bool _hasPreview;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanPreview))]
     [NotifyPropertyChangedFor(nameof(CanApply))]
     [NotifyPropertyChangedFor(nameof(CanClose))]
     private bool _isBusy;
@@ -161,11 +162,22 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     /// <summary>true cuando la vista previa tiene filas bloqueantes (400: negativos, topes, mayor&gt;detal).</summary>
     public bool HasPreviewErrors => PreviewRows.Any(row => row.IsError);
 
+    /// <summary>Spec V0.15: el overlay de estado vacío de la grilla solo desaparece con filas reales.</summary>
+    public bool HasPreviewItems => PreviewRows.Count > 0;
+
     public bool HasApplied { get; private set; }
 
     public int AppliedCount { get; private set; }
 
-    public bool CanApply => HasPreview && !HasPreviewErrors && PreviewUpdatedCount > 0 && !IsBusy;
+    /// <summary>
+    /// Spec V0.15: habilitación OR de la Vista previa — al menos una operación marcada con valor
+    /// válido O una modificación activa en "Redondeo y protección de margen" (regla USD/cash no
+    /// exacta, o protección de piso con piso numérico definido en algún canal).
+    /// </summary>
+    public bool CanPreview => !IsBusy && (HasValidOperationConfiguration || HasRoundingConfiguration);
+
+    /// <summary>Spec V0.15: Aplicar hereda la guarda OR y exige una vista previa vigente con cambios.</summary>
+    public bool CanApply => CanPreview && HasPreview && !HasPreviewErrors && PreviewUpdatedCount > 0;
 
     /// <summary>8.181-T2 (fix verificación): el cierre (botón/X/Esc) se bloquea con una operación en vuelo.</summary>
     public bool CanClose => !IsBusy;
@@ -226,6 +238,13 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
 
         if (!TryBuildOperations(out var operations))
         {
+            return;
+        }
+
+        if (operations.Count == 0 && !HasRoundingConfiguration)
+        {
+            // Guarda OR (Spec V0.15): sin operaciones marcadas, la tarjeta 2 debe aportar la modificación.
+            ErrorMessage = NoOperationsMessage;
             return;
         }
 
@@ -345,21 +364,41 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     }
 
     private void OnOperationRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
-        => InvalidatePreviewOnConfigurationChange();
+        => OnConfigurationChanged();
 
-    // 8.182-T2 (S6): hooks generados por [ObservableProperty]; la vista previa solo representa la
-    // configuración con la que se generó, así que cualquier ajuste de reglas/pisos la descarta.
-    partial void OnRetailRoundingRuleChanged(RoundingRuleType value) => InvalidatePreviewOnConfigurationChange();
+    // 8.182-T2 (S6) + Spec V0.15: hooks generados por [ObservableProperty]; la vista previa solo
+    // representa la configuración con la que se generó y la guarda OR (CanPreview) depende de estos
+    // ajustes, así que cualquier cambio notifica la guarda y descarta una vista previa vigente.
+    partial void OnRetailRoundingRuleChanged(RoundingRuleType value) => OnConfigurationChanged();
 
-    partial void OnWholesaleRoundingRuleChanged(RoundingRuleType value) => InvalidatePreviewOnConfigurationChange();
+    partial void OnWholesaleRoundingRuleChanged(RoundingRuleType value) => OnConfigurationChanged();
 
-    partial void OnCashBsRoundingRuleChanged(RoundingRuleType value) => InvalidatePreviewOnConfigurationChange();
+    partial void OnCashBsRoundingRuleChanged(RoundingRuleType value) => OnConfigurationChanged();
 
-    partial void OnEnforceMinimumMarginFloorChanged(bool value) => InvalidatePreviewOnConfigurationChange();
+    partial void OnEnforceMinimumMarginFloorChanged(bool value) => OnConfigurationChanged();
 
-    partial void OnRetailMarginFloorTextChanged(string value) => InvalidatePreviewOnConfigurationChange();
+    partial void OnRetailMarginFloorTextChanged(string value) => OnConfigurationChanged();
 
-    partial void OnWholesaleMarginFloorTextChanged(string value) => InvalidatePreviewOnConfigurationChange();
+    partial void OnWholesaleMarginFloorTextChanged(string value) => OnConfigurationChanged();
+
+    // Spec V0.15: guarda OR — operación marcada con valor válido o modificación de redondeo/protección.
+    private bool HasValidOperationConfiguration =>
+        Operations.Any(row => row.IsEnabled && TryParseValue(row.ValueText, out var value) && value >= 0m);
+
+    private bool HasRoundingConfiguration =>
+        RetailRoundingRule != RoundingRuleType.ExactMath
+        || WholesaleRoundingRule != RoundingRuleType.ExactMath
+        || CashBsRoundingRule != RoundingRuleType.ExactMath
+        || (EnforceMinimumMarginFloor && (HasDefinedFloor(RetailMarginFloorText) || HasDefinedFloor(WholesaleMarginFloorText)));
+
+    private static bool HasDefinedFloor(string? text) =>
+        TryParseValue(text, out var value) && value > 0m;
+
+    private void OnConfigurationChanged()
+    {
+        OnPropertyChanged(nameof(CanPreview));
+        InvalidatePreviewOnConfigurationChange();
+    }
 
     private void InvalidatePreviewOnConfigurationChange()
     {
@@ -376,14 +415,9 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     private bool TryBuildOperations(out List<BulkPriceOperationDto> operations)
     {
         operations = new List<BulkPriceOperationDto>();
-        var enabledRows = Operations.Where(row => row.IsEnabled).ToList();
-        if (enabledRows.Count == 0)
-        {
-            ErrorMessage = NoOperationsMessage;
-            return false;
-        }
-
-        foreach (var row in enabledRows)
+        // Spec V0.15: sin filas marcadas la lista viaja vacía — el modo "Solo Redondeo" es válido si
+        // la tarjeta 2 aporta una modificación (validación OR en Preview y en CanPreview).
+        foreach (var row in Operations.Where(row => row.IsEnabled))
         {
             if (!TryParseValue(row.ValueText, out var value) || value < 0m)
             {
@@ -479,6 +513,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         PreviewSkippedCount = result.SkippedCount;
         ExchangeRate = result.ExchangeRate;
         HasPreview = true;
+        OnPropertyChanged(nameof(HasPreviewItems));
         OnPropertyChanged(nameof(HasPreviewErrors));
         OnPropertyChanged(nameof(CanApply));
     }
@@ -491,6 +526,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         PreviewSkippedCount = 0;
         ExchangeRate = 0m;
         HasPreview = false;
+        OnPropertyChanged(nameof(HasPreviewItems));
         OnPropertyChanged(nameof(HasPreviewErrors));
         OnPropertyChanged(nameof(CanApply));
     }
@@ -729,15 +765,86 @@ public sealed class BulkPricePreviewRowViewModel
     public string RoundingDeltaText => BuildRoundingTrace(change => change.RoundingDeltaText);
 
     /// <summary>
-    /// 8.183-T2 (R4): columna "Bs.S efectivo (proy.)" — proyección en caliente por canal con la tasa
-    /// del día (una línea por canal; "—" si ningún canal tiene proyección). Es informativa: nunca
-    /// representa un valor persistido (el Bs.S guardado sigue siendo el canónico 8.104).
+    /// Spec V0.15 (tabla consolidada): columna "PRECIO USD (ANTES → DESPUÉS)" — una línea por canal
+    /// en USD ("Detal: $1,20 → $1,50"), sin Bs.S. "—" si ningún canal viaja con cambio de precio.
     /// </summary>
-    public string CashFriendlyText => BuildRoundingTrace(change => change.CashFriendlyText);
+    public string UsdTransitionText
+    {
+        get
+        {
+            var lines = Changes
+                .Where(change => change.Field is BulkPriceField.RetailPrice or BulkPriceField.WholesalePrice)
+                .Select(change => $"{change.FieldLabel}: {change.BeforeText} → {change.AfterText}")
+                .ToList();
+
+            return lines.Count == 0 ? "—" : string.Join(Environment.NewLine, lines);
+        }
+    }
+
+    /// <summary>
+    /// 8.183-T2 (R4) + Spec V0.15: columna "BS.S EFECTIVO (PROY.)" — una línea por canal con la
+    /// proyección redondeada y su delta de redondeo entre paréntesis cuando es distinto de cero
+    /// ("Detal: Bs.S 875,00 (+Bs.S 3,68)"); "—" sin proyección. El matemático exacto viaja en
+    /// <see cref="CashFriendlyToolTip"/>. NUNCA representa un valor persistido (canónico 8.104).
+    /// </summary>
+    public string CashFriendlyText
+    {
+        get
+        {
+            var lines = Changes
+                .Where(change => change.CashFriendlyAfterBsS.HasValue)
+                .Select(change => change.RoundingDelta is { } delta && delta != 0m && change.RoundingDeltaText is { } deltaText
+                    ? $"{change.FieldLabel}: {change.CashFriendlyText} ({deltaText})"
+                    : $"{change.FieldLabel}: {change.CashFriendlyText}")
+                .ToList();
+
+            return lines.Count == 0 ? "—" : string.Join(Environment.NewLine, lines);
+        }
+    }
+
+    /// <summary>
+    /// Spec V0.15: ToolTip de la columna PROY. con el Bs.S matemático exacto por canal (la entrada
+    /// de <c>PreRoundingValue</c> de la traza cash); null si ningún canal tiene traza.
+    /// </summary>
+    public string? CashFriendlyToolTip
+    {
+        get
+        {
+            var lines = Changes
+                .Where(change => change.CashFriendlyAfterBsS.HasValue && change.PreRoundingValue.HasValue)
+                .Select(change => $"{change.FieldLabel}: Bs.S {CurrencyDisplay.Number(change.PreRoundingValue!.Value)}")
+                .ToList();
+
+            return lines.Count == 0 ? null : string.Join(Environment.NewLine, lines);
+        }
+    }
 
     public string EffectiveRetailMarginText => FormatMarginPercent(EffectiveRetailMarginPct);
 
     public string EffectiveWholesaleMarginText => FormatMarginPercent(EffectiveWholesaleMarginPct);
+
+    /// <summary>
+    /// Spec V0.15: columna "MARGEN EFECTIVO %" — "Detal: 62,3%" arriba / "Mayor: 22,95%" abajo en la
+    /// misma celda; "—" si el backend no informó ningún margen efectivo.
+    /// </summary>
+    public string EffectiveMarginsText
+    {
+        get
+        {
+            var lines = new List<string>();
+            if (EffectiveRetailMarginPct.HasValue)
+            {
+                lines.Add($"Detal: {FormatMarginPercent(EffectiveRetailMarginPct)}");
+            }
+
+            if (EffectiveWholesaleMarginPct.HasValue)
+            {
+                lines.Add($"Mayor: {FormatMarginPercent(EffectiveWholesaleMarginPct)}");
+            }
+
+            return lines.Count == 0 ? "—" : string.Join(Environment.NewLine, lines);
+        }
+    }
 
     public string StatusText => IsError
         ? $"Error: {SkipReason}"

@@ -130,7 +130,8 @@ public class BulkPriceEditRoundingTests
                         BeforeBsS = 73.50m,
                         AfterBsS = 75m,
                         PreRoundingValue = 73.00m,
-                        RoundingDelta = 2.00m
+                        RoundingDelta = 2.00m,
+                        CashFriendlyAfterBsS = 75m
                     },
                     // Mayor con la capa cash paso 5: Bs.S matemático 61 → escalón 60 hacia abajo (−1).
                     new BulkPriceFieldChangeDto
@@ -141,7 +142,8 @@ public class BulkPriceEditRoundingTests
                         BeforeBsS = 60m,
                         AfterBsS = 60m,
                         PreRoundingValue = 61m,
-                        RoundingDelta = -1m
+                        RoundingDelta = -1m,
+                        CashFriendlyAfterBsS = 60m
                     }
                 }
             },
@@ -635,5 +637,199 @@ public class BulkPriceEditRoundingTests
         vm.EnforceMinimumMarginFloor = true;
         Assert.Contains(nameof(BulkPriceEditDialogViewModel.ShowRetailFloorInput), changed);
         Assert.Contains(nameof(BulkPriceEditDialogViewModel.ShowWholesaleFloorInput), changed);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Spec V0.15: habilitación OR (operaciones válidas O modificación de redondeo/protección),
+    // columnas consolidadas de la tabla (5 columnas) y estado vacío por filas reales.
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public void CanPreview_Disabled_WithoutOperationsOrRoundingConfiguration()
+    {
+        var vm = CreateViewModel();
+
+        Assert.False(vm.CanPreview);
+        Assert.False(vm.CanApply);
+
+        // Toggle activo sin piso numérico definido tampoco habilita.
+        vm.EnforceMinimumMarginFloor = true;
+        Assert.False(vm.CanPreview);
+
+        // Un piso "0" no cuenta como definido.
+        vm.RetailMarginFloorText = "0";
+        Assert.False(vm.CanPreview);
+    }
+
+    [Fact]
+    public void CanPreview_EnabledWithValidOperation_AndDisabledWhileValueIsInvalid()
+    {
+        var vm = CreateViewModel();
+        var row = vm.Operations.Single(r => r.Field == BulkPriceField.RetailPrice);
+
+        row.IsEnabled = true;
+        Assert.False(vm.CanPreview); // marcada sin valor válido
+
+        row.ValueText = "abc";
+        Assert.False(vm.CanPreview);
+
+        row.ValueText = "10";
+        Assert.True(vm.CanPreview);
+    }
+
+    [Fact]
+    public void CanPreview_EnabledWithRoundingRuleOrDefinedFloor_WithoutOperations()
+    {
+        var retailRule = CreateViewModel();
+        retailRule.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        Assert.True(retailRule.CanPreview);
+
+        var wholesaleRule = CreateViewModel();
+        wholesaleRule.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        Assert.True(wholesaleRule.CanPreview);
+
+        var cashRule = CreateViewModel();
+        cashRule.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyInteger;
+        Assert.True(cashRule.CanPreview);
+
+        var retailFloor = CreateViewModel();
+        retailFloor.EnforceMinimumMarginFloor = true;
+        retailFloor.RetailMarginFloorText = "25";
+        Assert.True(retailFloor.CanPreview);
+
+        var wholesaleFloor = CreateViewModel();
+        wholesaleFloor.EnforceMinimumMarginFloor = true;
+        wholesaleFloor.WholesaleMarginFloorText = "12,5";
+        Assert.True(wholesaleFloor.CanPreview);
+    }
+
+    [Fact]
+    public async Task Preview_WithZeroOperationsAndRoundingRule_SendsEmptyOperationsAndRule()
+    {
+        BulkPriceUpdateRequestDto? captured = null;
+        SetupPreview(capture: request => captured = request);
+
+        var vm = CreateViewModel();
+        vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        Assert.NotNull(captured);
+        Assert.Empty(captured!.Operations);
+        Assert.Equal(RoundingRuleType.UsdPsychological, captured.RetailRoundingRule);
+        Assert.True(vm.HasPreview);
+        Assert.True(vm.CanApply); // PreviewResult() trae UpdatedCount 1
+        Assert.Empty(vm.ErrorMessage);
+    }
+
+    [Fact]
+    public void CanPreview_RaisesPropertyChanged_OnOperationsRulesToggleAndFloors()
+    {
+        var vm = CreateViewModel();
+        var changed = new List<string>();
+        vm.PropertyChanged += (_, args) => changed.Add(args.PropertyName ?? string.Empty);
+
+        vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.CanPreview), changed);
+        changed.Clear();
+
+        vm.EnforceMinimumMarginFloor = true;
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.CanPreview), changed);
+        changed.Clear();
+
+        vm.RetailMarginFloorText = "25";
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.CanPreview), changed);
+        changed.Clear();
+
+        var row = vm.Operations.Single(r => r.Field == BulkPriceField.RetailPrice);
+        row.IsEnabled = true;
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.CanPreview), changed);
+        changed.Clear();
+
+        row.ValueText = "10";
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.CanPreview), changed);
+    }
+
+    [Fact]
+    public async Task Preview_ConsolidatedColumns_BuildUsdCashAndMarginLines()
+    {
+        SetupPreview(RoundingPreviewResult());
+
+        var vm = CreateViewModel();
+        EnableRetailPriceOperation(vm);
+        vm.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        var row = vm.PreviewRows.Single(r => r.ProductId == 1);
+
+        // PRECIO USD: transición por canal en USD, sin bolívares.
+        Assert.Equal(
+            $"Detal: ${CurrencyDisplay.Number(1.47m)} → ${CurrencyDisplay.Number(1.50m)}{Environment.NewLine}" +
+            $"Mayor: ${CurrencyDisplay.Number(1.20m)} → ${CurrencyDisplay.Number(1.22m)}",
+            row.UsdTransitionText);
+
+        // BS.S EFECTIVO (PROY.): redondeado + delta de redondeo entre paréntesis cuando existe.
+        Assert.Equal(
+            $"Detal: Bs.S {CurrencyDisplay.Number(75m)} (+Bs.S {CurrencyDisplay.Number(2m)}){Environment.NewLine}" +
+            $"Mayor: Bs.S {CurrencyDisplay.Number(60m)} (-Bs.S {CurrencyDisplay.Number(1m)})",
+            row.CashFriendlyText);
+
+        // El Bs.S matemático exacto viaja en el ToolTip.
+        Assert.Equal(
+            $"Detal: Bs.S {CurrencyDisplay.Number(73m)}{Environment.NewLine}Mayor: Bs.S {CurrencyDisplay.Number(61m)}",
+            row.CashFriendlyToolTip);
+
+        // MARGEN EFECTIVO %: ambos canales en la misma celda.
+        Assert.Equal($"Detal: 25.5%{Environment.NewLine}Mayor: 12.25%", row.EffectiveMarginsText);
+    }
+
+    [Fact]
+    public void CashProjectionColumn_OmitsParenthesisWhenRoundingDeltaIsZero()
+    {
+        var row = BulkPricePreviewRowViewModel.FromDto(
+            new BulkPricePreviewRowDto
+            {
+                ProductId = 1,
+                SKU = "A-1",
+                Name = "Arroz",
+                Changes =
+                {
+                    new BulkPriceFieldChangeDto
+                    {
+                        Field = BulkPriceField.RetailPrice,
+                        BeforeValue = 1.20m,
+                        AfterValue = 1.20m,
+                        BeforeBsS = 120m,
+                        AfterBsS = 120m,
+                        PreRoundingValue = 120m,
+                        RoundingDelta = 0m,
+                        CashFriendlyAfterBsS = 120m
+                    }
+                }
+            },
+            RoundingRuleType.VesCashFriendlyInteger);
+
+        Assert.Equal($"Detal: Bs.S {CurrencyDisplay.Number(120m)}", row.CashFriendlyText);
+        Assert.Equal($"Detal: Bs.S {CurrencyDisplay.Number(120m)}", row.CashFriendlyToolTip);
+    }
+
+    [Fact]
+    public async Task HasPreviewItems_TracksRowsPresence_ForEmptyStateOverlay()
+    {
+        SetupPreview();
+
+        var vm = CreateViewModel();
+        Assert.False(vm.HasPreviewItems);
+
+        EnableRetailPriceOperation(vm);
+        await vm.PreviewCommand.ExecuteAsync(null);
+        Assert.True(vm.HasPreviewItems);
+
+        var row = vm.Operations.Single(r => r.Field == BulkPriceField.RetailPrice);
+        row.SelectedMode = BulkPriceMode.IncreasePercent; // invalida la vista previa y vacía las filas
+
+        Assert.False(vm.HasPreviewItems);
+        Assert.Empty(vm.PreviewRows);
     }
 }

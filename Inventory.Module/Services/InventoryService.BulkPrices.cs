@@ -137,17 +137,21 @@ public partial class InventoryService
             throw new ArgumentException($"La selección excede el máximo permitido ({MaxBulkPriceSelectionSize} productos).");
         }
 
-        if (request.Operations == null || request.Operations.Count == 0)
+        bool hasOperations = request.Operations is { Count: > 0 };
+
+        // Spec V0.15: modo "Solo Redondeo" — sin operaciones por campo la solicitud es válida si la
+        // tarjeta de redondeo/protección aporta una modificación activa (misma guarda OR de la VM).
+        if (!hasOperations && !HasRoundingConfiguration(request))
         {
-            throw new ArgumentException("La solicitud no contiene operaciones de precio.");
+            throw new ArgumentException("La solicitud no contiene operaciones de precio ni una configuración de redondeo/protección activa: nada que aplicar.");
         }
 
-        if (request.Operations.Count > 5 || request.Operations.Select(op => op.Field).Distinct().Count() != request.Operations.Count)
+        if (hasOperations && (request.Operations!.Count > 5 || request.Operations.Select(op => op.Field).Distinct().Count() != request.Operations.Count))
         {
             throw new ArgumentException("Solo se permite una operación por campo en la edición masiva de precios.");
         }
 
-        foreach (var operation in request.Operations)
+        foreach (var operation in request.Operations ?? new List<BulkPriceOperationDto>())
         {
             if (!Enum.IsDefined(operation.Field) || !Enum.IsDefined(operation.Mode))
             {
@@ -161,7 +165,7 @@ public partial class InventoryService
         }
 
         // 8.182-T1 (S5): contrato de la política de redondeo y de los pisos de margen por lote.
-        if (!Enum.IsDefined(request.RetailRoundingRule) || !Enum.IsDefined(request.WholesaleRoundingRule))
+        if (!Enum.IsDefined(request.RetailRoundingRule) || !Enum.IsDefined(request.WholesaleRoundingRule) || !Enum.IsDefined(request.CashBsRoundingRule))
         {
             throw new ArgumentException("La política de redondeo contiene una regla no reconocida.");
         }
@@ -171,6 +175,15 @@ public partial class InventoryService
             throw new ArgumentException("El piso de margen no puede ser negativo.");
         }
     }
+
+    // Spec V0.15: una solicitud aporta configuración activa cuando alguna capa de la tarjeta de
+    // redondeo/protección no está en su valor neutro (regla USD/cash distinta de ExactMath, o piso
+    // numérico definido con la protección encendida).
+    private static bool HasRoundingConfiguration(BulkPriceUpdateRequestDto request) =>
+        request.RetailRoundingRule != RoundingRuleType.ExactMath
+        || request.WholesaleRoundingRule != RoundingRuleType.ExactMath
+        || request.CashBsRoundingRule != RoundingRuleType.ExactMath
+        || (request.EnforceMinimumMarginFloor && ((request.RetailMarginFloorPct ?? 0m) > 0m || (request.WholesaleMarginFloorPct ?? 0m) > 0m));
 
     private async Task<List<int>> ResolveBulkPriceSelectionIdsAsync(BulkPriceUpdateRequestDto request, CancellationToken cancellationToken)
     {
@@ -270,6 +283,27 @@ public partial class InventoryService
         {
             var raw = ComputeBulkPriceOperationValue(scratch, request, operation);
             WriteBulkPriceField(scratch, operation.Field, RoundBulkPriceField(operation.Field, raw));
+        }
+
+        // Spec V0.15 "Solo Redondeo": si el canal no tiene operaciones de su familia (precio/margen)
+        // pero su regla USD está activa, la base se re-ancla al objetivo para que el interceptor
+        // existente la redondee (sin duplicar redondeo): costo × (1 + margen objetivo) con techo
+        // (ancla anti-trinquete, idempotente). Sin costo o margen objetivo definido se usa el precio
+        // ACTUAL del canal (guard: nunca inventar un ancla sin objetivo definido).
+        bool retailFamilyOperated = operations.Any(op => op.Field is BulkPriceField.RetailPrice or BulkPriceField.RetailMargin);
+        bool wholesaleFamilyOperated = operations.Any(op => op.Field is BulkPriceField.WholesalePrice or BulkPriceField.WholesaleMargin);
+        if (!retailFamilyOperated && request.RetailRoundingRule != RoundingRuleType.ExactMath)
+        {
+            scratch.PriceRetailUSD = scratch.CostPriceUSD > 0m && scratch.ProfitMarginRetail > 0m
+                ? PricingCalculator.RoundPriceUp(scratch.CostPriceUSD * (1m + scratch.ProfitMarginRetail / 100m))
+                : EffectiveBulkRetailUsd(scratch);
+        }
+
+        if (!wholesaleFamilyOperated && request.WholesaleRoundingRule != RoundingRuleType.ExactMath && scratch.HasWholesale)
+        {
+            scratch.PriceWholesaleUSD = scratch.CostPriceUSD > 0m && scratch.ProfitMarginWholesale > 0m
+                ? PricingCalculator.RoundPriceUp(scratch.CostPriceUSD * (1m + scratch.ProfitMarginWholesale / 100m))
+                : scratch.PriceWholesaleUSD;
         }
 
         // Los negativos se detectan ANTES de las rutinas vigentes: su derivación

@@ -108,9 +108,10 @@ public class BulkPriceEditCashFriendlyTests
         Assert.Equal($"Bs.S {CurrencyDisplay.Number(680m)}", retailChange.CashFriendlyText);
         Assert.Equal($"Bs.S {CurrencyDisplay.Number(825m)}", wholesaleChange.CashFriendlyText);
 
-        // Columna del preview: una línea por canal con proyección.
+        // Columna del preview: una línea por canal con la proyección y su delta de redondeo.
         Assert.Equal(
-            $"Detal: Bs.S {CurrencyDisplay.Number(680m)}{Environment.NewLine}Mayor: Bs.S {CurrencyDisplay.Number(825m)}",
+            $"Detal: Bs.S {CurrencyDisplay.Number(680m)} (-Bs.S {CurrencyDisplay.Number(2.20m)}){Environment.NewLine}" +
+            $"Mayor: Bs.S {CurrencyDisplay.Number(825m)} (-Bs.S {CurrencyDisplay.Number(0.37m)})",
             row.CashFriendlyText);
     }
 
