@@ -15177,3 +15177,41 @@ F. COMMITS
 F1. 8.185 en V0.15: 9d78e8d (T1) + 7c7a2e9 (T2) + 1a2aa41 (T3) + 7dbfc36 (T4) + fcc85fa (T5) +
     commits de tracker/ANEXO (docs(8.185); git log).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 - OPTIMIZACION DE RENDIMIENTO DEL MOTOR DE REDONDEO + FIX DE SINCRONIZACION DEL CATALOGO - 2026-10-16
+================================================================================
+Pedido del mantenedor (rol Principal .NET Performance Engineer) tras el informe del benchmark:
+eliminar las allocations y la latencia de la ruta caliente del precio efectivo Bs.S, unificar
+matematicamente las rutas de edicion (6-args) y venta (4-args), y autorizar el fix de la causa raiz
+del desfase catalogo<->POS diagnosticada en el caso "7Up 1,5L".
+
+A. OPTIMIZACION DEL MOTOR (commit 1c4cf4f)
+
+A1. Zero-allocation: RoundingResult pasa de sealed record a readonly record struct
+    (Core/Interfaces/IPricingRoundingPolicyService.cs) - la ruta caliente (Catalogo, Modal, POS,
+    Carrito, venta y bulk) ya no asigna en el heap.
+A2. Kernel unico del efectivo Bs.S (Core/Helpers/PricingRoundingPolicy.cs): RoundCashStep/CashStepOf
+    con AggressiveInlining. Con piso/toggle activo => TECHO DIRECTO ceil(amount/step)*step (sin
+    margen intermedio a 2dp ni cadena NextStepUp); OFF => mas cercano. 6-args === 4-args por
+    construccion. UsdPsychological conserva su piso reactivo intacto. Consumidores ajustados al
+    nullable struct (BulkPrices, SalesService.Pricing, tests).
+A3. Benchmark de caracterizacion conservado en la suite (RoundingStrategyBenchmarkTests): asserts de
+    paridad exacta + zero-alloc; metodologia best-of-3 tras 3 warmups.
+A4. Evidencia: allocations 40 B/10k en los 4 caminos (antes 880.040 B 6-args / 1.350.864 B 4-args);
+    latencia por 10k: Surgical 3,48 ms | display 4-args 5,09 ms (antes 28,1) | 6-ON 8,69 | 6-OFF
+    9,41; equivalencia 6-args 1000/1000 (antes 834) y margen >= objetivo 1000/1000 con deficit
+    0,0000 pp (antes 842/1000 y 0,005 pp en el 16,6% por borde 2dp). Suite 2957/2957 + E2E 50/50;
+    CI run 38942972504 verde.
+
+B. FIX DE SINCRONIZACION DEL CATALOGO (commit 2ad4841)
+
+B1. Causa raiz del caso "7Up 1,5L" (la grilla mostraba el Bs.S canonico mientras el POS mostraba el
+    efectivo): GetProductsPagedAsync (Inventory.Module/Services/InventoryService.CatalogQueries.cs)
+    no proyectaba RoundingRuleUsd/RoundingRuleCashBs hacia el listado paginado => la regla llegaba
+    null a la grilla y el catalogo caia al techo canonico 8.104.
+B2. Correccion: ambas columnas viajan en la proyeccion paginada; ProductItemViewModel.UpdateFromDto
+    tambien las adopta (el refresh in-place por CatalogUpdatedMessage conservaba la regla vieja).
+B3. Test de regresion: RoundingCatalogSyncRegressionTests (proyeccion paginada con override vs
+    herencia + refresh in-place con caso dorado 438 -> 440). Suite completa 2959/2959.
+================================================================================
