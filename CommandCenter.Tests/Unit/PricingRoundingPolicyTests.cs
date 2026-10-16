@@ -165,8 +165,8 @@ public class PricingRoundingPolicyTests
         var projection = Policy.ProjectCashFriendlyBsS(1.30m, 842.21m, rule, 1.00m, null, false);
 
         Assert.NotNull(projection);
-        Assert.Equal(1094.873m, projection!.MathematicalValue);
-        Assert.Equal(expected, projection.RoundedValue);
+        Assert.Equal(1094.873m, projection!.Value.MathematicalValue);
+        Assert.Equal(expected, projection.Value.RoundedValue);
     }
 
     [Theory]
@@ -192,8 +192,8 @@ public class PricingRoundingPolicyTests
         var projection = Policy.ProjectCashFriendlyBsS(1.30m, 842.21m, RoundingRuleType.VesCashFriendlyStep10, 1.00m, 30m, true);
 
         Assert.NotNull(projection);
-        Assert.Equal(1100m, projection!.RoundedValue);
-        Assert.Equal(30.61m, projection.EffectiveMarginPct);
+        Assert.Equal(1100m, projection!.Value.RoundedValue);
+        Assert.Equal(30.61m, projection.Value.EffectiveMarginPct);
     }
 
     [Fact]
@@ -290,9 +290,9 @@ public class PricingRoundingPolicyTests
         var projection = PricingRoundingPolicy.ProjectCashFriendlyBsS(amountBsS, 1m, rule, neverRoundDown: true);
 
         Assert.NotNull(projection);
-        Assert.Equal(amountBsS, projection!.MathematicalValue);
-        Assert.Equal(expected, projection.RoundedValue);
-        Assert.Equal(expected - amountBsS, projection.RoundingDelta);
+        Assert.Equal(amountBsS, projection!.Value.MathematicalValue);
+        Assert.Equal(expected, projection.Value.RoundedValue);
+        Assert.Equal(expected - amountBsS, projection.Value.RoundingDelta);
     }
 
     [Theory]
@@ -305,7 +305,7 @@ public class PricingRoundingPolicyTests
         var projection = PricingRoundingPolicy.ProjectCashFriendlyBsS(amountBsS, 1m, rule, neverRoundDown: true);
 
         Assert.NotNull(projection);
-        Assert.Equal(expected, projection!.RoundedValue);
+        Assert.Equal(expected, projection!.Value.RoundedValue);
     }
 
     [Theory]
@@ -319,8 +319,8 @@ public class PricingRoundingPolicyTests
         var projection = PricingRoundingPolicy.ProjectCashFriendlyBsS(amountBsS, 1m, rule, neverRoundDown: false);
 
         Assert.NotNull(projection);
-        Assert.Equal(expected, projection!.RoundedValue);
-        Assert.Equal(expected - amountBsS, projection.RoundingDelta);
+        Assert.Equal(expected, projection!.Value.RoundedValue);
+        Assert.Equal(expected - amountBsS, projection.Value.RoundingDelta);
     }
 
     [Fact]
@@ -362,10 +362,10 @@ public class PricingRoundingPolicyTests
                         var actual = PricingRoundingPolicy.ProjectCashFriendlyBsS(price, rate, rule, neverRoundDown: true);
 
                         Assert.NotNull(actual);
-                        Assert.Equal(expected.MathematicalValue, actual!.MathematicalValue);
-                        Assert.Equal(expected.RoundedValue, actual.RoundedValue);
+                        Assert.Equal(expected.MathematicalValue, actual!.Value.MathematicalValue);
+                        Assert.Equal(expected.RoundedValue, actual.Value.RoundedValue);
                         Assert.True(
-                            actual.RoundedValue >= amount,
+                            actual.Value.RoundedValue >= amount,
                             $"{rule} {price}×{rate}: el efectivo nunca queda por debajo del matemático.");
                     }
                 }

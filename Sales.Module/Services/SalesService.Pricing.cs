@@ -248,9 +248,9 @@ public partial class SalesService
                 roundingRuleCashBs!.Value,
                 neverRoundDown);
 
-            if (projected != null)
+            if (projected is { } projection)
             {
-                return projected.RoundedValue;
+                return projection.RoundedValue;
             }
         }
 

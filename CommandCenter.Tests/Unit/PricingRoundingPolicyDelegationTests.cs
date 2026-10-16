@@ -99,11 +99,11 @@ public class PricingRoundingPolicyDelegationTests
 
         Assert.NotNull(viaHelper);
         Assert.NotNull(viaService);
-        Assert.Equal(viaHelper!.MathematicalValue, viaService!.MathematicalValue);
-        Assert.Equal(viaHelper.RoundedValue, viaService.RoundedValue);
-        Assert.Equal(viaHelper.RoundingDelta, viaService.RoundingDelta);
-        Assert.Equal(viaHelper.EffectiveMarginPct, viaService.EffectiveMarginPct);
-        Assert.Equal(expected, viaService.RoundedValue);
+        Assert.Equal(viaHelper!.Value.MathematicalValue, viaService!.Value.MathematicalValue);
+        Assert.Equal(viaHelper!.Value.RoundedValue, viaService!.Value.RoundedValue);
+        Assert.Equal(viaHelper.Value.RoundingDelta, viaService.Value.RoundingDelta);
+        Assert.Equal(viaHelper.Value.EffectiveMarginPct, viaService.Value.EffectiveMarginPct);
+        Assert.Equal(expected, viaService.Value.RoundedValue);
     }
 
     [Fact]
@@ -115,8 +115,8 @@ public class PricingRoundingPolicyDelegationTests
 
         Assert.NotNull(viaHelper);
         Assert.NotNull(viaService);
-        Assert.Equal(viaHelper!.RoundedValue, viaService!.RoundedValue);
-        Assert.Equal(1100m, viaService.RoundedValue);
+        Assert.Equal(viaHelper!.Value.RoundedValue, viaService!.Value.RoundedValue);
+        Assert.Equal(1100m, viaService!.Value.RoundedValue);
     }
 
     [Theory]

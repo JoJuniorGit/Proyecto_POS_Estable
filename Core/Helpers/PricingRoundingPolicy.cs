@@ -11,6 +11,9 @@ namespace Core.Helpers;
 /// cualquier capa (backend y cliente WPF) comparta el motor sin acoplarse a Inventory.Module.
 /// El servicio conserva el contrato IPricingRoundingPolicyService delegando en estos métodos
 /// estáticos; consumidores y tests existentes quedan intactos.
+/// 8.185-perf (T-opt): ruta de efectivo Bs.S unificada (techo directo con piso activo ⇒ paridad
+/// exacta 6-args ≡ 4-args) y result como readonly record struct — cero allocations en la ruta
+/// caliente (Catálogo, Modal, POS, Carrito, venta y bulk).
 /// </summary>
 public static class PricingRoundingPolicy
 {
@@ -28,28 +31,37 @@ public static class PricingRoundingPolicy
             return new RoundingResult(amount, amount, 0m, CalculateEffectiveMarginPct(amount, cost));
         }
 
-        decimal rounded = rule switch
+        decimal rounded;
+        if (rule == RoundingRuleType.UsdPsychological)
         {
-            RoundingRuleType.UsdPsychological => RoundToNearestPsychological(amount),
-            RoundingRuleType.VesCashFriendlyInteger => RoundToNearestStep(amount, 1m),
-            RoundingRuleType.VesCashFriendlyStep5 => RoundToNearestStep(amount, 5m),
-            _ => RoundToNearestStep(amount, 10m)
-        };
+            rounded = RoundToNearestPsychological(amount);
 
-        // S2: el piso se evalúa sobre el precio FINAL. Si el escalón elegido (inferior o neutro
-        // respecto del matemático) deja el margen efectivo por debajo del piso, se usa el escalón
-        // inmediato superior. Un escalón ya superior al matemático no se recorre de nuevo.
-        if (enforceFloor && marginFloorPct is > 0m && cost > 0m && rounded <= amount)
-        {
-            decimal? margin = CalculateEffectiveMarginPct(rounded, cost);
-            if (margin.HasValue && margin.Value < marginFloorPct.Value)
+            // S2: el piso se evalúa sobre el precio FINAL. Si el escalón elegido (inferior o neutro
+            // respecto del matemático) deja el margen efectivo por debajo del piso, se usa el escalón
+            // inmediato superior. Un escalón ya superior al matemático no se recorre de nuevo.
+            if (enforceFloor && marginFloorPct is > 0m && cost > 0m && rounded <= amount)
             {
-                decimal? next = NextStepUp(rounded, rule);
-                if (next.HasValue)
+                decimal? margin = CalculateEffectiveMarginPct(rounded, cost);
+                if (margin.HasValue && margin.Value < marginFloorPct.Value)
                 {
-                    rounded = next.Value;
+                    decimal? next = NextStepUp(rounded, rule);
+                    if (next.HasValue)
+                    {
+                        rounded = next.Value;
+                    }
                 }
             }
+        }
+        else
+        {
+            // 8.185-perf (T-opt): reglas de efectivo Bs.S (Entero/×5/×10). Con la protección activa
+            // (enforceFloor = toggle EnforceMinimumMarginFloor) se aplica TECHO DIRECTO sobre la cota
+            // mínima: reemplaza el nearest + verificación reactiva de margen a 2dp + cadena de bump
+            // (NextStepUp), elimina el déficit sub-tolerancia de 0,005 pp y logra paridad exacta
+            // 6-args ≡ 4-args (venta) en el 100% de los casos. Sin protección ⇒ escalón más cercano.
+            // Nota de semántica: en reglas VES el VALOR del piso no cambia la dirección — el toggle
+            // ES la protección (consistent con la ruta de venta, que no dispone de piso numérico).
+            rounded = RoundCashStep(amount, rule, roundUpOnly: enforceFloor);
         }
 
         return new RoundingResult(amount, rounded, rounded - amount, CalculateEffectiveMarginPct(rounded, cost));
@@ -108,17 +120,18 @@ public static class PricingRoundingPolicy
             return null;
         }
 
-        // La guarda de piso compara margen sobre el precio FINAL: precio y costo viajan en Bs.S.
+        // 8.185-perf (T-opt): reglas VES con piso activo ⇒ techo directo sobre la cota mínima
+        // (mismo kernel que la ruta de venta 4-args; el margen a 2dp ya no interviene para cash);
+        // UsdPsychological conserva el piso reactivo por margen del bloque de Round.
         return Round(usdAmount * exchangeRate, rule, costUsd * exchangeRate, marginFloorPct, enforceFloor);
     }
 
     /// <summary>
-    /// 8.185-T1 (S3): proyección geométrica del Bs.S de efectivo SIN costo ni margen (decisión A).
-    /// Con <paramref name="neverRoundDown"/> (toggle ON) el resultado nunca queda por debajo del
-    /// valor matemático: si el escalón más cercano queda por debajo se usa el inmediato superior
-    /// (coincidencia exacta con un escalón queda; empate del nearest → inferior → sube). OFF =
-    /// más cercano (puede bajar). Los guards de 8.183 se conservan: regla no-cash, USD ≤ 0 o
-    /// tasa ≤ 0 → null.
+    /// 8.185-T1 (S3) + 8.185-perf (T-opt): proyección geométrica del Bs.S de efectivo SIN costo ni
+    /// margen (decisión A). Con <paramref name="neverRoundDown"/> (toggle ON) aplica techo directo
+    /// sobre la cota mínima — nunca por debajo del valor matemático, misma aritmética que el 6-args
+    /// con piso activo (paridad 100%). OFF = más cercano (puede bajar). Los guards de 8.183 se
+    /// conservan: regla no-cash, USD ≤ 0 o tasa ≤ 0 → null.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static RoundingResult? ProjectCashFriendlyBsS(
@@ -135,21 +148,12 @@ public static class PricingRoundingPolicy
             return null;
         }
 
+        // 8.185-perf (T-opt): mismo kernel que el 6-args — techo directo (toggle ON) o más cercano
+        // (OFF), sin llamada intermedia a Round ni cadena de bump: cero allocations adicionales y
+        // paridad matemática exacta con la ruta de edición. Sin costo ⇒ sin EffectiveMarginPct.
         decimal mathematical = usdAmount * exchangeRate;
-        var nearest = Round(mathematical, rule, cost: 0m, marginFloorPct: null, enforceFloor: false);
-
-        // Decisión A: con el toggle ON el escalón elegido nunca queda por debajo del matemático;
-        // coincidencia exacta (o nearest ya superior) queda tal cual. Sin costo ⇒ sin EffectiveMarginPct.
-        if (neverRoundDown && nearest.RoundedValue < mathematical)
-        {
-            decimal? next = NextStepUp(nearest.RoundedValue, rule);
-            if (next.HasValue)
-            {
-                return new RoundingResult(mathematical, next.Value, next.Value - mathematical, null);
-            }
-        }
-
-        return nearest;
+        decimal rounded = RoundCashStep(mathematical, rule, roundUpOnly: neverRoundDown);
+        return new RoundingResult(mathematical, rounded, rounded - mathematical, null);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -201,6 +205,23 @@ public static class PricingRoundingPolicy
         }
 
         return upperCents.Value / 100m;
+    }
+
+    // 8.185-perf (T-opt): paso de la regla VES (1/5/10) — mapeo único regla→escalón.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static decimal CashStepOf(RoundingRuleType rule) =>
+        rule == RoundingRuleType.VesCashFriendlyInteger ? 1m
+        : rule == RoundingRuleType.VesCashFriendlyStep5 ? 5m
+        : 10m;
+
+    // 8.185-perf (T-opt): kernel único del redondeo de efectivo Bs.S de la ruta caliente.
+    // roundUpOnly (toggle ON / piso activo) ⇒ techo directo sobre la cota mínima (nunca por debajo,
+    // sin costo ni margen a 2dp); OFF ⇒ escalón más cercano (puede bajar). Reemplaza nearest+bump.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static decimal RoundCashStep(decimal amount, RoundingRuleType rule, bool roundUpOnly)
+    {
+        decimal step = CashStepOf(rule);
+        return roundUpOnly ? Math.Ceiling(amount / step) * step : RoundToNearestStep(amount, step);
     }
 
     private static decimal RoundToNearestStep(decimal amount, decimal step)

@@ -10,10 +10,12 @@ namespace Core.Interfaces;
 public interface IPricingRoundingPolicyService
 {
     /// <summary>
-    /// Redondea <paramref name="amount"/> según <paramref name="rule"/>. Si <paramref name="enforceFloor"/>
-    /// está activo con piso &gt; 0 y costo &gt; 0, descarta el escalón elegido cuando su margen efectivo
-    /// ((precio − costo) / costo × 100 calculado sobre el precio FINAL) queda por debajo del piso y usa
-    /// el escalón inmediato superior. Un importe ≤ 0 pasa sin cambios (el redondeo nunca produce ≤ 0).
+    /// Redondea <paramref name="amount"/> según <paramref name="rule"/>. En reglas VES (Bs.S) con
+    /// <paramref name="enforceFloor"/> activo aplica techo directo sobre la cota mínima (nunca redondea
+    /// hacia abajo; paridad exacta con la proyección de venta 4-args); con el piso inactivo usa el
+    /// escalón más cercano. UsdPsychological conserva el piso reactivo: si el escalón elegido con
+    /// piso &gt; 0 y costo &gt; 0 deja el margen efectivo por debajo del piso, usa el inmediato
+    /// superior. Un importe ≤ 0 pasa sin cambios (el redondeo nunca produce ≤ 0).
     /// </summary>
     RoundingResult Round(decimal amount, RoundingRuleType rule, decimal cost, decimal? marginFloorPct, bool enforceFloor);
 
@@ -41,5 +43,7 @@ public interface IPricingRoundingPolicyService
 /// MathematicalValue es el importe de entrada (referencia matemática); RoundedValue el valor final
 /// aplicado; RoundingDelta = RoundedValue − MathematicalValue (con signo). EffectiveMarginPct es el
 /// margen efectivo ((RoundedValue − cost) / costo × 100) del precio FINAL; null si costo ≤ 0.
+/// 8.185-perf: readonly record struct — cero asignaciones de heap en la ruta caliente
+/// (Catálogo, Modal, POS, Carrito y motor de venta/bulk).
 /// </summary>
-public sealed record RoundingResult(decimal MathematicalValue, decimal RoundedValue, decimal RoundingDelta, decimal? EffectiveMarginPct);
+public readonly record struct RoundingResult(decimal MathematicalValue, decimal RoundedValue, decimal RoundingDelta, decimal? EffectiveMarginPct);

@@ -28,7 +28,7 @@ public class EffectivePriceVesHelperTests
         var engine = PricingRoundingPolicy.ProjectCashFriendlyBsS(usdAmount, exchangeRate, rule, neverRoundDown);
 
         Assert.NotNull(engine);
-        Assert.Equal(engine!.RoundedValue, EffectivePriceVesHelper.EffectiveBsS(usdAmount, exchangeRate, rule, neverRoundDown));
+        Assert.Equal(engine!.Value.RoundedValue, EffectivePriceVesHelper.EffectiveBsS(usdAmount, exchangeRate, rule, neverRoundDown));
     }
 
     [Fact]

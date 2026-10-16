@@ -428,11 +428,11 @@ public partial class InventoryService
                 scratch.CostPriceUSD,
                 request.RetailMarginFloorPct,
                 request.EnforceMinimumMarginFloor);
-            if (retailCashProjection != null)
+            if (retailCashProjection is { } cashProjection)
             {
-                retailCashFriendlyAfterBsS = retailCashProjection.RoundedValue;
-                retailPreRounding = retailCashProjection.MathematicalValue;
-                retailRoundingDelta = retailCashProjection.RoundingDelta;
+                retailCashFriendlyAfterBsS = cashProjection.RoundedValue;
+                retailPreRounding = cashProjection.MathematicalValue;
+                retailRoundingDelta = cashProjection.RoundingDelta;
             }
         }
 
