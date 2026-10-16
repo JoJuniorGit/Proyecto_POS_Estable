@@ -1,7 +1,9 @@
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
+using Core.Logging;
 using Desktop.Client.Messages;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -53,6 +55,8 @@ public partial class InventoryViewModel
     private ProductItemViewModel CreateItemViewModel(ProductDto dto)
     {
         var itemVm = new ProductItemViewModel(dto, _exchangeRateService, OnProductItemChanged);
+        // 8.185-T4 (S1): la fila adopta la política global vigente (0 consultas por fila).
+        itemVm.ApplyPricingPolicies(_globalCashRoundingRule, _neverRoundDownCashBs);
         itemVm.NotifyCurrencyChanged(SelectedCurrency);
         ApplySelectionState(itemVm);
         return itemVm;
@@ -203,7 +207,7 @@ public partial class InventoryViewModel
             return;
         }
 
-        var dialogVm = new BulkPriceEditDialogViewModel(_productService, _dialogService, BuildBulkPriceSelection());
+        var dialogVm = new BulkPriceEditDialogViewModel(_productService, _dialogService, BuildBulkPriceSelection(), await LoadGlobalPricingPoliciesAsync());
         if (!_dialogService.ShowBulkPriceEditDialog(dialogVm))
         {
             return;
@@ -220,6 +224,31 @@ public partial class InventoryViewModel
     private BulkPriceSelection BuildBulkPriceSelection() => _selectAllFiltered
         ? new BulkPriceSelection(null, BuildSelectionFilter(), SelectAllFiltered: true, SelectedCount)
         : new BulkPriceSelection(_selectedProductIds.OrderBy(id => id).ToList(), null, SelectAllFiltered: false, _selectedProductIds.Count);
+
+    /// <summary>
+    /// 8.184-T4 (S6): política global de redondeo leída al abrir la edición masiva (molde
+    /// allow-negative-stock, sin SignalR v1). Ante error o ausencia del servicio devuelve null
+    /// para que el diálogo abra con los defaults (ExactMath/sin piso) sin bloquear el flujo.
+    /// </summary>
+    private async Task<PricingPoliciesDto?> LoadGlobalPricingPoliciesAsync()
+    {
+        if (_settingsService is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _settingsService.GetPricingPoliciesAsync();
+        }
+        catch (Exception ex)
+        {
+            ClientStateLogger.LogError(
+                $"Fallo al cargar las políticas globales de precios y redondeo: {ex.Message}",
+                nameof(InventoryViewModel));
+            return null;
+        }
+    }
 
     private BulkPriceSelectionFilterDto BuildSelectionFilter() => new()
     {

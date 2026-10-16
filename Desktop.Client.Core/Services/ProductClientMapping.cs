@@ -61,6 +61,10 @@ public static class ProductClientMapping
         HasIndependentPricing = source.HasIndependentPricing,
         ConversionFactor = source.ConversionFactor,
         GroupKey = source.GroupKey,
+        // 8.184-T3 (S4): reenvío obligatorio de las reglas por artículo — sin esto cada edición,
+        // auto-save o guardado de variantes limpiaría el override (null = heredar global).
+        RoundingRuleUsd = source.RoundingRuleUsd,
+        RoundingRuleCashBs = source.RoundingRuleCashBs,
         // 8.179-T2 (S3): los flujos que parten de un ProductDto releído (auto-save, variantes)
         // envían el set completo actual; el GET por Id ya incluye Categories.
         CategoryIds = source.Categories?.Select(c => c.Id).ToList()
@@ -92,6 +96,9 @@ public static class ProductClientMapping
         HasIndependentPricing = source.HasIndependentPricing,
         ConversionFactor = source.ConversionFactor,
         GroupKey = source.GroupKey,
+        // 8.184-T3 (S4): el diálogo envía la selección completa de reglas por artículo (null = heredar).
+        RoundingRuleUsd = source.RoundingRuleUsd,
+        RoundingRuleCashBs = source.RoundingRuleCashBs,
         // 8.179-T2 (S3): el diálogo envía SIEMPRE la lista completa mostrada (marcar/desmarcar =
         // reemplazo); null solo cuando la carga falló y no debe pisar la asignación del servidor.
         CategoryIds = source.CategoryIds
@@ -124,6 +131,10 @@ public static class ProductClientMapping
         target.HasIndependentPricing = source.HasIndependentPricing;
         target.ConversionFactor = source.ConversionFactor;
         target.GroupKey = source.GroupKey;
+        // 8.184-T3 (S4): el snapshot local refleja lo recién guardado (null = heredar global); sin
+        // esto un flujo futuro que remapee el item del grid reenviaría las reglas viejas.
+        target.RoundingRuleUsd = source.RoundingRuleUsd;
+        target.RoundingRuleCashBs = source.RoundingRuleCashBs;
         return target;
     }
 }

@@ -28,21 +28,41 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
     private readonly IDialogService? _dialogService;
     private readonly IDispatcherInvoker _dispatcherInvoker;
     private readonly ISaleRecoveryStore? _recoveryStore;
+    private readonly ISettingsService? _settingsService;
     private bool _preserveRecoveryClearOnce;
 
-    public CartViewModel(ISalesService salesService, IExchangeRateService exchangeRateService, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null, ISaleRecoveryStore? recoveryStore = null)
+    // 8.185-T5 (S1/S2): toggle nunca-hacia-abajo vigente para el Bs.S efectivo de las líneas.
+    // Una lectura al iniciar y refresco por mensaje: 0 consultas por recálculo.
+    private bool _neverRoundDownCashBs = true;
+
+    public CartViewModel(ISalesService salesService, IExchangeRateService exchangeRateService, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null, ISaleRecoveryStore? recoveryStore = null, ISettingsService? settingsService = null)
     {
         _salesService = salesService;
         _exchangeRateService = exchangeRateService;
         _dialogService = dialogService;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
         _recoveryStore = recoveryStore;
+        // 8.185-T5 (S1): política global opcional (sin servicio rigen los defaults del sistema).
+        _settingsService = settingsService;
 
         // Reactive sync: When the rate changes, update all items and totals at once.
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
         {
             UpdateAllPrices(m.Value);
         });
+
+        // 8.185-T5 (S2b): políticas globales guardadas en Ajustes → aplicar en memoria el toggle
+        // y recomputar el Bs.S efectivo de las líneas vivas (la regla por línea es snapshot).
+        WeakReferenceMessenger.Default.Register<PricingPoliciesChangedMessage>(this, (r, m) =>
+        {
+            ((CartViewModel)r).ApplyPricingPolicies(m.Value);
+        });
+
+        // 8.185-T5 (S1): lectura única de la política global al iniciar.
+        if (_settingsService != null)
+        {
+            LoadPricingPoliciesAsync().SafeFireAndForget("CartViewModel.LoadPricingPolicies");
+        }
 
         // Reactive sync: When active sale changes in SalesService, update Cart state
         WeakReferenceMessenger.Default.Register<CurrentSaleChangedMessage>(this, (r, m) =>
@@ -181,7 +201,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                     : (currentRate > 0 ? currentRate : CurrentSale.AppliedRate);
                 foreach (var item in CurrentSale.Items)
                 {
-                    CartItems.Add(new CartItemViewModel(item, RecalculateTotals, rateToUse, isHistorical, CommitItemQuantityAsync));
+                    CartItems.Add(new CartItemViewModel(item, RecalculateTotals, rateToUse, isHistorical, CommitItemQuantityAsync, _neverRoundDownCashBs));
                 }
 
                 RecalculateTotals();
@@ -288,6 +308,43 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
         
         // Fire notifications for calculated totals
+        OnPropertyChanged(nameof(TotalAmountLocal));
+        OnPropertyChanged(nameof(SubtotalLocal));
+    }
+
+    private async Task LoadPricingPoliciesAsync()
+    {
+        try
+        {
+            var policies = await _settingsService!.GetPricingPoliciesAsync() ?? new PricingPoliciesDto();
+            _neverRoundDownCashBs = policies.EnforceMinimumMarginFloor;
+            RefreshRoundingPolicy();
+        }
+        catch (System.Exception ex)
+        {
+            // Fallback silencioso: rige el default del sistema (piso activo ⇒ neverRoundDown, S7).
+            ClientStateLogger.LogError($"Fallo al cargar las políticas globales de redondeo del carrito: {ex.Message}", nameof(CartViewModel));
+        }
+    }
+
+    private void ApplyPricingPolicies(PricingPoliciesDto policies)
+    {
+        _neverRoundDownCashBs = policies.EnforceMinimumMarginFloor;
+        RefreshRoundingPolicy();
+    }
+
+    /// <summary>
+    /// 8.185-T5 (S2): re-deriva en memoria el Bs.S efectivo de cada línea con el toggle vigente
+    /// (la regla cash por línea es el snapshot resuelto por el servidor al agregar) y re-notifica
+    /// los totales live. El total USD no cambia: no hay refetch ni mensaje de carrito.
+    /// </summary>
+    private void RefreshRoundingPolicy()
+    {
+        foreach (var item in CartItems)
+        {
+            item.UpdateRoundingPolicy(_neverRoundDownCashBs);
+        }
+
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(SubtotalLocal));
     }

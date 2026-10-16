@@ -932,6 +932,54 @@ public sealed class SupplierInvoiceClientTests
     }
 
     [Fact]
+    public async Task ConfirmInvoiceAsync_SendsSelectedRoundingRuleToTheBackend()
+    {
+        // 8.182-T3 (S7): el selector de redondeo del confirm viaja en el request; el default es
+        // ExactMath (comportamiento actual) y solo se ofrecen las dos reglas soportadas por el flujo.
+        var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
+        ConfirmSupplierInvoiceRequestDto? capturedRequest = null;
+        var stagedInvoice = CreateInvoice(CreateLine(10));
+        service.Setup(client => client.ConfirmAsync(
+                stagedInvoice.Id,
+                It.IsAny<ConfirmSupplierInvoiceRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<int, ConfirmSupplierInvoiceRequestDto, CancellationToken>((_, request, _) => capturedRequest = request)
+            .ReturnsAsync(stagedInvoice);
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(service => service.ShowConfirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
+        var viewModel = CreateViewModel(service.Object, dialog.Object);
+        viewModel.LoadStagedInvoice(stagedInvoice);
+
+        Assert.Equal(RoundingRuleType.ExactMath, viewModel.RoundingRule);
+        Assert.Equal(2, viewModel.RoundingRuleOptions.Count);
+
+        viewModel.RoundingRule = RoundingRuleType.UsdPsychological;
+        await viewModel.ConfirmInvoiceAsync();
+
+        var request = Assert.IsType<ConfirmSupplierInvoiceRequestDto>(capturedRequest);
+        Assert.Equal(RoundingRuleType.UsdPsychological, request.RoundingRule);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_SerializesRoundingRuleAsIntegralValue()
+    {
+        // 8.182-T3 (S7): el enum viaja como entero (convención del repo: sin JsonStringEnumConverter).
+        var invoice = CreateInvoice(CreateLine(1));
+        var handler = new StubHttpMessageHandler(JsonResponse(invoice));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+
+        await service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(
+                new[] { new ConfirmLineDto(1, true, 25m, 10m) },
+                RoundingRule: RoundingRuleType.UsdPsychological));
+
+        using var payload = JsonDocument.Parse(Assert.Single(handler.RequestBodies));
+        Assert.Equal(1, payload.RootElement.GetProperty("roundingRule").GetInt32());
+    }
+
+    [Fact]
     public async Task ServiceMethods_UseSupplierLookupAndInvoiceRoutes()
     {
         var mapping = new SupplierColumnMappingDto("EAN", "Vendor Code", "Item", "Units", "Cost");

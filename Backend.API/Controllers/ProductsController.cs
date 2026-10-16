@@ -256,6 +256,9 @@ public partial class ProductsController : ControllerBase
             PriceRetailUSD = item.PriceRetailUSD,
             PriceWholesaleUSD = item.PriceWholesaleUSD,
             PriceBsS = item.PriceBsS,
+            // 8.185-T2 (S6): la regla de efectivo no es sensible (no expone costo/margen) y debe
+            // sobrevivir al masking para que el rol Cashier proyecte el mismo precio publicado.
+            RoundingRuleCashBs = item.RoundingRuleCashBs,
             HasWholesale = item.HasWholesale,
             IsFractional = item.IsFractional,
             UnitOfMeasure = item.UnitOfMeasure,

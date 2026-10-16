@@ -1,7 +1,9 @@
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
 using Core.DTOs;
 using Core.Logging;
+using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using System;
 using System.Threading.Tasks;
@@ -145,7 +147,7 @@ public partial class InventoryViewModel
     private async Task OpenAddProduct()
     {
         if (_dialogService == null) return;
-        var dialogVm = new ProductDialogViewModel(_productService, _exchangeRateService, null, UserSession, _dialogService);
+        var dialogVm = new ProductDialogViewModel(_productService, _exchangeRateService, null, UserSession, _dialogService, settingsService: _settingsService);
         
         if (_dialogService.ShowProductDialog(dialogVm) == true)
         {
@@ -179,10 +181,13 @@ public partial class InventoryViewModel
                 return;
             }
 
-            var dialogVm = new ProductDialogViewModel(_productService, _exchangeRateService, product, UserSession, _dialogService);
+            var dialogVm = new ProductDialogViewModel(_productService, _exchangeRateService, product, UserSession, _dialogService, settingsService: _settingsService);
             
             if (_dialogService.ShowProductDialog(dialogVm) == true)
             {
+                // 8.185-T4 (S2c): capturar el override previo antes del Merge (el Merge pisa el target).
+                var previousCashRoundingRule = product.RoundingRuleCashBs;
+
                 await _productService.UpdateAsync(ProductClientMapping.ToUpdateProductDto(dialogVm.ResultProduct, dialogVm.ResultProductId));
                 var updatedDto = ProductClientMapping.Merge(product, dialogVm.ResultProduct);
                 
@@ -190,6 +195,13 @@ public partial class InventoryViewModel
                 if (index != -1)
                 {
                     Products[index] = CreateItemViewModel(updatedDto);
+                }
+
+                // 8.185-T4 (S2c): con el override cambiado, el POS recomputa el ítem afectado en
+                // memoria (el catálogo ya quedó refrescado arriba); sin cambio no hay nada que propagar.
+                if (previousCashRoundingRule != dialogVm.ResultProduct.RoundingRuleCashBs)
+                {
+                    WeakReferenceMessenger.Default.Send(new ProductRoundingChangedMessage(item.Id, dialogVm.ResultProduct.RoundingRuleCashBs));
                 }
                 
                 _dialogService.ShowSuccessDialog($"Producto '{dialogVm.ResultProduct.Name}' actualizado con éxito.");

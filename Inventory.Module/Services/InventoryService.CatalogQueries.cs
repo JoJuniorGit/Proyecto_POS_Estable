@@ -13,6 +13,10 @@ public partial class InventoryService
     {
         IQueryable<Product> query = _context.Products.AsNoTracking();
 
+        // 8.185-T2 (S1/S2): default global de efectivo leído una vez; la regla de cada ítem se
+        // resuelve en memoria (override ?? default), sin costo ni consultas por artículo.
+        var defaultCashRule = await ResolveDefaultCashRoundingRuleAsync();
+
         if (activeOnly)
         {
             query = query.Where(p => p.IsActive && !p.IsDeleted);
@@ -56,12 +60,14 @@ public partial class InventoryService
                     VariantCount = p.IsGroupHeader ? p.Variants.Count(v => !v.IsDeleted) : 0,
                     ConsolidatedStock = p.IsGroupHeader
                         ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
-                        : p.StockQuantity
+                        : p.StockQuantity,
+                    RoundingRuleCashBs = p.RoundingRuleCashBs
                 })
                 .FirstOrDefaultAsync(token);
 
             if (exactSkuMatch != null)
             {
+                exactSkuMatch.RoundingRuleCashBs ??= defaultCashRule;
                 return new List<Core.DTOs.ProductQuickInfoDto> { exactSkuMatch };
             }
 
@@ -80,7 +86,7 @@ public partial class InventoryService
             query = query.Where(p => p.ParentProductId == null);
         }
 
-        return await query
+        var items = await query
             .OrderBy(p => p.Name)
             .Take(10)
             .Select(p => new Core.DTOs.ProductQuickInfoDto
@@ -106,9 +112,17 @@ public partial class InventoryService
                 VariantCount = p.IsGroupHeader ? p.Variants.Count(v => !v.IsDeleted) : 0,
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
-                    : p.StockQuantity
+                    : p.StockQuantity,
+                RoundingRuleCashBs = p.RoundingRuleCashBs
             })
             .ToListAsync(token);
+
+        foreach (var item in items)
+        {
+            item.RoundingRuleCashBs ??= defaultCashRule;
+        }
+
+        return items;
     }
 
     public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetProductsPagedAsync(string? filter, int page, int pageSize, string? statusFilter = null, string? sortBy = null, bool isDescending = false, System.Threading.CancellationToken token = default, int? categoryId = null)
@@ -215,6 +229,11 @@ public partial class InventoryService
                 HasIndependentPricing = p.HasIndependentPricing,
                 ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
+                // 8.185-fix: las reglas de redondeo por articulo viajan en el listado paginado del
+                // catalogo — sin estas dos columnas la grilla WPF las pierde (regla null => Bs.S
+                // canonico en pantalla mientras el POS, que resuelve server-side, muestra el efectivo).
+                RoundingRuleUsd = p.RoundingRuleUsd,
+                RoundingRuleCashBs = p.RoundingRuleCashBs,
                 VariantCount = p.IsGroupHeader ? p.Variants.Count(v => !v.IsDeleted) : 0,
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))

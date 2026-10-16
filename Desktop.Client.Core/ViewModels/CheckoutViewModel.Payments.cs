@@ -34,18 +34,22 @@ public partial class CheckoutViewModel
             amountBsS = PricingHelper.RoundToDigital(amountBsS);
         }
 
-        var amountUsd = System.Math.Round(amountBsS / CurrentExchangeRate, 2, System.MidpointRounding.AwayFromZero);
+        // 8.185-T5 (S4): la pata USD se DERIVA de la pata Bs.S a la tasa vigente — el par viaja
+        // consistente (tolerancia 0.01 USD de ResolveConsistentPaymentAmounts). Reescribir una
+        // sola pierna (clamp al saldo USD) rompería el par y el servidor rechazaría los pagos
+        // exactos al precio efectivo publicado.
+        var amountUsd = PricingHelper.ToUSD(amountBsS, CurrentExchangeRate);
 
-        // Validation: prevent overpayment (with small tolerance)
-        if (amountUsd > RemainingBalanceUsd + 0.05m) 
+        // 8.185-T5 (S4/S5): validación dual-dominio espejo del gate del servidor (T3): rechazar
+        // solo si el monto excede el saldo restante en USD Y en Bs.S — cubrir el total efectivo
+        // del carrito no es sobrepago aunque difiera de la cuota canónica en USD.
+        bool exceedsUsd = amountUsd > RemainingBalanceUsd + 0.05m;
+        bool exceedsBsS = amountBsS > RemainingBalanceLocal + (0.05m * CurrentExchangeRate);
+        if (exceedsUsd && exceedsBsS)
         {
             ShowWarning("Monto Excedido", "El monto ingresado excede el saldo restante de la venta.");
             return;
         }
-
-        // Auto-clamp if almost finished to ensure precise zeroing
-        if (amountUsd > RemainingBalanceUsd)
-            amountUsd = RemainingBalanceUsd;
 
         if (SelectedMethod.RequiresReference && string.IsNullOrWhiteSpace(CurrentReference))
         {

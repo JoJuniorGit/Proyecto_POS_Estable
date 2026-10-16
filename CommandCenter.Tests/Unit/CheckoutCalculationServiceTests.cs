@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Core.DTOs;
+using Core.Interfaces;
 using Moq;
 using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
@@ -239,5 +241,193 @@ public class CheckoutCalculationServiceTests
 
         // Assert: el mensaje del servicio real viaja intacto al middleware
         Assert.Equal("Sale 99 not found.", ex.Message);
+    }
+
+    // =============================================================================================
+    // 8.185-T3 (S5): el preview espeja el total Bs.S EFECTIVO por línea (regla snapshot + toggle)
+    // y la cobertura dual-dominio del completar venta.
+    // =============================================================================================
+
+    private static Mock<ISalesService> CreateSalesServiceMockWithItems(int saleId, decimal totalUsd, decimal rate, params SaleItemDto[] items)
+    {
+        var mock = new Mock<ISalesService>();
+        mock.Setup(s => s.GetSaleAsync(saleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SaleDto
+            {
+                Id = saleId,
+                TotalUSD = totalUsd,
+                AppliedRate = rate,
+                Items = items.ToList()
+            });
+        mock.Setup(s => s.ResolveCheckoutRateAsync(saleId, It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((int _, decimal clientRate, CancellationToken _) => clientRate);
+        return mock;
+    }
+
+    private static Mock<ISystemSettingsService> CreateSettingsMock(string? neverRoundDownSetting)
+    {
+        var mock = new Mock<ISystemSettingsService>();
+        mock.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
+        if (neverRoundDownSetting != null)
+        {
+            mock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultEnforceMinimumMarginFloor))
+                .ReturnsAsync(neverRoundDownSetting);
+        }
+
+        return mock;
+    }
+
+    [Fact]
+    public async Task CalculatePreviewAsync_WithNeverRoundDownCashItem_MirrorsEffectiveTotal()
+    {
+        // Arrange: 1.35 USD * 10 = 13.50 -> escalón entero con never-down => 14.00 (canónico 13.50)
+        var mock = CreateSalesServiceMockWithItems(
+            60,
+            totalUsd: 1.35m,
+            rate: 10m,
+            new SaleItemDto
+            {
+                ProductId = 1,
+                ProductName = "Item",
+                Quantity = 1m,
+                UnitPrice = 1.35m,
+                RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger
+            });
+        var service = new CheckoutCalculationService(mock.Object, CreateSettingsMock("true").Object);
+
+        var request = new CheckoutPreviewRequest
+        {
+            ExchangeRate = 10m,
+            Payments = new List<SalePaymentDto> { new SalePaymentDto { PaymentMethodId = 1, Amount = 0m, AmountBsS = 14.00m } }
+        };
+
+        // Act
+        var preview = await service.CalculatePreviewAsync(60, request);
+
+        // Assert: total efectivo y cobertura exacta (pago 14.00 Bs.S = total efectivo)
+        Assert.Equal(14.00m, preview.TotalBsS);
+        Assert.Equal(14.00m, preview.TotalPaidBsS);
+        Assert.Equal(0m, preview.RemainingBalanceBsS);
+        Assert.Equal(0m, preview.RoundingAdjustment);
+        Assert.True(preview.IsFullyPaid);
+    }
+
+    [Fact]
+    public async Task CalculatePreviewAsync_WhenBsSCoversButUsdRemainderExceedsTolerance_IsFullyPaid()
+    {
+        // Arrange: 2 líneas de 1.44 USD a tasa 10 con nearest (toggle OFF) => 14.00 por línea;
+        // total efectivo 28.00, canónico 28.80. El pago exacto queda 0.08 USD bajo el canónico.
+        var mock = CreateSalesServiceMockWithItems(
+            61,
+            totalUsd: 2.88m,
+            rate: 10m,
+            new SaleItemDto { ProductId = 1, ProductName = "A", Quantity = 1m, UnitPrice = 1.44m, RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger },
+            new SaleItemDto { ProductId = 2, ProductName = "B", Quantity = 1m, UnitPrice = 1.44m, RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger });
+        var service = new CheckoutCalculationService(mock.Object, CreateSettingsMock("false").Object);
+
+        var request = new CheckoutPreviewRequest
+        {
+            ExchangeRate = 10m,
+            Payments = new List<SalePaymentDto> { new SalePaymentDto { PaymentMethodId = 1, Amount = 0m, AmountBsS = 28.00m } }
+        };
+
+        // Act
+        var preview = await service.CalculatePreviewAsync(61, request);
+
+        // Assert: cobertura dual — el dominio Bs.S cubre el total efectivo aunque el remanente USD
+        // supere la tolerancia (espejo del gate del completar venta).
+        Assert.Equal(28.00m, preview.TotalBsS);
+        Assert.Equal(0.08m, preview.RemainingBalanceUSD);
+        Assert.Equal(0m, preview.RemainingBalanceBsS);
+        Assert.True(preview.IsFullyPaid);
+    }
+
+    [Fact]
+    public async Task CalculatePreviewAsync_WhenBothDomainsShort_IsNotFullyPaid()
+    {
+        // Arrange: misma venta efectiva 28.00; pago insuficiente en ambos dominios.
+        var mock = CreateSalesServiceMockWithItems(
+            62,
+            totalUsd: 2.88m,
+            rate: 10m,
+            new SaleItemDto { ProductId = 1, ProductName = "A", Quantity = 1m, UnitPrice = 1.44m, RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger },
+            new SaleItemDto { ProductId = 2, ProductName = "B", Quantity = 1m, UnitPrice = 1.44m, RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger });
+        var service = new CheckoutCalculationService(mock.Object, CreateSettingsMock("false").Object);
+
+        var request = new CheckoutPreviewRequest
+        {
+            ExchangeRate = 10m,
+            Payments = new List<SalePaymentDto> { new SalePaymentDto { PaymentMethodId = 1, Amount = 0m, AmountBsS = 26.00m } }
+        };
+
+        // Act
+        var preview = await service.CalculatePreviewAsync(62, request);
+
+        // Assert: 0.28 USD y 2.00 Bs.S por debajo del efectivo => no cubierto
+        Assert.Equal(28.00m, preview.TotalBsS);
+        Assert.Equal(0.28m, preview.RemainingBalanceUSD);
+        Assert.Equal(2.00m, preview.RemainingBalanceBsS);
+        Assert.False(preview.IsFullyPaid);
+    }
+
+    // Vuelto dual: pagar EXACTO el efectivo publicado no devuelve el escalón de la política.
+    [Fact]
+    public async Task CalculatePreviewAsync_ExactEffectivePayment_ReturnsZeroChange()
+    {
+        // Arrange: 3 líneas 1.04 USD a tasa 10 con never-down => 11.00 por línea; efectivo 33.00.
+        var mock = CreateSalesServiceMockWithItems(
+            63,
+            totalUsd: 3.12m,
+            rate: 10m,
+            new SaleItemDto { ProductId = 1, ProductName = "A", Quantity = 1m, UnitPrice = 1.04m, RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger },
+            new SaleItemDto { ProductId = 2, ProductName = "B", Quantity = 1m, UnitPrice = 1.04m, RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger },
+            new SaleItemDto { ProductId = 3, ProductName = "C", Quantity = 1m, UnitPrice = 1.04m, RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger });
+        var service = new CheckoutCalculationService(mock.Object, CreateSettingsMock("true").Object);
+
+        var request = new CheckoutPreviewRequest
+        {
+            ExchangeRate = 10m,
+            Payments = new List<SalePaymentDto> { new SalePaymentDto { PaymentMethodId = 1, Amount = 0m, AmountBsS = 33.00m } }
+        };
+
+        // Act
+        var preview = await service.CalculatePreviewAsync(63, request);
+
+        // Assert: sin vuelto (antes el exceso canónico devolvía el escalón) y ajuste 0.
+        Assert.Equal(33.00m, preview.TotalBsS);
+        Assert.Equal(0m, preview.ChangeDueUSD);
+        Assert.Equal(0m, preview.ChangeDueBsS);
+        Assert.Equal(0m, preview.RoundingAdjustment);
+        Assert.True(preview.IsFullyPaid);
+    }
+
+    // Vuelto dual: el exceso se mide contra el total EFECTIVO, no contra el canónico.
+    [Fact]
+    public async Task CalculatePreviewAsync_OverpayAgainstEffective_ReturnsExcessAgainstEffective()
+    {
+        var mock = CreateSalesServiceMockWithItems(
+            64,
+            totalUsd: 3.12m,
+            rate: 10m,
+            new SaleItemDto { ProductId = 1, ProductName = "A", Quantity = 1m, UnitPrice = 1.04m, RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger },
+            new SaleItemDto { ProductId = 2, ProductName = "B", Quantity = 1m, UnitPrice = 1.04m, RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger },
+            new SaleItemDto { ProductId = 3, ProductName = "C", Quantity = 1m, UnitPrice = 1.04m, RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger });
+        var service = new CheckoutCalculationService(mock.Object, CreateSettingsMock("true").Object);
+
+        var request = new CheckoutPreviewRequest
+        {
+            ExchangeRate = 10m,
+            Payments = new List<SalePaymentDto> { new SalePaymentDto { PaymentMethodId = 1, Amount = 0m, AmountBsS = 40.00m } }
+        };
+
+        // Act
+        var preview = await service.CalculatePreviewAsync(64, request);
+
+        // Assert: vuelto = 40.00 − 33.00 = 7.00 Bs.S (0.70 USD); la fórmula canónica previa
+        // devolvía 8.80 Bs.S y regalaba el escalón de la política.
+        Assert.Equal(7.00m, preview.ChangeDueBsS);
+        Assert.Equal(0.70m, preview.ChangeDueUSD);
+        Assert.Equal(7.00m, preview.RoundingAdjustment);
+        Assert.True(preview.IsFullyPaid);
     }
 }

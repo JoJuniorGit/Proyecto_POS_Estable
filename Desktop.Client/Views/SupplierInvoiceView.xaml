@@ -845,6 +845,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
                            Foreground="{DynamicResource PrimaryHueMidBrush}"
@@ -865,10 +866,26 @@
                                Foreground="#374151"
                                VerticalAlignment="Center" />
                 </Border>
-                <Button Grid.Column="2" Command="{Binding ClearInvoiceCommand}"
+                <!-- 8.182-T3 (S7): regla de redondeo del confirm (nivel factura; v1: ExactMath o Psicológico USD). -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <TextBlock Text="Redondeo de precios:"
+                               FontSize="12" FontWeight="SemiBold" Foreground="#374151"
+                               VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <ComboBox ItemsSource="{Binding RoundingRuleOptions}"
+                              SelectedValue="{Binding RoundingRule, Mode=TwoWay}"
+                              SelectedValuePath="Rule"
+                              DisplayMemberPath="Label"
+                              Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                              MinWidth="250"
+                              IsEnabled="{Binding IsRoundingRuleInputEnabled}"
+                              VerticalAlignment="Center"
+                              AutomationProperties.AutomationId="SupplierInvoice_ConfirmRoundingCombo"
+                              AutomationProperties.Name="Regla de redondeo de precios" />
+                </StackPanel>
+                <Button Grid.Column="3" Command="{Binding ClearInvoiceCommand}"
                         Content="Limpiar" Style="{StaticResource MaterialDesignFlatButton}"
                         Margin="0,0,12,0" VerticalAlignment="Center" />
-                <Button Grid.Column="3" Command="{Binding ConfirmInvoiceCommand}"
+                <Button Grid.Column="4" Command="{Binding ConfirmInvoiceCommand}"
                         Content="Confirmar y Procesar Factura"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         Background="#6B21A8"

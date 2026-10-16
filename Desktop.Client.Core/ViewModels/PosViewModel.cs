@@ -27,7 +27,13 @@ public partial class PosViewModel : ObservableObject, IDisposable
     private readonly IDialogService? _dialogService;
     private readonly IDispatcherInvoker _dispatcherInvoker;
     private readonly ISaleRecoveryStore? _recoveryStore;
+    private readonly ISettingsService? _settingsService;
     private bool _recoveryCheckCompleted;
+
+    // 8.185-T4 (S1/S2): regla cash global y toggle de piso vigentes para el Bs.S efectivo de las
+    // sugerencias. Una lectura al iniciar y refresco por mensaje: 0 consultas por búsqueda.
+    private RoundingRuleType? _globalCashRoundingRule;
+    private bool _neverRoundDownCashBs = true;
 
     private CartViewModel _cart;
     public CartViewModel Cart
@@ -108,7 +114,8 @@ public partial class PosViewModel : ObservableObject, IDisposable
         UserSession? userSession = null,
         IDialogService? dialogService = null,
         IDispatcherInvoker? dispatcherInvoker = null,
-        ISaleRecoveryStore? recoveryStore = null)
+        ISaleRecoveryStore? recoveryStore = null,
+        ISettingsService? settingsService = null)
     {
         _salesService = salesService ?? throw new ArgumentNullException(nameof(salesService));
         _productService = productService ?? throw new ArgumentNullException(nameof(productService));
@@ -119,6 +126,9 @@ public partial class PosViewModel : ObservableObject, IDisposable
         _dialogService = dialogService;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
         _recoveryStore = recoveryStore;
+        // 8.185-T4 (S1): política global de redondeo para el Bs.S efectivo (opcional: sin servicio
+        // rigen los defaults del sistema — ExactMath + piso activo ⇒ techo canónico, S7).
+        _settingsService = settingsService;
 
         // Sync local property when exchange rate changes globally
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
@@ -139,6 +149,91 @@ public partial class PosViewModel : ObservableObject, IDisposable
         {
             await ((PosViewModel)r).ReloadPaymentMethodsAsync();
         });
+
+        // 8.185-T4 (S2b): políticas globales guardadas en Ajustes → aplicar en memoria y re-derivar
+        // las sugerencias visibles (los DTO no son observables: se re-ejecuta la búsqueda activa,
+        // mismo patrón que la tasa 8.143).
+        WeakReferenceMessenger.Default.Register<PricingPoliciesChangedMessage>(this, (r, m) =>
+        {
+            var vm = (PosViewModel)r;
+            vm.ApplyPricingPolicies(m.Value);
+
+            if (!string.IsNullOrWhiteSpace(vm.SearchText))
+            {
+                vm.ExecuteSearchAsync().SafeFireAndForget("PosViewModel.PoliciesChangedResearch");
+            }
+        });
+
+        // 8.185-T4 (S2c): override cash de un artículo guardado en el Catálogo → recomputar en
+        // memoria el Bs.S del ítem visible, sin consultas ni re-búsqueda.
+        WeakReferenceMessenger.Default.Register<ProductRoundingChangedMessage>(this, (r, m) =>
+        {
+            ((PosViewModel)r).ApplyProductRoundingOverride(m.ProductId, m.RoundingRuleCashBs);
+        });
+
+        // 8.185-T4 (S1): lectura única de la política global al iniciar.
+        if (_settingsService != null)
+        {
+            LoadPricingPoliciesAsync().SafeFireAndForget("PosViewModel.LoadPricingPolicies");
+        }
+    }
+
+    private async Task LoadPricingPoliciesAsync()
+    {
+        try
+        {
+            var policies = await _settingsService!.GetPricingPoliciesAsync() ?? new PricingPoliciesDto();
+            ApplyPricingPolicies(policies);
+        }
+        catch (Exception ex)
+        {
+            // Fallback silencioso: rigen los defaults (ExactMath + piso activo ⇒ techo, S7).
+            Core.Logging.ClientStateLogger.LogError($"Fallo al cargar las políticas globales de redondeo del POS: {ex.Message}", nameof(PosViewModel));
+        }
+    }
+
+    private void ApplyPricingPolicies(PricingPoliciesDto policies)
+    {
+        _globalCashRoundingRule = policies.CashBsRoundingRule;
+        _neverRoundDownCashBs = policies.EnforceMinimumMarginFloor;
+    }
+
+    /// <summary>
+    /// 8.185-T4 (S2c): parchea la sugerencia visible del artículo afectado con el override recién
+    /// guardado y recomputa su Bs.S efectivo en memoria. El reemplazo en la misma posición dispara
+    /// el evento de colección que el popup necesita (el DTO no es observable).
+    /// </summary>
+    private void ApplyProductRoundingOverride(int productId, RoundingRuleType? roundingRuleCashBs)
+    {
+        void Apply()
+        {
+            for (int i = 0; i < Suggestions.Count; i++)
+            {
+                var suggestion = Suggestions[i];
+                if (suggestion.Id != productId)
+                {
+                    continue;
+                }
+
+                suggestion.RoundingRuleCashBs = roundingRuleCashBs;
+                RewriteEffectivePriceBsS(suggestion);
+                Suggestions[i] = suggestion;
+            }
+        }
+
+        _dispatcherInvoker.Invoke(Apply);
+    }
+
+    /// <summary>
+    /// 8.185-T4 (S1): único punto del POS para el Bs.S efectivo de una sugerencia — regla RESUELTA
+    /// del quick-info ?? política global del cliente, con el toggle vigente. Sin USD/tasa válidos
+    /// conserva el snapshot del DTO (null/ExactMath ⇒ techo canónico 8.104, S7).
+    /// </summary>
+    private void RewriteEffectivePriceBsS(ProductQuickInfoDto item)
+    {
+        item.PriceBsS = item.PriceUSD > 0 && CurrentExchangeRate > 0
+            ? Helpers.EffectivePriceVesHelper.EffectiveBsS(item.PriceUSD, CurrentExchangeRate, item.RoundingRuleCashBs ?? _globalCashRoundingRule, _neverRoundDownCashBs)
+            : item.PriceBsS;
     }
 
     private readonly SemaphoreSlim _sessionInitializationGate = new(1, 1);
@@ -380,10 +475,9 @@ public partial class PosViewModel : ObservableObject, IDisposable
                 {
                     foreach (var item in results)
                     {
-                        // 8.143: derivar de USD x tasa vigente; el snapshot PriceBsS solo es fallback sin USD o sin tasa valida.
-                        item.PriceBsS = item.PriceUSD > 0 && CurrentExchangeRate > 0
-                            ? Helpers.PricingHelper.ToBsSCeiling(item.PriceUSD, CurrentExchangeRate)
-                            : item.PriceBsS;
+                        // 8.143 + 8.185 (S1): derivar del único punto de cálculo en memoria; el
+                        // snapshot PriceBsS solo es fallback sin USD o sin tasa válida.
+                        RewriteEffectivePriceBsS(item);
                         Suggestions.Add(item);
                     }
                 }

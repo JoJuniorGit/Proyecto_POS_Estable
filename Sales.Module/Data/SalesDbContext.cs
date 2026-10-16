@@ -211,6 +211,9 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPriceBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<SaleItem>().Property(i => i.SubtotalBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitCostUSD).HasColumnType("decimal(18,2)");
+        // 8.185-T2 (S5): regla de efectivo por línea persistida por NOMBRE (estilo 8.184 Product);
+        // nullable = línea previa a 8.185 sin política registrada (techo canónico 8.104).
+        modelBuilder.Entity<SaleItem>().Property(i => i.RoundingRuleCashBs).HasConversion<string>().HasMaxLength(32);
 
         modelBuilder.Entity<SalePayment>().Property(p => p.AmountBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<SalePayment>().Property(p => p.ExchangeRate).HasColumnType("decimal(18,4)");

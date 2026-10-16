@@ -18,7 +18,11 @@ public partial class SupplierInvoiceService
 {
     private const int MaxConcurrencyAttempts = 3;
 
-    public Task<SupplierInvoiceDetailDto> ConfirmAsync(
+    // 8.182-T3 (S7): política pura y stateless de redondeo comercial (mismo servicio que el motor
+    // bulk; instancia static readonly, drop-in para inyección por DI fuera de esta superficie).
+    private static readonly IPricingRoundingPolicyService RoundingPolicy = new PricingRoundingPolicyService();
+
+    public async Task<SupplierInvoiceDetailDto> ConfirmAsync(
         int invoiceId,
         ConfirmSupplierInvoiceRequestDto request,
         CancellationToken cancellationToken = default)
@@ -49,7 +53,50 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("The applied exchange rate must be positive and within the supported range.", nameof(request));
         }
 
-        return _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        // 8.182-T3 (S7): validación de la regla de redondeo del confirm. ExactMath (default) y
+        // UsdPsychological operan sobre el USD recalculado; las reglas VES operan sobre el Bs.S del
+        // canal y este flujo no tiene conversión viva aplicable (las facturas Bs.S renormalizan con
+        // el snapshot, no con la tasa del día), por lo que se rechazan de forma explícita.
+        if (!Enum.IsDefined(request.RoundingRule))
+        {
+            throw new ArgumentException("The rounding rule is not recognized.", nameof(request));
+        }
+
+        if (IsVesCashFriendlyRule(request.RoundingRule))
+        {
+            throw new ArgumentException(
+                "VesCashFriendly rounding rules are not supported when confirming supplier invoices (v1); use ExactMath or UsdPsychological.",
+                nameof(request));
+        }
+
+        // 8.184-T4 (S7): la regla efectiva de cada línea aprobada es line.RoundingRule ?? request.RoundingRule,
+        // así que una regla VES persistida en la línea (elegida al resolverla contra el catálogo) también se
+        // rechaza con el mismo contrato, ANTES de abrir la transacción (sin efectos). Se validan solo las
+        // líneas aprobadas del request: las no aprobadas no participan del apply.
+        var approvedLineIds = request.Lines
+            .Where(line => line.IsApproved)
+            .Select(line => line.LineId)
+            .ToList();
+        if (approvedLineIds.Count > 0)
+        {
+            var storedLineRules = await _context.SupplierInvoiceLines
+                .AsNoTracking()
+                .Where(line => line.SupplierInvoiceId == invoiceId
+                    && approvedLineIds.Contains(line.Id)
+                    && line.RoundingRule != null)
+                .Select(line => new { line.Id, Rule = line.RoundingRule!.Value })
+                .ToListAsync(cancellationToken);
+
+            var offendingLine = storedLineRules.FirstOrDefault(line => IsVesCashFriendlyRule(line.Rule));
+            if (offendingLine is not null)
+            {
+                throw new ArgumentException(
+                    $"VesCashFriendly rounding rules are not supported when confirming supplier invoices (v1); line {offendingLine.Id} has a stored VES rule. Use ExactMath or UsdPsychological.",
+                    nameof(request));
+            }
+        }
+
+        return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             for (var attempt = 0; attempt < MaxConcurrencyAttempts; attempt++)
             {
@@ -222,7 +269,9 @@ public partial class SupplierInvoiceService
                             throw new KeyNotFoundException($"Product {productId} was not found or has been deleted.");
                         }
 
-                        ApplyApprovedLine(invoice.Id, line, product, confirmation);
+                        // 8.184-T4 (S7): precedencia línea ?? factura — la regla persistida al
+                        // resolver la línea contra el catálogo pisa la regla elegida en el confirm.
+                        ApplyApprovedLine(invoice.Id, line, product, confirmation, line.RoundingRule ?? request.RoundingRule);
                         // 8.166: aprende/actualiza el factor caja→unidad por proveedor+producto.
                         UpdateRememberedFactor(factorsByProductId, invoice.SupplierId, productId, line.ConversionFactor);
                         if (!string.IsNullOrWhiteSpace(line.SupplierCode))
@@ -358,11 +407,18 @@ public partial class SupplierInvoiceService
         });
     }
 
+    /// <summary>8.184-T4 (S7): las reglas VES operan sobre el Bs.S y no están soportadas en el confirm (v1).</summary>
+    private static bool IsVesCashFriendlyRule(RoundingRuleType rule) =>
+        rule is RoundingRuleType.VesCashFriendlyInteger
+            or RoundingRuleType.VesCashFriendlyStep5
+            or RoundingRuleType.VesCashFriendlyStep10;
+
     private void ApplyApprovedLine(
         int invoiceId,
         SupplierInvoiceLine line,
         Product product,
-        ConfirmLineDto confirmation)
+        ConfirmLineDto confirmation,
+        RoundingRuleType roundingRule)
     {
         var retailMargin = confirmation.MarginRetailOverride ?? product.ProfitMarginRetail;
         var wholesaleMargin = confirmation.MarginWholesaleOverride
@@ -385,12 +441,23 @@ public partial class SupplierInvoiceService
 
         product.Cost = line.UnitCostUSD;
         product.CostPriceUSD = line.UnitCostUSD;
-        product.ProfitMarginRetail = retailMargin;
-        product.ProfitMarginWholesale = wholesaleMargin;
-        product.ProfitPercentage = retailMargin;
-        product.PriceRetailUSD = PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + retailMargin / 100m));
+
+        // 8.182-T3 (S7): precios finales de la línea (redondeo del confirm + salvaguarda Detal/Mayor).
+        // 8.183 (R3): los márgenes persistidos son SIEMPRE los del revisor/operados (verbatim); el
+        // redondeo solo mueve precios. Con ExactMath = flujo vigente byte a byte.
+        var pricing = ResolveApprovedLinePricing(
+            line.UnitCostUSD,
+            retailMargin,
+            wholesaleMargin,
+            product.HasWholesale,
+            roundingRule);
+        product.ProfitMarginRetail = pricing.RetailMargin;
+        product.ProfitMarginWholesale = pricing.WholesaleMargin;
+        // Legacy: ProfitPercentage espeja el margen retail del revisor (nunca el efectivo del redondeo).
+        product.ProfitPercentage = pricing.RetailMargin;
+        product.PriceRetailUSD = pricing.RetailPrice;
         product.PriceUSD = product.PriceRetailUSD;
-        product.PriceWholesaleUSD = PricingCalculator.RoundPriceUp(line.UnitCostUSD * (1m + wholesaleMargin / 100m));
+        product.PriceWholesaleUSD = pricing.WholesalePrice;
         product.UpdatedAt = DateTime.UtcNow;
         line.SuggestedRetailPriceUSD = product.PriceRetailUSD;
         line.SuggestedWholesalePriceUSD = product.PriceWholesaleUSD;
@@ -423,6 +490,82 @@ public partial class SupplierInvoiceService
             };
             _context.StockMovements.Add(movement);
         }
+    }
+
+    // 8.183 (R3): el margen efectivo del redondeo NUNCA se persiste ni se recalcula al confirmar:
+    // los márgenes de la entidad son los del revisor/operados (verbatim). La regla y la salvaguarda
+    // Detal/Mayor solo mueven PRECIOS.
+
+    /// <summary>
+    /// 8.182-T3 (S7) / 8.183 (R3) / 8.184-T4 (S7): resuelve los precios finales de una línea
+    /// aprobada a partir de la regla EFECTIVA (línea ?? factura — la precedencia la resuelve el
+    /// llamador). Los matemáticos usan el techo vigente (RoundPriceUp, 8.104); la regla de redondeo
+    /// y la salvaguarda Detal/Mayor solo mueven PRECIOS — los márgenes devueltos son verbatim los
+    /// del revisor (el margen efectivo del redondeo no se persiste: raíz del Efecto Trinquete
+    /// corregida en 8.183). Con ExactMath el resultado es idéntico al flujo actual. El piso de
+    /// margen no aplica en facturas v1 (el margen del revisor manda): enforceFloor = false.
+    /// </summary>
+    private static (decimal RetailPrice, decimal WholesalePrice, decimal RetailMargin, decimal WholesaleMargin) ResolveApprovedLinePricing(
+        decimal unitCostUsd,
+        decimal retailMargin,
+        decimal wholesaleMargin,
+        bool hasWholesale,
+        RoundingRuleType roundingRule)
+    {
+        var retailMath = PricingCalculator.RoundPriceUp(unitCostUsd * (1m + retailMargin / 100m));
+        var wholesaleMath = PricingCalculator.RoundPriceUp(unitCostUsd * (1m + wholesaleMargin / 100m));
+        if (roundingRule == RoundingRuleType.ExactMath)
+        {
+            return (retailMath, wholesaleMath, retailMargin, wholesaleMargin);
+        }
+
+        var retailRounding = RoundingPolicy.Round(retailMath, roundingRule, unitCostUsd, null, false);
+        var wholesaleRounding = RoundingPolicy.Round(wholesaleMath, roundingRule, unitCostUsd, null, false);
+        var retailMoved = retailRounding.RoundedValue != retailMath;
+        var wholesaleMoved = wholesaleRounding.RoundedValue != wholesaleMath;
+
+        var guard = ApplyWholesaleCollisionGuard(
+            retailRounding.RoundedValue,
+            wholesaleRounding.RoundedValue,
+            unitCostUsd,
+            roundingRule,
+            hasWholesale,
+            retailMoved || wholesaleMoved);
+        if (!guard.Held)
+        {
+            // Degradación determinista: la línea vuelve a los matemáticos con los márgenes del
+            // revisor intactos (el confirm nunca se rompe por la política de redondeo).
+            return (retailMath, wholesaleMath, retailMargin, wholesaleMargin);
+        }
+
+        // 8.183 (R3): los márgenes del revisor viajan verbatim; la regla —o la salvaguarda, que puede
+        // bajar el precio al mayor— solo afecta a los precios del canal.
+        return (retailRounding.RoundedValue, guard.WholesalePrice, retailMargin, wholesaleMargin);
+    }
+
+    /// <summary>
+    /// 8.182-T3 (S7): salvaguarda Detal/Mayor (mismo patrón que el motor bulk). Si el Mayor
+    /// redondeado queda ≥ al Detal redondeado se baja al escalón inmediato inferior siempre que
+    /// quede por encima del costo; Held = false cuando el invariante no puede mantenerse (la línea
+    /// degrada a sin redondeo). Sin mayor habilitado o sin movimiento de la regla no interviene.
+    /// </summary>
+    private static (decimal WholesalePrice, bool Held, bool Lowered) ApplyWholesaleCollisionGuard(
+        decimal retailPrice,
+        decimal wholesalePrice,
+        decimal unitCostUsd,
+        RoundingRuleType roundingRule,
+        bool hasWholesale,
+        bool anyChannelMoved)
+    {
+        if (!hasWholesale || !anyChannelMoved || wholesalePrice < retailPrice)
+        {
+            return (wholesalePrice, true, false);
+        }
+
+        var lowered = RoundingPolicy.FindLowerStep(wholesalePrice, roundingRule);
+        return lowered is > 0m && (unitCostUsd <= 0m || lowered.Value > unitCostUsd)
+            ? (lowered.Value, true, true)
+            : (wholesalePrice, false, false);
     }
 
     private static void ValidateApprovedLine(SupplierInvoiceLine line, ConfirmLineDto confirmation)

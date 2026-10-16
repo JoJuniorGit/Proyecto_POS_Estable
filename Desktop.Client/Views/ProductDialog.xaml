@@ -322,6 +322,43 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- 1.1 Políticas de Redondeo por Artículo (8.184-T3 S4) -->
+                        <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="14,12,14,16" Margin="0,0,0,16" BorderThickness="1" BorderBrush="{DynamicResource PrimaryHueLightBrush}">
+                            <StackPanel>
+                                <TextBlock Text="Redondeo" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,0,0,8"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="10"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox Grid.Column="0"
+                                              ItemsSource="{Binding RoundingUsdOptions}"
+                                              SelectedItem="{Binding SelectedRoundingUsdOption, Mode=TwoWay}"
+                                              DisplayMemberPath="Label"
+                                              IsEnabled="{Binding CanEditPricing}"
+                                              materialDesign:HintAssist.Hint="Redondeo USD (Detal y Mayor)"
+                                              materialDesign:HintAssist.IsFloating="True"
+                                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                              AutomationProperties.AutomationId="ProductDialog_RoundingUsdCombo"/>
+                                    <ComboBox Grid.Column="2"
+                                              ItemsSource="{Binding RoundingCashOptions}"
+                                              SelectedItem="{Binding SelectedRoundingCashOption, Mode=TwoWay}"
+                                              DisplayMemberPath="Label"
+                                              IsEnabled="{Binding CanEditPricing}"
+                                              materialDesign:HintAssist.Hint="Efectivo Bs.S"
+                                              materialDesign:HintAssist.IsFloating="True"
+                                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                              AutomationProperties.AutomationId="ProductDialog_RoundingCashCombo"/>
+                                </Grid>
+                                <TextBlock Text="El redondeo aplica al precio final del guardado; &quot;Heredar global&quot; usa la política del sistema."
+                                           Foreground="#64748B" FontSize="11" Margin="4,6,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding RoundingValidationMessage}"
+                                           Foreground="#B45309" FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap" Margin="4,6,0,0"
+                                           Visibility="{Binding HasRoundingValidationWarning, Converter={StaticResource BoolToVisConverter}}"/>
+                            </StackPanel>
+                        </Border>
+
                         <!-- 2. Sección Detal -->
                         <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="14,12,14,16" Margin="0,0,0,16" BorderThickness="1" BorderBrush="{DynamicResource PrimaryHueLightBrush}">
                             <StackPanel>
@@ -354,6 +391,20 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                     <TextBlock Text="Equivalente: " FontSize="11" Opacity="0.7"/>
                                     <TextBlock Text="{Binding PriceRetailBsS, StringFormat='Bs.S {0:N2}'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                </StackPanel>
+                                <!-- 8.184-T3 (S4): traza del redondeo USD (visible solo con regla ≠ Sin redondeo). -->
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding ShowRetailRoundingTrace, Converter={StaticResource BoolToVisConverter}}">
+                                    <TextBlock Text="Matemático: " FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding RetailMathBaseText}" FontSize="11" FontWeight="SemiBold"/>
+                                    <TextBlock Text=" · Δ Redondeo: " FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding RetailRoundingDeltaText}" FontSize="11" FontWeight="SemiBold"/>
+                                    <TextBlock Text=" · Margen efectivo: " FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding RetailEffectiveMarginText}" FontSize="11" FontWeight="SemiBold"/>
+                                </StackPanel>
+                                <!-- 8.184-T3 (S4): proyección en caliente del Bs.S de efectivo (nunca persistida). -->
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0" Visibility="{Binding ShowRetailCashFriendly, Converter={StaticResource BoolToVisConverter}}">
+                                    <TextBlock Text="Bs.S en caliente (efectivo): " FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding RetailCashFriendlyText}" FontSize="12" FontWeight="Bold" Foreground="#047857"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -407,6 +458,19 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                     <TextBlock Text="Equivalente: " FontSize="11" Opacity="0.7"/>
                                     <TextBlock Text="{Binding PriceWholesaleBsS, StringFormat='Bs.S {0:N2}'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                </StackPanel>
+                                <!-- 8.184-T3 (S4): traza del redondeo USD del canal Mayor + Bs.S en caliente. -->
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding ShowWholesaleRoundingTrace, Converter={StaticResource BoolToVisConverter}}">
+                                    <TextBlock Text="Matemático: " FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding WholesaleMathBaseText}" FontSize="11" FontWeight="SemiBold"/>
+                                    <TextBlock Text=" · Δ Redondeo: " FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding WholesaleRoundingDeltaText}" FontSize="11" FontWeight="SemiBold"/>
+                                    <TextBlock Text=" · Margen efectivo: " FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding WholesaleEffectiveMarginText}" FontSize="11" FontWeight="SemiBold"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0" Visibility="{Binding ShowWholesaleCashFriendly, Converter={StaticResource BoolToVisConverter}}">
+                                    <TextBlock Text="Bs.S en caliente (efectivo): " FontSize="11" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding WholesaleCashFriendlyText}" FontSize="12" FontWeight="Bold" Foreground="#047857"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>

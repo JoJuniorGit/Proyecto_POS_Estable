@@ -240,7 +240,8 @@ public class ProductCostMaskingTests
             HasIndependentPricing = true,
             ConversionFactor = 5m,
             VariantCount = 2,
-            ConsolidatedStock = 40m
+            ConsolidatedStock = 40m,
+            RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyStep5
         };
     }
 
@@ -270,6 +271,8 @@ public class ProductCostMaskingTests
         Assert.Equal(2, dto.VariantCount);
         Assert.Equal(40m, dto.ConsolidatedStock);
         Assert.Equal(18m, dto.AvailableQuantity);
+        // 8.185-T2 (S6): la regla de efectivo no es sensible y sobrevive al masking de Cashier.
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep5, dto.RoundingRuleCashBs);
     }
 
     private static void AssertCostFieldsAreMasked(ProductDto dto)

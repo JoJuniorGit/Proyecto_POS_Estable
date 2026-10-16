@@ -55,6 +55,9 @@ public class SaleItemDto
     public bool IsWholesaleApplied { get; set; }
     public bool IsCustomPrice { get; set; }
 
+    // 8.185-T2 (S8): regla de efectivo resuelta al agregar la línea (null = línea previa a 8.185).
+    public RoundingRuleType? RoundingRuleCashBs { get; set; }
+
     public string DisplayProductName => UnitOfMeasure != Core.Entities.UnitOfMeasureType.Und
         ? $"{ProductName} ({UnitOfMeasure})"
         : ProductName;

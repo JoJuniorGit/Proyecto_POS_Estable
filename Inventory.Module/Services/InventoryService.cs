@@ -15,6 +15,9 @@ public partial class InventoryService : IInventoryService
     private readonly InventoryDbContext _context;
     private readonly ICurrentUserService? _currentUserService;
     private readonly IMemoryCache? _cache;
+    // 8.185-T2 (S1/S2): lector de la política global de efectivo para resolver las quick-info.
+    // Opcional para no romper composiciones de tests que construyen el servicio sin settings.
+    private readonly ISystemSettingsService? _settingsService;
     private const string ExchangeRateCacheKey = "bcv_rate_today";
     // 8.7-L5: registro de claves de caché de producto emitidas para invalidación efectiva.
     private static readonly ConcurrentDictionary<string, byte> _productCacheKeys = new(StringComparer.OrdinalIgnoreCase);
@@ -27,11 +30,12 @@ public partial class InventoryService : IInventoryService
         }
     }
 
-    public InventoryService(InventoryDbContext context, ICurrentUserService? currentUserService = null, IMemoryCache? cache = null)
+    public InventoryService(InventoryDbContext context, ICurrentUserService? currentUserService = null, IMemoryCache? cache = null, ISystemSettingsService? settingsService = null)
     {
         _context = context;
         _currentUserService = currentUserService;
         _cache = cache;
+        _settingsService = settingsService;
     }
 
     private void EnsureCatalogMutationPermission()
@@ -59,7 +63,9 @@ public partial class InventoryService : IInventoryService
             IsGroupHeader = p.IsGroupHeader,
             IsFractional = p.IsFractional,
             UnitOfMeasure = p.UnitOfMeasure,
-            CostPriceUSD = (decimal?)p.CostPriceUSD
+            CostPriceUSD = (decimal?)p.CostPriceUSD,
+            // 8.185-T2 (S5): override crudo; SalesService resuelve la regla efectiva al agregar.
+            RoundingRuleCashBs = p.RoundingRuleCashBs
         });
 
     public async Task<IReadOnlyList<Core.DTOs.SaleProductInfoDto>> GetSaleProductsByIdsAsync(IEnumerable<int> productIds, System.Threading.CancellationToken cancellationToken = default)
@@ -241,10 +247,29 @@ public partial class InventoryService : IInventoryService
         return dto;
     }
 
+    /// <summary>
+    /// 8.185-T2 (S1/S2): regla de efectivo por defecto (Pricing.DefaultCashBsRoundingRule) leída
+    /// con el contrato del lector 8.184 (Enum.TryParse + IsDefined; clave ausente/ilegible ⇒
+    /// ExactMath). Sin accessor inyectado ⇒ ExactMath, sin romper composiciones de tests.
+    /// </summary>
+    private async Task<Core.DTOs.RoundingRuleType> ResolveDefaultCashRoundingRuleAsync()
+    {
+        if (_settingsService == null)
+        {
+            return Core.DTOs.RoundingRuleType.ExactMath;
+        }
+
+        var value = await _settingsService.GetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultCashBsRoundingRule);
+        return Enum.TryParse<Core.DTOs.RoundingRuleType>(value, ignoreCase: true, out var rule) && Enum.IsDefined(rule)
+            ? rule
+            : Core.DTOs.RoundingRuleType.ExactMath;
+    }
+
     private async Task<Core.DTOs.ProductQuickInfoDto?> FetchProductQuickInfoFromDbAsync(string sku)
     {
         var normalized = sku.Trim().ToUpperInvariant();
-        return await _context.Products
+        var defaultCashRule = await ResolveDefaultCashRoundingRuleAsync();
+        var dto = await _context.Products
             .AsNoTracking()
             .Where(p => p.SKU == normalized && !p.IsDeleted)
             .Select(p => new Core.DTOs.ProductQuickInfoDto
@@ -269,9 +294,18 @@ public partial class InventoryService : IInventoryService
                 VariantCount = p.IsGroupHeader ? p.Variants.Count(v => !v.IsDeleted) : 0,
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
-                    : p.StockQuantity
+                    : p.StockQuantity,
+                // 8.185-T2 (S1/S2): regla resuelta en memoria (override ?? default global).
+                RoundingRuleCashBs = p.RoundingRuleCashBs
             })
             .FirstOrDefaultAsync();
+
+        if (dto != null)
+        {
+            dto.RoundingRuleCashBs ??= defaultCashRule;
+        }
+
+        return dto;
     }
 
     public async Task EnrollInTransactionAsync(System.Data.Common.DbTransaction transaction, System.Threading.CancellationToken cancellationToken = default)

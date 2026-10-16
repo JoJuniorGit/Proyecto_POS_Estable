@@ -156,6 +156,14 @@ public partial class SupplierInvoiceService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        // 8.184-T2 (S5): la regla de redondeo per-línea viaja como entero; un valor fuera del
+        // catálogo se rechaza (whitelist zero-trust, molde SupplierInvoiceService.Apply).
+        if (request.RoundingRule.HasValue && !Enum.IsDefined(request.RoundingRule.Value))
+        {
+            throw new ArgumentException("The rounding rule is not recognized.", nameof(request));
+        }
+
         var requestedProductIds = request.ProductIds is { Count: > 0 }
             ? request.ProductIds.ToList()
             : new List<int> { request.ProductId };
@@ -329,6 +337,10 @@ public partial class SupplierInvoiceService
 
                     currentLine.MarginRetailOverride = retailMargin;
                     currentLine.MarginWholesaleOverride = wholesaleMargin;
+                    // 8.184-T2 (S5): la regla de redondeo per-línea reemplaza el valor previo con la
+                    // misma semántica que los overrides de margen; null = heredar la regla de la
+                    // factura al confirmar (precedencia línea ?? factura, 8.184-S7 — T4).
+                    currentLine.RoundingRule = request.RoundingRule;
                     currentLine.SuggestedRetailPriceUSD = PricingCalculator.RoundPriceUp(
                         currentLine.UnitCostUSD * (1m + retailMargin / 100m));
                     currentLine.SuggestedWholesalePriceUSD = PricingCalculator.RoundPriceUp(

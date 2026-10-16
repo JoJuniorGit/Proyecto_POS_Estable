@@ -60,7 +60,10 @@ public sealed record SupplierInvoiceLineDto(
     decimal? OcrQuantityConfidence,
     decimal? OcrUnitCostConfidence,
     // 8.165: factor de conversión caja→unidad persistido por línea (default 1, sin conversión).
-    decimal ConversionFactor = 1m);
+    decimal ConversionFactor = 1m,
+    // 8.184-T2 (S5): regla de redondeo per-línea persistida; null = hereda la regla de la factura.
+    // La UI la usa para repoblar el selector al recargar el borrador.
+    RoundingRuleType? RoundingRule = null);
 
 public sealed record CreateInvoiceProductRequestDto(
     string Barcode,
@@ -81,7 +84,10 @@ public sealed record LinkInvoiceProductRequestDto(
     IReadOnlyList<LinkedProductMarginOverrideDto>? MarginOverrides = null,
     // 8.175-S5: filas 1:N del vínculo previo que el cliente reemplaza al re-resolver la línea.
     // Vacío/null = resolución simple sin absorción de filas existentes.
-    IReadOnlyList<int>? ReplacedLineIds = null);
+    IReadOnlyList<int>? ReplacedLineIds = null,
+    // 8.184-T2 (S5): regla de redondeo elegida para la línea resuelta (nivel producto). null =
+    // hereda la regla de la factura al confirmar; el re-vínculo reemplaza el valor previo.
+    RoundingRuleType? RoundingRule = null);
 
 public sealed record ConfirmSupplierInvoiceRequestDto(
     IReadOnlyList<ConfirmLineDto> Lines,
@@ -89,7 +95,12 @@ public sealed record ConfirmSupplierInvoiceRequestDto(
     decimal? AppliedRate = null,
     // 8.176: moneda viva de la cabecera en revisión; null conserva la moneda del staging (contrato previo).
     // Si difiere del snapshot del draft, el confirm conmuta la moneda y renormaliza los costos aprobados.
-    string? Currency = null);
+    string? Currency = null,
+    // 8.182-T3 (S7): regla de redondeo comercial aplicada a los precios recalculados por el confirm
+    // (nivel factura, supuesto v1; per-línea = residual). ExactMath (default) conserva el flujo
+    // vigente intacto; UsdPsychological redondea ambos canales a la escalera .99/.95/.75/.50/.25.
+    // Las reglas VesCashFriendly* no se soportan en este flujo (operan sobre Bs.S) y se rechazan.
+    RoundingRuleType RoundingRule = RoundingRuleType.ExactMath);
 
 public sealed record ConfirmLineDto(
     int LineId,

@@ -104,6 +104,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             await LoadTimeZonesAsync();
             await LoadCurrencyFormatAsync();
             await LoadAllowNegativeStockAsync();
+            // 8.184-T4 (S2): políticas globales de precios y redondeo (fallback silencioso a defaults).
+            await LoadPricingPoliciesAsync();
             _hasLoaded = true;
         }
     }

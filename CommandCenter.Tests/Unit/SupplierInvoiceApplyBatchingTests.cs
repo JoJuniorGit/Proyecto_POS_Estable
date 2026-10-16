@@ -43,8 +43,11 @@ public class SupplierInvoiceApplyBatchingTests
         _output.WriteLine(
             $"Comandos de escritura por líneas -> 2: {twoLines.Writes}; 4: {fourLines.Writes}; 6: {sixLines.Writes}.");
 
+        // 8.184-T4 (S7): +1 SELECT CONSTANTE por el rechazo VES per-línea pre-transacción
+        // (validación de la regla efectiva línea ?? factura antes de abrir la transacción); el
+        // conteo sigue plano frente a N (2/4/6 líneas => mismo total), por eso el tope pasa de 5 a 6.
         Assert.True(
-            fourLines.Selects <= 5,
+            fourLines.Selects <= 6,
             $"Se esperaban lecturas acotadas para 4 líneas, se observaron {fourLines.Selects}.");
         Assert.True(
             sixLines.Selects <= twoLines.Selects + 1,

@@ -14858,3 +14858,360 @@ E. VERIFICACION: local contra PostgreSQL real (suite completa + gates de cobertu
 
 F. COMMITS: 111b97d (deps) + bbe6a3a (migracion) + 9f68fd9 (xmin) + 50d1897 (tests) en V0.15.
 ================================================================================
+
+================================================================================
+ANEXO 8.182 - PASO 10 DEL ROADMAP: MOTOR DE PRECIOS PSICOLOGICOS, REDONDEO COMERCIAL Y PROTECCION DE MARGENES - 2026-10-15
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/paso-10-redondeo-precios.md, spec completa del Paso 10):
+incorporar un motor de politicas de redondeo (PricingRoundingPolicyService) como interceptor limpio sobre
+la edicion masiva de precios (Paso 9) y el recalculo de precios por confirmacion de facturas de proveedor,
+eliminando decimales impracticos para efectivo, protegiendo el piso de rentabilidad y garantizando la
+coherencia entre precios al Detal y al Mayor.
+
+A. ALCANCE Y ENTREGA
+
+A1. Servicio puro (commit bf01c4f): `RoundingRuleType` {ExactMath, UsdPsychological, VesCashFriendlyInteger,
+    VesCashFriendlyStep5, VesCashFriendlyStep10}; `IPricingRoundingPolicyService` (Core/Interfaces) +
+    `PricingRoundingPolicyService` (Inventory.Module, stateless): nearest bidireccional (empate -> escalon
+    inferior salvo rechazo del piso), piso de margen evaluado sobre el precio FINAL (un escalon arriba),
+    nunca <=0, delta con signo, `FindLowerStep` para salvaguardas.
+A2. Interceptor bulk (mismo commit): secuencia operaciones -> derivaciones -> redondeo por canal ->
+    salvaguarda Mayor>=Detal (escalon inferior si queda > costo; imposible -> fila IsError all-or-nothing) ->
+    validacion vigente como ultima palabra -> Bs.S canonico (8.104) desde el USD final -> margen efectivo
+    persistido por canal cuando la regla movio el USD (ProfitPercentage legacy espejo). VES redondea el
+    Bs.S canonico del canal (USD/margen intactos). DTOs: `RetailRoundingRule`/`WholesaleRoundingRule`,
+    `EnforceMinimumMarginFloor`, pisos por lote, `PreRoundingValue`/`RoundingDelta`, `Effective*MarginPct`.
+A3. Desktop WPF (commit 746ebcb): selectores de regla por canal, toggle + pisos por canal con validacion
+    client-side, preview con columnas MATEMATICO / REDONDEADO / delta REDONDEO / MARGEN DETAL % / MARGEN
+    MAYOR % (formato por unidad de regla del canal; identidad Redondeado = Matematico + delta).
+A4. Facturas de proveedor (commit 012583a): `ConfirmSupplierInvoiceRequestDto` + `RoundingRule` (default
+    ExactMath = flujo actual byte-identico; VES/desconocidas -> 400 pre-transaccion); `ApplyApprovedLine`
+    redondea por canal en el recalculo por costo, salvaguarda con degradacion determinista a matematicos
+    cuando no puede mantener el invariante, margenes efectivos persistidos (incl. salvage-only), suggestions
+    finales; combo en el footer de revision (`SupplierInvoice_ConfirmRoundingCombo`).
+A5. Tests: 77 nuevos (50 T1: 37 servicio [Theory] + 13 integracion; 13 T2 VM; 14 T3 aplicar/regresion/
+    integracion). Suite completa por partes: Unit 2157/2157 + resto 572/572 + E2E WPF 50/50 = 2779/2779.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Verificacion independiente read-only (agente reviewer, evidencia re-ejecutada secuencial):
+    REVISAR sin bloqueantes - S1-S7 CONFORME; carriles 226/226 (~Bulk|~Pricing), 51/51 (~BulkPriceEdit),
+    300/300 (~SupplierInvoice); clases de 8.181 sin modificar. Hallazgos [ESTILO] corregidos (comentario
+    stale en BulkPriceRoundingTests, conteo de tests en tracker). [NO BLOQUEANTE] documentado: la rama
+    VES-detalle aplica el barrido de Bs.S a toda la seleccion (intencion de politica, confirmable por el
+    mantenedor); colision de orden de margenes post-redondeo cae en la validacion vigente (IsError) sin
+    test especifico (caso practicamente inalcanzable con costo unico).
+
+C. LIMITACIONES ACEPTADAS
+
+C1. Switch dinamico VesCashFriendly sobre el convertido en vivo en el POS: DIFERIDO (choca con la ley techo
+    8.104 y toca multiples call sites WPF/web; el servicio queda listo para el hook futuro).
+C2. Pisos de margen por lote (sin setting global v1); facturas sin piso (el margen del revisor manda) y
+    regla a nivel factura (per-linea diferido).
+C3. Salvaguarda y piso de un solo escalon (best-effort documentado); VES al mayor informativo (la entidad
+    no tiene columna Bs.S al mayor).
+C4. Instancias `static readonly` del servicio puro en los motores (registro DI = drop-in futuro fuera de las
+    superficies del tramo); render WPF real no verificado (sin runner headless en el carril).
+
+D. ROLLBACK
+
+D1. Revertir los tres commits restaura el estado previo; sin migraciones ni cambios de modelo; contrato DTO
+    retrocompatible (defaults ExactMath/null).
+
+E. COMMITS
+
+E1. 8.182 en V0.15: bf01c4f (T1 backend) + 746ebcb (T2 WPF) + 012583a (T3 facturas) + commit de este ANEXO
+    (docs(8.182); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.183 - REFACTOR QUIRURGICO: IDEMPOTENCIA DEL REDONDEO (FIX EFECTO TRINQUETE) - 2026-10-15
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/8.183-redondeo-idempotente-ratchet.md, rol Senior Backend
+& Domain Architect): la implementacion 8.182 tenia un defecto financiero critico de Inflacion Acumulativa
+por Redondeo (Efecto Trinquete / Ratchet): los ajustes o redondeos consecutivos (subir por piso de margen
+o cuadrar multiplos de Bs.S) inflaban progresivamente el precio base USD y el margen. Reglas: (1) el
+redondeo en Bs.S jamas muta el USD/margen persistido — evaluacion en caliente; (2) idempotencia matematica
+anclada a Costo x (1 + Margen Objetivo/100) sin redondear; (3) el margen efectivo por redondeo NO
+sobrescribe el margen objetivo persistido; (4) preview USD persistido vs Bs.S redondeado + test
+obligatorio de 10 iteraciones.
+
+A. AUDITORIA - PUNTOS EXACTOS DE LA MUTACION ACUMULATIVA (evidencia pre-fix sobre 8.182)
+
+A1. InventoryService.BulkPrices.cs:387-399 - al redondear, sobrescribia ProfitMarginRetail/Wholesale/
+    ProfitPercentage con el MARGEN EFECTIVO inflado. RAIZ DEL TRIQUETE: todo recalculo posterior basado
+    en margen (ops % sobre margen, confirmacion de facturas) heredaba el % inflado y lo acumulaba por
+    iteracion.
+A2. SupplierInvoiceService.Apply.cs:506-514 - espejo en el confirm de facturas: persistia margenes
+    efectivos del redondeo en cada aplicacion (el ancla cost x (1+margin) de :480 era correcta, pero el
+    margen ya llegaba contaminado por A1/A2).
+A3. InventoryService.BulkPrices.cs:427-442 - la regla VES detal persistia el Bs.S "amigable" en el
+    PriceBsS almacenado (divergencia del canonico 8.104) y SIN gate de cambio de USD (el mayor si
+    gateaba en :446-448), mutando tambien productos no tocados por la operacion.
+A4. Preview 8.182 - reportaba la mutacion VES como cambio persistido, sin separar USD persistido de
+    Bs.S redondeado en caliente (tasa actual).
+Nota de precision: el anclaje `precio = costo x (1+margen)` era correcto en si (:291 bulk, :480
+facturas); el defecto fue la contaminacion del margen persistido (A1/A2) y la persistencia Bs.S (A3).
+Las operaciones % sobre PRECIO siguen compuestas por diseno (no integran el defecto).
+
+B. REFACTORIZACION
+
+B1. T1 backend (commit 3cb31b7): A1 ELIMINADO (margen persistido = objetivo/operado; efectivo solo
+    informativo en la fila); A2 -> ResolveApprovedLinePricing devuelve margenes del revisor verbatim
+    (la salvaguarda solo mueve precios); A3 -> VES convertido a PROYECCION en caliente: el PriceBsS
+    persistido es SIEMPRE el canonico ToBsSCeiling(final USD, tasa) y la proyeccion viaja en el DTO
+    aditivo CashFriendlyAfterBsS (nunca persistida; fuera de HasChanges/ApplyBulkPriceState) +
+    ProjectCashFriendlyBsS en el servicio puro (hook POS por settings = residual v1). Test OBLIGATORIO
+    ApplyRounding_ExecutedTenConsecutiveTimes_ShouldRemainIdempotentAndNotInflatePrice ([Theory]
+    .99/.95/.50 psicologico + VES entero/5/10; apply REAL 10 iteraciones; margen objetivo intacto,
+    canonico estable por iteracion, proyeccion estable). RED 4/4 sobre el codigo 8.182 (contrafactico:
+    habria persistido margen 32.00/30.67 y Bs.S 825 vs canonico 825.37) -> GREEN 6/6 final.
+B2. T2 WPF (commit 17541c0): el preview distingue USD persistido de Bs.S efectivo proyectado (columna
+    "BS.S EFECTIVO (PROY.)", AutomationId BulkPriceEdit_CashFriendlyCell, tooltip de no-persistencia;
+    columnas de redondeo intactas). 2 tests nuevos.
+
+C. VERIFICACION
+
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+C2. Suite completa POR PARTES y SECUENCIAL (regla del mantenedor): Unit 2173/2173 + resto 572/572 +
+    E2E WPF 50/50 = 2795/2795.
+C3. Verificacion independiente read-only (reviewer, evidencia re-ejecutada secuencial): REVISAR sin
+    bloqueantes - R1-R4 CONFORME; carriles 240/240 (~Bulk|~Pricing), 300/300 (~SupplierInvoice), 53/53
+    (~BulkPriceEdit), test obligatorio 4/4; contrafactico del test confirmado por el verificador.
+    H1 [NO BLOQUEANTE] (faltaban aterrizajes .95/.50 en la matriz del Theory) -> resuelto (6/6).
+    H2 [ESTILO] (tooltip de celda en VES-mayor) -> residual.
+
+D. LIMITACIONES ACEPTADAS
+
+D1. Hook POS por settings para VES en caliente: residual v1 (servicio puro y proyeccion listos; la
+    activacion por settings no esta implementada).
+D2. Columna PROY. en VES-mayor duplica el Bs.S informativo de ANTES->DESPUES (claridad cubierta por
+    header + tooltip + docs; tooltip de celda = residual de estilo).
+D3. Verificacion visual runtime del dialogo (sin UI runner en el carril).
+
+E. COMMITS
+
+E1. 8.183 en V0.15: 3cb31b7 (T1 backend) + 17541c0 (T2 WPF) + commit de este ANEXO (docs(8.183); git log).
+================================================================================
+
+================================================================================
+ANEXO HOTFIX POST-ENTREGA 8.181/8.182/8.183 - CRASH DEL DIALOGO DE EDICION MASIVA - 2026-10-15
+================================================================================
+Reportado por el mantenedor (campo, primera ejecucion real del dialogo): "la edicion de precios masiva
+colapsa y cierra la WPF local".
+
+A. DIAGNOSTICO (crash.log del Desktop Client + eventos):
+   XamlParseException al abrir BulkPriceEditDialog -> Inner: System.ArgumentException "Auto is not a
+   valid value for Double": DataGrid.RowHeight es double y no acepta "Auto"
+   (Desktop.Client/Views/BulkPriceEditDialog.xaml:285, introducido en c464cee - 8.181-T2). El dialogo
+   NUNCA pudo abrirse en runtime; los residuales "render WPF real no verificado" de 8.181/8.182/8.183
+   lo dejaron pasar (los tests de VM no cargan XAML). Sintoma secundario: NullReferenceException en
+   BulkPriceEditDialog.OnClosing al cerrar tras la falla del ctor (ViewModel sin asignar) y excepciones
+   de cierre en cascada (MainWindow.OnClosingShutdown).
+
+B. FIX (commit 541eb12):
+   B1. RowHeight="Auto" eliminado (default = auto); unica aparicion del patron en Desktop.Client.
+   B2. OnClosing null-safe (ViewModel?.IsBusy == true) para que un ctor fallido no derive en NRE al cerrar.
+   B3. Evidencia: build slnx 0/0; carril ~BulkPriceEdit 53/53; verificacion runtime = reintento del
+       mantenedor (start.bat con dotnet run recompila).
+================================================================================
+
+================================================================================
+ANEXO 8.184 - POLITICAS DE PRECIOS GLOBALES + REDONDEO INTELIGENTE EN EL MODAL DE PRODUCTO - 2026-10-15
+================================================================================
+Pedido del mantenedor (L1 del tracker odd/tasks/8.184-politicas-precios-globales.md): integrar el motor de
+redondeo del Paso 10 al formulario individual de Crear/Editar Producto y agregar una Configuracion Global
+de Politicas de Precios (Ajustes del Sistema) que defina el comportamiento por defecto del sistema,
+inicializando los selectores en tres puntos (Producto, Edicion Multiple Paso 9, Resolucion de facturas).
+
+A. ALCANCE Y ENTREGA
+
+A1. Config global (commit 8deeff5): relocalizacion del algoritmo puro a Core/Helpers/PricingRoundingPolicy
+    (el servicio de Inventory delega; paridad byte-identica verificada mecanicamente 4455/4455) + claves
+    Pricing.DefaultUsdRoundingRule / DefaultCashBsRoundingRule / DefaultEnforceMinimumMarginFloor
+    (defaults ExactMath / ExactMath / true) + GET/PUT /api/settings/pricing-policies (RBAC, whitelist,
+    storage por nombre).
+A2. Persistencia por articulo/linea (commit e720c90): migracion idempotente 20261015193613
+    (Products.RoundingRuleUsd/CashBs y SupplierInvoiceLines.RoundingRule nullable, conversion por nombre;
+    null = heredar global); plumbing DTOs/mapping (Update = reemplazo completo)/validaciones; linea de
+    factura con persistencia molde MarginOverrides + exposicion en el DTO (ToLineDto).
+A3. Modal de producto (commit c804416 + wiring): dos selectores por articulo ("Heredar global (X)",
+    Sin redondeo, reglas) con calculo vivo on-blur: base anclada costo x (1 + margen objetivo) o precio
+    manual -> redondeo USD con piso = margen objetivo del canal y toggle global -> campo redondeado;
+    margen re-derivado del redondeado en gatillo manual; proyeccion Bs.S en caliente (nunca persistida);
+    trazas por canal (Matematico/Delta/Margen Efectivo %); salvaguarda Detal/Mayor con aviso; margen
+    objetivo conservado (8.183); ExactMath byte-identico. ProductClientMapping reenvia los overrides
+    (obligacion critica de T2) en update/create/Merge.
+A4. Ajustes + defaults de los 3 puntos (commit 675c638): seccion "Politicas de Precios y Redondeo"
+    (2 combos + toggle proteccion de margen default true) con auto-guardado/revert; el masivo inicializa
+    reglas/toggle desde la global; la resolucion de facturas gana selector (Heredar de la factura no
+    default, init desde global con VES->ExactMath) propagado en AMBOS flujos; el confirm inicializa su
+    combo desde la global; SERVIDOR: precedencia regla de linea ?? regla de factura + rechazo VES
+    per-linea pre-transaccion sin efectos.
+A5. Tests: 102 nuevos (30 T1 + 15 T2 + 22 T3 + 35 T4). Suite completa POR PARTES y secuencial:
+    Unit 2275/2275 + resto 572/572 + E2E WPF 50/50 = 2897/2897.
+
+B. VERIFICACION
+
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Verificacion independiente read-only (agente reviewer, evidencia re-ejecutada secuencial): REVISAR
+    sin bloqueantes - paridad del algoritmo byte-identica (4455/4455 normalizado), S1-S7 CONFORME,
+    has-pending limpio (Inventory/Sales), tope SELECT 5->6 del batching validado (constante, 6/6/6 plano,
+    invariante intacto). Hallazgos: [NO BLOQUEANTE] autosave de settings sin serializacion de PUTs
+    (ventana de reordenamiento; sin impacto financiero) y 2 [ESTILO].
+
+C. LIMITACIONES ACEPTADAS
+
+C1. Sin SignalR de politicas (v1): se leen al abrir cada superficie; un cambio global no re-inicializa
+    un dialogo ya abierto.
+C2. Repoblacion del selector de resolucion desde SupplierInvoiceLineDto al recargar el borrador: residual
+    (el DTO ya transporta la regla y el confirm la aplica).
+C3. XAML verificado por compilacion (sin runner de UI en el carril); smoke visual recomendado al
+    mantenedor (precedente hotfix 8.181 del dialogo bulk).
+C4. Migracion no aplicada contra PostgreSQL real local (smoke gated silent-pass; CI/arranque la aplican);
+    has-pending limpio como evidencia de modelo. Per-article rules no afectan flujos server (bulk/
+    facturas conservan sus selectores) - supuesto de spec.
+C5. Hallazgos menores de B2 (serializacion de autosave, ventana fire-and-forget del load) como follow-ups.
+
+D. ROLLBACK
+
+D1. Revertir los 4 commits (+ completitud) restaura el estado previo; la migracion es aditiva nullable
+    con Down espejo; contratos DTO retrocompatibles (defaults ExactMath/true/null).
+
+E. COMMITS
+
+E1. 8.184 en V0.15: 8deeff5 (T1) + e720c90 (T2) + c804416 (T3 + wiring) + 675c638 (T4) + commit de este
+    ANEXO (docs(8.184); git log).
+================================================================================
+
+================================================================================
+ANEXO 8.185 - HOOK VIVO VESCASHFRIENDLY: PRECIO EFECTIVO Bs.S UNIFICADO (CATALOGO = MODAL = POS = CARRITO) + PARIDAD BACKEND - 2026-10-15
+================================================================================
+Pedido del mantenedor (L1/L5 del tracker odd/tasks/8.185-hook-vivo-pos-carrito.md, rol Principal .NET
+Architect): activar en vivo la politica VesCashFriendly (Sin redondeo / Entero / x5 / x10) con precios
+100% sincronizados entre pantallas (cero desfase) y paridad matematica en el backend, sin mutar el
+canonico 8.104 ni exponer costo/margen al POS.
+
+A. DECISIONES DEL MANTENEDOR
+
+A1. Fork de piso/masking: OPCION A - piso geometrico sin costo. Con EnforceMinimumMarginFloor ON el
+    efectivo Bs.S nunca redondea hacia abajo (escalon inmediato superior); OFF = mas cercano. Sin costo
+    (en POS esta enmascarado por diseno), identico para todos los roles y entre cliente/backend;
+    equivalencia demostrada contra el piso costo-aware (test de propiedad; borde 2dp documentado).
+A2. Fork de vuelto: OPCION 1 - semantica dual. El cambio se registra solo por encima del total EFECTIVO
+    (el escalon queda en caja); la misma forma "excede en AMBOS dominios" rige cobro, apartado y guard
+    de abonos.
+
+B. ALCANCE Y ENTREGA
+
+B1. Motor (commit 9d78e8d): overload PricingRoundingPolicy.ProjectCashFriendlyBsS(usd, rate, rule,
+    neverRoundDown) con AggressiveInlining; nearest + NextStepUp si el candidato queda por debajo del
+    matematico; empate del nearest -> sube; coincidencia exacta queda; firma 8.184 de 6 argumentos
+    intacta. 21 tests nuevos (incl. propiedad de equivalencia sobre 72 combos).
+B2. Contratos y persistencia (commit 7c7a2e9): SaleItem.RoundingRuleCashBs (regla RESUELTA al agregar =
+    override ?? default global) + migracion idempotente 20261016020937_AddSaleItemRoundingRuleRev8185
+    en Sales.Module (multi-DbContext: la tabla SaleItems pertenece a SalesDbContext; guards to_regclass/
+    information_schema) + snapshot regenerado (drift test verde); ProductQuickInfoDto.RoundingRuleCashBs
+    RESUELTA server-side en ambos paths de sugerencias + quick-check (accessor ISystemSettingsService
+    opcional null-safe); SaleProductInfoDto shape 15->16 (guard actualizado con justificacion);
+    MaskQuickInfoDto copia la regla (masking de costo/margen intacto); SaleItemDto + mapping;
+    AddItemAsync resuelve y persiste la regla; RecalculateTotalAsync policy-aware via
+    ApplyCashRoundingPolicy (punto unico de derivacion por linea).
+B3. Checkout backend (commit 1a2aa41): gate dual-dominio (rechaza solo si el remanente USD > 0.05 Y el
+    remanente Bs.S contra el total efectivo > 0.05 x tasa) en cobro y apartado; preview espejo
+    (CheckoutCalculationService: total efectivo + IsFullyPaid dual); vuelto dual (cambio solo por encima
+    del efectivo; pago exacto del publicado => vuelto 0 y caja = efectivo); guard dual de abonos (simple
+    y lote); snapshots coherentes (TotalBsS efectivo, FinalPaidAmountBsS, RoundingAdjustment literal).
+B4. Cliente - display unificado (commit 7dbfc36): helper unico EffectivePriceVesHelper.EffectiveBsS
+    (AggressiveInlining; null/ExactMath/tasa<=0 => techo canonico 8.104) consumido por Catalogo
+    (ProductItemViewModel deta/mayor + UpdateExchangeRate; persistencia canonica _dto.PriceBsS intacta),
+    Modal (solo la proyeccion efectiva; trazas costo-aware 8.184 intactas) y POS (sugerencias con regla
+    resuelta + toggle). Refrescos en memoria S2: PricingPoliciesChangedMessage (emision solo post-PUT
+    exitoso; catalogo aplica payload, POS re-ejecuta busqueda activa) y ProductRoundingChangedMessage
+    (override editado; parche sin consultas); fetch de politicas unico por VM.
+B5. Cliente - carrito y checkout (commit fcc85fa): CartItemViewModel.UnitPriceBsS efectivo (regla
+    snapshot por linea + toggle; null pre-8.185 inmutable); CartViewModel recomputa por tasa/politicas;
+    panel de ultimos escaneados unificado; CheckoutViewModel cobra/exhibe el total efectivo del preview;
+    pagos con par USD<->Bs.S derivado de una pata (consistencia 0.01 USD, sin clamp);
+    RoundToCash/RoundToDigital solo residuales (pesables/Sin redondeo).
+B6. Tests: motor 21; contratos/persistencia/quick-info/masking/shape (7+7+7+5); matriz backend 8 casos +
+    paridad preview<->complete + integraciones (PartialPaymentFlow, BatchPayment); PARIDAD
+    TRI-SUPERFICIE 3 superficies x 4 reglas (mandato S4); carrito/pagos (par consistente, mixtos,
+    RoundToCash residual).
+
+C. VERIFICACION
+
+C1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+C2. Suite completa POR PARTES y secuencial: CommandCenter.Tests 2954/2954 + E2E WPF 50/50 = 3004/3004.
+C3. Verificacion independiente read-only (agente verify sobre el rango 0d67117..e623541): PASS CON
+    HALLAZGOS, 0 bloqueantes; re-ejecuto 267 tests en 3 corridas (149/149 + 74/74 + 44/44). Cazas
+    adversariales: sin subpago por debajo del canonico en ningun dominio; vuelto dual no manipulable;
+    anti-trinquete verificado (ningun camino muta precio/margen desde el efectivo); masking intacto;
+    default-safe ExactMath; migracion idempotente + drift verde.
+C4. Hallazgos no bloqueantes (H1-H6): H1 - un cash Bs.S entre el canonico y el efectivo cierra por el
+    dominio USD (literal a la formula dual aprobada; nunca bajo el canonico USD; tolerancia confirmada
+    por diseno); H2 - borde de cuantizacion 2dp del margen en la equivalencia S3 (sin riesgo de dinero;
+    la definicion geometrica es la canonica); H3 - tasa del preview sin ceiling solo con BCV >2dp (no
+    operativo); H4 - fallback de UI con toggle default; H5 - micro-cache de settings 30s (0 queries en
+    regimen); H6 - comportamiento pre-existente de SetAmountToRemainingBalance (informativo).
+
+D. LIMITACIONES ACEPTADAS
+
+D1. Quick-check quick-info cacheado (15s/5min): la regla resuelta puede quedar vieja tras un cambio
+    global hasta expirar; las sugerencias POS no estan cacheadas y el toggle va fresco por mensaje.
+D2. Tasas con decimales no alineados: el vuelto Bs.S pasa a ser el exceso fisico exacto (mejora de
+    exactitud, verificado analiticamente por T6).
+D3. Recibo/historial usan TotalBsS efectivo sin rediseno; ManualPriceDialog no previsualiza la politica;
+    alta de producto nuevo no emite mensaje de override (visible tras re-busqueda).
+D4. XAML verificado por compilacion; smoke visual del mantenedor recomendado (precedente hotfix 8.181).
+D5. Migracion no aplicada contra PostgreSQL real local (CI/arranque la aplican; drift tests verdes).
+
+E. ROLLBACK
+
+E1. Revertir los commits T1-T5 restaura el estado previo; migracion aditiva nullable con Down espejo;
+    contratos retrocompatibles (defaults ExactMath/toggle true/null => techo canonico).
+
+F. COMMITS
+
+F1. 8.185 en V0.15: 9d78e8d (T1) + 7c7a2e9 (T2) + 1a2aa41 (T3) + 7dbfc36 (T4) + fcc85fa (T5) +
+    commits de tracker/ANEXO (docs(8.185); git log).
+================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 - OPTIMIZACION DE RENDIMIENTO DEL MOTOR DE REDONDEO + FIX DE SINCRONIZACION DEL CATALOGO - 2026-10-16
+================================================================================
+Pedido del mantenedor (rol Principal .NET Performance Engineer) tras el informe del benchmark:
+eliminar las allocations y la latencia de la ruta caliente del precio efectivo Bs.S, unificar
+matematicamente las rutas de edicion (6-args) y venta (4-args), y autorizar el fix de la causa raiz
+del desfase catalogo<->POS diagnosticada en el caso "7Up 1,5L".
+
+A. OPTIMIZACION DEL MOTOR (commit 1c4cf4f)
+
+A1. Zero-allocation: RoundingResult pasa de sealed record a readonly record struct
+    (Core/Interfaces/IPricingRoundingPolicyService.cs) - la ruta caliente (Catalogo, Modal, POS,
+    Carrito, venta y bulk) ya no asigna en el heap.
+A2. Kernel unico del efectivo Bs.S (Core/Helpers/PricingRoundingPolicy.cs): RoundCashStep/CashStepOf
+    con AggressiveInlining. Con piso/toggle activo => TECHO DIRECTO ceil(amount/step)*step (sin
+    margen intermedio a 2dp ni cadena NextStepUp); OFF => mas cercano. 6-args === 4-args por
+    construccion. UsdPsychological conserva su piso reactivo intacto. Consumidores ajustados al
+    nullable struct (BulkPrices, SalesService.Pricing, tests).
+A3. Benchmark de caracterizacion conservado en la suite (RoundingStrategyBenchmarkTests): asserts de
+    paridad exacta + zero-alloc; metodologia best-of-3 tras 3 warmups.
+A4. Evidencia: allocations 40 B/10k en los 4 caminos (antes 880.040 B 6-args / 1.350.864 B 4-args);
+    latencia por 10k: Surgical 3,48 ms | display 4-args 5,09 ms (antes 28,1) | 6-ON 8,69 | 6-OFF
+    9,41; equivalencia 6-args 1000/1000 (antes 834) y margen >= objetivo 1000/1000 con deficit
+    0,0000 pp (antes 842/1000 y 0,005 pp en el 16,6% por borde 2dp). Suite 2957/2957 + E2E 50/50;
+    CI run 38942972504 verde.
+
+B. FIX DE SINCRONIZACION DEL CATALOGO (commit 2ad4841)
+
+B1. Causa raiz del caso "7Up 1,5L" (la grilla mostraba el Bs.S canonico mientras el POS mostraba el
+    efectivo): GetProductsPagedAsync (Inventory.Module/Services/InventoryService.CatalogQueries.cs)
+    no proyectaba RoundingRuleUsd/RoundingRuleCashBs hacia el listado paginado => la regla llegaba
+    null a la grilla y el catalogo caia al techo canonico 8.104.
+B2. Correccion: ambas columnas viajan en la proyeccion paginada; ProductItemViewModel.UpdateFromDto
+    tambien las adopta (el refresh in-place por CatalogUpdatedMessage conservaba la regla vieja).
+B3. Test de regresion: RoundingCatalogSyncRegressionTests (proyeccion paginada con override vs
+    herencia + refresh in-place con caso dorado 438 -> 440). Suite completa 2959/2959.
+================================================================================

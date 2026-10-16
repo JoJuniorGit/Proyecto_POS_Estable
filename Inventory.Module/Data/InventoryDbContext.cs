@@ -107,6 +107,10 @@ public class InventoryDbContext : DbContext
         modelBuilder.Entity<Product>().Property(p => p.LowStockThreshold).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<Product>().Property(p => p.PriceBsS).HasPrecision(18, 2);
         modelBuilder.Entity<Product>().Property(p => p.LastConversionRate).HasPrecision(18, 4);
+        // 8.184-T2 (S5): reglas de redondeo por artículo persistidas por NOMBRE (estilo StockMovement/
+        // SupplierInvoiceLine); nullable = hereda la política global de Pricing.
+        modelBuilder.Entity<Product>().Property(p => p.RoundingRuleUsd).HasConversion<string>().HasMaxLength(32);
+        modelBuilder.Entity<Product>().Property(p => p.RoundingRuleCashBs).HasConversion<string>().HasMaxLength(32);
 
         modelBuilder.Entity<StockMovement>().HasKey(m => m.Id);
         modelBuilder.Entity<StockMovement>().HasOne(m => m.Product).WithMany().HasForeignKey(m => m.ProductId);
@@ -365,6 +369,9 @@ public class InventoryDbContext : DbContext
             entity.Property(line => line.SuggestedWholesalePriceUSD).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
             // 8.165: factor de conversión caja→unidad (default 1, sin conversión).
             entity.Property(line => line.ConversionFactor).HasColumnType("numeric(18,2)").HasPrecision(18, 2).HasDefaultValue(1m);
+            // 8.184-T2 (S5): regla de redondeo por línea persistida por NOMBRE (estilo Status/MatchMethod);
+            // nullable = hereda la regla de la factura al confirmar (precedencia línea ?? factura).
+            entity.Property(line => line.RoundingRule).HasConversion<string>().HasMaxLength(32);
             // 8.147-S6/D10: confianza OCR por campo (0–100, numeric(5,2)); null en filas tabulares.
             entity.Property(line => line.OcrNameConfidence).HasColumnType("numeric(5,2)").HasPrecision(5, 2);
             entity.Property(line => line.OcrQuantityConfidence).HasColumnType("numeric(5,2)").HasPrecision(5, 2);

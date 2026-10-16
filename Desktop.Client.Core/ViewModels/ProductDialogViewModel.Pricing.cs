@@ -189,6 +189,11 @@ public partial class ProductDialogViewModel
             PriceBsS = PriceRetailBsS;
 
             IsSellingAtLoss = PriceRetailUSD > 0 && PriceRetailUSD < CostPriceUSD;
+
+            // 8.184-T3 (S4): redondeo inteligente post-matemática (regla USD efectiva artículo ??
+            // global, piso = margen objetivo del canal, toggle global) + proyección Bs.S en caliente.
+            // Con ExactMath (default) no altera ningún valor: comportamiento previo intacto.
+            ApplyRoundingRules(trigger);
         }
         finally
         {

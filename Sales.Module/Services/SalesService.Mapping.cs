@@ -88,7 +88,8 @@ public partial class SalesService
                 UnitPriceBsS = i.UnitPriceBsS,
                 SubtotalBsS = i.SubtotalBsS,
                 IsWholesaleApplied = i.IsWholesaleApplied,
-                IsCustomPrice = i.IsCustomPrice
+                IsCustomPrice = i.IsCustomPrice,
+                RoundingRuleCashBs = i.RoundingRuleCashBs
             }).ToList(),
             Payments = sale.Payments.Select(p => new SalePaymentDto
             {

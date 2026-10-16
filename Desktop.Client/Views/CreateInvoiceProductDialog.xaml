@@ -155,6 +155,33 @@
                                TextWrapping="Wrap"
                                Margin="4,0,0,8"/>
 
+                    <!-- 8.184-T4 (S7): regla de redondeo a nivel resolución (un solo control).
+                         Viaja en el LinkInvoiceProductRequestDto; null = hereda la regla de la factura. -->
+                    <Grid Margin="4,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0"
+                                   Text="Redondeo de la línea:"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Foreground="#334155"
+                                   VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="2"
+                                  ItemsSource="{Binding RoundingOptions}"
+                                  DisplayMemberPath="Label"
+                                  SelectedItem="{Binding SelectedRoundingRuleOption, Mode=TwoWay}"
+                                  materialDesign:HintAssist.Hint="Regla al aplicar la línea en el confirm"
+                                  materialDesign:HintAssist.IsFloating="True"
+                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                  MinWidth="320"
+                                  HorizontalAlignment="Left"
+                                  AutomationProperties.AutomationId="CreateInvoiceProduct_RoundingCombo"
+                                  AutomationProperties.Name="Regla de redondeo de la línea"/>
+                    </Grid>
+
                     <!-- SELECTED PRODUCTS & REACTIVE MARGINS PANEL -->
                     <StackPanel Visibility="{Binding HasSelectedProduct, Converter={StaticResource BoolToVis}}">
                         <!-- Bulk Margin Application Toolbar (1:N) -->

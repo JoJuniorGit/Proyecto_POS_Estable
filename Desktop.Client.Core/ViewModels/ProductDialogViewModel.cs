@@ -101,13 +101,16 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
     public ObservableCollection<Core.Entities.UnitOfMeasureType> UnitOfMeasureTypes { get; } = new(Enum.GetValues<Core.Entities.UnitOfMeasureType>());
     public ObservableCollection<string> UnitOfMeasures { get; } = new ObservableCollection<string>();
 
-    public ProductDialogViewModel(IProductService productService, IExchangeRateService exchangeRateService, ProductDto? product = null, UserSession? userSession = null, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null)
+    public ProductDialogViewModel(IProductService productService, IExchangeRateService exchangeRateService, ProductDto? product = null, UserSession? userSession = null, IDialogService? dialogService = null, IDispatcherInvoker? dispatcherInvoker = null, ISettingsService? settingsService = null)
     {
         _productService = productService;
         _exchangeRateService = exchangeRateService;
         _initialProduct = product;
         _dialogService = dialogService;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
+        // 8.184-T3 (S4): cliente de la política global de redondeo (opcional: sin él rigen los
+        // defaults ExactMath/ExactMath/piso activo y los selectores quedan en "Heredar global").
+        _settingsService = settingsService;
         UserSession = userSession;
 
         IsEditMode = product != null;
@@ -147,6 +150,10 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
             PriceBsS = 0;
             ConversionFactor = 1.0000m;
         }
+
+        // 8.184-T3 (S4): pre-selección de los selectores de redondeo desde los overrides del
+        // artículo (null = "Heredar global") antes del primer cálculo.
+        InitializeRoundingSelection();
 
         // Initialize snapshot with initial pricing BEFORE CalculatePricing
         CaptureManualPricingSnapshot();
@@ -227,6 +234,9 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
         try
         {
             var parentsTask = _productService.GetParentsAsync();
+            // 8.184-T3 (S4): la política global viaja en paralelo con los metadatos; al aplicar,
+            // recalcula para que el precio refleje la regla efectiva (fallback silencioso).
+            var policiesTask = LoadPricingPoliciesAsync();
             Task<List<ProductDto>>? variantsTask = (_initialProduct != null && _initialProduct.Id > 0 && _initialProduct.IsGroupHeader)
                 ? _productService.GetVariantsAsync(_initialProduct.Id)
                 : null;
@@ -245,6 +255,8 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
                 ActiveVariantsCount = 0;
                 HasActiveVariants = false;
             }
+
+            await policiesTask;
         }
         catch (Exception ex)
         {
@@ -423,6 +435,9 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
             ResultProduct.PriceWholesaleUSD = 0m;
             ResultProduct.PriceBsS = 0m;
             ResultProduct.MinWholesaleQuantity = 6.000m;
+            // 8.184-T3 (S4): un agrupador con precios independientes no define tarifas propias.
+            ResultProduct.RoundingRuleUsd = null;
+            ResultProduct.RoundingRuleCashBs = null;
         }
         else
         {
@@ -438,6 +453,9 @@ public partial class ProductDialogViewModel : ObservableValidator, IDisposable
             ResultProduct.PriceBsS = (rate > 0 && PriceRetailUSD > 0)
                 ? Desktop.Client.Helpers.PricingHelper.ToBsSCeiling(PriceRetailUSD, rate)
                 : (PriceRetailBsS > 0 ? PriceRetailBsS : (_initialProduct?.PriceBsS ?? 0m));
+            // 8.184-T3 (S4): reglas por artículo de los selectores (null = heredar la política global).
+            ResultProduct.RoundingRuleUsd = SelectedRoundingUsdOption?.Rule;
+            ResultProduct.RoundingRuleCashBs = SelectedRoundingCashOption?.Rule;
         }
 
         ResultProduct.IsFractional = IsCashAdvance ? false : IsFractional;

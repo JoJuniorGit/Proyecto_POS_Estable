@@ -43,6 +43,9 @@ namespace Sales.Module.Migrations
                     b.Property<string>("Reason")
                         .HasColumnType("text");
 
+                    b.Property<int>("RequestId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("RequestedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -53,7 +56,7 @@ namespace Sales.Module.Migrations
                     b.Property<int>("RequestedByUserId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("RequestId")
+                    b.Property<int?>("ResolutionMode")
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("ResolvedAt")
@@ -63,9 +66,6 @@ namespace Sales.Module.Migrations
                         .HasColumnType("text");
 
                     b.Property<int?>("ResolvedByUserId")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("ResolutionMode")
                         .HasColumnType("integer");
 
                     b.Property<int?>("SaleId")
@@ -147,13 +147,13 @@ namespace Sales.Module.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Status", "ExpiresAt")
+                        .HasDatabaseName("IX_AuthorizationRequests_Status_ExpiresAt");
+
                     b.HasIndex("RequestedByUserId", "SaleId", "ActionType")
                         .IsUnique()
                         .HasDatabaseName("IX_AuthorizationRequests_PendingDedupe")
                         .HasFilter("\"Status\" = 0");
-
-                    b.HasIndex("Status", "ExpiresAt")
-                        .HasDatabaseName("IX_AuthorizationRequests_Status_ExpiresAt");
 
                     b.ToTable("AuthorizationRequests");
                 });
@@ -838,6 +838,10 @@ namespace Sales.Module.Migrations
 
                     b.Property<decimal>("Quantity")
                         .HasColumnType("numeric(18,3)");
+
+                    b.Property<string>("RoundingRuleCashBs")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<int>("SaleId")
                         .HasColumnType("integer");

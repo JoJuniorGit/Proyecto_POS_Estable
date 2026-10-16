@@ -15,6 +15,10 @@ public partial class CartItemViewModel : ObservableObject
     private readonly decimal _initialQuantity;
     private bool _wasEdited;
 
+    // 8.185-T5 (S1/S4): toggle nunca-hacia-abajo vigente (política global del carrito). Afecta
+    // solo a las líneas cash vivas; las históricas conservan su snapshot sin recálculo.
+    private bool _neverRoundDownCashBs;
+
     public bool IsQuantityDirty => _wasEdited || _saleItem.Quantity != _initialQuantity;
 
     private string _quantityText;
@@ -31,7 +35,7 @@ public partial class CartItemViewModel : ObservableObject
         }
     }
 
-    public CartItemViewModel(SaleItemDto saleItem, Action onQuantityChanged, decimal currentRate, bool isHistorical, Func<int, decimal, Task>? onCommitQuantity = null)
+    public CartItemViewModel(SaleItemDto saleItem, Action onQuantityChanged, decimal currentRate, bool isHistorical, Func<int, decimal, Task>? onCommitQuantity = null, bool neverRoundDown = true)
     {
         _saleItem = saleItem;
         _onQuantityChanged = onQuantityChanged;
@@ -39,6 +43,7 @@ public partial class CartItemViewModel : ObservableObject
         _currentExchangeRate = currentRate;
         _isHistorical = isHistorical;
         _initialQuantity = saleItem.Quantity;
+        _neverRoundDownCashBs = neverRoundDown;
         
         // Initialize the safe string with current value
         _quantityText = _saleItem.Quantity % 1m == 0m ? $"{_saleItem.Quantity:0.###}" : _saleItem.Quantity.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
@@ -47,6 +52,17 @@ public partial class CartItemViewModel : ObservableObject
     public void UpdateExchangeRate(decimal newRate)
     {
         _currentExchangeRate = newRate;
+        NotifyRecalculation();
+    }
+
+    /// <summary>
+    /// 8.185-T5 (S2): aplica el toggle de piso recién guardado en Ajustes y re-deriva el Bs.S
+    /// efectivo de la línea en memoria (0 consultas). La regla cash por línea es el snapshot
+    /// resuelto por el servidor al agregar: las políticas globales no la reescriben.
+    /// </summary>
+    public void UpdateRoundingPolicy(bool neverRoundDown)
+    {
+        _neverRoundDownCashBs = neverRoundDown;
         NotifyRecalculation();
     }
 
@@ -67,9 +83,21 @@ public partial class CartItemViewModel : ObservableObject
         : _saleItem.ProductName;
     public bool IsWholesaleApplied => _saleItem.IsWholesaleApplied;
     public decimal UnitPrice => _saleItem.UnitPrice;
+
+    /// <summary>
+    /// 8.185-T5 (S1/S4): precio efectivo unitario en Bs.S del carrito — mismo punto único de
+    /// cálculo que Catálogo/Modal/POS (helper del cliente sobre USD × tasa vigente), con la regla
+    /// cash snapshot de la línea y el toggle vigente. Las líneas con precio manual y las previas a
+    /// 8.185 (regla null/ExactMath) conservan el techo canónico 8.104, igual que el servidor.
+    /// Las líneas históricas muestran el valor persistido (inmutabilidad post-8.183).
+    /// </summary>
     public decimal UnitPriceBsS => _isHistorical 
         ? _saleItem.UnitPriceBsS 
-        : PricingHelper.ToBsSCeiling(_saleItem.UnitPrice, _currentExchangeRate);
+        : EffectivePriceVesHelper.EffectiveBsS(
+            _saleItem.UnitPrice,
+            _currentExchangeRate,
+            _saleItem.IsCustomPrice ? null : _saleItem.RoundingRuleCashBs,
+            _neverRoundDownCashBs);
     public string SKU => "-";
 
     public string QuantityDisplay => _saleItem.Quantity % 1m == 0m

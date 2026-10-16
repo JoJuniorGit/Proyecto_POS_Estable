@@ -21,6 +21,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -250,8 +251,75 @@
                 </StackPanel>
             </Border>
 
-            <!-- SECCIÓN 4: GESTIÓN DEL SISTEMA / REINICIO -->
+            <!-- SECCIÓN 4: POLÍTICAS DE PRECIOS Y REDONDEO (8.184-T4 / S2) -->
             <Border Grid.Row="4" Background="{DynamicResource MaterialDesignPaper}" 
+                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
+                    BorderThickness="1" 
+                    CornerRadius="10" 
+                    Padding="20" 
+                    Margin="0,0,0,20">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
+                        <materialDesign:PackIcon Kind="CurrencyUsd" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Políticas de Precios y Redondeo" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <TextBlock Text="Reglas globales que precargan los selectores de redondeo al crear/editar productos, editar precios en masa y resolver facturas de proveedor. El auto-guardado persiste los tres valores juntos."
+                               Style="{DynamicResource MaterialDesignCaptionTextBlock}" Opacity="0.7" Margin="34,0,0,14"/>
+
+                    <Grid Margin="34,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="300"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="Auto" MinWidth="300"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Regla USD por defecto (Detal/Mayor) -->
+                        <ComboBox Grid.Column="0"
+                                  ItemsSource="{Binding UsdRoundingOptions}" 
+                                  DisplayMemberPath="DisplayName"
+                                  SelectedItem="{Binding SelectedUsdRoundingRule, Mode=TwoWay}"
+                                  IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                  materialDesign:HintAssist.Hint="Redondeo USD (Detal/Mayor)"
+                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                  AutomationProperties.AutomationId="Settings_UsdRoundingCombo"
+                                  VerticalAlignment="Center"/>
+
+                        <!-- Regla de efectivo Bs.S (proyección en caliente) -->
+                        <ComboBox Grid.Column="2"
+                                  ItemsSource="{Binding CashBsRoundingOptions}" 
+                                  DisplayMemberPath="DisplayName"
+                                  SelectedItem="{Binding SelectedCashBsRoundingRule, Mode=TwoWay}"
+                                  IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                  materialDesign:HintAssist.Hint="Redondeo efectivo Bs.S (proyección)"
+                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                  AutomationProperties.AutomationId="Settings_CashRoundingCombo"
+                                  VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <!-- Toggle: protección de piso de margen (activada por defecto) -->
+                    <Grid Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="Protección de piso de margen" FontWeight="SemiBold"/>
+                            <TextBlock Text="Si se activa, el redondeo de precios nunca baja del margen objetivo del canal (protege la rentabilidad al aplicar reglas psicológicas o de efectivo)." 
+                                       TextWrapping="Wrap" Foreground="{DynamicResource MaterialDesignBodyLight}" FontSize="12"/>
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1" 
+                                      Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                      IsChecked="{Binding EnforceMinimumMarginFloor, Mode=TwoWay}"
+                                      IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                      AutomationProperties.AutomationId="Settings_MarginFloorToggle"
+                                      VerticalAlignment="Center"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- SECCIÓN 5: GESTIÓN DEL SISTEMA / REINICIO -->
+            <Border Grid.Row="5" Background="{DynamicResource MaterialDesignPaper}" 
                     BorderBrush="{DynamicResource MaterialDesignDivider}" 
                     BorderThickness="1" 
                     CornerRadius="10" 
@@ -295,8 +363,8 @@
                 </Grid>
             </Border>
 
-            <!-- SECCIÓN 5: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
-            <Border Grid.Row="5" Background="{DynamicResource MaterialDesignPaper}" 
+            <!-- SECCIÓN 6: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
+            <Border Grid.Row="6" Background="{DynamicResource MaterialDesignPaper}" 
                     BorderBrush="{DynamicResource MaterialDesignDivider}" 
                     BorderThickness="1" 
                     CornerRadius="10" 

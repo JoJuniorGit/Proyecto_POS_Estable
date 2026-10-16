@@ -1,7 +1,10 @@
+using Core.DTOs;
 using Core.Helpers;
+using Core.Interfaces;
 using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,15 +15,19 @@ namespace Sales.Module.Services;
 /// checkout-preview. Comportamiento observable idéntico al endpoint histórico: venta
 /// inexistente → KeyNotFoundException (404 por middleware); tasa final ≤ 0 →
 /// ArgumentException con mensaje exacto (400 por middleware de dominio).
+/// 8.185-T3 (S5): el total Bs.S del preview es el EFECTIVO por línea (misma derivación del
+/// completar venta) y la cobertura replica el gate dual-dominio.
 /// </summary>
 public class CheckoutCalculationService : ICheckoutCalculationService
 {
     private readonly ISalesService _salesService;
+    private readonly ISystemSettingsService? _settingsService;
 
-    public CheckoutCalculationService(ISalesService salesService)
+    public CheckoutCalculationService(ISalesService salesService, ISystemSettingsService? settingsService = null)
     {
         ArgumentNullException.ThrowIfNull(salesService);
         _salesService = salesService;
+        _settingsService = settingsService;
     }
 
     public async Task<CheckoutPreviewResponse> CalculatePreviewAsync(int saleId, CheckoutPreviewRequest request, CancellationToken cancellationToken = default)
@@ -40,7 +47,10 @@ public class CheckoutCalculationService : ICheckoutCalculationService
         }
 
         decimal totalUsd = sale.TotalUSD;
-        decimal totalBsS = PricingCalculator.RoundToDigital(totalUsd * rate);
+
+        // 8.185-T3 (S5): total Bs.S EFECTIVO — derivación por línea idéntica a la del completar
+        // venta (regla snapshot + toggle vigente). Sin líneas rige el total canónico del contrato.
+        decimal totalBsS = await ResolveEffectiveTotalBsSAsync(sale, rate);
 
         decimal totalPaidUsd = 0m;
         decimal totalPaidBsS = 0m;
@@ -69,15 +79,22 @@ public class CheckoutCalculationService : ICheckoutCalculationService
         decimal remainingUsd = Math.Max(0m, totalUsd - totalPaidUsd);
         decimal remainingBsS = Math.Max(0m, totalBsS - totalPaidBsS);
 
-        bool isFullyPaid = remainingUsd <= 0.05m;
+        // 8.185-T3 (S5): espejo del gate dual-dominio del completar venta — la venta queda cubierta
+        // si sobra tolerancia (0.05 USD por dominio) en al menos uno de los dos dominios.
+        bool isFullyPaid = !(remainingUsd > 0.05m && remainingBsS > 0.05m * rate);
         decimal roundingAdjustment = remainingUsd <= 0.01m ? PricingCalculator.RoundToDigital(totalPaidBsS - totalBsS) : 0m;
 
+        // 8.185-T3 (decisión mantenedor): vuelto DUAL espejo del completar venta — el exceso se mide
+        // contra el total EFECTIVO en el dominio Bs.S. Exacto al efectivo => sin vuelto (el escalón
+        // de la política no se devuelve); por encima => SOLO el exceso contra el efectivo. Con
+        // ExactMath (efectivo == canónico) los montos coinciden con el contrato previo.
         decimal changeUsd = 0m;
         decimal changeBsS = 0m;
-        if (totalPaidUsd > totalUsd + 0.05m)
+        decimal paidBsSExcess = PricingCalculator.RoundToDigital(totalPaidBsS - totalBsS);
+        if (paidBsSExcess > 0.05m * rate)
         {
-            changeUsd = PricingCalculator.RoundToDigital(totalPaidUsd - totalUsd);
-            changeBsS = PricingCalculator.ToBsS(changeUsd, rate);
+            changeBsS = paidBsSExcess;
+            changeUsd = PricingCalculator.ToUSD(changeBsS, rate);
         }
 
         return new CheckoutPreviewResponse
@@ -93,5 +110,54 @@ public class CheckoutCalculationService : ICheckoutCalculationService
             ChangeDueBsS = changeBsS,
             IsFullyPaid = isFullyPaid
         };
+    }
+
+    /// <summary>
+    /// 8.185-T3 (S5): total Bs.S efectivo del preview. Espeja RecalculateTotalAsync: por línea
+    /// aplica la regla cash snapshot (override resuelto al agregar) con el toggle vigente y cae al
+    /// techo canónico 8.104 para reglas no-cash, líneas custom o líneas previas a 8.185.
+    /// </summary>
+    private async Task<decimal> ResolveEffectiveTotalBsSAsync(SaleDto sale, decimal rate)
+    {
+        var items = sale.Items;
+        if (items == null || items.Count == 0)
+        {
+            return PricingCalculator.RoundToDigital(sale.TotalUSD * rate);
+        }
+
+        // El toggle se lee UNA vez y solo si alguna línea no-custom tiene política cash (misma
+        // condición del completar venta); sin líneas cash el valor es irrelevante.
+        bool neverRoundDown = true;
+        if (items.Any(i => !i.IsCustomPrice && SalesService.IsCashFriendlyRule(i.RoundingRuleCashBs)))
+        {
+            neverRoundDown = await ResolveNeverRoundDownAsync();
+        }
+
+        decimal total = 0m;
+        foreach (var item in items)
+        {
+            decimal unitPriceBsS = SalesService.ApplyCashRoundingPolicy(
+                item.UnitPrice,
+                item.IsCustomPrice,
+                item.RoundingRuleCashBs,
+                rate,
+                neverRoundDown);
+
+            total += PricingCalculator.RoundToDigital(item.Quantity * unitPriceBsS);
+        }
+
+        return PricingCalculator.RoundToDigital(total);
+    }
+
+    /// <summary>Toggle vigente del nunca-hacia-abajo (default true), mismo contrato del completar venta.</summary>
+    private async Task<bool> ResolveNeverRoundDownAsync()
+    {
+        if (_settingsService == null)
+        {
+            return true;
+        }
+
+        var value = await _settingsService.GetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultEnforceMinimumMarginFloor);
+        return SalesService.ResolveNeverRoundDownFrom(value);
     }
 }

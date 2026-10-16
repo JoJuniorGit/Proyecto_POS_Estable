@@ -12,6 +12,11 @@ public partial class ProductItemViewModel : ObservableObject
     private readonly Action<ProductItemViewModel> _onChanged;
     private bool _isCalculating;
 
+    // 8.185-T4 (S1/S2): política global vigente para el Bs.S efectivo de la fila. La fija el
+    // contenedor con UNA lectura (0 consultas por fila) y se refresca por mensaje en memoria.
+    private RoundingRuleType? _globalCashRoundingRule;
+    private bool _neverRoundDownCashBs = true;
+
     public int Id => _dto.Id;
 
     /// <summary>
@@ -138,12 +143,17 @@ public partial class ProductItemViewModel : ObservableObject
 
     public string DisplayCost => (IsGroupHeader && HasIndependentPricing) ? "—" : $"${CurrencyDisplay.Number(Cost)}";
 
-    // 8.143: todo precio Bs.S mostrado se deriva de USD x tasa vigente (ceiling 2 decimales).
-    // El snapshot persistido solo se usa como fallback sin USD o sin tasa valida.
+    // 8.143 + 8.185 (S1): todo precio Bs.S mostrado se deriva de USD × tasa vigente por el helper
+    // único del cliente (regla efectiva del artículo ?? política global + toggle). ExactMath o sin
+    // regla ⇒ techo canónico 8.104, byte-idéntico al comportamiento previo (S7). El snapshot
+    // persistido solo se usa como fallback sin USD o sin tasa válida.
     private decimal BsSFromRateOrFallback(decimal usdAmount, decimal fallbackBsS)
         => usdAmount > 0 && _exchangeRateService.CurrentRate > 0
-            ? Helpers.PricingHelper.ToBsSCeiling(usdAmount, _exchangeRateService.CurrentRate)
+            ? Helpers.EffectivePriceVesHelper.EffectiveBsS(usdAmount, _exchangeRateService.CurrentRate, EffectiveCashRoundingRule, _neverRoundDownCashBs)
             : fallbackBsS;
+
+    /// <summary>Regla cash efectiva del artículo: override propio ?? política global (S1).</summary>
+    private RoundingRuleType? EffectiveCashRoundingRule => _dto.RoundingRuleCashBs ?? _globalCashRoundingRule;
 
     public string DisplayRetailPrice
     {
@@ -235,19 +245,34 @@ public partial class ProductItemViewModel : ObservableObject
         OnPropertyChanged(nameof(EffectivePriceWholesaleBsS));
     }
 
+    /// <summary>
+    /// 8.185-T4 (S2): aplica la política global vigente (regla cash y toggle de piso) y re-notifica
+    /// el Bs.S efectivo para que la grilla refleje el mismo monto que POS y Carrito sin consultas.
+    /// </summary>
+    public void ApplyPricingPolicies(RoundingRuleType? globalCashRoundingRule, bool neverRoundDownCashBs)
+    {
+        _globalCashRoundingRule = globalCashRoundingRule;
+        _neverRoundDownCashBs = neverRoundDownCashBs;
+        OnPropertyChanged(nameof(EffectivePriceWholesaleBsS));
+        OnPropertyChanged(nameof(DisplayRetailPrice));
+        OnPropertyChanged(nameof(DisplayWholesalePrice));
+    }
+
     public void UpdateExchangeRate()
     {
         if (_isCalculating) return;
 
-        // 8.143: no pisar precios Bs.S-only con 0; con USD y tasa valida, recalcular siempre.
+        // 8.143 + 8.185 (S1): no pisar precios Bs.S-only con 0; con USD y tasa válida, el Bs.S
+        // efectivo se recalcula con el helper único. Este campo alimenta solo el fallback de
+        // display: la persistencia sigue anclada al Bs.S canónico 8.104 (_dto.PriceBsS).
         if (PriceUSD > 0 && _exchangeRateService.CurrentRate > 0)
         {
-            PriceBsS = Helpers.PricingHelper.ToBsSCeiling(PriceUSD, _exchangeRateService.CurrentRate);
+            PriceBsS = Helpers.EffectivePriceVesHelper.EffectiveBsS(PriceUSD, _exchangeRateService.CurrentRate, EffectiveCashRoundingRule, _neverRoundDownCashBs);
         }
 
         if (PriceWholesaleUSD > 0 && _exchangeRateService.CurrentRate > 0)
         {
-            PriceWholesaleBsS = Helpers.PricingHelper.ToBsSCeiling(PriceWholesaleUSD, _exchangeRateService.CurrentRate);
+            PriceWholesaleBsS = Helpers.EffectivePriceVesHelper.EffectiveBsS(PriceWholesaleUSD, _exchangeRateService.CurrentRate, EffectiveCashRoundingRule, _neverRoundDownCashBs);
         }
 
         OnPropertyChanged(nameof(EffectivePriceWholesaleBsS));
@@ -281,6 +306,10 @@ public partial class ProductItemViewModel : ObservableObject
             _dto.ConsolidatedStock = dto.ConsolidatedStock;
             _dto.ParentProductId = dto.ParentProductId;
             _dto.ReservedQuantity = dto.ReservedQuantity;
+            // 8.185-fix: el refresh in-place (MergeProductsAsync) conservaba la regla vieja — las dos
+            // columnas de redondeo deben viajar tambien para mantener la sincronia catalogo<->venta.
+            _dto.RoundingRuleUsd = dto.RoundingRuleUsd;
+            _dto.RoundingRuleCashBs = dto.RoundingRuleCashBs;
 
             Name = dto.Name;
             SKU = dto.SKU;

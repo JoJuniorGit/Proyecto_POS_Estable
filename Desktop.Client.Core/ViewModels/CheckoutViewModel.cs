@@ -67,7 +67,47 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         ? System.Math.Max(0m, (OverrideSale!.TotalBsS > 0m
             ? OverrideSale.TotalBsS - OverrideSale.Payments.Sum(p => p.AmountBsS > 0m ? p.AmountBsS : (p.Amount * (p.ExchangeRate > 0m ? p.ExchangeRate : CurrentExchangeRate)))
             : PricingHelper.ToBsS(TotalUSD, CurrentExchangeRate)))
-        : (_sale.TotalBsS > 0m ? _sale.TotalBsS : PricingHelper.ToBsS(TotalUSD, CurrentExchangeRate));
+        : ResolveEffectiveTotalBsS();
+
+    /// <summary>
+    /// 8.185-T5 (S4): total Bs.S a cobrar derivado del precio de venta EFECTIVO del carrito.
+    /// Con preview fresco rige el total del servidor (misma derivación por línea que persiste
+    /// el checkout, T3 — sin re-decimales canónicos); sin preview vale el total efectivo de la
+    /// última sincronización y, como último recurso, la suma efectiva por línea (custom ⇒ techo
+    /// canónico, regla snapshot; toggle por defecto del lector 8.184) en lugar del techo canónico
+    /// global que reintroduciría montos ajenos al precio publicado.
+    /// </summary>
+    private decimal ResolveEffectiveTotalBsS()
+    {
+        if (IsPreviewFresh && _preview!.TotalBsS > 0m)
+        {
+            return _preview.TotalBsS;
+        }
+
+        if (_sale.TotalBsS > 0m)
+        {
+            return _sale.TotalBsS;
+        }
+
+        var items = _sale.Items;
+        if (items == null || items.Count == 0)
+        {
+            return PricingHelper.ToBsS(TotalUSD, CurrentExchangeRate);
+        }
+
+        decimal rate = ResolvePreviewRate();
+        decimal total = 0m;
+        foreach (var item in items)
+        {
+            decimal unitPriceBsS = item.IsCustomPrice
+                ? PricingHelper.ToBsSCeiling(item.UnitPrice, rate)
+                : EffectivePriceVesHelper.EffectiveBsS(item.UnitPrice, rate, item.RoundingRuleCashBs, neverRoundDown: true);
+            total += PricingHelper.RoundToDigital(item.Quantity * unitPriceBsS);
+        }
+
+        return PricingHelper.RoundToDigital(total);
+    }
+
     public decimal SubtotalLocal => _sale.SubtotalBsS > 0m ? _sale.SubtotalBsS : PricingHelper.ToBsS(_sale.Subtotal, CurrentExchangeRate);
 
     public decimal PaidAmountUsd => Payments.Sum(p => p.AmountUsd);
@@ -127,8 +167,8 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         get
         {
             if (CurrentExchangeRate <= 0) return 0;
-            var bsS = ParseAmount(AmountBsSText);
-            return System.Math.Round(bsS / CurrentExchangeRate, 2, System.MidpointRounding.AwayFromZero);
+            // 8.185-T5 (S4): misma derivación de par que el pago real (una pata de la otra).
+            return PricingHelper.ToUSD(ParseAmount(AmountBsSText), CurrentExchangeRate);
         }
     }
 
@@ -225,6 +265,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     {
         OnPropertyChanged(nameof(PaidAmountUsd));
         OnPropertyChanged(nameof(PaidAmountLocal));
+        OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(RemainingBalanceUsd));
         OnPropertyChanged(nameof(RemainingBalanceLocal));
         OnPropertyChanged(nameof(RoundingAdjustment));
@@ -334,6 +375,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         OnPropertyChanged(nameof(IsCustodyAllowed));
         OnPropertyChanged(nameof(CanFinalize));
         OnPropertyChanged(nameof(RoundingAdjustment));
+        OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(RemainingBalanceUsd));
         OnPropertyChanged(nameof(RemainingBalanceLocal));
         OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
