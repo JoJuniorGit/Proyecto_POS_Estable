@@ -15258,3 +15258,37 @@ B4. Tests: test citado actualizado a semantica aditiva (AfterValue 36.66 -> 43.3
     pre-implementacion (9 fallos con la semantica vieja). Evidencia: build 0/0; BulkPrice 127/127;
     BulkPriceEdit 60/60; Rounding 259/259; suite completa 2969/2969.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (III) - SEPARACION DE CAPAS DE REDONDEO (USD / BS.S) EN EL DIALOGO DE EDICION MASIVA - 2026-10-16
+================================================================================
+Pedido del mantenedor (rol Senior WPF/.NET Architect): desambiguar monedas en la tarjeta
+"2. Redondeo y proteccion de margen" del dialogo bulk y mostrar los pisos solo cuando aportan
+proteccion real.
+
+A. SPLIT DE CAPAS (commit f7a4782)
+
+A1. Selectores "Redondeo Detal (USD)" / "Redondeo Mayor (USD)": opciones exclusivas Sin redondeo
+    (exacto) + Psicológico USD (.99/.95/.75/.50/.25).
+A2. Nuevo selector "Redondeo Bs.S (Proyeccion)" (bajo separador #E2E8F0, con help text), seed desde
+    la politica global CashBsRoundingRule: Sin redondeo / Entero / x5 / x10; calcula en caliente la
+    columna BS.S EFECTIVO (PROY.) por techo sin modificar el precio USD.
+A3. Contrato: BulkPriceUpdateRequestDto.CashBsRoundingRule (default ExactMath); el motor rutea las
+    proyecciones cash (retail y wholesale) por el campo nuevo; un VES por regla de canal queda como
+    via defensiva sin efecto (test de regresion). Nota de diseno: la capa cash es de LOTE (un
+    selector gobierna la proyeccion de ambos canales).
+A4. Pisos condicionados: ShowRetailFloorInput/ShowWholesaleFloorInput = toggle de proteccion && regla
+    USD psicologica (por canal), con notificacion al cambiar; XAML con BooleanToVisibilityConverter.
+    El valor tipeado del piso no se borra al ocultarse: sigue viajando (toggle on) y aplicando al
+    clamp de reducciones de margen — documentado en el VM.
+A5. Bordes: ComboBox/TextBox de la tarjeta 2 con BorderBrush en reposo #CBD5E1 (mirror de la
+    seccion 1); morado reservado al focus/dropdown del template Material.
+
+B. EVIDENCIA
+
+B1. Build Release 0/0; BulkPrice 135/135; BulkPriceEdit 66/66; Rounding 267/267; suite completa
+    2977/2977. Tests VM nuevos: visibilidad de pisos (4), split de opciones, mapeo de unidades por
+    capa y invalidacion por cash; migracion de VES-de-canal al campo nuevo en los tests del motor.
+B2. RED observado (CS1061/CS0117 enumerando la API faltante + 1 fallo de preview con la fila
+    informativa del detal en requests solo-mayor) -> GREEN con la semantica mandatada.
+================================================================================
