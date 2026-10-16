@@ -82,6 +82,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanApply))]
+    [NotifyPropertyChangedFor(nameof(PreviewSummary))]
     private bool _hasPreview;
 
     [ObservableProperty]
@@ -138,9 +139,13 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     /// <summary>8.181-T2 (fix verificación): el cierre (botón/X/Esc) se bloquea con una operación en vuelo.</summary>
     public bool CanClose => !IsBusy;
 
+    /// <summary>
+    /// Resumen de la barra intermedia: sin vista previa queda vacío (la vista oculta el TextBlock) y
+    /// nunca repite el conteo de seleccionados, que ya vive en <see cref="SelectionSummary"/>.
+    /// </summary>
     public string PreviewSummary => HasPreview
-        ? $"Seleccionados: {SelectedCount} · A actualizar: {PreviewUpdatedCount} · Omitidos: {PreviewSkippedCount}"
-        : $"Seleccionados: {SelectedCount}";
+        ? $"A actualizar: {PreviewUpdatedCount} · Omitidos: {PreviewSkippedCount}"
+        : string.Empty;
 
     public string ExchangeRateSummary => ExchangeRate > 0
         ? $"Tasa BCV aplicada: {CurrencyDisplay.Number(ExchangeRate)}"
