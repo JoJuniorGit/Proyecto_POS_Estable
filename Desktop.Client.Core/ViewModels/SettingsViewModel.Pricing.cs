@@ -1,6 +1,8 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
 using Core.DTOs;
+using Desktop.Client.Messages;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -120,6 +122,10 @@ public partial class SettingsViewModel
         {
             await _settingsService.SetPricingPoliciesAsync(requested);
             _appliedPricingPolicies = requested;
+
+            // 8.185-T4 (S2b): broadcast in-process del bloque persistido; Catálogo y POS aplican la
+            // regla/toggle en memoria (0 lecturas extra) y recomputan sus displays al instante.
+            WeakReferenceMessenger.Default.Send(new PricingPoliciesChangedMessage(requested));
         }
         catch (Exception ex)
         {

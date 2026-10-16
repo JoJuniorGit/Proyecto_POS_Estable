@@ -25,8 +25,11 @@ public sealed record RoundingRuleOption(RoundingRuleType? Rule, string Label);
 /// - Regla USD efectiva (artículo ?? global): redondea el precio final de cada canal con el piso de
 ///   margen objetivo del canal y el toggle global de protección de margen (ExactMath conserva el
 ///   comportamiento previo byte-idéntico).
-/// - Regla de efectivo efectiva: proyecta EN CALIENTE el Bs.S de efectivo con la tasa viva (nunca
-///   se persiste; el Bs.S almacenado sigue siendo el canónico 8.104).
+/// - Regla de efectivo efectiva: proyecta EN CALIENTE el Bs.S de efectivo con la tasa viva a
+///   través del helper único del cliente 8.185-T4 (`EffectivePriceVesHelper`, regla geométrica A
+///   con el toggle global): nunca se persiste; el Bs.S almacenado sigue siendo el canónico 8.104.
+///   Solo el precio efectivo mostrado se unifica; las trazas de margen costo-aware 8.184 (Δ
+///   Redondeo / Margen Efectivo %) se conservan como información.
 /// El margen persistido es el objetivo/operado (regla 8.183): solo el gatillo manual re-deriva el
 /// margen del precio final redondeado para mantener la coherencia del diálogo.
 /// </summary>
@@ -399,8 +402,11 @@ public partial class ProductDialogViewModel
         => _globalEnforceMinimumMarginFloor && channelMarginPct > 0m && CostPriceUSD > 0m;
 
     /// <summary>
-    /// 8.183 (R1): proyección en caliente del Bs.S de efectivo por canal con la regla cash efectiva
-    /// y la tasa viva; nunca se persiste (el Bs.S almacenado es el canónico 8.104).
+    /// 8.183 (R1) + 8.185-T4 (S1): proyección en caliente del Bs.S de efectivo por canal con la
+    /// regla cash efectiva y la tasa viva; nunca se persiste (el Bs.S almacenado es el canónico
+    /// 8.104). El valor sale del helper ÚNICO del cliente (regla geométrica A con el toggle global)
+    /// para coincidir 1:1 con Catálogo/POS/Carrito. Las trazas costo-aware 8.184 (Δ Redondeo /
+    /// Margen Efectivo %) no se tocan.
     /// </summary>
     private void UpdateCashFriendlyProjections()
     {
@@ -412,15 +418,22 @@ public partial class ProductDialogViewModel
             return;
         }
 
+        // Sin tasa convertible la proyección queda oculta (mismo comportamiento previo).
         decimal rate = _exchangeRateService.CurrentRate;
-        _retailCashFriendlyBsS = PricingRoundingPolicy
-            .ProjectCashFriendlyBsS(PriceRetailUSD, rate, cashRule, CostPriceUSD, ProfitMarginRetail, ShouldEnforceFloor(ProfitMarginRetail))
-            ?.RoundedValue;
+        if (rate <= 0m)
+        {
+            _retailCashFriendlyBsS = null;
+            _wholesaleCashFriendlyBsS = null;
+            return;
+        }
 
-        _wholesaleCashFriendlyBsS = HasWholesale
-            ? PricingRoundingPolicy
-                .ProjectCashFriendlyBsS(PriceWholesaleUSD, rate, cashRule, CostPriceUSD, ProfitMarginWholesale, ShouldEnforceFloor(ProfitMarginWholesale))
-                ?.RoundedValue
+        bool neverRoundDown = _globalEnforceMinimumMarginFloor;
+        _retailCashFriendlyBsS = PriceRetailUSD > 0m
+            ? Desktop.Client.Helpers.EffectivePriceVesHelper.EffectiveBsS(PriceRetailUSD, rate, cashRule, neverRoundDown)
+            : null;
+
+        _wholesaleCashFriendlyBsS = HasWholesale && PriceWholesaleUSD > 0m
+            ? Desktop.Client.Helpers.EffectivePriceVesHelper.EffectiveBsS(PriceWholesaleUSD, rate, cashRule, neverRoundDown)
             : null;
     }
 

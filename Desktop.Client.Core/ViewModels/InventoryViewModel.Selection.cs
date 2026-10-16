@@ -55,6 +55,8 @@ public partial class InventoryViewModel
     private ProductItemViewModel CreateItemViewModel(ProductDto dto)
     {
         var itemVm = new ProductItemViewModel(dto, _exchangeRateService, OnProductItemChanged);
+        // 8.185-T4 (S1): la fila adopta la política global vigente (0 consultas por fila).
+        itemVm.ApplyPricingPolicies(_globalCashRoundingRule, _neverRoundDownCashBs);
         itemVm.NotifyCurrencyChanged(SelectedCurrency);
         ApplySelectionState(itemVm);
         return itemVm;

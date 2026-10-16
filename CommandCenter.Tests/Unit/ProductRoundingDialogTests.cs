@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
 using Core.Helpers;
+using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
@@ -318,6 +319,87 @@ public class ProductRoundingDialogTests
         await captured!.LoadMetadataAsync();
         Assert.Contains("Psicológico", captured.RoundingUsdOptions[0].Label);
         Assert.Equal(RoundingRuleType.UsdPsychological, captured.EffectiveUsdRoundingRule);
+    }
+
+    // --- Unificación 8.185-T4 (S1): el Bs.S efectivo mostrado sale del helper único ---
+
+    [Fact]
+    public async Task CashRule_WithToggleOn_NeverRoundsDown_EvenWhenNearestFallsBelowMath()
+    {
+        // Tasa 36.51: 10.00 × 36.51 = 365.10 queda entre 365 y 370 con nearest = 365 (por debajo).
+        var vm = CreateViewModel(settings: CreateSettings(cash: RoundingRuleType.VesCashFriendlyStep5).Object, rate: 36.51m);
+        await vm.LoadMetadataAsync();
+
+        vm.CostPriceUSD = 10m;
+        vm.ProfitMarginRetail = 0m;
+        vm.RecalculatePricing("MarginRetail");
+
+        Assert.Equal(10m, vm.PriceRetailUSD);
+        // Decisión A compartida con Catálogo/POS/Carrito: toggle ON ⇒ escalón inmediato superior 370.
+        Assert.True(vm.ShowRetailCashFriendly);
+        Assert.Equal(370m, vm.RetailCashFriendlyBsS);
+    }
+
+    [Fact]
+    public async Task CashRule_WithToggleOff_KeepsNearestStepDown()
+    {
+        var vm = CreateViewModel(settings: CreateSettings(cash: RoundingRuleType.VesCashFriendlyStep5, enforceFloor: false).Object, rate: 36.51m);
+        await vm.LoadMetadataAsync();
+
+        vm.CostPriceUSD = 10m;
+        vm.ProfitMarginRetail = 0m;
+        vm.RecalculatePricing("MarginRetail");
+
+        Assert.True(vm.ShowRetailCashFriendly);
+        Assert.Equal(365m, vm.RetailCashFriendlyBsS);
+    }
+
+    [Fact]
+    public async Task InventoryViewModel_EditProduct_WithChangedCashOverride_PublishesRoundingMessage()
+    {
+        var product = CreateProduct();
+        var productService = CreateProductService();
+        productService.Setup(s => s.GetByIdAsync(7)).ReturnsAsync(product);
+        productService.Setup(s => s.UpdateAsync(It.IsAny<UpdateProductDto>())).Returns(Task.CompletedTask);
+
+        ProductDialogViewModel? captured = null;
+        var dialog = new Mock<IDialogService>();
+        dialog.Setup(d => d.ShowProductDialog(It.IsAny<ProductDialogViewModel>()))
+              .Callback<ProductDialogViewModel>(vm =>
+              {
+                  captured = vm;
+                  vm.SelectedRoundingCashOption = vm.RoundingCashOptions.Single(o => o.Rule == RoundingRuleType.VesCashFriendlyStep5);
+                  vm.SaveCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+              })
+              .Returns(true);
+
+        var exchangeRate = new Mock<IExchangeRateService>();
+        exchangeRate.Setup(e => e.CurrentRate).Returns(36.50m);
+
+        ProductRoundingChangedMessage? received = null;
+        var listener = new object();
+        WeakReferenceMessenger.Default.Register<ProductRoundingChangedMessage>(listener, (r, m) => received = m);
+
+        try
+        {
+            using var inventory = new InventoryViewModel(
+                productService.Object,
+                exchangeRate.Object,
+                new UserSession(),
+                dialog.Object,
+                settingsService: CreateSettings().Object);
+
+            await inventory.EditProductCommand.ExecuteAsync(new ProductItemViewModel(product, exchangeRate.Object));
+
+            Assert.NotNull(captured);
+            Assert.NotNull(received);
+            Assert.Equal(7, received!.ProductId);
+            Assert.Equal(RoundingRuleType.VesCashFriendlyStep5, received.RoundingRuleCashBs);
+        }
+        finally
+        {
+            WeakReferenceMessenger.Default.UnregisterAll(listener);
+        }
     }
 
     // --- Fixture ---

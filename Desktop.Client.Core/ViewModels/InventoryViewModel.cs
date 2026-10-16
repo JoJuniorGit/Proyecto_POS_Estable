@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
+using Core.DTOs;
 using Core.Entities;
 using Core.Logging;
 using Desktop.Client.Messages;
@@ -24,6 +25,11 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     private readonly ISettingsService? _settingsService;
     private CancellationTokenSource? _cancellationTokenSource;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
+
+    // 8.185-T4 (S1/S2): política global de redondeo para el Bs.S efectivo de las filas. Una lectura
+    // al iniciar (0 consultas por listado/búsqueda) y refresco por mensaje, siempre en memoria.
+    private RoundingRuleType? _globalCashRoundingRule;
+    private bool _neverRoundDownCashBs = true;
 
     public UserSession? UserSession { get; }
     public decimal CurrentRate => _exchangeRateService.CurrentRate;
@@ -169,6 +175,9 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     /// <summary>Tarea de la carga inicial del filtro de categorías (awaitable en pruebas).</summary>
     public Task CategoryFilterLoadTask { get; private set; } = Task.CompletedTask;
 
+    /// <summary>8.185-T4 (S2): tarea de la lectura única de políticas globales (awaitable en pruebas).</summary>
+    public Task PricingPoliciesLoadTask { get; private set; } = Task.CompletedTask;
+
     private int? CategoryFilterIdForQuery => _selectedCategoryFilter is { Id: > 0 } selected ? selected.Id : null;
 
     private async Task LoadCategoryFilterAsync()
@@ -251,10 +260,62 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             await MergeProductsAsync();
         });
 
+        // 8.185-T4 (S2b): políticas globales recién guardadas en Ajustes → aplicar en memoria
+        // (el payload viaja en el mensaje: 0 consultas) y recomputar el Bs.S de las filas.
+        WeakReferenceMessenger.Default.Register<PricingPoliciesChangedMessage>(this, (r, m) =>
+        {
+            ((InventoryViewModel)r).ApplyPricingPolicies(m.Value);
+        });
+
+        // 8.185-T4 (S1/S2): la regla cash global y el toggle se leen UNA vez al iniciar; sin
+        // servicio rigen los defaults del sistema (ExactMath + piso activo ⇒ techo canónico S7).
+        PricingPoliciesLoadTask = _settingsService is null ? Task.CompletedTask : LoadPricingPoliciesAsync();
+
         if (UserSession == null || UserSession.IsLoggedIn)
         {
             LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.InitialLoad");
             CategoryFilterLoadTask = _categoryService is null ? Task.CompletedTask : LoadCategoryFilterAsync();
+        }
+    }
+
+    private async Task LoadPricingPoliciesAsync()
+    {
+        try
+        {
+            var policies = await _settingsService!.GetPricingPoliciesAsync() ?? new PricingPoliciesDto();
+            ApplyPricingPolicies(policies);
+        }
+        catch (Exception ex)
+        {
+            // Fallback silencioso: rigen los defaults (ExactMath + piso activo ⇒ techo, S7).
+            ClientStateLogger.LogError($"Fallo al cargar las políticas globales de redondeo del catálogo: {ex.Message}", nameof(InventoryViewModel));
+        }
+    }
+
+    /// <summary>
+    /// 8.185-T4 (S2): adopta la política global vigente y la propaga a las filas visibles; los
+    /// ítems creados después la reciben en <c>CreateItemViewModel</c>. Sin consultas adicionales.
+    /// </summary>
+    private void ApplyPricingPolicies(PricingPoliciesDto policies)
+    {
+        _globalCashRoundingRule = policies.CashBsRoundingRule;
+        _neverRoundDownCashBs = policies.EnforceMinimumMarginFloor;
+
+        void Apply()
+        {
+            foreach (var product in Products)
+            {
+                product.ApplyPricingPolicies(_globalCashRoundingRule, _neverRoundDownCashBs);
+            }
+        }
+
+        if (!_dispatcherInvoker.CheckAccess())
+        {
+            _dispatcherInvoker.Invoke(Apply);
+        }
+        else
+        {
+            Apply();
         }
     }
 

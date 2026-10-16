@@ -78,7 +78,9 @@ public class BulkPriceEditPricingPoliciesTests
         Assert.Equal(RoundingRuleType.UsdPsychological, opened!.RetailRoundingRule);
         Assert.Equal(RoundingRuleType.UsdPsychological, opened.WholesaleRoundingRule);
         Assert.True(opened.EnforceMinimumMarginFloor);
-        settings.Verify(service => service.GetPricingPoliciesAsync(), Times.Once);
+        // 8.185-T4 (S2): el catálogo suma una lectura al iniciar el VM (Bs.S efectivo de las filas);
+        // la apertura del diálogo conserva su lectura fresca propia (molde 8.184: al menos una).
+        settings.Verify(service => service.GetPricingPoliciesAsync(), Times.AtLeastOnce);
     }
 
     [Fact]
