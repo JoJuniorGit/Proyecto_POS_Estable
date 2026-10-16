@@ -15215,3 +15215,46 @@ B2. Correccion: ambas columnas viajan en la proyeccion paginada; ProductItemView
 B3. Test de regresion: RoundingCatalogSyncRegressionTests (proyeccion paginada con override vs
     herencia + refresh in-place con caso dorado 438 -> 440). Suite completa 2959/2959.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (II) - REFACTOR VISUAL DEL DIALOGO DE EDICION MASIVA + MARGENES ADITIVOS EN PUNTOS PORCENTUALES - 2026-10-16
+================================================================================
+Pedidos del mantenedor: (A) refactor visual Material 3 del dialogo de edicion masiva de precios
+(sin romper bindings ni tests); (B) cambio de logica del ajuste masivo de Margen Detal/Mayor: de
+porcentaje relativo a puntos porcentuales aditivos.
+
+A. REFACTOR VISUAL DEL DIALOGO BULK (commit 1ad7177)
+
+A1. Layout superior en 2 columnas: "1. Operaciones por campo" (1.3*) y "2. Redondeo y proteccion de
+    margen" (1*) lado a lado; el DataGrid de vista previa conserva el resto de la altura.
+A2. Alineacion con columnas compartidas: filas de operaciones (Grid.IsSharedSizeScope +
+    SharedSizeGroup) y Piso Detal/Mayor en grilla unica (mismos X de inicio/fin).
+A3. Estados visuales por fila: controles de filas desmarcadas a Opacity 0.55 y borde en reposo
+    #CBD5E1 (DataTrigger sobre el mismo path del CheckBox; 100% al marcar).
+A4. Headers del DataGrid con wrap real (HeaderStyle TextBlock Wrap, ColumnHeaderHeight 60 numerico
+    - sin "Auto", precedente hotfix 8.181); columnas de margen diferenciadas y legibles.
+A5. Barra intermedia: se elimino el resumen redundante "Seleccionados: N" (queda "A actualizar /
+    Omitidos" y se colapsa si queda vacio) y el aviso de tasa ausente vive en badge ambar suave.
+A6. Evidencia: build 0/0; auditoria mecanica de bindings/AutomationIds (multiset HEAD vs working:
+    ninguno perdido); suite completa 2959/2959; smoke visual recomendado (sin runner de UI).
+
+B. MARGENES ADITIVOS EN PUNTOS PORCENTUALES (commit 09cea7d)
+
+B1. Motor (InventoryService.BulkPrices.cs, helper ComputeBulkPriceOperationValue): Margen Detal y
+    Margen Mayor en Aumentar/Disminuir operan sobre el porcentaje actual en puntos porcentuales
+    (10% + 10 = 20%; 10% - 5 = 5%); Fijar = Delta exacto. Monetarios (Precio Detal, Precio Mayor,
+    Costo) conservan su semantica (multiplicativa % / monto fijo USD).
+B2. Salvaguardas en reducciones de margen: con EnforceMinimumMarginFloor => max(nuevo, piso del
+    canal; sin piso => 0); sin toggle => max(nuevo, 0). Clamp literal documentado (margen actual ya
+    bajo el piso => una reduccion lo sube al piso).
+B3. Recalculo y preview: precio = costo x (1 + margen nuevo/100) con la politica de redondeo del
+    canal INTACTA (el pipeline Round/piso/cash-friendly no cambia: solo cambia el input del
+    margen); la vista previa muestra la transicion a 2dp ("10,00% -> 20,00%", CurrencyDisplay
+    segun ajuste de moneda); hint de filas de margen actualizado ("Puntos porcentuales sobre el
+    margen actual").
+B4. Tests: test citado actualizado a semantica aditiva (AfterValue 36.66 -> 43.33; precio 1.37 ->
+    1.44) + 10 casos nuevos (pp +/-/fijar, clamp al piso con enforce on, clamp a 0 con enforce off,
+    aislamiento monetario, cadena margen->precio->redondeo con regla activa). RED observado
+    pre-implementacion (9 fallos con la semantica vieja). Evidencia: build 0/0; BulkPrice 127/127;
+    BulkPriceEdit 60/60; Rounding 259/259; suite completa 2969/2969.
+================================================================================
