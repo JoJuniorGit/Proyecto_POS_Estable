@@ -82,7 +82,8 @@
             </StackPanel>
         </Border>
 
-        <!-- BARRA SUPERIOR RESPONSIVA: Buscador (Izq), Pestañas (Centro), Acciones y Moneda (Der) -->
+        <!-- BARRA 1: Buscador + filtros (Izq/Centro) y acciones del catálogo (Der).
+             Moneda y toggle de precios al mayor viven en la barra de edición masiva (Barra 2). -->
         <Border Grid.Row="1" 
                 Background="#FFFFFF" 
                 BorderBrush="#E2E8F0" 
@@ -93,9 +94,11 @@
                 Effect="{StaticResource EnterpriseCardShadow}">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/> <!-- Buscador y Spinner -->
-                    <ColumnDefinition Width="*"/>    <!-- Pestañas de estado con espacio elástico -->
-                    <ColumnDefinition Width="Auto"/> <!-- Moneda, Separador y Botones -->
+                    <!-- El buscador absorbe el shrink; filtros y acciones conservan su ancho. -->
+                    <ColumnDefinition Width="*" MinWidth="220" MaxWidth="420"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 
                 <!-- 1. Buscador en Cápsula Cerrada -->
@@ -105,7 +108,7 @@
                         BorderThickness="1"
                         CornerRadius="8"
                         Height="40"
-                        Width="280"
+                        Margin="0,0,16,0"
                         VerticalAlignment="Center">
                     <Grid Margin="10,0">
                         <Grid.ColumnDefinitions>
@@ -152,7 +155,7 @@
                 </Border>
 
                 <!-- 2. Filtros de Estado y Categoría — controles únicos (ComboBox) -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="20,0,15,0">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0,0,12,0">
                     <TextBlock Text="Estado:" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,6,0" Foreground="#64748B"/>
                     <ComboBox SelectedValue="{Binding SelectedStatusFilter, Mode=TwoWay}"
                               SelectedValuePath="Tag"
@@ -162,6 +165,8 @@
                               MinWidth="170"
                               Padding="10,4"
                               FontWeight="SemiBold"
+                              BorderBrush="#CBD5E1"
+                              BorderThickness="1"
                               ToolTip="Filtrar productos por estado">
                         <ComboBoxItem Content="Activos" Tag="active"/>
                         <ComboBoxItem Content="Inactivos" Tag="inactive"/>
@@ -175,50 +180,18 @@
                               SelectedItem="{Binding SelectedCategoryFilter, Mode=TwoWay}"
                               DisplayMemberPath="Path"
                               AutomationProperties.AutomationId="Inventory_CategoryFilterCombo"
-                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                              Height="40"
-                              MinWidth="190"
-                              Padding="10,4"
-                              FontWeight="SemiBold"
-                              ToolTip="Filtrar productos por categoría (incluye subcategorías)"/>
+                               Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                               Height="40"
+                               MinWidth="190"
+                               Padding="10,4"
+                               FontWeight="SemiBold"
+                               BorderBrush="#CBD5E1"
+                               BorderThickness="1"
+                               ToolTip="Filtrar productos por categoría (incluye subcategorías)"/>
                 </StackPanel>
                 
-                <!-- 3. Botones de Acción y Selectores a la Derecha -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
-                    <!-- Selector de Moneda -->
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="Moneda:" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,6,0" Foreground="#64748B"/>
-                        <ComboBox SelectedValue="{Binding SelectedCurrency, Mode=TwoWay}"
-                                  SelectedValuePath="Content"
-                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                                  Height="40"
-                                  Padding="10,4"
-                                  FontWeight="Bold">
-                            <ComboBoxItem Content="Bs.S" IsSelected="True"/>
-                            <ComboBoxItem Content="USD"/>
-                        </ComboBox>
-                    </StackPanel>
-
-                    <!-- Separador Visual Elegante -->
-                    <Border Width="1" Background="#E2E8F0" Margin="12,4"/>
-
-                    <!-- Botón Precios al Mayor (Ghost/Outlined sutil) -->
-                    <Button Command="{Binding ToggleWholesaleCommand}"
-                            Background="#FFFFFF"
-                            BorderBrush="#CBD5E1"
-                            BorderThickness="1"
-                            Foreground="#475569"
-                            ToolTip="Mostrar u Ocultar Precios al Mayor y Cantidad Mínima"
-                            Height="40"
-                            Padding="12,0"
-                            Margin="0,0,8,0"
-                            materialDesign:ButtonAssist.CornerRadius="6">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <materialDesign:PackIcon Kind="TagOutline" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="{Binding WholesaleButtonText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-
+                <!-- 3. Acciones del catálogo a la derecha -->
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
                     <!-- Botón Actualizar Catálogo (Ghost/Outlined sutil) -->
                     <Button Command="{Binding RefreshCommand}"
                             AutomationProperties.AutomationId="Inventory_RefreshButton"
@@ -300,10 +273,11 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/><!-- Espacio elástico entre selección y acciones -->
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
+                    <!-- Izquierda: selección masiva (resumen + acciones) -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                         <materialDesign:PackIcon Kind="CheckAll" Width="18" Height="18" Foreground="#5E35B1" VerticalAlignment="Center" Margin="0,0,8,0"/>
                         <TextBlock Text="Edición masiva:" FontWeight="SemiBold" FontSize="12" Foreground="#475569" VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -313,15 +287,12 @@
                                    FontSize="12"
                                    Foreground="#1E293B"
                                    VerticalAlignment="Center"/>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="16,0">
                         <Button Command="{Binding SelectAllFilteredCommand}"
                                 AutomationProperties.AutomationId="Inventory_SelectAllFilteredButton"
                                 Style="{DynamicResource MaterialDesignOutlinedButton}"
                                 Height="32"
                                 Padding="12,0"
-                                Margin="0,0,8,0"
+                                Margin="16,0,8,0"
                                 ToolTip="Seleccionar todos los productos que cumplen los filtros vigentes (máx. 1000)">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <materialDesign:PackIcon Kind="FilterVariant" Width="16" Height="16" Margin="0,0,6,0"/>
@@ -340,22 +311,61 @@
                         </Button>
                     </StackPanel>
 
-                    <Button Grid.Column="2"
-                            Command="{Binding OpenBulkPriceEditCommand}"
-                            AutomationProperties.AutomationId="Inventory_BulkPriceEditButton"
-                            IsEnabled="{Binding CanEditSelectedPrices}"
-                            Background="#5E35B1"
-                            BorderBrush="#5E35B1"
-                            Foreground="#FFFFFF"
-                            Height="32"
-                            Padding="14,0"
-                            materialDesign:ButtonAssist.CornerRadius="6"
-                            ToolTip="Editar precios, márgenes o costos de los productos seleccionados">
+                    <!-- Derecha: moneda, precios al mayor y edición de precios -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                        <!-- Selector de Moneda (movido de la barra 1) -->
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <materialDesign:PackIcon Kind="CurrencyUsd" Width="16" Height="16" Margin="0,0,6,0" Foreground="#FFFFFF"/>
-                            <TextBlock Text="Editar precios" FontWeight="Bold" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+                            <TextBlock Text="Moneda:" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,6,0" Foreground="#64748B"/>
+                            <ComboBox SelectedValue="{Binding SelectedCurrency, Mode=TwoWay}"
+                                      SelectedValuePath="Content"
+                                      Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                      Height="32"
+                                      Padding="10,2"
+                                      FontWeight="Bold"
+                                      BorderBrush="#CBD5E1"
+                                      BorderThickness="1"
+                                      ToolTip="Moneda de visualización de precios">
+                                <ComboBoxItem Content="Bs.S" IsSelected="True"/>
+                                <ComboBoxItem Content="USD"/>
+                            </ComboBox>
                         </StackPanel>
-                    </Button>
+
+                        <!-- Botón Precios al Mayor (movido de la barra 1) -->
+                        <Button Command="{Binding ToggleWholesaleCommand}"
+                                Background="#FFFFFF"
+                                BorderBrush="#CBD5E1"
+                                BorderThickness="1"
+                                Foreground="#475569"
+                                ToolTip="Mostrar u Ocultar Precios al Mayor y Cantidad Mínima"
+                                Height="32"
+                                Padding="10,0"
+                                Margin="10,0,8,0"
+                                materialDesign:ButtonAssist.CornerRadius="6">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="TagOutline" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="{Binding WholesaleButtonText}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Divisor sutil: separa Moneda/toggle de Editar precios -->
+                        <Border Width="1" Background="#E2E8F0" Margin="4,4,12,4"/>
+
+                        <Button Command="{Binding OpenBulkPriceEditCommand}"
+                                AutomationProperties.AutomationId="Inventory_BulkPriceEditButton"
+                                IsEnabled="{Binding CanEditSelectedPrices}"
+                                Background="#5E35B1"
+                                BorderBrush="#5E35B1"
+                                Foreground="#FFFFFF"
+                                Height="32"
+                                Padding="14,0"
+                                materialDesign:ButtonAssist.CornerRadius="6"
+                                ToolTip="Editar precios, márgenes o costos de los productos seleccionados">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="CurrencyUsd" Width="16" Height="16" Margin="0,0,6,0" Foreground="#FFFFFF"/>
+                                <TextBlock Text="Editar precios" FontWeight="Bold" VerticalAlignment="Center" Foreground="#FFFFFF"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -406,16 +416,31 @@
                     <DataGrid.Columns>
                         <!-- 0. Selección múltiple para la edición masiva (8.181-T2 S5): estado de UI puro,
                              el checkbox no dispara el auto-save por fila ni recálculos de precio. -->
-                        <DataGridTemplateColumn Width="44"
-                                                Header="SEL."
+                        <DataGridTemplateColumn Width="48"
+                                                MinWidth="48"
                                                 HeaderStyle="{StaticResource CenterAlignedHeader}"
                                                 Visibility="{Binding Data.UserSession.CanMutateCatalog, Source={StaticResource Proxy}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <DataGridTemplateColumn.HeaderTemplate>
+                                <DataTemplate>
+                                    <materialDesign:PackIcon Kind="CheckAll"
+                                                             Width="16"
+                                                             Height="16"
+                                                             HorizontalAlignment="Center"
+                                                             VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.HeaderTemplate>
+                            <DataGridTemplateColumn.CellStyle>
+                                <Style TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
+                                    <Setter Property="Padding" Value="0"/>
+                                </Style>
+                            </DataGridTemplateColumn.CellStyle>
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                               AutomationProperties.AutomationId="Inventory_SelectRowCheckBox"
                                               HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
+                                              Margin="0"
                                               ToolTip="Seleccionar el producto para la edición masiva de precios"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
@@ -482,7 +507,7 @@
                         </DataGridTemplateColumn>
 
                         <!-- 2. SKU / Código con Insignia Estilizada -->
-                        <DataGridTemplateColumn HeaderStyle="{StaticResource LeftAlignedHeader}" Width="140">
+                        <DataGridTemplateColumn HeaderStyle="{StaticResource LeftAlignedHeader}" Width="150" MinWidth="150">
                             <DataGridTemplateColumn.HeaderTemplate>
                                 <DataTemplate>
                                     <Grid Background="Transparent" Cursor="Hand" ToolTip="Ordenar por código de barras">
@@ -536,7 +561,7 @@
                                             Padding="6,3" 
                                             HorizontalAlignment="Left" 
                                             VerticalAlignment="Center"
-                                            Margin="14,0,0,0">
+                                            Margin="8,0,0,0">
                                         <TextBlock Text="{Binding SKU}" 
                                                    FontFamily="Consolas, Courier New, monospace" 
                                                    FontWeight="SemiBold" 
@@ -796,7 +821,7 @@
                         </DataGridTemplateColumn>
 
                         <!-- 8. Acciones (Kebab Menu ⋮ Elegante y Limpio) -->
-                        <DataGridTemplateColumn Header="ACCIONES" HeaderStyle="{StaticResource CenterAlignedHeader}" Width="80">
+                        <DataGridTemplateColumn Header="ACCIONES" HeaderStyle="{StaticResource CenterAlignedHeader}" Width="88" MinWidth="88">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <materialDesign:PopupBox Style="{DynamicResource MaterialDesignPopupBox}"

@@ -194,12 +194,19 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
 
             void Apply()
             {
+                // El binding TwoWay del ComboBox empuja SelectedItem = null cuando el ItemsSource
+                // se vacía (Clear). Si no se re-selecciona tras repoblar, el combo queda en blanco.
+                var previousId = _selectedCategoryFilter?.Id;
+
                 CategoryFilterOptions.Clear();
                 CategoryFilterOptions.Add(CategoryOption.AllFilter);
                 foreach (var option in options)
                 {
                     CategoryFilterOptions.Add(option);
                 }
+
+                SelectedCategoryFilter = options.FirstOrDefault(o => o.Id == previousId)
+                    ?? CategoryOption.AllFilter;
             }
 
             if (!_dispatcherInvoker.CheckAccess())
