@@ -10,7 +10,7 @@ export default function SummaryPanel({ onCheckout, onHold }) {
     selectedItemId,
     subtotalBsS,
     totalBsS,
-    totalUSD,
+    effectiveTotalUSD,
     removeItem,
     changePriceList,
     loading,
@@ -81,7 +81,7 @@ export default function SummaryPanel({ onCheckout, onHold }) {
             {formatBsS(totalBsS || 0)}
           </div>
           <div className="summary-total-secondary">
-            {formatUSD(totalUSD || 0)}
+            {formatUSD(effectiveTotalUSD || 0)}
           </div>
         </div>
       </div>

@@ -61,8 +61,43 @@ export function computeCheckoutGate({
   return { isPreviewFresh, isFullLiquidation, isCustodyAllowed, canFinalize, roundingAdjustment };
 }
 
+/**
+ * 8.186-T4 (S2/S3): USD EFECTIVO del TOTAL exhibido ("Ref: $") — server-first y sin matemática
+ * de política en JS. Prioridad: 1) `effectiveTotalUSD` del preview fresco (misma firma que la
+ * petición vigente; T3 garantiza la identidad con el TotalBsS devuelto); 2) `effectiveTotalUSD`
+ * del SaleDto del carrito (venta normal, snapshot TotalBsS+AppliedRate); 3) inversa local de
+ * display Bs.S/tasa (fallback documentado, solo si el servidor no envía el campo).
+ * En cuentas abiertas (overrideSale) lo exhibido es un SALDO PENDIENTE: el USD efectivo del
+ * preview/SaleDto corresponde a la venta completa, no al saldo, así que se conserva la inversa
+ * local del Bs.S mostrado para no romper la identidad de display.
+ * @returns {number} USD efectivo (el render lo fija a 2dp)
+ */
+export function resolveTotalEffectiveUsd({
+  preview,
+  isPreviewFresh,
+  cartEffectiveTotalUSD,
+  overrideSale,
+  targetTotalBsS,
+  targetTotalUSD,
+  rateToUse,
+}) {
+  if (!overrideSale) {
+    const previewEffective = Number(preview?.effectiveTotalUSD);
+    if (isPreviewFresh && Number.isFinite(previewEffective) && previewEffective > 0) {
+      return previewEffective;
+    }
+
+    const cartEffective = Number(cartEffectiveTotalUSD);
+    if (Number.isFinite(cartEffective) && cartEffective > 0) {
+      return cartEffective;
+    }
+  }
+
+  return rateToUse > 0 ? Math.round((targetTotalBsS / rateToUse) * 100) / 100 : targetTotalUSD;
+}
+
 const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuccess, overrideSale = null, onCompleteSale = null }, ref) {
-  const { currentSale, totalBsS: cartTotalBsS, totalUSD: cartTotalUSD, resetCart, updateCustomer } = useCart();
+  const { currentSale, totalBsS: cartTotalBsS, totalUSD: cartTotalUSD, effectiveTotalUSD: cartEffectiveTotalUSD, resetCart, updateCustomer } = useCart();
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
 
@@ -163,9 +198,19 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
     ? Math.max(0, preview.remainingBalanceUSD)
     : Math.max(0, targetTotalUSD - paidUsd);
 
-  // Sincronización USD efectivo (ANEXO XII): el $ de referencia mostrado es el inverso del Bs.S
-  // que se cobra (no la suma canónica de precios base). Solo display: gates y saldos canónicos intactos.
-  const effectiveTotalUsd = rateToUse > 0 ? Math.round((targetTotalBsS / rateToUse) * 100) / 100 : targetTotalUSD;
+  // Sincronización USD efectivo (ANEXO XII / 8.186-T4): el $ de referencia del TOTAL es el
+  // inverso del Bs.S EFECTIVO que se cobra (no la suma canónica de precios base), tomado del
+  // servidor (preview fresco → SaleDto del carrito) con inversa local solo como fallback de
+  // display. Gates y saldos canónicos intactos.
+  const effectiveTotalUsd = resolveTotalEffectiveUsd({
+    preview,
+    isPreviewFresh: hasFreshPreview,
+    cartEffectiveTotalUSD,
+    overrideSale,
+    targetTotalBsS,
+    targetTotalUSD,
+    rateToUse,
+  });
   const effectiveRemainingUsd = rateToUse > 0 ? Math.round((remainingBsS / rateToUse) * 100) / 100 : remainingUsd;
 
   useEffect(() => {
