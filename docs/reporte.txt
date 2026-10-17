@@ -15521,3 +15521,34 @@ D1. Build Release 0/0; Inventory 90/90; BulkPriceEdit 84/84; Category 76/76; sui
 D2. Fuera de alcance (documentado): ToggleWholesale/Moneda sin atajo (barra oculta); kebab ya
     gateado por XAML; modelo de permisos intacto. XAML verificado por compilacion (sin run de UI).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (IX) - WEB: IMPORT NOMBRADO DE @ZXING/LIBRARY EN EL ESCANER (FIN DEL WARNING IMPORT_IS_UNDEFINED) - 2026-10-17
+================================================================================
+Sintoma (vite build / Rolldown): "[IMPORT_IS_UNDEFINED] Import `default` will always be undefined"
+en BarcodeScannerModal.jsx por `zxing.default ?? zxing` — @zxing/library no exporta default en su
+build ESM (esm/index.js: solo named exports y `export * from './browser'`).
+
+A. FIX
+
+A1. BarcodeScannerModal.jsx: import nombrado directo (BrowserMultiFormatReader, BarcodeFormat,
+    DecodeHintType); eliminada la linea `const {...} = zxing.default ?? zxing`. Sin cambios de
+    logica; identificadores locales (zxingReaderRef/zxingResult) intactos.
+A2. HALLAZGO durante la verificacion: el runner de tests (node:test + loader esbuild) resolvia el
+    entry CJS de @zxing/library, donde BarcodeFormat/DecodeHintType NO son named exports
+    detectables -> SyntaxError al importar el modal desde PosPage/StockCountPage. Vite usa el ESM.
+    Fix de infra: el hook de tests aliasa '@zxing/library' -> esm/index.js y fuerza format module
+    para ese arbol (las extensiones relativas ya las resolvia el hook). Los tests ahora ejercitan
+    el MISMO build del paquete que recibe el bundle de produccion.
+A3. package.json: @zxing/library ya estaba en dependencies (sin cambios ni de version).
+A4. Busqueda global: unico archivo con el patron; bundle Backend.API/wwwroot regenerado y
+    commiteado con los chunks hasheados nuevos.
+
+B. EVIDENCIA
+
+B1. npm run build: "built in 1.35s", SIN [IMPORT_IS_UNDEFINED] ni menciones a zxing.default.
+B2. Tests web: BarcodeScannerModal 4/4; PosPage.productResolver 4/4; StockCountPage.count 9/9;
+    suite completa 415/415 (88 suites). Smoke de camara real: pendiente del mantenedor (el unit
+    test del modal es de logica; el build prueba la resolucion de los named exports que instancian
+    BrowserMultiFormatReader en la sesion de escaneo).
+================================================================================
