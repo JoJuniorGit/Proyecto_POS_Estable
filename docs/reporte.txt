@@ -15552,3 +15552,52 @@ B2. Tests web: BarcodeScannerModal 4/4; PosPage.productResolver 4/4; StockCountP
     test del modal es de logica; el build prueba la resolucion de los named exports que instancian
     BrowserMultiFormatReader en la sesion de escaneo).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (X) - SCRIPTS: BUILD-RELEASE.PS1 EJECUTADO DOS VECES (BLOQUE DUPLICADO) + GUARDA DE EJECUCION UNICA - 2026-10-17
+================================================================================
+Sintoma: al ejecutar scripts/build-release.ps1 el log mostraba [1/7]..[3/7] duplicados y la
+segunda "limpieza" borraba el publish que la primera pasada acababa de generar.
+
+A. DIAGNOSTICO
+
+A1. CAUSA RAIZ (copy/paste dentro del archivo): las lineas 52-101 eran una copia VERBATIM de las
+    lineas 1-50 (header, ErrorActionPreference, rootDir, kill de procesos, [1/7] limpieza, [2/7]
+    npm build + verificacion de bundle, [3/7] publish del backend). El script ejecutaba
+    [1/7]->[3/7] DOS VECES en el MISMO proceso: la segunda limpieza eliminaba el publish/ recien
+    generado por la primera pasada => publish potencialmente inconsistente. (El texto
+    "Removed N of M" no lo emite este script; provenia del render del wrapper/terminal.)
+A2. NO hay auto-invocacion ni paralelismo en el script: sin & .\build-release.ps1, sin Start-Job/
+    Start-ThreadJob/ForEach-Object -Parallel/Start-Process/while($true)/-Restart.
+A3. NO hay invocadores externos en el repo: busqueda global -> solo docs/LAUNCH_GUIDE.md y
+    docs/reporte.txt (sin tasks.json, package.json, workflows ni hooks).
+A4. Nota: el archivo vive en scripts/build-release.ps1 (no en la raiz del repo).
+
+B. FIX
+
+B1. Eliminado el bloque duplicado: UNA sola pasada lineal [1/7]..[7/7]. La logica de build y
+    publicacion quedo byte-identica (mismas rutas, RID, self-contained, ISCC/firma/smoke intactos).
+B2. Guarda de ejecucion unica al INICIO (antes de matar procesos o borrar): lock exclusivo via
+    [System.IO.File]::Open(OpenOrCreate, ReadWrite, FileShare.None) en scripts/.build-release.lock
+    (falla rapido con mensaje claro si otra instancia lo tiene; error distinto y claro si no puede
+    crearse por permisos) + verificacion defensiva de procesos pwsh/powershell con
+    'build-release.ps1' en su command line (excluye el PID actual y su cadena de ancestros para no
+    falsear con wrappers de herramientas/CI). Liberacion garantizada en finally (tambien ante
+    throw/exit). Compatible PowerShell 5.1 y 7+.
+B3. Limpieza [1/7] endurecida: helper Remove-ReleaseFolder (verifica lock tomado, Remove-Item
+    -ErrorAction Stop con 3 reintentos de 400ms, abort si la carpeta sobrevive, cuenta archivos
+    antes y loguea "Limpiados N archivo(s)" => N<=M por construccion).
+B4. .gitignore: .build-release.lock (transitorio).
+
+C. EVIDENCIA
+
+C1. Ejecucion unica: exit 0; [1/7]..[7/7] exactamente UNA vez cada uno; sin stderr; "Publicacion
+    Autonoma completada exitosamente"; bundle web OK; scrub de secretos/pfx/dev-config OK.
+C2. Concurrencia (2 instancias): B aborto de inmediato con exit 1 ->
+    "ABORTANDO: ya hay otra instancia de build-release.ps1 en ejecucion (lock: ...\scripts\.build-release.lock).";
+    A completo (exit 0) y libero el lock (Test-Path => False).
+C3. publish/ consistente: SHA256 de Backend.API.exe / Desktop.Client.exe / UpdaterService.exe
+    IDENTICOS antes y despues de la prueba de concurrencia (build determinista): CFF86A78...,
+    1868C244..., E0BAA819...
+C4. npm run build (Web.Frontend): 1.36s sin warnings (sin [IMPORT_IS_UNDEFINED] de zxing).
+================================================================================
