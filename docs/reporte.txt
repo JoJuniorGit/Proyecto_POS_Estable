@@ -15438,3 +15438,39 @@ en VE y correcto en cualquier fuso. Test de contrato nuevo en SalesHistoryViewMo
 
 Evidencia: build 0/0; SalesHistoryViewModel 30/30; suite completa 3005/3005.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (VII) - REDISTRIBUCION DE BARRAS Y FIXES VISUALES EN LA VISTA INVENTARIO - 2026-10-17
+================================================================================
+Pedido del mantenedor (Senior WPF/UI Architect): eliminar la sobrecarga horizontal de las barras
+superiores del Inventario, corregir el combo Categoria y los recortes de columnas del DataGrid.
+
+A. REDISTRIBUCION (commit 9896d06)
+
+A1. Barra 1: buscador con columna flexible (*, MinWidth 220, MaxWidth 420, sin ancho fijo) +
+    filtros Estado/Categoria; a la derecha SOLO Actualizar / Nuevo Producto / Menu. Estado,
+    Categoria y Menu dejan de recortarse al redimensionar.
+A2. Barra 2: izquierda = Edicion masiva + contador + Seleccionar todos los filtrados + Limpiar;
+    derecha = selector Moneda + boton Mostrar Precios al Mayor + divisor #E2E8F0 + Editar precios
+    (columna central como spacer). Bindings/commands/AutomationIds conservados.
+A3. Consecuencia de rol (gate intacto por mandato): la barra 2 sigue visible solo con
+    CanMutateCatalog — los roles de solo lectura ya no ven Moneda ni el toggle de precios al
+    mayor (residual reportado para decision del mantenedor).
+
+B. FIXES
+
+B1. Combo Categoria: causa real verificada — al limpiar el ItemsSource, el binding TwoWay de
+    SelectedItem empuja null al VM y Clear+Add no restauraba la seleccion (rectangulo blanco).
+    Fix: preservar el Id previo al repoblar y re-seleccionar con fallback AllFilter ("Todas");
+    2 tests de regresion en InventoryCategoryFilterTests (RED -> GREEN). BorderBrush en reposo
+    #CBD5E1 explicito en Estado/Categoria/Moneda.
+B2. DataGrid: columna de seleccion 48/48 con header PackIcon CheckAll (sin texto "SEL." truncado)
+    y padding de celda 0; SKU/Codigo 150/150 (pildora con margen 8 — 13 digitos completos);
+    ACCIONES 88/88.
+
+C. EVIDENCIA
+
+C1. Build Release 0/0; Inventory 78/78; Category 76/76; suite completa 3007/3007.
+C2. Notas: a 1024px la suma de minimos de la barra 1 puede quedar al limite (el Grid no solapa,
+    pero el recorte extremo es posible); XAML verificado por compilacion (sin run de UI).
+================================================================================
