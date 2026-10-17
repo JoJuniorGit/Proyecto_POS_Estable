@@ -15474,3 +15474,50 @@ C1. Build Release 0/0; Inventory 78/78; Category 76/76; suite completa 3007/3007
 C2. Notas: a 1024px la suma de minimos de la barra 1 puede quedar al limite (el Grid no solapa,
     pero el recorte extremo es posible); XAML verificado por compilacion (sin run de UI).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (VIII) - PRODUCTIVIDAD DEL INVENTARIO: QUICK REPEAT + ATAJOS + COMPACTACION FINAL + GATES RBAC - 2026-10-17
+================================================================================
+Tres mandatos del mantenedor (Senior WPF/UI Architect) aplicados en cadena sobre el modulo
+Inventario y cerrados juntos (los dos primeros quedaron sin commitear al encadenarse el tercero).
+
+A. COMPACTACION FINAL DE BARRAS (solo-icono)
+
+A1. Barra 1: sin etiquetas externas Estado:/Categoria: (combos directos 125/165 con tooltips);
+    Actualizar y Menu en botones cuadrados 38x38 solo-icono; CTA "+ Nuevo" compacto; buscador en
+    columna * (MinWidth 180 / MaxWidth 320). Barra 2: sin "Edicion masiva:" ni "Moneda:";
+    SelectAll/Limpiar 38x38 solo-icono; toggle Mayor 38x38 con estado activo morado (DataTrigger
+    ShowWholesale); "Editar precios" completo anclado a la derecha.
+A2. ToolTipService InitialShowDelay=150 / BetweenShowDelay=50 / ShowDuration=8000 en ambos
+    contenedores y en cada control con tooltip (no son heredables).
+A3. Anti-recorte: barra 1 soporta ~906px de ventana (minimo de ventana 1024); barra 2 ~711px.
+
+B. QUICK REPEAT (MACRO DE 1 CLIC) + ATAJOS
+
+B1. La ultima accion ejecutada por el usuario (AdjustStock/Edit/Pause/Restore/Delete) se registra
+    al ENTRAR a cada metodo; el boton de la columna ACCIONES (95/95) la repite con el icono de la
+    accion (PackageVariantClosed/Pencil/Pause/Play/Delete) y tooltip "(Ctrl+R)"; Delete repite su
+    confirmacion interna (sin duplicar ni saltear el gate). Visible solo con accion registrada.
+B2. Atajos: Ctrl+N Nuevo, Ctrl+R Quick Repeat, F5 Actualizar (preexistente), Ctrl+F enfocar busqueda
+    (code-behind focus+select; guard de Ctrl+A para preservar el SelectAll nativo del TextBox),
+    Ctrl+E Edicion masiva, Ctrl+A Seleccionar filtrados, Esc Limpiar. Tooltips con la combinacion.
+
+C. GATES RBAC DE LA BARRA DE AJUSTES
+
+C1. Predicado unico `CanMutateCatalogBar` (UserSession null => legacy permitido; sesion sin usuario
+    => bloqueado, espejo del Visibility del XAML) con CanExecute en OpenAddProduct, SelectAllFiltered
+    y ClearSelection; OpenBulkPriceEdit = permiso && HasSelection (guard runtime conservado; el
+    boton dejo de usar el binding IsEnabled — el comando es dueno del enable-state).
+C2. Suscripcion a UserSession.PropertyChanged (re-notifica los 4 comandos; desuscripcion en Dispose)
+    => cambio de rol en caliente correcto. WPF evalua CanExecute en KeyBindings: los atajos quedan
+    bloqueados para solo lectura sin tocar el XAML de las teclas.
+C3. Nota CommunityToolkit: Execute/ExecuteAsync no consultan CanExecute — los tests deben asertar
+    CanExecute (los positivos migraron a sesion Admin explicita).
+
+D. EVIDENCIA
+
+D1. Build Release 0/0; Inventory 90/90; BulkPriceEdit 84/84; Category 76/76; suite completa
+    3019/3019 (+6 quick repeat +6 permisos). Commits: fb90b0b (+ este ANEXO).
+D2. Fuera de alcance (documentado): ToggleWholesale/Moneda sin atajo (barra oculta); kebab ya
+    gateado por XAML; modelo de permisos intacto. XAML verificado por compilacion (sin run de UI).
+================================================================================
