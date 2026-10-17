@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, Package, Check, AlertCircle, Link2 } from 'lucide-react';
 import { api } from '../../services/api';
-import { formatUSD, formatBsS, resolveBsSPrice } from '../../utils/formatters';
+import { formatUSD, formatBsS, resolveBsSPrice, resolveEffectiveBsS } from '../../utils/formatters';
 import './VariantSelectorModal.css';
 
 function formatVariantTitle(variantName, parentName) {
@@ -38,6 +38,19 @@ function formatVariantTitle(variantName, parentName) {
   }
 
   return variantName;
+}
+
+/**
+ * 8.186-T2 (S1/S3): Bs.S mostrado en cada tarjeta de variante. Prioriza el EFECTIVO proyectado
+ * por el servidor (`effectivePriceBsS`, motor único + tasa vigente); el canónico (retail USD de la
+ * variante o del padre × tasa, 8.143) queda solo como fallback documentado si el campo falta o
+ * viene <= 0.
+ */
+export function resolveVariantDisplayBsS(variant, basePriceUSD, exchangeRate) {
+  return resolveEffectiveBsS(
+    variant.effectivePriceBsS,
+    resolveBsSPrice(variant.priceRetailUSD || basePriceUSD, variant.priceBsS, exchangeRate)
+  );
 }
 
 export default function VariantSelectorModal({ isOpen, onClose, parentProduct, onSelectVariant, exchangeRate }) {
@@ -136,8 +149,9 @@ export default function VariantSelectorModal({ isOpen, onClose, parentProduct, o
               {variants.map((v) => {
                 const displayName = formatVariantTitle(v.name, parentProduct.name);
                 const isOutOfStock = (v.availableQuantity ?? v.stockQuantity) <= 0;
-                // 8.143: precio Bs.S derivado de USD × tasa vigente; snapshot solo como fallback
-                const displayBsS = resolveBsSPrice(v.priceRetailUSD || basePriceUSD, v.priceBsS, exchangeRate);
+                // 8.186-T2 (S1/S3): el servidor proyecta el Bs.S efectivo; el canónico queda
+                // solo como fallback documentado dentro del resolvedor.
+                const displayBsS = resolveVariantDisplayBsS(v, basePriceUSD, exchangeRate);
 
                 return (
                   <button

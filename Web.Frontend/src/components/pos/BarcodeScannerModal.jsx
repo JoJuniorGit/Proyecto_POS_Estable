@@ -27,7 +27,7 @@ import {
   planLaptopVisionTick,
   LAPTOP_VISION_BASE_INTERVAL_MS,
 } from '../../utils/laptopVisionEnhancer';
-import { formatBsS, formatUSD, resolveBsSPrice } from '../../utils/formatters';
+import { formatBsS, formatUSD, resolveBsSPrice, resolveEffectiveBsS } from '../../utils/formatters';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { resolveCameraGuidance, shouldFallbackWithoutDeviceId } from '../../utils/scannerCameraErrors';
 import './BarcodeScannerModal.css';
@@ -39,6 +39,19 @@ const INSECURE_CONTEXT_MESSAGE =
 const MIN_GLOBAL_INTERVAL_MS = 150;
 const SAME_CODE_COOLDOWN_MS = 2000;
 const ATTEMPT_PACING_MS = 50;
+
+/**
+ * 8.186-T2 (S1/S3): precio del preview de escaneo. Prioriza el Bs.S EFECTIVO proyectado por el
+ * servidor (quick-check `effectivePriceBsS`, motor único + tasa vigente); el canónico USD × tasa
+ * (8.143) queda solo como fallback documentado si el campo falta o viene <= 0.
+ */
+export function resolveScannedPreviewPrice(info, exchangeRate) {
+  const bs = resolveEffectiveBsS(
+    info.effectivePriceBsS,
+    resolveBsSPrice(info.priceUSD, info.priceBsS, exchangeRate)
+  );
+  return bs > 0 ? formatBsS(bs) : formatUSD(Number(info.priceUSD));
+}
 
 export default function BarcodeScannerModal({ 
   isOpen, 
@@ -250,10 +263,9 @@ export default function BarcodeScannerModal({
       }
 
       playScanSuccess();
-      // 8.143: quick-info rate-first — Bs.S = USD × tasa vigente (ceiling a 2 decimales);
-      // el snapshot persistido solo cae como fallback sin USD o sin tasa válida.
-      const bs = resolveBsSPrice(info.priceUSD, info.priceBsS, exchangeRateRef.current);
-      const price = bs > 0 ? formatBsS(bs) : formatUSD(Number(info.priceUSD));
+      // 8.186-T2 (S1/S3): el precio del preview es el Bs.S efectivo proyectado server-side
+      // (quick-check); el canónico queda solo como fallback documentado dentro del resolvedor.
+      const price = resolveScannedPreviewPrice(info, exchangeRateRef.current);
       
       // Actualizar la lista de los últimos 3 productos distintos escaneados
       setRecentScannedProductIds((prev) => [info.id, ...prev.filter((id) => id !== info.id)].slice(0, 3));

@@ -301,7 +301,40 @@ export function resolveBsSPrice(priceUSD, priceBsS, exchangeRate) {
 }
 
 /**
+ * 8.186 (S1/S3): precio Bs.S EFECTIVO ya proyectado por el servidor con el motor único de
+ * redondeo (PricingRoundingPolicy + tasa vigente). Web NO replica la política (pasos/techo):
+ * solo consume y formatea. Devuelve `effectiveBsS` cuando es un número > 0; si falta o viene
+ * <= 0 usa el fallback canónico (`canonicalFallback`) — documentado como compatibilidad de
+ * legado con respuestas sin el campo (el canónico es el de 8.143: USD × tasa con techo 2dp o
+ * snapshot persistido).
+ * @param {number} effectiveBsS Campo `effectivePriceBsS`/`effectiveWholesalePriceBsS` del DTO
+ * @param {number} canonicalFallback Valor canónico local (solo legado)
+ * @returns {number}
+ */
+export function resolveEffectiveBsS(effectiveBsS, canonicalFallback = 0) {
+  const effective = Number(effectiveBsS);
+  if (Number.isFinite(effective) && effective > 0) return effective;
+  const fallback = Number(canonicalFallback);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+}
+
+/**
+ * 8.186 (S1): decide si un cambio de tasa vigente (SignalR) debe relanzar un fetch que el
+ * servidor reproyecta (catálogo, sugerencias). Ignora la transición inicial 0 → tasa (el fetch
+ * de montaje ya usó la tasa del servidor) y los valores repetidos: evita el doble fetch inicial
+ * y los loops de refetch.
+ * @param {number} previousRate
+ * @param {number} nextRate
+ * @returns {boolean}
+ */
+export function shouldRefetchOnRateChange(previousRate, nextRate) {
+  return previousRate > 0 && nextRate > 0 && previousRate !== nextRate;
+}
+
+/**
  * Formats a product's price for catalog views, returning '—' if it's a group header with independent pricing.
+ * 8.186 (S1/S3): muestra el Bs.S EFECTIVO del servidor (`effectivePriceBsS`/`effectiveWholesalePriceBsS`);
+ * el canónico local queda solo como fallback documentado si el campo no viene.
  * @param {object} product
  * @param {boolean} isWholesale
  * @param {string} currency 'Bs.S' | 'USD'
@@ -315,7 +348,10 @@ export function formatProductDisplayPrice(product, isWholesale = false, currency
   }
 
   const retailUSD = product.priceUSD || 0;
-  const retailBsS = resolveBsSPrice(product.priceUSD, product.priceBsS, exchangeRate);
+  const retailBsS = resolveEffectiveBsS(
+    product.effectivePriceBsS,
+    resolveBsSPrice(product.priceUSD, product.priceBsS, exchangeRate)
+  );
 
   if (!isWholesale) {
     return currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS);
@@ -323,7 +359,9 @@ export function formatProductDisplayPrice(product, isWholesale = false, currency
 
   const hasRealWholesale = (product.hasWholesale || product.priceWholesaleUSD > 0) && product.priceWholesaleUSD > 0 && product.priceWholesaleUSD < retailUSD;
   const wholesaleUSD = hasRealWholesale ? product.priceWholesaleUSD : retailUSD;
-  const wholesaleBsS = hasRealWholesale ? resolveBsSPrice(product.priceWholesaleUSD, 0, exchangeRate) : retailBsS;
+  const wholesaleBsS = hasRealWholesale
+    ? resolveEffectiveBsS(product.effectiveWholesalePriceBsS, resolveBsSPrice(product.priceWholesaleUSD, 0, exchangeRate))
+    : retailBsS;
 
   return currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS);
 }

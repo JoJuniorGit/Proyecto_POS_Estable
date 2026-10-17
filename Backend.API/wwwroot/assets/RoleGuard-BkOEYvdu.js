@@ -1,1 +1,0 @@
-import{S as e,k as t,n,t as r}from"./AccessDenied-HMrDCpfT.js";var i=t();function a({view:t,message:a,children:o}){let{user:s}=e();return n(s?.role,t)?o:(0,i.jsx)(r,{message:a})}export{a as t};

@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../services/api';
 import { getCategories, toCategoryOptions } from '../services/categoriesApi';
 import { Package, Search, Loader2, RefreshCw, Tag, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { formatBsS, formatUSD, resolveBsSPrice } from '../utils/formatters';
-import { usdToBs } from '../utils/money';
+import { formatBsS, formatUSD, resolveBsSPrice, resolveEffectiveBsS, shouldRefetchOnRateChange } from '../utils/formatters';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import useDebounce from '../hooks/useDebounce';
 import Pagination from '../components/ui/Pagination';
@@ -25,6 +24,36 @@ export function buildProductsQuery({ page, pageSize, filter, sortBy, isDescendin
 /** Al cambiar el filtro de categoría ('' = Todas las categorías) se vuelve a la página 1. */
 export function resolveCategorySelection(value) {
   return { categoryId: value || '', page: 1 };
+}
+
+/**
+ * 8.186-T2 (S1/S3): precios que muestran las grillas del catálogo (escritorio y móvil). El Bs.S
+ * Detal/Mayor es el EFECTIVO proyectado por el servidor con el motor único de redondeo
+ * (`effectivePriceBsS` / `effectiveWholesalePriceBsS` + tasa vigente); web NO replica la política
+ * en JS. Solo si el campo falta o viene <= 0 se usa el fallback canónico de legado (USD × tasa con
+ * techo / snapshot persistido, 8.143). Regla Mayor vigente: con mayor real se muestra el efectivo
+ * Mayor; sin mayor real hereda el Detal.
+ */
+export function resolveCatalogProductPrices(product, exchangeRate) {
+  const retailUSD = product.priceUSD || 0;
+  const retailBsS = resolveEffectiveBsS(
+    product.effectivePriceBsS,
+    resolveBsSPrice(product.priceUSD, product.priceBsS, exchangeRate)
+  );
+
+  // Regla 2: ¿Tiene descuento de precio al mayor real configurado?
+  const hasRealWholesale = (product.hasWholesale || product.priceWholesaleUSD > 0) && product.priceWholesaleUSD > 0 && product.priceWholesaleUSD < retailUSD;
+
+  // Regla 2: Si NO tiene precio al mayor, hereda el precio al detal
+  const wholesaleUSD = hasRealWholesale ? product.priceWholesaleUSD : retailUSD;
+  const wholesaleBsS = hasRealWholesale
+    ? resolveEffectiveBsS(
+        product.effectiveWholesalePriceBsS,
+        resolveBsSPrice(product.priceWholesaleUSD, 0, exchangeRate)
+      )
+    : retailBsS;
+
+  return { retailUSD, retailBsS, hasRealWholesale, wholesaleUSD, wholesaleBsS };
 }
 
 export default function CatalogPage() {
@@ -69,7 +98,17 @@ function CatalogPageContent() {
   const [categoryId, setCategoryId] = useState('');
   const categoryOptions = toCategoryOptions(categories);
 
-  const toBsSCeiling = usdToBs;
+  // 8.186-T2 (S1): la proyección del efectivo es server-side con la tasa vigente; cuando la tasa
+  // cambia (SignalR) el catálogo refetchea para reproyectar. La transición inicial 0 → tasa no
+  // refetchea: el fetch de montaje ya usó la tasa del servidor (evita el doble fetch inicial).
+  const previousRateRef = useRef(exchangeRate);
+  useEffect(() => {
+    const previousRate = previousRateRef.current;
+    previousRateRef.current = exchangeRate;
+    if (shouldRefetchOnRateChange(previousRate, exchangeRate)) {
+      setReloadToken((t) => t + 1);
+    }
+  }, [exchangeRate]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -361,16 +400,9 @@ function CatalogPageContent() {
               </thead>
               <tbody>
                 {products.map((p) => {
-                  const retailUSD = p.priceUSD || 0;
-                  // 8.143: precio Bs.S derivado de USD × tasa vigente; snapshot solo como fallback
-                  const retailBsS = resolveBsSPrice(p.priceUSD, p.priceBsS, exchangeRate);
-
-                  // Regla 2: ¿Tiene descuento de precio al mayor real configurado?
-                  const hasRealWholesale = (p.hasWholesale || p.priceWholesaleUSD > 0) && p.priceWholesaleUSD > 0 && p.priceWholesaleUSD < retailUSD;
-
-                  // Regla 2: Si NO tiene precio al mayor, hereda el precio al detal
-                  const wholesaleUSD = hasRealWholesale ? p.priceWholesaleUSD : retailUSD;
-                  const wholesaleBsS = hasRealWholesale ? toBsSCeiling(p.priceWholesaleUSD, exchangeRate) : retailBsS;
+                  // 8.186-T2 (S1/S3): Detal/Mayor efectivos proyectados server-side (motor único);
+                  // el canónico local queda solo como fallback documentado si el campo no viene.
+                  const { retailUSD, retailBsS, hasRealWholesale, wholesaleUSD, wholesaleBsS } = resolveCatalogProductPrices(p, exchangeRate);
 
                   // Regla 3: Si hereda detal, unidades mínimas por defecto en "1" (en lugar de "0"), siempre entero sin decimales
                   const minQty = Math.round(hasRealWholesale ? (p.minWholesaleQuantity || 1) : 1);
@@ -472,13 +504,10 @@ function CatalogPageContent() {
           {isMobile && (
           <div className="catalog-mobile-view">
             {products.map((p) => {
-              const retailUSD = p.priceUSD || 0;
-              // 8.143: precio Bs.S derivado de USD × tasa vigente; snapshot solo como fallback
-              const retailBsS = resolveBsSPrice(p.priceUSD, p.priceBsS, exchangeRate);
+              // 8.186-T2 (S1/S3): Detal/Mayor efectivos proyectados server-side (motor único);
+              // el canónico local queda solo como fallback documentado si el campo no viene.
+              const { retailUSD, retailBsS, hasRealWholesale, wholesaleUSD, wholesaleBsS } = resolveCatalogProductPrices(p, exchangeRate);
 
-              const hasRealWholesale = (p.hasWholesale || p.priceWholesaleUSD > 0) && p.priceWholesaleUSD > 0 && p.priceWholesaleUSD < retailUSD;
-              const wholesaleUSD = hasRealWholesale ? p.priceWholesaleUSD : retailUSD;
-              const wholesaleBsS = hasRealWholesale ? toBsSCeiling(p.priceWholesaleUSD, exchangeRate) : retailBsS;
               const minQty = Math.round(hasRealWholesale ? (p.minWholesaleQuantity || 1) : 1);
               const wholesaleColor = hasRealWholesale ? 'var(--primary-color)' : 'var(--warning)';
 

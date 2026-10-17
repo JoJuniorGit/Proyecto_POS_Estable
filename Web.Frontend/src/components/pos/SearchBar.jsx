@@ -4,6 +4,7 @@ import { getProductSuggestions } from '../../services/productsApi';
 import SuggestionList from './SuggestionList';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { useDebounce } from '../../hooks/useDebounce';
+import { shouldRefetchOnRateChange } from '../../utils/formatters';
 
 const SearchBar = forwardRef(function SearchBar({ onSelectProduct, categoryId }, ref) {
   const [query, setQuery] = useState('');
@@ -15,6 +16,52 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct, categoryId },
   const { exchangeRate } = useExchangeRate();
 
   const debouncedQuery = useDebounce(query, 300);
+
+  // 8.186-T2 (S1): la tasa vigente llega por SignalR; al cambiar, la búsqueda activa se relanza
+  // para que el servidor reproyecte el efectivo. La transición inicial 0 → tasa no refetchea (el
+  // fetch de montaje ya usó la tasa del servidor) y los valores repetidos no disparan loops.
+  const previousRateRef = useRef(exchangeRate);
+  const rateFetchRef = useRef(null);
+  useEffect(() => {
+    const previousRate = previousRateRef.current;
+    previousRateRef.current = exchangeRate;
+
+    if (!shouldRefetchOnRateChange(previousRate, exchangeRate)) {
+      // La consulta cambió (el efecto principal ya refetchea) o la tasa no cambió: descarta el
+      // refetch de tasa en vuelo de OTRA consulta para no pisar resultados frescos.
+      if (rateFetchRef.current && rateFetchRef.current.queryText !== debouncedQuery) {
+        rateFetchRef.current.controller.abort();
+        rateFetchRef.current = null;
+      }
+      return;
+    }
+
+    const queryText = debouncedQuery;
+    if (!queryText.trim()) return;
+
+    rateFetchRef.current?.controller.abort();
+    const controller = new AbortController();
+    rateFetchRef.current = { controller, queryText };
+    setLoading(true);
+
+    getProductSuggestions(queryText, controller.signal, categoryId)
+      .then((results) => {
+        if (controller.signal.aborted) return;
+        setSuggestions(results || []);
+        setIsOpen(true);
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.error('[SearchBar] Error en búsqueda:', err);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+  }, [exchangeRate, debouncedQuery, categoryId]);
+
+  // El refetch por tasa se aborta al desmontar (mismo patrón AbortController usado arriba).
+  useEffect(() => () => rateFetchRef.current?.controller.abort(), []);
 
   // Permite que la página POS limpie el buscador o le dé foco con F2.
   useImperativeHandle(ref, () => ({
