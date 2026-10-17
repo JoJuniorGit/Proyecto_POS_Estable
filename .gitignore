@@ -410,6 +410,9 @@ docs/JWT_Key.md
 *.secrets.json
 
 dist_installer/
+
+# Lock de ejecucion unica de scripts/build-release.ps1 (transitorio; se libera en finally)
+.build-release.lock
 installer/Output/
 Web.Frontend/dist/
 Web.Frontend/build/
