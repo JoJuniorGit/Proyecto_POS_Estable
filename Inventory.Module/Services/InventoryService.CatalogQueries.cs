@@ -61,6 +61,8 @@ public partial class InventoryService
                     ConsolidatedStock = p.IsGroupHeader
                         ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                         : p.StockQuantity,
+                    // 8.186-T1 (S1): el canal Mayor necesita la bandera real para gatear el efectivo.
+                    HasWholesale = p.HasWholesale,
                     RoundingRuleCashBs = p.RoundingRuleCashBs
                 })
                 .FirstOrDefaultAsync(token);
@@ -68,6 +70,8 @@ public partial class InventoryService
             if (exactSkuMatch != null)
             {
                 exactSkuMatch.RoundingRuleCashBs ??= defaultCashRule;
+                // 8.186-T1 (S1/S3): efectivo Bs.S proyectado en la misma pasada (tasa/toggle una vez).
+                await ProjectEffectiveBsSBatchAsync(new List<Core.DTOs.ProductQuickInfoDto> { exactSkuMatch }, defaultCashRule, token);
                 return new List<Core.DTOs.ProductQuickInfoDto> { exactSkuMatch };
             }
 
@@ -113,6 +117,8 @@ public partial class InventoryService
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                     : p.StockQuantity,
+                // 8.186-T1 (S1): el canal Mayor necesita la bandera real para gatear el efectivo.
+                HasWholesale = p.HasWholesale,
                 RoundingRuleCashBs = p.RoundingRuleCashBs
             })
             .ToListAsync(token);
@@ -121,6 +127,9 @@ public partial class InventoryService
         {
             item.RoundingRuleCashBs ??= defaultCashRule;
         }
+
+        // 8.186-T1 (S1/S3): proyección server-side del efectivo con UNA lectura de tasa/regla/toggle.
+        await ProjectEffectiveBsSBatchAsync(items, defaultCashRule, token);
 
         return items;
     }
@@ -246,6 +255,14 @@ public partial class InventoryService
                     .ToList(),
             })
             .ToListAsync(token);
+
+        // 8.186-T1 (S1/S3): proyección server-side del efectivo Detal/Mayor para la grilla web con
+        // UNA lectura de regla/tasa/toggle por request (la regla cruda ya viaja en el DTO).
+        if (items.Count > 0)
+        {
+            var defaultCashRule = await ResolveDefaultCashRoundingRuleAsync();
+            await ProjectEffectiveBsSBatchAsync(items, defaultCashRule, token);
+        }
 
         return new Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>
         {

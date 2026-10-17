@@ -18,7 +18,7 @@ public partial class InventoryService
         decimal parentStock = parent?.StockQuantity ?? 0m;
         bool hasIndepPricing = parent?.HasIndependentPricing ?? false;
 
-        return await _context.Products
+        var variants = await _context.Products
             .AsNoTracking()
             .Where(p => p.ParentProductId == parentProductId && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
@@ -54,13 +54,26 @@ public partial class InventoryService
                 ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
                 ConsolidatedStock = isStockShared ? parentStock : p.StockQuantity,
+                // 8.186-T1 (S1): regla cruda del artículo para resolver el efectivo server-side
+                // (null = hereda el default global de Pricing), igual que el listado paginado.
+                RoundingRuleCashBs = p.RoundingRuleCashBs,
             })
             .ToListAsync(cancellationToken);
+
+        // 8.186-T1 (S1/S3): el selector de variantes web recibe los mismos precios efectivos que el
+        // catálogo/POS con UNA lectura de regla/tasa/toggle por request.
+        if (variants.Count > 0)
+        {
+            var defaultCashRule = await ResolveDefaultCashRoundingRuleAsync();
+            await ProjectEffectiveBsSBatchAsync(variants, defaultCashRule, cancellationToken);
+        }
+
+        return variants;
     }
 
     public async Task<List<Core.DTOs.ProductDto>> GetParentProductsAsync(System.Threading.CancellationToken cancellationToken = default)
     {
-        return await _context.Products
+        var parents = await _context.Products
             .AsNoTracking()
             .Where(p => p.IsGroupHeader && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
@@ -92,12 +105,23 @@ public partial class InventoryService
                 HasIndependentPricing = p.HasIndependentPricing,
                 ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
+                // 8.186-T1 (S1): misma semántica cruda que el paginado (null = hereda global).
+                RoundingRuleCashBs = p.RoundingRuleCashBs,
                 VariantCount = p.Variants.Count(v => !v.IsDeleted),
                 ConsolidatedStock = p.IsStockShared 
                     ? p.StockQuantity 
                     : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m),
             })
             .ToListAsync(cancellationToken);
+
+        // 8.186-T1 (S1/S3): mismos campos efectivos que el resto de superficies de catálogo.
+        if (parents.Count > 0)
+        {
+            var defaultCashRule = await ResolveDefaultCashRoundingRuleAsync();
+            await ProjectEffectiveBsSBatchAsync(parents, defaultCashRule, cancellationToken);
+        }
+
+        return parents;
     }
 
     public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetCandidateVariantsPagedAsync(int parentId, string? filter, int page, int pageSize, System.Threading.CancellationToken token = default)

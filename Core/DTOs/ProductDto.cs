@@ -47,4 +47,11 @@ public class ProductDto
     // (el selector del modal las muestra como "Heredar global").
     public RoundingRuleType? RoundingRuleUsd { get; set; }
     public RoundingRuleType? RoundingRuleCashBs { get; set; }
+
+    // 8.186-T1 (S1/S3): precios efectivos Bs.S proyectados server-side con el motor único
+    // (PricingRoundingPolicy) — Detal y Mayor — para que web y POS muestren el mismo monto sin
+    // duplicar matemática en JS. 0 cuando no hay USD/tasa convertibles o el canal no aplica;
+    // los campos canónicos (PriceBsS, reglas crudas) conservan su semántica (aditivo).
+    public decimal EffectivePriceBsS { get; set; }
+    public decimal EffectiveWholesalePriceBsS { get; set; }
 }

@@ -227,7 +227,7 @@ public partial class InventoryService : IInventoryService
 
         if (!useCache || _cache == null)
         {
-            return await FetchProductQuickInfoFromDbAsync(sku);
+            return await FetchProductQuickInfoFromDbAsync(sku, cancellationToken);
         }
 
         var cacheKey = $"product_quick_{normalized}";
@@ -238,7 +238,7 @@ public partial class InventoryService : IInventoryService
         }
 
         Core.Metrics.CacheMetrics.RecordMiss();
-        var dto = await FetchProductQuickInfoFromDbAsync(sku);
+        var dto = await FetchProductQuickInfoFromDbAsync(sku, cancellationToken);
         if (dto != null)
         {
             RegisterProductCacheKey(cacheKey);
@@ -265,7 +265,107 @@ public partial class InventoryService : IInventoryService
             : Core.DTOs.RoundingRuleType.ExactMath;
     }
 
-    private async Task<Core.DTOs.ProductQuickInfoDto?> FetchProductQuickInfoFromDbAsync(string sku)
+    /// <summary>
+    /// 8.186-T1 (S1/S6): toggle global de piso (Pricing.DefaultEnforceMinimumMarginFloor) con el
+    /// contrato 8.185-T3 (default true ante ausencia o valor ilegible); sin accessor ⇒ true.
+    /// </summary>
+    private async Task<bool> ResolveNeverRoundDownAsync()
+    {
+        if (_settingsService == null)
+        {
+            return true;
+        }
+
+        var value = await _settingsService.GetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultEnforceMinimumMarginFloor);
+        return !bool.TryParse(value, out var enforceFloor) || enforceFloor;
+    }
+
+    private static bool IsCashFriendlyRule(Core.DTOs.RoundingRuleType? rule) =>
+        rule is Core.DTOs.RoundingRuleType.VesCashFriendlyInteger
+            or Core.DTOs.RoundingRuleType.VesCashFriendlyStep5
+            or Core.DTOs.RoundingRuleType.VesCashFriendlyStep10;
+
+    // Base USD del canal Detal: espejo del precio canónico persistido (Product.PriceBsS) y de la
+    // venta (retailUsd en SalesService): PriceRetailUSD con fallback a PriceUSD.
+    private static decimal ResolveRetailUsd(Core.DTOs.ProductDto item) =>
+        item.PriceRetailUSD > 0m ? item.PriceRetailUSD : item.PriceUSD;
+
+    private static decimal ResolveRetailUsd(Core.DTOs.ProductQuickInfoDto item) =>
+        item.PriceRetailUSD > 0m ? item.PriceRetailUSD : item.PriceUSD;
+
+    /// <summary>
+    /// 8.186-T1 (S1/S3): proyecta EffectivePriceBsS/EffectiveWholesalePriceBsS sobre una página de
+    /// catálogo ya materializada. La tasa se lee UNA vez por request y el toggle solo si algún ítem
+    /// resuelve a regla cash (si no, la proyección cae al canónico y el toggle no interviene).
+    /// El Mayor queda en 0 cuando !HasWholesale o PriceWholesaleUSD ≤ 0.
+    /// </summary>
+    private async Task ProjectEffectiveBsSBatchAsync(
+        System.Collections.Generic.IReadOnlyList<Core.DTOs.ProductDto> items,
+        Core.DTOs.RoundingRuleType defaultCashRule,
+        System.Threading.CancellationToken token)
+    {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        decimal rate = await GetTodayExchangeRateAsync(token);
+        bool neverRoundDown = true;
+        foreach (var item in items)
+        {
+            if (IsCashFriendlyRule(item.RoundingRuleCashBs ?? defaultCashRule))
+            {
+                neverRoundDown = await ResolveNeverRoundDownAsync();
+                break;
+            }
+        }
+
+        foreach (var item in items)
+        {
+            var rule = item.RoundingRuleCashBs ?? defaultCashRule;
+            item.EffectivePriceBsS = PricingRoundingPolicyService.ProjectEffectiveBsS(ResolveRetailUsd(item), rate, rule, neverRoundDown);
+            item.EffectiveWholesalePriceBsS = item.HasWholesale && item.PriceWholesaleUSD > 0m
+                ? PricingRoundingPolicyService.ProjectEffectiveBsS(item.PriceWholesaleUSD, rate, rule, neverRoundDown)
+                : 0m;
+        }
+    }
+
+    /// <summary>
+    /// 8.186-T1 (S1/S3): misma proyección para las superficies de quick-info/sugerencias (la regla
+    /// ya viaja RESUELTA en el DTO). Tasa y toggle se leen UNA vez por request, no por ítem.
+    /// </summary>
+    private async Task ProjectEffectiveBsSBatchAsync(
+        System.Collections.Generic.IReadOnlyList<Core.DTOs.ProductQuickInfoDto> items,
+        Core.DTOs.RoundingRuleType defaultCashRule,
+        System.Threading.CancellationToken token)
+    {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        decimal rate = await GetTodayExchangeRateAsync(token);
+        bool neverRoundDown = true;
+        foreach (var item in items)
+        {
+            if (IsCashFriendlyRule(item.RoundingRuleCashBs ?? defaultCashRule))
+            {
+                neverRoundDown = await ResolveNeverRoundDownAsync();
+                break;
+            }
+        }
+
+        foreach (var item in items)
+        {
+            var rule = item.RoundingRuleCashBs ?? defaultCashRule;
+            item.EffectivePriceBsS = PricingRoundingPolicyService.ProjectEffectiveBsS(ResolveRetailUsd(item), rate, rule, neverRoundDown);
+            item.EffectiveWholesalePriceBsS = item.HasWholesale && item.PriceWholesaleUSD > 0m
+                ? PricingRoundingPolicyService.ProjectEffectiveBsS(item.PriceWholesaleUSD, rate, rule, neverRoundDown)
+                : 0m;
+        }
+    }
+
+    private async Task<Core.DTOs.ProductQuickInfoDto?> FetchProductQuickInfoFromDbAsync(string sku, System.Threading.CancellationToken cancellationToken = default)
     {
         var normalized = sku.Trim().ToUpperInvariant();
         var defaultCashRule = await ResolveDefaultCashRoundingRuleAsync();
@@ -295,14 +395,19 @@ public partial class InventoryService : IInventoryService
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                     : p.StockQuantity,
+                // 8.186-T1 (S1): el canal Mayor necesita la bandera real para gatear el efectivo.
+                HasWholesale = p.HasWholesale,
                 // 8.185-T2 (S1/S2): regla resuelta en memoria (override ?? default global).
                 RoundingRuleCashBs = p.RoundingRuleCashBs
             })
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (dto != null)
         {
             dto.RoundingRuleCashBs ??= defaultCashRule;
+            // 8.186-T1 (S1/S3): efectivo Bs.S proyectado (tasa/toggle una vez; cache 15s/5min del DTO
+            // mantiene la proyección vigente según las mismas reglas de refresco que el resto).
+            await ProjectEffectiveBsSBatchAsync(new[] { dto }, defaultCashRule, cancellationToken);
         }
 
         return dto;

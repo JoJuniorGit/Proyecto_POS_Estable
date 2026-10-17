@@ -243,6 +243,9 @@ public partial class ProductsController : ControllerBase
         }
     }
 
+    // 8.186-T1 (S1/S6): el masking de Cashier solo oculta costo/margen; los campos efectivos Bs.S
+    // (no sensibles) sobreviven por construcción para que la web del Cashier muestre el mismo
+    // precio proyectado que el POS.
     private ProductDto MaskProductDto(ProductDto item) => item.MaskCosts();
 
     private Core.DTOs.ProductQuickInfoDto MaskQuickInfoDto(Core.DTOs.ProductQuickInfoDto item)
@@ -259,6 +262,10 @@ public partial class ProductsController : ControllerBase
             // 8.185-T2 (S6): la regla de efectivo no es sensible (no expone costo/margen) y debe
             // sobrevivir al masking para que el rol Cashier proyecte el mismo precio publicado.
             RoundingRuleCashBs = item.RoundingRuleCashBs,
+            // 8.186-T1 (S1/S6): los precios efectivos Bs.S tampoco son sensibles — sin copiarlos,
+            // el masking los descartaría y la web del Cashier perdería la paridad con el POS.
+            EffectivePriceBsS = item.EffectivePriceBsS,
+            EffectiveWholesalePriceBsS = item.EffectiveWholesalePriceBsS,
             HasWholesale = item.HasWholesale,
             IsFractional = item.IsFractional,
             UnitOfMeasure = item.UnitOfMeasure,
