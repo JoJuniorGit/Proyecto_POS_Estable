@@ -15813,3 +15813,59 @@ C1. A tasas reales (~800+) el ajuste del $ efectivo suele ser sub-centavo a 2 de
     visible cuando la tasa o el paso del redondeo lo hacen apreciable. El Bs.S mostrado sigue
     siendo el cobrado exacto (ancla).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XVI) - PISO DE CANTIDAD EN EL CARRITO POS WPF: EL BOTON - NUNCA ELIMINA (PARIDAD CON EL CARRITO WEB) - 2026-10-17
+================================================================================
+Reporte del mantenedor: en la version local WPF, la accion de disminuir cantidad (atajo - del
+carrito) permitia que la cantidad llegara a 0 y el motor eliminaba el producto de la lista,
+provocando borrados accidentales durante el cobro rapido. Criterios: piso de cantidad, feedback
+visual del boton -, eliminacion solo por accion explicita (papelera/Supr) y edicion manual
+protegida.
+
+A. DIAGNOSTICO
+A1. CartViewModel.DecreaseQuantity eliminaba la linea cuando newQty <= 0 (un - de mas sobre la
+    cantidad 1 borraba el producto).
+A2. CartViewModel.CommitItemQuantityAsync (commit de la edicion manual en DataGrid_CellEditEnding)
+    tambien eliminaba la linea con cantidad confirmada <= 0; ademas, un texto invalido/vacio
+    quedaba como borrador 0 sin camino de confirmacion (fila varada en 0).
+A3. FlushAllQuantitiesAsync omitia los borradores <= 0 (se quedaban fuera de todo commit).
+A4. El carrito WPF no tenia boton -/+ en la fila (solo hotkey y edicion manual); el carrito web ya
+    implementa el comportamiento pedido (CartTable: isAtMin = quantity <= step -> boton disabled;
+    guard newQty >= step; QuantityInput: blur <= 0 revierte a 1). Cambio de PARIDAD WPF/WEB.
+
+B. FIX
+B1. DecreaseQuantity: la resta que cae por debajo de un paso se ignora (nueva cantidad < StepAmount)
+    y NUNCA elimina. Eliminar queda solo en el comando RemoveItem (papelera de la fila / Supr).
+B2. CommitItemQuantityAsync: valor confirmado <= 0 revierte a 1 (paridad con el blur del input web)
+    — sin rama de eliminacion. DataGrid_CellEditEnding: Esc no confirma; texto invalido/vacio
+    confirma 0 y el carrito lo revierte a 1 (cierra la fila varada en 0).
+B3. FlushAllQuantitiesAsync: los borradores confirmados <= 0 se envian como 1 (nunca 0 al servidor,
+    nunca eliminacion implicita).
+B4. UI (paridad con CartTable web): la columna Cant. del carrito gana stepper - / + por fila
+    (CartStepButtonStyle) con IsEnabled = CanDecrease (nuevo en CartItemViewModel: cantidad >
+    StepAmount, notificado en cada recambio de cantidad); tooltip en el minimo sugiere papelera/Supr;
+    AutomationIds Pos_Decrease/IncreaseCartItemQuantityButton.
+B5. RecentScannedItemViewModel.DecrementQuantityAsync: en cantidad 1 la resta se ignora (antes
+    enviaba Math.Max(0,...) => 0 => commit => eliminacion). Increment/Decrement de la tarjeta
+    mantienen su paso de 1.
+B6. Sin cambios de contrato ni web: el carrito web ya cumplia los 4 criterios; solo se porto el
+    comportamiento a WPF y se alinearon los huerfanos (tarjeta de recientes, metodo muerto de
+    CartItemViewModel que forzaba 0.001).
+
+C. EVIDENCIA
+C1. RED: CartQuantityFloorTests + RecentScannedItemsTests nuevos contra la implementacion previa:
+    6/13 fallos exactos (borrado por -, commit 0/negativo elimina, flush omite el 0, tarjeta de
+    recientes envia 0).
+C2. GREEN focalizado: CartQuantityFloorTests + RecentScannedItemsTests 14/14.
+C3. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+C4. Suite completa secuencial: CommandCenter.Tests 3046/3046; Wpf.E2ETests 50/50; 0 errores.
+C5. Web: sin cambios (el carrito web ya implementaba el piso); no se corrio npm en este fix.
+
+D. NOTA
+D1. El piso es de un paso por linea (paridad web): 1 en Und/Oz, 0.100 en Kg/Lt, 0.250 en Lb,
+    100 en Grs/Ml. En productos fraccionarios la resta sigue operando por encima del paso
+    (ej. 0.2 Kg -> 0.1 Kg) y se ignora al alcanzarlo; la cantidad nunca llega a 0 por resta.
+D2. El borrado consciente no cambio: papelera de la fila y tecla Supr siguen eliminando sin
+    friccion adicional.
+================================================================================
