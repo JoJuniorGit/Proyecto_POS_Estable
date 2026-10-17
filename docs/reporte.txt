@@ -15701,3 +15701,75 @@ D2. La identidad estricta "el cliente multiplica el $ por la tasa y obtiene el B
     el invariante implementado es: el Bs.S mostrado es el cobrado exacto y el $ es su cociente a
     2 decimales (display). El valor contable a 4 decimales conserva la precision sub-centavo.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XIII) - PARIDAD DEL USD EFECTIVO EN RECIBOS/PDF E HISTORIAL (WPF + WEB) - 2026-10-17
+================================================================================
+Pedido del mantenedor: "Aplica la correccion de pariedad por redondeo en Recibos/PDF e historial"
+(continuacion directa del ANEXO XII: el $ mostrado/impreso debe ser el inverso del Bs.S efectivo).
+
+A. IMPLEMENTACION
+A1. Recibos/PDF: SaleReceiptContext gana EffectiveTotalUSD (mapeado de Sale.EffectiveTotalUSD) y el
+    PDF imprime ese valor en "Total USD:". Las columnas $ de linea (PRECIO/SUBTOTAL) usan el inverso
+    del Bs.S efectivo por linea (UnitPriceBsS/SubtotalBsS / tasa) con respaldo canonico cuando no hay
+    Bs.S o tasa (helper EffectiveUsd). La fila TOTALES sigue mostrando el Bs.S cobrado (ancla exacta).
+A2. Historial WPF: SaleHistoryDto (cliente, Desktop.Client.Core/Services/ISalesService.cs) gana
+    EffectiveTotalUSD calculado localmente (misma formula, JsonIgnore); SalesHistoryViewModel asigna
+    ese valor a DetailTotalUSD en precarga y detalle confirmado; la lista (subtexto del TOTAL BS.S)
+    bindea EffectiveTotalUSD. [Nota: el server DTO Sales.Module/DTOs/SaleHistoryDto.cs expone la
+    misma propiedad calculada y la serializa para el web.]
+A3. Historial Web: HistoryPage.jsx usa effectiveTotalUSD (helper effectiveTotalUsd con fallback
+    BsS/tasa y canonico) en lista movil, tabla y detalle. Bundle Backend.API/wwwroot regenerado.
+A4. Sin migracion ni cambio de contrato: Total USD canonico sigue disponible; Z/arqueo intactos.
+
+B. EVIDENCIA
+B1. RED: -filter SaleReceiptRendererTests|EffectiveUsdTotalTests => 2 fallos exactos (PDF impreso
+    "Total USD: 1,15" debiendo ser 1,20 con tasa 10/Bs.S 12; DetailTotalUSD 1.15 debiendo ser 1.20).
+B2. GREEN: 17/17 (receipts + effective + receipt-architecture con assert de EffectiveTotalUSD=10 en
+    fixture 730/73).
+B3. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+B4. Suite completa secuencial: CommandCenter.Tests 3031/3031; Wpf.E2ETests 50/50; 0 errores.
+B5. Web: npm test 415/415; npm run lint sin hallazgos; npm run build OK (bundle actualizado).
+
+C. LIMITES
+C1. Pending orders/pickups y recuperacion siguen con el TotalUSD canonico (fuera del pedido);
+    candidatos a paridad si el mantenedor lo pide.
+================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XIV) - FIX: PERDIDA DE EDICION DE CANTIDADES DEL POS POR REFRESCO DE COLECCION - 2026-10-17
+================================================================================
+Bug reportado por el mantenedor (condicion de carrera visual): editar la cantidad del Producto A
+(ej. 10) sin Enter y, al interactuar con el carrito (+/alta/escaneo del Producto B/C), el refresco
+reconstruia la coleccion y revertia A a su valor anterior.
+
+A. DIAGNOSTICO
+A1. El commit real de la cantidad vive en DataGrid_CellEditEnding -> CommitItemQuantityAsync
+    (fire-and-forget `_ =`) y en el binding QuantityText (UpdateSourceTrigger=PropertyChanged, ya
+    correcto: la edicion llega al VM por pulsacion, criterio 1 del reporte YA cumplido).
+A2. Las mutaciones del carrito (Increase/Decrease/Remove del CartViewModel; alta por sugerencia o
+    precio manual y escaneo del PosViewModel) llamaban al servidor SIN esperar ese commit y
+    asignaban CurrentSale = respuesta autoritativa -> UpdateCollection reconstruye TODAS las lineas
+    y pisa la edicion pendiente (carrera de respuestas + estado stale del snapshot).
+A3. FlushAllQuantitiesAsync (8.149/CLEAN-02) ya existia y solo se invocaba en Checkout y Hold.
+
+B. FIX
+B1. CartViewModel: IncreaseQuantity, DecreaseQuantity y RemoveItem (boton 🗑 dentro de la grilla,
+    criterio 2) ahora ejecutan `await FlushAllQuantitiesAsync()` ANTES de su logica de servidor.
+    RemoveItem se dividio en comando (flush) + RemoveItemCoreAsync; CommitItemQuantityAsync usa el
+    core para no re-flushear al remover por cantidad 0.
+B2. PosViewModel: AddSelectedSuggestionCoreAsync (sugerencias, precio manual, variantes) y el alta
+    por escaneo (PosViewModel.Scanning) flushean antes de AddItemAsync.
+B3. Criterio 3 (preservacion de estado): el invariante es no perder datos — toda edicion pendiente
+    se commitea al servidor y el rebuild de la coleccion parte de esa verdad (no se refactorizo
+    UpdateCollection a updates incrementales por-item; sin necesidad demostrada).
+
+C. EVIDENCIA
+C1. RED: 2/12 fallos exactos — RemoveItem_WithPendingQuantityEditInAnotherRow (orden de llamadas sin
+    commit previo) y AddSelectedSuggestion_WithPendingQuantityEdit (cantidad 10 revertida a 1 con
+    servidor simulado por estado mutable).
+C2. GREEN: 12/12 (CartCommitResilienceTests + PosSearchSuggestionsTests).
+C3. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+C4. Suite completa secuencial: CommandCenter.Tests 3031/3031; Wpf.E2ETests 50/50; 0 errores.
+C5. Web: npm test 415/415 (sin cambios de web en este fix); lint y build OK.
+================================================================================
