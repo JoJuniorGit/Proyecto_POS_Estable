@@ -15381,3 +15381,36 @@ C1. Build Release 0/0; BulkPrice 157/157; BulkPriceEdit 80/80; Rounding 288/288;
 C2. RED observado: CS1061/CS0117 (API VM) + 3 fallos de runtime que revelaron la exigencia de
     reglas USD comunes en ambos canales.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (VI) - SALVAGUARDA DE INTENCION EXPLICITA (TOUCH POLICY): LOTES DE SECCION 1 PRESERVAN LOS OVERRIDES POR ARTICULO - 2026-10-16
+================================================================================
+Pedido del mantenedor (previo al push del PR #38): que un lote comun (solo "1. Operaciones por
+campo", selectores de la tarjeta 2 en su estado inicial) NO normalice la politica de redondeo de
+los productos con override propio; la politica solo se toca con intencion explicita.
+
+A. CONTRATO / VM / MOTOR (commit aa316cd)
+
+A1. Request: TouchRetailUsdPolicy / TouchWholesaleUsdPolicy / TouchCashBsPolicy (bool, default
+    false). El VM los calcula contra los SEEDS (selector != seed || Solo Redondeo con regla activa;
+    volver al seed = sin touch) y los envia en BuildRequest.
+A2. Motor -- regla EFECTIVA de calculo por canal: touched ? regla del lote : (override del producto
+    ?? baseline global). Aplica al redondeo USD del precio nuevo, a la salvaguarda Detal/Mayor y a
+    las proyecciones cash. Sin touch la politica del articulo es INTOCABLE en BD (jamais se
+    escriben las columnas); la herencia equivalente tampoco se materializa.
+A3. Persistencia gateada: columna USD solo si algun canal touched Y reglas de canal iguales Y la
+    efectiva difiere (touched con reglas distintas => columna intacta + PolicyNote); columna cash
+    solo con TouchCashBsPolicy Y difiere. Estado/apply: la politica cuenta como Actualiza solo
+    cuando se escribira.
+A4. Test de aceptacion (OVRPRES1): lote seccion-1 puro (+10% precio, sin touch, globals ExactMath)
+    sobre producto con RoundingRuleUsd=Psychological y RoundingRuleCashBs=Step10 -> precio nuevo
+    1.34 -> 1.48 matematica -> 1.50 con la regla PROPIA del producto, proyeccion cash 150,
+    columnas Psych/Step10 INTACTAS en BD tras el apply.
+A5. ~20 tests migrados con los flags touch (reportado por el implementador; sin cambios de
+    semantica mas alla de la intencion explicita).
+
+B. EVIDENCIA
+
+B1. Build Release 0/0; BulkPrice 162/162; BulkPriceEdit 84/84; Rounding 292/292; suite completa
+    3004/3004.
+================================================================================
