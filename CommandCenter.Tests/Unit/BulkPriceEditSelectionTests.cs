@@ -34,15 +34,24 @@ public class BulkPriceEditSelectionTests
         _exchangeRateServiceMock.Setup(s => s.GetCurrentRateAsync())
                                 .ReturnsAsync((36.5m, (DateTime?)DateTime.UtcNow));
 
+        // Migración RBAC: los caminos positivos corren con un mutador real (la barra 2 y sus
+        // comandos exigen CanMutateCatalog); el test de solo lectura conserva su sesión explícita.
         var vm = new InventoryViewModel(
             _productServiceMock.Object,
             _exchangeRateServiceMock.Object,
-            session,
+            session ?? CreateAdminSession(),
             _dialogServiceMock.Object);
 
         // Aísla del bus global compartido entre pruebas (mensajes externos alteran el inventario).
         WeakReferenceMessenger.Default.UnregisterAll(vm);
         return vm;
+    }
+
+    private static UserSession CreateAdminSession()
+    {
+        var session = new UserSession();
+        session.CurrentUser = new UserDto { Id = 1, Name = "Admin", Role = UserRole.Admin };
+        return session;
     }
 
     private void SetupPagedCatalog(Func<int, IReadOnlyList<ProductDto>> itemsByPage, int totalCount)

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
+using Core.Entities;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
@@ -226,10 +227,14 @@ public class BulkPriceEditPricingPoliciesTests
 
         var dialog = new Mock<IDialogService>();
 
+        // Migración RBAC: OpenBulkPriceEdit exige CanMutateCatalog; el camino positivo usa Admin.
+        var session = new UserSession();
+        session.CurrentUser = new UserDto { Id = 1, Name = "Admin", Role = UserRole.Admin };
+
         var vm = new InventoryViewModel(
             productService.Object,
             exchangeRateService.Object,
-            userSession: null,
+            session,
             dialog.Object,
             settingsService: settingsService);
         WeakReferenceMessenger.Default.UnregisterAll(vm);

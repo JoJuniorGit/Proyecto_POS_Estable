@@ -244,6 +244,12 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         // contenedor DI ya registra ISettingsService, así que el parámetro opcional se resuelve solo.
         _settingsService = settingsService;
 
+        // RBAC de la barra de edición: re-evaluar los comandos si la sesión cambia en caliente.
+        if (UserSession != null)
+        {
+            UserSession.PropertyChanged += OnUserSessionPropertyChanged;
+        }
+
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
         {
             OnPropertyChanged(nameof(CurrentRate));
@@ -283,6 +289,30 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.InitialLoad");
             CategoryFilterLoadTask = _categoryService is null ? Task.CompletedTask : LoadCategoryFilterAsync();
         }
+    }
+
+    /// <summary>
+    /// Contrato RBAC de la barra de edición: la sesión legacy (null) conserva el comportamiento
+    /// previo; una sesión creada sin usuario autenticado se bloquea, igual que el Visibility
+    /// CanMutateCatalog del XAML y el guard runtime de <see cref="OpenBulkPriceEdit"/>.
+    /// </summary>
+    private bool CanMutateCatalogBar() => UserSession == null || UserSession.CanMutateCatalog;
+
+    private void OnUserSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Services.UserSession.CurrentUser)
+            || e.PropertyName == nameof(Services.UserSession.CanMutateCatalog))
+        {
+            NotifyCatalogMutationCommands();
+        }
+    }
+
+    private void NotifyCatalogMutationCommands()
+    {
+        OpenAddProductCommand.NotifyCanExecuteChanged();
+        OpenBulkPriceEditCommand.NotifyCanExecuteChanged();
+        SelectAllFilteredCommand.NotifyCanExecuteChanged();
+        ClearSelectionCommand.NotifyCanExecuteChanged();
     }
 
     private async Task LoadPricingPoliciesAsync()
@@ -563,6 +593,11 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             _loadLock.Dispose();
         }
         catch (ObjectDisposedException) { }
+
+        if (UserSession != null)
+        {
+            UserSession.PropertyChanged -= OnUserSessionPropertyChanged;
+        }
 
         WeakReferenceMessenger.Default.UnregisterAll(this);
     }
