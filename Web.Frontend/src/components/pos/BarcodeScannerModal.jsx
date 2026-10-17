@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import * as zxing from '@zxing/library';
-const { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } = zxing.default ?? zxing;
+import {
+  BrowserMultiFormatReader,
+  BarcodeFormat,
+  DecodeHintType,
+} from '@zxing/library';
 import { 
   AlertCircle, 
   XCircle, 
