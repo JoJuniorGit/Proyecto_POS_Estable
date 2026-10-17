@@ -15644,3 +15644,60 @@ C4. publish final: Backend.API.exe (128.123.899 B, 10:41:00), Desktop.Client.exe
     porque HEAD avanzo un commit (el SDK embebe SourceRevisionId); dentro del mismo commit el build
     es deterministico (verificado en el run anterior: hashes identicos pre/post).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XII) - SINCRONIZACION DEL USD EFECTIVO CON EL BS.S REDONDEADO (DISPLAY POS + DTO CONTABLE) - 2026-10-17
+================================================================================
+Pedido del mantenedor: el monto total en USD ($) mostrado en carrito, desglose de cobro y modal de
+pagos debe ser el equivalente matematico del Bs.S EFECTIVO redondeado que se cobra (BsS/tasa), y el
+backend debe registrar ese USD efectivo como monto real transado (sobre-ganancia del redondeo
+contabilizable en Paso 14) sin descuadrar el Cierre de Caja (Z). Se aprobo la via menos invasiva
+tras el analisis de alternativas.
+
+A. ALTERNATIVAS EVALUADAS
+A1. Literal (redefinir Sale.TotalUSD y los totales globales como BsS/tasa): RECHAZADA — radio ~25
+    consumidores (preview, gate dual, abonos OnHold, recibos PDF, historial, pickups, recuperacion,
+    outbox), rompe el pago USD exacto (el gate compara contra el USD canonico) y descuadra
+    suma-de-lineas vs total.
+A2. Columna nueva Sale.EffectiveTotalUSD (migracion aditiva): diferida — duplica un dato derivable
+    (TotalBsS + AppliedRate ya son snapshot inmutable).
+A3. APROBADA E IMPLEMENTADA: display derivado en las superficies de cobro + propiedad calculada
+    Sale.EffectiveTotalUSD expuesta en SaleDto. Sin migracion, sin cambio de semantica del TotalUSD
+    canonico (gates, mensajes, recuperacion, historial y Z intactos).
+
+B. IMPLEMENTACION
+B1. Backend: Sale.EffectiveTotalUSD ([NotMapped]) = round(TotalBsS/AppliedRate, 4, AwayFromZero);
+    fallback al canonico si TotalBsS<=0 o AppliedRate<=0 (precedente: CashAdvance). SaleDto gana
+    EffectiveTotalUSD y MapToDto lo proyecta. Consumidor futuro: Paso 14 (ingresos con sobre-ganancia
+    del redondeo); Z/arqueo no cambian (DailyClosure suma SalePayments.AmountBsS).
+B2. Carrito (WPF): CartViewModel.TotalUsdEffective = ToUSD(TotalAmountLocal, tasa) con la misma
+    prioridad de tasa que UpdateCollection (historico=>AppliedRate congelado; vivo=>tasa vigente;
+    sin tasa=>canonico). PosView: la linea "$" del TOTAL bindea TotalUsdEffective.
+B3. Checkout (WPF): CheckoutViewModel.TotalUsdEffective y RemainingUsdEffective =
+    ToUSD(TotalAmountLocal/RemainingBalanceLocal, ResolvePreviewRate()) — mismo criterio con el que
+    AddPayment deriva la pata USD de cada pago. CheckoutDialog: "USD" del Total Invoice y del
+    Remaining bindean las propiedades nuevas. Notifican en RecalculateBalances y
+    NotifyPreviewDependentProperties.
+B4. Web (paridad): CheckoutModal.jsx — "Ref: $" del total y del restante ahora son el inverso del
+    Bs.S mostrado (effectiveTotalUsd/effectiveRemainingUsd, redondeo 2 dec). Bundle
+    Backend.API/wwwroot regenerado.
+B5. Tests nuevos: CommandCenter.Tests/Unit/EffectiveUsdTotalTests.cs (8 casos: entidad inverso/
+    sobre-ganancia/fallbacks; carrito 12/10=1.20 con TotalUSD canonico 1.15 intacto y fallback sin
+    tasa; checkout total/restante inversos del Bs.S del servidor y restante parcial 5 => 0.70).
+
+C. EVIDENCIA
+C1. RED: dotnet test --filter EffectiveUsdTotalTests => CS1061 por los miembros inexistentes.
+C2. GREEN: 8/8 focalizados.
+C3. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+C4. Suite completa secuencial: CommandCenter.Tests 3027/3027; Wpf.E2ETests 50/50; 0 errores.
+C5. Web: npm test 415/415; npm run lint sin hallazgos; npm run build OK (bundle actualizado).
+
+D. ALCANCE Y LIMITES
+D1. Historial, recibos/PDF, pending orders/pickups y recuperacion conservan el TotalUSD canonico
+    como referencia de precios (fuera del alcance del pedido, que mira el POS). Follow-up candidato
+    si se quiere paridad en recibos.
+D2. La identidad estricta "el cliente multiplica el $ por la tasa y obtiene el Bs.S exacto" es
+    matematicamente inalcanzable con decimales finitos (cociente no terminante, ej. 590/880.13);
+    el invariante implementado es: el Bs.S mostrado es el cobrado exacto y el $ es su cociente a
+    2 decimales (display). El valor contable a 4 decimales conserva la precision sub-centavo.
+================================================================================
