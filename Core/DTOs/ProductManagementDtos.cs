@@ -208,6 +208,14 @@ public class BulkPriceUpdateRequestDto
     public RoundingRuleType GlobalUsdRoundingRule { get; set; } = RoundingRuleType.ExactMath;
     public RoundingRuleType GlobalCashBsRoundingRule { get; set; } = RoundingRuleType.ExactMath;
 
+    // Spec V0.15 (intención explícita): true SOLO cuando el usuario cambió ese selector respecto de
+    // su valor inicial, o ejecuta modo Solo Redondeo (sin operaciones) con la regla activa. Sin touch
+    // el motor PRESERVA la política del artículo (override propio o herencia global) y calcula con
+    // ella; con touch la regla del lote gobierna cálculo y persistencia de esa capa.
+    public bool TouchRetailUsdPolicy { get; set; }
+    public bool TouchWholesaleUsdPolicy { get; set; }
+    public bool TouchCashBsPolicy { get; set; }
+
     public bool EnforceMinimumMarginFloor { get; set; }
     public decimal? RetailMarginFloorPct { get; set; }
     public decimal? WholesaleMarginFloorPct { get; set; }

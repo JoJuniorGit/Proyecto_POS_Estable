@@ -157,6 +157,26 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
 
     private static bool IsUsdPsychologicalRule(RoundingRuleType rule) => rule == RoundingRuleType.UsdPsychological;
 
+    /// <summary>
+    /// Spec V0.15 (intención explícita): true cuando el usuario cambió el selector de regla USD del
+    /// detal respecto de su seed (política global al abrir), o ejecuta Solo Redondeo (sin operaciones
+    /// válidas) con esa regla activa. Volver al valor inicial = SIN touch: la política del artículo
+    /// se preserva y el motor calcula con ella.
+    /// </summary>
+    public bool TouchRetailUsdPolicy =>
+        RetailRoundingRule != _globalUsdRoundingRule
+        || (!HasValidOperationConfiguration && RetailRoundingRule != RoundingRuleType.ExactMath);
+
+    /// <inheritdoc cref="TouchRetailUsdPolicy"/>
+    public bool TouchWholesaleUsdPolicy =>
+        WholesaleRoundingRule != _globalUsdRoundingRule
+        || (!HasValidOperationConfiguration && WholesaleRoundingRule != RoundingRuleType.ExactMath);
+
+    /// <inheritdoc cref="TouchRetailUsdPolicy"/>
+    public bool TouchCashBsPolicy =>
+        CashBsRoundingRule != _globalCashBsRoundingRule
+        || (!HasValidOperationConfiguration && CashBsRoundingRule != RoundingRuleType.ExactMath);
+
     /// <summary>Piso de margen al detal (%); vacío = sin piso. Se ignora si el toggle está apagado.</summary>
     [ObservableProperty]
     private string _retailMarginFloorText = string.Empty;
@@ -410,6 +430,9 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     private void OnConfigurationChanged()
     {
         OnPropertyChanged(nameof(CanPreview));
+        OnPropertyChanged(nameof(TouchRetailUsdPolicy));
+        OnPropertyChanged(nameof(TouchWholesaleUsdPolicy));
+        OnPropertyChanged(nameof(TouchCashBsPolicy));
         InvalidatePreviewOnConfigurationChange();
     }
 
@@ -467,6 +490,11 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         // materializa la política del artículo cuando difiere de la efectiva.
         GlobalUsdRoundingRule = _globalUsdRoundingRule,
         GlobalCashBsRoundingRule = _globalCashBsRoundingRule,
+        // Spec V0.15 (intención explícita): solo los canales con cambio explícito (o Solo Redondeo
+        // activo) materializan política; sin touch el motor preserva la del artículo.
+        TouchRetailUsdPolicy = TouchRetailUsdPolicy,
+        TouchWholesaleUsdPolicy = TouchWholesaleUsdPolicy,
+        TouchCashBsPolicy = TouchCashBsPolicy,
         EnforceMinimumMarginFloor = EnforceMinimumMarginFloor,
         RetailMarginFloorPct = retailFloor,
         WholesaleMarginFloorPct = wholesaleFloor

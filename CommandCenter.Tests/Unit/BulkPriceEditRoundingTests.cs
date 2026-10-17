@@ -942,4 +942,82 @@ public class BulkPriceEditRoundingTests
 
         Assert.Equal("Detal: 62.3%", row.EffectiveMarginsText);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Spec V0.15 (intención explícita): los flags Touch solo se activan con un cambio del selector
+    // respecto de su seed, o en Solo Redondeo con la regla activa; un lote de sección 1 no toca nada.
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task TouchFlags_PlainSectionOneBatch_AreFalseAndTravelInRequest()
+    {
+        BulkPriceUpdateRequestDto? captured = null;
+        SetupPreview(capture: request => captured = request);
+
+        var vm = CreateViewModel();
+        EnableRetailPriceOperation(vm);
+
+        Assert.False(vm.TouchRetailUsdPolicy);
+        Assert.False(vm.TouchWholesaleUsdPolicy);
+        Assert.False(vm.TouchCashBsPolicy);
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        Assert.NotNull(captured);
+        Assert.False(captured!.TouchRetailUsdPolicy);
+        Assert.False(captured.TouchWholesaleUsdPolicy);
+        Assert.False(captured.TouchCashBsPolicy);
+    }
+
+    [Fact]
+    public void TouchFlags_TrackSelectorChanges_AndResetWhenBackToSeed()
+    {
+        var vm = CreateViewModel();
+        var changed = new List<string>();
+        vm.PropertyChanged += (_, args) => changed.Add(args.PropertyName ?? string.Empty);
+
+        vm.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        Assert.True(vm.TouchRetailUsdPolicy);
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.TouchRetailUsdPolicy), changed);
+        changed.Clear();
+
+        vm.RetailRoundingRule = RoundingRuleType.ExactMath; // volver al seed = sin touch
+        Assert.False(vm.TouchRetailUsdPolicy);
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.TouchRetailUsdPolicy), changed);
+        changed.Clear();
+
+        vm.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        Assert.True(vm.TouchWholesaleUsdPolicy);
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.TouchWholesaleUsdPolicy), changed);
+        changed.Clear();
+
+        vm.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep10;
+        Assert.True(vm.TouchCashBsPolicy);
+        Assert.Contains(nameof(BulkPriceEditDialogViewModel.TouchCashBsPolicy), changed);
+        changed.Clear();
+
+        vm.CashBsRoundingRule = RoundingRuleType.ExactMath;
+        Assert.False(vm.TouchCashBsPolicy);
+    }
+
+    [Fact]
+    public async Task TouchFlags_SoloRedondeo_TouchOnlyActiveRules()
+    {
+        BulkPriceUpdateRequestDto? captured = null;
+        SetupPreview(capture: request => captured = request);
+
+        var vm = CreateViewModel();
+        vm.RetailRoundingRule = RoundingRuleType.UsdPsychological; // sin operaciones: Solo Redondeo
+
+        Assert.True(vm.TouchRetailUsdPolicy);
+        Assert.False(vm.TouchWholesaleUsdPolicy); // sigue en exacto
+        Assert.False(vm.TouchCashBsPolicy);
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        Assert.NotNull(captured);
+        Assert.True(captured!.TouchRetailUsdPolicy);
+        Assert.False(captured.TouchWholesaleUsdPolicy);
+        Assert.False(captured.TouchCashBsPolicy);
+    }
 }

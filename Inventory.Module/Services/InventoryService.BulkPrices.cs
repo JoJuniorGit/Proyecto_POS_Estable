@@ -28,8 +28,9 @@ namespace Inventory.Module.Services;
 // WholesaleRoundingRule) y la proyección Bs.S en caliente usa CashBsRoundingRule (etapa
 // independiente, nunca persistida; VES en la regla del canal quedó como vía defensiva sin efecto).
 // Spec V0.15 (persistencia de política): al aplicar, la tarjeta 2 materializa la política por
-// artículo (RoundingRuleUsd/RoundingRuleCashBs) solo cuando difiere de la efectiva (override ??
-// baseline global del request); un precio igual con política distinta es fila Actualiza.
+// artículo (RoundingRuleUsd/RoundingRuleCashBs) solo cuando el canal fue touched (intención
+// explícita) y difiere de la efectiva (override ?? baseline global); un precio igual con política
+// distinta es fila Actualiza. Sin touch la política del producto se preserva y gobierna el cálculo.
 // Spec V0.15 (solo redondeo): sin operaciones de la familia del canal la base es el PRECIO ACTUAL
 // (el interceptor lo redondea; redondear(redondear(x)) = redondear(x) — sin ancla de costo/margen).
 public partial class InventoryService
@@ -323,8 +324,23 @@ public partial class InventoryService
         // ANTES de la validación vigente: `ValidateAndCalculateProductPrices` sigue siendo la
         // última palabra (negativos / mayor≤detal / cap). Con ExactMath todo queda como en 8.181.
         // -----------------------------------------------------------------------------------------
-        bool retailRoundingActive = request.RetailRoundingRule != RoundingRuleType.ExactMath;
-        bool wholesaleRoundingActive = request.WholesaleRoundingRule != RoundingRuleType.ExactMath;
+        // Spec V0.15 (preservación de overrides): la regla EFECTIVA de cálculo por canal respeta la
+        // intención explícita — canal touched ⇒ regla del lote; sin touch ⇒ regla del PRODUCTO
+        // (override ?? baseline global), así un lote de sección 1 redondea el precio nuevo con la
+        // política propia del artículo y la preserva. Aplica al redondeo USD, a la salvaguarda
+        // Detal/Mayor y a las proyecciones cash.
+        RoundingRuleType effectiveRetailUsdRule = request.TouchRetailUsdPolicy
+            ? request.RetailRoundingRule
+            : product.RoundingRuleUsd ?? request.GlobalUsdRoundingRule;
+        RoundingRuleType effectiveWholesaleUsdRule = request.TouchWholesaleUsdPolicy
+            ? request.WholesaleRoundingRule
+            : product.RoundingRuleUsd ?? request.GlobalUsdRoundingRule;
+        RoundingRuleType effectiveCashRule = request.TouchCashBsPolicy
+            ? request.CashBsRoundingRule
+            : product.RoundingRuleCashBs ?? request.GlobalCashBsRoundingRule;
+
+        bool retailRoundingActive = effectiveRetailUsdRule != RoundingRuleType.ExactMath;
+        bool wholesaleRoundingActive = effectiveWholesaleUsdRule != RoundingRuleType.ExactMath;
         decimal? retailPreRounding = null;
         decimal? retailRoundingDelta = null;
         decimal? retailCashFriendlyAfterBsS = null;
@@ -336,16 +352,16 @@ public partial class InventoryService
         bool wholesaleUsdRoundingApplied = false;
 
         // Redondeo USD del canal al detal (UsdPsychological). Spec V0.15: la proyección Bs.S vive en
-        // una etapa aparte gobernada por request.CashBsRoundingRule; la guarda !IsVesCashFriendly es
-        // defensiva — un caller viejo que envíe VES en la regla del canal ya no proyecta nada.
-        if (retailRoundingActive && !IsVesCashFriendly(request.RetailRoundingRule))
+        // una etapa aparte gobernada por la regla cash efectiva; la guarda !IsVesCashFriendly es
+        // defensiva — una regla VES efectiva (override o canal touched) no redondea el USD.
+        if (retailRoundingActive && !IsVesCashFriendly(effectiveRetailUsdRule))
         {
             decimal retailUsd = EffectiveBulkRetailUsd(scratch);
             if (retailUsd > 0m)
             {
                 var retailRounding = RoundingPolicy.Round(
                     retailUsd,
-                    request.RetailRoundingRule,
+                    effectiveRetailUsdRule,
                     scratch.CostPriceUSD,
                     request.RetailMarginFloorPct,
                     request.EnforceMinimumMarginFloor);
@@ -361,11 +377,11 @@ public partial class InventoryService
 
         // Redondeo USD del canal al mayor (UsdPsychological); misma guarda defensiva que el detal.
         // El Bs.S informativo del mayor se calcula en la etapa de proyección cash (más abajo).
-        if (wholesaleRoundingActive && !IsVesCashFriendly(request.WholesaleRoundingRule) && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m)
+        if (wholesaleRoundingActive && !IsVesCashFriendly(effectiveWholesaleUsdRule) && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m)
         {
             var wholesaleRounding = RoundingPolicy.Round(
                 scratch.PriceWholesaleUSD,
-                request.WholesaleRoundingRule,
+                effectiveWholesaleUsdRule,
                 scratch.CostPriceUSD,
                 request.WholesaleMarginFloorPct,
                 request.EnforceMinimumMarginFloor);
@@ -388,12 +404,12 @@ public partial class InventoryService
             if (retailUsd > 0m && scratch.PriceWholesaleUSD > 0m && scratch.PriceWholesaleUSD >= retailUsd)
             {
                 decimal wholesaleBeforeSalvage = scratch.PriceWholesaleUSD;
-                decimal? lowered = RoundingPolicy.FindLowerStep(wholesaleBeforeSalvage, request.WholesaleRoundingRule);
+                decimal? lowered = RoundingPolicy.FindLowerStep(wholesaleBeforeSalvage, effectiveWholesaleUsdRule);
                 if (lowered is > 0m && (scratch.CostPriceUSD <= 0m || lowered.Value > scratch.CostPriceUSD))
                 {
                     scratch.PriceWholesaleUSD = lowered.Value;
                     wholesaleUsdRoundingApplied = true;
-                    if (!IsVesCashFriendly(request.WholesaleRoundingRule))
+                    if (!IsVesCashFriendly(effectiveWholesaleUsdRule))
                     {
                         // El ajuste de la salvaguarda también se reporta como delta del canal.
                         wholesalePreRounding ??= wholesaleBeforeSalvage;
@@ -441,15 +457,15 @@ public partial class InventoryService
         }
 
         // 8.183 (R1) + Spec V0.15: la proyección Bs.S del detal NO persiste nada — el Bs.S almacenado
-        // es SIEMPRE el canónico 8.104 calculado arriba (el USD y el margen no cambian). La capa cash
-        // (request.CashBsRoundingRule) se evalúa en caliente con la tasa del día y solo se informa en
-        // CashFriendlyAfterBsS del cambio (nunca participa del estado ni de la persistencia).
-        if (IsVesCashFriendly(request.CashBsRoundingRule))
+        // es SIEMPRE el canónico 8.104 calculado arriba (el USD y el margen no cambian). La regla cash
+        // EFECTIVA (touch ? lote : override/global del producto) se evalúa en caliente con la tasa del
+        // día y solo se informa en CashFriendlyAfterBsS del cambio (nunca participa de la persistencia).
+        if (IsVesCashFriendly(effectiveCashRule))
         {
             var retailCashProjection = RoundingPolicy.ProjectCashFriendlyBsS(
                 afterRetail,
                 exchangeRate,
-                request.CashBsRoundingRule,
+                effectiveCashRule,
                 scratch.CostPriceUSD,
                 request.RetailMarginFloorPct,
                 request.EnforceMinimumMarginFloor);
@@ -461,16 +477,16 @@ public partial class InventoryService
             }
         }
 
-        // 8.182-T1 (S4) / 8.183 (R1) + Spec V0.15: proyección cash del canal al mayor con la capa
-        // request.CashBsRoundingRule (la entidad no tiene columna Bs.S propia para ese canal);
-        // informativa y nunca persistida, solo acompaña a un cambio real del precio USD.
-        if (IsVesCashFriendly(request.CashBsRoundingRule)
+        // 8.182-T1 (S4) / 8.183 (R1) + Spec V0.15: proyección cash del canal al mayor con la regla
+        // cash EFECTIVA (la entidad no tiene columna Bs.S propia para ese canal); informativa y nunca
+        // persistida, solo acompaña a un cambio real del precio USD.
+        if (IsVesCashFriendly(effectiveCashRule)
             && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m
             && scratch.PriceWholesaleUSD != product.PriceWholesaleUSD && exchangeRate > 0m)
         {
             var wholesaleVesRounding = RoundingPolicy.Round(
                 scratch.PriceWholesaleUSD * exchangeRate,
-                request.CashBsRoundingRule,
+                effectiveCashRule,
                 scratch.CostPriceUSD * exchangeRate,
                 request.WholesaleMarginFloorPct,
                 request.EnforceMinimumMarginFloor);
@@ -480,12 +496,14 @@ public partial class InventoryService
             wholesaleRoundingDelta = wholesaleVesRounding.RoundingDelta;
         }
 
-        // Spec V0.15 (persistencia de política): la tarjeta 2 materializa la política por artículo
-        // (8.184: RoundingRuleUsd/RoundingRuleCashBs) SOLO cuando difiere de la efectiva del producto
-        // (override propio ?? baseline global del request): la herencia null se preserva cuando es
-        // equivalente (bulk normal con todo en ExactMath no escribe ninguna columna). Lo único que se
-        // persiste es la POLÍTICA — el Bs.S amigable y el margen efectivo siguen siendo proyección.
-        RoundingRuleType? wantedUsd = request.RetailRoundingRule == request.WholesaleRoundingRule
+        // Spec V0.15 (intención explícita): la tarjeta 2 materializa la política por artículo (8.184:
+        // RoundingRuleUsd/RoundingRuleCashBs) SOLO cuando el canal fue touched (el usuario cambió el
+        // selector respecto de su seed, o ejecuta Solo Redondeo con esa regla activa) Y la wanted
+        // difiere de la efectiva (override ?? baseline global). Sin touch la política del producto se
+        // PRESERVA — un lote de sección 1 jamás normaliza overrides ajenos. Lo único que se persiste
+        // es la POLÍTICA — el Bs.S amigable y el margen efectivo siguen siendo proyección.
+        bool anyUsdTouched = request.TouchRetailUsdPolicy || request.TouchWholesaleUsdPolicy;
+        RoundingRuleType? wantedUsd = anyUsdTouched && request.RetailRoundingRule == request.WholesaleRoundingRule
             ? request.RetailRoundingRule
             : null;
         if (wantedUsd.HasValue && wantedUsd.Value != (product.RoundingRuleUsd ?? request.GlobalUsdRoundingRule))
@@ -493,16 +511,16 @@ public partial class InventoryService
             scratch.RoundingRuleUsd = wantedUsd.Value;
         }
 
-        if (request.CashBsRoundingRule != (product.RoundingRuleCashBs ?? request.GlobalCashBsRoundingRule))
+        if (request.TouchCashBsPolicy && request.CashBsRoundingRule != (product.RoundingRuleCashBs ?? request.GlobalCashBsRoundingRule))
         {
             scratch.RoundingRuleCashBs = request.CashBsRoundingRule;
         }
 
         bool stateChanged = BulkPriceStateChanged(product, scratch, newPriceBsS);
         var row = CreateBulkPriceRow(product);
-        if (!wantedUsd.HasValue)
+        if (anyUsdTouched && !wantedUsd.HasValue)
         {
-            // Reglas USD distintas por canal: la columna es única por producto y no se materializa.
+            // Canales touched con reglas distintas: la columna es única por producto y no se materializa.
             row.PolicyNote = "Reglas USD distintas por canal (Detal/Mayor): la política por artículo no se materializa (columna única por producto).";
         }
 

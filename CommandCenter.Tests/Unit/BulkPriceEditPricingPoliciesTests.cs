@@ -86,6 +86,45 @@ public class BulkPriceEditPricingPoliciesTests
     }
 
     [Fact]
+    public async Task TouchFlags_CompareAgainstSeededGlobals_NotJustExactMath()
+    {
+        BulkPriceUpdateRequestDto? captured = null;
+        var productService = new Mock<IProductService>();
+        productService
+            .Setup(s => s.PreviewBulkPricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>()))
+            .Callback((BulkPriceUpdateRequestDto request, CancellationToken _) => captured = request)
+            .ReturnsAsync(new BulkPriceUpdateResultDto());
+
+        // Sección 1 pura con políticas sembradas (psicológico/Step5): el seed manda, sin touch.
+        var vm = new BulkPriceEditDialogViewModel(productService.Object, Mock.Of<IDialogService>(), Selection(), GlobalPolicies());
+        var row = vm.Operations.Single(r => r.Field == BulkPriceField.RetailPrice);
+        row.IsEnabled = true;
+        row.ValueText = "2";
+
+        Assert.False(vm.TouchRetailUsdPolicy);
+        Assert.False(vm.TouchWholesaleUsdPolicy);
+        Assert.False(vm.TouchCashBsPolicy);
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+        Assert.NotNull(captured);
+        Assert.False(captured!.TouchRetailUsdPolicy);
+        Assert.False(captured.TouchWholesaleUsdPolicy);
+        Assert.False(captured.TouchCashBsPolicy);
+
+        // Solo Redondeo con las reglas sembradas activas: touch en las tres capas.
+        captured = null;
+        var soloVm = new BulkPriceEditDialogViewModel(productService.Object, Mock.Of<IDialogService>(), Selection(), GlobalPolicies());
+        Assert.True(soloVm.TouchRetailUsdPolicy);
+        Assert.True(soloVm.TouchWholesaleUsdPolicy);
+        Assert.True(soloVm.TouchCashBsPolicy);
+
+        await soloVm.PreviewCommand.ExecuteAsync(null);
+        Assert.NotNull(captured);
+        Assert.True(captured!.TouchRetailUsdPolicy);
+        Assert.True(captured.TouchCashBsPolicy);
+    }
+
+    [Fact]
     public async Task OpenBulkPriceEdit_LoadsGlobalPoliciesBeforeOpeningDialog()
     {
         var settings = new Mock<ISettingsService>();

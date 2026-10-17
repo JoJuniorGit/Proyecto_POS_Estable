@@ -74,6 +74,7 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
 
         var result = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -115,6 +116,7 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
 
         var result = await service.BulkUpdatePricesAsync(request);
 
@@ -154,6 +156,7 @@ public class BulkPriceRoundingTests
         // Spec V0.15: la proyección cash se configura por la capa dedicada del contrato; el baseline
         // global equivalente evita materializar política (la intención de este test es la omisión).
         request.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        request.TouchCashBsPolicy = true;
         request.GlobalCashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
@@ -211,6 +214,7 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.EnforceMinimumMarginFloor = true;
         request.RetailMarginFloorPct = 30m;
 
@@ -251,7 +255,9 @@ public class BulkPriceRoundingTests
             Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m),
             Op(BulkPriceField.WholesalePrice, BulkPriceMode.SetFixed, 1.30m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchWholesaleUsdPolicy = true;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -302,7 +308,9 @@ public class BulkPriceRoundingTests
             Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m),
             Op(BulkPriceField.WholesalePrice, BulkPriceMode.SetFixed, 1.30m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchWholesaleUsdPolicy = true;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
         var row = Assert.Single(preview.Rows);
@@ -342,6 +350,7 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id }, Op(BulkPriceField.WholesalePrice, BulkPriceMode.SetFixed, 9.03m));
         request.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        request.TouchCashBsPolicy = true;
 
         var result = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -405,7 +414,9 @@ public class BulkPriceRoundingTests
         var request = Request(new[] { simple.Id, withWholesale.Id },
             Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchWholesaleUsdPolicy = true;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
         var applied = await service.BulkUpdatePricesAsync(request);
@@ -461,6 +472,7 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.25m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         // Spec V0.15: baseline global equivalente → la política efectiva ya coincide y no hay escritura.
         request.GlobalUsdRoundingRule = RoundingRuleType.UsdPsychological;
 
@@ -497,6 +509,7 @@ public class BulkPriceRoundingTests
             Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m),
             Op(BulkPriceField.RetailMargin, BulkPriceMode.SetFixed, 30m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
 
         var result = await service.BulkUpdatePricesAsync(request);
 
@@ -529,6 +542,7 @@ public class BulkPriceRoundingTests
         // 1.50 ya es una terminación psicológica: el cambio 1.20 -> 1.50 es de la operación, no de la regla.
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.50m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
 
         var result = await service.BulkUpdatePricesAsync(request);
 
@@ -591,14 +605,17 @@ public class BulkPriceRoundingTests
         // El margen objetivo (30%) se re-aplica en cada iteración; el precio debe anclarse SIEMPRE en
         // costo × (1 + 30/100) con techo y luego en la escalera de la regla del canal.
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailMargin, BulkPriceMode.SetFixed, 30m));
-        // Spec V0.15: cada capa viaja por su campo — psicológico USD por canal; VES por la capa cash.
+        // Spec V0.15: cada capa viaja por su campo — psicológico USD por canal; VES por la capa cash;
+        // la intención explícita (touch) permite que la regla del lote gobierne cálculo y persistencia.
         if (rule is RoundingRuleType.VesCashFriendlyInteger or RoundingRuleType.VesCashFriendlyStep5 or RoundingRuleType.VesCashFriendlyStep10)
         {
             request.CashBsRoundingRule = rule;
+            request.TouchCashBsPolicy = true;
         }
         else
         {
             request.RetailRoundingRule = rule;
+            request.TouchRetailUsdPolicy = true;
         }
 
         var usdByIteration = new List<decimal>();
@@ -875,6 +892,7 @@ public class BulkPriceRoundingTests
         // 20 + 10 pp = 30 → matemático 0.75 x 1.30 = 0.975 → techo 0.98 → psicológico 0.99.
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailMargin, BulkPriceMode.IncreasePercent, 10m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
         var row = RowOf(preview, created.Id);
@@ -914,7 +932,9 @@ public class BulkPriceRoundingTests
         // Capa USD: 1.37 → 1.25 (psicológico). Capa cash: proyecta el USD FINAL 1.25 en Bs.S (paso 5).
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        request.TouchCashBsPolicy = true;
 
         var result = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -947,6 +967,7 @@ public class BulkPriceRoundingTests
         // Spec V0.15: la vía VES por regla de canal quedó defensiva — ese caller viejo ya no proyecta.
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.37m));
         request.RetailRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        request.TouchRetailUsdPolicy = true; // intención explícita con VES en el canal: sin efecto
 
         var result = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -982,7 +1003,9 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id }); // cero operaciones: modo Solo Redondeo
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchWholesaleUsdPolicy = true;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -1022,7 +1045,9 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id });
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchWholesaleUsdPolicy = true;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -1056,7 +1081,9 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id });
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchWholesaleUsdPolicy = true;
         // El baseline global ya es psicológico: la efectiva coincide con la wanted y no hay escritura.
         request.GlobalUsdRoundingRule = RoundingRuleType.UsdPsychological;
 
@@ -1093,7 +1120,9 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id });
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchWholesaleUsdPolicy = true;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -1131,6 +1160,7 @@ public class BulkPriceRoundingTests
         // tocar el precio USD ni el Bs.S canónico (la proyección sigue siendo informativa).
         var request = Request(new[] { created.Id });
         request.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        request.TouchCashBsPolicy = true;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -1173,6 +1203,7 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id });
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.WholesaleRoundingRule = RoundingRuleType.ExactMath; // reglas USD distintas por canal
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
@@ -1186,6 +1217,54 @@ public class BulkPriceRoundingTests
         Assert.Equal(0.95m, persisted.PriceRetailUSD); // canal detal redondeado
         Assert.Null(persisted.RoundingRuleUsd); // columna única: no se materializa con reglas distintas
         Assert.Null(persisted.RoundingRuleCashBs);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Spec V0.15 (salvaguarda de overrides): un lote de SECCIÓN 1 (sin touch) jamás normaliza la
+    // política de un producto con override — la columna queda intacta y el precio nuevo se redondea
+    // con la regla PROPIA del artículo (semántica literal del mandato).
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task BulkUpdatePricesAsync_PlainSectionOneBatch_PreservesProductOverridesAndRoundsWithThem()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Con overrides",
+            SKU = "OVRPRES1",
+            CostPriceUSD = 1.00m,
+            ProfitMarginRetail = 33.33m, // precio creado: 1.34
+            RoundingRuleUsd = RoundingRuleType.UsdPsychological,
+            RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyStep10
+        });
+
+        // Lote de sección 1 puro: solo operación de precio, selectores en su estado inicial (sin touch).
+        var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.IncreasePercent, 10m));
+
+        var preview = await service.PreviewBulkPriceUpdateAsync(request);
+
+        Assert.Equal(1, preview.UpdatedCount);
+        var row = RowOf(preview, created.Id);
+        var change = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(1.34m, change.BeforeValue);
+        // Matemático 1.34 × 1.10 = 1.474 -> techo 1.48 -> psicológico (regla del OVERRIDE) 1.50.
+        // Con ExactMath el precio habría quedado en 1.48: el cálculo usa la regla del producto.
+        Assert.Equal(1.50m, change.AfterValue);
+        // Proyección cash con la regla del override (Step10): 1.50 × 100 = 150.
+        Assert.Equal(150.00m, change.CashFriendlyAfterBsS);
+        Assert.Equal(150.00m, change.AfterBsS);
+        Assert.Equal(50.00m, row.EffectiveRetailMarginPct); // (1.50 - 1.00) / 1.00 x 100
+
+        await service.BulkUpdatePricesAsync(request);
+        var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
+        Assert.Equal(1.50m, persisted.PriceRetailUSD);
+        Assert.Equal(150.00m, persisted.PriceBsS); // canónico 8.104 con la tasa del día
+        // Las columnas de política quedan INTACTAS: sin touch no se normaliza ningún override.
+        Assert.Equal(RoundingRuleType.UsdPsychological, persisted.RoundingRuleUsd);
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep10, persisted.RoundingRuleCashBs);
     }
 
     public static IEnumerable<object[]> RoundingOnlyCurrentPriceBaseCases()
@@ -1218,6 +1297,7 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id });
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.TouchRetailUsdPolicy = true; // intención explícita: la regla del lote gobierna el canal
         request.EnforceMinimumMarginFloor = enforceFloor;
         request.RetailMarginFloorPct = floorPct;
 
