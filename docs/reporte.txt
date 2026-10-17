@@ -15601,3 +15601,46 @@ C3. publish/ consistente: SHA256 de Backend.API.exe / Desktop.Client.exe / Updat
     1868C244..., E0BAA819...
 C4. npm run build (Web.Frontend): 1.36s sin warnings (sin [IMPORT_IS_UNDEFINED] de zxing).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XI) - RELEASE: OUTPUT DE PUBLISH VISIBLE + LIMPIEZA SINCRONA VERIFICADA + CHECKS DE EXIT CODE - 2026-10-17
+================================================================================
+Pedido del mantenedor tras el ultimo log: (1) restaurar/verificar el output de dotnet publish en
+[3/7]-[5/7]; (2) garantizar que [1/7] espera el borrado real antes de reportar "Limpiados" y pasar
+a [2/7].
+
+A. DIAGNOSTICO
+
+A1. Output de publish: el script commiteado NO tenia silenciamiento (sin -v quiet, Out-Null,
+    redirecciones ni Start-Process); el log de la ejecucion limpia previa SI mostraba la salida
+    completa entre [3/7] y [4/7] (restauracion + modulos + "Backend.API -> publish\BackendAPI\").
+    El gap REAL era el punto (e): los dotnet publish NO verificaban $LASTEXITCODE ni la existencia
+    del .exe esperado -> un fallo de compilacion podia terminar en "completada exitosamente".
+A2. El texto "Removed 249 of 248 [514,5 MB]" NO lo emite el script ni npm/vite (no existe en el log
+    de referencia); provenia del wrapper/terminal del entorno. Aun asi, la limpieza se reescribio a
+    la forma sincrona prescrita, eliminando cualquier duda.
+
+B. FIX (commit 997e118)
+
+B1. [1/7] Remove-ReleaseFolder sincrona y verificada: Get-ChildItem -Recurse -File -Force (conteo M)
+    -> Remove-Item -LiteralPath por archivo (-Force -ErrorAction Stop) + borrado de la carpeta ->
+    verificacion de cero remanentes -> "Limpiados N archivo(s)" DESPUES (N<=M por construccion).
+    Reintentos: 2 (500 ms) ante handles bloqueados; aborta con mensaje claro si persiste.
+B2. [3/7]-[5/7]: salida de dotnet publish intacta (stdout, sin -v quiet) + chequeo OBLIGATORIO de
+    $LASTEXITCODE tras cada publish ("dotnet publish fallo para <proyecto> (exit N)") + chequeo de
+    existencia del .exe esperado (Backend.API.exe / Desktop.Client.exe / UpdaterService.exe).
+B3. Sin cambios en mutex/lock, rutas, RID ni flags (self-contained/win-x64/-c Release).
+
+C. EVIDENCIA
+
+C1. Ejecucion limpia: exit 0; [1/7]..[7/7] una sola vez; "Limpiados 249 archivo(s)" ANTES de [2/7];
+    sin "Removed" en el log; salida completa de publish entre [3/7] y [4/7]; sin stderr; exitoso.
+C2. Fallo forzado (TimeZoneHelper.cs roto temporalmente): exit 1; stderr "dotnet publish fallo para
+    Backend.API (exit 1)"; SIN "completada exitosamente"; lock liberado; archivo restaurado
+    (git status limpio).
+C3. Concurrencia: B aborta con lock (exit 1); A completa (exit 0) y libera el lock.
+C4. publish final: Backend.API.exe (128.123.899 B, 10:41:00), Desktop.Client.exe (191.031.243 B,
+    10:41:16), UpdaterService.exe (73.500.752 B, 10:41:20). Los SHA256 difieren de la corrida previa
+    porque HEAD avanzo un commit (el SDK embebe SourceRevisionId); dentro del mismo commit el build
+    es deterministico (verificado en el run anterior: hashes identicos pre/post).
+================================================================================
