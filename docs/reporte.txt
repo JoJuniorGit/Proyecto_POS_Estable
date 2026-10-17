@@ -15773,3 +15773,43 @@ C3. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
 C4. Suite completa secuencial: CommandCenter.Tests 3031/3031; Wpf.E2ETests 50/50; 0 errores.
 C5. Web: npm test 415/415 (sin cambios de web en este fix); lint y build OK.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XV) - PARIDAD DEL USD EFECTIVO EN CUENTAS ABIERTAS (PEDIDOS/ RETIROS WPF + WEB) - 2026-10-17
+================================================================================
+Pedido del mantenedor: "Aplica la pariedad del monto redondeado a cuentas abiertas" (continuacion
+del ANEXO XIII: toda superficie de cuentas abiertas muestra el $ como inverso del Bs.S efectivo).
+
+A. IMPLEMENTACION
+A1. Retiros (backend): PendingPickupDto gana AppliedRate (proyeccion GetPendingPickupsAsync) y la
+    propiedad calculada EffectiveTotalUSD (misma formula, serializada a los clientes).
+A2. Retiros (cliente WPF): PendingPickupClientDto gana AppliedRate + EffectiveTotalUSD calculado
+    local (JsonIgnore); PendingPickupsView bindea EffectiveTotalUSD.
+A3. Pedidos en espera (WPF): PendingOrdersView "TOTAL FACTURA" subtexto $ bindea el
+    EffectiveTotalUSD del SaleDto; el banner de liquidacion del CheckoutDialog ("Total Factura")
+    usa OverrideSale.EffectiveTotalUSD.
+A4. Dialogo de edicion de cuenta abierta (WPF): EditSaleDialogViewModel.RefreshSummary calcula el
+    nuevo total USD como inverso de la suma Bs.S efectiva por linea (tasa anclada de la venta) y el
+    restante como inverso de (Bs.S efectivo - abonos Bs.S); fallback canonico sin tasa/Bs.S.
+A5. Web: helper compartido effectiveTotalUsd en utils/formatters.js (HistoryPage migrado a el);
+    PendingOrderDesktopRow + PendingOrderMobileCard (total y "Deuda Pendiente" = inverso del Bs.S
+    restante efectivo), PendingPickupsPage (tabla + card), HoldSaleModal (total del pedido muestra
+    el Bs.S efectivo redondeado y su Ref $ inversa; deuda restante idem) y EditSaleModal (Nuevo
+    Total $ inverso del Bs.S por linea; Nuevo Restante con Bs.S efectivo real - abonos Bs.S).
+A6. Sin migracion: montos canonicos siguen disponibles; Z/arqueo y gates intactos.
+
+B. EVIDENCIA
+B1. RED: stash de las implementaciones de DTOs => CS0117 ("PendingPickupDto no contiene AppliedRate")
+    en la proyeccion y los tests nuevos.
+B2. GREEN focalizado: EffectiveUsdTotalTests + EditSaleDialogViewModelTests + PendingPickup* =>
+    52/52.
+B3. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+B4. Suite completa secuencial: CommandCenter.Tests 3034/3034; Wpf.E2ETests 50/50; 0 errores.
+B5. Web: npm test 415/415; npm run lint sin hallazgos; npm run build OK (bundle actualizado).
+
+C. NOTA
+C1. A tasas reales (~800+) el ajuste del $ efectivo suele ser sub-centavo a 2 decimales (el paso
+    del redondeo Bs.S dividido por la tasa es < 0.01 USD); el cambio es exacto en el valor y
+    visible cuando la tasa o el paso del redondeo lo hacen apreciable. El Bs.S mostrado sigue
+    siendo el cobrado exacto (ancla).
+================================================================================
