@@ -45,6 +45,14 @@ public class CheckoutPreviewResponse
 {
     public decimal TotalUSD { get; set; }
     public decimal TotalBsS { get; set; }
+
+    /// <summary>
+    /// 8.186-T3 (S2): Gran Total USD EFECTIVO — inverso del TotalBsS efectivo (ya redondeado) a
+    /// la tasa del preview, 4 decimales (ANEXO XII B1). Superficie del carrito/checkout web para
+    /// el Gran Total $ con cero desfase; el TotalUSD canónico se conserva para gates internos.
+    /// </summary>
+    public decimal EffectiveTotalUSD { get; set; }
+
     public decimal TotalPaidUSD { get; set; }
     public decimal TotalPaidBsS { get; set; }
     public decimal RemainingBalanceUSD { get; set; }

@@ -97,10 +97,14 @@ public class CheckoutCalculationService : ICheckoutCalculationService
             changeUsd = PricingCalculator.ToUSD(changeBsS, rate);
         }
 
+        // 8.186-T3 (S2): el USD efectivo es el inverso del MISMO TotalBsS efectivo devuelto, con
+        // la MISMA tasa del preview (garantía: EffectiveTotalUSD == round(TotalBsS / rate, 4));
+        // el canónico queda como fallback y sigue rigiendo gates/contratos internos.
         return new CheckoutPreviewResponse
         {
             TotalUSD = totalUsd,
             TotalBsS = totalBsS,
+            EffectiveTotalUSD = PricingCalculator.EffectiveUsdFromBsS(totalBsS, rate, totalUsd),
             TotalPaidUSD = totalPaidUsd,
             TotalPaidBsS = totalPaidBsS,
             RemainingBalanceUSD = remainingUsd,

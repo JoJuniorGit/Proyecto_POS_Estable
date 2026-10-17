@@ -80,6 +80,23 @@ public static class PricingCalculator
     }
 
     /// <summary>
+    /// 8.186-T3 (S2/S3): inverso USD EFECTIVO del Total Bs.S (ya redondeado por la política de
+    /// efectivo) a la tasa anclada — 4 decimales con MidpointRounding.AwayFromZero. Fuente de
+    /// verdad: ANEXO XII B1 (misma semántica de Sale.EffectiveTotalUSD). Sin Bs.S cobrado o sin
+    /// tasa cae al canónico. Única implementación de la inversa: la comparten la entidad Sale,
+    /// el checkout preview y los clientes que consuman el Gran Total $ sin desfase.
+    /// </summary>
+    public static decimal EffectiveUsdFromBsS(decimal totalBsS, decimal rate, decimal canonicalUsd)
+    {
+        if (totalBsS <= 0m || rate <= 0m)
+        {
+            return canonicalUsd;
+        }
+
+        return ToUSD(totalBsS, rate, decimals: 4);
+    }
+
+    /// <summary>
     /// 8.169 [CLEAN-01]: canonical calculation of a supplier invoice line unit cost in USD,
     /// dividing the document unit cost by the effective box-to-unit conversion factor (rounded to
     /// 4 decimals when factor != 1) and converting from Bs.S using the invoice snapshot rate.

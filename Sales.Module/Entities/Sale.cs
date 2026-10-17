@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Core.Entities;
+using Core.Helpers;
 
 namespace Sales.Module.Entities;
 
@@ -86,11 +87,11 @@ public class Sale
     /// abriría una segunda fuente de verdad (el flujo de venta lo persiste como derivado).
     /// 4 decimales por consistencia con el precedente de CashAdvance (BsS/rate) y precisión
     /// sub-centavo para analítica (Paso 14). Sin Bs.S cobrado o sin tasa cae al canónico.
+    /// 8.186-T3 (S3): la fórmula vive en el helper único PricingCalculator.EffectiveUsdFromBsS
+    /// (compartido con el checkout preview web) — comportamiento byte-idéntico, sin duplicar la inversa.
     /// </summary>
     [NotMapped]
-    public decimal EffectiveTotalUSD => TotalBsS <= 0m || AppliedRate <= 0m
-        ? TotalUSD
-        : Math.Round(TotalBsS / AppliedRate, 4, MidpointRounding.AwayFromZero);
+    public decimal EffectiveTotalUSD => PricingCalculator.EffectiveUsdFromBsS(TotalBsS, AppliedRate, TotalUSD);
 
     public List<SalePayment> Payments { get; set; } = new();
 
