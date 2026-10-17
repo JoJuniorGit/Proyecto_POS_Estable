@@ -15414,3 +15414,27 @@ B. EVIDENCIA
 B1. Build Release 0/0; BulkPrice 162/162; BulkPriceEdit 84/84; Rounding 292/292; suite completa
     3004/3004.
 ================================================================================
+
+================================================================================
+ANEXO HOTFIX CI - FUSO DEL RANGO POR DEFECTO DEL HISTORIAL DE VENTAS (BLOQUEO E2E NOCTURNO) - 2026-10-17
+================================================================================
+Sintoma: el job "Desktop WPF E2E" fallo 2 veces consecutivas en el run 38989902585 (push a V0.15;
+PR #38 ya mergeado) SOLO en FullStackSaleTests.CompleteSale_WithCashPayment... con "El Historial de
+Ventas no alcanzo 1 venta(s)". 49/50 E2E verdes; backend/frontend verdes.
+
+Diagnostico (PREEXISTENTE, ajeno al dialogo bulk: el diff 710fa1c..853bdad se acota a
+BulkPrices/VM/XAML/tests/docs):
+- Backend: Sale.Date se persiste en UTC y GetSalesHistoryAsync interpreta las fechas entrantes como
+  DIAS CALENDARIO DE VENEZUELA (UTC-4) via TimeZoneHelper.GetUtcRange (semantica documentada:
+  incluir ventas nocturnas posteriores a las 8 PM VET).
+- Cliente: SalesHistoryViewModel inicializaba el rango "Hoy" con DateTime.Today (fecha LOCAL de la
+  maquina). En un cliente en VE coincide; en el runner de CI (UTC) diverge entre 00:00Z y 04:00Z
+  (20:00-24:00 VE): el rango armado excluia la venta recien hecha => 0 ventas.
+- Determinismo: verde a las 18:13Z (14:13 VE), rojo a las 01:13Z/01:35Z (21:13/21:35 VE).
+
+Fix (commit 3eb9892): el default del rango pasa a la jornada VE
+(TimeZoneHelper.GetVenezuelaDate().ToDateTime(TimeOnly.MinValue)); comportamiento identico en un POS
+en VE y correcto en cualquier fuso. Test de contrato nuevo en SalesHistoryViewModelTests.
+
+Evidencia: build 0/0; SalesHistoryViewModel 30/30; suite completa 3005/3005.
+================================================================================
