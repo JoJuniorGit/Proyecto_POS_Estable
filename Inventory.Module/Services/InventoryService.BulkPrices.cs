@@ -27,6 +27,11 @@ namespace Inventory.Module.Services;
 // Spec V0.15 (split de capas): el redondeo USD usa las reglas por canal (RetailRoundingRule/
 // WholesaleRoundingRule) y la proyección Bs.S en caliente usa CashBsRoundingRule (etapa
 // independiente, nunca persistida; VES en la regla del canal quedó como vía defensiva sin efecto).
+// Spec V0.15 (persistencia de política): al aplicar, la tarjeta 2 materializa la política por
+// artículo (RoundingRuleUsd/RoundingRuleCashBs) solo cuando difiere de la efectiva (override ??
+// baseline global del request); un precio igual con política distinta es fila Actualiza.
+// Spec V0.15 (solo redondeo): sin operaciones de la familia del canal la base es el PRECIO ACTUAL
+// (el interceptor lo redondea; redondear(redondear(x)) = redondear(x) — sin ancla de costo/margen).
 public partial class InventoryService
 {
     private const int MaxBulkPriceSelectionSize = 1000;
@@ -165,7 +170,9 @@ public partial class InventoryService
         }
 
         // 8.182-T1 (S5): contrato de la política de redondeo y de los pisos de margen por lote.
-        if (!Enum.IsDefined(request.RetailRoundingRule) || !Enum.IsDefined(request.WholesaleRoundingRule) || !Enum.IsDefined(request.CashBsRoundingRule))
+        if (!Enum.IsDefined(request.RetailRoundingRule) || !Enum.IsDefined(request.WholesaleRoundingRule)
+            || !Enum.IsDefined(request.CashBsRoundingRule)
+            || !Enum.IsDefined(request.GlobalUsdRoundingRule) || !Enum.IsDefined(request.GlobalCashBsRoundingRule))
         {
             throw new ArgumentException("La política de redondeo contiene una regla no reconocida.");
         }
@@ -285,26 +292,10 @@ public partial class InventoryService
             WriteBulkPriceField(scratch, operation.Field, RoundBulkPriceField(operation.Field, raw));
         }
 
-        // Spec V0.15 "Solo Redondeo": si el canal no tiene operaciones de su familia (precio/margen)
-        // pero su regla USD está activa, la base se re-ancla al objetivo para que el interceptor
-        // existente la redondee (sin duplicar redondeo): costo × (1 + margen objetivo) con techo
-        // (ancla anti-trinquete, idempotente). Sin costo o margen objetivo definido se usa el precio
-        // ACTUAL del canal (guard: nunca inventar un ancla sin objetivo definido).
-        bool retailFamilyOperated = operations.Any(op => op.Field is BulkPriceField.RetailPrice or BulkPriceField.RetailMargin);
-        bool wholesaleFamilyOperated = operations.Any(op => op.Field is BulkPriceField.WholesalePrice or BulkPriceField.WholesaleMargin);
-        if (!retailFamilyOperated && request.RetailRoundingRule != RoundingRuleType.ExactMath)
-        {
-            scratch.PriceRetailUSD = scratch.CostPriceUSD > 0m && scratch.ProfitMarginRetail > 0m
-                ? PricingCalculator.RoundPriceUp(scratch.CostPriceUSD * (1m + scratch.ProfitMarginRetail / 100m))
-                : EffectiveBulkRetailUsd(scratch);
-        }
-
-        if (!wholesaleFamilyOperated && request.WholesaleRoundingRule != RoundingRuleType.ExactMath && scratch.HasWholesale)
-        {
-            scratch.PriceWholesaleUSD = scratch.CostPriceUSD > 0m && scratch.ProfitMarginWholesale > 0m
-                ? PricingCalculator.RoundPriceUp(scratch.CostPriceUSD * (1m + scratch.ProfitMarginWholesale / 100m))
-                : scratch.PriceWholesaleUSD;
-        }
+        // Spec V0.15 "Solo Redondeo": sin operaciones de la familia del canal (precio/margen) la base
+        // es el PRECIO ACTUAL del scratch — el interceptor de abajo lo redondea. La idempotencia se
+        // mantiene porque redondear(redondear(x)) = redondear(x) y el margen no se realimenta (a
+        // diferencia del ancla costo×(1+margen) del tramo anterior, que ya no se usa).
 
         // Los negativos se detectan ANTES de las rutinas vigentes: su derivación
         // precio=costo×(1+margen) reemplazaría (enmascararía) un resultado negativo silenciosamente.
@@ -489,8 +480,32 @@ public partial class InventoryService
             wholesaleRoundingDelta = wholesaleVesRounding.RoundingDelta;
         }
 
+        // Spec V0.15 (persistencia de política): la tarjeta 2 materializa la política por artículo
+        // (8.184: RoundingRuleUsd/RoundingRuleCashBs) SOLO cuando difiere de la efectiva del producto
+        // (override propio ?? baseline global del request): la herencia null se preserva cuando es
+        // equivalente (bulk normal con todo en ExactMath no escribe ninguna columna). Lo único que se
+        // persiste es la POLÍTICA — el Bs.S amigable y el margen efectivo siguen siendo proyección.
+        RoundingRuleType? wantedUsd = request.RetailRoundingRule == request.WholesaleRoundingRule
+            ? request.RetailRoundingRule
+            : null;
+        if (wantedUsd.HasValue && wantedUsd.Value != (product.RoundingRuleUsd ?? request.GlobalUsdRoundingRule))
+        {
+            scratch.RoundingRuleUsd = wantedUsd.Value;
+        }
+
+        if (request.CashBsRoundingRule != (product.RoundingRuleCashBs ?? request.GlobalCashBsRoundingRule))
+        {
+            scratch.RoundingRuleCashBs = request.CashBsRoundingRule;
+        }
+
         bool stateChanged = BulkPriceStateChanged(product, scratch, newPriceBsS);
         var row = CreateBulkPriceRow(product);
+        if (!wantedUsd.HasValue)
+        {
+            // Reglas USD distintas por canal: la columna es única por producto y no se materializa.
+            row.PolicyNote = "Reglas USD distintas por canal (Detal/Mayor): la política por artículo no se materializa (columna única por producto).";
+        }
+
         row.Changes = BuildBulkPriceChanges(product, scratch, newPriceBsS, new BulkPriceRoundingInfo(
             retailPreRounding,
             retailRoundingDelta,
@@ -500,11 +515,13 @@ public partial class InventoryService
             wholesaleBsSBefore,
             wholesaleBsSAfter));
 
-        // S5: margen efectivo (precio final vs costo) del canal, solo cuando el precio USD cambió.
-        row.EffectiveRetailMarginPct = afterRetail != beforeRetail && scratch.CostPriceUSD > 0m
+        // Spec V0.15: el margen efectivo REAL (precio final vs costo) se informa siempre que el costo
+        // exista — no solo cuando el precio cambió — para que la columna MARGEN EFECTIVO % muestre el
+        // margen de precio/costo actuales en vez de "—" con datos disponibles.
+        row.EffectiveRetailMarginPct = scratch.CostPriceUSD > 0m
             ? CalculateEffectiveMarginPct(afterRetail, scratch.CostPriceUSD)
             : null;
-        row.EffectiveWholesaleMarginPct = scratch.HasWholesale && scratch.PriceWholesaleUSD != product.PriceWholesaleUSD && scratch.CostPriceUSD > 0m
+        row.EffectiveWholesaleMarginPct = scratch.HasWholesale && scratch.CostPriceUSD > 0m
             ? CalculateEffectiveMarginPct(scratch.PriceWholesaleUSD, scratch.CostPriceUSD)
             : null;
 
@@ -534,6 +551,10 @@ public partial class InventoryService
         product.PriceUSD = scratch.PriceUSD;
         product.Cost = scratch.Cost;
         product.ProfitPercentage = scratch.ProfitPercentage;
+        // Spec V0.15: la política por artículo (override 8.184) se escribe solo si el plan la cambió;
+        // en el resto de las filas el scratch conserva el valor del producto (asignación no-op).
+        product.RoundingRuleUsd = scratch.RoundingRuleUsd;
+        product.RoundingRuleCashBs = scratch.RoundingRuleCashBs;
         // S2: LastConversionRate no se escribe (igual que create/update actuales).
         product.PriceBsS = item.NewPriceBsS;
         product.UpdatedAt = DateTime.UtcNow;
@@ -607,7 +628,10 @@ public partial class InventoryService
         ProfitMarginWholesale = product.ProfitMarginWholesale,
         HasWholesale = product.HasWholesale,
         MinWholesaleQuantity = product.MinWholesaleQuantity,
-        PriceBsS = product.PriceBsS
+        PriceBsS = product.PriceBsS,
+        // Spec V0.15: la política por artículo viaja al scratch para detectar/persistir sus cambios.
+        RoundingRuleUsd = product.RoundingRuleUsd,
+        RoundingRuleCashBs = product.RoundingRuleCashBs
     };
 
     private static decimal EffectiveBulkRetailUsd(Product product) =>
@@ -734,6 +758,9 @@ public partial class InventoryService
         || before.PriceUSD != after.PriceUSD
         || before.Cost != after.Cost
         || before.ProfitPercentage != after.ProfitPercentage
+        // Spec V0.15: un precio igual con POLÍTICA distinta también es un cambio accionable.
+        || before.RoundingRuleUsd != after.RoundingRuleUsd
+        || before.RoundingRuleCashBs != after.RoundingRuleCashBs
         || before.PriceBsS != newPriceBsS;
 
     private static List<BulkPriceFieldChangeDto> BuildBulkPriceChanges(Product before, Product after, decimal newPriceBsS, BulkPriceRoundingInfo rounding)

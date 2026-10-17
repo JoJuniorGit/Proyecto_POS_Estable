@@ -65,6 +65,8 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     private readonly IProductService _productService;
     private readonly IDialogService? _dialogService;
     private readonly BulkPriceSelection _selection;
+    private readonly RoundingRuleType _globalUsdRoundingRule;
+    private readonly RoundingRuleType _globalCashBsRoundingRule;
     private BulkPriceUpdateRequestDto? _previewedRequest;
 
     /// <summary>Resultado del cierre: true cuando la actualización se aplicó y persistió.</summary>
@@ -116,6 +118,10 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
 
     [ObservableProperty]
     private string _statusMessage = string.Empty;
+
+    /// <summary>Spec V0.15: el mensaje inferior se pinta ámbar cuando la vista previa no trae cambios aplicables.</summary>
+    [ObservableProperty]
+    private bool _statusMessageIsWarning;
 
     // 8.182-T2 (S6) + Spec V0.15: redondeo USD por canal, capa cash Bs.S y piso de margen por lote
     // (contrato T1). Default ExactMath sin piso = comportamiento 8.181 intacto.
@@ -216,7 +222,10 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
 
         // 8.184-T4 (S6) + Spec V0.15: la política global pre-inicializa las reglas USD por canal, la
         // capa cash Bs.S y el toggle de piso (el usuario puede cambiarlos igual). Sin políticas rigen
-        // los defaults ExactMath/sin piso = comportamiento 8.181 intacto.
+        // los defaults ExactMath/sin piso = comportamiento 8.181 intacto. Los baselines globales se
+        // retienen para que el motor compare "null hereda global" sin materializar la herencia.
+        _globalUsdRoundingRule = pricingPolicies?.UsdRoundingRule ?? RoundingRuleType.ExactMath;
+        _globalCashBsRoundingRule = pricingPolicies?.CashBsRoundingRule ?? RoundingRuleType.ExactMath;
         if (pricingPolicies is not null)
         {
             RetailRoundingRule = pricingPolicies.UsdRoundingRule;
@@ -262,6 +271,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
             StatusMessage = result.UpdatedCount > 0
                 ? "Vista previa lista: revise los cambios antes de aplicar."
                 : "La vista previa no contiene cambios a aplicar.";
+            StatusMessageIsWarning = result.UpdatedCount == 0;
         }
         catch (Exception ex)
         {
@@ -269,6 +279,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
             InvalidatePreview();
             ErrorMessage = ex.Message;
             StatusMessage = string.Empty;
+            StatusMessageIsWarning = false;
         }
         finally
         {
@@ -320,12 +331,14 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
             AppliedCount = result.UpdatedCount;
             HasApplied = true;
             StatusMessage = $"{AppliedCount} producto(s) actualizado(s) correctamente.";
+            StatusMessageIsWarning = false;
         }
         catch (Exception ex)
         {
             // 400/409 y fallos de red quedan visibles sin cerrar el diálogo (la vista previa sigue vigente).
             ErrorMessage = ex.Message;
             StatusMessage = string.Empty;
+            StatusMessageIsWarning = false;
         }
         finally
         {
@@ -450,6 +463,10 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         RetailRoundingRule = RetailRoundingRule,
         WholesaleRoundingRule = WholesaleRoundingRule,
         CashBsRoundingRule = CashBsRoundingRule,
+        // Spec V0.15: baselines globales sembrados — el motor compara la herencia contra ellos y solo
+        // materializa la política del artículo cuando difiere de la efectiva.
+        GlobalUsdRoundingRule = _globalUsdRoundingRule,
+        GlobalCashBsRoundingRule = _globalCashBsRoundingRule,
         EnforceMinimumMarginFloor = EnforceMinimumMarginFloor,
         RetailMarginFloorPct = retailFloor,
         WholesaleMarginFloorPct = wholesaleFloor
@@ -745,6 +762,9 @@ public sealed class BulkPricePreviewRowViewModel
 
     public bool IsError { get; init; }
 
+    /// <summary>Spec V0.15: nota de política del lote (p. ej. reglas USD distintas por canal); null si no aplica.</summary>
+    public string? PolicyNote { get; init; }
+
     public IReadOnlyList<BulkPriceFieldChangeViewModel> Changes { get; init; } = Array.Empty<BulkPriceFieldChangeViewModel>();
 
     /// <summary>8.182-T2 (S6): margen efectivo al detal sobre el precio FINAL; null si no aplica.</summary>
@@ -854,6 +874,31 @@ public sealed class BulkPricePreviewRowViewModel
 
     public string StatusColor => IsError ? "#DC2626" : HasSkipReason ? "#B45309" : "#16A34A";
 
+    /// <summary>
+    /// Spec V0.15: píldora compacta de ESTADO — "Actualiza" / motivo corto en UNA línea (texto antes
+    /// del primer ':') / "Error"; el motivo completo y la nota de política viajan en el tooltip.
+    /// </summary>
+    public string StatusBadgeText => IsError ? "Error" : HasSkipReason ? ShortSkipReason : "Actualiza";
+
+    public string StatusBadgeBackground => IsError ? "#FEE2E2" : HasSkipReason ? "#E2E8F0" : "#DCFCE7";
+
+    public string StatusBadgeForeground => IsError ? "#B91C1C" : HasSkipReason ? "#475569" : "#166534";
+
+    /// <summary>Spec V0.15: tooltip del ESTADO — detalle completo + nota de política cuando existe.</summary>
+    public string StatusToolTip => string.IsNullOrWhiteSpace(PolicyNote)
+        ? StatusText
+        : $"{StatusText}{Environment.NewLine}{PolicyNote}";
+
+    private string ShortSkipReason
+    {
+        get
+        {
+            var reason = SkipReason ?? string.Empty;
+            var separator = reason.IndexOf(':');
+            return separator > 0 ? reason[..separator] : reason;
+        }
+    }
+
     public string ChangesSummary => Changes.Count == 0
         ? "—"
         : string.Join(Environment.NewLine, Changes.Select(change => change.Summary));
@@ -867,6 +912,7 @@ public sealed class BulkPricePreviewRowViewModel
         Name = dto.Name,
         SkipReason = dto.SkipReason,
         IsError = dto.IsError,
+        PolicyNote = dto.PolicyNote,
         EffectiveRetailMarginPct = dto.EffectiveRetailMarginPct,
         EffectiveWholesaleMarginPct = dto.EffectiveWholesaleMarginPct,
         Changes = dto.Changes

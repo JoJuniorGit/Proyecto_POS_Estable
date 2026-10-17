@@ -151,8 +151,10 @@ public class BulkPriceRoundingTests
         });
 
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 0.81m));
-        // Spec V0.15: la proyección cash se configura por la capa dedicada del contrato.
+        // Spec V0.15: la proyección cash se configura por la capa dedicada del contrato; el baseline
+        // global equivalente evita materializar política (la intención de este test es la omisión).
         request.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        request.GlobalCashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -169,7 +171,8 @@ public class BulkPriceRoundingTests
         Assert.Equal(680.00m, change.CashFriendlyAfterBsS); // proyección: 0.81 x 842.21 -> paso 5: 680
         Assert.Equal(682.1901m, change.PreRoundingValue);
         Assert.Equal(-2.1901m, change.RoundingDelta);
-        Assert.Null(row.EffectiveRetailMarginPct); // el precio USD no cambió
+        // Spec V0.15: el margen efectivo se informa SIEMPRE (precio/costo actuales), no solo al cambiar.
+        Assert.Equal(35.00m, row.EffectiveRetailMarginPct);
 
         var untouched = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
         Assert.Equal(682.20m, untouched.PriceBsS);
@@ -359,7 +362,7 @@ public class BulkPriceRoundingTests
         Assert.Equal(903m, change.PreRoundingValue);
         Assert.Equal(2.00m, change.RoundingDelta);
         Assert.Equal(351.50m, row.EffectiveWholesaleMarginPct); // (9.03 - 2.00) / 2.00 x 100
-        Assert.Null(row.EffectiveRetailMarginPct);
+        Assert.Equal(400.00m, row.EffectiveRetailMarginPct); // margen real del detal (precio intacto)
 
         // La regla VES al mayor no movió el precio USD (solo el Bs.S informativo): margen intacto.
         await service.BulkUpdatePricesAsync(request);
@@ -458,6 +461,8 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1.25m));
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        // Spec V0.15: baseline global equivalente → la política efectiva ya coincide y no hay escritura.
+        request.GlobalUsdRoundingRule = RoundingRuleType.UsdPsychological;
 
         var result = await service.BulkUpdatePricesAsync(request);
 
@@ -465,7 +470,7 @@ public class BulkPriceRoundingTests
         var row = Assert.Single(result.Rows);
         Assert.Contains("sin cambios", row.SkipReason, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(row.Changes);
-        Assert.Null(row.EffectiveRetailMarginPct);
+        Assert.Equal(25.00m, row.EffectiveRetailMarginPct); // margen real (precio/costo actuales)
 
         // Regla sin efecto: el margen operado queda intacto (8.181).
         var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
@@ -954,13 +959,14 @@ public class BulkPriceRoundingTests
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Spec V0.15 "Solo Redondeo": sin operaciones por campo pero con regla USD del canal activa, la
-    // base se re-ancla al objetivo (anti-trinquete) y el interceptor existente la redondea; sin
-    // costo/margen objetivo la base es el precio actual; con solo regla cash no se persiste nada.
+    // Spec V0.15 "Solo Redondeo" + persistencia de POLÍTICA: sin operaciones de la familia del canal
+    // la base es el PRECIO ACTUAL (el interceptor lo redondea; idempotente); al aplicar se materializa
+    // la política por artículo (RoundingRuleUsd/RoundingRuleCashBs) SOLO si difiere de la efectiva
+    // (override ?? baseline global del request) — la herencia null se preserva cuando es equivalente.
     // ---------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task PreviewAndApplyBulkPriceUpdateAsync_RoundingOnly_ReanchorsToTargetAndRounds()
+    public async Task PreviewAndApplyBulkPriceUpdateAsync_RoundingOnly_RoundsCurrentPriceAndPersistsPolicy()
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();
         var service = CreateService(context);
@@ -976,6 +982,7 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id }); // cero operaciones: modo Solo Redondeo
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -984,19 +991,22 @@ public class BulkPriceRoundingTests
         Assert.Null(row.SkipReason);
         var change = ChangeOf(row, BulkPriceField.RetailPrice);
         Assert.Equal(0.90m, change.BeforeValue);
-        Assert.Equal(0.99m, change.AfterValue); // ancla 0.975 -> techo 0.98 -> psicológico 0.99
-        Assert.Equal(0.98m, change.PreRoundingValue);
+        Assert.Equal(0.95m, change.AfterValue); // base = precio ACTUAL 0.90 -> psicológico 0.95
+        Assert.Equal(0.90m, change.PreRoundingValue);
+        Assert.Equal(0.05m, change.RoundingDelta);
         Assert.DoesNotContain(row.Changes, c => c.Field == BulkPriceField.RetailMargin);
 
         await service.BulkUpdatePricesAsync(request);
         var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
-        Assert.Equal(0.99m, persisted.PriceRetailUSD);
-        Assert.Equal(30.00m, persisted.ProfitMarginRetail); // ancla anti-trinquete: el margen no se toca
-        Assert.Equal(99.00m, persisted.PriceBsS); // techo canónico con tasa 100
+        Assert.Equal(0.95m, persisted.PriceRetailUSD);
+        Assert.Equal(30.00m, persisted.ProfitMarginRetail);
+        Assert.Equal(95.00m, persisted.PriceBsS); // techo canónico con tasa 100
+        // Spec V0.15: la política efectiva (psicológico) se materializa como override del artículo.
+        Assert.Equal(RoundingRuleType.UsdPsychological, persisted.RoundingRuleUsd);
     }
 
     [Fact]
-    public async Task BulkUpdatePricesAsync_RoundingOnly_AlreadyOnTermination_IsSkippedAsNoChange()
+    public async Task BulkUpdatePricesAsync_RoundingOnly_AlreadyOnTerminationButPolicyDiffers_IsUpdatedWithOverride()
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();
         var service = CreateService(context);
@@ -1007,11 +1017,48 @@ public class BulkPriceRoundingTests
             SKU = "SOLRED2",
             CostPriceUSD = 0.75m,
             ProfitMarginRetail = 30m,
-            PriceRetailUSD = 0.99m // ya está en la terminación psicológica del objetivo
+            PriceRetailUSD = 0.99m // ya está en la terminación psicológica
         });
 
         var request = Request(new[] { created.Id });
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+
+        var preview = await service.PreviewBulkPriceUpdateAsync(request);
+
+        // Precio igual pero POLÍTICA distinta (null hereda global ExactMath): la omisión falsa termina.
+        Assert.Equal(1, preview.UpdatedCount);
+        var row = RowOf(preview, created.Id);
+        Assert.Null(row.SkipReason);
+        Assert.DoesNotContain(row.Changes, c => c.Field == BulkPriceField.RetailPrice);
+
+        await service.BulkUpdatePricesAsync(request);
+        var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
+        Assert.Equal(0.99m, persisted.PriceRetailUSD);
+        Assert.Equal(99.00m, persisted.PriceBsS);
+        Assert.Equal(RoundingRuleType.UsdPsychological, persisted.RoundingRuleUsd); // override persistido
+    }
+
+    [Fact]
+    public async Task BulkUpdatePricesAsync_RoundingOnly_AlreadySatisfied_IsSkippedWithoutPolicyWrites()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Ya cumple todo",
+            SKU = "SOLRED2B",
+            CostPriceUSD = 0.75m,
+            ProfitMarginRetail = 30m,
+            PriceRetailUSD = 0.99m
+        });
+
+        var request = Request(new[] { created.Id });
+        request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
+        // El baseline global ya es psicológico: la efectiva coincide con la wanted y no hay escritura.
+        request.GlobalUsdRoundingRule = RoundingRuleType.UsdPsychological;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -1024,7 +1071,9 @@ public class BulkPriceRoundingTests
         Assert.Equal(0, applied.UpdatedCount);
         var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
         Assert.Equal(0.99m, persisted.PriceRetailUSD);
-        Assert.Equal(30.00m, persisted.ProfitMarginRetail);
+        // Herencia preservada: ninguna columna de política se materializa cuando es equivalente.
+        Assert.Null(persisted.RoundingRuleUsd);
+        Assert.Null(persisted.RoundingRuleCashBs);
     }
 
     [Fact]
@@ -1044,6 +1093,7 @@ public class BulkPriceRoundingTests
 
         var request = Request(new[] { created.Id });
         request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.WholesaleRoundingRule = RoundingRuleType.UsdPsychological;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
@@ -1059,10 +1109,11 @@ public class BulkPriceRoundingTests
         Assert.Equal(1.25m, persisted.PriceRetailUSD);
         Assert.Equal(20.00m, persisted.ProfitMarginRetail);
         Assert.Equal(125.00m, persisted.PriceBsS);
+        Assert.Equal(RoundingRuleType.UsdPsychological, persisted.RoundingRuleUsd);
     }
 
     [Fact]
-    public async Task PreviewAndApplyBulkPriceUpdateAsync_RoundingOnly_CashRuleOnly_ProjectsWithoutPersisting()
+    public async Task PreviewAndApplyBulkPriceUpdateAsync_RoundingOnly_CashRuleOnly_PersistsPolicyWithoutTouchingBsS()
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();
         var service = CreateService(context);
@@ -1076,15 +1127,16 @@ public class BulkPriceRoundingTests
             PriceRetailUSD = 0.81m
         });
 
-        // Sin operaciones y con canales USD en exacto: solo la capa cash (proyección informativa).
+        // Sin operaciones y con canales USD en exacto: la capa cash materializa la política sin
+        // tocar el precio USD ni el Bs.S canónico (la proyección sigue siendo informativa).
         var request = Request(new[] { created.Id });
         request.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
 
         var preview = await service.PreviewBulkPriceUpdateAsync(request);
 
-        Assert.Equal(0, preview.UpdatedCount);
+        Assert.Equal(1, preview.UpdatedCount); // la política difiere (null hereda global ExactMath)
         var row = Assert.Single(preview.Rows);
-        Assert.Contains("sin cambios", row.SkipReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(row.SkipReason);
         var change = ChangeOf(row, BulkPriceField.RetailPrice);
         Assert.Equal(0.81m, change.BeforeValue);
         Assert.Equal(0.81m, change.AfterValue); // el USD no cambia
@@ -1093,12 +1145,90 @@ public class BulkPriceRoundingTests
         Assert.Equal(680.00m, change.CashFriendlyAfterBsS); // proyección 0.81 x 842.21 -> paso 5
         Assert.Equal(682.1901m, change.PreRoundingValue);
         Assert.Equal(-2.1901m, change.RoundingDelta);
+        Assert.Equal(35.00m, row.EffectiveRetailMarginPct); // margen real (precio/costo actuales)
 
         var applied = await service.BulkUpdatePricesAsync(request);
-        Assert.Equal(0, applied.UpdatedCount);
+        Assert.Equal(1, applied.UpdatedCount);
         var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
         Assert.Equal(0.81m, persisted.PriceRetailUSD);
-        Assert.Equal(682.20m, persisted.PriceBsS); // nunca se persiste la proyección
+        Assert.Equal(682.20m, persisted.PriceBsS); // el Bs.S canónico NUNCA se toca
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep5, persisted.RoundingRuleCashBs); // override
+        Assert.Null(persisted.RoundingRuleUsd); // sin regla USD activa no se materializa nada
+    }
+
+    [Fact]
+    public async Task PreviewBulkPriceUpdateAsync_ChannelRulesDiffer_DoesNotTouchUsdPolicyAndReportsNote()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Reglas mixtas",
+            SKU = "SOLRED5",
+            CostPriceUSD = 0.75m,
+            ProfitMarginRetail = 30m,
+            PriceRetailUSD = 0.90m
+        });
+
+        var request = Request(new[] { created.Id });
+        request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.WholesaleRoundingRule = RoundingRuleType.ExactMath; // reglas USD distintas por canal
+
+        var preview = await service.PreviewBulkPriceUpdateAsync(request);
+
+        var row = RowOf(preview, created.Id);
+        Assert.NotNull(row.PolicyNote);
+        Assert.Contains("por canal", row.PolicyNote, StringComparison.OrdinalIgnoreCase);
+
+        await service.BulkUpdatePricesAsync(request);
+        var persisted = await context.Products.AsNoTracking().SingleAsync(p => p.Id == created.Id);
+        Assert.Equal(0.95m, persisted.PriceRetailUSD); // canal detal redondeado
+        Assert.Null(persisted.RoundingRuleUsd); // columna única: no se materializa con reglas distintas
+        Assert.Null(persisted.RoundingRuleCashBs);
+    }
+
+    public static IEnumerable<object[]> RoundingOnlyCurrentPriceBaseCases()
+    {
+        // Base = precio ACTUAL 1.04 (el ancla costo×(1+margen) daría 0.78): psicológico directo 0.99.
+        yield return new object[] { false, null!, 0.99m, 52.31m };
+        // Con piso 60%: 0.99 deja margen 52.31% < 60 → escalón superior 1.25 (92.31%).
+        yield return new object[] { true, 60m, 1.25m, 92.31m };
+    }
+
+    [Theory]
+    [MemberData(nameof(RoundingOnlyCurrentPriceBaseCases))]
+    public async Task PreviewBulkPriceUpdateAsync_RoundingOnly_RoundsCurrentPriceNotTargetAnchor(
+        bool enforceFloor,
+        decimal? floorPct,
+        decimal expectedPrice,
+        decimal expectedEffectiveMargin)
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 100m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Base actual",
+            SKU = "SOLRED6",
+            CostPriceUSD = 0.65m,
+            ProfitMarginRetail = 20m,
+            PriceRetailUSD = 1.04m
+        });
+
+        var request = Request(new[] { created.Id });
+        request.RetailRoundingRule = RoundingRuleType.UsdPsychological;
+        request.EnforceMinimumMarginFloor = enforceFloor;
+        request.RetailMarginFloorPct = floorPct;
+
+        var preview = await service.PreviewBulkPriceUpdateAsync(request);
+
+        var row = RowOf(preview, created.Id);
+        var change = ChangeOf(row, BulkPriceField.RetailPrice);
+        Assert.Equal(1.04m, change.BeforeValue);
+        Assert.Equal(expectedPrice, change.AfterValue);
+        Assert.Equal(1.04m, change.PreRoundingValue); // el matemático es el precio actual, no el ancla
+        Assert.Equal(expectedEffectiveMargin, row.EffectiveRetailMarginPct);
     }
 
     // ---------------------------------------------------------------------------------------------

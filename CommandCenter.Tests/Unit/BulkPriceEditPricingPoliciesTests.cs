@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
@@ -58,6 +59,30 @@ public class BulkPriceEditPricingPoliciesTests
         Assert.Equal(RoundingRuleType.ExactMath, vm.CashBsRoundingRule);
         Assert.False(vm.EnforceMinimumMarginFloor);
         Assert.False(vm.HasPreview);
+    }
+
+    [Fact]
+    public async Task Preview_WithSeededPolicies_SendsGlobalBaselinesInRequest()
+    {
+        BulkPriceUpdateRequestDto? captured = null;
+        var productService = new Mock<IProductService>();
+        productService
+            .Setup(s => s.PreviewBulkPricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>()))
+            .Callback((BulkPriceUpdateRequestDto request, CancellationToken _) => captured = request)
+            .ReturnsAsync(new BulkPriceUpdateResultDto());
+
+        var vm = new BulkPriceEditDialogViewModel(productService.Object, Mock.Of<IDialogService>(), Selection(), GlobalPolicies());
+        var row = vm.Operations.Single(r => r.Field == BulkPriceField.RetailPrice);
+        row.IsEnabled = true;
+        row.ValueText = "2";
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        // Spec V0.15: los baselines globales sembrados viajan para que "null hereda global" compare
+        // contra el valor correcto en el motor (sin materializar política cuando es equivalente).
+        Assert.NotNull(captured);
+        Assert.Equal(RoundingRuleType.UsdPsychological, captured!.GlobalUsdRoundingRule);
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep5, captured.GlobalCashBsRoundingRule);
     }
 
     [Fact]

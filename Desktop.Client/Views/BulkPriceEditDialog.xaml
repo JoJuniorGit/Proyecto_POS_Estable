@@ -23,12 +23,12 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
         <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
-        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
 
-        <!-- Headers de la grilla comparativa: wrap real (sin truncar con "...") y presentación centrada. -->
-        <Style x:Key="BulkPriceCenterHeader" TargetType="DataGridColumnHeader"
+        <!-- Headers de la grilla comparativa: alineados a la IZQUIERDA (misma alineación que las
+             celdas) con wrap real (sin truncar con "..."). -->
+        <Style x:Key="BulkPriceLeftHeader" TargetType="DataGridColumnHeader"
                BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontSize" Value="11"/>
@@ -39,7 +39,7 @@
                     <DataTemplate>
                         <TextBlock Text="{Binding}"
                                    TextWrapping="Wrap"
-                                   TextAlignment="Center"
+                                   TextAlignment="Left"
                                    LineHeight="15"
                                    LineStackingStrategy="BlockLineHeight"/>
                     </DataTemplate>
@@ -453,8 +453,8 @@
                           GridLinesVisibility="Horizontal"
                           HorizontalGridLinesBrush="#E2E8F0"
                           ColumnHeaderHeight="52"
-                          ColumnHeaderStyle="{StaticResource BulkPriceCenterHeader}"
-                          MinRowHeight="34"
+                          ColumnHeaderStyle="{StaticResource BulkPriceLeftHeader}"
+                          MinRowHeight="44"
                           BorderThickness="0"
                           Background="#FFFFFF"
                           VirtualizingStackPanel.IsVirtualizing="True"
@@ -479,16 +479,25 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="ESTADO" Width="118">
+                        <!-- Spec V0.15: badge compacto en píldora (verde Actualiza / gris Omitido con
+                             motivo corto en UNA línea / rojo Error); el detalle completo va en el tooltip. -->
+                        <DataGridTemplateColumn Header="ESTADO" Width="132">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding StatusText}"
-                                               Foreground="{Binding StatusColor}"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               TextWrapping="Wrap"
-                                               VerticalAlignment="Center"
-                                               Margin="0,4"/>
+                                    <Border CornerRadius="10"
+                                            Padding="8,2"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            Margin="0,4"
+                                            Background="{Binding StatusBadgeBackground}"
+                                            ToolTip="{Binding StatusToolTip}">
+                                        <TextBlock Text="{Binding StatusBadgeText}"
+                                                   Foreground="{Binding StatusBadgeForeground}"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   MaxWidth="108"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </Border>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -553,7 +562,7 @@
                            TextWrapping="Wrap"
                            MaxWidth="420"
                            TextAlignment="Center"
-                           Visibility="{Binding HasPreviewItems, Converter={StaticResource InverseBooleanConverter}, FallbackValue=Visible}"/>
+                           Visibility="{Binding HasPreviewItems, Converter={StaticResource InverseBooleanToVisibilityConverter}, FallbackValue=Visible}"/>
             </Grid>
         </Border>
 
@@ -571,10 +580,21 @@
                            TextWrapping="Wrap"
                            Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}"/>
                 <TextBlock Text="{Binding StatusMessage}"
-                           Foreground="#16A34A"
                            TextWrapping="Wrap"
                            Margin="0,4,0,0"
-                           Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}"/>
+                           Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="#16A34A"/>
+                            <Style.Triggers>
+                                <!-- Spec V0.15: ámbar cuando la vista previa no trae cambios aplicables. -->
+                                <DataTrigger Binding="{Binding StatusMessageIsWarning}" Value="True">
+                                    <Setter Property="Foreground" Value="#B45309"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">

@@ -207,6 +207,9 @@ public class BulkPriceEditRoundingTests
         Assert.Equal(RoundingRuleType.ExactMath, captured!.RetailRoundingRule);
         Assert.Equal(RoundingRuleType.ExactMath, captured.WholesaleRoundingRule);
         Assert.Equal(RoundingRuleType.ExactMath, captured.CashBsRoundingRule);
+        // Spec V0.15: los baselines globales viajan para comparar "null hereda global" en el motor.
+        Assert.Equal(RoundingRuleType.ExactMath, captured.GlobalUsdRoundingRule);
+        Assert.Equal(RoundingRuleType.ExactMath, captured.GlobalCashBsRoundingRule);
         Assert.False(captured.EnforceMinimumMarginFloor);
         Assert.Null(captured.RetailMarginFloorPct);
         Assert.Null(captured.WholesaleMarginFloorPct);
@@ -831,5 +834,112 @@ public class BulkPriceEditRoundingTests
 
         Assert.False(vm.HasPreviewItems);
         Assert.Empty(vm.PreviewRows);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Spec V0.15 (pulido): overlay por filas reales (independiente de UpdatedCount), mensaje ámbar
+    // cuando no hay cambios aplicables y píldora de ESTADO con motivo corto + tooltip de política.
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Preview_WithOnlyOmittedRows_CollapsesOverlayAndFlagsAmberMessage()
+    {
+        var result = new BulkPriceUpdateResultDto
+        {
+            ExchangeRate = 50m,
+            SelectedCount = 1,
+            UpdatedCount = 0,
+            SkippedCount = 1,
+            Rows =
+            {
+                new BulkPricePreviewRowDto
+                {
+                    ProductId = 1,
+                    SKU = "A-1",
+                    Name = "Arroz",
+                    SkipReason = "Sin cambios: los valores resultantes son iguales a los actuales."
+                }
+            }
+        };
+        SetupPreview(result);
+
+        var vm = CreateViewModel();
+        EnableRetailPriceOperation(vm);
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        // Hay filas (Omitido) → el overlay queda colapsado aunque UpdatedCount sea 0.
+        Assert.True(vm.HasPreviewItems);
+        Assert.False(vm.CanApply);
+        Assert.True(vm.StatusMessageIsWarning);
+        Assert.Equal("La vista previa no contiene cambios a aplicar.", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Preview_WithApplicableChanges_ClearsAmberWarning()
+    {
+        SetupPreview();
+
+        var vm = CreateViewModel();
+        EnableRetailPriceOperation(vm);
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        Assert.True(vm.HasPreviewItems);
+        Assert.False(vm.StatusMessageIsWarning);
+        Assert.Equal("Vista previa lista: revise los cambios antes de aplicar.", vm.StatusMessage);
+    }
+
+    [Fact]
+    public void StatusBadge_ShortensOmittedReason_AndKeepsPillColors()
+    {
+        var omitted = BulkPricePreviewRowViewModel.FromDto(
+            new BulkPricePreviewRowDto
+            {
+                ProductId = 1,
+                SkipReason = "Sin cambios: los valores resultantes son iguales a los actuales."
+            },
+            RoundingRuleType.ExactMath);
+        Assert.Equal("Sin cambios", omitted.StatusBadgeText);
+        Assert.Equal("#E2E8F0", omitted.StatusBadgeBackground);
+        Assert.Equal("#475569", omitted.StatusBadgeForeground);
+        Assert.Contains("Sin cambios:", omitted.StatusText); // el tooltip conserva el motivo completo
+
+        var updating = BulkPricePreviewRowViewModel.FromDto(new BulkPricePreviewRowDto { ProductId = 2 }, RoundingRuleType.ExactMath);
+        Assert.Equal("Actualiza", updating.StatusBadgeText);
+        Assert.Equal("#DCFCE7", updating.StatusBadgeBackground);
+        Assert.Equal("#166534", updating.StatusBadgeForeground);
+
+        var error = BulkPricePreviewRowViewModel.FromDto(
+            new BulkPricePreviewRowDto { ProductId = 3, IsError = true, SkipReason = "El valor resultante no puede ser negativo (precio al detal)." },
+            RoundingRuleType.ExactMath);
+        Assert.Equal("Error", error.StatusBadgeText);
+        Assert.Equal("#FEE2E2", error.StatusBadgeBackground);
+        Assert.Equal("#B91C1C", error.StatusBadgeForeground);
+    }
+
+    [Fact]
+    public void StatusToolTip_AppendsPolicyNote_WhenPresent()
+    {
+        var row = BulkPricePreviewRowViewModel.FromDto(
+            new BulkPricePreviewRowDto
+            {
+                ProductId = 1,
+                PolicyNote = "Reglas USD distintas por canal (Detal/Mayor): la política por artículo no se materializa."
+            },
+            RoundingRuleType.ExactMath);
+
+        Assert.Contains("Actualiza", row.StatusToolTip);
+        Assert.Contains("por canal", row.StatusToolTip);
+    }
+
+    [Fact]
+    public void EffectiveMarginsText_ShowsRealMargin_ForSingleChannel()
+    {
+        var row = BulkPricePreviewRowViewModel.FromDto(
+            new BulkPricePreviewRowDto { ProductId = 1, EffectiveRetailMarginPct = 62.3m },
+            RoundingRuleType.ExactMath);
+
+        Assert.Equal("Detal: 62.3%", row.EffectiveMarginsText);
     }
 }

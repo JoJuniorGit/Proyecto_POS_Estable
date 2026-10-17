@@ -202,6 +202,12 @@ public class BulkPriceUpdateRequestDto
     // envíe una regla VES en el canal ya no proyecta: esa vía quedó defensiva en el motor.
     public RoundingRuleType CashBsRoundingRule { get; set; } = RoundingRuleType.ExactMath;
 
+    // Spec V0.15 (persistencia de política): baselines globales del lote para comparar la herencia
+    // (Product.RoundingRuleUsd/RoundingRuleCashBs null = hereda global) sin materializar la política
+    // cuando la efectiva ya coincide con la wanted. El VM los completa con las políticas sembradas.
+    public RoundingRuleType GlobalUsdRoundingRule { get; set; } = RoundingRuleType.ExactMath;
+    public RoundingRuleType GlobalCashBsRoundingRule { get; set; } = RoundingRuleType.ExactMath;
+
     public bool EnforceMinimumMarginFloor { get; set; }
     public decimal? RetailMarginFloorPct { get; set; }
     public decimal? WholesaleMarginFloorPct { get; set; }
@@ -249,6 +255,10 @@ public class BulkPricePreviewRowDto
     // el apply completo con 400 (resultado negativo, mayor>detal, cap excedido).
     public string? SkipReason { get; set; }
     public bool IsError { get; set; }
+
+    // Spec V0.15: nota de política cuando la configuración del lote no puede materializarse por
+    // artículo (p. ej. reglas USD distintas por canal: la columna es única por producto). null = sin nota.
+    public string? PolicyNote { get; set; }
 
     // 8.182-T1 (S5): margen efectivo (precio final − costo) / costo × 100 del canal, calculado sobre
     // el precio FINAL; informado solo cuando el precio USD del canal cambió y el costo es > 0.
