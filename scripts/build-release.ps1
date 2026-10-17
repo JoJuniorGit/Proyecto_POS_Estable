@@ -47,9 +47,10 @@ if ($otherInstances.Count -gt 0) {
     exit 1
 }
 
-# Limpieza endurecida: reintento corto ante archivos bloqueados y abort si una carpeta sobrevive
-# al Remove-Item (síntoma de concurrencia o handle abierto). Nunca reporta más borrados que
-# encontrados: cuenta antes y verifica ausencia después.
+# Limpieza SÍNCRONA y verificada: enumera, borra archivo por archivo y la carpeta, y RECIÉN
+# entonces reporta "Limpiados N archivo(s)". Reintenta 2 veces (500 ms) ante handles bloqueados
+# (antivirus/indexer) y aborta si algún archivo sobrevive. Nunca puede reportar N > M: el conteo
+# se toma de la lista enumerada antes de borrar.
 function Remove-ReleaseFolder {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -57,26 +58,37 @@ function Remove-ReleaseFolder {
         return 0
     }
 
-    $fileCount = @(Get-ChildItem $Path -Recurse -File -ErrorAction SilentlyContinue).Count
+    $files = @(Get-ChildItem $Path -Recurse -File -Force -ErrorAction Stop)
+    $fileCount = $files.Count
     $attempt = 0
     while ($true) {
         try {
-            Remove-Item $Path -Recurse -Force -ErrorAction Stop
+            foreach ($file in $files) {
+                if ($file.Exists) {
+                    Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+                }
+            }
+            if (Test-Path $Path) {
+                Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+            }
             break
         } catch {
             $attempt++
             if ($attempt -ge 3) {
                 Write-Host "ABORTANDO: no se pudo limpiar '$Path' (archivo bloqueado): $($_.Exception.Message)" -ForegroundColor Red
-                throw "build-release abortado: limpieza de '$Path' imposible tras 3 intentos."
+                throw "build-release abortado: limpieza de '$Path' imposible tras 3 intentos (500 ms entre intentos)."
             }
-            Start-Sleep -Milliseconds 400
+            Start-Sleep -Milliseconds 500
+            $files = @(Get-ChildItem $Path -Recurse -File -Force -ErrorAction SilentlyContinue)
         }
     }
 
-    if (Test-Path $Path) {
-        throw "build-release abortado: '$Path' sigue existiendo tras la limpieza (posible instancia concurrente)."
+    $remaining = @(Get-ChildItem $Path -Recurse -File -Force -ErrorAction SilentlyContinue)
+    if ($remaining.Count -ne 0) {
+        throw "build-release abortado: limpieza incompleta en '$Path' ($($remaining.Count) archivo(s) sobrevivieron)."
     }
 
+    # Mensaje de éxito SOLO tras verificar el borrado real (síncrono).
     Write-Host "Limpiados $fileCount archivo(s) de '$Path'." -ForegroundColor DarkGray
     return $fileCount
 }
@@ -130,12 +142,33 @@ try {
 
     Write-Host "[3/7] Publicando Backend.API (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
     dotnet publish "$rootDir\Backend.API\Backend.API.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\BackendAPI"
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet publish falló para Backend.API (exit $LASTEXITCODE)."
+    }
+    $backendExe = Join-Path $rootDir "publish\BackendAPI\Backend.API.exe"
+    if (-not (Test-Path $backendExe)) {
+        throw "No se generó $backendExe tras dotnet publish."
+    }
 
     Write-Host "[4/7] Publicando Desktop.Client (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
     dotnet publish "$rootDir\Desktop.Client\Desktop.Client.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\DesktopClient"
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet publish falló para Desktop.Client (exit $LASTEXITCODE)."
+    }
+    $desktopExe = Join-Path $rootDir "publish\DesktopClient\Desktop.Client.exe"
+    if (-not (Test-Path $desktopExe)) {
+        throw "No se generó $desktopExe tras dotnet publish."
+    }
 
     Write-Host "[5/7] Publicando UpdaterService (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
     dotnet publish "$rootDir\UpdaterService\UpdaterService.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\UpdaterService"
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet publish falló para UpdaterService (exit $LASTEXITCODE)."
+    }
+    $updaterExe = Join-Path $rootDir "publish\UpdaterService\UpdaterService.exe"
+    if (-not (Test-Path $updaterExe)) {
+        throw "No se generó $updaterExe tras dotnet publish."
+    }
 
     Get-ChildItem "$rootDir\publish" -Recurse -File -Filter "*.pdb" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
     Get-ChildItem "$rootDir\publish" -Recurse -File -Filter "secrets.json" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
