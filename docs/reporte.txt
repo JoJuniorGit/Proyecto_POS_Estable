@@ -15335,3 +15335,49 @@ C3. AutomationIds consolidados: se removieron los de columnas eliminadas y se ag
     BulkPriceEdit_UsdTransitionCell / BulkPriceEdit_EffectiveMarginsCell (sin referencias en
     tests/E2E -- verificado). El delta 0 no se muestra entre parentesis (decision UX reportada).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (V) - PERSISTENCIA REAL DE LA POLITICA DE REDONDEO POR ARTICULO (FIN DE OMISION FALSA) + PULIDO DE VISTA PREVIA - 2026-10-16
+================================================================================
+Pedido del mantenedor (Principal .NET & WPF Architect): que cualquier configuracion de la tarjeta
+"2. Redondeo y proteccion de margen" sea detectada como actualizacion valida y GUARDADA al
+confirmar, y pulir la legibilidad de la vista previa.
+
+A. PERSISTENCIA Y DETECCION (commit 7576c75)
+
+A1. Base del modo Solo Redondeo = PRECIO ACTUAL del canal (se elimino el ancla
+    costo x (1+margen) del tramo anterior; idempotencia por redondear(redondear(x))=x). Caso
+    distintivo pineado: precio 1.04 -> 0.99 (sin piso) / 1.25 (piso 60), NO el ancla 0.75/0.95.
+A2. Politica por articulo persistida al Aplicar: RoundingRuleUsd (solo si ambos canales USD
+    comparten regla; si difieren, columna intacta + nota) y RoundingRuleCashBs; escritura solo si
+    la politica "wanted" difiere de la efectiva (override ?? baseline global, nuevos campos
+    GlobalUsdRoundingRule/GlobalCashBsRoundingRule en el request sembrados por el VM). La herencia
+    equivalente no se materializa; un precio igual + politica distinta = fila ACTUALIZA (fin de la
+    omision falsa); Omitido solo si precio/costo/margen Y reglas no varian. PriceBsS sigue canonico
+    8.104 y el margen efectivo jamas se persiste (doctrina 8.183).
+A3. Nota de comportamiento (semantica literal del mandato): un lote COMUN (todo ExactMath) sobre un
+    producto con override distinto NORMALIZA la politica al valor del lote. Si el mantenedor
+    prefiere preservar overrides en lotes sin intencion de politica, se requeriria una marca
+    "tocar politica" en el request (residual documentado).
+A4. La politica no se propaga a variantes de grupo (solo precios) -- fuera de alcance.
+
+B. PULIDO DE VISTA PREVIA
+
+B1. Overlay de estado vacio: causa raiz real = binding con InverseBooleanConverter (bool) -> la
+    conversion a Visibility fallaba y aplicaba FallbackValue=Visible; corregido con
+    InverseBooleanToVisibilityConverter sobre HasPreviewItems (se colapsa tambien con filas
+    Omitido/UpdatedCount=0).
+B2. ESTADO: pill compacta (verde Actualiza / gris Omitido con motivo corto en una linea / rojo
+    Error), tooltip con detalle + PolicyNote; MinRowHeight 44. Headers alineados a la izquierda
+    como sus celdas.
+B3. MARGEN EFECTIVO %: el motor calcula el margen real siempre que costo > 0 (ya no muestra "---").
+    Mensaje inferior "La vista previa no contiene cambios a aplicar." en ambar cuando no hay
+    cambios aplicables.
+
+C. EVIDENCIA
+
+C1. Build Release 0/0; BulkPrice 157/157; BulkPriceEdit 80/80; Rounding 288/288; suite completa
+    2999/2999. Migraciones del ancla reportadas (4 tests) + 5 casos nuevos de motor + 6 de VM.
+C2. RED observado: CS1061/CS0117 (API VM) + 3 fallos de runtime que revelaron la exigencia de
+    reglas USD comunes en ambos canales.
+================================================================================
