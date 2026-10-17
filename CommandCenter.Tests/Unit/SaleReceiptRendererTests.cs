@@ -91,4 +91,54 @@ public class SaleReceiptRendererTests
         Assert.Contains("73.0000", content);
         Assert.DoesNotContain("730,00", content);
     }
+
+    private static SaleReceiptContext BuildSurplusContext()
+    {
+        var sale = new Sale
+        {
+            Id = 8,
+            InvoiceNumber = 90211,
+            Date = new DateTime(2026, 10, 17, 12, 0, 0, DateTimeKind.Utc),
+            CustomerName = "Cliente Prueba",
+            CustomerCedula = "V-12345678",
+            Subtotal = 1.15m,
+            TotalUSD = 1.15m,
+            TotalBsS = 12m,
+            SubtotalBsS = 12m,
+            AppliedRate = 10m,
+            FinalPaidAmountBsS = 12m
+        };
+        sale.Items.Add(new SaleItem
+        {
+            ProductName = "Producto Redondeado",
+            Quantity = 1m,
+            UnitPrice = 1.15m,
+            Subtotal = 1.15m,
+            UnitPriceBsS = 12m,
+            SubtotalBsS = 12m
+        });
+        sale.Payments.Add(new SalePayment
+        {
+            PaymentMethod = new PaymentMethod { Name = "Efectivo", IsCash = true },
+            Amount = 1.2m,
+            AmountBsS = 12m,
+            ExchangeRate = 10m
+        });
+        return SaleReceiptContext.CreateFrom(sale);
+    }
+
+    [Fact]
+    public void SaleReceiptRenderer_Render_UsdFigures_AreInverseOfChargedBsS()
+    {
+        var renderer = new SaleReceiptRenderer();
+        var context = BuildSurplusContext();
+
+        var document = renderer.Render(context, MoneyDisplayFormat.Venezuelan);
+        var content = Encoding.ASCII.GetString(document.Bytes!);
+
+        // Paridad ANEXO XIII: el $ impreso es el inverso del Bs.S cobrado (12/10 = 1,20),
+        // no el precio base canonico (1,15).
+        Assert.Contains("Total USD: 1,20", content);
+        Assert.DoesNotContain("Total USD: 1,15", content);
+    }
 }

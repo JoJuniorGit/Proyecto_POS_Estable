@@ -93,8 +93,9 @@ public static class SaleReceiptPdfGenerator
             sb.AppendLine($"0.88 0.9 0.92 RG 0.5 w 40 {y} 532 0 m 572 {y} l S");
             WriteLeft(sb, Truncate(line.ProductName, 28), 48, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
             WriteRight(sb, line.Quantity.ToString("0.###", CultureInfo.InvariantCulture), 200, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
-            WriteRight(sb, MoneyFormat.Number(line.UnitPrice, format), 300, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
-            WriteRight(sb, MoneyFormat.Number(line.Subtotal, format), 565, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
+            // ANEXO XIII: los montos $ de la linea son el inverso del Bs.S efectivo (paridad).
+            WriteRight(sb, MoneyFormat.Number(EffectiveUsd(line.UnitPriceBsS, line.UnitPrice, context.AppliedRate), format), 300, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
+            WriteRight(sb, MoneyFormat.Number(EffectiveUsd(line.SubtotalBsS, line.Subtotal, context.AppliedRate), format), 565, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
             y -= 20;
         }
 
@@ -106,7 +107,7 @@ public static class SaleReceiptPdfGenerator
         y -= 30;
         WriteRight(sb, $"Tasa aplicada: {MoneyFormat.Number(context.AppliedRate, format, 4)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
         y -= 14;
-        WriteRight(sb, $"Total USD: {MoneyFormat.Number(context.TotalUSD, format)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+        WriteRight(sb, $"Total USD: {MoneyFormat.Number(context.EffectiveTotalUSD, format)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
         y -= 14;
         WriteRight(sb, $"Pago final (Bs.S): {MoneyFormat.Number(context.FinalPaidAmountBsS, format)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
 
@@ -123,6 +124,14 @@ public static class SaleReceiptPdfGenerator
         WriteLeft(sb, "Sistema de Administracion y Punto de Venta - Comprobante no fiscal", 40, 35, "/F1 8 Tf", "0.5 0.5 0.5 rg");
         return sb.ToString();
     }
+
+    /// <summary>
+    /// ANEXO XIII: inverso USD del monto Bs.S efectivo con respaldo canonico cuando no hay
+    /// Bs.S o tasa (lineas previas al redondeo o datos incompletos) — usado por precio/subtotal
+    /// de linea y por el Total USD del recibo.
+    /// </summary>
+    private static decimal EffectiveUsd(decimal amountBsS, decimal canonicalUsd, decimal rate)
+        => amountBsS > 0m && rate > 0m ? PricingCalculator.ToUSD(amountBsS, rate) : canonicalUsd;
 
     private static void WriteLeft(StringBuilder sb, string text, float x, float y, string font, string color)
     {

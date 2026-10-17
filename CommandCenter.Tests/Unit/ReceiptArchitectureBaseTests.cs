@@ -58,6 +58,8 @@ public class ReceiptArchitectureBaseTests
 
         Assert.Equal(90210, context.InvoiceNumber);
         Assert.Equal(10m, context.TotalUSD);
+        // ANEXO XIII: el contexto expone el USD efectivo derivado (730/73 = 10 en este fixture).
+        Assert.Equal(10m, context.EffectiveTotalUSD);
         Assert.Equal(730m, context.TotalBsS);
         Assert.Equal(73m, context.AppliedRate);
         Assert.Equal(-0.50m, context.RoundingAdjustment);

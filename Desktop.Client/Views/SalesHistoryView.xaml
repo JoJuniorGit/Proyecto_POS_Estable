@@ -450,7 +450,7 @@
                             <DataTemplate>
                                 <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
                                     <TextBlock Text="{Binding TotalBsS, StringFormat={}{0:N2}}" FontWeight="Bold" Foreground="#1E293B" FontSize="13" TextAlignment="Right" Typography.NumeralAlignment="Tabular"/>
-                                    <TextBlock Text="{Binding TotalUSD, StringFormat={}USD ${0:N2}}" Foreground="#94A3B8" FontSize="11" TextAlignment="Right" Margin="0,1,0,0" Typography.NumeralAlignment="Tabular"/>
+                                    <TextBlock Text="{Binding EffectiveTotalUSD, StringFormat={}USD ${0:N2}}" Foreground="#94A3B8" FontSize="11" TextAlignment="Right" Margin="0,1,0,0" Typography.NumeralAlignment="Tabular"/>
                                 </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>

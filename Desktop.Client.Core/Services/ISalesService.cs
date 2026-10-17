@@ -132,6 +132,16 @@ public class SaleHistoryDto
     public decimal TotalUSD { get; set; }
     public decimal AppliedRate { get; set; }
     public decimal TotalBsS { get; set; }
+
+    /// <summary>
+    /// Sincronizacion USD efectivo (ANEXO XIII): inverso del Bs.S EFECTIVO a la tasa anclada —
+    /// el $ del historial es el monto realmente transado, no la suma canonica de precios base.
+    /// Derivacion local (misma formula de Sale.EffectiveTotalUSD) sobre los campos deserializados.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public decimal EffectiveTotalUSD => TotalBsS <= 0m || AppliedRate <= 0m
+        ? TotalUSD
+        : System.Math.Round(TotalBsS / AppliedRate, 4, System.MidpointRounding.AwayFromZero);
     public string Status { get; set; } = string.Empty;
     public decimal FinalPaidAmountBsS { get; set; }
     public int? CashierId { get; set; }

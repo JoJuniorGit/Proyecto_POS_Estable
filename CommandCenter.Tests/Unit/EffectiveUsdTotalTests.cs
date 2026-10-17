@@ -213,4 +213,26 @@ public class EffectiveUsdTotalTests
         Assert.Equal(0.7m, vm.RemainingUsdEffective);
         Assert.Equal(1.2m, vm.TotalUsdEffective);
     }
+
+    // ---------------------------------------------------------------------
+    // Historial (WPF): el "Total USD" del detalle muestra el efectivo, no el canonico
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void History_DetailTotalUsd_ShowsEffectiveInverseOfChargedBsS()
+    {
+        var mockSales = new Mock<ISalesService>();
+        var vm = new SalesHistoryViewModel(mockSales.Object, act => act());
+
+        vm.SelectedSale = new Desktop.Client.Services.SaleHistoryDto
+        {
+            Id = 55,
+            AppliedRate = 10m,
+            TotalUSD = 1.15m,
+            TotalBsS = 12m
+        };
+
+        // Precarga inmediata del panel de detalle: 12 / 10 = 1.20 (no el canonico 1.15).
+        Assert.Equal(1.2m, vm.DetailTotalUSD);
+    }
 }

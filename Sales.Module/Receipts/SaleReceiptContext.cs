@@ -26,6 +26,14 @@ public sealed class SaleReceiptContext
     public string? CustomerCedula { get; init; }
     public decimal Subtotal { get; init; }
     public decimal TotalUSD { get; init; }
+
+    /// <summary>
+    /// Sincronizacion USD efectivo (ANEXO XIII): inverso del Bs.S EFECTIVO a la tasa anclada.
+    /// El PDF imprime este valor (no TotalUSD) para que el $ del recibo sea el monto realmente
+    /// transado y cierre con el Bs.S cobrado.
+    /// </summary>
+    public decimal EffectiveTotalUSD { get; init; }
+
     public decimal TotalBsS { get; init; }
     public decimal AppliedRate { get; init; }
     public decimal RoundingAdjustment { get; init; }
@@ -45,6 +53,7 @@ public sealed class SaleReceiptContext
             CustomerCedula = sale.CustomerCedula,
             Subtotal = sale.Subtotal,
             TotalUSD = sale.TotalUSD,
+            EffectiveTotalUSD = sale.EffectiveTotalUSD,
             TotalBsS = sale.TotalBsS,
             AppliedRate = sale.AppliedRate,
             RoundingAdjustment = sale.RoundingAdjustment,
