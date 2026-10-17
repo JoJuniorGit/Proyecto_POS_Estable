@@ -343,8 +343,13 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         _salesService = salesService;
         _dispatchAction = dispatchAction ?? (action => action());
 
-        _startDate = DateTime.Today;
-        _endDate = DateTime.Today;
+        // Hotfix (CI/timezone): el backend interpreta las fechas del historial como DÍAS CALENDARIO
+        // DE VENEZUELA (UTC-4; ver TimeZoneHelper.GetUtcRange) — el default debe ser la jornada VE,
+        // no la fecha local de la máquina: en un cliente fuera de VE divergían y la venta recién
+        // hecha quedaba fuera del rango "Hoy" (fallo determinista entre 00:00Z y 04:00Z).
+        var venezuelaToday = Core.Helpers.TimeZoneHelper.GetVenezuelaDate().ToDateTime(TimeOnly.MinValue);
+        _startDate = venezuelaToday;
+        _endDate = venezuelaToday;
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (_r, _m) =>
         {
