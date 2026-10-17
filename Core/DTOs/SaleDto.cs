@@ -12,6 +12,12 @@ public class SaleDto
     public string Status { get; set; } = string.Empty;
     public decimal Subtotal { get; set; }
     public decimal TotalUSD { get; set; }
+
+    // Sincronización USD efectivo (ANEXO XII): inverso del TotalBsS EFECTIVO a la tasa anclada
+    // (monto real transado, incluye la sobre-ganancia del redondeo). El TotalUSD canónico se
+    // conserva como referencia de precios/gates.
+    public decimal EffectiveTotalUSD { get; set; }
+
     public decimal AppliedRate { get; set; }
     public decimal TotalBsS { get; set; }
     public decimal SubtotalBsS { get; set; }

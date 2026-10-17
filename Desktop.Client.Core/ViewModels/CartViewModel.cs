@@ -136,6 +136,28 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             ? CurrentSale.TotalBsS
             : Core.Helpers.PricingCalculator.RoundToDigital(TotalUSD * _exchangeRateService.CurrentRate);
 
+    /// <summary>
+    /// Sincronización USD efectivo (ANEXO XII): $ mostrado = inverso del Bs.S EFECTIVO que se
+    /// cobra (TotalAmountLocal / tasa), no la suma canónica de precios base. Solo display: el
+    /// TotalUSD canónico sigue rigiendo gates, mensajes y recuperación. La tasa se resuelve con
+    /// la misma prioridad que UpdateCollection (histórico ⇒ AppliedRate congelado; vivo ⇒ tasa
+    /// vigente). Sin tasa válida cae al canónico para no mostrar un monto inventado.
+    /// </summary>
+    public decimal TotalUsdEffective
+    {
+        get
+        {
+            bool isHistorical = CurrentSale != null && CurrentSale.Status != "Pending";
+            decimal current = _exchangeRateService.CurrentRate;
+            decimal rate = isHistorical
+                ? (CurrentSale!.AppliedRate > 0 ? CurrentSale.AppliedRate : current)
+                : (current > 0 ? current : CurrentSale?.AppliedRate ?? 0m);
+            return rate > 0m
+                ? Core.Helpers.PricingCalculator.ToUSD(TotalAmountLocal, rate)
+                : TotalUSD;
+        }
+    }
+
     private bool IsLivePendingSale => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
 
     public bool HasUncommittedItems => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
@@ -275,6 +297,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
 
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(SubtotalLocal));
+        OnPropertyChanged(nameof(TotalUsdEffective));
 
         // Notify other components (like Checkout) that the cart has changed
         WeakReferenceMessenger.Default.Send(new CartUpdatedMessage(TotalUSD));
@@ -310,6 +333,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         // Fire notifications for calculated totals
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(SubtotalLocal));
+        OnPropertyChanged(nameof(TotalUsdEffective));
     }
 
     private async Task LoadPricingPoliciesAsync()
@@ -347,6 +371,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
 
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(SubtotalLocal));
+        OnPropertyChanged(nameof(TotalUsdEffective));
     }
 
     private async Task RefreshOnHoldSaleAsync()

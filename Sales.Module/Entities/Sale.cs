@@ -79,6 +79,19 @@ public class Sale
 
     public bool IsZeroAmountOrder => TotalUSD == 0;
 
+    /// <summary>
+    /// Sincronización USD efectivo (ANEXO XII): monto real transado en USD — inverso del Total
+    /// Bs.S EFECTIVO (ya redondeado) a la tasa anclada de la venta. Propiedad calculada, sin
+    /// columna nueva: TotalBsS + AppliedRate ya son el snapshot inmutable y duplicar el cociente
+    /// abriría una segunda fuente de verdad (el flujo de venta lo persiste como derivado).
+    /// 4 decimales por consistencia con el precedente de CashAdvance (BsS/rate) y precisión
+    /// sub-centavo para analítica (Paso 14). Sin Bs.S cobrado o sin tasa cae al canónico.
+    /// </summary>
+    [NotMapped]
+    public decimal EffectiveTotalUSD => TotalBsS <= 0m || AppliedRate <= 0m
+        ? TotalUSD
+        : Math.Round(TotalBsS / AppliedRate, 4, MidpointRounding.AwayFromZero);
+
     public List<SalePayment> Payments { get; set; } = new();
 
     // Navigation property

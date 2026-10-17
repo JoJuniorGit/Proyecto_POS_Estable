@@ -702,7 +702,7 @@
                                                Typography.NumeralAlignment="Tabular"/>
                                                
                                     <TextBlock Grid.Row="1" Grid.Column="1"
-                                               Text="{Binding Cart.TotalUSD, StringFormat='$ {0:N2}'}" 
+                                               Text="{Binding Cart.TotalUsdEffective, StringFormat='$ {0:N2}'}" 
                                                FontSize="16" 
                                                FontWeight="SemiBold" 
                                                Foreground="#475569" 

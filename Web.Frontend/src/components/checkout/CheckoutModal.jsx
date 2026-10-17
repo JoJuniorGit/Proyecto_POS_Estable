@@ -163,6 +163,11 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
     ? Math.max(0, preview.remainingBalanceUSD)
     : Math.max(0, targetTotalUSD - paidUsd);
 
+  // Sincronización USD efectivo (ANEXO XII): el $ de referencia mostrado es el inverso del Bs.S
+  // que se cobra (no la suma canónica de precios base). Solo display: gates y saldos canónicos intactos.
+  const effectiveTotalUsd = rateToUse > 0 ? Math.round((targetTotalBsS / rateToUse) * 100) / 100 : targetTotalUSD;
+  const effectiveRemainingUsd = rateToUse > 0 ? Math.round((remainingBsS / rateToUse) * 100) / 100 : remainingUsd;
+
   useEffect(() => {
     if (!isOpen || !previewRequest.saleId) {
       setPreview(null);
@@ -343,7 +348,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
           <span>{overrideSale ? "Saldo Pendiente:" : "Total Venta:"}</span>
           <div className="text-right">
             <div className="font-bold color-primary chk-font-total">{formatBsS(targetTotalBsS || 0)}</div>
-            <div className="text-xs text-muted font-medium">Ref: ${targetTotalUSD.toFixed(2)} USD</div>
+            <div className="text-xs text-muted font-medium">Ref: ${effectiveTotalUsd.toFixed(2)} USD</div>
           </div>
         </div>
 
@@ -359,7 +364,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
           <span>Restante Tras Cobro:</span>
           <div className="text-right">
             <div className="font-bold chk-font-remaining">{formatBsS(remainingBsS)}</div>
-            <div className="text-xs text-muted font-medium">Ref: ${remainingUsd.toFixed(2)} USD</div>
+            <div className="text-xs text-muted font-medium">Ref: ${effectiveRemainingUsd.toFixed(2)} USD</div>
           </div>
         </div>
       </div>

@@ -47,6 +47,7 @@ public partial class SalesService
             Status = sale.Status.ToString(),
             Subtotal = sale.Subtotal,
             TotalUSD = sale.TotalUSD,
+            EffectiveTotalUSD = sale.EffectiveTotalUSD,
             AppliedRate = sale.AppliedRate,
             TotalBsS = sale.TotalBsS,
             FinalPaidAmountBsS = sale.FinalPaidAmountBsS,

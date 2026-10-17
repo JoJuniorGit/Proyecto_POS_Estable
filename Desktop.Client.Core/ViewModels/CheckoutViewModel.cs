@@ -124,6 +124,18 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         ? _preview!.RemainingBalanceUSD
         : System.Math.Max(0, TotalUSD - PaidAmountUsd);
 
+    /// <summary>
+    /// Sincronización USD efectivo (ANEXO XII): $ mostrado = inverso del Bs.S EFECTIVO que se
+    /// cobra (TotalAmountLocal / tasa) — mismo criterio con el que AddPayment deriva la pata USD
+    /// de cada pago. Solo display: TotalUSD y RemainingBalanceUsd canónicos siguen rigiendo el
+    /// gate (CanFinalize/IsFullLiquidation no cambian de semántica).
+    /// </summary>
+    public decimal TotalUsdEffective => PricingHelper.ToUSD(TotalAmountLocal, ResolvePreviewRate());
+
+    /// <summary>Restante en USD = inverso del restante Bs.S (servidor con preview fresco; local
+    /// como respaldo de presentación) — elimina el desfase contra la cifra Bs.S que se cobra.</summary>
+    public decimal RemainingUsdEffective => PricingHelper.ToUSD(RemainingBalanceLocal, ResolvePreviewRate());
+
     public decimal RoundingAdjustment => IsPreviewFresh ? _preview!.RoundingAdjustment : 0m;
 
     public ObservableCollection<CheckoutPaymentItem> Payments { get; } = new();
@@ -269,6 +281,8 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         OnPropertyChanged(nameof(RemainingBalanceUsd));
         OnPropertyChanged(nameof(RemainingBalanceLocal));
         OnPropertyChanged(nameof(RoundingAdjustment));
+        OnPropertyChanged(nameof(TotalUsdEffective));
+        OnPropertyChanged(nameof(RemainingUsdEffective));
         OnPropertyChanged(nameof(HasValidPayments));
         OnPropertyChanged(nameof(IsPreviewFresh));
         OnPropertyChanged(nameof(IsFullLiquidation));
@@ -378,6 +392,8 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(RemainingBalanceUsd));
         OnPropertyChanged(nameof(RemainingBalanceLocal));
+        OnPropertyChanged(nameof(TotalUsdEffective));
+        OnPropertyChanged(nameof(RemainingUsdEffective));
         OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
         OnPropertyChanged(nameof(ValidationHelperMessage));
         FinalizeSaleCommand.NotifyCanExecuteChanged();

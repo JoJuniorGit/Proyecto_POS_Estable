@@ -52,7 +52,7 @@
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="Total Invoice" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                         <TextBlock Text="{Binding TotalAmountLocal, StringFormat='{}{0:N2}'}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
-                        <TextBlock Text="{Binding TotalUSD, StringFormat='{}USD {0:N2}'}" FontSize="13" Opacity="0.6"/>
+                        <TextBlock Text="{Binding TotalUsdEffective, StringFormat='{}USD {0:N2}'}" FontSize="13" Opacity="0.6"/>
                     </StackPanel>
                     
                     <StackPanel Grid.Column="1">
@@ -64,7 +64,7 @@
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="Remaining" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                         <TextBlock Text="{Binding RemainingBalanceLocal, StringFormat='{}{0:N2}'}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
-                        <TextBlock Text="{Binding RemainingBalanceUsd, StringFormat='{}USD {0:N2}'}" FontSize="13" Opacity="0.6"/>
+                        <TextBlock Text="{Binding RemainingUsdEffective, StringFormat='{}USD {0:N2}'}" FontSize="13" Opacity="0.6"/>
                     </StackPanel>
                 </Grid>
             </StackPanel>
