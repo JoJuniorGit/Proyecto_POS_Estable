@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, CheckCircle, Edit2, LockOpen, ShieldCheck } from 'lucide-react';
-import { formatNumberEs, formatBsS, formatUSD, formatQuantity } from '../../utils/formatters';
+import { formatNumberEs, formatBsS, formatUSD, formatQuantity, effectiveTotalUsd } from '../../utils/formatters';
 import PendingOrderLockBadge from './PendingOrderLockBadge';
 
 export default function PendingOrderDesktopRow({ sale, isExpanded, lockInfo, isElevated, onToggle, onCheckout, onEdit, onForceRelease }) {
@@ -37,7 +37,7 @@ export default function PendingOrderDesktopRow({ sale, isExpanded, lockInfo, isE
             {formatBsS(sale.totalBsS)}
           </div>
           <div className="amount-usd ppo-usd-sub">
-            {formatUSD(sale.totalUSD)}
+            {formatUSD(effectiveTotalUsd(sale))}
           </div>
         </td>
 

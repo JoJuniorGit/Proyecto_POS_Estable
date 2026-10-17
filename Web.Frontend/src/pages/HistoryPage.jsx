@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { getSalesHistory, getSaleHistoryDetail } from '../services/historyApi';
 import { Search, Filter, Loader2, Calendar, ChevronRight, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity } from '../utils/formatters';
+import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity, effectiveTotalUsd } from '../utils/formatters';
 import { filterHistorySales, accumulateCashierNames, areSecondaryFiltersActive, applySecondaryFilterDrafts, filterCashierSuggestions } from '../utils/historyFilters';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import Pagination from '../components/ui/Pagination';
@@ -10,18 +10,6 @@ import RoleGuard from '../navigation/RoleGuard';
 import './HistoryPage.css';
 
 const PAGE_SIZE = 25;
-
-// Sincronización USD efectivo (ANEXO XIII): el $ del historial es el inverso del Bs.S EFECTIVO
-// (monto realmente transado), no la suma canónica de precios base. Prefiere el valor derivado
-// del servidor y cae al cálculo local / canónico si el payload viniera incompleto.
-function effectiveTotalUsd(sale) {
-  if (!sale) return 0;
-  if (sale.effectiveTotalUSD > 0) return sale.effectiveTotalUSD;
-  if (sale.totalBsS > 0 && sale.appliedRate > 0) {
-    return Math.round((sale.totalBsS / sale.appliedRate) * 100) / 100;
-  }
-  return sale.totalUSD || 0;
-}
 
 export default function HistoryPage() {
   return (

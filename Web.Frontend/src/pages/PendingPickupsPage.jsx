@@ -4,7 +4,7 @@ import {
   getDeliveryNoteBlob,
   getPendingPickupsPage,
 } from '../services/pendingPickupApi';
-import { formatBsS, formatUSD, formatQuantity } from '../utils/formatters';
+import { formatBsS, formatUSD, formatQuantity, effectiveTotalUsd } from '../utils/formatters';
 import {
   PackageCheck,
   User,
@@ -355,7 +355,7 @@ function PendingPickupsPageContent() {
                             {formatBsS(pickup.totalBsS).replace(/^Bs\.S\s?/, '')}
                           </strong>
                           <div className="text-muted font-normal text-xs text-right ppk-mt-2px">
-                            {formatUSD(pickup.totalUSD || 0)}
+                            {formatUSD(effectiveTotalUsd(pickup))}
                           </div>
                         </td>
 
@@ -467,7 +467,7 @@ function PendingPickupsPageContent() {
                   >
                     <div>
                       <div className="text-xs text-muted mb-1">Total (USD)</div>
-                      <div className="font-bold text-primary text-nowrap ppk-total-sm">{formatUSD(pickup.totalUSD)}</div>
+                      <div className="font-bold text-primary text-nowrap ppk-total-sm">{formatUSD(effectiveTotalUsd(pickup))}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-xs text-muted mb-1">Total (Bs.S)</div>

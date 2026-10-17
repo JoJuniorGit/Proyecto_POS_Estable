@@ -238,9 +238,23 @@ public partial class EditSaleDialogViewModel : ObservableObject, IDisposable
 
         decimal newTotalUsd = _items.Sum(i => i.Subtotal);
         decimal newTotalBsS = _items.Sum(i => i.SubtotalBsS);
-        decimal remainingUsd = Math.Max(0m, newTotalUsd - _sale.TotalPaidUSD);
 
-        NewTotalText = $"${CurrencyDisplay.Number(newTotalUsd)} (Bs.S {CurrencyDisplay.Number(newTotalBsS)})";
+        // ANEXO XV: paridad del monto redondeado en cuentas abiertas — el $ del resumen es el
+        // inverso del Bs.S EFECTIVO (suma por linea) a la tasa anclada de la venta; el restante
+        // refleja lo ya abonado en Bs.S (mismo criterio de la liquidacion del checkout).
+        decimal rate = _sale.AppliedRate > 0m ? _sale.AppliedRate : _exchangeRate;
+        decimal effectiveTotalUsd = newTotalBsS > 0m && rate > 0m
+            ? Core.Helpers.PricingCalculator.ToUSD(newTotalBsS, rate)
+            : newTotalUsd;
+
+        decimal paidBsS = _sale.Payments?.Sum(p => p.AmountBsS > 0m
+            ? p.AmountBsS
+            : p.Amount * (p.ExchangeRate > 0m ? p.ExchangeRate : rate)) ?? 0m;
+        decimal remainingUsd = newTotalBsS > 0m && rate > 0m
+            ? Core.Helpers.PricingCalculator.ToUSD(Math.Max(0m, newTotalBsS - paidBsS), rate)
+            : Math.Max(0m, newTotalUsd - _sale.TotalPaidUSD);
+
+        NewTotalText = $"${CurrencyDisplay.Number(effectiveTotalUsd)} (Bs.S {CurrencyDisplay.Number(newTotalBsS)})";
         TotalPaidText = $"${CurrencyDisplay.Number(_sale.TotalPaidUSD)}";
         RemainingText = $"${CurrencyDisplay.Number(remainingUsd)}";
     }

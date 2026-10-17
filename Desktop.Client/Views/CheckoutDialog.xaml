@@ -34,7 +34,7 @@
                         <materialDesign:PackIcon Kind="InformationOutline" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="#92400E"/>
                         <TextBlock Foreground="#92400E" FontSize="12" TextWrapping="Wrap">
                             <Run Text="Total Factura: "/>
-                            <Run Text="{Binding OverrideSale.TotalUSD, StringFormat='USD {0:N2}', FallbackValue='-'}" FontWeight="Bold"/>
+                            <Run Text="{Binding OverrideSale.EffectiveTotalUSD, StringFormat='USD {0:N2}', FallbackValue='-'}" FontWeight="Bold"/>
                             <Run Text="  |  Ya Abonado: "/>
                             <Run Text="{Binding OverrideSale.TotalPaidUSD, StringFormat='USD {0:N2}', FallbackValue='-'}" FontWeight="Bold" Foreground="#059669"/>
                         </TextBlock>

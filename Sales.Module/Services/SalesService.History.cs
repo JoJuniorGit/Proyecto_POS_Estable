@@ -92,6 +92,7 @@ public partial class SalesService
                 CustomerPhone = s.Customer != null ? s.Customer.Phone : string.Empty,
                 TotalUSD = s.TotalUSD,
                 TotalBsS = s.TotalBsS,
+                AppliedRate = s.AppliedRate,
                 TotalUnits = s.Items.Sum(i => i.Quantity),
                 DeliveredUnits = s.Items.Sum(i => i.DeliveredQuantity),
                 DeliveryStatus = s.DeliveryStatus.ToString(),

@@ -17,6 +17,18 @@ public class PendingPickupClientDto
     public string CustomerPhone { get; set; } = string.Empty;
     public decimal TotalUSD { get; set; }
     public decimal TotalBsS { get; set; }
+    public decimal AppliedRate { get; set; }
+
+    /// <summary>
+    /// Sincronizacion USD efectivo (ANEXO XV): inverso del Bs.S EFECTIVO a la tasa anclada —
+    /// el $ de los retiros/cuentas abiertas es el monto realmente transado. Derivacion local
+    /// (misma formula de Sale.EffectiveTotalUSD) sobre los campos deserializados.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public decimal EffectiveTotalUSD => TotalBsS <= 0m || AppliedRate <= 0m
+        ? TotalUSD
+        : System.Math.Round(TotalBsS / AppliedRate, 4, System.MidpointRounding.AwayFromZero);
+
     public decimal TotalUnits { get; set; }
     public decimal DeliveredUnits { get; set; }
     public string DeliveryStatus { get; set; } = "PendingPickup";

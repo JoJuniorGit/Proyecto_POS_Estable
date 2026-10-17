@@ -421,7 +421,7 @@
                                                    Foreground="#0F172A"
                                                    Typography.NumeralAlignment="Tabular"
                                                    HorizontalAlignment="Right"/>
-                                        <TextBlock Text="{Binding TotalUSD, StringFormat='${0:N2}'}"
+                                        <TextBlock Text="{Binding EffectiveTotalUSD, StringFormat='${0:N2}'}"
                                                    FontSize="11" Foreground="#64748B"
                                                    Typography.NumeralAlignment="Tabular"
                                                    HorizontalAlignment="Right"

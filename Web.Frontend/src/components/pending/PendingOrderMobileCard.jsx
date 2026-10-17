@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, CheckCircle, Edit2, LockOpen, ShieldCheck, User } from 'lucide-react';
-import { formatBsS, formatUSD, formatQuantity } from '../../utils/formatters';
+import { formatBsS, formatUSD, formatQuantity, effectiveTotalUsd } from '../../utils/formatters';
 import PendingOrderLockBadge from './PendingOrderLockBadge';
 
 export default function PendingOrderMobileCard({ sale, isExpanded, lockInfo, isElevated, exchangeRate, onToggle, onCheckout, onEdit, onForceRelease }) {
@@ -7,6 +7,10 @@ export default function PendingOrderMobileCard({ sale, isExpanded, lockInfo, isE
   const remainingUsd = sale.remainingBalanceUSD || 0;
   const totalPaidBsS = (sale.payments || []).reduce((acc, p) => acc + (p.amountBsS > 0 ? p.amountBsS : (p.amount || 0) * (p.exchangeRate || exchangeRate)), 0);
   const remainingBsS = Math.max(0, (sale.totalBsS !== undefined && sale.totalBsS > 0 ? sale.totalBsS : remainingUsd * exchangeRate) - totalPaidBsS);
+  // ANEXO XV: la deuda mostrada en $ es el inverso del Bs.S restante efectivo (no el canonico).
+  const effectiveRemainingUsd = exchangeRate > 0
+    ? Math.round((remainingBsS / exchangeRate) * 100) / 100
+    : remainingUsd;
 
   return (
     <div className="pending-mobile-card">
@@ -45,7 +49,7 @@ export default function PendingOrderMobileCard({ sale, isExpanded, lockInfo, isE
         <div>
           <div className="text-xs text-muted mb-1">Total Factura</div>
           <div className="font-bold amount-bss total-bss-highlight">{formatBsS(sale.totalBsS)}</div>
-          <div className="text-xs amount-usd">{formatUSD(sale.totalUSD)}</div>
+          <div className="text-xs amount-usd">{formatUSD(effectiveTotalUsd(sale))}</div>
         </div>
         <div>
           <div className="text-xs text-muted mb-1">Abonado</div>
@@ -53,7 +57,7 @@ export default function PendingOrderMobileCard({ sale, isExpanded, lockInfo, isE
         </div>
         <div>
           <div className="text-xs text-muted mb-1">Deuda Pendiente</div>
-          <div className="font-bold text-danger">{formatUSD(remainingUsd)}</div>
+          <div className="font-bold text-danger">{formatUSD(effectiveRemainingUsd)}</div>
           <div className="text-xs amount-bss">≈ {formatBsS(remainingBsS)}</div>
         </div>
       </div>

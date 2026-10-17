@@ -235,4 +235,44 @@ public class EffectiveUsdTotalTests
         // Precarga inmediata del panel de detalle: 12 / 10 = 1.20 (no el canonico 1.15).
         Assert.Equal(1.2m, vm.DetailTotalUSD);
     }
+
+    // ---------------------------------------------------------------------
+    // Cuentas abiertas — Retiros (PendingPickupDto servidor + cliente)
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void PendingPickupDto_EffectiveTotalUSD_IsInverseOfRoundedBsS()
+    {
+        var pickup = new Sales.Module.DTOs.PendingPickupDto
+        {
+            TotalUSD = 1.15m,
+            TotalBsS = 12m,
+            AppliedRate = 10m
+        };
+
+        Assert.Equal(1.2m, pickup.EffectiveTotalUSD);
+    }
+
+    [Fact]
+    public void PendingPickupDto_EffectiveTotalUSD_FallsBackToCanonicalWithoutRateOrBsS()
+    {
+        var withoutRate = new Sales.Module.DTOs.PendingPickupDto { TotalUSD = 1.15m, TotalBsS = 12m, AppliedRate = 0m };
+        var withoutBsS = new Sales.Module.DTOs.PendingPickupDto { TotalUSD = 1.15m, TotalBsS = 0m, AppliedRate = 10m };
+
+        Assert.Equal(1.15m, withoutRate.EffectiveTotalUSD);
+        Assert.Equal(1.15m, withoutBsS.EffectiveTotalUSD);
+    }
+
+    [Fact]
+    public void PendingPickupClientDto_EffectiveTotalUSD_IsInverseOfRoundedBsS()
+    {
+        var pickup = new PendingPickupClientDto
+        {
+            TotalUSD = 1.15m,
+            TotalBsS = 12m,
+            AppliedRate = 10m
+        };
+
+        Assert.Equal(1.2m, pickup.EffectiveTotalUSD);
+    }
 }

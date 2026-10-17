@@ -223,7 +223,7 @@
                                                FontWeight="Bold" FontSize="16" HorizontalAlignment="Right"
                                                TextAlignment="Right"
                                                Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
-                                    <TextBlock Text="{Binding TotalUSD, StringFormat='${0:N2} USD'}"
+                                    <TextBlock Text="{Binding EffectiveTotalUSD, StringFormat='${0:N2} USD'}"
                                                FontSize="12" Foreground="#64748B" HorizontalAlignment="Right"
                                                TextAlignment="Right"
                                                Typography.NumeralAlignment="Tabular" Margin="0,3,0,0"/>

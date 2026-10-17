@@ -327,3 +327,19 @@ export function formatProductDisplayPrice(product, isWholesale = false, currency
 
   return currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS);
 }
+
+/**
+ * Sincronización USD efectivo (ANEXO XV): el $ mostrado en historial/cuentas abiertas es el
+ * inverso del Bs.S EFECTIVO (monto realmente transado), no la suma canónica de precios base.
+ * Prefiere el valor derivado del servidor y cae al cálculo local / canónico si viniera incompleto.
+ * @param {object} entity venta/retiro con totalBsS, appliedRate, totalUSD y/o effectiveTotalUSD
+ * @returns {number} monto USD efectivo (2 decimales)
+ */
+export function effectiveTotalUsd(entity) {
+  if (!entity) return 0;
+  if (entity.effectiveTotalUSD > 0) return entity.effectiveTotalUSD;
+  if (entity.totalBsS > 0 && entity.appliedRate > 0) {
+    return Math.round((entity.totalBsS / entity.appliedRate) * 100) / 100;
+  }
+  return entity.totalUSD || 0;
+}

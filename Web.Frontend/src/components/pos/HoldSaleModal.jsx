@@ -457,10 +457,10 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
             <span>Total del Pedido:</span>
             <div className="text-right">
               <div className="font-bold text-nowrap color-primary hold-total-lg">
-                {formatBsS(saleTotalUSD * exchangeRate)}
+                {formatBsS(saleTotalBsS > 0 ? saleTotalBsS : saleTotalUSD * exchangeRate)}
               </div>
               <div className="text-xs text-muted font-medium">
-                Ref: {formatUSD(saleTotalUSD)}
+                Ref: {formatUSD(saleTotalBsS > 0 && exchangeRate > 0 ? Math.round((saleTotalBsS / exchangeRate) * 100) / 100 : saleTotalUSD)}
               </div>
             </div>
           </div>
@@ -484,7 +484,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                 {formatBsS(remainingBsS)}
               </div>
               <div className="text-xs text-muted font-medium">
-                Ref: {formatUSD(remainingUsd)}
+                Ref: {formatUSD(exchangeRate > 0 ? Math.round((remainingBsS / exchangeRate) * 100) / 100 : remainingUsd)}
               </div>
             </div>
           </div>

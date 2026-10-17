@@ -143,6 +143,13 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
   }, 0) * 100) / 100;
   const newRemainingBalanceUSD = Math.max(0, newTotalUSD - totalPaidUSD);
 
+  // ANEXO XV: paridad del monto redondeado en cuentas abiertas — el restante Bs.S es la deuda
+  // efectiva (nuevo total por linea ya redondeado menos abonos Bs.S) y su $ es el inverso.
+  const totalPaidBsS = (sale?.payments || []).reduce((acc, p) => acc + (Number(p.amountBsS) > 0 ? Number(p.amountBsS) : (Number(p.amount) || 0) * (Number(p.exchangeRate) || rateToUse)), 0);
+  const newRemainingBalanceBsS = Math.max(0, newTotalBsS - totalPaidBsS);
+  const newTotalEffectiveUsd = rateToUse > 0 && newTotalBsS > 0 ? Math.round((newTotalBsS / rateToUse) * 100) / 100 : newTotalUSD;
+  const newRemainingEffectiveUsd = rateToUse > 0 ? Math.round((newRemainingBalanceBsS / rateToUse) * 100) / 100 : newRemainingBalanceUSD;
+
   // Validaciones
   const isBelowPaidAmount = newTotalUSD < (totalPaidUSD - 0.01);
   const canSave = items.length > 0 && !isBelowPaidAmount;
@@ -295,7 +302,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       >
         <div className="flex-between mb-1">
           <span className="text-muted">Nuevo Total:</span>
-          <span className="font-bold"><span className="color-primary font-bold es-total-bs">{formatBsS(newTotalBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newTotalUSD)})</span></span>
+                <span className="font-bold"><span className="color-primary font-bold es-total-bs">{formatBsS(newTotalBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newTotalEffectiveUsd)})</span></span>
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Total Ya Abonado:</span>
@@ -303,7 +310,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Nuevo Saldo Restante:</span>
-          <span className="font-bold text-danger"><span className="es-total-bs">{formatBsS(newRemainingBalanceUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newRemainingBalanceUSD)})</span></span>
+                  <span className="font-bold text-danger"><span className="es-total-bs">{formatBsS(newRemainingBalanceBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newRemainingEffectiveUsd)})</span></span>
         </div>
       </div>
 
