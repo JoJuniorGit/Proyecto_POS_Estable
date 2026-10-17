@@ -116,6 +116,50 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="CartStepButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="MinWidth" Value="24"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="#F1F5F9"/>
+            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#E2E8F0"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#CBD5E1"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#94A3B8"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderThickness" Value="2"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#CBD5E1"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <UserControl.InputBindings>
@@ -397,7 +441,7 @@
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
                             
-                            <DataGridTemplateColumn Header="Cant." Width="*" MinWidth="64">
+                            <DataGridTemplateColumn Header="Cant." Width="*" MinWidth="104">
                                 <DataGridTemplateColumn.HeaderTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis"/>
@@ -410,15 +454,55 @@
                                 </DataGridTemplateColumn.HeaderStyle>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding QuantityDisplay}" 
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   FontWeight="Bold"
-                                                   Typography.NumeralAlignment="Tabular"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   ToolTip="{Binding QuantityDisplay}"
-                                                   AutomationProperties.Name="{Binding QuantityDisplay, StringFormat='{}Cantidad {0}'}"
-                                                   AutomationProperties.HelpText="Cantidad completa del producto."/>
+                                        <!-- Piso de cantidad (paridad carrito web): en el minimo de un paso la resta
+                                             se deshabilita; quitar del carrito es solo el 🗑 o la tecla Supr. -->
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Margin="0,2">
+                                            <Button Command="{Binding Data.Cart.DecreaseQuantityCommand, Source={StaticResource Proxy}}"
+                                                    CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding CanDecrease}"
+                                                    ToolTipService.ShowOnDisabled="True"
+                                                    AutomationProperties.AutomationId="Pos_DecreaseCartItemQuantityButton"
+                                                    AutomationProperties.Name="{Binding DisplayProductName, StringFormat='{}Disminuir cantidad de {0}'}"
+                                                    AutomationProperties.HelpText="Resta un paso de cantidad. En el mínimo use el icono de eliminar o la tecla Supr.">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource CartStepButtonStyle}">
+                                                        <Setter Property="ToolTip" Value="Disminuir cantidad"/>
+                                                        <Style.Triggers>
+                                                            <Trigger Property="IsEnabled" Value="False">
+                                                                <Setter Property="ToolTip" Value="Cantidad mínima (use el icono de eliminar o Supr para quitar del carrito)"/>
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                                <materialDesign:PackIcon Kind="Minus"
+                                                                         Width="12" Height="12"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Button>
+                                            <TextBlock Text="{Binding QuantityDisplay}" 
+                                                       Margin="8,0"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       FontWeight="Bold"
+                                                       Typography.NumeralAlignment="Tabular"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding QuantityDisplay}"
+                                                       AutomationProperties.Name="{Binding QuantityDisplay, StringFormat='{}Cantidad {0}'}"
+                                                       AutomationProperties.HelpText="Cantidad completa del producto."/>
+                                            <Button Style="{StaticResource CartStepButtonStyle}"
+                                                    Command="{Binding Data.Cart.IncreaseQuantityCommand, Source={StaticResource Proxy}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="Aumentar cantidad"
+                                                    AutomationProperties.AutomationId="Pos_IncreaseCartItemQuantityButton"
+                                                    AutomationProperties.Name="{Binding DisplayProductName, StringFormat='{}Aumentar cantidad de {0}'}"
+                                                    AutomationProperties.HelpText="Suma un paso de cantidad.">
+                                                <materialDesign:PackIcon Kind="Plus"
+                                                                         Width="12" Height="12"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Button>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                                 <DataGridTemplateColumn.CellEditingTemplate>

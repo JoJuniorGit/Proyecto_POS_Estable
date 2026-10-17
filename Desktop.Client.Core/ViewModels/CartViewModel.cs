@@ -424,11 +424,10 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         try
         {
             decimal newQty = Math.Round(vm.Model.Quantity - vm.StepAmount, 3, MidpointRounding.AwayFromZero);
-            if (newQty <= 0m)
-            {
-                await RemoveItem(vm);
-                return;
-            }
+
+            // Piso de cantidad (paridad con el carrito web): una resta que cae por debajo de un
+            // paso se ignora y NUNCA elimina. El borrado queda solo en el 🗑 o la tecla Supr.
+            if (newQty < vm.StepAmount) return;
 
             int selectedId = vm.Id;
             CurrentSale = await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, vm.Id, newQty, _exchangeRateService.CurrentRate);
@@ -497,16 +496,9 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         if (CurrentSale == null) return;
         try
         {
-            if (newQty <= 0m)
-            {
-                var itemToRemove = CartItems.FirstOrDefault(i => i.Id == itemId);
-                if (itemToRemove != null)
-                {
-                    // Core directo: evita el flush recursivo del comando (ya estamos dentro de un commit).
-                    await RemoveItemCoreAsync(itemToRemove);
-                }
-                return;
-            }
+            // Edicion manual protegida (paridad con el input web): un valor confirmado <= 0
+            // revierte a 1 — nunca elimina la linea (el borrado es exclusivo del 🗑/Supr).
+            if (newQty <= 0m) newQty = 1m;
 
             var updated = await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, itemId, newQty, _exchangeRateService.CurrentRate);
 
@@ -528,12 +520,15 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         if (CurrentSale == null) return;
         try
         {
-            var dirtyItems = CartItems.Where(i => i.IsQuantityDirty && i.Model.Quantity > 0m).ToList();
+            var dirtyItems = CartItems.Where(i => i.IsQuantityDirty).ToList();
             if (dirtyItems.Count == 0) return;
 
             foreach (var item in dirtyItems)
             {
-                await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, item.Model.Quantity, _exchangeRateService.CurrentRate);
+                // Edicion manual protegida: un borrador confirmado <= 0 revierte a 1 (nunca 0 al
+                // servidor y nunca eliminacion implicita por la cantidad).
+                decimal qty = item.Model.Quantity <= 0m ? 1m : item.Model.Quantity;
+                await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, qty, _exchangeRateService.CurrentRate);
             }
             var reloaded = await _salesService.GetSaleAsync(CurrentSale.Id);
             CurrentSale = reloaded;

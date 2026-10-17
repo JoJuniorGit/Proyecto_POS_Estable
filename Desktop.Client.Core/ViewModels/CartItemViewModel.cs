@@ -71,6 +71,7 @@ public partial class CartItemViewModel : ObservableObject
         OnPropertyChanged(nameof(Subtotal));
         OnPropertyChanged(nameof(UnitPriceBsS));
         OnPropertyChanged(nameof(SubtotalBsS));
+        OnPropertyChanged(nameof(CanDecrease));
     }
 
     public SaleItemDto Model => _saleItem;
@@ -103,6 +104,13 @@ public partial class CartItemViewModel : ObservableObject
     public string QuantityDisplay => _saleItem.Quantity % 1m == 0m
         ? $"{_saleItem.Quantity:0.###}"
         : $"{_saleItem.Quantity:0.000}";
+
+    /// <summary>
+    /// Paridad con el carrito web: la resta se bloquea cuando la linea esta en el piso de un
+    /// paso (1 en Und, 0.100 en Kg/Lt, 100 en Grs/Ml, etc.). Eliminar es decision explicita
+    /// del operador (🗑 de la fila o tecla Supr), nunca consecuencia de restar.
+    /// </summary>
+    public bool CanDecrease => _saleItem.Quantity > StepAmount;
 
     public decimal StepAmount => _saleItem.UnitOfMeasure switch
     {
@@ -147,10 +155,11 @@ public partial class CartItemViewModel : ObservableObject
     public void DecrementQuantity()
     {
         decimal newQty = Math.Round(_saleItem.Quantity - StepAmount, 3, MidpointRounding.AwayFromZero);
-        if (newQty <= 0m)
-        {
-            newQty = 0.001m;
-        }
+
+        // Piso de cantidad: por debajo de un paso la resta se ignora (antes forzaba 0.001,
+        // que no es un piso valido del catalogo).
+        if (newQty < StepAmount) return;
+
         QuantityText = newQty % 1m == 0m ? $"{newQty:0.###}" : newQty.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
     }
 

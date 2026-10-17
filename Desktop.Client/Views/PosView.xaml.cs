@@ -165,17 +165,23 @@ public partial class PosView : UserControl
 
     private void DataGrid_CellEditEnding(object sender, DataGridCellEditEndingEventArgs e)
     {
+        // Esc cancela la edicion: no debe confirmar ningun valor.
+        if (e.EditAction == DataGridEditAction.Cancel) return;
+
         if (e.Row.DataContext is ViewModels.CartItemViewModel itemVm && DataContext is ViewModels.PosViewModel posVm)
         {
             if (e.EditingElement is TextBox tb)
             {
-                string text = tb.Text;
-                if (decimal.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal q) ||
-                    decimal.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out q))
+                // Edicion manual protegida: texto invalido/vacio confirma 0 y el carrito lo
+                // revierte a 1 (piso de cantidad) — la edicion nunca elimina la linea.
+                decimal q = 0m;
+                if (!decimal.TryParse(tb.Text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out q))
                 {
-                    decimal rounded = System.Math.Round(q, 3, System.MidpointRounding.AwayFromZero);
-                    _ = posVm.Cart.CommitItemQuantityAsync(itemVm.Id, rounded);
+                    _ = decimal.TryParse(tb.Text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out q);
                 }
+
+                decimal rounded = System.Math.Round(q, 3, System.MidpointRounding.AwayFromZero);
+                _ = posVm.Cart.CommitItemQuantityAsync(itemVm.Id, rounded);
             }
         }
     }
