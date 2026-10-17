@@ -110,6 +110,38 @@ public class CartCommitResilienceTests
     }
 
     [Fact]
+    public async Task RemoveItem_WithPendingQuantityEditInAnotherRow_CommitsEditBeforeRemoval()
+    {
+        // Reproducción del bug de sincronización UI/Modelo: con una edición de cantidad
+        // pendiente (sin Enter) en la fila 1, cualquier mutación del carrito (🗑 de la fila 2)
+        // debe commitear esa edición ANTES de reconstruir la colección desde el servidor.
+        var mockSales = new Mock<ISalesService>();
+        var mockDialog = new Mock<IDialogService>();
+        var cart = CreateCart(mockSales, mockDialog, PendingSale((1, 1m), (2, 1m)));
+
+        cart.CartItems[0].QuantityText = "10";
+
+        var committedSale = PendingSale((1, 10m), (2, 1m));
+        var afterRemoval = PendingSale((1, 10m));
+        var callOrder = new System.Collections.Generic.List<string>();
+
+        mockSales.Setup(s => s.UpdateItemQuantityAsync(101, 1, 10m, Rate))
+                 .Callback(() => callOrder.Add("commit-item-1"))
+                 .ReturnsAsync(committedSale);
+        mockSales.Setup(s => s.GetSaleAsync(101))
+                 .Callback(() => callOrder.Add("reload"))
+                 .ReturnsAsync(committedSale);
+        mockSales.Setup(s => s.RemoveItemAsync(101, 2, Rate))
+                 .Callback(() => callOrder.Add("remove-item-2"))
+                 .ReturnsAsync(afterRemoval);
+
+        await cart.RemoveItemCommand.ExecuteAsync(cart.CartItems[1]);
+
+        Assert.Equal(new[] { "commit-item-1", "reload", "remove-item-2" }, callOrder);
+        Assert.Equal(10m, cart.CurrentSale!.Items.Single(i => i.Id == 1).Quantity);
+    }
+
+    [Fact]
     public async Task CommitItemQuantityAsync_ResyncFailure_ShowsStaleWarningAndLogsBothFailures()
     {
         string commitMarker = $"commit-crash-{Guid.NewGuid():N}";

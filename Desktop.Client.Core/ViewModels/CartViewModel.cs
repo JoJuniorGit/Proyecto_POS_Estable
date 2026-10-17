@@ -392,6 +392,12 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
     private async Task IncreaseQuantity(CartItemViewModel? vm)
     {
         if (CurrentSale == null || vm == null) return;
+
+        // ANEXO XIV: commitea las ediciones de cantidad pendientes de CUALQUIER fila antes de
+        // mutar el carrito — la respuesta del servidor reconstruye la colección y sin esto se
+        // perderían los valores tipeados sin Enter (bug de sincronización UI/Modelo del POS).
+        await FlushAllQuantitiesAsync();
+
         try
         {
             int selectedId = vm.Id;
@@ -410,6 +416,11 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
     private async Task DecreaseQuantity(CartItemViewModel? vm)
     {
         if (CurrentSale == null || vm == null) return;
+
+        // ANEXO XIV: idem IncreaseQuantity — ningún refresco de colección debe pisar ediciones
+        // pendientes de otras filas.
+        await FlushAllQuantitiesAsync();
+
         try
         {
             decimal newQty = Math.Round(vm.Model.Quantity - vm.StepAmount, 3, MidpointRounding.AwayFromZero);
@@ -434,9 +445,19 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
     private async Task RemoveItem(CartItemViewModel? vm)
     {
         if (CurrentSale == null || vm == null) return;
+
+        // ANEXO XIV: el 🗑 (botón de acción dentro de la grilla) fuerza el commit de cualquier
+        // edición de cantidad activa ANTES de su lógica — mismo invariante del resto de comandos.
+        await FlushAllQuantitiesAsync();
+
+        await RemoveItemCoreAsync(vm);
+    }
+
+    private async Task RemoveItemCoreAsync(CartItemViewModel vm)
+    {
         try
         {
-            CurrentSale = await _salesService.RemoveItemAsync(CurrentSale.Id, vm.Id, _exchangeRateService.CurrentRate);
+            CurrentSale = await _salesService.RemoveItemAsync(CurrentSale!.Id, vm.Id, _exchangeRateService.CurrentRate);
         }
         catch (System.Exception ex)
         {
@@ -481,7 +502,8 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
                 var itemToRemove = CartItems.FirstOrDefault(i => i.Id == itemId);
                 if (itemToRemove != null)
                 {
-                    await RemoveItem(itemToRemove);
+                    // Core directo: evita el flush recursivo del comando (ya estamos dentro de un commit).
+                    await RemoveItemCoreAsync(itemToRemove);
                 }
                 return;
             }

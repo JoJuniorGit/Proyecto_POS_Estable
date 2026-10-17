@@ -104,6 +104,11 @@ public partial class PosViewModel
 
         if (value != null && value.Id > 0 && Cart.CurrentSale != null)
         {
+            // ANEXO XIV: antes de agregar una línea, commitear las ediciones de cantidad
+            // pendientes (tipeadas sin Enter) para que la reconstrucción del carrito no las
+            // descarte — bug de sincronización UI/Modelo reportado por el mantenedor.
+            await Cart.FlushAllQuantitiesAsync();
+
             if (value.IsGroupHeader)
             {
                 var variant = await (_dialogService?.ShowVariantSelectionDialogAsync(value) ?? Task.FromResult<ProductDto?>(null));
