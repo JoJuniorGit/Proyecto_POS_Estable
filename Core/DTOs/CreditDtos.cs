@@ -61,3 +61,68 @@ public class CreditEligibilityResultDto
     public decimal CurrentDebtUSD { get; set; }
     public decimal AvailableCreditUSD { get; set; }
 }
+
+/// <summary>
+/// T3a (F2b, Paso 11/12, S3/S6): estado de cuenta dual del cliente. Reúne el perfil crediticio,
+/// la cartera completa (abiertas y cerradas) con el equivalente Bs.S del saldo a la tasa del día
+/// y el historial de abonos con el diferencial cambiario realizado. La deuda permanece en USD:
+/// el Bs.S es siempre una proyección a la tasa vigente y nunca revalúa el principal.
+/// </summary>
+public class CreditStatementDto
+{
+    public CreditProfileDto Profile { get; set; } = new();
+
+    /// <summary>Tasa efectiva del día (BCV vigente); 0 cuando no hay tasa registrada.</summary>
+    public decimal TodayRate { get; set; }
+
+    /// <summary>Equivalente en Bs.S del saldo deudor vigente a <see cref="TodayRate"/> (2dp).</summary>
+    public decimal CurrentDebtTodayBsS { get; set; }
+
+    public System.Collections.Generic.List<CreditStatementReceivableDto> Receivables { get; set; } = new();
+    public System.Collections.Generic.List<CreditStatementPaymentDto> Payments { get; set; } = new();
+}
+
+/// <summary>Obligación CxC del estado de cuenta: snapshot de emisión + saldo vigente proyectado al día.</summary>
+public class CreditStatementReceivableDto
+{
+    public int ReceivableId { get; set; }
+    public int SaleId { get; set; }
+    public int? InvoiceNumber { get; set; }
+
+    public decimal OriginalUSD { get; set; }
+    public decimal BalanceUSD { get; set; }
+
+    /// <summary>Contravalor financiado a la emisión (snapshot inmutable).</summary>
+    public decimal OriginalBsS { get; set; }
+
+    /// <summary>Tasa BCV de emisión congelada.</summary>
+    public decimal HistoricalRate { get; set; }
+
+    /// <summary>Equivalente Bs.S del saldo vigente a la tasa del día (proyección, no revaluación).</summary>
+    public decimal BalanceTodayBsS { get; set; }
+
+    public System.DateTime IssuedAtUtc { get; set; }
+    public System.DateTime DueDateUtc { get; set; }
+
+    /// <summary>Nombre del estado (Vigente / Parcial / Vencida / Pagada / Anulada).</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>true cuando la obligación está abierta y superó el vencimiento más los días de gracia (mora).</summary>
+    public bool IsOverdue { get; set; }
+}
+
+/// <summary>Abono del historial del estado de cuenta: totales, tasa congelada y FX realizado.</summary>
+public class CreditStatementPaymentDto
+{
+    public int PaymentId { get; set; }
+    public decimal AmountUSD { get; set; }
+    public decimal AmountBsS { get; set; }
+    public decimal PaymentRate { get; set; }
+    public decimal FxDifferenceBsS { get; set; }
+    public System.DateTime ReceivedAtUtc { get; set; }
+    public int? PaymentMethodId { get; set; }
+    public string? PaymentMethodName { get; set; }
+    public string? ReferenceNumber { get; set; }
+    public int? ReceivedByUserId { get; set; }
+    public int? CashTransactionId { get; set; }
+}

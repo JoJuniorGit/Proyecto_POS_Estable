@@ -31,6 +31,15 @@ public interface ISalesService
     Task<int> CompleteCreditSaleAsync(int saleId, CreditSaleRequest request, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// T3a (F2b, S3/S6): registra un abono CxC contra la cartera del cliente (FIFO por
+    /// vencimiento/emisión/Id o factura explícita en el orden informado). La tasa es server-side
+    /// (fuente BCV cacheada) y queda congelada en el abono; el FX se realiza por asignación con
+    /// signo. Solo lo cobrado entra a caja (método efectivo) con origen CreditPayment. La clave
+    /// de idempotencia replica el cobro existente sin nuevos movimientos.
+    /// </summary>
+    Task<CreditPaymentResultDto> RegisterCreditPaymentAsync(CreditPaymentRequest request, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 8.152 (SEC-08): resuelve la tasa efectiva del checkout-preview con el MISMO anclaje del
     /// completar venta: desvío ≤ tolerancia configurada (<c>RateDeviationTolerancePct</c>) → tasa
     /// cliente redondeada al techo; desvío mayor a la tolerancia → tasa BCV del día; desvío

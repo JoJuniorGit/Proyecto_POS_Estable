@@ -24,4 +24,11 @@ public interface ICreditService
     /// un cliente inexistente bloquea (no lanza). Sin bypass de sobregiro (T3 autoriza).
     /// </summary>
     Task<CreditEligibilityResultDto> EvaluateEligibilityAsync(int customerId, decimal amountUSD, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T3a (F2b, S3/S6): estado de cuenta dual del cliente (perfil + cartera abierta/cerrada con
+    /// equivalente Bs.S del saldo a la tasa del día + historial de abonos con FX realizado).
+    /// Cliente inexistente → KeyNotFoundException (404).
+    /// </summary>
+    Task<CreditStatementDto> GetCreditStatementAsync(int customerId, System.Threading.CancellationToken cancellationToken = default);
 }

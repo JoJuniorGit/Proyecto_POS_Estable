@@ -82,4 +82,71 @@ public partial class SalesController
             return this.ApiNotFound(ex.Message);
         }
     }
+
+    /// <summary>
+    /// T3a (F2b, S3/S6): registra un abono CxC del cliente. La tasa la resuelve el servidor desde
+    /// la fuente BCV cacheada (el contrato no expone tasa) y el abono se imputa FIFO de cartera o
+    /// a las facturas explícitas informadas. El usuario autenticado prevalece como receptor del
+    /// cobro; solo el monto cobrado en efectivo ingresa a la gaveta.
+    /// </summary>
+    [RequireSecurityStampValidation]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [HttpPost("credit-payments")]
+    [ProducesResponseType(typeof(CreditPaymentResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CreditPaymentResultDto>> RegisterCreditPaymentAsync(
+        [FromBody] CreditPaymentRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request == null)
+        {
+            return this.ApiBadRequest("La solicitud del abono es requerida.");
+        }
+
+        // El usuario autenticado prevalece como receptor del cobro (la firma del historial no es
+        // delegable por el cuerpo de la petición; mismo contrato del cierre de venta a crédito).
+        int? actingUserId = GetActorUserId();
+        request.ReceivedByUserId = actingUserId ?? request.ReceivedByUserId;
+
+        try
+        {
+            var result = await _salesService.RegisterCreditPaymentAsync(
+                request,
+                actingUserId,
+                HttpContext?.RequestAborted ?? default);
+
+            return Ok(result);
+        }
+        catch (System.Collections.Generic.KeyNotFoundException ex)
+        {
+            return this.ApiNotFound(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// T3a (F2b, S3/S6): estado de cuenta dual del cliente — perfil crediticio, cartera completa
+    /// con saldo USD y su equivalente Bs.S a la tasa del día, y el historial de abonos con el
+    /// diferencial cambiario realizado. Cliente inexistente → 404.
+    /// </summary>
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [HttpGet("customers/{id}/credit-statement")]
+    [ProducesResponseType(typeof(CreditStatementDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CreditStatementDto>> GetCreditStatementAsync(
+        int id,
+        [FromServices] ICreditService creditService,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var statement = await creditService.GetCreditStatementAsync(id, cancellationToken);
+            return Ok(statement);
+        }
+        catch (System.Collections.Generic.KeyNotFoundException ex)
+        {
+            return this.ApiNotFound(ex.Message);
+        }
+    }
 }

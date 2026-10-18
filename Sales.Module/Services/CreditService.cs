@@ -1,6 +1,7 @@
 using Core.DTOs;
 using Core.Entities;
 using Core.Helpers;
+using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Sales.Module.Entities;
@@ -34,9 +35,15 @@ public class CreditService : ICreditService
 
     private readonly SalesDbContext _context;
 
-    public CreditService(SalesDbContext context)
+    // T3a (F2b, S6): tasa efectiva del día para proyectar el saldo en Bs.S del estado de cuenta.
+    // Opcional para preservar la construcción directa histórica de tests; sin ella la tasa del
+    // día se reporta 0 y las proyecciones Bs.S quedan en cero.
+    private readonly ITodayExchangeRateProvider? _rateProvider;
+
+    public CreditService(SalesDbContext context, ITodayExchangeRateProvider? rateProvider = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
+        _rateProvider = rateProvider;
     }
 
     /// <inheritdoc />
@@ -134,6 +141,77 @@ public class CreditService : ICreditService
         return result;
     }
 
+    /// <inheritdoc />
+    public async Task<CreditStatementDto> GetCreditStatementAsync(int customerId, CancellationToken cancellationToken = default)
+    {
+        var profile = await GetCreditProfileAsync(customerId, cancellationToken);
+        decimal todayRate = _rateProvider != null
+            ? await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken)
+            : 0m;
+        var venezuelaToday = TimeZoneHelper.GetVenezuelaDate();
+
+        // Cartera completa (abierta y cerrada) en orden de vencimiento: el Bs.S del saldo es una
+        // proyección a la tasa del día, nunca una revaluación del principal emitido.
+        var receivableEntities = await _context.Receivables
+            .AsNoTracking()
+            .Include(receivable => receivable.Sale)
+            .Where(receivable => receivable.CustomerId == customerId)
+            .OrderBy(receivable => receivable.DueDateUtc)
+            .ThenBy(receivable => receivable.IssuedAtUtc)
+            .ThenBy(receivable => receivable.Id)
+            .ToListAsync(cancellationToken);
+
+        var receivables = receivableEntities.Select(receivable => new CreditStatementReceivableDto
+        {
+            ReceivableId = receivable.Id,
+            SaleId = receivable.SaleId,
+            InvoiceNumber = receivable.Sale?.InvoiceNumber,
+            OriginalUSD = receivable.OriginalUSD,
+            BalanceUSD = receivable.BalanceUSD,
+            OriginalBsS = receivable.OriginalBsS,
+            HistoricalRate = receivable.HistoricalRate,
+            BalanceTodayBsS = PricingCalculator.ToBsS(receivable.BalanceUSD, todayRate),
+            IssuedAtUtc = receivable.IssuedAtUtc,
+            DueDateUtc = receivable.DueDateUtc,
+            Status = receivable.Status.ToString(),
+            IsOverdue = receivable.BalanceUSD > BalanceToleranceUsd
+                && OpenStatuses.Contains(receivable.Status)
+                && IsOverdueBeyondGrace(receivable.DueDateUtc, profile.CreditGraceDays, venezuelaToday)
+        }).ToList();
+
+        var paymentEntities = await _context.ReceivablePayments
+            .AsNoTracking()
+            .Include(payment => payment.PaymentMethod)
+            .Where(payment => payment.CustomerId == customerId)
+            .OrderByDescending(payment => payment.ReceivedAtUtc)
+            .ThenByDescending(payment => payment.Id)
+            .ToListAsync(cancellationToken);
+
+        var payments = paymentEntities.Select(payment => new CreditStatementPaymentDto
+        {
+            PaymentId = payment.Id,
+            AmountUSD = payment.AmountUSD,
+            AmountBsS = payment.AmountBsS,
+            PaymentRate = payment.PaymentRate,
+            FxDifferenceBsS = payment.FxDifferenceBsS,
+            ReceivedAtUtc = payment.ReceivedAtUtc,
+            PaymentMethodId = payment.PaymentMethodId,
+            PaymentMethodName = payment.PaymentMethod?.Name,
+            ReferenceNumber = payment.ReferenceNumber,
+            ReceivedByUserId = payment.ReceivedByUserId,
+            CashTransactionId = payment.CashTransactionId
+        }).ToList();
+
+        return new CreditStatementDto
+        {
+            Profile = profile,
+            TodayRate = todayRate,
+            CurrentDebtTodayBsS = PricingCalculator.ToBsS(profile.CurrentDebtUSD, todayRate),
+            Receivables = receivables,
+            Payments = payments
+        };
+    }
+
     /// <summary>
     /// Saldos vivos del cliente (AsNoTracking, proyectados): estados abiertos con saldo por
     /// encima de la tolerancia de polvo decimal.
@@ -156,10 +234,12 @@ public class CreditService : ICreditService
     }
 
     /// <summary>
-    /// Mora dinámica (S1/S2): vencida cuando la fecha de vencimiento de la obligación más los
-    /// días de gracia del cliente queda estrictamente antes del día corriente en Venezuela.
+    /// Mora dinámica (S1/S2/S7): vencida cuando la fecha de vencimiento de la obligación más los
+    /// días de gracia del cliente queda estrictamente antes del día corriente en Venezuela. Es la
+    /// regla compartida por el perfil, la elegibilidad, la transición de estados del abono y el
+    /// estado de cuenta.
     /// </summary>
-    private static bool IsOverdueBeyondGrace(DateTime dueDateUtc, int graceDays, DateOnly venezuelaToday)
+    public static bool IsOverdueBeyondGrace(DateTime dueDateUtc, int graceDays, DateOnly venezuelaToday)
     {
         var dueDate = DateOnly.FromDateTime(dueDateUtc);
         return dueDate.AddDays(graceDays) < venezuelaToday;

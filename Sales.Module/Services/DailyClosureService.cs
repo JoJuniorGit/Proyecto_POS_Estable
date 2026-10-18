@@ -67,6 +67,25 @@ public partial class DailyClosureService : IDailyClosureService
             .Select(g => new { PaymentMethodId = g.Key, TotalBsS = g.Sum(sp => sp.AmountBsS) })
             .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
 
+        // T3a (F2b, S3/S6): los abonos CxC cobrados dentro de la MISMA ventana del cierre computan
+        // en lo esperado del método (el efectivo del abono ya entró a la gaveta como Income con
+        // origen CreditPayment). La semántica de ventas/vueltos queda intacta: aquí solo se suman
+        // abonos y el ajuste de vueltos (Source=SalePayment) no los toca.
+        var creditPaymentTotals = await _context.ReceivablePayments
+            .AsNoTracking()
+            .Where(payment => payment.PaymentMethodId != null
+                && payment.ReceivedAtUtc >= startUtc
+                && payment.ReceivedAtUtc < endUtc)
+            .GroupBy(payment => payment.PaymentMethodId!.Value)
+            .Select(group => new { PaymentMethodId = group.Key, TotalBsS = group.Sum(payment => payment.AmountBsS) })
+            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
+
+        foreach (var creditPaymentTotal in creditPaymentTotals)
+        {
+            salesTotals.TryGetValue(creditPaymentTotal.Key, out decimal saleTotal);
+            salesTotals[creditPaymentTotal.Key] = saleTotal + creditPaymentTotal.Value;
+        }
+
         var changeTotals = await _context.CashTransactions
             .AsNoTracking()
             .Where(ct => ct.Type == CashTransactionType.Expense

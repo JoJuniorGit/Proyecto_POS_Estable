@@ -71,4 +71,60 @@ public class ReceiptsController : ControllerBase
         var document = _renderer.Render(context, MoneyFormat.ParseFormat(currencyFormat));
         return File(document.Bytes!, "application/pdf", document.FileName);
     }
+
+    /// <summary>
+    /// T3a (F2b, S5): comprobante de abono CxC on-demand (PDF): saldo anterior/nuevo por factura,
+    /// monto abonado en USD y Bs.S a la tasa del cobro, saldo pendiente del cliente en USD con
+    /// equivalente Bs.S del día y tasa del abono. El cajero solo descarga sus propios comprobantes
+    /// (ReceivedByUserId del cobro); Admin/Manager tienen bypass.
+    /// </summary>
+    [HttpGet("credit-payments/{paymentId:int}/receipt")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    public async Task<IActionResult> GetCreditPaymentReceiptAsync(
+        int paymentId,
+        [FromServices] Core.Interfaces.ITodayExchangeRateProvider rateProvider,
+        CancellationToken cancellationToken = default)
+    {
+        // Best-effort: sin tasa del día el contexto conserva la tasa del abono para la proyección Bs.S.
+        decimal todayRate = 0m;
+        try
+        {
+            todayRate = await rateProvider.GetEffectiveTodayRateAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"No se pudo leer la tasa efectiva del día al generar el comprobante de abono #{paymentId}: {ex.Message}", nameof(ReceiptsController));
+        }
+
+        var data = await _receiptService.GetCreditPaymentReceiptDataAsync(paymentId, todayRate, cancellationToken);
+        if (data == null)
+        {
+            return this.ApiNotFound("El abono solicitado no existe.");
+        }
+
+        bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
+        if (!isElevated)
+        {
+            if (string.IsNullOrEmpty(_currentUserService.UserId) || !int.TryParse(_currentUserService.UserId, out int uid) || data.ReceivedByUserId != uid)
+            {
+                return this.ApiForbidden("Acceso denegado: no tiene permisos para descargar el comprobante de este abono.");
+            }
+        }
+
+        // Mismo contrato del recibo de venta: el comprobante honra el ajuste de formato de moneda.
+        string? currencyFormat = null;
+        try
+        {
+            currencyFormat = await _settingsService.GetSettingAsync("CurrencyFormat");
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"No se pudo leer CurrencyFormat al generar el comprobante de abono #{paymentId}: {ex.Message}", nameof(ReceiptsController));
+        }
+
+        var context = data.Context;
+        var bytes = CreditPaymentReceiptPdfGenerator.BuildPdf(context, MoneyFormat.ParseFormat(currencyFormat));
+        string fileName = $"Comprobante_Abono_{context.PaymentId}_{context.ReceivedAtUtc:yyyyMMdd_HHmmss}.pdf";
+        return File(bytes, "application/pdf", fileName);
+    }
 }
