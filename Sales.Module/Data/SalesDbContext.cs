@@ -28,6 +28,9 @@ public class SalesDbContext : DbContext
     public DbSet<IdempotentRequest> IdempotentRequests { get; set; } = null!;
     public DbSet<AuthorizationRequest> AuthorizationRequests { get; set; } = null!;
     public DbSet<AuthorizationAudit> AuthorizationAudits { get; set; } = null!;
+    public DbSet<Receivable> Receivables { get; set; } = null!;
+    public DbSet<ReceivablePayment> ReceivablePayments { get; set; } = null!;
+    public DbSet<CreditPaymentAllocation> CreditPaymentAllocations { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -291,6 +294,8 @@ modelBuilder.Entity<User>().HasData(
         // Tokens de concurrencia basados en `xmin` de PostgreSQL (hallazgo 8.2-A1).
         // `xmin` es una pseudo-columna de sistema que toda tabla PostgreSQL expone, por lo
         // que se configura en caliente sin DDL adicional y se omite en SQLite (tests).
+        // Paso 11/12 (F1): Customer (perfil crediticio) y Receivable (saldo CxC) se editan
+        // concurrentemente desde caja/administracion, por lo que entran al mismo regimen.
         if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
         {
             modelBuilder.Entity<Sale>()
@@ -306,6 +311,18 @@ modelBuilder.Entity<User>().HasData(
                 .IsConcurrencyToken();
 
             modelBuilder.Entity<CashDrawerSession>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+
+            modelBuilder.Entity<Customer>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+
+            modelBuilder.Entity<Receivable>()
                 .Property<uint>("xmin")
                 .HasColumnType("xid")
                 .ValueGeneratedOnAddOrUpdate()
@@ -404,6 +421,109 @@ modelBuilder.Entity<User>().HasData(
         {
             entity.HasIndex(audit => audit.RequestId)
                 .HasDatabaseName("IX_AuthorizationAudits_RequestId");
+        });
+
+        // Paso 11 + 12 (F1): dominio CxC bimonetario. La obligacion se denomina en USD 4dp
+        // con snapshot de la tasa de emision; los abonos congelan la tasa del dia. Sin cascade
+        // delete en ninguna relacion: la integridad contable exige bajas explicitas y auditadas.
+        modelBuilder.Entity<Receivable>(entity =>
+        {
+            entity.HasOne(receivable => receivable.Sale)
+                .WithOne()
+                .HasForeignKey<Receivable>(receivable => receivable.SaleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(receivable => receivable.Customer)
+                .WithMany()
+                .HasForeignKey(receivable => receivable.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Una factura a credito genera a lo sumo una obligacion.
+            entity.HasIndex(receivable => receivable.SaleId)
+                .IsUnique()
+                .HasDatabaseName("IX_Receivables_SaleId");
+
+            entity.HasIndex(receivable => new { receivable.CustomerId, receivable.Status })
+                .HasDatabaseName("IX_Receivables_CustomerId_Status");
+
+            entity.HasIndex(receivable => new { receivable.DueDateUtc, receivable.Status })
+                .HasDatabaseName("IX_Receivables_DueDateUtc_Status");
+
+            entity.Property(receivable => receivable.OriginalUSD).HasColumnType("decimal(18,4)");
+            entity.Property(receivable => receivable.BalanceUSD).HasColumnType("decimal(18,4)");
+            entity.Property(receivable => receivable.OriginalBsS).HasColumnType("decimal(18,2)");
+            entity.Property(receivable => receivable.HistoricalRate).HasColumnType("decimal(18,4)");
+        });
+
+        modelBuilder.Entity<ReceivablePayment>(entity =>
+        {
+            entity.HasOne(payment => payment.Customer)
+                .WithMany()
+                .HasForeignKey(payment => payment.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(payment => payment.CashTransaction)
+                .WithMany()
+                .HasForeignKey(payment => payment.CashTransactionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(payment => payment.PaymentMethod)
+                .WithMany()
+                .HasForeignKey(payment => payment.PaymentMethodId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(payment => payment.ReceivedByUser)
+                .WithMany()
+                .HasForeignKey(payment => payment.ReceivedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasMany(payment => payment.Allocations)
+                .WithOne(allocation => allocation.ReceivablePayment)
+                .HasForeignKey(allocation => allocation.ReceivablePaymentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(payment => payment.CashTransactionId)
+                .HasDatabaseName("IX_ReceivablePayments_CashTransactionId");
+
+            entity.HasIndex(payment => new { payment.CustomerId, payment.ReceivedAtUtc })
+                .HasDatabaseName("IX_ReceivablePayments_CustomerId_ReceivedAtUtc");
+
+            // Idempotencia del cobro: unica solo cuando la clave existe (NULL multiple permitido).
+            entity.HasIndex(payment => payment.IdempotencyKey)
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL")
+                .HasDatabaseName("IX_ReceivablePayments_IdempotencyKey");
+
+            entity.HasIndex(payment => payment.PaymentMethodId)
+                .HasDatabaseName("IX_ReceivablePayments_PaymentMethodId");
+
+            entity.HasIndex(payment => payment.ReceivedByUserId)
+                .HasDatabaseName("IX_ReceivablePayments_ReceivedByUserId");
+
+            entity.Property(payment => payment.AmountUSD).HasColumnType("decimal(18,4)");
+            entity.Property(payment => payment.AmountBsS).HasColumnType("decimal(18,2)");
+            entity.Property(payment => payment.PaymentRate).HasColumnType("decimal(18,4)");
+            entity.Property(payment => payment.FxDifferenceBsS).HasColumnType("decimal(18,2)");
+        });
+
+        modelBuilder.Entity<CreditPaymentAllocation>(entity =>
+        {
+            entity.HasOne(allocation => allocation.Receivable)
+                .WithMany(receivable => receivable.PaymentAllocations)
+                .HasForeignKey(allocation => allocation.ReceivableId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(allocation => allocation.ReceivableId)
+                .HasDatabaseName("IX_CreditPaymentAllocations_ReceivableId");
+
+            // Una misma obligacion no puede recibir dos imputaciones del mismo abono.
+            entity.HasIndex(allocation => new { allocation.ReceivablePaymentId, allocation.ReceivableId })
+                .IsUnique()
+                .HasDatabaseName("IX_CreditPaymentAllocations_ReceivablePaymentId_ReceivableId");
+
+            entity.Property(allocation => allocation.AmountUSD).HasColumnType("decimal(18,4)");
+            entity.Property(allocation => allocation.AmountBsS).HasColumnType("decimal(18,2)");
+            entity.Property(allocation => allocation.FxDifferenceBsS).HasColumnType("decimal(18,2)");
         });
     }
 }

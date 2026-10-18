@@ -174,10 +174,23 @@ namespace Sales.Module.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("CreditGraceDays")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("CreditLimitUSD")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("CreditNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("CreditStatus")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsCreditEnabled")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsDefault")
@@ -188,6 +201,9 @@ namespace Sales.Module.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
 
+                    b.Property<int>("PaymentTermDays")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -195,6 +211,12 @@ namespace Sales.Module.Migrations
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -541,6 +563,41 @@ namespace Sales.Module.Migrations
                     b.ToTable("ClosureDetails");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.CreditPaymentAllocation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AmountBsS")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("AmountUSD")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("FxDifferenceBsS")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ReceivableId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ReceivablePaymentId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceivableId")
+                        .HasDatabaseName("IX_CreditPaymentAllocations_ReceivableId");
+
+                    b.HasIndex("ReceivablePaymentId", "ReceivableId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CreditPaymentAllocations_ReceivablePaymentId_ReceivableId");
+
+                    b.ToTable("CreditPaymentAllocations");
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.DailyClosure", b =>
                 {
                     b.Property<int>("Id")
@@ -641,6 +698,127 @@ namespace Sales.Module.Migrations
                             Name = "Card",
                             RequiresReference = true
                         });
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.Receivable", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("BalanceUSD")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("DueDateUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("HistoricalRate")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("IssuedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("OriginalBsS")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("OriginalUSD")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("SaleId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SaleId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Receivables_SaleId");
+
+                    b.HasIndex("CustomerId", "Status")
+                        .HasDatabaseName("IX_Receivables_CustomerId_Status");
+
+                    b.HasIndex("DueDateUtc", "Status")
+                        .HasDatabaseName("IX_Receivables_DueDateUtc_Status");
+
+                    b.ToTable("Receivables");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.ReceivablePayment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AmountBsS")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("AmountUSD")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("CashTransactionId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("FxDifferenceBsS")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("PaymentMethodId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("PaymentRate")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("ReceivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ReceivedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReferenceNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CashTransactionId")
+                        .HasDatabaseName("IX_ReceivablePayments_CashTransactionId");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ReceivablePayments_IdempotencyKey")
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
+                    b.HasIndex("PaymentMethodId")
+                        .HasDatabaseName("IX_ReceivablePayments_PaymentMethodId");
+
+                    b.HasIndex("ReceivedByUserId")
+                        .HasDatabaseName("IX_ReceivablePayments_ReceivedByUserId");
+
+                    b.HasIndex("CustomerId", "ReceivedAtUtc")
+                        .HasDatabaseName("IX_ReceivablePayments_CustomerId_ReceivedAtUtc");
+
+                    b.ToTable("ReceivablePayments");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.Sale", b =>
@@ -961,6 +1139,80 @@ namespace Sales.Module.Migrations
                     b.Navigation("PaymentMethod");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.CreditPaymentAllocation", b =>
+                {
+                    b.HasOne("Sales.Module.Entities.Receivable", "Receivable")
+                        .WithMany("PaymentAllocations")
+                        .HasForeignKey("ReceivableId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Sales.Module.Entities.ReceivablePayment", "ReceivablePayment")
+                        .WithMany("Allocations")
+                        .HasForeignKey("ReceivablePaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Receivable");
+
+                    b.Navigation("ReceivablePayment");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.Receivable", b =>
+                {
+                    b.HasOne("Core.Entities.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Sales.Module.Entities.Sale", "Sale")
+                        .WithOne()
+                        .HasForeignKey("Sales.Module.Entities.Receivable", "SaleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("PaymentAllocations");
+
+                    b.Navigation("Sale");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.ReceivablePayment", b =>
+                {
+                    b.HasOne("Sales.Module.Entities.CashTransaction", "CashTransaction")
+                        .WithMany()
+                        .HasForeignKey("CashTransactionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Core.Entities.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Sales.Module.Entities.PaymentMethod", "PaymentMethod")
+                        .WithMany()
+                        .HasForeignKey("PaymentMethodId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Core.Entities.User", "ReceivedByUser")
+                        .WithMany()
+                        .HasForeignKey("ReceivedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Allocations");
+
+                    b.Navigation("CashTransaction");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("PaymentMethod");
+
+                    b.Navigation("ReceivedByUser");
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.Sale", b =>
                 {
                     b.HasOne("Core.Entities.User", "Cashier")
@@ -1042,9 +1294,38 @@ namespace Sales.Module.Migrations
                     b.Navigation("Transactions");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.CreditPaymentAllocation", b =>
+                {
+                    b.Navigation("Receivable");
+
+                    b.Navigation("ReceivablePayment");
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.DailyClosure", b =>
                 {
                     b.Navigation("Details");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.Receivable", b =>
+                {
+                    b.Navigation("Customer");
+
+                    b.Navigation("PaymentAllocations");
+
+                    b.Navigation("Sale");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.ReceivablePayment", b =>
+                {
+                    b.Navigation("Allocations");
+
+                    b.Navigation("CashTransaction");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("PaymentMethod");
+
+                    b.Navigation("ReceivedByUser");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.Sale", b =>

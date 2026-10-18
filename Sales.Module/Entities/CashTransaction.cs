@@ -21,7 +21,12 @@ public enum CashTransactionSource
 
     // Nuevos valores para auditar el origen exacto de cash-in / cash-out.
     CashIn = 5,
-    CashOut = 6
+    CashOut = 6,
+
+    // Paso 11/12 (S5): abonos CxC y devoluciones de credito; se anexan al final
+    // para no renumerar los valores ya persistidos.
+    CreditPayment = 7,
+    CreditRefund = 8
 }
 
 public class CashTransaction

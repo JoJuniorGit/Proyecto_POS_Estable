@@ -3,7 +3,10 @@ namespace Core.Entities;
 public enum AuthorizationActionType
 {
     ManualPriceOverride = 1,
-    SaleCancellation = 2
+    SaleCancellation = 2,
+
+    // Paso 11/12 (S4): excepcion de sobregiro de cupo en venta a credito.
+    CreditOverLimit = 3
 }
 
 public enum AuthorizationStatus

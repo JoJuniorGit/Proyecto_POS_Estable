@@ -6,6 +6,8 @@ export const CashTransactionSource = Object.freeze({
   Closing: 4,
   CashIn: 5,
   CashOut: 6,
+  CreditPayment: 7,
+  CreditRefund: 8,
 });
 
 export const SOURCE_DEFINITIONS = Object.freeze([
@@ -16,6 +18,8 @@ export const SOURCE_DEFINITIONS = Object.freeze([
   Object.freeze({ id: CashTransactionSource.Closing, key: 'closing', label: 'Cierre Caja' }),
   Object.freeze({ id: CashTransactionSource.CashIn, key: 'cashin', label: 'Ingreso de Caja' }),
   Object.freeze({ id: CashTransactionSource.CashOut, key: 'cashout', label: 'Retiro de Caja' }),
+  Object.freeze({ id: CashTransactionSource.CreditPayment, key: 'creditpayment', label: 'Abono Crédito' }),
+  Object.freeze({ id: CashTransactionSource.CreditRefund, key: 'creditrefund', label: 'Devolución Crédito' }),
 ]);
 
 const SOURCE_NAME_ALIASES = Object.freeze({ Sale: 'SalePayment' });

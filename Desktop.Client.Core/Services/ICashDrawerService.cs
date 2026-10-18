@@ -13,7 +13,11 @@ public enum CashTransactionSource
     ManualAdjustment = 3,
     Closing = 4,
     CashIn = 5,
-    CashOut = 6
+    CashOut = 6,
+
+    // Paso 11/12 (S5): abonos CxC y devoluciones de credito — mismos ids que el servidor.
+    CreditPayment = 7,
+    CreditRefund = 8
 }
 
 public class CashAdvanceResultClientDto
@@ -80,6 +84,8 @@ public class CashTransactionDto
         CashTransactionSource.Closing => "Cierre Caja",
         CashTransactionSource.CashIn => "Ingreso de Caja",
         CashTransactionSource.CashOut => "Retiro de Caja",
+        CashTransactionSource.CreditPayment => "Abono Crédito",
+        CashTransactionSource.CreditRefund => "Devolución Crédito",
         _ => Source.ToString()
     };
 
