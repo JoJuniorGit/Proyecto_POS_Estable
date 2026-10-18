@@ -8,6 +8,7 @@ using Sales.Module.Data;
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
+using Sales.Module.Receipts;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -405,6 +406,43 @@ public class PettyCashService : IPettyCashService
                     .FirstOrDefault(),
                 isReplay: false))
             .ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<PettyCashVoucherData?> GetVoucherDataAsync(int expenseId, CancellationToken cancellationToken = default)
+    {
+        var expense = await _context.PettyCashExpenses
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(candidate => candidate.Session)
+            .FirstOrDefaultAsync(candidate => candidate.Id == expenseId, cancellationToken);
+
+        if (expense is null)
+        {
+            return null;
+        }
+
+        // Los nombres no se snapshotean en el gasto (solo las FKs de auditoria): el vale los
+        // resuelve al imprimir, con "N/A" cuando no hubo autorizador y "N/D" si la fila falta.
+        var userIds = new[] { expense.CreatedByUserId, expense.AuthorizedByUserId, expense.CancelledByUserId }
+            .Where(userId => userId.HasValue)
+            .Select(userId => userId!.Value)
+            .Distinct()
+            .ToList();
+
+        var userNames = await _context.Users
+            .AsNoTracking()
+            .Where(user => userIds.Contains(user.Id))
+            .Select(user => new { user.Id, user.Name })
+            .ToDictionaryAsync(user => user.Id, user => user.Name, cancellationToken);
+
+        var context = PettyCashVoucherContext.CreateFrom(
+            expense,
+            userNames.GetValueOrDefault(expense.CreatedByUserId),
+            expense.AuthorizedByUserId.HasValue ? userNames.GetValueOrDefault(expense.AuthorizedByUserId.Value) : null,
+            expense.CancelledByUserId.HasValue ? userNames.GetValueOrDefault(expense.CancelledByUserId.Value) : null);
+
+        return new PettyCashVoucherData(context, expense.CreatedByUserId);
     }
 
     /// <summary>

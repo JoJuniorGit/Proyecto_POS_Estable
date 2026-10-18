@@ -1,10 +1,18 @@
 using Core.Entities;
 using Sales.Module.DTOs;
+using Sales.Module.Receipts;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Sales.Module.Interfaces;
+
+/// <summary>
+/// T3 (Paso 13 / 8.188, S7): datos del vale de caja chica para el PDF on-demand, junto con el
+/// creador del gasto para el ownership del endpoint (el cajero solo descarga sus propios vales;
+/// Admin/Manager tienen bypass).
+/// </summary>
+public sealed record PettyCashVoucherData(PettyCashVoucherContext Context, int CreatedByUserId);
 
 /// <summary>
 /// T2a (Paso 13 / 8.188, S1/S3/S5): registro, anulación y consulta de los egresos de caja chica
@@ -45,5 +53,14 @@ public interface IPettyCashService
     /// <summary>Gastos del turno (activos y anulados) en orden de registro, con su movimiento vinculado.</summary>
     Task<IReadOnlyList<PettyCashExpenseResultDto>> GetSessionExpensesAsync(
         int sessionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// S7: carga el gasto con su sesión y resuelve los nombres de los usuarios (cajero,
+    /// autorizador y anulador) para armar el vale VCC-000001. Gasto inexistente → null (el
+    /// controlador responde 404). No hay cola de impresión: el PDF se genera on-demand.
+    /// </summary>
+    Task<PettyCashVoucherData?> GetVoucherDataAsync(
+        int expenseId,
         CancellationToken cancellationToken = default);
 }

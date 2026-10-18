@@ -2,12 +2,14 @@ using Backend.API.Attributes;
 using Backend.API.Services;
 using Core.DTOs;
 using Core.Entities;
+using Core.Helpers;
 using Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
+using Sales.Module.Receipts;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -33,15 +35,19 @@ public class PettyCashController : ControllerBase
     // Opcional para preservar la construccion directa historica de tests; si falta, el gate de
     // autorizacion falla cerrado con el 403 del contrato.
     private readonly IAuthorizationCoordinator? _authorizationCoordinator;
+    // Opcional (mismo patron): el ajuste CurrencyFormat matiza el formato monetario del vale.
+    private readonly ISystemSettingsService? _settingsService;
 
     public PettyCashController(
         IPettyCashService pettyCashService,
         ICurrentUserService currentUserService,
-        IAuthorizationCoordinator? authorizationCoordinator = null)
+        IAuthorizationCoordinator? authorizationCoordinator = null,
+        ISystemSettingsService? settingsService = null)
     {
         _pettyCashService = pettyCashService;
         _currentUserService = currentUserService;
         _authorizationCoordinator = authorizationCoordinator;
+        _settingsService = settingsService;
     }
 
     /// <summary>
@@ -161,6 +167,55 @@ public class PettyCashController : ControllerBase
         }
 
         return Ok(await _pettyCashService.GetSessionExpensesAsync(sessionId, cancellationToken));
+    }
+
+    /// <summary>
+    /// S7: vale de caja chica on-demand (PDF) con correlativo VCC-000001, fecha/hora de
+    /// Venezuela, turno, categoria, concepto, montos duales a la tasa congelada,
+    /// cajero/autorizador, sello de anulacion y lineas de firma. El cajero solo descarga sus
+    /// propios vales (creador del gasto, mismo contrato del recibo de venta); Admin/Manager
+    /// tienen bypass. Gasto inexistente -> 404. Sin cola de impresion.
+    /// </summary>
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [HttpGet("{id:int}/receipt")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetVoucherReceiptAsync(int id, CancellationToken cancellationToken = default)
+    {
+        var data = await _pettyCashService.GetVoucherDataAsync(id, cancellationToken);
+        if (data is null)
+        {
+            return this.ApiNotFound($"El gasto de caja chica #{id} no existe.");
+        }
+
+        bool isElevated = User.IsInRole("Admin") || User.IsInRole("Manager");
+        if (!isElevated)
+        {
+            int? actingUserId = GetActorUserId();
+            if (actingUserId is null || data.CreatedByUserId != actingUserId.Value)
+            {
+                return this.ApiForbidden("Acceso denegado: no tiene permisos para descargar el vale de caja chica de otro usuario.");
+            }
+        }
+
+        // Mismo contrato de los comprobantes de credito: el vale honra el ajuste de formato de
+        // moneda; best-effort (si falla la lectura, Venezuelan).
+        string? currencyFormat = null;
+        try
+        {
+            if (_settingsService is not null)
+            {
+                currencyFormat = await _settingsService.GetSettingAsync("CurrencyFormat");
+            }
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"No se pudo leer CurrencyFormat al generar el vale de caja chica #{id}: {ex.Message}", nameof(PettyCashController));
+        }
+
+        byte[] bytes = PettyCashVoucherPdfGenerator.BuildPdf(data.Context, MoneyFormat.ParseFormat(currencyFormat));
+        return File(bytes, "application/pdf", $"{data.Context.VoucherCode}.pdf");
     }
 
     /// <summary>
