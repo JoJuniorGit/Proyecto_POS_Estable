@@ -16070,3 +16070,81 @@ C1. Sigue sin ejercitarse el carril Postgres real (H4 del T6): advisory lock `(4
 C2. El `BackgroundService` no tiene test unitario (se testea el servicio, mismo patron de jobs
     existentes). `CreditMora:IntervalHours <= 0` cae al default 6 h (no se desactiva por config).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XX) - GASTOS OPERATIVOS DE CAJA CHICA BIMONETARIA (8.188 / PASO 13) - 2026-10-18
+================================================================================
+Pedido del mantenedor (Paso 13): registro agil y tipificado de egresos de caja chica en el POS
+(Bs.S o USD) con valoracion bimonetaria automatica (tasa BCV snapshot), categoria/concepto/
+beneficiario/comprobante, validacion de liquidez por moneda, autorizacion jerarquica, anulacion
+compensatoria auditada, impacto segregado en arqueo/cierre Z con renglon OPEX y vale de caja chica.
+Auditoria previa confirmo que la gaveta era mono-moneda y que el cierre usaba heuristica de "primer
+efectivo"; se aprobaron 8 decisiones + 3 salvaguardas (atribucion exacta por moneda, jerarquia sin
+deadlock de Admin unico, snapshots exactos en la anulacion).
+
+A. IMPLEMENTACION
+A1. F1 Dominio/Persistencia: PettyCashExpense (AmountBsS 18,2; AmountUsd 18,4; HistoricalRate 18,4;
+    categoria/moneda/estado enum append-only; concepto/beneficiario/referencia; auditoria de
+    anulacion; VoucherNumber unico con secuencia petty_cash_voucher_seq); CashDrawerSession gana
+    OpeningBalanceUsd NOT NULL DEFAULT 0 y ClosingBalanceUsd 18,4 DEFAULT 0; CashTransaction gana
+    PettyCashExpenseId (FK Restrict + indice); enums CashTransactionSource 9/10,
+    AuthorizationActionType.PettyCashExpense=4, ReceiptDocumentKind.PettyCashVoucher; migracion
+    idempotente + snapshot; espejos cross-layer WPF/web.
+A2. T2a Servicios: valoracion dual con tasa server-side snapshot (Bs.S nominal->USD 4dp; USD->Bs.S
+    2dp); liquidez por moneda con buckets canonicos (PaymentMethod.Currency, nulo->Bs.S) y sin
+    heuristica de primer efectivo; CashTransaction Expense atomico bajo advisory lock de sesion;
+    IdempotencyKey (migracion + indice unico filtrado) con replay; correlativo nextval/max+1;
+    autorizacion jerarquica (Cashier siempre; Manager <= umbral directo, > umbral Admin; Admin
+    directo) con umbral PettyCash:AuthorizationThresholdUsd InvariantCulture fallback 50.00;
+    contexto canonico PettyCashExpense + 403/token single-use; anulacion compensatoria (sesion
+    abierta, motivo, Status Cancelled auditado y reversa Income PettyCashReversal copiando
+    EXACTAMENTE AmountBsS/AmountUsd/HistoricalRate; neto 0; sin borrado fisico).
+A3. T2b Cierre Z: resta de gastos Active al metodo cash de la moneda exacta (sin fallback);
+    cancelados/reversas no netean; bloque OPEX informativo (ActiveCount/TotalBsS/TotalUsd/ByCategory)
+    sin doble resta; CloseSessionAsync persiste ClosingBalanceUsd opcional.
+A4. T3 Comprobante: vale PDF on-demand VCC-000001 (correlativo, fecha/hora Venezuela, turno,
+    categoria, concepto/beneficiario/referencia, nominal + duales + tasa, cajero, autorizador, sello
+    ANULADO con motivo/fecha/usuario y firmas "Entregado por"/"Recibido conforme por"); endpoint
+    GET /api/cashdrawer/petty-cash/{id}/receipt con ownership.
+A5. T4 UI WPF: cliente HTTP con 403 tipado; contexto auth PettyCash en hub/wait VM; boton y panel en
+    CashDrawerView (listado virtualizado, saldos fisicos Bs.S/USD, registrar/anular/vale); modal
+    bimonetario con equivalencia en vivo y reintento por token; cierre con "Efectivo USD contado"
+    (ClosingBalanceUsd); GET physical-balances Admin/Manager.
+A6. T5 UI Web: pettyCashApi (registro con token/idempotencia, anulacion, listado, saldos, vale PDF,
+    cierre de sesion con USD opcional); RegisterPage con Caja Chica (Admin/Manager/Cashier) y Cerrar
+    Caja (Admin/Manager); panel del turno (montos duales, estado, autorizador, resumen solo Active);
+    modales de registro/anulacion/cierre; 403 informativo sin reintento ciego.
+
+B. EVIDENCIA
+B1. RED->GREEN por tramo (detalle en odd/tasks/paso-13-caja-chica.md): F1 18/18; T2a 56/56;
+    T2b 11/11; T3 15/15; T4 44/44; T5 41/41 nuevos.
+B2. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+B3. Suite completa: CommandCenter.Tests 3399/3399; Wpf.E2ETests 50/50; 0 errores.
+B4. Web: npm test 585/585 (128 suites); lint limpio; build OK (bundle determinista e identico al
+    commiteado).
+B5. Verificacion independiente T6 (read-only, rango 56c1f73..HEAD): PASS WITH FINDINGS (0
+    bloqueantes); S1,S2,S3,S5,S6,S7 MET; S4 PARTIAL por H1.
+
+C. HALLAZGOS T6
+C1. H1 (Medium): la rama "Manager > umbral requiere Admin" (y la anulacion de Manager) es
+    inalcanzable end-to-end porque AuthorizationService.CreateAsync devuelve ElevationNotRequired
+    para roles elevados: el Manager no puede emitir la solicitud, el wait degrada a Failed y solo un
+    Admin puede registrar/anular por si mismo (falla cerrado; se pierde la autoria del Manager).
+    Follow-up: excepcion explicita en el gate de creacion para acciones que requieren aprobacion de
+    rango superior + regla action-specific en ResolveAsync.
+C2. H2 (Low): el Down de 20261018165357 dropea PettyCashExpenses antes de soltar la FK
+    CashTransactions.PettyCashExpenseId (fallaria en Postgres real; el test solo valida texto).
+C3. H3 (Low): la anulacion no vincula al supervisor aprobador al gasto (solo CancelledByUserId); el
+    vale ANULADO muestra al anulador, no al autorizador.
+C4. H4 (Low, carril Postgres): el movimiento escribe AmountUsd 4dp en columna preexistente
+    numeric(18,2) (CashTransactions) -> pierde el 4to decimal en gaveta USD (sub-centimo, falla
+    cerrado; SQLite no lo expone).
+
+D. NOTA
+D1. Residuales aceptados: carril Postgres real no ejercitado (locks, nextval, migracion); el cierre
+    DIARIO no soporta conteo USD (el campo quedo en el cierre de sesion); la web no emite token de
+    autorizacion de caja chica (Admin directo; el resto ve mensaje); label crudo "PettyCashExpense"
+    en la cola de supervision; OPEX de cierre ancla en la ventana del cierre previo (borde primera
+    sesion); rollover abre con OpeningBalanceUsd=0; acentos del PDF escapados; auto-autorizacion de
+    Admin/Manager figura con su propio nombre; sin E2E WPF especifico de caja chica.
+================================================================================
