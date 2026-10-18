@@ -15869,3 +15869,84 @@ D1. El piso es de un paso por linea (paridad web): 1 en Und/Oz, 0.100 en Kg/Lt, 
 D2. El borrado consciente no cambio: papelera de la fila y tecla Supr siguen eliminando sin
     friccion adicional.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XVII) - PARIDAD DE REDONDEO EN LA VERSION WEB: CATALOGO/BUSCADOR/CARRITO/PERSISTENCIA + AUDITORIA DE HISTORIAL Y CUENTAS ABIERTAS - 2026-10-17
+================================================================================
+Pedido del mantenedor: la version web debe mostrar el mismo precio efectivo Bs.S que el POS local
+(catalogo y buscador, Detal/Mayor), el Gran Total $ del carrito/checkout debe ser el inverso del
+Total Bs.S efectivo (cero desfase), reutilizando el motor Core (DRY, sin matematica de politica en
+JS) y garantizando persistencia coherente para Z/Paso 14. Adicional: auditar si el desfase por
+redondeo estaba presente en el historial de ventas y cuentas abiertas web.
+
+A. DIAGNOSTICO
+A1. Backend: motor unico y RoundingResult readonly record struct ya existian (8.185); ningun
+    endpoint web proyectaba el efectivo: el catalogo paginado exponia solo reglas crudas y
+    quick-info/sugerencias la regla resuelta, sin precio efectivo. La web calculaba canonico local
+    (resolveBsSPrice/usdToBs) e ignoraba la politica.
+A2. Carrito web: totalUSD canonico (CartContext) y SaleDto.EffectiveTotalUSD sin uso; el preview
+    de checkout no exponia USD efectivo. /api/settings/pricing-policies es Admin/Manager: el
+    Cashier no puede leer la politica (se evito cambiar auth).
+A3. Persistencia: Sale.TotalBsS efectivo + AppliedRate ya son snapshot persistido; EffectiveTotalUSD
+    es derivado [NotMapped] 4dp (ANEXO XII A2/A3: columna fisica diferida). Z suma
+    SalePayments.AmountBsS efectivo.
+A4. Auditoria T7 (read-only) de historial/cuentas abiertas web: Historial, pedidos, retiros,
+    HoldSaleModal y overrideSale del checkout verificados OK (server-first / inversa anclada). Dos
+    hallazgos REALES: (i) EditSaleModal mostraba "Total Ya Abonado" como USD canonico x tasa viva
+    (sintetico; p.ej. 1.200 Bs.S mostrados vs 1.000 pagados tras cambio de tasa) rompiendo la
+    conciliacion de filas; (ii) UpdateSaleItemsAsync recreaba SaleItems SIN RoundingRuleCashBs: al
+    guardar una cuenta abierta la recalculacion degradaba la linea a techo canonico y el total
+    cambiaba (preview != persistido).
+
+B. IMPLEMENTACION
+B1. Proyeccion server-side (T1): ProductDto/ProductQuickInfoDto ganan EffectivePriceBsS (Detal) y
+    EffectiveWholesalePriceBsS (Mayor; 0 si no aplica), via
+    PricingRoundingPolicyService.ProjectEffectiveBsS (kernel 4-args + fallback ToBsSCeiling, espejo
+    de EffectivePriceVesHelper), regla resuelta + toggle + tasa cacheada (bcv_rate_today), UNA
+    lectura por request; cableado en catalogo paginado, sugerencias, quick-check y variantes/parents;
+    masking de Cashier copia los campos (costo/margen intactos). Sin cambio de auth.
+B2. Web catalogo/buscador (T2): CatalogPage (desktop+movil), SuggestionList, BarcodeScannerModal y
+    VariantSelectorModal consumen los campos efectivos (fallback canonico solo si falta/<=0);
+    refetch por cambio de tasa (SignalR): catalogo via reloadToken y SearchBar re-ejecuta la busqueda
+    activa con AbortController (transicion 0->tasa y repeticiones ignoradas).
+B3. USD efectivo backend (T3): helper unico PricingCalculator.EffectiveUsdFromBsS(totalBsS, rate,
+    canonicalUsd) (4dp AwayFromZero, fallback canonico); Sale.EffectiveTotalUSD delega byte-identico;
+    CheckoutPreviewResponse.EffectiveTotalUSD usa la MISMA tasa anclada SEC-08 que deriva TotalBsS
+    (garantia EffectiveTotalUSD == round(TotalBsS/rate,4)); gates/restante/vuelto intactos.
+B4. Web carrito/checkout (T4): CartContext expone effectiveTotalUSD server-first (SaleDto -> inversa
+    4dp -> canonico); SummaryPanel muestra el Gran Total $ efectivo; CheckoutModal resuelve el
+    "Ref: $" del total (preview fresco -> SaleDto -> inversa local). En cuentas abiertas (override)
+    se conserva la inversa del SALDO exhibido (el efectivo del DTO es de la venta completa).
+    totalUSD canonico y payloads intactos.
+B5. Persistencia (T5, test-only): integracion del flujo web (start -> add -> preview -> complete)
+    sobre servicios reales: Step10 1.30 USD x2 @842.21 => TotalBsS 2200.00, AppliedRate 842.21,
+    EffectiveTotalUSD 2.6122 (4dp), pago/caja 2200.00, Z 2200.00 exacto; preview==persistido; sin
+    migracion.
+B6. Cierre T7: (a) SearchBar unifica el refetch por tasa en UN solo efecto (H3 del verifier);
+    (b) EditSaleModal ancla la matematica de la cuenta a sale.AppliedRate (paridad WPF/SalesService)
+    y muestra el Bs.S REAL abonado (totalPaidBsS): restaura newTotalBsS == totalPaidBsS + restante;
+    (c) UpdateSaleItemsAsync resuelve y persiste RoundingRuleCashBs y deriva UnitPriceBsS con
+    ApplyCashRoundingPolicy (misma semantica AddItemAsync/recalc; custom/ExactMath byte-identicos).
+
+C. EVIDENCIA
+C1. RED->GREEN por tramo: T1 RED 11/12 -> 12/12; T3 RED CS0117/CS1061 -> 13/13; T5 (test-only,
+    comportamiento preexistente) 4/4; T7a 19/19 focalizados (nuevo SearchBar.singleFetch 9);
+    T7b RED export faltante -> 9/9; T7c RED 5/5 -> 5/5.
+C2. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+C3. Suite completa secuencial: CommandCenter.Tests 3080/3080; Wpf.E2ETests 50/50; 0 errores.
+C4. Web: npm test 485/485 (100 suites); npm run lint sin hallazgos; npm run build OK (bundle
+    Backend.API/wwwroot regenerado, convencion ANEXO XII B4).
+C5. Verificacion independiente T6 (read-only): PASS, 0 bloqueantes; S1-S6 MET; hallazgos no
+    bloqueantes H1-H4 (cache quick-info, inversas inline preexistentes, doble fetch SearchBar
+    [resuelto en T7a], HasWholesale real inerte). Auditoria de historial/cuentas abiertas: sin
+    desfase en historial/pedidos/retiros/Hold/override; desfase y perdida de regla corregidos (B6b/c).
+
+D. NOTA
+D1. Sin migracion ni columna fisica: el monto real transado queda persistido como TotalBsS efectivo
+    + AppliedRate; EffectiveTotalUSD derivado 4dp (decision ANEXO XII A2/A3). Z no cambia (suma
+    AmountBsS efectivo); Paso 14 consumira SaleDto.EffectiveTotalUSD.
+D2. Residuales aceptados: cache de quick-info 15s/5min puede servir la tasa previa hasta expirar (el
+    catalogo paginado no cachea); inversas inline preexistentes en SaleHistoryDto/PendingPickupDto
+    (misma semantica, fuera de alcance); harness de integracion InMemory+mocks (sin SQL/HTTP);
+    H4 HasWholesale real en quick-info sin consumidores.
+================================================================================
