@@ -14,11 +14,20 @@ namespace Sales.Module.Services;
 /// 8.150 (T2, design D2): maquina de estados de autorizaciones remotas. Toda transicion
 /// terminal (Approved/Rejected/Expired) se reclama con un UPDATE condicional sobre
 /// Status = Pending y agrega exactamente una fila AuthorizationAudit en la misma transaccion;
-/// la primera respuesta gana y el consumo del token es single-use.
+/// la primera respuesta gana y el consumo del token es single-use. 8.188-H1 agrega la jerarquia
+/// del egreso de caja chica: un Manager puede emitir la solicitud (aprobador derivado Admin) y
+/// solo un Admin resuelve las solicitudes creadas por un Manager.
 /// </summary>
 public class AuthorizationService : IAuthorizationService
 {
     private const int MaxContextJsonBytes = 4096;
+
+    // 8.188-H1 (Paso 13, S4): negacion de autoridad al resolver el egreso de caja chica. El
+    // contrato de ResolveAuthorizationOutcome solo expone desenlaces terminales y NotFound: la
+    // negacion se reporta con el unico desenlace no terminal y con la solicitud SIN reclamar
+    // (falla cerrado), de modo que un Admin todavia pueda aprobarla.
+    private const string PettyCashAdminApproverRequiredMessage =
+        "Esta solicitud de caja chica fue creada por un Supervisor: solo un Administrador puede autorizarla.";
 
     // W1: el indice unico parcial de dedupe y las dos formas de nombrarlo que exponen los
     // proveedores (Npgsql: constraint/indice; SQLite: columnas, nunca el nombre del indice).
@@ -54,11 +63,21 @@ public class AuthorizationService : IAuthorizationService
 
     public static bool IsElevatedRole(UserRole role) => role is UserRole.Admin or UserRole.Manager;
 
+    /// <summary>
+    /// 8.188-H1 (Paso 13, S4): excepcion explicita por accion al cortocircuito historico de
+    /// elevacion. La solicitud de caja chica creada por un Manager (sobre el umbral) debe poder
+    /// emitirse: su aprobador derivado es un Admin y sin la solicitud la espera degrada a Failed.
+    /// Admin conserva la auto-autorizacion (no requiere solicitud) y las acciones historicas
+    /// (ManualPriceOverride/CreditOverLimit) mantienen la semantica intacta para todo rol elevado.
+    /// </summary>
+    private static bool AllowsElevatedRequester(UserRole role, AuthorizationActionType actionType)
+        => role == UserRole.Manager && actionType == AuthorizationActionType.PettyCashExpense;
+
     public async Task<CreateAuthorizationResult> CreateAsync(CreateAuthorizationRequestDto request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (IsElevatedRole(request.RequesterRole))
+        if (IsElevatedRole(request.RequesterRole) && !AllowsElevatedRequester(request.RequesterRole, request.ActionType))
         {
             return new CreateAuthorizationResult(CreateAuthorizationOutcome.ElevationNotRequired, Message: AuthorizationMessages.ElevationNotRequired);
         }
@@ -240,6 +259,17 @@ public class AuthorizationService : IAuthorizationService
                 return;
             }
 
+            // 8.188-H1: jerarquia del egreso de caja chica (regla action-specific).
+            if (request.ActionType == AuthorizationActionType.PettyCashExpense
+                && !await CanResolvePettyCashRequestAsync(request, await FindUserRoleAsync(resolverUserId, cancellationToken), cancellationToken))
+            {
+                result = new ResolveAuthorizationResult(
+                    ResolveAuthorizationOutcome.AlreadyResolved,
+                    ToDto(request, now),
+                    PettyCashAdminApproverRequiredMessage);
+                return;
+            }
+
             var targetStatus = approved ? AuthorizationStatus.Approved : AuthorizationStatus.Rejected;
             var claimed = await ClaimResolutionAsync(request.Id, targetStatus, AuthorizationResolutionMode.Remote, resolverUserId, resolverName, reason, now, cancellationToken);
 
@@ -380,6 +410,15 @@ public class AuthorizationService : IAuthorizationService
             if (!IsElevatedRole(user.Role))
             {
                 result = new LocalResolveResult(LocalResolveOutcome.InvalidCredentials, ToDto(request, now), Message: AuthorizationMessages.InvalidCredentials);
+                return;
+            }
+
+            // 8.188-H1: misma jerarquia action-specific que la resolucion remota. Las credenciales
+            // eran validas, por lo que no se registra intento fallido ni se reclama la solicitud.
+            if (request.ActionType == AuthorizationActionType.PettyCashExpense
+                && !await CanResolvePettyCashRequestAsync(request, user.Role, cancellationToken))
+            {
+                result = new LocalResolveResult(LocalResolveOutcome.InvalidCredentials, ToDto(request, now), Message: PettyCashAdminApproverRequiredMessage);
                 return;
             }
 
@@ -727,6 +766,47 @@ public class AuthorizationService : IAuthorizationService
     private static bool NamesPendingDedupe(string? message)
         => message?.Contains(PendingDedupeIndexName, StringComparison.Ordinal) == true
             || message?.Contains(SqlitePendingDedupeViolation, StringComparison.Ordinal) == true;
+
+    /// <summary>
+    /// 8.188-H1 (Paso 13, S4): regla action-specific de resolucion del egreso de caja chica,
+    /// derivada del rol PERSISTIDO porque la solicitud no snapshotea el rol del solicitante (sin
+    /// migracion). Admin resuelve cualquiera; Manager solo solicitudes creadas por un cajero (una
+    /// creada por un Manager exige Admin); cualquier otro rol, o un solicitante desconocido, falla
+    /// cerrado.
+    /// </summary>
+    private async Task<bool> CanResolvePettyCashRequestAsync(
+        AuthorizationRequest request,
+        UserRole? resolverRole,
+        CancellationToken cancellationToken)
+    {
+        if (resolverRole == UserRole.Admin)
+        {
+            return true;
+        }
+
+        if (resolverRole != UserRole.Manager)
+        {
+            return false;
+        }
+
+        var requesterRole = await FindUserRoleAsync(request.RequestedByUserId, cancellationToken);
+        return requesterRole == UserRole.Cashier;
+    }
+
+    /// <summary>
+    /// Rol persistido del usuario (fuente de verdad para la jerarquia de caja chica): la fila
+    /// ausente devuelve null y la regla falla cerrado.
+    /// </summary>
+    private async Task<UserRole?> FindUserRoleAsync(int userId, CancellationToken cancellationToken)
+    {
+        var user = await _db.Users
+            .AsNoTracking()
+            .Where(candidate => candidate.Id == userId)
+            .Select(candidate => new { candidate.Role })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return user?.Role;
+    }
 
     private async Task<User?> FindUserAsync(string searchInput, CancellationToken cancellationToken)
     {

@@ -31,12 +31,21 @@ namespace CommandCenter.Tests.Unit;
 /// puro (umbral por InvariantCulture con fallback 50.00, matriz Cashier/Manager/Admin), el
 /// contexto canonico (sesion, moneda, montos bimonetarios, categoria), las ramas create/consume
 /// del coordinador con binding exacto del token y el contrato 403 + reintento con token del
-/// controlador.
+/// controlador. El cierre H1 agrega el flujo Manager > umbral: el Manager emite la solicitud,
+/// solo un Admin la resuelve (remoto o local) y el consumo registra AuthorizedByUserId del Admin.
 /// </summary>
 public class PettyCashAuthorizationTests
 {
     private const decimal Rate = 36.55m;
     private const string TestKey = "POS_Test_Super_Secret_Key_At_Least_32_Chars_Long!";
+
+    // 8.188-H1: identidades persistidas de la jerarquia Manager > umbral -> Admin.
+    private const int AdminUserId = 2;
+    private const int ManagerUserId = 3;
+    private const string AdminUsername = "usuario2";
+    private const string AdminPassword = "clave-admin";
+    private const string ManagerUsername = "usuario3";
+    private const string ManagerPassword = "clave-manager";
 
     private static PettyCashExpenseAuthorizationContext Operation(
         int sessionId = 55,
@@ -109,9 +118,12 @@ public class PettyCashAuthorizationTests
             Drawer = new CashDrawerService(Db);
 
             // Las FK de auditoria del gasto (creador/autorizador/anulador) exigen las filas de
-            // usuario en SQLite: el seed del modelo solo trae al Administrador Id=1.
+            // usuario en SQLite: el seed del modelo solo trae al Administrador Id=1. El Manager
+            // Id=3 y las credenciales habilitan la jerarquia H1 (Manager > umbral -> Admin) y la
+            // resolucion local por credenciales.
             Db.Users.AddRange(
-                new User { Id = 2, Cedula = "V-00000002", Name = "Admin Dos", Username = "usuario2", FullName = "Admin Dos", Role = UserRole.Admin },
+                new User { Id = 2, Cedula = "V-00000002", Name = "Admin Dos", Username = "usuario2", FullName = "Admin Dos", Role = UserRole.Admin, PasswordHash = Core.Security.PasswordHasher.HashPassword(AdminPassword) },
+                new User { Id = 3, Cedula = "V-00000003", Name = "Manager Tres", Username = "usuario3", FullName = "Manager Tres", Role = UserRole.Manager, PasswordHash = Core.Security.PasswordHasher.HashPassword(ManagerPassword) },
                 new User { Id = 70, Cedula = "V-00000070", Name = "Cajero 70", Username = "usuario70", FullName = "Cajero 70", Role = UserRole.Cashier },
                 new User { Id = 71, Cedula = "V-00000071", Name = "Cajero 71", Username = "usuario71", FullName = "Cajero 71", Role = UserRole.Cashier });
             Db.SaveChanges();
@@ -703,5 +715,303 @@ public class PettyCashAuthorizationTests
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var expenses = Assert.IsAssignableFrom<IReadOnlyList<PettyCashExpenseResultDto>>(ok.Value);
         Assert.Single(expenses);
+    }
+
+    // ------------------------------------------------------------------ H1 (8.188): Manager > umbral -> Admin
+
+    [Fact]
+    public async Task CreateAsync_ManagerPettyCashExpense_IsPendingInsteadOfElevationNotRequired()
+    {
+        using var stack = new AuthorizationStack();
+
+        var result = await stack.Coordinator.CreateAsync(PettyCashContract(), ManagerUserId, "Manager Tres", UserRole.Manager);
+
+        // Antes del cierre H1 el Manager cortaba en ElevationNotRequired y la espera degradaba a
+        // Failed: la solicitud debe nacer Pending para que un Admin pueda aprobarla.
+        Assert.Equal(CreateAuthorizationOutcome.Created, result.Outcome);
+        Assert.NotNull(result.Request);
+        Assert.Equal(AuthorizationStatus.Pending, result.Request!.Status);
+
+        var persisted = await stack.Db.AuthorizationRequests.AsNoTracking().SingleAsync();
+        Assert.Equal(AuthorizationStatus.Pending, persisted.Status);
+        Assert.Equal(ManagerUserId, persisted.RequestedByUserId);
+        Assert.Equal(AuthorizationActionType.PettyCashExpense, persisted.ActionType);
+    }
+
+    [Fact]
+    public async Task CreateAsync_AdminPettyCashExpense_StillElevationNotRequired()
+    {
+        using var stack = new AuthorizationStack();
+
+        var result = await stack.AuthService.CreateAsync(new CreateAuthorizationRequestDto
+        {
+            RequestedByUserId = AdminUserId,
+            RequestedByName = "Admin Dos",
+            RequesterRole = UserRole.Admin,
+            ActionType = AuthorizationActionType.PettyCashExpense,
+            SaleId = null,
+            ContextJson = "{}",
+            ContextHash = new string('a', 64)
+        });
+
+        // El Admin se auto-autoriza en el servicio de caja chica: sigue sin requerir solicitud.
+        Assert.Equal(CreateAuthorizationOutcome.ElevationNotRequired, result.Outcome);
+        Assert.Empty(await stack.Db.AuthorizationRequests.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task CreateAsync_DriverPettyCashExpense_IsBlocked()
+    {
+        using var stack = new AuthorizationStack();
+
+        var result = await stack.AuthService.CreateAsync(new CreateAuthorizationRequestDto
+        {
+            RequestedByUserId = 90,
+            RequestedByName = "Conductor 90",
+            RequesterRole = UserRole.Driver,
+            ActionType = AuthorizationActionType.PettyCashExpense,
+            SaleId = null,
+            ContextJson = "{}",
+            ContextHash = new string('a', 64)
+        });
+
+        Assert.Equal(CreateAuthorizationOutcome.DriverBlocked, result.Outcome);
+        Assert.Empty(await stack.Db.AuthorizationRequests.AsNoTracking().ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(AuthorizationActionType.ManualPriceOverride)]
+    [InlineData(AuthorizationActionType.CreditOverLimit)]
+    public async Task CreateAsync_HistoricalActions_KeepElevationNotRequiredForManager(AuthorizationActionType actionType)
+    {
+        using var stack = new AuthorizationStack();
+
+        var result = await stack.AuthService.CreateAsync(new CreateAuthorizationRequestDto
+        {
+            RequestedByUserId = ManagerUserId,
+            RequestedByName = "Manager Tres",
+            RequesterRole = UserRole.Manager,
+            ActionType = actionType,
+            SaleId = 445,
+            ContextJson = """{"productId":10,"quantity":2,"customUnitPriceUsd":9.99}""",
+            ContextHash = new string('a', 64)
+        });
+
+        // La excepcion de la elevacion es SOLO para caja chica: precio manual y sobregiro de
+        // credito conservan la semantica historica de los roles elevados.
+        Assert.Equal(CreateAuthorizationOutcome.ElevationNotRequired, result.Outcome);
+        Assert.Empty(await stack.Db.AuthorizationRequests.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task ResolveAsync_PettyCashRequestedByManager_ManagerIsRefusedAndAdminResolves()
+    {
+        using var stack = new AuthorizationStack();
+        var created = await stack.Coordinator.CreateAsync(PettyCashContract(), ManagerUserId, "Manager Tres", UserRole.Manager);
+        Assert.Equal(CreateAuthorizationOutcome.Created, created.Outcome);
+
+        var refused = await stack.Coordinator.ResolveAsync(created.Request!.Id, ManagerUserId, "Manager Tres", approved: true);
+
+        Assert.NotEqual(ResolveAuthorizationOutcome.Resolved, refused.Outcome);
+        Assert.False(string.IsNullOrWhiteSpace(refused.Message));
+
+        // Falla cerrado: la solicitud sigue Pending y sin resolver, disponible para un Admin.
+        var stillPending = await stack.Db.AuthorizationRequests.AsNoTracking().SingleAsync();
+        Assert.Equal(AuthorizationStatus.Pending, stillPending.Status);
+        Assert.Null(stillPending.ResolvedByUserId);
+        Assert.Empty(stack.Notifier.ResolvedNotifications);
+
+        var approved = await stack.Coordinator.ResolveAsync(created.Request.Id, AdminUserId, "Admin Dos", approved: true);
+
+        Assert.Equal(ResolveAuthorizationOutcome.Resolved, approved.Outcome);
+        Assert.Equal(AuthorizationStatus.Approved, approved.Request!.Status);
+        Assert.Equal(AdminUserId, approved.Request.ResolvedByUserId);
+        Assert.Equal(AdminUserId, stack.Notifier.ResolvedNotifications.Single().Request.ResolvedByUserId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_PettyCashRequestedByCashier_ManagerAndAdminCanResolve()
+    {
+        using var stack = new AuthorizationStack();
+
+        // Cajero -> Manager: comportamiento historico intacto.
+        var byManager = await stack.Coordinator.CreateAsync(PettyCashContract(), 70, "Cajero 70", UserRole.Cashier);
+        var managerResult = await stack.Coordinator.ResolveAsync(byManager.Request!.Id, ManagerUserId, "Manager Tres", approved: true);
+        Assert.Equal(ResolveAuthorizationOutcome.Resolved, managerResult.Outcome);
+        Assert.Equal(ManagerUserId, managerResult.Request!.ResolvedByUserId);
+
+        // Cajero -> Admin: tambien valido.
+        var byAdmin = await stack.Coordinator.CreateAsync(PettyCashContract(sessionId: 56), 71, "Cajero 71", UserRole.Cashier);
+        var adminResult = await stack.Coordinator.ResolveAsync(byAdmin.Request!.Id, AdminUserId, "Admin Dos", approved: true);
+        Assert.Equal(ResolveAuthorizationOutcome.Resolved, adminResult.Outcome);
+        Assert.Equal(AdminUserId, adminResult.Request!.ResolvedByUserId);
+    }
+
+    [Fact]
+    public async Task ResolveLocalAsync_PettyCashRequestedByManager_RequiresAdminCredentials()
+    {
+        using var stack = new AuthorizationStack();
+        var created = await stack.Coordinator.CreateAsync(PettyCashContract(), ManagerUserId, "Manager Tres", UserRole.Manager);
+
+        // El Manager no puede autorizar su propia solicitud ni por credenciales locales: las
+        // credenciales eran validas, por lo que tampoco se registra un intento fallido.
+        var refused = await stack.Coordinator.ResolveLocalAsync(created.Request!.Id, ManagerUsername, ManagerPassword, reason: null);
+
+        Assert.Equal(LocalResolveOutcome.InvalidCredentials, refused.Outcome);
+        Assert.Null(refused.Token);
+        var manager = await stack.Db.Users.AsNoTracking().SingleAsync(user => user.Id == ManagerUserId);
+        Assert.Equal(0, manager.AccessFailedCount);
+        Assert.Equal(AuthorizationStatus.Pending, (await stack.Db.AuthorizationRequests.AsNoTracking().SingleAsync()).Status);
+
+        var approved = await stack.Coordinator.ResolveLocalAsync(created.Request.Id, AdminUsername, AdminPassword, reason: null);
+
+        Assert.Equal(LocalResolveOutcome.Resolved, approved.Outcome);
+        Assert.NotNull(approved.Token);
+        Assert.Equal(AdminUserId, approved.SupervisorUserId);
+    }
+
+    [Fact]
+    public async Task ResolveLocalAsync_CashierRequestedPettyCash_ManagerCredentialsStillResolve()
+    {
+        using var stack = new AuthorizationStack();
+        var created = await stack.Coordinator.CreateAsync(PettyCashContract(), 70, "Cajero 70", UserRole.Cashier);
+
+        var approved = await stack.Coordinator.ResolveLocalAsync(created.Request!.Id, ManagerUsername, ManagerPassword, reason: null);
+
+        Assert.Equal(LocalResolveOutcome.Resolved, approved.Outcome);
+        Assert.NotNull(approved.Token);
+        Assert.Equal(ManagerUserId, approved.SupervisorUserId);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_NonElevatedResolverOnPettyCash_FailsClosedWithoutClaim()
+    {
+        using var stack = new AuthorizationStack();
+        var created = await stack.Coordinator.CreateAsync(PettyCashContract(), 70, "Cajero 70", UserRole.Cashier);
+
+        // La puerta elevada vive en el hub/controlador; el servicio tambien falla cerrado si un
+        // resolutor no elevado llega directo (rol persistido, no el claim del token).
+        var refused = await stack.AuthService.ResolveAsync(created.Request!.Id, 71, "Cajero 71", approved: true);
+
+        Assert.NotEqual(ResolveAuthorizationOutcome.Resolved, refused.Outcome);
+        var stillPending = await stack.Db.AuthorizationRequests.AsNoTracking().SingleAsync();
+        Assert.Equal(AuthorizationStatus.Pending, stillPending.Status);
+        Assert.Null(stillPending.ResolvedByUserId);
+
+        // El Manager si puede resolver la solicitud del cajero.
+        var approved = await stack.Coordinator.ResolveAsync(created.Request.Id, ManagerUserId, "Manager Tres", approved: true);
+        Assert.Equal(ResolveAuthorizationOutcome.Resolved, approved.Outcome);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_PettyCashWithUnknownRequester_RequiresAdmin()
+    {
+        using var stack = new AuthorizationStack();
+
+        // Solicitante sin fila en Users: el rol no puede derivarse, la regla falla cerrado y solo
+        // un Admin resuelve.
+        var created = await stack.AuthService.CreateAsync(new CreateAuthorizationRequestDto
+        {
+            RequestedByUserId = 99,
+            RequestedByName = "Usuario 99",
+            RequesterRole = UserRole.Cashier,
+            ActionType = AuthorizationActionType.PettyCashExpense,
+            SaleId = null,
+            ContextJson = "{}",
+            ContextHash = new string('b', 64)
+        });
+        Assert.Equal(CreateAuthorizationOutcome.Created, created.Outcome);
+
+        var refused = await stack.Coordinator.ResolveAsync(created.Request!.Id, ManagerUserId, "Manager Tres", approved: true);
+        Assert.NotEqual(ResolveAuthorizationOutcome.Resolved, refused.Outcome);
+
+        var approved = await stack.Coordinator.ResolveAsync(created.Request.Id, AdminUserId, "Admin Dos", approved: true);
+        Assert.Equal(ResolveAuthorizationOutcome.Resolved, approved.Outcome);
+    }
+
+    [Fact]
+    public async Task Register_ManagerAboveThreshold_AdminResolvesAndRegistersWithAdminAuthorizer()
+    {
+        using var stack = new AuthorizationStack();
+        await SeedPaymentMethodsAsync(stack.Db);
+        var session = await SeedOpenSessionAsync(stack.Db, openingLocal: 1000m, openingUsd: 100m);
+        var controller = CreateController(stack, userId: ManagerUserId.ToString(CultureInfo.InvariantCulture), role: UserRole.Manager);
+
+        // 1) Manager > umbral (60 USD > 50.00): el registro directo exige autorizacion, con el
+        // contexto exacto de la solicitud.
+        var forbidden = await controller.RegisterAsync(Request(currency: PettyCashCurrency.Usd, amount: 60m), CancellationToken.None);
+        var problem = Assert.IsType<ProblemDetails>(Assert.IsType<ObjectResult>(forbidden.Result).Value);
+        Assert.Equal("PettyCashExpense", problem.Extensions["authorizationAction"]);
+        var context = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(problem.Extensions["authorizationContext"]);
+
+        // 2) El Manager emite la solicitud: antes del cierre H1 cortaba en ElevationNotRequired.
+        var created = await stack.Coordinator.CreateAsync(
+            PettyCashContract(
+                sessionId: session.Id,
+                currency: PettyCashCurrency.Usd,
+                amountBsS: (decimal)context["amountBss"]!,
+                amountUsd: (decimal)context["amountUsd"]!),
+            ManagerUserId,
+            "Manager Tres",
+            UserRole.Manager);
+        Assert.Equal(CreateAuthorizationOutcome.Created, created.Outcome);
+
+        // 3) El Manager no puede aprobar la suya; el Admin si.
+        var refused = await stack.Coordinator.ResolveAsync(created.Request!.Id, ManagerUserId, "Manager Tres", approved: true);
+        Assert.NotEqual(ResolveAuthorizationOutcome.Resolved, refused.Outcome);
+        await stack.Coordinator.ResolveAsync(created.Request.Id, AdminUserId, "Admin Dos", approved: true);
+        var token = stack.Notifier.ResolvedNotifications.Single().Token!;
+
+        // 4) El Manager reintenta con el token: consume, registra y el gasto queda autorizado por
+        // el Admin (AuthorizedByUserId = Admin), no por si mismo.
+        controller.ControllerContext.HttpContext.Request.Headers["X-Authorization-Token"] = token;
+        var response = await controller.RegisterAsync(Request(currency: PettyCashCurrency.Usd, amount: 60m), CancellationToken.None);
+
+        var result = Assert.IsType<PettyCashExpenseResultDto>(Assert.IsType<OkObjectResult>(response.Result).Value);
+        Assert.Equal(AdminUserId, result.AuthorizedByUserId);
+        Assert.Equal(created.Request.Id, result.AuthorizationRequestId);
+        Assert.Equal(ManagerUserId, result.CreatedByUserId);
+        Assert.Equal(1, await stack.Db.PettyCashExpenses.AsNoTracking().CountAsync());
+        Assert.NotNull((await stack.Db.AuthorizationRequests.AsNoTracking().SingleAsync()).ConsumedAt);
+    }
+
+    [Fact]
+    public async Task Cancel_ManagerAbovePolicy_AdminResolvesAndCancelsWithReversal()
+    {
+        using var stack = new AuthorizationStack();
+        await SeedPaymentMethodsAsync(stack.Db);
+        var session = await SeedOpenSessionAsync(stack.Db);
+        var expense = await stack.Service.RegisterAsync(Request(amount: 100m), actingUserId: 1, actingRole: UserRole.Admin);
+        var controller = CreateController(stack, userId: ManagerUserId.ToString(CultureInfo.InvariantCulture), role: UserRole.Manager);
+
+        var forbidden = await controller.CancelAsync(expense.Id, new PettyCashCancelRequest { Reason = "Anulacion solicitada por gerencia" }, CancellationToken.None);
+        var problem = Assert.IsType<ProblemDetails>(Assert.IsType<ObjectResult>(forbidden.Result).Value);
+        Assert.Equal("PettyCashExpense", problem.Extensions["authorizationAction"]);
+        var context = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(problem.Extensions["authorizationContext"]);
+
+        var created = await stack.Coordinator.CreateAsync(
+            PettyCashContract(
+                sessionId: session.Id,
+                amountBsS: (decimal)context["amountBss"]!,
+                amountUsd: (decimal)context["amountUsd"]!),
+            ManagerUserId,
+            "Manager Tres",
+            UserRole.Manager);
+        Assert.Equal(CreateAuthorizationOutcome.Created, created.Outcome);
+
+        var refused = await stack.Coordinator.ResolveAsync(created.Request!.Id, ManagerUserId, "Manager Tres", approved: true);
+        Assert.NotEqual(ResolveAuthorizationOutcome.Resolved, refused.Outcome);
+
+        await stack.Coordinator.ResolveAsync(created.Request.Id, AdminUserId, "Admin Dos", approved: true);
+        var token = stack.Notifier.ResolvedNotifications.Single().Token!;
+        controller.ControllerContext.HttpContext.Request.Headers["X-Authorization-Token"] = token;
+
+        var response = await controller.CancelAsync(expense.Id, new PettyCashCancelRequest { Reason = "Anulado con autorizacion de Admin" }, CancellationToken.None);
+
+        var result = Assert.IsType<PettyCashExpenseResultDto>(Assert.IsType<OkObjectResult>(response.Result).Value);
+        Assert.Equal(PettyCashStatus.Cancelled, result.Status);
+        Assert.Equal(ManagerUserId, result.CancelledByUserId);
+        Assert.Equal(1, await stack.Db.CashTransactions.AsNoTracking()
+            .CountAsync(candidate => candidate.Source == CashTransactionSource.PettyCashReversal));
     }
 }
