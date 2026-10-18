@@ -16033,3 +16033,40 @@ D2. Residuales aceptados: H1 job de mora pendiente (follow-up); H2 metodo no-efe
     sobregiro; saldo anterior del comprobante reconstruido (borde de polvo); UI web verificada por
     logica/SSR, no DOM interactivo.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XIX) - H1: JOB DE CARTERA CxC (MATERIALIZACION DE VENCIDA + MORA AUTOMATICA) (8.187) - 2026-10-18
+================================================================================
+Cierre del hallazgo H1 de la verificacion T6 (S3 PARTIAL): faltaba el barrido periodico que
+materialice `Vencida` y aplique la suspension/reactivacion automatica por mora del Paso 11/12.
+
+A. IMPLEMENTACION
+A1. `CreditService.EvaluateOverdueAndMoraAsync` (partial `CreditService.Mora.cs`): sobre obligaciones
+    abiertas (`Vigente`/`Parcial`) con `BalanceUSD > 0.005` y vencimiento + `CreditGraceDays`
+    superado contra el dia de Venezuela (`IsOverdueBeyondGrace`), materializa `Receivable.Status =
+    Vencida`. Clientes con `IsCreditEnabled`: `Active -> SuspendedByMora` si tienen vencidas
+    abiertas; `SuspendedByMora -> Active` al regularizar (rehabilitacion automatica);
+    `ManuallyBlocked` y clientes sin credito habilitado quedan intactos.
+A2. Idempotente: una transaccion ReadCommitted + advisory lock de cartera `pg_advisory_xact_lock(4,
+    0)` (clase 4; 2=venta, 3=cliente); entidades trackeadas con `xmin`; conflicto de concurrencia ->
+    log y counts en cero, el proximo ciclo reintenta. DTO aditivo `CreditMoraEvaluationResultDto`
+    (vencidas materializadas, suspendidos, reactivados, evaluados). Sin migracion (campos F1).
+A3. `CreditMoraJob` (`BackgroundService`, patron de `AuthorizationExpiryJob`): corrida inicial +
+    `PeriodicTimer` cada `CreditMora:IntervalHours` (default 6 h; barrido idempotente cubre el
+    diario), scope factory para `ICreditService`, logging de counts y try/catch que nunca tumba el
+    host; registrado con `AddHostedService` en `ServiceCollectionExtensions`.
+
+B. EVIDENCIA
+B1. RED: filtro `CreditMora` -> CS1061 (metodo inexistente). GREEN: 7/7 (gracia 0 y >0, borde exacto
+    no vencido, polvo 0.004 excluido, Pagada/Anulada intactas, ManuallyBlocked/deshabilitado
+    intactos, reactivacion, segunda corrida en cero, money/snapshots/pagos sin cambios).
+B2. Regresiones del tramo: 150/150 (CreditService/Payments/OverLimit/DailyClosure/OnHoldSales).
+B3. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+B4. Suite completa: CommandCenter.Tests 3275/3275; 0 errores.
+
+C. NOTA
+C1. Sigue sin ejercitarse el carril Postgres real (H4 del T6): advisory lock `(4,0)` y conflicto
+    `xmin` verificados por estructura/tests InMemory, no contra Npgsql real.
+C2. El `BackgroundService` no tiene test unitario (se testea el servicio, mismo patron de jobs
+    existentes). `CreditMora:IntervalHours <= 0` cae al default 6 h (no se desactiva por config).
+================================================================================
