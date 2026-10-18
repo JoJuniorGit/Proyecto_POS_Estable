@@ -22,7 +22,7 @@ namespace Sales.Module.Services;
 /// vs. día corriente de Venezuela, sin depender del job materializador de T3) y los bloqueos
 /// de elegibilidad en español. Sin sobregiro: exceder el disponible bloquea (T3 autoriza).
 /// </summary>
-public class CreditService : ICreditService
+public partial class CreditService : ICreditService
 {
     /// <summary>Tolerancia de polvo decimal del saldo (S7): saldos ≤ 0.005 USD no computan deuda.</summary>
     public const decimal BalanceToleranceUsd = 0.005m;

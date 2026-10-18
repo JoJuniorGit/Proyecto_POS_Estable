@@ -83,6 +83,10 @@ public static class ServiceCollectionExtensions
         // checkout a crédito (cupo disponible, utilización, mora dinámica y bloqueos). Lo consume
         // el cierre de venta a crédito y el endpoint de perfil crediticio.
         builder.Services.AddScoped<Sales.Module.Interfaces.ICreditService, Sales.Module.Services.CreditService>();
+        // 8.187-T6 (H1, S3/S4): barrido periódico de cartera — materializa Vencida y aplica la
+        // suspensión/reactivación automática por mora de forma idempotente (intervalo
+        // CreditMora:IntervalHours, default 6 h; cubre el barrido diario).
+        builder.Services.AddHostedService<Backend.API.Jobs.CreditMoraJob>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IHoldOrderNotifier, Backend.API.Services.SignalRHoldOrderNotifier>();

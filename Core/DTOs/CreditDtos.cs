@@ -253,6 +253,26 @@ public class CreditStatementReceivableDto
     public bool IsOverdue { get; set; }
 }
 
+/// <summary>
+/// H1 (T6, S3/S4): resultado del barrido de cartera de mora. Solo cuenta cambios efectivos de
+/// la corrida: una segunda ejecución idempotente devuelve los contadores de cambios en cero y
+/// la cantidad de clientes con crédito habilitado reevaluada.
+/// </summary>
+public class CreditMoraEvaluationResultDto
+{
+    /// <summary>Obligaciones abiertas materializadas como Vencida en esta corrida.</summary>
+    public int OverdueMaterializedCount { get; set; }
+
+    /// <summary>Clientes Active suspendidos por mora en esta corrida.</summary>
+    public int SuspendedCount { get; set; }
+
+    /// <summary>Clientes SuspendedByMora rehabilitados a Active en esta corrida.</summary>
+    public int ReactivatedCount { get; set; }
+
+    /// <summary>Clientes con IsCreditEnabled evaluados en esta corrida.</summary>
+    public int EvaluatedCustomersCount { get; set; }
+}
+
 /// <summary>Abono del historial del estado de cuenta: totales, tasa congelada y FX realizado.</summary>
 public class CreditStatementPaymentDto
 {

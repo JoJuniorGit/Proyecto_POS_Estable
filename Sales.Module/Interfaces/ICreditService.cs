@@ -52,4 +52,14 @@ public interface ICreditService
     Task<CreditReceivablesListDto> GetCreditReceivablesAsync(
         CreditReceivablesFilterDto filter,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// H1 (T6, S3/S4): barrido diario de cartera. Materializa como Vencida las obligaciones
+    /// abiertas (Vigente/Parcial) vencidas más allá de la gracia del cliente y aplica la
+    /// suspensión/reactivación automática por mora a los clientes con crédito habilitado
+    /// (ManuallyBlocked nunca se toca; SuspendedByMora se rehabilita al regularizar). Corre en
+    /// UNA transacción bajo advisory lock de cartera y es idempotente: repetir la corrida no
+    /// genera cambios ni efectos monetarios.
+    /// </summary>
+    Task<CreditMoraEvaluationResultDto> EvaluateOverdueAndMoraAsync(CancellationToken cancellationToken = default);
 }
