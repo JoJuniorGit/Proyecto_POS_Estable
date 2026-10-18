@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import { getCustomers, createCustomer } from '../../services/customerApi';
 import CreditProfilePanel from '../credit/CreditProfilePanel';
+import { canEditCreditProfileByRole } from '../credit/creditLogic';
 import { useAuth } from '../../context/AuthContext';
-import { normalizeRole } from '../../navigation/roleViews';
 import useDebounce from '../../hooks/useDebounce';
 import { Search, UserPlus, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
 import './CustomerModal.css';
@@ -26,10 +26,11 @@ export default function CustomerModal({
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [error, setError] = useState(null);
 
-  // T5 (S1/S4): el perfil crediticio solo lo editan Admin/Manager; el cajero lo ve en lectura.
+  // T5 (S1/S4) / 8.188: el perfil crediticio solo lo editan Admin/Manager; el cajero lo ve en
+  // lectura. La normalización de rol (alias canónico/numérico) vive en creditLogic para que el
+  // gate sea idéntico al del backend (PUT credit-profile).
   const { user } = useAuth();
-  const normalizedRole = normalizeRole(user?.role);
-  const canEditCreditProfile = normalizedRole === 'Admin' || normalizedRole === 'Manager';
+  const canEditCreditProfile = canEditCreditProfileByRole(user?.role);
 
   // Form for new customer
   const [cedulaOrRif, setCedulaOrRif] = useState('');

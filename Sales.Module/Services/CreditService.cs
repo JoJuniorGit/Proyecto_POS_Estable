@@ -18,9 +18,12 @@ namespace Sales.Module.Services;
 
 /// <summary>
 /// F2a (Paso 11, S1/S2/S4): perfil crediticio y solvencia del cliente. Fuente única del cupo
-/// disponible (Límite − Saldo deudor), la utilización, la mora dinámica (vencimiento + gracia
-/// vs. día corriente de Venezuela, sin depender del job materializador de T3) y los bloqueos
-/// de elegibilidad en español. Sin sobregiro: exceder el disponible bloquea (T3 autoriza).
+/// disponible (Límite − Saldo deudor, acotado a ≥ 0: la deuda nunca produce disponible negativo),
+/// la utilización, la mora dinámica (vencimiento + gracia vs. día corriente de Venezuela, sin
+/// depender del job materializador de T3) y los bloqueos de elegibilidad en español. Sin
+/// sobregiro: exceder el disponible bloquea (T3 autoriza); con el cupo por debajo de la deuda el
+/// disponible es 0.00, la utilización supera 100% y ninguna compra financiada nueva es elegible,
+/// sin afectar el cobro de las obligaciones existentes.
 /// </summary>
 public partial class CreditService : ICreditService
 {
@@ -476,8 +479,14 @@ public partial class CreditService : ICreditService
     private static decimal SumBalances(List<OpenBalance> openBalances) =>
         Math.Round(openBalances.Sum(balance => balance.BalanceUSD), 4, MidpointRounding.AwayFromZero);
 
+    /// <summary>
+    /// Cupo disponible para nuevas compras financiadas: máximo entre cero y (límite − deuda).
+    /// Con la deuda por encima del cupo el disponible es 0.00 —nunca negativo— y la utilización
+    /// puede superar 100%; la elegibilidad bloquea así cualquier monto nuevo sin tocar el cobro
+    /// de las obligaciones ya emitidas.
+    /// </summary>
     private static decimal ComputeAvailableCredit(decimal creditLimitUSD, decimal debtUsd) =>
-        Math.Round(creditLimitUSD - debtUsd, 4, MidpointRounding.AwayFromZero);
+        Math.Max(0m, Math.Round(creditLimitUSD - debtUsd, 4, MidpointRounding.AwayFromZero));
 
     // Sin límite positivo la utilización no es definible (división por cero); se reporta 0.
     private static decimal ComputeUtilizationPercent(decimal creditLimitUSD, decimal debtUsd) =>

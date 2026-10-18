@@ -53,7 +53,7 @@ public class CreditServiceTests
     }
 
     [Fact]
-    public async Task GetCreditProfileAsync_WithoutCreditLimit_ReportsNegativeAvailabilityAndZeroUtilization()
+    public async Task GetCreditProfileAsync_WithoutCreditLimit_ClampsAvailabilityToZeroAndZeroUtilization()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
         var customer = BuildCustomer(creditLimitUsd: 0m);
@@ -65,9 +65,27 @@ public class CreditServiceTests
         var profile = await new CreditService(context).GetCreditProfileAsync(customer.Id);
 
         Assert.Equal(50.0000m, profile.CurrentDebtUSD);
-        Assert.Equal(-50.0000m, profile.AvailableCreditUSD);
+        Assert.Equal(0m, profile.AvailableCreditUSD); // clamp: nunca negativo
         Assert.Equal(0m, profile.UtilizationPercent);
         Assert.Equal(0, profile.OverdueCount);
+    }
+
+    [Fact]
+    public async Task GetCreditProfileAsync_DebtAboveLimit_ClampsAvailabilityToZeroAndUtilizationAbove100()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = BuildCustomer(creditLimitUsd: 100m);
+        context.Customers.Add(customer);
+        await context.SaveChangesAsync();
+
+        // La deuda supera el cupo: disponible 0.00 y utilización por encima de 100%.
+        await AddReceivableAsync(context, customer.Id, 150m, ReceivableStatus.Parcial, DateTime.UtcNow.AddDays(5));
+
+        var profile = await new CreditService(context).GetCreditProfileAsync(customer.Id);
+
+        Assert.Equal(150.0000m, profile.CurrentDebtUSD);
+        Assert.Equal(0m, profile.AvailableCreditUSD);
+        Assert.Equal(150.00m, profile.UtilizationPercent);
     }
 
     [Fact]
@@ -188,7 +206,7 @@ public class CreditServiceTests
     }
 
     [Fact]
-    public async Task EvaluateEligibilityAsync_NegativeAvailability_BlocksEvenSmallAmounts()
+    public async Task EvaluateEligibilityAsync_OverIndebtedCustomer_ClampsAvailabilityToZeroAndBlocksEvenSmallAmounts()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
         var customer = BuildCustomer(creditLimitUsd: 100m);
@@ -199,7 +217,7 @@ public class CreditServiceTests
         var result = await new CreditService(context).EvaluateEligibilityAsync(customer.Id, 10m);
 
         Assert.False(result.IsEligible);
-        Assert.Equal(-50.0000m, result.AvailableCreditUSD);
+        Assert.Equal(0m, result.AvailableCreditUSD); // clamp: disponible 0.00, no negativo
         Assert.Contains(result.Blockers, blocker => blocker.Contains("Crédito insuficiente"));
     }
 

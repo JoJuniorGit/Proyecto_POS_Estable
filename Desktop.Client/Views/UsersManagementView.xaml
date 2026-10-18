@@ -456,7 +456,7 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <Button Command="{Binding NewCustomerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="32" Padding="8,0" DockPanel.Dock="Right" IsEnabled="{Binding CanMutate}">
+                            <Button Command="{Binding NewCustomerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="32" Padding="8,0" DockPanel.Dock="Right" IsEnabled="{Binding CanManageCustomerContact}">
                                 <TextBlock Text="+ Nuevo" FontSize="12"/>
                             </Button>
                         </DockPanel>
@@ -469,7 +469,7 @@
                                          materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          Padding="12,10,34,10"
-                                         IsEnabled="{Binding CanMutate}"/>
+                                         IsEnabled="{Binding CanManageCustomerContact}"/>
                                 <materialDesign:PackIcon Kind="CheckCircle" Width="18" Height="18" Foreground="#059669"
                                                          HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
                                                          Visibility="{Binding IsCedulaValid, Converter={StaticResource BoolToVis}}"/>
@@ -486,7 +486,7 @@
                                          materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          Padding="12,10,50,10"
-                                         IsEnabled="{Binding CanMutate}"/>
+                                         IsEnabled="{Binding CanManageCustomerContact}"/>
                                 <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0" FontSize="11">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -514,7 +514,7 @@
                                          materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          Padding="12,10,34,10"
-                                         IsEnabled="{Binding CanMutate}"/>
+                                         IsEnabled="{Binding CanManageCustomerContact}"/>
                                 <materialDesign:PackIcon Kind="CheckCircle" Width="18" Height="18" Foreground="#059669"
                                                          HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
                                                          Visibility="{Binding IsPhoneValid, Converter={StaticResource BoolToVis}}"/>
@@ -530,7 +530,7 @@
                                 Style="{StaticResource MaterialDesignRaisedButton}"
                                 Background="#7C3AED" Foreground="White"
                                 Height="44" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"
-                                IsEnabled="{Binding CanMutate}">
+                                IsEnabled="{Binding CanManageCustomerContact}">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="ContentSave" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <TextBlock Text="GUARDAR CLIENTE" VerticalAlignment="Center"/>
@@ -582,12 +582,12 @@
                             </StackPanel>
                         </Button>
 
-                        <!-- Botón Eliminar Cliente -->
+                        <!-- Botón Eliminar Cliente (Admin/Manager; bloqueado con cartera conocida) -->
                         <Button Command="{Binding DeleteCustomerCommand}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Foreground="#B71C1C" BorderBrush="#B71C1C"
                                 Height="38" FontSize="13"
-                                IsEnabled="{Binding CanMutate}"
+                                IsEnabled="{Binding CanDeleteCustomer}"
                                 Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="DeleteForever" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -596,15 +596,16 @@
                         </Button>
 
                         <!-- ══════════════════════════════════════════════════════
-                             PERFIL CREDITICIO (Paso 11, S1/S4)
-                             Solo Admin/Manager; la mora la administra el sistema.
+                             PERFIL CREDITICIO (Paso 11, S1/S4; 8.188 segregación)
+                             Oculto por completo para Cashier (Visibility, no solo IsEnabled);
+                             Admin/Manager conservan la lectura y la mora la administra el sistema.
                              ══════════════════════════════════════════════════════ -->
-                        <Separator Margin="0,18,0,10" Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"/>
+                        <Separator Margin="0,18,0,10" Visibility="{Binding CanViewCreditProfile, Converter={StaticResource BoolToVis}}"/>
 
                         <Expander AutomationProperties.AutomationId="Customers_CreditProfilePanel"
                                   Header="Perfil Crediticio"
                                   IsExpanded="{Binding IsEditing, Mode=OneWay}"
-                                  Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"
+                                  Visibility="{Binding CanViewCreditProfile, Converter={StaticResource BoolToVis}}"
                                   Margin="0,0,0,8">
                             <StackPanel Margin="0,10,0,0">
                                 <TextBlock Text="Consultando perfil crediticio..."

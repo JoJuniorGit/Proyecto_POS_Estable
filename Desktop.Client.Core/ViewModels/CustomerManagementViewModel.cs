@@ -37,14 +37,32 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEditing))]
     [NotifyPropertyChangedFor(nameof(IsDefaultCustomer))]
+    [NotifyPropertyChangedFor(nameof(CanViewCreditProfile))]
     [NotifyPropertyChangedFor(nameof(CanEditCreditProfile))]
     private CustomerDto? _selectedCustomer;
 
     public bool IsEditing => SelectedCustomer != null;
     public bool IsDefaultCustomer => SelectedCustomer?.IsDefault == true || SelectedCustomer?.CedulaOrRif.Equals("V-00000000", StringComparison.OrdinalIgnoreCase) == true;
 
-    // RBAC: Cashiers cannot create, edit, deactivate, or delete customers
+    // RBAC: las operaciones administrativas del cliente (activación/eliminación) y la escritura
+    // del perfil crediticio son exclusivas de Admin/Manager.
     public bool CanMutate => _userSession.CurrentUser != null && _userSession.CurrentUser.Role != UserRole.Cashier;
+
+    /// <summary>
+    /// 8.188 (segregación de funciones): el cajero puede crear clientes y actualizar sus datos de
+    /// contacto (cédula/RIF, nombre, teléfono); el crédito y la activación/eliminación siguen
+    /// reservados a Admin/Manager. Driver queda fuera por su bloqueo operativo.
+    /// </summary>
+    public bool CanManageCustomerContact => _userSession.CurrentUser != null
+        && _userSession.CurrentUser.Role != UserRole.Driver;
+
+    /// <summary>
+    /// 8.188: visibilidad del panel crediticio. El cajero nunca ve los parámetros de crédito (el
+    /// panel se oculta por completo, no solo se deshabilita); Admin/Manager conservan la lectura
+    /// del perfil, incluido el estado suspendido por mora donde la edición queda deshabilitada
+    /// aparte por <see cref="CanEditCreditProfile"/>.
+    /// </summary>
+    public bool CanViewCreditProfile => CanMutate && IsEditing;
 
     public ObservableCollection<CustomerDto> Customers { get; } = new();
 
@@ -70,6 +88,8 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCreditProfile))]
     [NotifyPropertyChangedFor(nameof(CanEditCreditProfile))]
+    [NotifyPropertyChangedFor(nameof(HasOpenPortfolio))]
+    [NotifyPropertyChangedFor(nameof(CanDeleteCustomer))]
     [NotifyPropertyChangedFor(nameof(CreditStatusLabel))]
     private CreditProfileClientDto? _creditProfile;
 
@@ -82,6 +102,16 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
     private int _creditProfileVersion;
 
     public bool HasCreditProfile => CreditProfile != null;
+
+    /// <summary>
+    /// 8.188: cartera abierta conocida por el VM (deuda vigente del perfil cargado, umbral de
+    /// polvo decimal 0.005 USD). El bloqueo definitivo —incluido el historial ya pagado y los
+    /// abonos— vive en el servidor: este indicador solo adelanta la inhabilitación visual.
+    /// </summary>
+    public bool HasOpenPortfolio => CreditProfile != null && CreditProfile.CurrentDebtUSD > 0.005m;
+
+    /// <summary>Eliminación física reservada a Admin/Manager y deshabilitada con cartera abierta conocida.</summary>
+    public bool CanDeleteCustomer => CanMutate && !HasOpenPortfolio;
 
     public bool IsManuallyBlocked => CreditStatus == Core.Entities.CreditStatus.ManuallyBlocked;
 

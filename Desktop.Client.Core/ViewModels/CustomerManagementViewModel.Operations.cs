@@ -27,9 +27,9 @@ public partial class CustomerManagementViewModel
     [RelayCommand]
     public async Task SaveCustomerAsync()
     {
-        if (!CanMutate)
+        if (!CanManageCustomerContact)
         {
-            _dialogService.ShowWarning("Acceso Denegado", "Los cajeros no tienen permisos para crear o modificar clientes.");
+            _dialogService.ShowWarning("Acceso Denegado", "Su rol no tiene permisos para crear o modificar clientes.");
             return;
         }
 
@@ -177,9 +177,17 @@ public partial class CustomerManagementViewModel
             return;
         }
 
+        // 8.188: con cartera abierta conocida ni siquiera se ofrece la eliminación; el servidor
+        // bloquea además cualquier rastro de cartera (incluido el historial pagado y los abonos).
+        if (HasOpenPortfolio)
+        {
+            _dialogService.ShowWarning("Operación No Permitida", "No se puede eliminar un cliente con cartera pendiente. Regularice la deuda o conserve su historial crediticio.");
+            return;
+        }
+
         bool confirm = _dialogService.ShowConfirm(
             "Eliminar Cliente",
-            $"¿Desea eliminar definitivamente al cliente '{Name}' ({CedulaOrRif})?\n\nEsta acción eliminará el cliente si no posee ventas asociadas.");
+            $"¿Desea eliminar definitivamente al cliente '{Name}' ({CedulaOrRif})?\n\nEsta acción eliminará el cliente solo si no posee ventas, cuentas por cobrar ni abonos asociados.");
 
         if (!confirm) return;
 

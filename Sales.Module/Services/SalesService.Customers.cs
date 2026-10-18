@@ -196,7 +196,11 @@ public partial class SalesService
             CedulaOrRif = normalizedCedula,
             Name = request.Name.Trim(),
             Phone = request.Phone?.Trim() ?? string.Empty,
-            CreditLimitUSD = request.CreditLimitUSD >= 0 ? request.CreditLimitUSD : 0m,
+            // 8.188: el alta de contacto NO administra crédito. La línea (habilitación, cupo,
+            // plazo, gracia, notas y bloqueo) se configura después por PUT credit-profile
+            // (Admin/Manager); cualquier campo crediticio del payload se descarta para todos
+            // los roles, incluso Admin/Manager.
+            CreditLimitUSD = 0m,
             IsActive = true
         };
 
@@ -246,7 +250,9 @@ public partial class SalesService
         customer.CedulaOrRif = normalizedCedula;
         customer.Name = request.Name.Trim();
         customer.Phone = request.Phone?.Trim() ?? string.Empty;
-        customer.CreditLimitUSD = request.CreditLimitUSD >= 0 ? request.CreditLimitUSD : 0m;
+        // 8.188: el contacto nunca escribe crédito, ni siquiera para Admin/Manager. El cupo
+        // solicitado en el payload se descarta y la entidad conserva su línea intacta: los
+        // parámetros crediticios solo cambian por UpdateCustomerCreditProfileAsync.
         customer.IsActive = request.IsActive;
 
         try
@@ -284,6 +290,23 @@ public partial class SalesService
         if (customer.IsDefault || customer.CedulaOrRif.Equals("V-00000000", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("No se permite eliminar el cliente Consumidor Final predeterminado del sistema.");
+        }
+
+        // 8.188: el perfil crediticio de un cliente con cartera no se destruye jamás. Cualquier
+        // obligación —abierta o cerrada (historial)— o abono registrado bloquea la eliminación;
+        // el FK Restrict de Receivables/ReceivablePayments es la defensa final de la base de datos.
+        bool hasReceivables = await _context.Receivables.AnyAsync(receivable => receivable.CustomerId == id, cancellationToken);
+        if (hasReceivables)
+        {
+            throw new InvalidOperationException(
+                "No se puede eliminar el cliente porque posee cuentas por cobrar (saldo o historial de cartera). El perfil crediticio y su historial se conservan.");
+        }
+
+        bool hasPortfolioPayments = await _context.ReceivablePayments.AnyAsync(payment => payment.CustomerId == id, cancellationToken);
+        if (hasPortfolioPayments)
+        {
+            throw new InvalidOperationException(
+                "No se puede eliminar el cliente porque posee abonos de cartera registrados. El historial crediticio se conserva.");
         }
 
         bool hasSales = await _context.Sales.AnyAsync(s => s.CustomerId == id, cancellationToken);

@@ -1,4 +1,5 @@
 import { formatUSD, parseAmount } from '../../utils/formatters';
+import { normalizeRole } from '../../navigation/roleViews';
 
 /**
  * 8.187-T5 (Paso 11/12, F4, S1-S7): lógica pura del crédito CxC en el POS web.
@@ -18,6 +19,31 @@ const VENEZUELA_TIME_ZONE = 'America/Caracas';
 
 /** Estados manuales válidos del perfil (SuspendedByMora lo administra el sistema de mora). */
 export const MANUAL_CREDIT_STATUSES = Object.freeze([CREDIT_STATUS.ACTIVE, CREDIT_STATUS.MANUALLY_BLOCKED]);
+
+/**
+ * 8.188 (Paso 11-13): roles con autorización de escritura del perfil crediticio. Espejo exacto
+ * del RBAC del backend (PUT credit-profile = Admin/Manager); el cajero queda en solo lectura.
+ */
+export const CREDIT_PROFILE_MANAGER_ROLES = Object.freeze(['Admin', 'Manager']);
+
+export function canEditCreditProfileByRole(role) {
+  const canonical = normalizeRole(role);
+  return canonical !== null && CREDIT_PROFILE_MANAGER_ROLES.includes(canonical);
+}
+
+/**
+ * Habilita el formulario de edición del panel crediticio: rol habilitado, cliente real (nunca el
+ * Consumidor Final) y perfil cargado sin suspensión de sistema. Con Cashier devuelve false y el
+ * formulario se oculta por completo (no se renderiza deshabilitado).
+ */
+export function canManageCreditProfileForm({
+  canEdit = false,
+  isDefaultCustomer = false,
+  profile = null,
+  isSystemSuspended = false,
+} = {}) {
+  return Boolean(canEdit) && !isDefaultCustomer && profile != null && !isSystemSuspended;
+}
 
 export function creditStatusLabel(status) {
   switch (Number(status)) {

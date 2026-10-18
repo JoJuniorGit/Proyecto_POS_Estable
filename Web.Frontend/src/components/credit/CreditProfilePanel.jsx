@@ -4,6 +4,7 @@ import {
   CREDIT_STATUS,
   creditStatusLabel,
   validateCreditProfileUpdate,
+  canManageCreditProfileForm,
 } from './creditLogic';
 import { parseAmount, formatNumberEs, formatUSD } from '../../utils/formatters';
 import { AlertCircle, CheckCircle2, Loader2, Lock, Unlock, Wallet } from 'lucide-react';
@@ -45,7 +46,9 @@ export default function CreditProfilePanel({ customer, canEdit = false }) {
 
   const isDefaultCustomer = customer?.isDefault === true;
   const isSystemSuspended = profile != null && Number(profile.creditStatus) === CREDIT_STATUS.SUSPENDED_BY_MORA;
-  const isEditable = Boolean(canEdit) && !isDefaultCustomer && profile != null && !isSystemSuspended;
+  // 8.188: el formulario se reserva a Admin/Manager con perfil cargado y sin mora de sistema;
+  // para el cajero no se renderiza (oculto por completo, no deshabilitado).
+  const isEditable = canManageCreditProfileForm({ canEdit, isDefaultCustomer, profile, isSystemSuspended });
 
   const loadProfile = useCallback(async (customerId) => {
     setIsLoading(true);

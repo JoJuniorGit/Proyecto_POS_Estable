@@ -25,7 +25,7 @@ public class CreditProfileDto
     /// <summary>Suma de BalanceUSD de obligaciones abiertas con saldo &gt; 0.005 (USD 4dp).</summary>
     public decimal CurrentDebtUSD { get; set; }
 
-    /// <summary>Límite − saldo deudor; puede ser negativo para reportería (elegibilidad lo bloquea).</summary>
+    /// <summary>Límite − saldo deudor acotado a cero (nunca negativo); la utilización puede superar 100%.</summary>
     public decimal AvailableCreditUSD { get; set; }
 
     /// <summary>Saldo deudor / límite × 100 (2dp). Sin límite positivo se reporta 0 para no dividir por cero.</summary>
@@ -161,6 +161,8 @@ public class CreditEligibilityResultDto
     public decimal RequestedAmountUSD { get; set; }
     public decimal CreditLimitUSD { get; set; }
     public decimal CurrentDebtUSD { get; set; }
+
+    /// <summary>Cupo disponible para nuevas compras financiadas, acotado a cero (nunca negativo).</summary>
     public decimal AvailableCreditUSD { get; set; }
 }
 
@@ -184,7 +186,7 @@ public sealed class CreditOverLimitRequiresAuthorizationException : InvalidOpera
     /// <summary>Monto efectivo en USD que se pretende financiar (derivado del Bs.S efectivo / tasa de emisión).</summary>
     public decimal FinancedUSD { get; }
 
-    /// <summary>Crédito disponible del cliente al momento del intento (puede ser negativo).</summary>
+    /// <summary>Crédito disponible del cliente al momento del intento, acotado a cero (nunca negativo).</summary>
     public decimal AvailableCreditUSD { get; }
 
     public CreditOverLimitRequiresAuthorizationException(
