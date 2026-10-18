@@ -129,7 +129,7 @@ public class CashDrawerController : ControllerBase
     {
         // 8.168 (SEC-04-RES): anclar la tasa de cierre al valor oficial BCV cuando existe.
         decimal anchoredRate = await ResolveAnchoredRateAsync(request.CurrentExchangeRate, referenceId: 0, cancellationToken: cancellationToken);
-        var session = await _cashDrawerService.CloseSessionAsync(request.ActualClosingBalanceLocal, anchoredRate, cancellationToken);
+        var session = await _cashDrawerService.CloseSessionAsync(request.ActualClosingBalanceLocal, anchoredRate, cancellationToken: cancellationToken);
         return Ok(await MapLocalTimesAsync(session, cancellationToken));
     }
 

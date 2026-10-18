@@ -45,22 +45,15 @@ public partial class DailyClosureService : IDailyClosureService
 
     public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc, CancellationToken cancellationToken = default)
     {
-        var lastClosure = await _context.DailyClosures
-            .AsNoTracking()
-            .OrderByDescending(dc => dc.ClosureDate)
-            .FirstOrDefaultAsync(cancellationToken);
+        var (startUtc, endUtc) = await ResolveClosureWindowAsync(dateUtc, cancellationToken);
+        return await GetExpectedTotalsForWindowAsync(startUtc, endUtc, cancellationToken);
+    }
 
-        var activeSession = await _context.CashDrawerSessions
-            .AsNoTracking()
-            .Where(s => s.Status == CashDrawerStatus.Open)
-            .OrderByDescending(s => s.OpenedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var (startUtc, endUtc) = ClosureWindowResolver.Resolve(
-            dateUtc,
-            activeSession?.OpenedAt,
-            lastClosure?.ClosureDate);
-
+    private async Task<List<ExpectedTotalDto>> GetExpectedTotalsForWindowAsync(
+        DateTime startUtc,
+        DateTime endUtc,
+        CancellationToken cancellationToken)
+    {
         var salesTotals = await _context.SalePayments
             .AsNoTracking()
             .Where(sp => sp.Sale != null
@@ -116,6 +109,19 @@ public partial class DailyClosureService : IDailyClosureService
             .Select(g => new { PaymentMethodId = g.Key ?? UnattributedRefundMethodId, TotalBsS = g.Sum(ct => ct.AmountLocal) })
             .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
 
+        // T2b (Paso 13 / 8.188, S2): caja chica. Cada gasto Active de la ventana se deduce del
+        // metodo de efectivo de SU moneda (jamas del "primer efectivo" si no coincide). Se usa
+        // AmountBsS porque todo el esperado del cierre esta expresado en Bs.S. Los gastos
+        // Cancelled no se restan: su par Expense+Reversal ya netea 0 en la gaveta y la reversa
+        // tampoco se suma aqui.
+        var pettyCashExpenses = await _context.PettyCashExpenses
+            .AsNoTracking()
+            .Where(expense => expense.Status == PettyCashStatus.Active
+                && expense.CreatedAtUtc >= startUtc
+                && expense.CreatedAtUtc < endUtc)
+            .Select(expense => new PettyCashExpenseAmount(expense.Currency, expense.AmountBsS))
+            .ToListAsync(cancellationToken);
+
         var allMethods = await _context.PaymentMethods
             .AsNoTracking()
             .Where(p => !p.IsDeleted)
@@ -128,6 +134,8 @@ public partial class DailyClosureService : IDailyClosureService
             .ToList();
 
         var firstCashMethodId = relevantMethods.FirstOrDefault(p => p.IsCash)?.Id;
+
+        var pettyCashDeductions = ResolvePettyCashDeductions(pettyCashExpenses, relevantMethods);
 
         var result = new List<ExpectedTotalDto>();
         foreach (var method in relevantMethods)
@@ -151,6 +159,9 @@ public partial class DailyClosureService : IDailyClosureService
                     refund += unattributedRefund;
                 }
                 expected -= refund;
+
+                pettyCashDeductions.TryGetValue(method.Id, out decimal pettyCash);
+                expected -= pettyCash;
             }
 
             result.Add(new ExpectedTotalDto
@@ -164,10 +175,84 @@ public partial class DailyClosureService : IDailyClosureService
         return result;
     }
 
+    private async Task<(DateTime StartUtc, DateTime EndExclusiveUtc)> ResolveClosureWindowAsync(
+        DateTime dateUtc,
+        CancellationToken cancellationToken)
+    {
+        var lastClosure = await _context.DailyClosures
+            .AsNoTracking()
+            .OrderByDescending(dc => dc.ClosureDate)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var activeSession = await _context.CashDrawerSessions
+            .AsNoTracking()
+            .Where(s => s.Status == CashDrawerStatus.Open)
+            .OrderByDescending(s => s.OpenedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return ClosureWindowResolver.Resolve(
+            dateUtc,
+            activeSession?.OpenedAt,
+            lastClosure?.ClosureDate);
+    }
+
+    /// <summary>
+    /// T2b (S2): atribucion explicita de la caja chica por moneda. Si no existe un metodo de
+    /// efectivo de la moneda del gasto, se registra el aviso y se omite solo esa deduccion
+    /// (fail-safe) sin tocar los demas metodos. Entre metodos de efectivo de la misma moneda
+    /// se usa el de menor Id, el mismo criterio con el que PettyCashService resuelve la gaveta.
+    /// </summary>
+    private static Dictionary<int, decimal> ResolvePettyCashDeductions(
+        IReadOnlyList<PettyCashExpenseAmount> expenses,
+        IReadOnlyList<PaymentMethod> relevantMethods)
+    {
+        var deductions = new Dictionary<int, decimal>();
+
+        foreach (var currencyGroup in expenses.GroupBy(expense => expense.Currency))
+        {
+            PaymentMethod? target = ResolveCashMethodForCurrency(relevantMethods, currencyGroup.Key);
+            if (target is null)
+            {
+                Core.Logging.AppLogger.LogWarn(
+                    $"[DailyClosureService] No existe un método de pago de efectivo {(currencyGroup.Key == PettyCashCurrency.Usd ? "USD" : "Bs.S")} para atribuir la caja chica del cierre; se omite la deducción de {currencyGroup.Sum(expense => expense.AmountBsS):0.00} Bs.S.",
+                    "DailyClosure");
+                continue;
+            }
+
+            deductions[target.Id] = currencyGroup.Sum(expense => expense.AmountBsS);
+        }
+
+        return deductions;
+    }
+
+    private static PaymentMethod? ResolveCashMethodForCurrency(
+        IReadOnlyList<PaymentMethod> methods,
+        PettyCashCurrency currency)
+    {
+        string expectedCurrency = currency == PettyCashCurrency.Usd
+            ? PaymentMethodCurrencyResolver.Usd
+            : PaymentMethodCurrencyResolver.LocalCurrency;
+
+        return methods
+            .Where(method => method.IsCash
+                && string.Equals(
+                    PaymentMethodCurrencyResolver.Resolve(method.Name),
+                    expectedCurrency,
+                    StringComparison.Ordinal))
+            .OrderBy(method => method.Id)
+            .FirstOrDefault();
+    }
+
+    /// <summary>Proyeccion liviana del gasto para el calculo del esperado del cierre.</summary>
+    private sealed record PettyCashExpenseAmount(PettyCashCurrency Currency, decimal AmountBsS);
+
     public async Task<DailyClosureResponseDto?> GetClosureAsync(int id, CancellationToken cancellationToken = default)
     {
         var closure = await LoadClosureEntityAsync(id, cancellationToken);
-        return closure is null ? null : ShiftReportMapper.MapClosure(closure);
+        if (closure is null) return null;
+
+        var pettyCashSummary = await BuildPersistedClosurePettyCashSummaryAsync(closure, cancellationToken);
+        return ShiftReportMapper.MapClosure(closure, pettyCashSummary);
     }
 
     private async Task<DailyClosure?> LoadClosureEntityAsync(int id, CancellationToken cancellationToken = default)
@@ -188,7 +273,51 @@ public partial class DailyClosureService : IDailyClosureService
             .OrderByDescending(dc => dc.Id)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return closure is null ? null : ShiftReportMapper.MapClosure(closure);
+        if (closure is null) return null;
+
+        var pettyCashSummary = await BuildPersistedClosurePettyCashSummaryAsync(closure, cancellationToken);
+        return ShiftReportMapper.MapClosure(closure, pettyCashSummary);
+    }
+
+    /// <summary>
+    /// T2b (S2): ventana del cierre ya persistido. Al releerlo no existe la sesion cerrada; se
+    /// reconstruye con el cierre inmediatamente anterior como ancla (el rollover abre la sesion
+    /// siguiente en ese mismo instante). La ventana siempre termina al final del dia local.
+    /// </summary>
+    private async Task<PettyCashSummaryDto> BuildPersistedClosurePettyCashSummaryAsync(
+        DailyClosure closure,
+        CancellationToken cancellationToken)
+    {
+        DateTime? previousClosureDate = await _context.DailyClosures
+            .AsNoTracking()
+            .Where(candidate => candidate.Id != closure.Id
+                && candidate.ClosureDate < closure.ClosureDate)
+            .OrderByDescending(candidate => candidate.ClosureDate)
+            .Select(candidate => (DateTime?)candidate.ClosureDate)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var (startUtc, endUtc) = ClosureWindowResolver.Resolve(
+            closure.ClosureDate,
+            activeSessionOpenedAtUtc: null,
+            previousClosureDate);
+
+        return await BuildPettyCashSummaryAsync(startUtc, endUtc, cancellationToken);
+    }
+
+    private async Task<PettyCashSummaryDto> BuildPettyCashSummaryAsync(
+        DateTime startUtc,
+        DateTime endUtc,
+        CancellationToken cancellationToken)
+    {
+        // Solo Active: los gastos anulados no forman parte del renglon OPEX (S2/S5).
+        var expenses = await _context.PettyCashExpenses
+            .AsNoTracking()
+            .Where(expense => expense.Status == PettyCashStatus.Active
+                && expense.CreatedAtUtc >= startUtc
+                && expense.CreatedAtUtc < endUtc)
+            .ToListAsync(cancellationToken);
+
+        return ShiftReportMapper.MapPettyCashSummary(expenses);
     }
 
     public async Task<string?> GetCashierDisplayNameAsync(int userId, CancellationToken cancellationToken = default)
@@ -257,7 +386,15 @@ public partial class DailyClosureService : IDailyClosureService
                 throw new InvalidOperationException(DuplicateClosureDateMessage);
             }
 
-            var expectedTotals = await GetExpectedTotalsByPaymentMethodAsync(command.ClosureDateUtc, cancellationToken);
+            // T2b (S2): la ventana del OPEX es la misma que usa el esperado; se resuelve una sola
+            // vez ANTES de persistir para no depender del estado posterior al guardado/rollover.
+            var (pettyCashWindowStartUtc, pettyCashWindowEndUtc) =
+                await ResolveClosureWindowAsync(command.ClosureDateUtc, cancellationToken);
+
+            var expectedTotals = await GetExpectedTotalsForWindowAsync(
+                pettyCashWindowStartUtc,
+                pettyCashWindowEndUtc,
+                cancellationToken);
             var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
 
             ValidateDeclaredMethods(command.Declarations, expectedById);
@@ -287,7 +424,11 @@ public partial class DailyClosureService : IDailyClosureService
 
             RecalculateTotals(dailyClosure);
 
-            var savedClosure = await PersistClosureCoreAsync(dailyClosure, cancellationToken);
+            var savedClosure = await PersistClosureCoreAsync(
+                dailyClosure,
+                pettyCashWindowStartUtc,
+                pettyCashWindowEndUtc,
+                cancellationToken);
             await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate, cancellationToken);
 
             if (transaction is not null)
@@ -346,10 +487,21 @@ public partial class DailyClosureService : IDailyClosureService
         return (userId, cashierName, cashierCedula, observation);
     }
 
-    private async Task<DailyClosureResponseDto> PersistClosureCoreAsync(DailyClosure closure, CancellationToken cancellationToken)
+    private async Task<DailyClosureResponseDto> PersistClosureCoreAsync(
+        DailyClosure closure,
+        DateTime pettyCashWindowStartUtc,
+        DateTime pettyCashWindowEndUtc,
+        CancellationToken cancellationToken)
     {
         _context.DailyClosures.Add(closure);
         await _context.SaveChangesAsync(cancellationToken);
-        return ShiftReportMapper.MapClosure((await LoadClosureEntityAsync(closure.Id, cancellationToken))!);
+
+        var persisted = (await LoadClosureEntityAsync(closure.Id, cancellationToken))!;
+        var pettyCashSummary = await BuildPettyCashSummaryAsync(
+            pettyCashWindowStartUtc,
+            pettyCashWindowEndUtc,
+            cancellationToken);
+
+        return ShiftReportMapper.MapClosure(persisted, pettyCashSummary);
     }
 }

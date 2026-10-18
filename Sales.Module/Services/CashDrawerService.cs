@@ -136,11 +136,22 @@ public class CashDrawerService : ICashDrawerService
         return MapSession(session);
     }
 
-    public async Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default)
+    public async Task<CashDrawerSessionResponseDto> CloseSessionAsync(
+        decimal actualClosingBalanceLocal,
+        decimal currentExchangeRate,
+        decimal? actualClosingBalanceUsd = null,
+        CancellationToken cancellationToken = default)
     {
         if (actualClosingBalanceLocal < 0)
         {
             throw new ArgumentException("El saldo final de arqueo de caja no puede ser negativo.", nameof(actualClosingBalanceLocal));
+        }
+
+        // T2b (Paso 13 / 8.188, S2): arqueo fisico de la gaveta USD. Opcional para no romper las
+        // llamadas previas (null = sin conteo USD, se conserva el comportamiento anterior).
+        if (actualClosingBalanceUsd is < 0m)
+        {
+            throw new ArgumentException("El saldo final de arqueo de caja en USD no puede ser negativo.", nameof(actualClosingBalanceUsd));
         }
 
         if (currentExchangeRate <= 0)
@@ -183,6 +194,8 @@ public class CashDrawerService : ICashDrawerService
 
                 session.ClosedAt = DateTime.UtcNow;
                 session.ClosingBalanceLocal = actualClosingBalanceLocal;
+                // null conserva el comportamiento previo (sin conteo USD informado).
+                session.ClosingBalanceUsd = actualClosingBalanceUsd;
                 session.ClosingExchangeRate = currentExchangeRate;
                 session.Status = CashDrawerStatus.Closed;
 
@@ -243,7 +256,7 @@ public class CashDrawerService : ICashDrawerService
 
         decimal carryOverBalance = await GetCurrentBalanceLocalAsync(activeSession.Id, cancellationToken);
 
-        await CloseSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken);
+        await CloseSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken: cancellationToken);
         await OpenSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken);
     }
 
