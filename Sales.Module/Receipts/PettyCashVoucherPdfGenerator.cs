@@ -287,6 +287,10 @@ public static class PettyCashVoucherPdfGenerator
                 case 'Í': sb.Append(@"\315"); break;
                 case 'Ó': sb.Append(@"\323"); break;
                 case 'Ú': sb.Append(@"\332"); break;
+                // Quick win 8.188: signos y grado del espanol (CP1252) que caian a '?'.
+                case '¿': sb.Append(@"\277"); break;
+                case '¡': sb.Append(@"\241"); break;
+                case '°': sb.Append(@"\260"); break;
                 default:
                     if (c < 128) sb.Append(c);
                     else sb.Append('?');

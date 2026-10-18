@@ -45,7 +45,7 @@ public partial class DailyClosureService : IDailyClosureService
 
     public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc, CancellationToken cancellationToken = default)
     {
-        var (startUtc, endUtc) = await ResolveClosureWindowAsync(dateUtc, cancellationToken);
+        var (startUtc, endUtc, _) = await ResolveClosureWindowAsync(dateUtc, cancellationToken);
         return await GetExpectedTotalsForWindowAsync(startUtc, endUtc, cancellationToken);
     }
 
@@ -175,7 +175,7 @@ public partial class DailyClosureService : IDailyClosureService
         return result;
     }
 
-    private async Task<(DateTime StartUtc, DateTime EndExclusiveUtc)> ResolveClosureWindowAsync(
+    private async Task<(DateTime StartUtc, DateTime EndExclusiveUtc, int? SessionId)> ResolveClosureWindowAsync(
         DateTime dateUtc,
         CancellationToken cancellationToken)
     {
@@ -190,10 +190,14 @@ public partial class DailyClosureService : IDailyClosureService
             .OrderByDescending(s => s.OpenedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return ClosureWindowResolver.Resolve(
+        var (startUtc, endUtc) = ClosureWindowResolver.Resolve(
             dateUtc,
             activeSession?.OpenedAt,
             lastClosure?.ClosureDate);
+
+        // Quick win 8.188: la sesion abierta es la que el cierre cierra; su Id queda persistido
+        // como ancla exacta del renglon OPEX al releer el cierre.
+        return (startUtc, endUtc, activeSession?.Id);
     }
 
     /// <summary>
@@ -283,11 +287,25 @@ public partial class DailyClosureService : IDailyClosureService
     /// T2b (S2): ventana del cierre ya persistido. Al releerlo no existe la sesion cerrada; se
     /// reconstruye con el cierre inmediatamente anterior como ancla (el rollover abre la sesion
     /// siguiente en ese mismo instante). La ventana siempre termina al final del dia local.
+    /// Quick win 8.188: si el cierre conoce su sesion (SessionId), el renglon OPEX se calcula por
+    /// identidad EXACTA de sesion (gastos Active del turno), sin depender de la ventana; los
+    /// cierres legados (SessionId null) conservan el fallback de ventana.
     /// </summary>
     private async Task<PettyCashSummaryDto> BuildPersistedClosurePettyCashSummaryAsync(
         DailyClosure closure,
         CancellationToken cancellationToken)
     {
+        if (closure.SessionId.HasValue)
+        {
+            var sessionExpenses = await _context.PettyCashExpenses
+                .AsNoTracking()
+                .Where(expense => expense.SessionId == closure.SessionId.Value
+                    && expense.Status == PettyCashStatus.Active)
+                .ToListAsync(cancellationToken);
+
+            return ShiftReportMapper.MapPettyCashSummary(sessionExpenses);
+        }
+
         DateTime? previousClosureDate = await _context.DailyClosures
             .AsNoTracking()
             .Where(candidate => candidate.Id != closure.Id
@@ -388,7 +406,8 @@ public partial class DailyClosureService : IDailyClosureService
 
             // T2b (S2): la ventana del OPEX es la misma que usa el esperado; se resuelve una sola
             // vez ANTES de persistir para no depender del estado posterior al guardado/rollover.
-            var (pettyCashWindowStartUtc, pettyCashWindowEndUtc) =
+            // Quick win 8.188: la sesion abierta tambien viaja para anclar el cierre.
+            var (pettyCashWindowStartUtc, pettyCashWindowEndUtc, pettyCashSessionId) =
                 await ResolveClosureWindowAsync(command.ClosureDateUtc, cancellationToken);
 
             var expectedTotals = await GetExpectedTotalsForWindowAsync(
@@ -419,6 +438,7 @@ public partial class DailyClosureService : IDailyClosureService
                 UserId = resolvedUser.UserId,
                 Observation = resolvedUser.Observation,
                 ExchangeRate = exchangeRate,
+                SessionId = pettyCashSessionId,
                 Details = details
             };
 

@@ -37,6 +37,8 @@ export function pruneOwnResolvedIds(ids, maxSize = MAX_OWN_RESOLVED_IDS) {
 
 export const AUTHORIZATION_ACTION_LABELS = Object.freeze({
   ManualPriceOverride: 'modificar el precio manual',
+  // Quick win 8.188 (Paso 13): paridad con el label WPF de la caja chica.
+  PettyCashExpense: 'un gasto de caja chica',
 });
 
 function formatCountdown(totalSeconds) {

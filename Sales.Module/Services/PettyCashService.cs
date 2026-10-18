@@ -186,17 +186,25 @@ public class PettyCashService : IPettyCashService
                         $"Saldo de efectivo físico en {currencyName} insuficiente en la gaveta para registrar el gasto de caja chica. Monto requerido: {MoneyFormat.N2(requiredAmount)} {currencyName}.");
                 }
 
-                int authorizerUserId;
+                int? authorizerUserId;
                 if (requiresAuthorization)
                 {
-                    authorizerUserId = await ResolveAuthorizerAsync(
+                    int resolvedAuthorizerUserId = await ResolveAuthorizerAsync(
                         authorizationRequestId, authorizedByUserId, actingUserId.Value,
                         session.Id, request, amountBsS, amountUsd, cancellationToken);
+
+                    // Quick win 8.188: se vincula SOLO un supervisor distinto del ejecutor (misma
+                    // regla H3 de la anulacion); una auto-autorizacion jamas se registra como aprobador.
+                    authorizerUserId = resolvedAuthorizerUserId != actingUserId.Value
+                        ? resolvedAuthorizerUserId
+                        : null;
                 }
                 else
                 {
-                    // Admin/Manager dentro del umbral: auto-autorización registrada para auditoría.
-                    authorizerUserId = actingUserId.Value;
+                    // Admin/Manager dentro del umbral: no hay supervisor distinto que auditar; el
+                    // gasto queda sin autorizador y el vale muestra "N/A" (antes se auto-vinculaba
+                    // el ejecutor y el vale mostraba su propio nombre).
+                    authorizerUserId = null;
                 }
 
                 long voucherNumber = await ResolveNextVoucherNumberAsync(cancellationToken);
@@ -245,9 +253,12 @@ public class PettyCashService : IPettyCashService
                     await transaction.CommitAsync(cancellationToken);
                 }
 
+                string authorizerLog = authorizerUserId is int authorizerId
+                    ? $"usuario #{authorizerId}"
+                    : "sin supervisor distinto";
                 _logger?.LogInformation(
-                    "[PettyCashService] Gasto de caja chica #{ExpenseId} (vale {Voucher}): {Amount} {Currency} / {AmountUsd} USD a tasa {Rate}; sesión #{SessionId}, autorizado por usuario #{AuthorizerId}.",
-                    expense.Id, FormatVoucher(voucherNumber), request.Amount, request.Currency, amountUsd, exchangeRate, session.Id, authorizerUserId);
+                    "[PettyCashService] Gasto de caja chica #{ExpenseId} (vale {Voucher}): {Amount} {Currency} / {AmountUsd} USD a tasa {Rate}; sesión #{SessionId}, {Authorizer}.",
+                    expense.Id, FormatVoucher(voucherNumber), request.Amount, request.Currency, amountUsd, exchangeRate, session.Id, authorizerLog);
 
                 return MapExpense(expense, movement.Id, isReplay: false);
             }

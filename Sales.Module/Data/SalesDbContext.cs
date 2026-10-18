@@ -293,6 +293,18 @@ modelBuilder.Entity<User>().HasData(
         // 8.149 (SRE-02): un único cierre por fecha (guard transaccional + índice único).
         modelBuilder.Entity<DailyClosure>().HasIndex(dc => dc.ClosureDate).IsUnique();
 
+        // Quick win 8.188 (Paso 13): el cierre ancla su renglon OPEX a la sesion de caja que
+        // cierra (FK Restrict: una sesion con cierre no se borra). Cierres legados: SessionId null.
+        modelBuilder.Entity<DailyClosure>()
+            .HasOne(dc => dc.Session)
+            .WithMany()
+            .HasForeignKey(dc => dc.SessionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DailyClosure>()
+            .HasIndex(dc => dc.SessionId)
+            .HasDatabaseName("IX_DailyClosures_SessionId");
+
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.ExpectedAmountBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.ActualAmountBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.DifferenceBsS).HasColumnType("decimal(18,2)");

@@ -727,6 +727,9 @@ namespace Sales.Module.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.Property<int?>("SessionId")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("TotalActualBsS")
                         .HasColumnType("decimal(18,2)");
 
@@ -744,6 +747,9 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("ClosureDate")
                         .IsUnique();
+
+                    b.HasIndex("SessionId")
+                        .HasDatabaseName("IX_DailyClosures_SessionId");
 
                     b.ToTable("DailyClosures");
                 });
@@ -1447,6 +1453,16 @@ namespace Sales.Module.Migrations
                     b.Navigation("CreditReturn");
 
                     b.Navigation("SaleItem");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.DailyClosure", b =>
+                {
+                    b.HasOne("Sales.Module.Entities.CashDrawerSession", "Session")
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Session");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.PettyCashExpense", b =>

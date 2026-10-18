@@ -518,7 +518,8 @@ public class PettyCashAuthorizationTests
         var direct = await stack.Service.RegisterAsync(
             Request(currency: PettyCashCurrency.Usd, amount: 50m), actingUserId: 2, actingRole: UserRole.Manager);
 
-        Assert.Equal(2, direct.AuthorizedByUserId);
+        // Quick win 8.188: registro directo del Manager dentro del umbral sin supervisor distinto.
+        Assert.Null(direct.AuthorizedByUserId);
         Assert.Null(direct.AuthorizationRequestId);
     }
 

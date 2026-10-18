@@ -59,6 +59,14 @@ describe('AuthorizationNotifications message builders', () => {
     assert.strictEqual(AUTHORIZATION_ACTION_LABELS.ManualPriceOverride, 'modificar el precio manual');
   });
 
+  it('1b. labels the petty cash expense action in Spanish (quick win 8.188)', () => {
+    assert.strictEqual(AUTHORIZATION_ACTION_LABELS.PettyCashExpense, 'un gasto de caja chica');
+    assert.strictEqual(
+      buildAuthorizationNotificationMessage({ actionType: 'PettyCashExpense', requestedByName: 'Cajero 01' }),
+      'El cajero Cajero 01 solicita autorización para un gasto de caja chica.'
+    );
+  });
+
   it('2. degrades gracefully when cashier, sale id or context are missing', () => {
     assert.strictEqual(
       buildAuthorizationNotificationMessage({ actionType: 'ManualPriceOverride' }),

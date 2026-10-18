@@ -160,10 +160,13 @@ public class PettyCashServiceTests
         Assert.Equal(PettyCashStatus.Active, result.Status);
         Assert.Equal(1L, result.VoucherNumber);
         Assert.Equal(1, result.CreatedByUserId);
-        Assert.Equal(1, result.AuthorizedByUserId);
+        // Quick win 8.188: sin supervisor distinto no se registra autorizador (antes se
+        // auto-vinculaba el ejecutor y el vale mostraba su propio nombre).
+        Assert.Null(result.AuthorizedByUserId);
         Assert.False(result.IsReplay);
 
         var expense = await stack.Context.PettyCashExpenses.AsNoTracking().SingleAsync();
+        Assert.Null(expense.AuthorizedByUserId);
         Assert.Equal("Compra de jabon y cloro", expense.Concept);
         Assert.Equal("Limpieza Total C.A.", expense.Beneficiary);
         Assert.Equal("FACT-0001", expense.ReferenceNumber);
@@ -183,6 +186,31 @@ public class PettyCashServiceTests
         // La gaveta Bs.S desconto el egreso; la de USD quedo intacta.
         Assert.Equal(1000m - 365.50m, await stack.Drawer.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.BsS));
         Assert.Equal(0m, await stack.Drawer.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.Usd));
+    }
+
+    [Fact]
+    public async Task RegisterAsync_DirectByElevatedRole_LeavesAuthorizerNullAndVoucherShowsNotApplicable()
+    {
+        using var stack = new PettyCashStack();
+        await SeedPaymentMethodsAsync(stack.Context);
+        await SeedUsersAsync(stack.Context);
+        await SeedOpenSessionAsync(stack.Context, openingLocal: 1000m);
+
+        // Quick win 8.188: sin umbral no existe supervisor distinto; el gasto queda sin
+        // autorizador (misma regla H3 de la anulacion) y el vale muestra "N/A".
+        var expense = await stack.Service.RegisterAsync(
+            Request(amount: 10m),
+            actingUserId: 1,
+            actingRole: UserRole.Admin);
+
+        Assert.Null(expense.AuthorizedByUserId);
+
+        var persisted = await stack.Context.PettyCashExpenses.AsNoTracking().SingleAsync();
+        Assert.Null(persisted.AuthorizedByUserId);
+
+        var data = await stack.Service.GetVoucherDataAsync(expense.Id);
+        Assert.NotNull(data);
+        Assert.Equal("N/A", data!.Context.AuthorizerName);
     }
 
     [Fact]

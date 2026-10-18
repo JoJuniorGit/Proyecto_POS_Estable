@@ -345,6 +345,8 @@ public class PettyCashClosureTests
         var saved = await context.DailyClosures.AsNoTracking()
             .Include(closure => closure.Details)
             .SingleAsync(closure => closure.Id == result.ClosureId);
+        // Quick win 8.188: el cierre queda anclado a la sesion que cierra.
+        Assert.Equal(session.Id, saved.SessionId);
         // La resta al esperado ocurre UNA sola vez: si el OPEX también restara, serían 800/135.
         Assert.Equal(900m, saved.Details.Single(detail => detail.PaymentMethodId == 1).ExpectedAmountBsS);
         Assert.Equal(317.50m, saved.Details.Single(detail => detail.PaymentMethodId == 2).ExpectedAmountBsS);
@@ -425,6 +427,98 @@ public class PettyCashClosureTests
         Assert.Equal(1, latest.PettyCashSummary!.ActiveCount);
         Assert.Equal(40m, latest.PettyCashSummary.TotalBsS);
         Assert.Equal(PettyCashCategory.Papeleria, latest.PettyCashSummary.ByCategory.Single().Category);
+    }
+
+    // ------------------------------------------------------------------ ancla por sesion (quick win 8.188)
+
+    [Fact]
+    public async Task GetClosure_WithSessionAnchor_KeepsExactSummaryWhenWindowFallbackWouldDiffer()
+    {
+        using var context = CreateInMemoryContext();
+        await SeedPaymentMethodsAsync(context);
+        var sessionOne = await SeedOpenSessionAsync(context, TodayMidnightUtc());
+        var now = DateTime.UtcNow;
+
+        await SeedSalePaymentAsync(context, 1, paymentMethodId: 1, amountBsS: 1000m, dateUtc: now);
+        await SeedExpenseAsync(
+            context, sessionOne.Id, PettyCashCurrency.BsS, 100m, 2.7397m, now,
+            category: PettyCashCategory.InsumosLimpieza, voucherNumber: 1);
+
+        var service = CreateService(context);
+        var firstClosure = await service.CreateClosureFromCommandAsync(
+            new CreateClosureCommand(now, "Admin", null, new List<DeclaredPaymentAmount> { new(1, 900m) }),
+            CancellationToken.None);
+
+        // El rollover real abre la sesion siguiente; aqui el mock de ICashDrawerService no lo hace
+        // y se simula el segundo turno con su propio gasto dentro del mismo dia local.
+        var sessionTwo = await SeedOpenSessionAsync(context, now.AddMinutes(1));
+        await SeedExpenseAsync(
+            context, sessionTwo.Id, PettyCashCurrency.BsS, 50m, 1.3699m, now.AddMinutes(2),
+            category: PettyCashCategory.Varios, voucherNumber: 2);
+
+        var secondClosure = await service.CreateClosureFromCommandAsync(
+            new CreateClosureCommand(now.AddMinutes(10), "Admin", null, new List<DeclaredPaymentAmount> { new(1, 950m) }),
+            CancellationToken.None);
+
+        var persistedFirst = await context.DailyClosures.AsNoTracking()
+            .SingleAsync(closure => closure.Id == firstClosure.ClosureId);
+        var persistedSecond = await context.DailyClosures.AsNoTracking()
+            .SingleAsync(closure => closure.Id == secondClosure.ClosureId);
+        Assert.Equal(sessionOne.Id, persistedFirst.SessionId);
+        Assert.Equal(sessionTwo.Id, persistedSecond.SessionId);
+
+        // Sin ancla, la ventana reconstruida del primer cierre llegaria hasta el fin del dia local
+        // e incluiria tambien el gasto del turno siguiente (2 activos / 150 Bs.S); con SessionId el
+        // resumen es EXACTO al turno cerrado.
+        var firstRead = await service.GetClosureAsync(firstClosure.ClosureId);
+        Assert.NotNull(firstRead);
+        Assert.NotNull(firstRead!.PettyCashSummary);
+        Assert.Equal(1, firstRead.PettyCashSummary!.ActiveCount);
+        Assert.Equal(100m, firstRead.PettyCashSummary.TotalBsS);
+        Assert.Equal(PettyCashCategory.InsumosLimpieza, firstRead.PettyCashSummary.ByCategory.Single().Category);
+
+        var secondRead = await service.GetClosureAsync(secondClosure.ClosureId);
+        Assert.NotNull(secondRead);
+        Assert.NotNull(secondRead!.PettyCashSummary);
+        Assert.Equal(1, secondRead.PettyCashSummary!.ActiveCount);
+        Assert.Equal(50m, secondRead.PettyCashSummary.TotalBsS);
+        Assert.Equal(PettyCashCategory.Varios, secondRead.PettyCashSummary.ByCategory.Single().Category);
+    }
+
+    [Fact]
+    public async Task GetClosure_LegacyWithoutSessionAnchor_FallsBackToWindowSummary()
+    {
+        using var context = CreateInMemoryContext();
+        await SeedPaymentMethodsAsync(context);
+        var session = await SeedOpenSessionAsync(context, TodayMidnightUtc());
+        var now = DateTime.UtcNow;
+
+        await SeedExpenseAsync(
+            context, session.Id, PettyCashCurrency.BsS, 120m, 3.2877m, now,
+            category: PettyCashCategory.MantenimientoReparaciones);
+
+        // Cierre legado (SessionId null): solo la ventana reconstruida puede ubicar su OPEX.
+        var legacy = new DailyClosure
+        {
+            ClosureDate = now,
+            UserId = "Admin",
+            ExchangeRate = SeedRate,
+            TotalExpectedBsS = 0m,
+            TotalActualBsS = 0m,
+            TotalDifferenceBsS = 0m
+        };
+        context.DailyClosures.Add(legacy);
+        await context.SaveChangesAsync();
+
+        var closure = await CreateService(context).GetClosureAsync(legacy.Id);
+
+        Assert.NotNull(closure);
+        Assert.Null((await context.DailyClosures.AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == legacy.Id)).SessionId);
+        Assert.NotNull(closure!.PettyCashSummary);
+        Assert.Equal(1, closure.PettyCashSummary!.ActiveCount);
+        Assert.Equal(120m, closure.PettyCashSummary.TotalBsS);
+        Assert.Equal(PettyCashCategory.MantenimientoReparaciones, closure.PettyCashSummary.ByCategory.Single().Category);
     }
 
     // ------------------------------------------------------------------ arqueo físico USD del cierre

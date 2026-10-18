@@ -383,6 +383,36 @@ public class PettyCashVoucherTests
         Assert.Contains(@"Autoriz\363 anulaci\363n: Administrador", content);
     }
 
+    [Fact]
+    public void BuildPdf_EscapesEverySpanishCharacterAsWinAnsiOctalWithoutQuestionMarks()
+    {
+        // Quick win 8.188: el mapeo octal WinAnsi (CP1252) debe cubrir TODO el espanol del
+        // documento; ¿, ¡ y ° caian a '?' con el Encoding.ASCII del generador.
+        var expense = BuildExpense(
+            category: PettyCashCategory.Papeleria,
+            concept: "Autorización de café para Ñandú ¿listo? 25°",
+            beneficiary: "Señora Ávila ¡Sí!",
+            reference: "REF-Ñ-01");
+        var context = PettyCashVoucherContext.CreateFrom(expense, "Cajero 70", "Gerente Dos");
+
+        var content = Encoding.ASCII.GetString(
+            PettyCashVoucherPdfGenerator.BuildPdf(context, MoneyDisplayFormat.Venezuelan));
+
+        // Formas octales exactas por caracter del mapeo espanol.
+        Assert.Contains(@"Autorizaci\363n de caf\351 para \321and\372", content);
+        Assert.Contains(@"\277listo? 25\260", content);
+        Assert.Contains(@"Se\361ora \301vila \241S\355!", content);
+        Assert.Contains(@"Papeler\355a", content);
+
+        // Los textos clave nunca llegan reemplazados por '?' (ni crudos no-ASCII).
+        Assert.DoesNotContain("Autorizaci?n", content);
+        Assert.DoesNotContain("caf?", content);
+        Assert.DoesNotContain("?and", content);
+        Assert.DoesNotContain("Se?ora", content);
+        Assert.DoesNotContain("?vila", content);
+        Assert.DoesNotContain("S?", content);
+    }
+
     // ------------------------------------------------------------------ servicio (nombres + 404)
 
     [Fact]
