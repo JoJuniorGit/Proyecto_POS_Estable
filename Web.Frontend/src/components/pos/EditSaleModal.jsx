@@ -4,25 +4,85 @@ import SearchBar from './SearchBar';
 import QuantityInput from './QuantityInput';
 import { updateSaleItems } from '../../services/salesApi';
 import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
-import { selectEffectiveRate } from '../../context/CartContext';
 import { Trash2, AlertTriangle, Save, Loader2, Plus, Minus } from 'lucide-react';
 import './EditSaleModal.css';
 
 const toBsSCeiling = (usd, rate) => (usd > 0 && rate > 0 ? Math.ceil(usd * rate * 100) / 100 : 0);
+
+/**
+ * 8.186-T7b (S2 ext. cuentas abiertas): tasa anclada de la cuenta — la MISMA que el server
+ * persiste al editar los ítems (`sale.AppliedRate`) y la que usa el POS local. La tasa vigente
+ * (SignalR) puede haber cambiado después de abrir la cuenta; usarla aquí desfasaría el display
+ * de lo que se persiste. Fallback a la tasa vigente solo si la venta no trae una anclada.
+ */
+export function resolveAccountRate(sale, exchangeRate) {
+  const appliedRate = Number(sale?.appliedRate);
+  return appliedRate > 0 ? appliedRate : exchangeRate;
+}
+
+/**
+ * Bs.S unitario de una línea: snapshot persistido si existe; si no, techo canónico (2dp)
+ * USD × tasa — la misma matemática de display que aplica el server.
+ */
+export function resolveUnitPriceBsS(unitPriceBsS, unitPriceUSD, rate) {
+  const stored = Number(unitPriceBsS);
+  if (stored > 0) return stored;
+  return toBsSCeiling(Number(unitPriceUSD) || 0, rate);
+}
+
+/**
+ * Resumen financiero reactivo del modal de edición. Toda la matemática de la cuenta ancla a su
+ * tasa (`accountRate`): fallback Bs.S de ítems sin snapshot, abonos sin `amountBsS` e inversas
+ * de display. "Total Ya Abonado" consume el Bs.S REAL ya registrado (`totalPaidBsS`), nunca una
+ * síntesis USD × tasa vigente: tras un cambio de tasa las tres filas reconcilian
+ * (`newTotalBsS == totalPaidBsS + newRemainingBalanceBsS`, con clamp del restante en 0).
+ */
+export function computeEditSaleSummary({ items = [], sale = null, exchangeRate } = {}) {
+  const accountRate = resolveAccountRate(sale, exchangeRate);
+
+  const totalPaidUSD = Number(sale?.totalPaidUSD || (sale?.payments?.reduce((acc, p) => acc + (Number(p.amount) || 0), 0)) || 0);
+  const newTotalUSD = items.reduce((acc, i) => acc + ((Number(i.quantity) || 0) * (Number(i.unitPrice) || 0)), 0);
+  const newTotalBsS = Math.round(items.reduce((acc, i) => {
+    const unitBsS = resolveUnitPriceBsS(i.unitPriceBsS, i.unitPrice, accountRate);
+    return acc + ((Number(i.quantity) || 0) * unitBsS);
+  }, 0) * 100) / 100;
+  const newRemainingBalanceUSD = Math.max(0, newTotalUSD - totalPaidUSD);
+
+  // ANEXO XV: paridad del monto redondeado en cuentas abiertas — el restante Bs.S es la deuda
+  // efectiva (nuevo total por linea ya redondeado menos abonos Bs.S) y su $ es el inverso.
+  const totalPaidBsS = (sale?.payments || []).reduce((acc, p) => acc + (Number(p.amountBsS) > 0 ? Number(p.amountBsS) : (Number(p.amount) || 0) * (Number(p.exchangeRate) || accountRate)), 0);
+  const newRemainingBalanceBsS = Math.max(0, newTotalBsS - totalPaidBsS);
+  const newTotalEffectiveUsd = accountRate > 0 && newTotalBsS > 0 ? Math.round((newTotalBsS / accountRate) * 100) / 100 : newTotalUSD;
+  const newRemainingEffectiveUsd = accountRate > 0 ? Math.round((newRemainingBalanceBsS / accountRate) * 100) / 100 : newRemainingBalanceUSD;
+
+  const isBelowPaidAmount = newTotalUSD < (totalPaidUSD - 0.01);
+
+  return {
+    accountRate,
+    totalPaidUSD,
+    newTotalUSD,
+    newTotalBsS,
+    totalPaidBsS,
+    newRemainingBalanceBsS,
+    newTotalEffectiveUsd,
+    newRemainingEffectiveUsd,
+    isBelowPaidAmount,
+  };
+}
 
 export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onSuccess }) {
   const [items, setItems] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  const rateToUse = selectEffectiveRate(exchangeRate, sale?.appliedRate);
+  const accountRate = resolveAccountRate(sale, exchangeRate);
 
   useEffect(() => {
     if (sale?.items) {
       setItems(sale.items.map(i => {
         const unitPriceUSD = Number(i.unitPrice ?? i.unitPriceUSD ?? 0);
         const qty = Number(i.quantity) || 1;
-        const unitPriceBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : toBsSCeiling(unitPriceUSD, rateToUse);
+        const unitPriceBsS = resolveUnitPriceBsS(i.unitPriceBsS, unitPriceUSD, accountRate);
         const isFractional = Boolean(
           i.isFractional ||
           i.isFractionable ||
@@ -46,7 +106,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       setItems([]);
     }
     setError(null);
-  }, [sale, exchangeRate, rateToUse]);
+  }, [sale, exchangeRate, accountRate]);
 
   const handleAddProduct = (prod) => {
     if (!prod) return;
@@ -57,7 +117,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       (prod.unitOfMeasure && prod.unitOfMeasure !== 'Und' && prod.unitOfMeasure !== 0)
     );
     const unitOfMeasure = prod.unitOfMeasure || 'Und';
-    const unitBsS = toBsSCeiling(price, rateToUse);
+    const unitBsS = toBsSCeiling(price, accountRate);
 
     setItems(prev => {
       const existingIdx = prev.findIndex(i => i.productId === prod.id);
@@ -66,7 +126,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
         const current = updated[existingIdx];
         const step = !current.isFractional ? 1 : (current.unitOfMeasure === 'Grs' || current.unitOfMeasure === 'Ml' ? 100 : current.unitOfMeasure === 'Lb' ? 0.25 : 0.100);
         const newQty = Math.round(((Number(current.quantity) || 0) + step) * 1000) / 1000;
-        const currentUnitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : toBsSCeiling(current.unitPrice, rateToUse);
+        const currentUnitBsS = resolveUnitPriceBsS(current.unitPriceBsS, current.unitPrice, accountRate);
 
         updated[existingIdx] = {
           ...current,
@@ -115,7 +175,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
     setItems(prev => {
       const updated = [...prev];
       const current = updated[idx];
-      const unitBsS = Number(current.unitPriceBsS) > 0 ? Number(current.unitPriceBsS) : toBsSCeiling(current.unitPrice, rateToUse);
+      const unitBsS = resolveUnitPriceBsS(current.unitPriceBsS, current.unitPrice, accountRate);
       const subUSD = Math.round(validatedQty * (current.unitPrice || 0) * 100) / 100;
       const subBsS = Math.round(validatedQty * unitBsS * 100) / 100;
 
@@ -134,24 +194,19 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
     setItems(prev => prev.filter((_, i) => i !== idx));
   };
 
-  // Cálculos financieros reactivos en tiempo real
-  const totalPaidUSD = Number(sale?.totalPaidUSD || (sale?.payments?.reduce((acc, p) => acc + (p.amount || 0), 0)) || 0);
-  const newTotalUSD = items.reduce((acc, i) => acc + ((Number(i.quantity) || 0) * (Number(i.unitPrice) || 0)), 0);
-  const newTotalBsS = Math.round(items.reduce((acc, i) => {
-    const unitBsS = Number(i.unitPriceBsS) > 0 ? Number(i.unitPriceBsS) : toBsSCeiling(Number(i.unitPrice) || 0, rateToUse);
-    return acc + ((Number(i.quantity) || 0) * unitBsS);
-  }, 0) * 100) / 100;
-  const newRemainingBalanceUSD = Math.max(0, newTotalUSD - totalPaidUSD);
-
-  // ANEXO XV: paridad del monto redondeado en cuentas abiertas — el restante Bs.S es la deuda
-  // efectiva (nuevo total por linea ya redondeado menos abonos Bs.S) y su $ es el inverso.
-  const totalPaidBsS = (sale?.payments || []).reduce((acc, p) => acc + (Number(p.amountBsS) > 0 ? Number(p.amountBsS) : (Number(p.amount) || 0) * (Number(p.exchangeRate) || rateToUse)), 0);
-  const newRemainingBalanceBsS = Math.max(0, newTotalBsS - totalPaidBsS);
-  const newTotalEffectiveUsd = rateToUse > 0 && newTotalBsS > 0 ? Math.round((newTotalBsS / rateToUse) * 100) / 100 : newTotalUSD;
-  const newRemainingEffectiveUsd = rateToUse > 0 ? Math.round((newRemainingBalanceBsS / rateToUse) * 100) / 100 : newRemainingBalanceUSD;
+  // Cálculos financieros reactivos en tiempo real (8.186-T7b: resumen puro y testeable)
+  const {
+    totalPaidUSD,
+    newTotalUSD,
+    newTotalBsS,
+    totalPaidBsS,
+    newRemainingBalanceBsS,
+    newTotalEffectiveUsd,
+    newRemainingEffectiveUsd,
+    isBelowPaidAmount,
+  } = computeEditSaleSummary({ items, sale, exchangeRate });
 
   // Validaciones
-  const isBelowPaidAmount = newTotalUSD < (totalPaidUSD - 0.01);
   const canSave = items.length > 0 && !isBelowPaidAmount;
 
   const handleSave = async () => {
@@ -215,7 +270,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
             <tbody>
               {items.map((item, idx) => {
                 const qty = Number(item.quantity) || 0;
-                const unitBsS = Number(item.unitPriceBsS) > 0 ? Number(item.unitPriceBsS) : toBsSCeiling(Number(item.unitPrice) || 0, rateToUse);
+                const unitBsS = resolveUnitPriceBsS(item.unitPriceBsS, item.unitPrice, accountRate);
                 const subtotalBsS = Math.round(qty * unitBsS * 100) / 100;
                 const isFrac = Boolean(
                   item.isFractional ||
@@ -306,7 +361,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Total Ya Abonado:</span>
-          <span className="font-bold text-success"><span className="es-total-bs">{formatBsS(totalPaidUSD * rateToUse)}</span> <span className="text-muted text-xs font-normal">({formatUSD(totalPaidUSD)})</span></span>
+          <span className="font-bold text-success"><span className="es-total-bs">{formatBsS(totalPaidBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(totalPaidUSD)})</span></span>
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Nuevo Saldo Restante:</span>
