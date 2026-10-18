@@ -1,0 +1,180 @@
+/* T5 (Paso 13 / 8.188): panel de caja chica del turno. Prefijo pc- para aislar del
+   resto de la página de caja y mantener los design tokens oficiales. */
+
+.pc-panel {
+  border-top: 3px solid var(--warning, #B45309);
+}
+
+.pc-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.pc-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pc-title {
+  color: #B45309;
+}
+
+.pc-title-icon {
+  flex-shrink: 0;
+}
+
+.pc-summary {
+  font-weight: 600;
+}
+
+.pc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pc-action-register {
+  color: #B45309;
+  border-color: #B45309;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pc-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+}
+
+.pc-icon-btn-danger {
+  color: var(--danger, #DC2626);
+  border-color: var(--danger, #DC2626);
+}
+
+.pc-balances {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  background-color: var(--bg-hover, #F1F5F9);
+  border: 1px solid var(--border, #CBD5E1);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.pc-balance-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.pc-balance-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0F766E;
+}
+
+.pc-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border, #CBD5E1);
+  border-radius: var(--radius-sm, 6px);
+}
+
+.pc-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.pc-table thead th {
+  position: sticky;
+  top: 0;
+  background-color: var(--bg-hover, #F1F5F9);
+  color: var(--text-muted, #64748B);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border, #CBD5E1);
+  white-space: nowrap;
+}
+
+.pc-table tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border, #E2E8F0);
+  vertical-align: top;
+}
+
+.pc-table tbody tr:hover {
+  background-color: var(--bg-hover, #F8FAFC);
+}
+
+.pc-th-concept {
+  min-width: 240px;
+}
+
+.pc-td-voucher {
+  color: #B45309;
+  white-space: nowrap;
+}
+
+.pc-td-concept {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pc-concept {
+  color: var(--text-primary, #0F172A);
+}
+
+.pc-concept-beneficiary {
+  font-size: 12px;
+  color: var(--text-muted, #64748B);
+}
+
+.pc-concept-reference {
+  font-size: 11px;
+}
+
+.pc-cancellation-reason {
+  color: var(--danger, #DC2626);
+}
+
+.pc-status-active {
+  color: var(--success, #16A34A);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.pc-status-cancelled {
+  color: var(--danger, #DC2626);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.pc-row-cancelled td {
+  opacity: 0.75;
+}
+
+.pc-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}

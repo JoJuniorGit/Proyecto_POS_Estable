@@ -11,7 +11,9 @@ import {
   TrendingUp, 
   TrendingDown, 
   Clock,
-  CheckCircle
+  CheckCircle,
+  Wallet,
+  Lock
 } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { useAuth } from '../context/AuthContext';
@@ -21,6 +23,12 @@ import './RegisterPage.css';
 import CashInModal from '../components/register/CashInModal';
 import CashOutModal from '../components/register/CashOutModal';
 import CashAdvanceModal from '../components/register/CashAdvanceModal';
+import PettyCashPanel from '../components/register/PettyCashPanel';
+import PettyCashExpenseModal from '../components/register/PettyCashExpenseModal';
+import PettyCashCancelModal from '../components/register/PettyCashCancelModal';
+import CashDrawerCloseModal from '../components/register/CashDrawerCloseModal';
+import { getPettyCashExpenses, getPettyCashPhysicalBalances } from '../services/pettyCashApi';
+import { canCloseCashDrawerSession, canUsePettyCash } from '../components/register/registerFormLogic';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
 import { normalizeRole } from '../navigation/roleViews';
@@ -39,6 +47,11 @@ function RegisterPageContent() {
   const { user } = useAuth();
   
   const isAdmin = normalizeRole(user?.role) === 'Admin';
+  // T5 (Paso 13 / 8.188): roles de la caja chica (Admin/Manager/Cashier) y del cierre de la
+  // sesión (solo supervisión). El gate del servidor sigue siendo la autoridad final.
+  const role = normalizeRole(user?.role);
+  const showPettyCash = canUsePettyCash(role);
+  const showCloseCashDrawer = canCloseCashDrawerSession(role);
 
   const [session, setSession] = useState(null);
   const [historyTransactions, setHistoryTransactions] = useState([]);
@@ -63,6 +76,49 @@ function RegisterPageContent() {
   const [isCashOutOpen, setIsCashOutOpen] = useState(false);
   const [isCashAdvanceOpen, setIsCashAdvanceOpen] = useState(false);
 
+  // Caja chica del turno (T5): listado, saldos físicos y modales de registro/anulación.
+  const [pettyCashExpenses, setPettyCashExpenses] = useState([]);
+  const [pettyCashBalances, setPettyCashBalances] = useState(null);
+  const [pettyCashLoading, setPettyCashLoading] = useState(false);
+  const [isPettyCashPanelOpen, setIsPettyCashPanelOpen] = useState(false);
+  const [isPettyCashExpenseOpen, setIsPettyCashExpenseOpen] = useState(false);
+  const [cancelTargetExpense, setCancelTargetExpense] = useState(null);
+  const [isCloseCashDrawerOpen, setIsCloseCashDrawerOpen] = useState(false);
+
+  // Los gastos del turno se recargan junto con la sesión (el registro/anulación se reflejan de
+  // inmediato). Los saldos físicos por gaveta solo se piden a supervisión: el Cashier conserva el
+  // arqueo ciego y el servidor sigue validando la liquidez al registrar.
+  const loadPettyCash = useCallback(async (sessionId) => {
+    if (!sessionId || !showPettyCash) {
+      setPettyCashExpenses([]);
+      setPettyCashBalances(null);
+      return;
+    }
+
+    setPettyCashLoading(true);
+    try {
+      const rows = await getPettyCashExpenses(sessionId);
+      setPettyCashExpenses(Array.isArray(rows) ? rows : []);
+
+      if (showCloseCashDrawer) {
+        try {
+          setPettyCashBalances(await getPettyCashPhysicalBalances(sessionId));
+        } catch (balancesErr) {
+          console.warn('[RegisterPage] No se pudieron cargar los saldos físicos de caja:', balancesErr);
+          setPettyCashBalances(null);
+        }
+      } else {
+        setPettyCashBalances(null);
+      }
+    } catch (err) {
+      console.warn('[RegisterPage] No se pudieron cargar los gastos de caja chica:', err);
+      setPettyCashExpenses([]);
+      setPettyCashBalances(null);
+    } finally {
+      setPettyCashLoading(false);
+    }
+  }, [showPettyCash, showCloseCashDrawer]);
+
   const loadSession = useCallback(async () => {
     setLoading(true);
     try {
@@ -75,12 +131,13 @@ function RegisterPageContent() {
       ]);
       setSession(sessionData);
       setHistoryTransactions(historyData || []);
+      await loadPettyCash(sessionData?.id);
     } catch (err) {
       console.error('[RegisterPage] Error al obtener sesión de caja:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadPettyCash]);
 
   useEffect(() => {
     loadSession();
@@ -203,6 +260,30 @@ function RegisterPageContent() {
           >
             <FastForward size={18} /> Adelanto Efectivo
           </button>
+
+          {showPettyCash && (
+            <button
+              type="button"
+              className={`btn ${isPettyCashPanelOpen ? 'btn-primary' : 'btn-outline'} flex-align-center justify-content-center gap-2 register-action-btn`}
+              onClick={() => setIsPettyCashPanelOpen((open) => !open)}
+              disabled={!session}
+              title="Registrar y consultar gastos de caja chica del turno"
+            >
+              <Wallet size={18} /> CAJA CHICA
+            </button>
+          )}
+
+          {showCloseCashDrawer && (
+            <button
+              type="button"
+              className="btn btn-outline flex-align-center justify-content-center gap-2 register-action-btn"
+              onClick={() => setIsCloseCashDrawerOpen(true)}
+              disabled={!session}
+              title="Arqueo y cierre de la sesión de caja (conteo USD opcional)"
+            >
+              <Lock size={18} /> CERRAR CAJA
+            </button>
+          )}
         </div>
       </div>
 
@@ -223,6 +304,20 @@ function RegisterPageContent() {
         </div>
       ) : (
         <>
+          {/* ── T5 (Paso 13 / 8.188): panel de caja chica del turno (paridad WPF) ── */}
+          {showPettyCash && isPettyCashPanelOpen && (
+            <PettyCashPanel
+              expenses={pettyCashExpenses}
+              balances={pettyCashBalances}
+              canViewBalances={showCloseCashDrawer}
+              loading={pettyCashLoading}
+              onRegister={() => setIsPettyCashExpenseOpen(true)}
+              onCancelExpense={(expense) => setCancelTargetExpense(expense)}
+              onRefresh={() => loadPettyCash(session?.id)}
+              onClose={() => setIsPettyCashPanelOpen(false)}
+            />
+          )}
+
           {/* ── Requisito 3: Tarjetas de Resumen (Espaciado Tipográfico Garantizado entre Número y Divisa Bs.S) ── */}
           <div className="grid w-full gap-4 reg-summary-grid">
             
@@ -557,6 +652,41 @@ function RegisterPageContent() {
         user={user}
         onSuccess={loadSession}
       />
+
+      {/* T5 (Paso 13 / 8.188): registro/anulación de caja chica y cierre de la sesión con
+          conteo USD opcional. Estas acciones no recalculan políticas: el servidor decide. */}
+      {showPettyCash && (
+        <PettyCashExpenseModal
+          isOpen={isPettyCashExpenseOpen}
+          onClose={() => setIsPettyCashExpenseOpen(false)}
+          sessionId={session?.id}
+          exchangeRate={exchangeRate}
+          role={role}
+          onSuccess={loadSession}
+        />
+      )}
+
+      {showPettyCash && (
+        <PettyCashCancelModal
+          isOpen={Boolean(cancelTargetExpense)}
+          onClose={() => setCancelTargetExpense(null)}
+          expense={cancelTargetExpense}
+          role={role}
+          onSuccess={loadSession}
+        />
+      )}
+
+      {showCloseCashDrawer && (
+        <CashDrawerCloseModal
+          isOpen={isCloseCashDrawerOpen}
+          onClose={() => setIsCloseCashDrawerOpen(false)}
+          exchangeRate={exchangeRate}
+          expectedCashBsS={expectedCashBsS}
+          expectedCashUsd={pettyCashBalances?.usd ?? null}
+          role={role}
+          onSuccess={loadSession}
+        />
+      )}
     </div>
   );
 }

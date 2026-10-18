@@ -1,0 +1,1 @@
+.atm-input-wrapper{align-items:center;width:100%;display:flex;position:relative}.atm-prefix{color:var(--text-muted);pointer-events:none;-webkit-user-select:none;user-select:none;z-index:2;white-space:nowrap;font-weight:700;position:absolute;left:8px}.atm-prefix-sign{font-size:.85rem}.atm-prefix-text{font-size:.72rem}.atm-field{height:42px;padding-right:14px;font-family:monospace}
