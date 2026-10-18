@@ -758,5 +758,106 @@ public partial class WpfDialogService
 
         return applied;
     }
+
+    /// <summary>
+    /// T4 (Paso 13 / 8.188, S1/S4): modal de registro de caja chica. La ventana se cierra desde el
+    /// ViewModel al completar el registro (o al cancelar) y se devuelve el gasto confirmado.
+    /// </summary>
+    public System.Threading.Tasks.Task<PettyCashExpenseClientDto?> ShowPettyCashExpenseDialogAsync(
+        PettyCashExpenseDialogViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (Application.Current == null)
+        {
+            return System.Threading.Tasks.Task.FromResult<PettyCashExpenseClientDto?>(null);
+        }
+
+        using var _ = TrackModal();
+        PettyCashExpenseClientDto? result = null;
+        Action openDialog = () =>
+        {
+            var dialog = new PettyCashExpenseDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            dialog.ShowDialog();
+            result = viewModel.Result;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
+    }
+
+    /// <summary>T4 (S5): modal de anulación con motivo obligatorio y autorización jerárquica.</summary>
+    public System.Threading.Tasks.Task<PettyCashExpenseClientDto?> ShowPettyCashCancelDialogAsync(
+        PettyCashCancelDialogViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (Application.Current == null)
+        {
+            return System.Threading.Tasks.Task.FromResult<PettyCashExpenseClientDto?>(null);
+        }
+
+        using var _ = TrackModal();
+        PettyCashExpenseClientDto? result = null;
+        Action openDialog = () =>
+        {
+            var dialog = new PettyCashCancelDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            dialog.ShowDialog();
+            result = viewModel.Result;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
+    }
+
+    /// <summary>
+    /// T4 (S2): arqueo de cierre de la sesión de caja con conteo USD opcional. Devuelve null si el
+    /// operador cancela; sin USD informado el servidor conserva el comportamiento previo.
+    /// </summary>
+    public System.Threading.Tasks.Task<CashDrawerCloseResult?> ShowCashDrawerCloseDialogAsync(
+        decimal exchangeRate,
+        decimal currentBalanceBsS,
+        decimal? currentBalanceUsd)
+    {
+        if (Application.Current == null)
+        {
+            return System.Threading.Tasks.Task.FromResult<CashDrawerCloseResult?>(null);
+        }
+
+        using var _ = TrackModal();
+        CashDrawerCloseResult? result = null;
+        Action openDialog = () =>
+        {
+            var dialog = new CashDrawerCloseDialog(exchangeRate, currentBalanceBsS, currentBalanceUsd);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            if (dialog.ShowDialog() == true)
+            {
+                result = new CashDrawerCloseResult(
+                    dialog.ActualClosingBalanceLocal,
+                    dialog.ActualClosingBalanceUsd);
+            }
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
+    }
 }
 

@@ -124,7 +124,35 @@ public interface IDialogService
     /// su ciclo de vida pertenece a la sesion.
     /// </summary>
     Task ShowAuthorizationNotificationAsync(ViewModels.AuthorizationNotificationViewModel viewModel) => Task.CompletedTask;
+
+    /// <summary>
+    /// T4 (Paso 13 / 8.188, S1/S4): modal de registro de caja chica. La implementación WPF abre
+    /// una ventana propia y devuelve el gasto confirmado; los stubs headless equivalen a cancelado.
+    /// </summary>
+    Task<PettyCashExpenseClientDto?> ShowPettyCashExpenseDialogAsync(
+        ViewModels.PettyCashExpenseDialogViewModel viewModel) =>
+        Task.FromResult<PettyCashExpenseClientDto?>(null);
+
+    /// <summary>T4 (S5): modal de anulación con motivo obligatorio y autorización jerárquica.</summary>
+    Task<PettyCashExpenseClientDto?> ShowPettyCashCancelDialogAsync(
+        ViewModels.PettyCashCancelDialogViewModel viewModel) =>
+        Task.FromResult<PettyCashExpenseClientDto?>(null);
+
+    /// <summary>
+    /// T4 (S2): arqueo de cierre de la sesión de caja con conteo USD opcional. La implementación
+    /// headless devuelve null (cierre cancelado).
+    /// </summary>
+    Task<CashDrawerCloseResult?> ShowCashDrawerCloseDialogAsync(
+        decimal exchangeRate,
+        decimal currentBalanceBsS,
+        decimal? currentBalanceUsd) =>
+        Task.FromResult<CashDrawerCloseResult?>(null);
 }
+
+/// <summary>T4 (Paso 13 / 8.188, S2): conteo capturado en el cierre de la sesión de caja.</summary>
+public sealed record CashDrawerCloseResult(
+    decimal ActualClosingBalanceLocal,
+    decimal? ActualClosingBalanceUsd);
 
 /// <summary>8.150 (T10): desenlace del dialogo de espera del cajero.</summary>
 public enum AuthorizationWaitOutcome

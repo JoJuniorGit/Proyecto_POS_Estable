@@ -74,6 +74,27 @@ public sealed record CreditOverLimitAuthorizationRequestContext : IAuthorization
     public AuthorizationActionType ActionType => AuthorizationActionType.CreditOverLimit;
 }
 
+/// <summary>
+/// T4 (Paso 13 / 8.188, S4): contexto del egreso de caja chica. El gasto no pertenece a una venta:
+/// el hub/REST envían la sesión, la divisa física, ambos montos bimonetarios y la categoría
+/// exactos para que el token quede ligado al mismo hash que calcula el servidor.
+/// </summary>
+public sealed record PettyCashExpenseAuthorizationRequestContext : IAuthorizationRequestContext
+{
+    public int SessionId { get; init; }
+    public PettyCashCurrencyClient Currency { get; init; }
+    public decimal AmountBsS { get; init; }
+    public decimal AmountUsd { get; init; }
+    public PettyCashCategoryClient Category { get; init; }
+    public string? Terminal { get; init; }
+
+    // La acción no tiene venta; el contrato del hub acepta SaleId nulo y el servidor lo persiste
+    // como NULL. La interfaz histórica exige un entero, por lo que se informa 0 sin enviarse.
+    public int SaleId => 0;
+
+    public AuthorizationActionType ActionType => AuthorizationActionType.PettyCashExpense;
+}
+
 public sealed record AuthorizationRequestInfo(
     int RequestId,
     DateTimeOffset ExpiresAt,
@@ -219,6 +240,66 @@ public sealed class AuthorizationRequestedPayload : EventArgs
             AvailableCreditUSD = availableCreditUsd,
             Terminal = Terminal
         };
+    }
+
+    /// <summary>
+    /// T4 (Paso 13 / 8.188, S4): reconstruye el contexto PettyCashExpense del push para la cola de
+    /// supervisión y el diálogo de espera. Devuelve null si la acción es otra o el contexto está
+    /// incompleto (fail-closed: sin contexto no se puede reenviar una solicitud).
+    /// </summary>
+    public PettyCashExpenseAuthorizationRequestContext? GetPettyCashExpenseContext()
+    {
+        if (ParsedActionType != AuthorizationActionType.PettyCashExpense
+            || Context is not { ValueKind: JsonValueKind.Object } context)
+        {
+            return null;
+        }
+
+        if (!TryGetPropertyIgnoreCase(context, "sessionId", out var sessionElement)
+            || !sessionElement.TryGetInt32(out int sessionId)
+            || !TryGetPropertyIgnoreCase(context, "currency", out var currencyElement)
+            || !currencyElement.TryGetInt32(out int currencyValue)
+            || !Enum.IsDefined(typeof(PettyCashCurrencyClient), currencyValue)
+            || !TryGetPropertyIgnoreCase(context, "amountBss", out var amountBsSElement)
+            || !amountBsSElement.TryGetDecimal(out decimal amountBsS)
+            || !TryGetPropertyIgnoreCase(context, "amountUsd", out var amountUsdElement)
+            || !amountUsdElement.TryGetDecimal(out decimal amountUsd)
+            || !TryGetPropertyIgnoreCase(context, "category", out var categoryElement)
+            || !categoryElement.TryGetInt32(out int categoryValue)
+            || !Enum.IsDefined(typeof(PettyCashCategoryClient), categoryValue))
+        {
+            return null;
+        }
+
+        return new PettyCashExpenseAuthorizationRequestContext
+        {
+            SessionId = sessionId,
+            Currency = (PettyCashCurrencyClient)currencyValue,
+            AmountBsS = amountBsS,
+            AmountUsd = amountUsd,
+            Category = (PettyCashCategoryClient)categoryValue,
+            Terminal = Terminal
+        };
+    }
+
+    private static bool TryGetPropertyIgnoreCase(JsonElement element, string name, out JsonElement value)
+    {
+        if (element.TryGetProperty(name, out value))
+        {
+            return true;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
     }
 }
 

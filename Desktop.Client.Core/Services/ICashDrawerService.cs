@@ -1,3 +1,4 @@
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Desktop.Client.Services;
@@ -48,8 +49,55 @@ public interface ICashDrawerService
     Task<CashDrawerSessionDto?> GetActiveSessionAsync();
     Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate);
     Task<CashDrawerSessionDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate);
+
+    /// <summary>
+    /// T4 (Paso 13 / 8.188, S2): cierre con conteo físico USD opcional. Sin valor se conserva el
+    /// comportamiento previo; el servidor persiste <c>ClosingBalanceUsd</c> solo cuando se informa.
+    /// </summary>
+    Task<CashDrawerSessionDto> CloseSessionAsync(
+        decimal actualClosingBalanceLocal,
+        decimal currentExchangeRate,
+        decimal? actualClosingBalanceUsd) => CloseSessionAsync(actualClosingBalanceLocal, currentExchangeRate);
+
     Task<decimal> GetCurrentBalanceLocalAsync(int sessionId);
     Task<CashTransactionDto> AddTransactionAsync(int sessionId, decimal amountLocal, CashTransactionType type, CashTransactionSource source, string description, decimal exchangeRate);
+
+    /// <summary>
+    /// T4 (Paso 13 / 8.188, S1/S4/S5): egreso de caja chica. El servidor resuelve la tasa BCV, la
+    /// valoración dual y la liquidez; el token de autorización es opcional y solo se envía en el
+    /// reintento posterior a un 403 del contrato.
+    /// </summary>
+    Task<PettyCashExpenseClientDto> RegisterPettyCashExpenseAsync(
+        PettyCashExpenseClientRequest request,
+        string? authorizationToken = null,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("El servicio de caja no implementa el registro de caja chica.");
+
+    /// <summary>T4 (S5): anulación lógica con motivo obligatorio y token supervisor opcional.</summary>
+    Task<PettyCashExpenseClientDto> CancelPettyCashExpenseAsync(
+        int expenseId,
+        string reason,
+        string? authorizationToken = null,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("El servicio de caja no implementa la anulación de caja chica.");
+
+    /// <summary>T4 (S1): gastos del turno (activos y anulados) para el panel de caja.</summary>
+    Task<System.Collections.Generic.IReadOnlyList<PettyCashExpenseClientDto>> GetPettyCashExpensesAsync(
+        int sessionId,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("El servicio de caja no implementa el listado de caja chica.");
+
+    /// <summary>T4 (S7): vale de caja chica PDF on-demand; null cuando el gasto no existe.</summary>
+    Task<byte[]?> GetPettyCashVoucherAsync(
+        int expenseId,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("El servicio de caja no implementa el vale de caja chica.");
+
+    /// <summary>T4 (S2): saldos físicos teóricos del turno por moneda (arqueo ciego supervisor).</summary>
+    Task<PettyCashPhysicalBalancesClientDto> GetPhysicalBalancesAsync(
+        int sessionId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new PettyCashPhysicalBalancesClientDto());
 
     /// <summary>
     /// Historial persistente de movimientos de caja (físicos) de TODAS las sesiones: activa y cerradas,

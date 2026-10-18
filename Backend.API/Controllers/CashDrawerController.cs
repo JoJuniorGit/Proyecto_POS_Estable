@@ -129,7 +129,11 @@ public class CashDrawerController : ControllerBase
     {
         // 8.168 (SEC-04-RES): anclar la tasa de cierre al valor oficial BCV cuando existe.
         decimal anchoredRate = await ResolveAnchoredRateAsync(request.CurrentExchangeRate, referenceId: 0, cancellationToken: cancellationToken);
-        var session = await _cashDrawerService.CloseSessionAsync(request.ActualClosingBalanceLocal, anchoredRate, cancellationToken: cancellationToken);
+        var session = await _cashDrawerService.CloseSessionAsync(
+            request.ActualClosingBalanceLocal,
+            anchoredRate,
+            actualClosingBalanceUsd: request.ActualClosingBalanceUsd,
+            cancellationToken: cancellationToken);
         return Ok(await MapLocalTimesAsync(session, cancellationToken));
     }
 
@@ -139,6 +143,33 @@ public class CashDrawerController : ControllerBase
     {
         var balance = await _cashDrawerService.GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
         return Ok(balance);
+    }
+
+    /// <summary>
+    /// T4 (Paso 13 / 8.188, S2): saldos físicos del turno por moneda para el panel de caja chica.
+    /// Se mantiene bajo el mismo gate de supervisión que el saldo teórico (arqueo ciego).
+    /// </summary>
+    [HttpGet("physical-balances")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<ActionResult<PettyCashPhysicalBalancesResponseDto>> GetPhysicalBalancesAsync(
+        [FromQuery] int sessionId,
+        CancellationToken cancellationToken)
+    {
+        if (sessionId <= 0)
+        {
+            return this.ApiBadRequest("La sesión de caja es requerida para consultar los saldos físicos.");
+        }
+
+        decimal bsS = await _cashDrawerService.GetPhysicalBalanceAsync(
+            sessionId,
+            Sales.Module.Entities.PettyCashCurrency.BsS,
+            cancellationToken);
+        decimal usd = await _cashDrawerService.GetPhysicalBalanceAsync(
+            sessionId,
+            Sales.Module.Entities.PettyCashCurrency.Usd,
+            cancellationToken);
+
+        return Ok(new PettyCashPhysicalBalancesResponseDto(bsS, usd));
     }
 
     [RequireSecurityStampValidation]

@@ -29,6 +29,12 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _activeSession, value))
             {
                 OnPropertyChanged(nameof(IsSessionActive));
+                OnPropertyChanged(nameof(CanUsePettyCash));
+                OnPropertyChanged(nameof(CanCloseCashDrawer));
+                if (value is null)
+                {
+                    IsPettyCashPanelOpen = false;
+                }
             }
         }
     }
@@ -146,6 +152,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
         RecentIncomes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentIncomes));
+        PettyCashExpenses.CollectionChanged += (_, _) => NotifyPettyCashChanged();
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (r, m) =>
         {
@@ -264,6 +271,12 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             CurrentPage = 1;
             UpdatePaginatedTransactions();
             UpdateFormattedBalances();
+
+            // T4 (Paso 13 / 8.188, S1): el panel de caja chica conserva el turno sincronizado.
+            if (IsPettyCashPanelOpen)
+            {
+                await LoadPettyCashAsync();
+            }
         }
         catch (Exception ex)
         {

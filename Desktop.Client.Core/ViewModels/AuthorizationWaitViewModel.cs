@@ -120,10 +120,16 @@ public partial class AuthorizationWaitViewModel : ObservableObject, IDisposable
 
     public string OperationSummary => BuildOperationSummary(_context);
 
-    public string SaleNumberDisplay => $"#{_context.SaleId}";
+    public string SaleNumberDisplay => PettyCashContext is { } pettyCash
+        ? $"#{pettyCash.SessionId}"
+        : $"#{_context.SaleId}";
+
+    /// <summary>T4 (Paso 13 / 8.188, S4): etiqueta del identificador (venta vs. sesión de caja).</summary>
+    public string ReferenceLabel => PettyCashContext is null ? "Factura" : "Sesión";
 
     private AuthorizationRequestContext? ManualContext => _context as AuthorizationRequestContext;
     private CreditOverLimitAuthorizationRequestContext? CreditContext => _context as CreditOverLimitAuthorizationRequestContext;
+    private PettyCashExpenseAuthorizationRequestContext? PettyCashContext => _context as PettyCashExpenseAuthorizationRequestContext;
 
     public string ProductDisplay => ManualContext is { } manual && !string.IsNullOrWhiteSpace(manual.ProductName)
         ? $"{manual.ProductName} × {manual.Quantity.ToString("0.###", CultureInfo.InvariantCulture)}"
@@ -145,6 +151,19 @@ public partial class AuthorizationWaitViewModel : ObservableObject, IDisposable
 
     public string AvailableCreditDisplay => CreditContext is { } credit
         ? $"$ {credit.AvailableCreditUSD.ToString("N2", CultureInfo.InvariantCulture)}"
+        : string.Empty;
+
+    public string PettyCashCategoryDisplay => PettyCashContext is { } pettyCash
+        ? PettyCashLabels.Category(pettyCash.Category)
+        : string.Empty;
+
+    public decimal PettyCashAmountBsS => PettyCashContext?.AmountBsS ?? 0m;
+
+    public decimal PettyCashAmountUsd => PettyCashContext?.AmountUsd ?? 0m;
+
+    /// <summary>Bs.S 2dp / USD 4dp; el display honra el ajuste de moneda activo para Bs.S.</summary>
+    public string PettyCashAmountDisplay => PettyCashContext is { } pettyCash
+        ? $"Bs.S {PettyCashLabels.FormatBsS(pettyCash.AmountBsS)} · {PettyCashLabels.FormatUsd(pettyCash.AmountUsd)}"
         : string.Empty;
 
     public string StatusMessage => Phase switch
@@ -175,6 +194,11 @@ public partial class AuthorizationWaitViewModel : ObservableObject, IDisposable
         {
             var customer = string.IsNullOrWhiteSpace(credit.CustomerName) ? "Cliente" : credit.CustomerName;
             return $"Crédito de $ {credit.FinancedUSD.ToString("N2", CultureInfo.InvariantCulture)} a {customer} - Venta #{credit.SaleId}";
+        }
+
+        if (context is PettyCashExpenseAuthorizationRequestContext pettyCash)
+        {
+            return $"Caja chica · {PettyCashLabels.Category(pettyCash.Category)} · Sesión #{pettyCash.SessionId}";
         }
 
         if (context is AuthorizationRequestContext manual)

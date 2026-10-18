@@ -7,17 +7,20 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
+             xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="700" d:DesignWidth="900">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <helpers:BindingProxy x:Key="Proxy" Data="{Binding}" />
     </UserControl.Resources>
 
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>   <!-- Header -->
             <RowDefinition Height="Auto"/>   <!-- KPI Cards -->
+            <RowDefinition Height="Auto"/>   <!-- Petty Cash Panel -->
             <RowDefinition Height="Auto"/>   <!-- Top Recent Incomes Panel -->
             <RowDefinition Height="*"/>      <!-- Transaction DataGrid -->
         </Grid.RowDefinitions>
@@ -86,6 +89,33 @@
                         <TextBlock Text="ADELANTO EFECTIVO" Margin="6,0,0,0" VerticalAlignment="Center" FontWeight="Bold"/>
                     </StackPanel>
                 </Button>
+
+                <!-- T4 (Paso 13 / 8.188, S1): egresos de caja chica del turno (Admin/Gerente/Cajero). -->
+                <Button Command="{Binding TogglePettyCashPanelCommand}"
+                        AutomationProperties.AutomationId="CashDrawer_PettyCashButton"
+                        IsEnabled="{Binding CanUsePettyCash}"
+                        Style="{DynamicResource MaterialDesignOutlinedButton}" Margin="10,0,0,0"
+                        ToolTip="Registrar y consultar gastos de caja chica del turno"
+                        Foreground="#B45309" BorderBrush="#B45309"
+                        Visibility="{Binding IsSessionActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="CashMinus" VerticalAlignment="Center"/>
+                        <TextBlock Text="CAJA CHICA" Margin="6,0,0,0" VerticalAlignment="Center" FontWeight="Bold"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- T4 (8.188, S2): cierre de la sesión con arqueo USD opcional (supervisión). -->
+                <Button Command="{Binding CloseCashDrawerCommand}"
+                        AutomationProperties.AutomationId="CashDrawer_CloseSessionButton"
+                        Style="{DynamicResource MaterialDesignOutlinedButton}" Margin="10,0,0,0"
+                        ToolTip="Arqueo y cierre de la sesión de caja (Administrador/Gerente)"
+                        Foreground="#475569" BorderBrush="#94A3B8"
+                        Visibility="{Binding CanCloseCashDrawer, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="LockOutline" VerticalAlignment="Center"/>
+                        <TextBlock Text="CERRAR CAJA" Margin="6,0,0,0" VerticalAlignment="Center" FontWeight="Bold"/>
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
 
@@ -150,9 +180,149 @@
         </Grid>
 
         <!-- ══════════════════════════════════════════
-             ROW 2: TOP RECENT INCOMES PANEL
+             ROW 2: PETTY CASH PANEL (T4 / 8.188)
              ══════════════════════════════════════════ -->
         <Border Grid.Row="2" Margin="0,0,0,20"
+                AutomationProperties.AutomationId="CashDrawer_PettyCashPanel"
+                Background="{DynamicResource MaterialDesignPaper}"
+                CornerRadius="10" Padding="16,14"
+                Effect="{DynamicResource MaterialDesignShadowDepth1}"
+                Visibility="{Binding IsPettyCashPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Título + acciones -->
+                <Grid Grid.Row="0" Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="CashMinus" Width="20" Height="20" Foreground="#B45309" VerticalAlignment="Center"/>
+                        <TextBlock Text="CAJA CHICA DEL TURNO" FontSize="13" FontWeight="Bold" Foreground="#B45309"
+                                   Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding PettyCashSummary}" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}"
+                                   Margin="14,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Command="{Binding RegisterPettyCashExpenseCommand}"
+                                AutomationProperties.AutomationId="CashDrawer_PettyCashRegisterButton"
+                                Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                Foreground="#B45309" BorderBrush="#B45309" Height="32" Padding="12,0" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Plus" Width="16" Height="16" VerticalAlignment="Center"/>
+                                <TextBlock Text="REGISTRAR GASTO" FontSize="11" FontWeight="Bold" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding RefreshPettyCashCommand}"
+                                AutomationProperties.AutomationId="CashDrawer_PettyCashRefreshButton"
+                                Style="{DynamicResource MaterialDesignIconButton}"
+                                ToolTip="Refrescar gastos de caja chica" Height="32" Width="32" Margin="0,0,8,0">
+                            <materialDesign:PackIcon Kind="Refresh" Width="18" Height="18"/>
+                        </Button>
+                        <Button Command="{Binding TogglePettyCashPanelCommand}"
+                                AutomationProperties.AutomationId="CashDrawer_PettyCashClosePanelButton"
+                                Style="{DynamicResource MaterialDesignIconButton}"
+                                ToolTip="Ocultar panel de caja chica" Height="32" Width="32">
+                            <materialDesign:PackIcon Kind="Close" Width="18" Height="18"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Saldos físicos del turno (arqueo ciego para no supervisores) -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                    <materialDesign:PackIcon Kind="ScaleBalance" Width="16" Height="16" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Efectivo físico Bs.S:" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding PettyCashPhysicalBalanceBsSDisplay}"
+                               AutomationProperties.AutomationId="CashDrawer_PettyCashBalanceBsSText"
+                               FontSize="12" FontWeight="Bold" Foreground="#0F766E" Margin="4,0,16,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Efectivo físico USD:" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding PettyCashPhysicalBalanceUsdDisplay}"
+                               AutomationProperties.AutomationId="CashDrawer_PettyCashBalanceUsdText"
+                               FontSize="12" FontWeight="Bold" Foreground="#0F766E" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Cargando..." FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="14,0,0,0" VerticalAlignment="Center"
+                               Visibility="{Binding IsPettyCashLoading, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                </StackPanel>
+
+                <!-- Listado virtualizado del turno -->
+                <controls:PerformantDataGrid Grid.Row="2"
+                          AutomationProperties.AutomationId="CashDrawer_PettyCashGrid"
+                          ItemsSource="{Binding PettyCashExpenses}"
+                          AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True"
+                          MaxHeight="240" RowHeight="46"
+                          VirtualizingStackPanel.IsVirtualizing="True"
+                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                          VirtualizingPanel.ScrollUnit="Pixel">
+                    <controls:PerformantDataGrid.Columns>
+                        <DataGridTextColumn Header="VALE" Binding="{Binding VoucherCode}" Width="90"/>
+                        <DataGridTextColumn Header="FECHA / HORA" Binding="{Binding CreatedAtDisplay}" Width="130"/>
+                        <DataGridTextColumn Header="CATEGORÍA" Binding="{Binding CategoryLabel}" Width="170"/>
+                        <DataGridTemplateColumn Header="CONCEPTO / BENEFICIARIO" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,2">
+                                        <TextBlock Text="{Binding ConceptDisplay}" FontWeight="SemiBold" FontSize="12"
+                                                   Foreground="{DynamicResource MaterialDesignBody}" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding BeneficiaryDisplay}" FontSize="10"
+                                                   Foreground="{DynamicResource MaterialDesignBodyLight}" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="MONTO Bs.S" Binding="{Binding AmountBsSDisplay}" Width="120"/>
+                        <DataGridTextColumn Header="MONTO USD" Binding="{Binding AmountUsdDisplay}" Width="110"/>
+                        <DataGridTemplateColumn Header="ESTADO" Width="90">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="Bold"
+                                               Foreground="{Binding StatusColor}" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="AUTORIZADOR" Binding="{Binding AuthorizerDisplay}" Width="110"/>
+                        <DataGridTemplateColumn Header="ACCIONES" Width="170">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Command="{Binding Data.PrintPettyCashVoucherCommand, Source={StaticResource Proxy}}"
+                                                CommandParameter="{Binding}"
+                                                AutomationProperties.Name="Descargar vale del gasto"
+                                                Style="{DynamicResource MaterialDesignIconButton}" Height="28" Width="28"
+                                                ToolTip="Descargar / imprimir vale">
+                                            <materialDesign:PackIcon Kind="FilePdfBox" Width="16" Height="16" Foreground="#B45309"/>
+                                        </Button>
+                                        <Button Command="{Binding Data.CancelPettyCashExpenseCommand, Source={StaticResource Proxy}}"
+                                                CommandParameter="{Binding}"
+                                                AutomationProperties.Name="Anular gasto de caja chica"
+                                                Style="{DynamicResource MaterialDesignIconButton}" Height="28" Width="28"
+                                                ToolTip="Anular gasto (solo activos)"
+                                                Visibility="{Binding CanCancel, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <materialDesign:PackIcon Kind="Cancel" Width="16" Height="16" Foreground="#B91C1C"/>
+                                        </Button>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </controls:PerformantDataGrid.Columns>
+                </controls:PerformantDataGrid>
+
+                <TextBlock Grid.Row="2" Text="No hay gastos de caja chica registrados en este turno."
+                           FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}"
+                           HorizontalAlignment="Center" Margin="0,20,0,20"
+                           Visibility="{Binding HasPettyCashExpenses, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+            </Grid>
+        </Border>
+
+        <!-- ══════════════════════════════════════════
+             ROW 3: TOP RECENT INCOMES PANEL
+             ══════════════════════════════════════════ -->
+        <Border Grid.Row="3" Margin="0,0,0,20"
                 Background="{DynamicResource MaterialDesignPaper}"
                 CornerRadius="10" Padding="16,14"
                 Effect="{DynamicResource MaterialDesignShadowDepth1}"
@@ -220,9 +390,9 @@
         </Border>
         
         <!-- ══════════════════════════════════════════
-             ROW 3: TRANSACTION LIST
+             ROW 4: TRANSACTION LIST
              ══════════════════════════════════════════ -->
-        <Grid Grid.Row="3">
+        <Grid Grid.Row="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>

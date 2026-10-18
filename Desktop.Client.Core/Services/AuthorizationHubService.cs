@@ -157,6 +157,23 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
             };
         }
 
+        // T4 (Paso 13 / 8.188, S4): el gasto de caja chica no tiene venta. Se envían solo las
+        // claves del contrato PettyCashExpense que el coordinador canonaliza (mismos valores que
+        // el 403 del backend) para que el token quede ligado al mismo hash.
+        if (context is PettyCashExpenseAuthorizationRequestContext pettyCash)
+        {
+            return new Dictionary<string, object?>
+            {
+                ["actionType"] = (int)AuthorizationActionType.PettyCashExpense,
+                ["pettyCashSessionId"] = pettyCash.SessionId,
+                ["pettyCashCurrency"] = (int)pettyCash.Currency,
+                ["pettyCashAmountBsS"] = pettyCash.AmountBsS,
+                ["pettyCashAmountUsd"] = pettyCash.AmountUsd,
+                ["pettyCashCategory"] = (int)pettyCash.Category,
+                ["terminal"] = pettyCash.Terminal
+            };
+        }
+
         if (context is not AuthorizationRequestContext manualPriceOverride)
         {
             throw new ArgumentException("El contexto de autorización informado no está soportado.", nameof(context));

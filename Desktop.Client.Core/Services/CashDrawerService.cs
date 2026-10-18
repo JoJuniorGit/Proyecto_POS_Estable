@@ -1,5 +1,8 @@
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Desktop.Client.Services;
@@ -32,9 +35,26 @@ public class CashDrawerService : ICashDrawerService
         return (await response.Content.ReadFromJsonAsync<CashDrawerSessionDto>())!;
     }
 
-    public async Task<CashDrawerSessionDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate)
+    public Task<CashDrawerSessionDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate)
+        => CloseSessionAsync(actualClosingBalanceLocal, currentExchangeRate, actualClosingBalanceUsd: null);
+
+    public async Task<CashDrawerSessionDto> CloseSessionAsync(
+        decimal actualClosingBalanceLocal,
+        decimal currentExchangeRate,
+        decimal? actualClosingBalanceUsd)
     {
-        var request = new { ActualClosingBalanceLocal = actualClosingBalanceLocal, CurrentExchangeRate = currentExchangeRate };
+        // T4 (Paso 13 / 8.188, S2): el campo USD solo viaja cuando el operador informó el conteo;
+        // sin él, el servidor conserva el comportamiento previo y deja ClosingBalanceUsd en null.
+        var request = new System.Collections.Generic.Dictionary<string, object?>
+        {
+            ["actualClosingBalanceLocal"] = actualClosingBalanceLocal,
+            ["currentExchangeRate"] = currentExchangeRate
+        };
+        if (actualClosingBalanceUsd.HasValue)
+        {
+            request["actualClosingBalanceUsd"] = actualClosingBalanceUsd.Value;
+        }
+
         var response = await _httpClient.PostAsJsonAsync("api/cashdrawer/close", request);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<CashDrawerSessionDto>())!;
@@ -116,5 +136,210 @@ public class CashDrawerService : ICashDrawerService
         var response = await _httpClient.PostAsJsonAsync("api/cashdrawer/cash-advance", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<CashAdvanceResultClientDto>();
+    }
+
+    public async Task<PettyCashExpenseClientDto> RegisterPettyCashExpenseAsync(
+        PettyCashExpenseClientRequest request,
+        string? authorizationToken = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/cashdrawer/petty-cash")
+        {
+            Content = JsonContent.Create(request)
+        };
+        if (!string.IsNullOrWhiteSpace(authorizationToken))
+        {
+            httpRequest.Headers.TryAddWithoutValidation("X-Authorization-Token", authorizationToken);
+        }
+
+        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowPettyCashErrorAsync(response, "No se pudo registrar el gasto de caja chica.");
+        }
+
+        return (await response.Content.ReadFromJsonAsync<PettyCashExpenseClientDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<PettyCashExpenseClientDto> CancelPettyCashExpenseAsync(
+        int expenseId,
+        string reason,
+        string? authorizationToken = null,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new PettyCashCancelClientRequest { Reason = reason };
+
+        using var httpRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"api/cashdrawer/petty-cash/{expenseId}/cancel")
+        {
+            Content = JsonContent.Create(request)
+        };
+        if (!string.IsNullOrWhiteSpace(authorizationToken))
+        {
+            httpRequest.Headers.TryAddWithoutValidation("X-Authorization-Token", authorizationToken);
+        }
+
+        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowPettyCashErrorAsync(response, "No se pudo anular el gasto de caja chica.");
+        }
+
+        return (await response.Content.ReadFromJsonAsync<PettyCashExpenseClientDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<IReadOnlyList<PettyCashExpenseClientDto>> GetPettyCashExpensesAsync(
+        int sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            $"api/cashdrawer/petty-cash?sessionId={sessionId}",
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowPettyCashErrorAsync(response, "No se pudieron consultar los gastos de caja chica.");
+        }
+
+        var rows = await response.Content.ReadFromJsonAsync<List<PettyCashExpenseClientDto>>(
+            cancellationToken: cancellationToken);
+        return rows ?? new List<PettyCashExpenseClientDto>();
+    }
+
+    public async Task<byte[]?> GetPettyCashVoucherAsync(
+        int expenseId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            $"api/cashdrawer/petty-cash/{expenseId}/receipt",
+            cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowPettyCashErrorAsync(response, "No se pudo generar el vale de caja chica.");
+        }
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+    }
+
+    public async Task<PettyCashPhysicalBalancesClientDto> GetPhysicalBalancesAsync(
+        int sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            $"api/cashdrawer/physical-balances?sessionId={sessionId}",
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowPettyCashErrorAsync(response, "No se pudieron consultar los saldos físicos de caja.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<PettyCashPhysicalBalancesClientDto>(
+            cancellationToken: cancellationToken) ?? new PettyCashPhysicalBalancesClientDto();
+    }
+
+    /// <summary>
+    /// T4 (S4): traduce el 403 ProblemDetails al contrato tipado. Solo cuando el backend declara
+    /// authorizationAction=PettyCashExpense y el contexto exacto está completo se lanza la
+    /// excepción tipada; cualquier otro caso conserva la excepción genérica de autorización.
+    /// </summary>
+    private static async Task ThrowPettyCashErrorAsync(HttpResponseMessage response, string fallback)
+    {
+        string body = await response.Content.ReadAsStringAsync();
+        string message = ApiErrorParser.FromBody(body, fallback);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden
+            && ApiErrorParser.TryGetAuthorizationRequirement(body, out var authorizationAction))
+        {
+            if (string.Equals(authorizationAction, "PettyCashExpense", System.StringComparison.OrdinalIgnoreCase)
+                && TryParsePettyCashContext(body, out var context))
+            {
+                throw new PettyCashAuthorizationException(message, context!);
+            }
+
+            throw new AuthorizationRequiredException(message, authorizationAction);
+        }
+
+        throw new System.InvalidOperationException(message);
+    }
+
+    private static bool TryParsePettyCashContext(
+        string body,
+        out PettyCashExpenseAuthorizationRequestContext? context)
+    {
+        context = null;
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || !TryGetJsonProperty(root, "authorizationContext", out var payload)
+                || payload.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (!TryGetJsonProperty(payload, "sessionId", out var sessionElement)
+                || !sessionElement.TryGetInt32(out int sessionId)
+                || !TryGetJsonProperty(payload, "currency", out var currencyElement)
+                || !currencyElement.TryGetInt32(out int currencyValue)
+                || !System.Enum.IsDefined(typeof(PettyCashCurrencyClient), currencyValue)
+                || !TryGetJsonProperty(payload, "amountBss", out var amountBsSElement)
+                || !amountBsSElement.TryGetDecimal(out decimal amountBsS)
+                || !TryGetJsonProperty(payload, "amountUsd", out var amountUsdElement)
+                || !amountUsdElement.TryGetDecimal(out decimal amountUsd)
+                || !TryGetJsonProperty(payload, "category", out var categoryElement)
+                || !categoryElement.TryGetInt32(out int categoryValue)
+                || !System.Enum.IsDefined(typeof(PettyCashCategoryClient), categoryValue))
+            {
+                return false;
+            }
+
+            context = new PettyCashExpenseAuthorizationRequestContext
+            {
+                SessionId = sessionId,
+                Currency = (PettyCashCurrencyClient)currencyValue,
+                AmountBsS = amountBsS,
+                AmountUsd = amountUsd,
+                Category = (PettyCashCategoryClient)categoryValue,
+                Terminal = System.Environment.MachineName
+            };
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetJsonProperty(JsonElement element, string name, out JsonElement value)
+    {
+        if (element.TryGetProperty(name, out value))
+        {
+            return true;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, System.StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
     }
 }
