@@ -444,9 +444,13 @@ public partial class SalesService
 
                     decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : effectivePrice;
                     decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
-                    decimal unitPriceBsS = PricingCalculator.ToBsSCeiling(unitPriceUsd, sale.AppliedRate);
-                    decimal subtotalBsS = PricingCalculator.RoundToDigital(adjustedQty * unitPriceBsS);
                     bool isCustomPrice = reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice;
+
+                    // 8.186-T7c (S4/S1): misma resolución y snapshot de regla que AddItemAsync — el
+                    // override del artículo manda; sin él, el default global resuelto por el lector
+                    // 8.184 (ExactMath ante ausencia/valor ilegible). Sin este snapshot la
+                    // recalculación posterior degradaba la línea a la semántica canónica.
+                    var effectiveCashRule = await ResolveEffectiveCashRuleAsync(product);
 
                     newTotalUsd += subtotalUsd;
 
@@ -458,12 +462,28 @@ public partial class SalesService
                         Quantity = adjustedQty,
                         UnitCostUSD = product.CostPriceUSD,
                         UnitPrice = unitPriceUsd,
-                        UnitPriceBsS = unitPriceBsS,
                         Subtotal = subtotalUsd,
-                        SubtotalBsS = subtotalBsS,
-                        IsCustomPrice = isCustomPrice
+                        IsCustomPrice = isCustomPrice,
+                        RoundingRuleCashBs = effectiveCashRule
                     });
                 }
+            }
+
+            // 8.186-T7c (S4/S1): Bs.S efectivo de cada línea recreada con la MISMA política que
+            // RecalculateTotalAsync/AddItemAsync (kernel único vía ApplyCashRoundingPolicy). El
+            // toggle del piso se lee UNA vez por request y solo si hay alguna línea no-custom con
+            // regla cash (default-safe, espejo de la recalculación); ExactMath y precios custom
+            // conservan el techo canónico 8.104 byte-idéntico.
+            bool neverRoundDown = true;
+            if (newItemsList.Any(i => !i.IsCustomPrice && IsCashFriendlyRule(i.RoundingRuleCashBs)))
+            {
+                neverRoundDown = await ResolveNeverRoundDownAsync();
+            }
+
+            foreach (var newItem in newItemsList)
+            {
+                newItem.UnitPriceBsS = ApplyCashRoundingPolicy(newItem.UnitPrice, newItem.IsCustomPrice, newItem.RoundingRuleCashBs, sale.AppliedRate, neverRoundDown);
+                newItem.SubtotalBsS = PricingCalculator.RoundToDigital(newItem.Quantity * newItem.UnitPriceBsS);
             }
 
             if (sale.Items != null)
