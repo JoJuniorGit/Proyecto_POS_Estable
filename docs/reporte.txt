@@ -15950,3 +15950,86 @@ D2. Residuales aceptados: cache de quick-info 15s/5min puede servir la tasa prev
     (misma semantica, fuera de alcance); harness de integracion InMemory+mocks (sin SQL/HTTP);
     H4 HasWholesale real en quick-info sin consumidores.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XVIII) - VENTAS A CREDITO Y CUENTAS POR COBRAR (CxC) BIMONETARIA (8.187) - 2026-10-18
+================================================================================
+Pedido del mantenedor (Paso 11 + Paso 12): habilitar ventas a credito (total o mixtas con abono
+inicial), perfil crediticio del cliente, cartera CxC con abonos FIFO/factura, control de riesgo
+(limite, mora, bloqueos, autorizacion de sobregiro) y deuda indexada en USD con liquidacion a la
+tasa BCV del dia de cada abono, registro del diferencial cambiario realizado y estado de cuenta
+dual. Defaults y reglas de borde confirmados por el mantenedor (dust <=0.005 USD -> saldo 0/Pagada;
+USD cash 1:1 + FX para libros; anulacion solo sin pagos; devolucion reduce saldo y el overpay se
+devuelve por caja sin saldo a favor).
+
+A. DIAGNOSTICO
+A1. OnHold/cuentas abiertas NO era la primitiva CxC: no descuenta stock hasta el pago total, no
+    emite factura hasta completar, no consolida deuda ni vencimientos, sin FIFO ni mora; el test
+    historico afirmaba que se permite superar el cupo.
+A2. Customer.CreditLimitUSD existia sin enforcement ni UI. No habia obligacion por cobrar, ni
+    abonos amortizables, ni diferencial cambiario, ni comprobantes de credito/abono.
+A3. Cierre Z: los abonos OnHold movian la gaveta pero quedaban fuera del esperado (filtro
+    Completed-only); se corrigio antes de habilitar cobros CxC.
+A4. Autorizaciones: solo ManualPriceOverride cableado; sobregiro requirio contexto/tipo nuevos.
+A5. Stock se descuenta al completar; la venta a credito reutiliza ese camino (no OnHold).
+
+B. IMPLEMENTACION (serie 8.187)
+B1. F1 Dominio/Persistencia: Customer (+IsCreditEnabled, PaymentTermDays, CreditGraceDays,
+    CreditStatus, CreditNotes, xmin); Receivable (OriginalUSD/BalanceUSD 18,4; OriginalBsS 18,2;
+    HistoricalRate 18,4; emision/vencimiento; estado) 1:1 con Sale; ReceivablePayment (AmountUSD,
+    AmountBsS, PaymentRate, FxDifferenceBsS con signo, caja/metodo/referencia, IdempotencyKey unico
+    filtrado); CreditPaymentAllocation; enums al final (CashTransactionSource CreditPayment/
+    CreditRefund, AuthorizationActionType.CreditOverLimit, ReceiptDocumentKind CreditSale/
+    CreditPayment); migracion idempotente + snapshot + drift. Espejos cross-layer de
+    CashTransactionSource actualizados (WPF + web).
+B2. F2a: CreditService (deuda/disponible/utilizacion, mora dinamica, elegibilidad con bloqueos en
+    espanol); checkout a credito reutiliza el nucleo del cierre regular (allowFinancedRemainder):
+    factura + stock inmediatos, financiadoBss = TotalBsS efectivo - cobradoBsS,
+    financiadoUsd = round(financiadoBss/AppliedRate,4); polvo <=0.005 -> cierre regular; Receivable
+    con HistoricalRate anclada; sin caja ni SalePayment por lo financiado; lock por cliente clase 3.
+B3. F2b abonos: FIFO (vencimiento/emision/Id) o facturas explicitas; PaymentRate server-side
+    (BCV cacheada, snapshot); AmountBss = round(usd x rate,2); FxDifferenceBss = AmountBss -
+    round(usd x HistoricalRate,2) con signo por asignacion; polvo salda a 0/Pagada; tope sin saldo
+    a favor; solo efectivo genera CashTransaction CreditPayment; replay idempotente; estado de
+    cuenta dual y comprobante de abono PDF; Cierre Z suma abonos y resta reembolsos fisicos.
+B4. F2b riesgo/retorno: autorizacion de sobregiro CreditOverLimit integrada al hub (contexto
+    canonico, single-use; solo el unico blocker de cupo es autorizable; mora/bloqueo/deshabilitado/
+    plazo jamas se omiten) + comprobante de venta a credito; anulacion solo sin pagos (restock,
+    Anulada, sin caja); devoluciones por linea (base efectiva, tope acumulado, idempotencia); overpay
+    devuelto por Expense CreditRefund a la tasa del ultimo pago (fallback SalePayment para la
+    inicial de la mixta).
+B5. T4-prep: PUT credit-profile (Admin/Manager, validaciones, xmin), GET credit-receivables (cartera
+    global con filtros/totales/mora), contexto de autorizacion generico en el cliente WPF.
+B6. UI WPF: perfil crediticio (edicion/bloqueo/metricas), checkout Contado/Credito total/mixto con
+    espera de autorizacion y reintento por token, dashboard CxC (filtros/alertas/estado de cuenta),
+    abono FIFO/explicito (USD + Bs.S del dia), anulacion/devolucion y comprobantes.
+B7. UI Web: creditApi (perfil/cartera/estado/abonos/anulacion/devolucion/PDFs + parseo 403
+    CreditOverLimit), perfil en CustomerModal, modo Credito/mixto en CheckoutModal, pagina CxC con
+    cartera global/filtros/totales/alertas, abono FIFO/explicito, anulacion/devolucion y
+    comprobantes; ruta/rol/sidebar (Admin/Manager/Cashier).
+B8. Fix E2E: Expander.IsExpanded (TwoWay por defecto) contra IsEditing de solo lectura causaba crash
+    al navegar a Usuarios; Mode=OneWay.
+
+C. EVIDENCIA
+C1. RED->GREEN por tramo (detalle en odd/tasks/paso-11-credito-cxc.md): F1 CS0246 -> 11/11; F2a
+    CS1061 -> 14/14 + 14/14; T3a CS0246/CS1061/CS1729 -> 15/15; T3b1 CS0246 -> 23/23; T3b2 CS1061 ->
+    19/19; fix 4/4; T4-prep 102/102; T4 58/58; T5 modulos nuevos 58 tests.
+C2. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+C3. Suite completa: CommandCenter.Tests 3268/3268; Wpf.E2ETests 50/50; 0 errores.
+C4. Web: npm test 544/544 (114 suites); npm run lint sin hallazgos; npm run build OK (bundle
+    Backend.API/wwwroot regenerado).
+C5. Verificacion independiente T6 (read-only, rango 78e265d..HEAD): PASS WITH FINDINGS (0
+    bloqueantes); S1,S2,S4,S5,S6,S7,S8 MET; S3 PARTIAL por ausencia del job diario que materialice
+    Vencida/suspension automatica (H1); H2 reembolso no-efectivo no resta del Z (espejo de vuelto);
+    H3 complete-credit sin Idempotency-Key (reintento cubierto por estado/lock); H4 Postgres real
+    (concurrencia/locks/migracion) no ejercitado por falta de TEST_POSTGRES_CONNECTION; H5 web sin
+    solicitud de autorizacion de sobregiro (deriva a caja WPF).
+
+D. NOTA
+D1. Sin migracion para EffectiveUsdPrice: la deuda queda persistida como OriginalUSD/BalanceUSD +
+    HistoricalRate y los abonos con PaymentRate/AmountBss/FxDifferenceBss (snapshots inmutables).
+D2. Residuales aceptados: H1 job de mora pendiente (follow-up); H2 metodo no-efectivo en Z; H3
+    Idempotency-Key en complete-credit; H4 carril Postgres/concurrencia real; H5 autorizacion web de
+    sobregiro; saldo anterior del comprobante reconstruido (borde de polvo); UI web verificada por
+    logica/SSR, no DOM interactivo.
+================================================================================
