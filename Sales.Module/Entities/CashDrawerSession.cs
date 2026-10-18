@@ -37,5 +37,15 @@ public class CashDrawerSession
     [Column(TypeName = "decimal(18,4)")]
     public decimal? ClosingExchangeRate { get; set; }
 
+    // 8.188-T1 (Paso 13, S2): gaveta dual — la apertura/cierre fisico en USD convive con el
+    // Bs.S para deducir los egresos de caja chica de la gaveta de su propia moneda.
+    // OpeningBalanceUsd NOT NULL DEFAULT 0; ClosingBalanceUsd nullable con DEFAULT 0 en la
+    // migracion para filas existentes (la migracion nunca inventa un conteo de cierre).
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal OpeningBalanceUsd { get; set; }
+
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? ClosingBalanceUsd { get; set; }
+
     public List<CashTransaction> Transactions { get; set; } = new();
 }

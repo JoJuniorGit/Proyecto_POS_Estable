@@ -26,6 +26,8 @@ namespace Sales.Module.Migrations
 
             modelBuilder.HasSequence<int>("paymentmethod_displayorder_seq");
 
+            modelBuilder.HasSequence("petty_cash_voucher_seq");
+
             modelBuilder.Entity("Core.Entities.AuthorizationAudit", b =>
                 {
                     b.Property<int>("Id")
@@ -435,6 +437,9 @@ namespace Sales.Module.Migrations
                     b.Property<decimal?>("ClosingBalanceLocal")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<decimal?>("ClosingBalanceUsd")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal?>("ClosingExchangeRate")
                         .HasColumnType("decimal(18,4)");
 
@@ -443,6 +448,9 @@ namespace Sales.Module.Migrations
 
                     b.Property<decimal>("OpeningBalanceLocal")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("OpeningBalanceUsd")
+                        .HasColumnType("decimal(18,4)");
 
                     b.Property<decimal>("OpeningExchangeRate")
                         .HasColumnType("decimal(18,4)");
@@ -493,6 +501,9 @@ namespace Sales.Module.Migrations
                     b.Property<int?>("PaymentMethodId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("PettyCashExpenseId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("ReferenceId")
                         .HasColumnType("integer");
 
@@ -515,6 +526,9 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("PaymentMethodId")
                         .HasDatabaseName("IX_CashTransactions_PaymentMethodId");
+
+                    b.HasIndex("PettyCashExpenseId")
+                        .HasDatabaseName("IX_CashTransactions_PettyCashExpenseId");
 
                     b.HasIndex("SaleId");
 
@@ -795,6 +809,104 @@ namespace Sales.Module.Migrations
                             Name = "Card",
                             RequiresReference = true
                         });
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.PettyCashExpense", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AmountBsS")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("AmountUsd")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("AuthorizationRequestId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("AuthorizedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Beneficiary")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CancelledByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Concept")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Currency")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("HistoricalRate")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("ReferenceNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("SessionId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("VoucherNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValueSql("nextval('petty_cash_voucher_seq')");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorizationRequestId")
+                        .HasDatabaseName("IX_PettyCashExpenses_AuthorizationRequestId");
+
+                    b.HasIndex("AuthorizedByUserId")
+                        .HasDatabaseName("IX_PettyCashExpenses_AuthorizedByUserId");
+
+                    b.HasIndex("CancelledByUserId")
+                        .HasDatabaseName("IX_PettyCashExpenses_CancelledByUserId");
+
+                    b.HasIndex("CreatedByUserId")
+                        .HasDatabaseName("IX_PettyCashExpenses_CreatedByUserId");
+
+                    b.HasIndex("SessionId")
+                        .HasDatabaseName("IX_PettyCashExpenses_SessionId");
+
+                    b.HasIndex("VoucherNumber")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PettyCashExpenses_VoucherNumber");
+
+                    b.HasIndex("SessionId", "Status")
+                        .HasDatabaseName("IX_PettyCashExpenses_SessionId_Status");
+
+                    b.ToTable("PettyCashExpenses");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.Receivable", b =>
@@ -1200,6 +1312,11 @@ namespace Sales.Module.Migrations
                         .HasForeignKey("PaymentMethodId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Sales.Module.Entities.PettyCashExpense", "PettyCashExpense")
+                        .WithMany("CashTransactions")
+                        .HasForeignKey("PettyCashExpenseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Sales.Module.Entities.Sale", "Sale")
                         .WithMany()
                         .HasForeignKey("SaleId");
@@ -1211,6 +1328,8 @@ namespace Sales.Module.Migrations
                         .IsRequired();
 
                     b.Navigation("PaymentMethod");
+
+                    b.Navigation("PettyCashExpense");
 
                     b.Navigation("Sale");
 
@@ -1313,6 +1432,38 @@ namespace Sales.Module.Migrations
                     b.Navigation("CreditReturn");
 
                     b.Navigation("SaleItem");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.PettyCashExpense", b =>
+                {
+                    b.HasOne("Core.Entities.AuthorizationRequest", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorizationRequestId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("AuthorizedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CancelledByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Sales.Module.Entities.CashDrawerSession", "Session")
+                        .WithMany()
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Session");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.Receivable", b =>
@@ -1455,6 +1606,11 @@ namespace Sales.Module.Migrations
             modelBuilder.Entity("Sales.Module.Entities.DailyClosure", b =>
                 {
                     b.Navigation("Details");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.PettyCashExpense", b =>
+                {
+                    b.Navigation("CashTransactions");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.Receivable", b =>

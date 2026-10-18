@@ -26,7 +26,11 @@ public enum CashTransactionSource
     // Paso 11/12 (S5): abonos CxC y devoluciones de credito; se anexan al final
     // para no renumerar los valores ya persistidos.
     CreditPayment = 7,
-    CreditRefund = 8
+    CreditRefund = 8,
+
+    // Paso 13 / 8.188-T1 (S6): egreso de caja chica y su reversa compensatoria.
+    PettyCashExpense = 9,
+    PettyCashReversal = 10
 }
 
 public class CashTransaction
@@ -67,4 +71,10 @@ public class CashTransaction
 
     public int? PaymentMethodId { get; set; }
     public PaymentMethod? PaymentMethod { get; set; }
+
+    // 8.188-T1 (Paso 13, S6): vinculo del movimiento con el gasto de caja chica. Tanto el
+    // Expense original (PettyCashExpense) como su reversa compensatoria (PettyCashReversal)
+    // apuntan al mismo gasto. La FK vive aqui para evitar el ciclo con PettyCashExpenses.
+    public int? PettyCashExpenseId { get; set; }
+    public PettyCashExpense? PettyCashExpense { get; set; }
 }

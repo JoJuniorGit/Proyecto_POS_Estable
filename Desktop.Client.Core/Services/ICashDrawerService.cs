@@ -17,7 +17,12 @@ public enum CashTransactionSource
 
     // Paso 11/12 (S5): abonos CxC y devoluciones de credito — mismos ids que el servidor.
     CreditPayment = 7,
-    CreditRefund = 8
+    CreditRefund = 8,
+
+    // Paso 13 / 8.188-T1 (S6): egreso de caja chica y su reversa compensatoria — mismos ids
+    // que el servidor; anexados al final para no renumerar los valores ya persistidos.
+    PettyCashExpense = 9,
+    PettyCashReversal = 10
 }
 
 public class CashAdvanceResultClientDto
@@ -86,6 +91,9 @@ public class CashTransactionDto
         CashTransactionSource.CashOut => "Retiro de Caja",
         CashTransactionSource.CreditPayment => "Abono Crédito",
         CashTransactionSource.CreditRefund => "Devolución Crédito",
+        // Paso 13 / 8.188-T1 (S6): mismas etiquetas que el espejo web.
+        CashTransactionSource.PettyCashExpense => "Caja Chica",
+        CashTransactionSource.PettyCashReversal => "Reversa Caja Chica",
         _ => Source.ToString()
     };
 

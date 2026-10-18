@@ -6,7 +6,10 @@ public enum AuthorizationActionType
     SaleCancellation = 2,
 
     // Paso 11/12 (S4): excepcion de sobregiro de cupo en venta a credito.
-    CreditOverLimit = 3
+    CreditOverLimit = 3,
+
+    // Paso 13 / 8.188-T1 (S4/S6): egreso de caja chica que exige autorizacion jerarquica.
+    PettyCashExpense = 4
 }
 
 public enum AuthorizationStatus

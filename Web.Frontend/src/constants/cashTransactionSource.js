@@ -8,6 +8,9 @@ export const CashTransactionSource = Object.freeze({
   CashOut: 6,
   CreditPayment: 7,
   CreditRefund: 8,
+  // Paso 13 / 8.188-T1 (S6): egreso de caja chica y su reversa compensatoria.
+  PettyCashExpense: 9,
+  PettyCashReversal: 10,
 });
 
 export const SOURCE_DEFINITIONS = Object.freeze([
@@ -20,6 +23,9 @@ export const SOURCE_DEFINITIONS = Object.freeze([
   Object.freeze({ id: CashTransactionSource.CashOut, key: 'cashout', label: 'Retiro de Caja' }),
   Object.freeze({ id: CashTransactionSource.CreditPayment, key: 'creditpayment', label: 'Abono Crédito' }),
   Object.freeze({ id: CashTransactionSource.CreditRefund, key: 'creditrefund', label: 'Devolución Crédito' }),
+  // Paso 13 / 8.188-T1 (S6): mismas etiquetas que el SourceDisplay del cliente WPF.
+  Object.freeze({ id: CashTransactionSource.PettyCashExpense, key: 'pettycashexpense', label: 'Caja Chica' }),
+  Object.freeze({ id: CashTransactionSource.PettyCashReversal, key: 'pettycashreversal', label: 'Reversa Caja Chica' }),
 ]);
 
 const SOURCE_NAME_ALIASES = Object.freeze({ Sale: 'SalePayment' });

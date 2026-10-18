@@ -33,6 +33,7 @@ public class SalesDbContext : DbContext
     public DbSet<CreditPaymentAllocation> CreditPaymentAllocations { get; set; } = null!;
     public DbSet<CreditReturn> CreditReturns { get; set; } = null!;
     public DbSet<CreditReturnItem> CreditReturnItems { get; set; } = null!;
+    public DbSet<PettyCashExpense> PettyCashExpenses { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -253,10 +254,24 @@ modelBuilder.Entity<User>().HasData(
             .HasIndex(t => t.PaymentMethodId)
             .HasDatabaseName("IX_CashTransactions_PaymentMethodId");
 
+        // 8.188-T1 (Paso 13, S6): el movimiento (Expense original o reversa Income) apunta al
+        // gasto de caja chica con FK Restrict dedicada; el indice sirve al listado del turno.
+        modelBuilder.Entity<CashTransaction>()
+            .HasOne(t => t.PettyCashExpense)
+            .WithMany(expense => expense.CashTransactions)
+            .HasForeignKey(t => t.PettyCashExpenseId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<CashTransaction>()
+            .HasIndex(t => t.PettyCashExpenseId)
+            .HasDatabaseName("IX_CashTransactions_PettyCashExpenseId");
+
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceLocal).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningExchangeRate).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingBalanceLocal).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingExchangeRate).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceUsd).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingBalanceUsd).HasColumnType("decimal(18,4)");
 
         modelBuilder.Entity<CashTransaction>().Property(t => t.AmountUsd).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<CashTransaction>().Property(t => t.ExchangeRate).HasColumnType("decimal(18,4)");
@@ -347,6 +362,17 @@ modelBuilder.Entity<User>().HasData(
             modelBuilder.HasSequence<int>("paymentmethod_displayorder_seq")
                 .StartsAt(1)
                 .IncrementsBy(1);
+
+            // 8.188-T1 (Paso 13, S6): correlativo unico del vale de caja chica
+            // (presentacion VCC-000001). El default de la columna se declara solo para
+            // Npgsql: en SQLite (tests) los correlativos se fijan explicitamente.
+            modelBuilder.HasSequence<long>("petty_cash_voucher_seq")
+                .StartsAt(1)
+                .IncrementsBy(1);
+
+            modelBuilder.Entity<PettyCashExpense>()
+                .Property(expense => expense.VoucherNumber)
+                .HasDefaultValueSql("nextval('petty_cash_voucher_seq')");
         }
 
         // OutboxMessages Configuration
@@ -590,6 +616,72 @@ modelBuilder.Entity<User>().HasData(
 
             entity.Property(item => item.Quantity).HasColumnType("numeric(18,3)");
             entity.Property(item => item.AmountUSD).HasColumnType("decimal(18,4)");
+        });
+
+        // T1 (Paso 13 / 8.188, S2/S6): gastos operativos de caja chica. El gasto pertenece a la
+        // sesion de caja (FK Restrict obligatoria) y su libro transaccional vive en CashTransaction
+        // (PettyCashExpenseId); sin cascade delete: la anulacion es logica y auditada.
+        modelBuilder.Entity<PettyCashExpense>(entity =>
+        {
+            entity.HasOne(expense => expense.Session)
+                .WithMany()
+                .HasForeignKey(expense => expense.SessionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Trazabilidad de usuarios (creador/autorizador/anulador) y de la autorizacion
+            // jerarquica consumida; sin navegaciones: los nombres no se snapshotean aqui.
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(expense => expense.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(expense => expense.AuthorizedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(expense => expense.CancelledByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<AuthorizationRequest>()
+                .WithMany()
+                .HasForeignKey(expense => expense.AuthorizationRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Correlativo unico del vale (VCC-000001).
+            entity.HasIndex(expense => expense.VoucherNumber)
+                .IsUnique()
+                .HasDatabaseName("IX_PettyCashExpenses_VoucherNumber");
+
+            entity.HasIndex(expense => expense.SessionId)
+                .HasDatabaseName("IX_PettyCashExpenses_SessionId");
+
+            // Arqueo/cierre: gastos vigentes de la sesion (el renglon OPEX solo suma Active).
+            entity.HasIndex(expense => new { expense.SessionId, expense.Status })
+                .HasDatabaseName("IX_PettyCashExpenses_SessionId_Status");
+
+            entity.HasIndex(expense => expense.CreatedByUserId)
+                .HasDatabaseName("IX_PettyCashExpenses_CreatedByUserId");
+
+            entity.HasIndex(expense => expense.AuthorizedByUserId)
+                .HasDatabaseName("IX_PettyCashExpenses_AuthorizedByUserId");
+
+            entity.HasIndex(expense => expense.CancelledByUserId)
+                .HasDatabaseName("IX_PettyCashExpenses_CancelledByUserId");
+
+            entity.HasIndex(expense => expense.AuthorizationRequestId)
+                .HasDatabaseName("IX_PettyCashExpenses_AuthorizationRequestId");
+
+            entity.Property(expense => expense.AmountBsS).HasColumnType("decimal(18,2)");
+            entity.Property(expense => expense.AmountUsd).HasColumnType("decimal(18,4)");
+            entity.Property(expense => expense.HistoricalRate).HasColumnType("decimal(18,4)");
+
+            entity.Property(expense => expense.Concept).IsRequired().HasMaxLength(500);
+            entity.Property(expense => expense.Beneficiary).IsRequired().HasMaxLength(150);
+            entity.Property(expense => expense.ReferenceNumber).IsRequired().HasMaxLength(100);
+            entity.Property(expense => expense.CancellationReason).HasMaxLength(500);
         });
     }
 }
