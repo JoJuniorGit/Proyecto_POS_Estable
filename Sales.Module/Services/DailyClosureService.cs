@@ -18,6 +18,10 @@ public partial class DailyClosureService : IDailyClosureService
 {
     private const int UnattributedChangeMethodId = 0;
 
+    // T3b2-fix (S7): el reembolso físico sin método se atribuye al primer método de efectivo,
+    // igual que el vuelto sin método.
+    private const int UnattributedRefundMethodId = 0;
+
     // 8.149 (SRE-02): mensaje exacto del conflicto de fecha duplicada (guard + índice único).
     public const string DuplicateClosureDateMessage = "Ya existe un cierre para esta fecha.";
 
@@ -97,6 +101,21 @@ public partial class DailyClosureService : IDailyClosureService
             .Select(g => new { PaymentMethodId = g.Key ?? UnattributedChangeMethodId, TotalBsS = g.Sum(ct => ct.AmountLocal) })
             .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
 
+        // T3b2-fix (S7): los reembolsos por devolución de crédito (Expense, origen CreditRefund)
+        // sacan de la gaveta el dinero que había entrado por el pago inicial o los abonos; se
+        // descuentan del esperado del método con la MISMA semántica del vuelto: solo efectivo
+        // físico y el reembolso sin método se atribuye al primer método de efectivo.
+        var refundTotals = await _context.CashTransactions
+            .AsNoTracking()
+            .Where(ct => ct.Type == CashTransactionType.Expense
+                && ct.Source == CashTransactionSource.CreditRefund
+                && ct.IsPhysicalCash
+                && ct.TransactionTime >= startUtc
+                && ct.TransactionTime < endUtc)
+            .GroupBy(ct => ct.PaymentMethodId)
+            .Select(g => new { PaymentMethodId = g.Key ?? UnattributedRefundMethodId, TotalBsS = g.Sum(ct => ct.AmountLocal) })
+            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
+
         var allMethods = await _context.PaymentMethods
             .AsNoTracking()
             .Where(p => !p.IsDeleted)
@@ -124,6 +143,14 @@ public partial class DailyClosureService : IDailyClosureService
                     change += unattributedChange;
                 }
                 expected -= change;
+
+                refundTotals.TryGetValue(method.Id, out decimal refund);
+                if (method.Id == firstCashMethodId)
+                {
+                    refundTotals.TryGetValue(UnattributedRefundMethodId, out decimal unattributedRefund);
+                    refund += unattributedRefund;
+                }
+                expected -= refund;
             }
 
             result.Add(new ExpectedTotalDto

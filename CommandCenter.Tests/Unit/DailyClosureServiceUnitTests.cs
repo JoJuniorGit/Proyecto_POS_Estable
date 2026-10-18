@@ -280,6 +280,57 @@ public class DailyClosureServiceUnitTests
     }
 
     [Fact]
+    public async Task GetExpectedTotalsByPaymentMethodAsync_CreditRefundExpense_NetsOnlyPhysicalCashInWindow()
+    {
+        var (service, context) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var now = DateTime.UtcNow;
+        context.Sales.Add(new Sale { Id = 730, Status = SaleStatus.Completed, Date = now });
+        context.SalePayments.Add(new SalePayment { SaleId = 730, PaymentMethodId = 1, AmountBsS = 1000m });
+        // Reembolso físico sin método: se atribuye al primer método de efectivo, como el vuelto.
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.CreditRefund,
+            IsPhysicalCash = true,
+            AmountLocal = 200m,
+            PaymentMethodId = null,
+            SaleId = 730,
+            TransactionTime = now
+        });
+        // Fuera de la ventana del cierre: no se resta.
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.CreditRefund,
+            IsPhysicalCash = true,
+            AmountLocal = 300m,
+            PaymentMethodId = 1,
+            SaleId = 730,
+            TransactionTime = now.AddDays(-3)
+        });
+        // Reembolso no físico (ajuste de libros): no toca lo esperado de la gaveta.
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.CreditRefund,
+            IsPhysicalCash = false,
+            AmountLocal = 400m,
+            PaymentMethodId = 1,
+            SaleId = 730,
+            TransactionTime = now
+        });
+        await context.SaveChangesAsync();
+
+        var totals = await service.GetExpectedTotalsByPaymentMethodAsync(now);
+
+        // 1000 Bs.S del pago inicial − 200 Bs.S del reembolso físico de la ventana.
+        Assert.Equal(800m, totals.First(t => t.PaymentMethodId == 1).ExpectedAmountBsS);
+        Assert.Equal(0m, totals.First(t => t.PaymentMethodId == 2).ExpectedAmountBsS);
+    }
+
+    [Fact]
     public async Task CreateClosureFromCommand_UnknownPaymentMethodId_ThrowsArgumentException()
     {
         var (service, context) = CreateService();

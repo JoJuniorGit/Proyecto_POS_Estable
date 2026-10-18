@@ -364,6 +364,195 @@ public class CreditPersistenceTests
         Assert.DoesNotContain("DROP TABLE", script);
     }
 
+    [Fact]
+    public void SalesModel_MapsCreditReturnContracts()
+    {
+        using var context = CreateNpgsqlModelContext();
+        var creditReturn = context.Model.FindEntityType(typeof(CreditReturn));
+        var creditReturnItem = context.Model.FindEntityType(typeof(CreditReturnItem));
+
+        Assert.NotNull(creditReturn);
+        Assert.NotNull(creditReturnItem);
+        Assert.Equal("CreditReturns", creditReturn!.GetTableName());
+        Assert.Equal("CreditReturnItems", creditReturnItem!.GetTableName());
+
+        Assert.Equal("numeric(18,4)", creditReturn.FindProperty(nameof(CreditReturn.ReturnedUSD))!.GetColumnType());
+        Assert.Equal("numeric(18,4)", creditReturn.FindProperty(nameof(CreditReturn.RefundedUSD))!.GetColumnType());
+        Assert.Equal("numeric(18,2)", creditReturn.FindProperty(nameof(CreditReturn.RefundedBsS))!.GetColumnType());
+        Assert.Equal("timestamp with time zone", creditReturn.FindProperty(nameof(CreditReturn.CreatedAtUtc))!.GetColumnType());
+
+        var refundRate = creditReturn.FindProperty(nameof(CreditReturn.RefundRate));
+        Assert.NotNull(refundRate);
+        Assert.Equal("numeric(18,4)", refundRate!.GetColumnType());
+        Assert.True(refundRate.IsNullable);
+
+        var reason = creditReturn.FindProperty(nameof(CreditReturn.Reason));
+        Assert.NotNull(reason);
+        Assert.Equal(500, reason!.GetMaxLength());
+        Assert.True(reason.IsNullable);
+
+        var idempotencyKey = creditReturn.FindProperty(nameof(CreditReturn.IdempotencyKey));
+        Assert.NotNull(idempotencyKey);
+        Assert.Equal(100, idempotencyKey!.GetMaxLength());
+        Assert.True(idempotencyKey.IsNullable);
+
+        var idempotencyIndex = Assert.Single(
+            creditReturn.GetIndexes(),
+            index => index.GetDatabaseName() == "IX_CreditReturns_IdempotencyKey");
+        Assert.True(idempotencyIndex.IsUnique);
+        Assert.Equal("\"IdempotencyKey\" IS NOT NULL", idempotencyIndex.GetFilter());
+
+        // FKs Restrict: venta, obligación, cliente, transacción de caja del reembolso y usuario creador.
+        Assert.Equal(5, creditReturn.GetForeignKeys().Count());
+        Assert.All(creditReturn.GetForeignKeys(), foreignKey => Assert.Equal(DeleteBehavior.Restrict, foreignKey.DeleteBehavior));
+
+        Assert.Equal("numeric(18,3)", creditReturnItem.FindProperty(nameof(CreditReturnItem.Quantity))!.GetColumnType());
+        Assert.Equal("numeric(18,4)", creditReturnItem.FindProperty(nameof(CreditReturnItem.AmountUSD))!.GetColumnType());
+        Assert.Contains(
+            creditReturnItem.GetIndexes(),
+            index => index.GetDatabaseName() == "IX_CreditReturnItems_CreditReturnId");
+        Assert.Contains(
+            creditReturnItem.GetIndexes(),
+            index => index.GetDatabaseName() == "IX_CreditReturnItems_SaleItemId");
+        Assert.All(creditReturnItem.GetForeignKeys(), foreignKey => Assert.Equal(DeleteBehavior.Restrict, foreignKey.DeleteBehavior));
+    }
+
+    [Fact]
+    public async Task CreditReturnGraph_RoundTrips_OnSqlite()
+    {
+        var (context, connection) = TestDatabaseFactory.CreateSqliteSalesDbContext();
+        using (connection)
+        using (context)
+        {
+            var customer = new Customer
+            {
+                CedulaOrRif = "V-11223344",
+                Name = "Cliente Devolución",
+                IsCreditEnabled = true,
+                CreditLimitUSD = 500m
+            };
+
+            var sale = new Sale
+            {
+                Customer = customer,
+                InvoiceNumber = 8801,
+                Date = FixedUtc,
+                Status = SaleStatus.Completed,
+                AppliedRate = 30.5000m,
+                TotalUSD = 120m,
+                TotalBsS = 3660m
+            };
+            sale.Items.Add(new SaleItem
+            {
+                ProductId = 11,
+                ProductName = "Cemento",
+                Quantity = 2m,
+                UnitPrice = 60m,
+                Subtotal = 120m,
+                UnitPriceBsS = 1830m,
+                SubtotalBsS = 3660m
+            });
+
+            var receivable = new Receivable
+            {
+                Sale = sale,
+                Customer = customer,
+                OriginalUSD = 120m,
+                BalanceUSD = 90m,
+                OriginalBsS = 3660m,
+                HistoricalRate = 30.5000m,
+                IssuedAtUtc = FixedUtc,
+                DueDateUtc = FixedUtc.AddDays(30),
+                Status = ReceivableStatus.Parcial
+            };
+
+            var creditReturn = new CreditReturn
+            {
+                Sale = sale,
+                Receivable = receivable,
+                Customer = customer,
+                ReturnedUSD = 30.1234m,
+                RefundedUSD = 5.4321m,
+                RefundedBsS = 165.68m,
+                RefundRate = 30.5000m,
+                CreatedAtUtc = FixedUtc.AddDays(2),
+                Reason = "Devolución parcial aprobada",
+                IdempotencyKey = "credit-return-001"
+            };
+            creditReturn.Items.Add(new CreditReturnItem
+            {
+                SaleItem = sale.Items[0],
+                Quantity = 0.5m,
+                AmountUSD = 30.1234m
+            });
+
+            context.AddRange(customer, sale, receivable, creditReturn);
+            await context.SaveChangesAsync();
+            context.ChangeTracker.Clear();
+
+            var persisted = await context.CreditReturns
+                .AsNoTracking()
+                .Include(candidate => candidate.Items)
+                .SingleAsync();
+
+            Assert.Equal(sale.Id, persisted.SaleId);
+            Assert.Equal(receivable.Id, persisted.ReceivableId);
+            Assert.Equal(customer.Id, persisted.CustomerId);
+            Assert.Equal(30.1234m, persisted.ReturnedUSD);
+            Assert.Equal(5.4321m, persisted.RefundedUSD);
+            Assert.Equal(165.68m, persisted.RefundedBsS);
+            Assert.Equal(30.5000m, persisted.RefundRate);
+            Assert.Equal(FixedUtc.AddDays(2), persisted.CreatedAtUtc);
+            Assert.Equal("Devolución parcial aprobada", persisted.Reason);
+            Assert.Null(persisted.CashTransactionId);
+            Assert.Null(persisted.CreatedByUserId);
+            Assert.Equal("credit-return-001", persisted.IdempotencyKey);
+
+            var persistedLine = Assert.Single(persisted.Items);
+            Assert.Equal(sale.Items[0].Id, persistedLine.SaleItemId);
+            Assert.Equal(0.5m, persistedLine.Quantity);
+            Assert.Equal(30.1234m, persistedLine.AmountUSD);
+
+            // Clave de idempotencia repetida: viola el índice único filtrado de la devolución.
+            context.CreditReturns.Add(new CreditReturn
+            {
+                SaleId = sale.Id,
+                ReceivableId = receivable.Id,
+                CustomerId = customer.Id,
+                ReturnedUSD = 1m,
+                CreatedAtUtc = FixedUtc,
+                IdempotencyKey = "credit-return-001"
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+            context.ChangeTracker.Clear();
+        }
+    }
+
+    [Fact]
+    public void Migration_AddCreditReturn_IsAdditiveAndGuarded()
+    {
+        using var context = CreateNpgsqlModelContext();
+        var migrations = context.GetService<IMigrationsAssembly>();
+
+        var migrationKey = Assert.Single(migrations.Migrations.Keys, key => key.Contains("AddCreditReturn"));
+        var migration = (Migration)Activator.CreateInstance(migrations.Migrations[migrationKey].AsType())!;
+        Assert.Empty(migration.UpOperations.OfType<DropTableOperation>());
+        Assert.Empty(migration.UpOperations.OfType<DropColumnOperation>());
+
+        var script = context.GetService<IMigrator>().GenerateScript(
+            fromMigration: "20261017120000_AddCreditReceivableCxcRev8187",
+            toMigration: migrationKey);
+
+        Assert.Contains("CREATE TABLE IF NOT EXISTS \"CreditReturns\"", script);
+        Assert.Contains("CREATE TABLE IF NOT EXISTS \"CreditReturnItems\"", script);
+        Assert.Contains("IX_CreditReturns_IdempotencyKey", script);
+        Assert.Contains("WHERE \"IdempotencyKey\" IS NOT NULL", script);
+        Assert.Contains("IX_CreditReturnItems_CreditReturnId", script);
+        Assert.Contains("IX_CreditReturnItems_SaleItemId", script);
+        Assert.Contains("CREATE UNIQUE INDEX", script);
+        Assert.DoesNotContain("DROP TABLE", script);
+    }
+
     private static SalesDbContext CreateNpgsqlModelContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()

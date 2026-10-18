@@ -598,6 +598,103 @@ namespace Sales.Module.Migrations
                     b.ToTable("CreditPaymentAllocations");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.CreditReturn", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("CashTransactionId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("ReceivableId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("RefundRate")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("RefundedBsS")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("RefundedUSD")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("ReturnedUSD")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("SaleId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CashTransactionId");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CreditReturns_IdempotencyKey")
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
+                    b.HasIndex("ReceivableId");
+
+                    b.HasIndex("SaleId");
+
+                    b.ToTable("CreditReturns");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.CreditReturnItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AmountUSD")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("CreditReturnId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<int>("SaleItemId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreditReturnId")
+                        .HasDatabaseName("IX_CreditReturnItems_CreditReturnId");
+
+                    b.HasIndex("SaleItemId")
+                        .HasDatabaseName("IX_CreditReturnItems_SaleItemId");
+
+                    b.ToTable("CreditReturnItems");
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.DailyClosure", b =>
                 {
                     b.Property<int>("Id")
@@ -1158,6 +1255,66 @@ namespace Sales.Module.Migrations
                     b.Navigation("ReceivablePayment");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.CreditReturn", b =>
+                {
+                    b.HasOne("Sales.Module.Entities.CashTransaction", "CashTransaction")
+                        .WithMany()
+                        .HasForeignKey("CashTransactionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Core.Entities.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Core.Entities.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Sales.Module.Entities.Receivable", "Receivable")
+                        .WithMany()
+                        .HasForeignKey("ReceivableId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Sales.Module.Entities.Sale", "Sale")
+                        .WithMany()
+                        .HasForeignKey("SaleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CashTransaction");
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Receivable");
+
+                    b.Navigation("Sale");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.CreditReturnItem", b =>
+                {
+                    b.HasOne("Sales.Module.Entities.CreditReturn", "CreditReturn")
+                        .WithMany("Items")
+                        .HasForeignKey("CreditReturnId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Sales.Module.Entities.SaleItem", "SaleItem")
+                        .WithMany()
+                        .HasForeignKey("SaleItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreditReturn");
+
+                    b.Navigation("SaleItem");
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.Receivable", b =>
                 {
                     b.HasOne("Core.Entities.Customer", "Customer")
@@ -1173,8 +1330,6 @@ namespace Sales.Module.Migrations
                         .IsRequired();
 
                     b.Navigation("Customer");
-
-                    b.Navigation("PaymentAllocations");
 
                     b.Navigation("Sale");
                 });
@@ -1201,8 +1356,6 @@ namespace Sales.Module.Migrations
                         .WithMany()
                         .HasForeignKey("ReceivedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("Allocations");
 
                     b.Navigation("CashTransaction");
 
@@ -1294,11 +1447,9 @@ namespace Sales.Module.Migrations
                     b.Navigation("Transactions");
                 });
 
-            modelBuilder.Entity("Sales.Module.Entities.CreditPaymentAllocation", b =>
+            modelBuilder.Entity("Sales.Module.Entities.CreditReturn", b =>
                 {
-                    b.Navigation("Receivable");
-
-                    b.Navigation("ReceivablePayment");
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.DailyClosure", b =>
@@ -1308,24 +1459,12 @@ namespace Sales.Module.Migrations
 
             modelBuilder.Entity("Sales.Module.Entities.Receivable", b =>
                 {
-                    b.Navigation("Customer");
-
                     b.Navigation("PaymentAllocations");
-
-                    b.Navigation("Sale");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.ReceivablePayment", b =>
                 {
                     b.Navigation("Allocations");
-
-                    b.Navigation("CashTransaction");
-
-                    b.Navigation("Customer");
-
-                    b.Navigation("PaymentMethod");
-
-                    b.Navigation("ReceivedByUser");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.Sale", b =>

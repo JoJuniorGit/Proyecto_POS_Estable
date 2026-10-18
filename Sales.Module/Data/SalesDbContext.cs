@@ -31,6 +31,8 @@ public class SalesDbContext : DbContext
     public DbSet<Receivable> Receivables { get; set; } = null!;
     public DbSet<ReceivablePayment> ReceivablePayments { get; set; } = null!;
     public DbSet<CreditPaymentAllocation> CreditPaymentAllocations { get; set; } = null!;
+    public DbSet<CreditReturn> CreditReturns { get; set; } = null!;
+    public DbSet<CreditReturnItem> CreditReturnItems { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -524,6 +526,70 @@ modelBuilder.Entity<User>().HasData(
             entity.Property(allocation => allocation.AmountUSD).HasColumnType("decimal(18,4)");
             entity.Property(allocation => allocation.AmountBsS).HasColumnType("decimal(18,2)");
             entity.Property(allocation => allocation.FxDifferenceBsS).HasColumnType("decimal(18,2)");
+        });
+
+        // T3b2 (Paso 11/12, S5/S7): devoluciones y anulaciones de ventas a credito. Sin cascade
+        // delete: la traza contable exige bajas explicitas y auditadas; el reembolso del overpago
+        // referencia la transaccion de caja (Expense, origen CreditRefund).
+        modelBuilder.Entity<CreditReturn>(entity =>
+        {
+            entity.HasOne(creditReturn => creditReturn.Sale)
+                .WithMany()
+                .HasForeignKey(creditReturn => creditReturn.SaleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(creditReturn => creditReturn.Receivable)
+                .WithMany()
+                .HasForeignKey(creditReturn => creditReturn.ReceivableId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(creditReturn => creditReturn.Customer)
+                .WithMany()
+                .HasForeignKey(creditReturn => creditReturn.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(creditReturn => creditReturn.CashTransaction)
+                .WithMany()
+                .HasForeignKey(creditReturn => creditReturn.CashTransactionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(creditReturn => creditReturn.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(creditReturn => creditReturn.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasMany(creditReturn => creditReturn.Items)
+                .WithOne(item => item.CreditReturn)
+                .HasForeignKey(item => item.CreditReturnId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Idempotencia de la devolucion: unica solo cuando la clave existe.
+            entity.HasIndex(creditReturn => creditReturn.IdempotencyKey)
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL")
+                .HasDatabaseName("IX_CreditReturns_IdempotencyKey");
+
+            entity.Property(creditReturn => creditReturn.ReturnedUSD).HasColumnType("decimal(18,4)");
+            entity.Property(creditReturn => creditReturn.RefundedUSD).HasColumnType("decimal(18,4)");
+            entity.Property(creditReturn => creditReturn.RefundedBsS).HasColumnType("decimal(18,2)");
+            entity.Property(creditReturn => creditReturn.RefundRate).HasColumnType("decimal(18,4)");
+        });
+
+        modelBuilder.Entity<CreditReturnItem>(entity =>
+        {
+            entity.HasOne(item => item.SaleItem)
+                .WithMany()
+                .HasForeignKey(item => item.SaleItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(item => item.CreditReturnId)
+                .HasDatabaseName("IX_CreditReturnItems_CreditReturnId");
+
+            entity.HasIndex(item => item.SaleItemId)
+                .HasDatabaseName("IX_CreditReturnItems_SaleItemId");
+
+            entity.Property(item => item.Quantity).HasColumnType("numeric(18,3)");
+            entity.Property(item => item.AmountUSD).HasColumnType("decimal(18,4)");
         });
     }
 }

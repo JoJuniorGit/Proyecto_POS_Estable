@@ -46,6 +46,25 @@ public interface ISalesService
     Task<CreditPaymentResultDto> RegisterCreditPaymentAsync(CreditPaymentRequest request, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// T3b2 (F2b, S5/S7): anula una venta a crédito SIN abonos (saldo vigente igual al original,
+    /// sin asignaciones de cobro). Restituye TODO el stock por el camino de inventario (motivo
+    /// Return), marca la obligación Anulada con saldo 0 y la venta Cancelada; no genera
+    /// movimientos de caja y el cupo del cliente se restituye implícitamente. Con abonos o
+    /// devoluciones previas la anulación simple queda bloqueada.
+    /// </summary>
+    Task<CreditCancelResultDto> CancelCreditSaleAsync(int saleId, string? reason, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T3b2 (F2b, S5/S7): registra la devolución total o parcial de una venta a crédito. El valor
+    /// por línea se calcula server-side sobre la base EFECTIVA (SubtotalBsS / tasa de emisión) y
+    /// reduce primero el saldo; el excedente efectivamente pagado (overpago) se reembolsa por caja
+    /// (Expense, origen CreditRefund) a la tasa congelada del último abono. La devolución acumulada
+    /// por ítem nunca excede la cantidad vendida y la clave de idempotencia replica sin nuevos
+    /// movimientos.
+    /// </summary>
+    Task<CreditReturnResultDto> RegisterCreditReturnAsync(int saleId, CreditReturnRequest request, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 8.152 (SEC-08): resuelve la tasa efectiva del checkout-preview con el MISMO anclaje del
     /// completar venta: desvío ≤ tolerancia configurada (<c>RateDeviationTolerancePct</c>) → tasa
     /// cliente redondeada al techo; desvío mayor a la tolerancia → tasa BCV del día; desvío

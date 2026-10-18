@@ -244,4 +244,90 @@ public partial class SalesController
             return this.ApiNotFound(ex.Message);
         }
     }
+
+    /// <summary>
+    /// T3b2 (F2b, S5/S7): anula una venta a crédito SIN abonos. Restituye stock y cupo, marca la
+    /// obligación Anulada y la venta Cancelada sin generar movimientos de caja. Con abonos o
+    /// devoluciones previas la anulación simple se bloquea (409). Mismo contrato de propiedad y
+    /// sello de seguridad que el cierre a crédito.
+    /// </summary>
+    [RequireSecurityStampValidation]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [HttpPost("{id}/credit-cancel")]
+    [ProducesResponseType(typeof(CreditCancelResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CreditCancelResultDto>> CancelCreditSaleAsync(
+        int id,
+        [FromBody] CreditCancelRequest? request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
+        {
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para anular esta venta.");
+        }
+
+        try
+        {
+            var result = await _salesService.CancelCreditSaleAsync(
+                id,
+                request?.Reason,
+                GetActorUserId(),
+                HttpContext?.RequestAborted ?? cancellationToken);
+
+            return Ok(result);
+        }
+        catch (System.Collections.Generic.KeyNotFoundException ex)
+        {
+            return this.ApiNotFound(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// T3b2 (F2b, S5/S7): registra la devolución total o parcial de una venta a crédito. El valor
+    /// por línea se calcula server-side sobre la base efectiva; el overpago efectivamente pagado
+    /// se reembolsa por caja a la tasa congelada del último abono. El usuario autenticado
+    /// prevalece como autor de la devolución y la clave de idempotencia replica sin nuevos
+    /// movimientos.
+    /// </summary>
+    [RequireSecurityStampValidation]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [HttpPost("{id}/credit-return")]
+    [ProducesResponseType(typeof(CreditReturnResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<CreditReturnResultDto>> RegisterCreditReturnAsync(
+        int id,
+        [FromBody] CreditReturnRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request == null)
+        {
+            return this.ApiBadRequest("La solicitud de la devolución es requerida.");
+        }
+
+        if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
+        {
+            return this.ApiForbidden("Acceso denegado: no tiene permisos para registrar devoluciones de esta venta.");
+        }
+
+        try
+        {
+            var result = await _salesService.RegisterCreditReturnAsync(
+                id,
+                request,
+                GetActorUserId(),
+                HttpContext?.RequestAborted ?? cancellationToken);
+
+            return Ok(result);
+        }
+        catch (System.Collections.Generic.KeyNotFoundException ex)
+        {
+            return this.ApiNotFound(ex.Message);
+        }
+    }
 }
