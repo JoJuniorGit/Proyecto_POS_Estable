@@ -45,6 +45,105 @@ public class CreditProfileDto
 }
 
 /// <summary>
+/// T4-prep (S1/S4): escritura administrativa del perfil crediticio del cliente. El estado
+/// <see cref="CreditStatus.SuspendedByMora"/> es administrado por el sistema (job de mora) y se
+/// rechaza si la UI intenta asignarlo manualmente; solo <see cref="CreditStatus.Active"/> y
+/// <see cref="CreditStatus.ManuallyBlocked"/> son estados manuales válidos.
+/// </summary>
+public class CustomerCreditProfileUpdateDto
+{
+    public bool IsCreditEnabled { get; set; }
+
+    /// <summary>Cupo máximo de deuda simultánea autorizada (USD, no negativo).</summary>
+    public decimal CreditLimitUSD { get; set; }
+
+    /// <summary>Plazo estándar de pago en días continuos (1..365).</summary>
+    public int PaymentTermDays { get; set; } = 30;
+
+    /// <summary>Días de gracia posteriores al vencimiento (no negativos).</summary>
+    public int CreditGraceDays { get; set; }
+
+    /// <summary>Notas operativas, garantías o acuerdos especiales (máximo 1000 caracteres).</summary>
+    public string? CreditNotes { get; set; }
+
+    /// <summary>Estado manual: Active o ManuallyBlocked. SuspendedByMora se rechaza.</summary>
+    public CreditStatus CreditStatus { get; set; } = CreditStatus.Active;
+}
+
+/// <summary>
+/// T4-prep (S3): filtros de la cartera global de cuentas por cobrar. <see cref="Status"/> acepta
+/// los nombres del enum (<c>Vigente</c>, <c>Parcial</c>, <c>Vencida</c>, <c>Pagada</c>,
+/// <c>Anulada</c>) sin distinguir mayúsculas; <see cref="Search"/> busca por cliente, cédula/RIF
+/// o número de factura. <see cref="OverdueOnly"/> usa la mora dinámica (vencimiento + gracia del
+/// cliente), no el estado persistido.
+/// </summary>
+public class CreditReceivablesFilterDto
+{
+    public int? CustomerId { get; set; }
+
+    public string? Status { get; set; }
+
+    public bool OverdueOnly { get; set; }
+
+    public string? Search { get; set; }
+}
+
+/// <summary>
+/// T4-prep (S3/S6): cartera global con proyección Bs.S a la tasa del día. Los totales cubren la
+/// cartera abierta del conjunto filtrado (Vigente/Parcial/Vencida con saldo &gt; 0.005 USD), sin
+/// sumar obligaciones pagadas, anuladas ni polvo decimal.
+/// </summary>
+public class CreditReceivablesListDto
+{
+    public System.Collections.Generic.List<CreditReceivableListItemDto> Items { get; set; } = new();
+
+    /// <summary>Suma de saldos abiertos del conjunto filtrado (USD 4dp).</summary>
+    public decimal TotalOpenUSD { get; set; }
+
+    /// <summary>Suma de saldos abiertos en mora dinámica del conjunto filtrado (USD 4dp).</summary>
+    public decimal TotalOverdueUSD { get; set; }
+
+    /// <summary>Cantidad de obligaciones abiertas del conjunto filtrado.</summary>
+    public int OpenCount { get; set; }
+
+    /// <summary>Tasa efectiva del día usada para la proyección Bs.S; 0 cuando no hay tasa.</summary>
+    public decimal TodayRate { get; set; }
+}
+
+/// <summary>Obligación CxC de la cartera global con su snapshot de emisión y saldo proyectado al día.</summary>
+public class CreditReceivableListItemDto
+{
+    public int ReceivableId { get; set; }
+    public int CustomerId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public string CustomerCedulaOrRif { get; set; } = string.Empty;
+
+    public int SaleId { get; set; }
+    public int? InvoiceNumber { get; set; }
+
+    public decimal OriginalUSD { get; set; }
+    public decimal BalanceUSD { get; set; }
+
+    /// <summary>Contravalor financiado a la emisión (snapshot inmutable).</summary>
+    public decimal OriginalBsS { get; set; }
+
+    /// <summary>Tasa BCV de emisión congelada.</summary>
+    public decimal HistoricalRate { get; set; }
+
+    /// <summary>Equivalente Bs.S del saldo vigente a la tasa del día (proyección, no revaluación).</summary>
+    public decimal BalanceTodayBsS { get; set; }
+
+    public System.DateTime IssuedAtUtc { get; set; }
+    public System.DateTime DueDateUtc { get; set; }
+
+    /// <summary>Nombre del estado (Vigente / Parcial / Vencida / Pagada / Anulada).</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary>true cuando está abierta y superó vencimiento + días de gracia del cliente.</summary>
+    public bool IsOverdue { get; set; }
+}
+
+/// <summary>
 /// Resultado estructurado de la evaluación de solvencia en tiempo real (S2/S4): elegibilidad
 /// del monto a financiar con los bloqueos aplicables en español y el cupo disponible calculado.
 /// F2a NO admite sobregiro: exceder el disponible bloquea (T3 agrega la autorización supervisor).

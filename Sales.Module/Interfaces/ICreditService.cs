@@ -31,4 +31,25 @@ public interface ICreditService
     /// Cliente inexistente → KeyNotFoundException (404).
     /// </summary>
     Task<CreditStatementDto> GetCreditStatementAsync(int customerId, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T4-prep (S1/S4): escritura administrativa del perfil crediticio. Valida cupo, plazo
+    /// (1..365), gracia, notas (≤ 1000) y rechaza la asignación manual de SuspendedByMora.
+    /// Cliente inexistente → KeyNotFoundException (404); validación → ArgumentException (400).
+    /// Actualiza la entidad rastreada para conservar el token xmin de Customer.
+    /// </summary>
+    Task<CreditProfileDto> UpdateCustomerCreditProfileAsync(
+        int customerId,
+        CustomerCreditProfileUpdateDto request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T4-prep (S3): cartera global de cuentas por cobrar con filtros por cliente, estado, mora
+    /// dinámica y búsqueda (cliente/cédula/factura). Devuelve la lista con la proyección Bs.S del
+    /// saldo a la tasa del día y los totales de cartera abierta/vencida del conjunto filtrado.
+    /// Estado inválido → ArgumentException (400).
+    /// </summary>
+    Task<CreditReceivablesListDto> GetCreditReceivablesAsync(
+        CreditReceivablesFilterDto filter,
+        CancellationToken cancellationToken = default);
 }

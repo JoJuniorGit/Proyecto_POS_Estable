@@ -3,11 +3,13 @@ using Core.Entities;
 using Core.Helpers;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,10 +42,18 @@ public class CreditService : ICreditService
     // día se reporta 0 y las proyecciones Bs.S quedan en cero.
     private readonly ITodayExchangeRateProvider? _rateProvider;
 
-    public CreditService(SalesDbContext context, ITodayExchangeRateProvider? rateProvider = null)
+    // T4-prep (S1): traza de la escritura administrativa del perfil crediticio. Opcional para no
+    // romper la construcción directa histórica de tests.
+    private readonly ILogger<CreditService>? _logger;
+
+    public CreditService(
+        SalesDbContext context,
+        ITodayExchangeRateProvider? rateProvider = null,
+        ILogger<CreditService>? logger = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _rateProvider = rateProvider;
+        _logger = logger;
     }
 
     /// <inheritdoc />
@@ -212,6 +222,223 @@ public class CreditService : ICreditService
             Payments = payments
         };
     }
+
+    /// <inheritdoc />
+    public async Task<CreditProfileDto> UpdateCustomerCreditProfileAsync(
+        int customerId,
+        CustomerCreditProfileUpdateDto request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var customer = await _context.Customers
+            .FirstOrDefaultAsync(candidate => candidate.Id == customerId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Cliente {customerId} no encontrado.");
+
+        ValidateProfileUpdate(request);
+
+        var previousStatus = customer.CreditStatus;
+        var previousLimit = customer.CreditLimitUSD;
+        var trimmedNotes = string.IsNullOrWhiteSpace(request.CreditNotes) ? null : request.CreditNotes.Trim();
+
+        // Entidad rastreada (no AsNoTracking): SaveChanges conserva el token xmin de Customer y
+        // una edición concurrente de otro supervisor falla cerrada en vez de pisar el perfil.
+        customer.IsCreditEnabled = request.IsCreditEnabled;
+        customer.CreditLimitUSD = request.CreditLimitUSD;
+        customer.PaymentTermDays = request.PaymentTermDays;
+        customer.CreditGraceDays = request.CreditGraceDays;
+        customer.CreditNotes = trimmedNotes;
+        customer.CreditStatus = request.CreditStatus;
+        customer.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger?.LogInformation(
+            "Perfil crediticio actualizado: cliente {CustomerId}; habilitado {IsCreditEnabled}; cupo {PreviousLimit}->{CreditLimitUSD}; plazo {PaymentTermDays} días; gracia {CreditGraceDays} días; estado {PreviousStatus}->{CreditStatus}.",
+            customer.Id,
+            customer.IsCreditEnabled,
+            previousLimit,
+            customer.CreditLimitUSD,
+            customer.PaymentTermDays,
+            customer.CreditGraceDays,
+            previousStatus,
+            customer.CreditStatus);
+
+        return await GetCreditProfileAsync(customerId, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<CreditReceivablesListDto> GetCreditReceivablesAsync(
+        CreditReceivablesFilterDto filter,
+        CancellationToken cancellationToken = default)
+    {
+        filter ??= new CreditReceivablesFilterDto();
+        ReceivableStatus? statusFilter = ParseStatusFilter(filter.Status);
+
+        var query = _context.Receivables
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(receivable => receivable.Sale)
+            .Include(receivable => receivable.Customer)
+            .AsQueryable();
+
+        if (filter.CustomerId.HasValue)
+        {
+            int customerId = filter.CustomerId.Value;
+            query = query.Where(receivable => receivable.CustomerId == customerId);
+        }
+
+        if (statusFilter.HasValue)
+        {
+            ReceivableStatus status = statusFilter.Value;
+            query = query.Where(receivable => receivable.Status == status);
+        }
+
+        // La mora depende de la gracia de cada cliente y del día corriente de Venezuela, por lo
+        // que se resuelve en memoria con la misma regla compartida por perfil, abonos y estado de
+        // cuenta; el estado persistido Vencida no se usa como sustituto de la mora dinámica.
+        var entities = await query
+            .OrderBy(receivable => receivable.DueDateUtc)
+            .ThenBy(receivable => receivable.IssuedAtUtc)
+            .ThenBy(receivable => receivable.Id)
+            .ToListAsync(cancellationToken);
+
+        decimal todayRate = _rateProvider != null
+            ? await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken)
+            : 0m;
+        var venezuelaToday = TimeZoneHelper.GetVenezuelaDate();
+        string? search = string.IsNullOrWhiteSpace(filter.Search) ? null : filter.Search.Trim();
+
+        var result = new CreditReceivablesListDto { TodayRate = todayRate };
+        decimal openTotalUsd = 0m;
+        decimal overdueTotalUsd = 0m;
+        int openCount = 0;
+
+        foreach (var receivable in entities)
+        {
+            bool isOverdue = receivable.BalanceUSD > BalanceToleranceUsd
+                && OpenStatuses.Contains(receivable.Status)
+                && IsOverdueBeyondGrace(
+                    receivable.DueDateUtc,
+                    receivable.Customer?.CreditGraceDays ?? 0,
+                    venezuelaToday);
+
+            if (filter.OverdueOnly && !isOverdue)
+            {
+                continue;
+            }
+
+            if (!MatchesSearch(receivable, search))
+            {
+                continue;
+            }
+
+            result.Items.Add(new CreditReceivableListItemDto
+            {
+                ReceivableId = receivable.Id,
+                CustomerId = receivable.CustomerId,
+                CustomerName = receivable.Customer?.Name ?? string.Empty,
+                CustomerCedulaOrRif = receivable.Customer?.CedulaOrRif ?? string.Empty,
+                SaleId = receivable.SaleId,
+                InvoiceNumber = receivable.Sale?.InvoiceNumber,
+                OriginalUSD = receivable.OriginalUSD,
+                BalanceUSD = receivable.BalanceUSD,
+                OriginalBsS = receivable.OriginalBsS,
+                HistoricalRate = receivable.HistoricalRate,
+                BalanceTodayBsS = PricingCalculator.ToBsS(receivable.BalanceUSD, todayRate),
+                IssuedAtUtc = receivable.IssuedAtUtc,
+                DueDateUtc = receivable.DueDateUtc,
+                Status = receivable.Status.ToString(),
+                IsOverdue = isOverdue
+            });
+
+            if (receivable.BalanceUSD > BalanceToleranceUsd && OpenStatuses.Contains(receivable.Status))
+            {
+                openCount++;
+                openTotalUsd += receivable.BalanceUSD;
+                if (isOverdue)
+                {
+                    overdueTotalUsd += receivable.BalanceUSD;
+                }
+            }
+        }
+
+        result.OpenCount = openCount;
+        result.TotalOpenUSD = RoundUsd(openTotalUsd);
+        result.TotalOverdueUSD = RoundUsd(overdueTotalUsd);
+        return result;
+    }
+
+    private static void ValidateProfileUpdate(CustomerCreditProfileUpdateDto request)
+    {
+        if (request.CreditLimitUSD < 0m)
+        {
+            throw new ArgumentException("El límite de crédito no puede ser negativo.", nameof(request));
+        }
+
+        if (request.PaymentTermDays < 1 || request.PaymentTermDays > 365)
+        {
+            throw new ArgumentException("El plazo de pago debe estar entre 1 y 365 días continuos.", nameof(request));
+        }
+
+        if (request.CreditGraceDays < 0)
+        {
+            throw new ArgumentException("Los días de gracia no pueden ser negativos.", nameof(request));
+        }
+
+        if (request.CreditNotes is not null && request.CreditNotes.Trim().Length > 1000)
+        {
+            throw new ArgumentException("Las notas crediticias no pueden exceder 1000 caracteres.", nameof(request));
+        }
+
+        if (request.CreditStatus == CreditStatus.SuspendedByMora)
+        {
+            throw new ArgumentException(
+                "El estado Suspendido por Mora es administrado por el sistema y no puede asignarse manualmente.",
+                nameof(request));
+        }
+
+        if (!Enum.IsDefined(request.CreditStatus))
+        {
+            throw new ArgumentException("El estado crediticio informado no es válido.", nameof(request));
+        }
+    }
+
+    private static ReceivableStatus? ParseStatusFilter(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return null;
+        }
+
+        var normalized = status.Trim();
+        if (Enum.TryParse<ReceivableStatus>(normalized, ignoreCase: true, out var parsed)
+            && Enum.IsDefined(parsed))
+        {
+            return parsed;
+        }
+
+        throw new ArgumentException(
+            $"Estado de cuenta por cobrar inválido: '{normalized}'. Valores válidos: Vigente, Parcial, Vencida, Pagada, Anulada.",
+            nameof(status));
+    }
+
+    private static bool MatchesSearch(Receivable receivable, string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return true;
+        }
+
+        string term = search.Trim();
+        return (receivable.Customer?.Name?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (receivable.Customer?.CedulaOrRif?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (receivable.Sale?.InvoiceNumber?.ToString(CultureInfo.InvariantCulture)
+                .Contains(term, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private static decimal RoundUsd(decimal amount) =>
+        Math.Round(amount, 4, MidpointRounding.AwayFromZero);
 
     /// <summary>
     /// Saldos vivos del cliente (AsNoTracking, proyectados): estados abiertos con saldo por

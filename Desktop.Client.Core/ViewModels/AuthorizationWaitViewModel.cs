@@ -50,7 +50,7 @@ public partial class AuthorizationWaitViewModel : ObservableObject, IDisposable
     internal static readonly TimeSpan CountdownInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly IAuthorizationHubService _hubService;
-    private readonly AuthorizationRequestContext _context;
+    private readonly IAuthorizationRequestContext _context;
     private readonly Func<string, Task> _retryAction;
     private readonly IDispatcherInvoker _dispatcherInvoker;
     private readonly IAuthorizationCountdownTimer _countdownTimer;
@@ -95,7 +95,7 @@ public partial class AuthorizationWaitViewModel : ObservableObject, IDisposable
 
     public AuthorizationWaitViewModel(
         IAuthorizationHubService hubService,
-        AuthorizationRequestContext context,
+        IAuthorizationRequestContext context,
         Func<string, Task> retryAction,
         IDispatcherInvoker? dispatcherInvoker = null,
         IAuthorizationCountdownTimer? countdownTimer = null,
@@ -116,22 +116,35 @@ public partial class AuthorizationWaitViewModel : ObservableObject, IDisposable
         _hubService.AuthorizationExpired += OnAuthorizationExpired;
     }
 
-    public AuthorizationRequestContext OperationContext => _context;
+    public IAuthorizationRequestContext OperationContext => _context;
 
     public string OperationSummary => BuildOperationSummary(_context);
 
     public string SaleNumberDisplay => $"#{_context.SaleId}";
 
-    public string ProductDisplay => string.IsNullOrWhiteSpace(_context.ProductName)
-        ? string.Empty
-        : $"{_context.ProductName} × {_context.Quantity.ToString("0.###", CultureInfo.InvariantCulture)}";
+    private AuthorizationRequestContext? ManualContext => _context as AuthorizationRequestContext;
+    private CreditOverLimitAuthorizationRequestContext? CreditContext => _context as CreditOverLimitAuthorizationRequestContext;
 
-    public string CustomPriceUsdDisplay => _context.CustomUnitPriceUsd.HasValue
-        ? $"$ {_context.CustomUnitPriceUsd.Value.ToString("N2", CultureInfo.InvariantCulture)}"
+    public string ProductDisplay => ManualContext is { } manual && !string.IsNullOrWhiteSpace(manual.ProductName)
+        ? $"{manual.ProductName} × {manual.Quantity.ToString("0.###", CultureInfo.InvariantCulture)}"
         : string.Empty;
 
-    public string CustomPriceLocalDisplay => _context.CustomUnitPriceLocal.HasValue
-        ? $"Bs.S {_context.CustomUnitPriceLocal.Value.ToString("N2", CultureInfo.InvariantCulture)}"
+    public string CustomerDisplay => CreditContext?.CustomerName ?? string.Empty;
+
+    public string CustomPriceUsdDisplay => ManualContext?.CustomUnitPriceUsd is { } customUsd
+        ? $"$ {customUsd.ToString("N2", CultureInfo.InvariantCulture)}"
+        : string.Empty;
+
+    public string CustomPriceLocalDisplay => ManualContext?.CustomUnitPriceLocal is { } customLocal
+        ? $"Bs.S {customLocal.ToString("N2", CultureInfo.InvariantCulture)}"
+        : string.Empty;
+
+    public string FinancedAmountDisplay => CreditContext is { } credit
+        ? $"$ {credit.FinancedUSD.ToString("N2", CultureInfo.InvariantCulture)}"
+        : string.Empty;
+
+    public string AvailableCreditDisplay => CreditContext is { } credit
+        ? $"$ {credit.AvailableCreditUSD.ToString("N2", CultureInfo.InvariantCulture)}"
         : string.Empty;
 
     public string StatusMessage => Phase switch
@@ -154,12 +167,23 @@ public partial class AuthorizationWaitViewModel : ObservableObject, IDisposable
     public bool ShowRetryExecutionPanel => Phase == AuthorizationWaitPhase.Granted && !string.IsNullOrEmpty(RetryError);
     public bool ShowExecutionProgress => Phase == AuthorizationWaitPhase.Granted && string.IsNullOrEmpty(RetryError);
 
-    public static string BuildOperationSummary(AuthorizationRequestContext context)
+    public static string BuildOperationSummary(IAuthorizationRequestContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var product = string.IsNullOrWhiteSpace(context.ProductName) ? "Producto" : context.ProductName;
-        return $"{product} × {context.Quantity.ToString("0.###", CultureInfo.InvariantCulture)} - Venta #{context.SaleId}";
+        if (context is CreditOverLimitAuthorizationRequestContext credit)
+        {
+            var customer = string.IsNullOrWhiteSpace(credit.CustomerName) ? "Cliente" : credit.CustomerName;
+            return $"Crédito de $ {credit.FinancedUSD.ToString("N2", CultureInfo.InvariantCulture)} a {customer} - Venta #{credit.SaleId}";
+        }
+
+        if (context is AuthorizationRequestContext manual)
+        {
+            var product = string.IsNullOrWhiteSpace(manual.ProductName) ? "Producto" : manual.ProductName;
+            return $"{product} × {manual.Quantity.ToString("0.###", CultureInfo.InvariantCulture)} - Venta #{manual.SaleId}";
+        }
+
+        return $"Acción protegida - Venta #{context.SaleId}";
     }
 
     [RelayCommand]

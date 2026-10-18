@@ -330,4 +330,68 @@ public partial class SalesController
             return this.ApiNotFound(ex.Message);
         }
     }
+
+    /// <summary>
+    /// T4-prep (S1/S4): escritura administrativa del perfil crediticio desde la UI. Solo
+    /// Admin/Manager; el estado Suspendido por Mora es system-managed y la validación de cupo,
+    /// plazo, gracia y notas responde 400. Cliente inexistente → 404.
+    /// </summary>
+    [RequireSecurityStampValidation]
+    [Authorize(Roles = "Admin,Manager")]
+    [HttpPut("customers/{id}/credit-profile")]
+    [ProducesResponseType(typeof(CreditProfileDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CreditProfileDto>> UpdateCreditProfileAsync(
+        int id,
+        [FromBody] CustomerCreditProfileUpdateDto request,
+        [FromServices] ICreditService creditService,
+        CancellationToken cancellationToken = default)
+    {
+        if (request == null)
+        {
+            return this.ApiBadRequest("La solicitud del perfil crediticio es requerida.");
+        }
+
+        try
+        {
+            var profile = await creditService.UpdateCustomerCreditProfileAsync(id, request, cancellationToken);
+            return Ok(profile);
+        }
+        catch (System.Collections.Generic.KeyNotFoundException ex)
+        {
+            return this.ApiNotFound(ex.Message);
+        }
+        catch (System.ArgumentException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// T4-prep (S3): cartera global de cuentas por cobrar con filtros por cliente, estado, mora
+    /// dinámica y búsqueda, más los totales de cartera abierta/vencida. Lectura para caja y
+    /// supervisión (Admin/Manager/Cashier). Un estado desconocido responde 400.
+    /// </summary>
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [HttpGet("credit-receivables")]
+    [ProducesResponseType(typeof(CreditReceivablesListDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<CreditReceivablesListDto>> GetCreditReceivablesAsync(
+        [FromQuery] CreditReceivablesFilterDto filter,
+        [FromServices] ICreditService creditService,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var receivables = await creditService.GetCreditReceivablesAsync(
+                filter ?? new CreditReceivablesFilterDto(),
+                cancellationToken);
+            return Ok(receivables);
+        }
+        catch (System.ArgumentException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
+        }
+    }
 }

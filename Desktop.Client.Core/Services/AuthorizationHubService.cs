@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using Core.Common;
+using Core.Entities;
 using Core.Helpers;
 using Core.Logging;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -133,24 +134,47 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
         };
     }
 
-    /// <summary>8.150 (T9): claves exactas de RequestAuthorizationContract (hub y REST comparten el payload).</summary>
-    public static Dictionary<string, object?> BuildRequestPayload(AuthorizationRequestContext context)
+    /// <summary>
+    /// 8.150 (T9) / T4-prep (S4): claves exactas del contrato de RequestAuthorization. El override
+    /// manual conserva exactamente las siete claves historicas (sin actionType); el sobregiro de
+    /// credito envia actionType numerico + contexto de cliente/montos y ninguna clave de producto.
+    /// </summary>
+    public static Dictionary<string, object?> BuildRequestPayload(IAuthorizationRequestContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
 
+        if (context is CreditOverLimitAuthorizationRequestContext creditOverLimit)
+        {
+            return new Dictionary<string, object?>
+            {
+                ["saleId"] = creditOverLimit.SaleId,
+                ["actionType"] = (int)AuthorizationActionType.CreditOverLimit,
+                ["customerId"] = creditOverLimit.CustomerId,
+                ["customerName"] = creditOverLimit.CustomerName,
+                ["financedUSD"] = creditOverLimit.FinancedUSD,
+                ["availableCreditUSD"] = creditOverLimit.AvailableCreditUSD,
+                ["terminal"] = creditOverLimit.Terminal
+            };
+        }
+
+        if (context is not AuthorizationRequestContext manualPriceOverride)
+        {
+            throw new ArgumentException("El contexto de autorización informado no está soportado.", nameof(context));
+        }
+
         return new Dictionary<string, object?>
         {
-            ["saleId"] = context.SaleId,
-            ["productId"] = context.ProductId,
-            ["productName"] = context.ProductName,
-            ["quantity"] = context.Quantity,
-            ["customUnitPriceUsd"] = context.CustomUnitPriceUsd,
-            ["customUnitPriceLocal"] = context.CustomUnitPriceLocal,
-            ["terminal"] = context.Terminal
+            ["saleId"] = manualPriceOverride.SaleId,
+            ["productId"] = manualPriceOverride.ProductId,
+            ["productName"] = manualPriceOverride.ProductName,
+            ["quantity"] = manualPriceOverride.Quantity,
+            ["customUnitPriceUsd"] = manualPriceOverride.CustomUnitPriceUsd,
+            ["customUnitPriceLocal"] = manualPriceOverride.CustomUnitPriceLocal,
+            ["terminal"] = manualPriceOverride.Terminal
         };
     }
 
-    public async Task<AuthorizationRequestInfo> RequestAuthorizationAsync(AuthorizationRequestContext context)
+    public async Task<AuthorizationRequestInfo> RequestAuthorizationAsync(IAuthorizationRequestContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         EnsureNotDisposed();

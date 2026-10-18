@@ -2,6 +2,7 @@ using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using Core.Entities;
 
 namespace Desktop.Client.Services;
 
@@ -19,7 +20,7 @@ public interface IAuthorizationHubService : IDisposable
     /// <summary>8.151 (W3, R6/design D4a): el hub recupero el socket; la cola admin debe reconciliarse.</summary>
     event EventHandler? Reconnected;
 
-    Task<AuthorizationRequestInfo> RequestAuthorizationAsync(AuthorizationRequestContext context);
+    Task<AuthorizationRequestInfo> RequestAuthorizationAsync(IAuthorizationRequestContext context);
     Task<AuthorizationResolveInfo> ResolveAuthorizationAsync(int requestId, bool approved, string? reason = null);
     Task<AuthorizationStatusInfo?> GetStatusAsync(int requestId);
     Task<LocalResolveInfo> LocalResolveAsync(int requestId, string username, string password, string? reason = null);
@@ -28,8 +29,21 @@ public interface IAuthorizationHubService : IDisposable
     Task CancelRequestAsync(int requestId);
 }
 
+/// <summary>
+/// 8.150 (T9): contrato comun de una accion protegida. El discriminador <see cref="ActionType"/>
+/// permite al transporte elegir el payload correcto sin reinterpretar campos de otra accion.
+/// </summary>
+public interface IAuthorizationRequestContext
+{
+    int SaleId { get; }
+
+    AuthorizationActionType ActionType { get; }
+
+    string? Terminal { get; }
+}
+
 /// <summary>8.150 (T9): contexto tipado de la accion protegida v1 (ManualPriceOverride).</summary>
-public sealed record AuthorizationRequestContext
+public sealed record AuthorizationRequestContext : IAuthorizationRequestContext
 {
     public int SaleId { get; init; }
     public int ProductId { get; init; }
@@ -38,6 +52,26 @@ public sealed record AuthorizationRequestContext
     public decimal? CustomUnitPriceUsd { get; init; }
     public decimal? CustomUnitPriceLocal { get; init; }
     public string? Terminal { get; init; }
+
+    // El override manual conserva su contrato historico: sin actionType explicito en el payload.
+    public AuthorizationActionType ActionType => AuthorizationActionType.ManualPriceOverride;
+}
+
+/// <summary>
+/// T4-prep (Paso 11/12, S4): contexto del sobregiro de cupo en venta a credito. El transporte
+/// envia actionType = CreditOverLimit (valor numerico del enum) y el contexto exacto que el
+/// backend canonicaliza para ligar el token de autorizacion (cliente, venta y montos).
+/// </summary>
+public sealed record CreditOverLimitAuthorizationRequestContext : IAuthorizationRequestContext
+{
+    public int SaleId { get; init; }
+    public int CustomerId { get; init; }
+    public string? CustomerName { get; init; }
+    public decimal FinancedUSD { get; init; }
+    public decimal AvailableCreditUSD { get; init; }
+    public string? Terminal { get; init; }
+
+    public AuthorizationActionType ActionType => AuthorizationActionType.CreditOverLimit;
 }
 
 public sealed record AuthorizationRequestInfo(
@@ -122,6 +156,70 @@ public sealed class AuthorizationRequestedPayload : EventArgs
 
     [JsonPropertyName("expiresAt")]
     public DateTimeOffset? ExpiresAt { get; init; }
+
+    /// <summary>Accion parseada del push (el backend publica el nombre del enum como string).</summary>
+    [JsonIgnore]
+    public AuthorizationActionType? ParsedActionType =>
+        Enum.TryParse<AuthorizationActionType>(ActionType, ignoreCase: true, out var parsed)
+        && Enum.IsDefined(parsed)
+            ? parsed
+            : null;
+
+    /// <summary>
+    /// T4-prep (S4): reconstruye el contexto CreditOverLimit del push para que la UI de supervision
+    /// muestre cliente y montos. Devuelve null si la accion es otra o el contexto esta incompleto.
+    /// </summary>
+    public CreditOverLimitAuthorizationRequestContext? GetCreditOverLimitContext()
+    {
+        if (ParsedActionType != AuthorizationActionType.CreditOverLimit
+            || Context is not { ValueKind: JsonValueKind.Object } context)
+        {
+            return null;
+        }
+
+        if (!context.TryGetProperty("customerId", out var customerElement) || !customerElement.TryGetInt32(out var customerId))
+        {
+            return null;
+        }
+
+        if (!context.TryGetProperty("financedUSD", out var financedElement) || !financedElement.TryGetDecimal(out var financedUsd))
+        {
+            return null;
+        }
+
+        if (!context.TryGetProperty("availableCreditUSD", out var availableElement) || !availableElement.TryGetDecimal(out var availableCreditUsd))
+        {
+            return null;
+        }
+
+        int? saleId = SaleId;
+        if (!saleId.HasValue
+            && context.TryGetProperty("saleId", out var saleElement)
+            && saleElement.TryGetInt32(out var contextSaleId))
+        {
+            saleId = contextSaleId;
+        }
+
+        if (!saleId.HasValue)
+        {
+            return null;
+        }
+
+        string? customerName = context.TryGetProperty("customerName", out var nameElement)
+            && nameElement.ValueKind == JsonValueKind.String
+                ? nameElement.GetString()
+                : null;
+
+        return new CreditOverLimitAuthorizationRequestContext
+        {
+            SaleId = saleId.Value,
+            CustomerId = customerId,
+            CustomerName = customerName,
+            FinancedUSD = financedUsd,
+            AvailableCreditUSD = availableCreditUsd,
+            Terminal = Terminal
+        };
+    }
 }
 
 /// <summary>8.150 (T9): payload de AuthorizationResolved hacia el solicitante y los elevados.</summary>
