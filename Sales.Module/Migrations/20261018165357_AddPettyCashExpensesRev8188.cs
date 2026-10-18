@@ -11,7 +11,9 @@ namespace Sales.Module.Migrations
     /// filas existentes hasta que el turno se cierre), la secuencia `petty_cash_voucher_seq` y la
     /// tabla `PettyCashExpenses` usan `CREATE ... IF NOT EXISTS` con FKs RESTRICT, y el vinculo
     /// `CashTransactions.PettyCashExpenseId` se agrega con `ADD COLUMN IF NOT EXISTS` + guard de
-    /// constraint. Sin cambios destructivos. Down es espejo y seguro (`DROP IF EXISTS`).
+    /// constraint. Sin cambios destructivos. Down es espejo y seguro (`DROP IF EXISTS`), con el
+    /// orden 8.188-H2: primero se desvincula CashTransactions (FK/indice/columna) y recien despues
+    /// cae la tabla del gasto.
     /// </summary>
     public partial class AddPettyCashExpensesRev8188 : Migration
     {
@@ -121,17 +123,33 @@ namespace Sales.Module.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // 8.188-H2: el orden es contractual. Primero se desvincula el libro transaccional
+            // (FK -> indice -> columna, con guards idempotentes): si la tabla del gasto cae antes,
+            // PostgreSQL rechaza el DROP TABLE por la FK vigente de
+            // CashTransactions.PettyCashExpenseId.
             migrationBuilder.Sql(
                 """
+                DO $$
+                BEGIN
+                    IF to_regclass('"CashTransactions"') IS NOT NULL THEN
+                        IF EXISTS (SELECT 1 FROM pg_constraint
+                                   WHERE conname = 'FK_CashTransactions_PettyCashExpenses_PettyCashExpenseId') THEN
+                            ALTER TABLE "CashTransactions"
+                                DROP CONSTRAINT "FK_CashTransactions_PettyCashExpenses_PettyCashExpenseId";
+                        END IF;
+
+                        DROP INDEX IF EXISTS "IX_CashTransactions_PettyCashExpenseId";
+                        ALTER TABLE "CashTransactions" DROP COLUMN IF EXISTS "PettyCashExpenseId";
+                    END IF;
+
+                    RAISE NOTICE '[8.188-T1] Vinculo CashTransactions.PettyCashExpenseId desmontado (idempotente).';
+                END $$;
+
                 DROP TABLE IF EXISTS "PettyCashExpenses";
                 DROP SEQUENCE IF EXISTS "petty_cash_voucher_seq";
 
                 DO $$
                 BEGIN
-                    IF to_regclass('"CashTransactions"') IS NOT NULL THEN
-                        ALTER TABLE "CashTransactions" DROP COLUMN IF EXISTS "PettyCashExpenseId";
-                    END IF;
-
                     IF to_regclass('"CashDrawerSessions"') IS NOT NULL THEN
                         ALTER TABLE "CashDrawerSessions" DROP COLUMN IF EXISTS "ClosingBalanceUsd";
                         ALTER TABLE "CashDrawerSessions" DROP COLUMN IF EXISTS "OpeningBalanceUsd";

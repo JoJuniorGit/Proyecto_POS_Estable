@@ -419,6 +419,34 @@ public class PettyCashPersistenceTests
         // El Down jamas destruye tablas de las que la migracion no es dueña.
         Assert.DoesNotContain("DROP TABLE IF EXISTS \"CashTransactions\"", downSql);
         Assert.DoesNotContain("DROP TABLE IF EXISTS \"CashDrawerSessions\"", downSql);
+
+        // 8.188-H2: el orden es contractual. El vinculo del libro transaccional (FK -> indice ->
+        // columna) debe soltarse ANTES de dropear la tabla del gasto: al reves, PostgreSQL rechaza
+        // el DROP TABLE por la FK vigente de CashTransactions.PettyCashExpenseId.
+        int unlinkIndex = downSql.IndexOf(
+            "DROP CONSTRAINT \"FK_CashTransactions_PettyCashExpenses_PettyCashExpenseId\"",
+            StringComparison.Ordinal);
+        int dropColumnIndex = downSql.IndexOf("DROP COLUMN IF EXISTS \"PettyCashExpenseId\"", StringComparison.Ordinal);
+        int dropTableIndex = downSql.IndexOf("DROP TABLE IF EXISTS \"PettyCashExpenses\"", StringComparison.Ordinal);
+        int dropSessionColumnsIndex = downSql.IndexOf("DROP COLUMN IF EXISTS \"ClosingBalanceUsd\"", StringComparison.Ordinal);
+
+        Assert.True(unlinkIndex >= 0, "El Down debe soltar la FK de CashTransactions.PettyCashExpenseId.");
+        Assert.True(dropColumnIndex > unlinkIndex, "La columna PettyCashExpenseId debe caer despues de su FK.");
+        Assert.True(dropTableIndex > dropColumnIndex, "La tabla PettyCashExpenses debe caer despues de desvincular CashTransactions.");
+        Assert.True(dropSessionColumnsIndex > dropTableIndex, "La gaveta dual se desmonta al final, ya sin dependientes.");
+
+        // El SQL de downgrade real que genera el migrador conserva el mismo orden (script ejecutable).
+        var downgradeScript = context.GetService<IMigrator>().GenerateScript(
+            fromMigration: migrationKey,
+            toMigration: "20261018124312_AddCreditReturnRev8187");
+
+        int scriptUnlinkIndex = downgradeScript.IndexOf(
+            "DROP CONSTRAINT \"FK_CashTransactions_PettyCashExpenses_PettyCashExpenseId\"",
+            StringComparison.Ordinal);
+        int scriptDropTableIndex = downgradeScript.IndexOf("DROP TABLE IF EXISTS \"PettyCashExpenses\"", StringComparison.Ordinal);
+
+        Assert.True(scriptUnlinkIndex >= 0, "El script de downgrade debe soltar la FK antes de la tabla.");
+        Assert.True(scriptDropTableIndex > scriptUnlinkIndex, "El script de downgrade debe desvincular CashTransactions antes de dropear la tabla.");
     }
 
     [Fact]
