@@ -79,6 +79,10 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<Sales.Module.Interfaces.ICheckoutCalculationService, Sales.Module.Services.CheckoutCalculationService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.ICashDrawerService, Sales.Module.Services.CashDrawerService>();
         builder.Services.AddScoped<Sales.Module.Services.CashAdvanceCoordinator>();
+        // 8.187-T2 (F2a, S1/S2): perfil crediticio y solvencia en tiempo real del cliente para el
+        // checkout a crédito (cupo disponible, utilización, mora dinámica y bloqueos). Lo consume
+        // el cierre de venta a crédito y el endpoint de perfil crediticio.
+        builder.Services.AddScoped<Sales.Module.Interfaces.ICreditService, Sales.Module.Services.CreditService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IHoldOrderNotifier, Backend.API.Services.SignalRHoldOrderNotifier>();

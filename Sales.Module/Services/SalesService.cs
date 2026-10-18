@@ -31,6 +31,10 @@ public partial class SalesService : ISalesService
     private readonly IMemoryCache? _cache;
     private readonly Sales.Module.Receipts.IReceiptPrintQueue? _receiptPrintQueue;
     private readonly Sales.Module.Interfaces.IHoldOrderNotifier? _holdOrderNotifier;
+    // 8.187-T2 (F2a, S1/S2): perfil/elegibilidad de crédito para el cierre de venta a crédito.
+    // Opcional para preservar la construcción directa histórica de tests (precedente 8.149/8.150);
+    // el flujo de crédito falla cerrado si no está configurado.
+    private readonly ICreditService? _creditService;
     private const string DefaultCustomerCacheKey = "default_customer_cache";
     // 8.149 (SEC-02): mensaje único para ambos puntos de mutación de ítems de venta
     // (AddItemAsync y UpdateSaleItemsAsync). El adelanto de efectivo solo entra por CreateCashAdvanceSaleAsync.
@@ -45,7 +49,8 @@ public partial class SalesService : ISalesService
         Sales.Module.Interfaces.IHoldOrderNotifier? holdOrderNotifier = null,
         Microsoft.Extensions.Logging.ILogger<SalesService>? logger = null,
         IMemoryCache? cache = null,
-        Sales.Module.Receipts.IReceiptPrintQueue? receiptPrintQueue = null)
+        Sales.Module.Receipts.IReceiptPrintQueue? receiptPrintQueue = null,
+        ICreditService? creditService = null)
     {
         _context = context;
         _inventoryService = inventoryService;
@@ -56,6 +61,7 @@ public partial class SalesService : ISalesService
         _logger = logger;
         _cache = cache;
         _receiptPrintQueue = receiptPrintQueue;
+        _creditService = creditService;
     }
 
     private async Task NotifyHoldOrdersChangedAsync()

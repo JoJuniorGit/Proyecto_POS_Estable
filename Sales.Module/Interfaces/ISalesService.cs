@@ -22,6 +22,15 @@ public interface ISalesService
     Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, System.Threading.CancellationToken cancellationToken = default, int? actingUserId = null);
 
     /// <summary>
+    /// 8.187-T2 (F2a, S2/S6): cierra una venta a crédito (total o mixta con abono inicial). Lo
+    /// cobrado ingresa a caja como un pago regular; el remanente efectivo en Bs.S por encima del
+    /// polvo decimal se financia como Cuenta por Cobrar y no toca la gaveta. La factura se emite al
+    /// completar, el stock se descuenta de inmediato y el reintento devuelve la misma factura.
+    /// Devuelve el número de factura (mismo contrato del cierre regular).
+    /// </summary>
+    Task<int> CompleteCreditSaleAsync(int saleId, CreditSaleRequest request, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 8.152 (SEC-08): resuelve la tasa efectiva del checkout-preview con el MISMO anclaje del
     /// completar venta: desvío ≤ tolerancia configurada (<c>RateDeviationTolerancePct</c>) → tasa
     /// cliente redondeada al techo; desvío mayor a la tolerancia → tasa BCV del día; desvío

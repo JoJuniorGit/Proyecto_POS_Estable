@@ -34,6 +34,44 @@ public partial class SalesService
         System.Threading.CancellationToken cancellationToken = default,
         int? actingUserId = null)
     {
+        // 8.187-T2 (F2a): el cierre regular delega en el núcleo compartido SIN financiamiento.
+        // Comportamiento observable intacto (mismo camino, mismos gates y mismos mensajes).
+        return await CompleteSaleCoreAsync(
+            saleId,
+            exchangeRate,
+            payments,
+            roundingAdjustment,
+            cashierId,
+            isPendingPickup,
+            idempotencyKey,
+            idempotencyPayloadHash,
+            cancellationToken,
+            actingUserId,
+            allowFinancedRemainder: false,
+            idempotentRequestPath: null);
+    }
+
+    /// <summary>
+    /// 8.187-T2 (F2a, S2/S6): núcleo transaccional compartido del cierre de venta. Con
+    /// <paramref name="allowFinancedRemainder"/> en false es el cierre regular histórico; con
+    /// true (checkout a crédito) el remanente efectivo en Bs.S por encima del polvo decimal se
+    /// financia como Cuenta por Cobrar cuando el cliente es elegible. Lo cobrado genera pagos y
+    /// movimientos de caja exactamente igual que en la ruta regular; lo financiado no toca caja.
+    /// </summary>
+    private async Task<int> CompleteSaleCoreAsync(
+        int saleId, 
+        decimal exchangeRate, 
+        IEnumerable<PaymentInfo> payments, 
+        decimal roundingAdjustment, 
+        int? cashierId, 
+        bool isPendingPickup, 
+        string? idempotencyKey,
+        byte[]? idempotencyPayloadHash,
+        System.Threading.CancellationToken cancellationToken,
+        int? actingUserId,
+        bool allowFinancedRemainder,
+        string? idempotentRequestPath)
+    {
         var correlationId = Guid.NewGuid().ToString("N");
         _logger?.LogInformation("[TX_START] CorrelationId={CorrelationId}, SaleId={SaleId}, IsolationLevel=ReadCommitted", correlationId, saleId);
 
@@ -57,6 +95,13 @@ public partial class SalesService
 
             EnsureHoldClaimAccess(sale, actingUserId);
 
+            // 8.187-T2 (F2a, S2): la modalidad a crédito exige vincular un cliente registrado
+            // ANTES de evaluar solvencia y constituir la obligación: sin cliente no hay CxC.
+            if (allowFinancedRemainder && !sale.CustomerId.HasValue)
+            {
+                throw new ArgumentException("Para registrar una venta a crédito se requiere seleccionar o crear un cliente registrado (Nombre, Cédula y Teléfono).");
+            }
+
             await using var transaction = _context.Database.IsRelational()
                 ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
                 : null;
@@ -72,6 +117,15 @@ public partial class SalesService
                 if (_context.Database.IsNpgsql())
                 {
                     await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", new object[] { 2, saleId }, cancellationToken);
+                }
+
+                // 8.187-T2 (F2a, S2/S4): sección crítica POR CLIENTE del cierre a crédito. El lock
+                // por venta no impide que dos ventas concurrentes del mismo cliente crucen el cupo;
+                // este advisory lock transaccional serializa la evaluación de solvencia y el alta de
+                // la obligación (misma técnica del lock por venta; clase 3 = cartera CxC).
+                if (allowFinancedRemainder && _context.Database.IsNpgsql())
+                {
+                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0}, {1})", new object[] { 3, sale.CustomerId!.Value }, cancellationToken);
                 }
 
                 if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
@@ -267,8 +321,24 @@ public partial class SalesService
                     changeUsd, changeBsS, sale.InvoiceNumber);
             }
 
+            // 8.187-T2 (F2a, S2/S6): remanente financiado del cierre a crédito derivado del TotalBsS
+            // EFECTIVO (política cash incluida) contra lo efectivamente cobrado en el dominio Bs.S.
+            // Con allowFinancedRemainder=false el bloque es inerte y la ruta regular queda intacta.
+            decimal financedBsS = 0m;
+            decimal financedUsd = 0m;
+            bool hasFinancedRemainder = false;
+            if (allowFinancedRemainder)
+            {
+                financedBsS = PricingCalculator.RoundToDigital(sale.TotalBsS - totalPaidBsSDomain);
+                financedUsd = financedBsS > 0m
+                    ? Math.Round(financedBsS / sale.AppliedRate, 4, MidpointRounding.AwayFromZero)
+                    : 0m;
+                // Polvo decimal (S7): ≤ 0.005 USD delega al cierre regular (sin Cuenta por Cobrar).
+                hasFinancedRemainder = financedUsd > 0.005m;
+            }
+
             // 1. Defensive Aggregated Total Validation:
-            if (sale.Payments.Sum(p => p.Amount) <= 0 && !sale.IsZeroAmountOrder)
+            if (sale.Payments.Sum(p => p.Amount) <= 0 && !sale.IsZeroAmountOrder && !hasFinancedRemainder)
             {
                 throw new InvalidOperationException("Rechazo Defensivo: El total acumulado de los métodos de pago es <= 0. Se aborta el guardado local.");
             }
@@ -285,7 +355,7 @@ public partial class SalesService
                 sale.Payments.Remove(payment);
             }
 
-            if (isUnderpaidInBothDomains)
+            if (isUnderpaidInBothDomains && !hasFinancedRemainder)
             {
                 throw new ArgumentException("El monto ingresado no cubre la totalidad de la venta. El flujo de cobro requiere liquidación al 100%. Para abonos parciales o guardar pedidos en espera, utilice la opción 'Guardar en Espera'.");
             }
@@ -304,6 +374,14 @@ public partial class SalesService
             decimal totalPaidBsS = sale.Payments.Sum(p => p.AmountBsS);
             decimal remainingUsd = Math.Round(sale.TotalUSD - sale.Payments.Sum(p => p.Amount), 2, MidpointRounding.AwayFromZero);
             sale.RoundingAdjustment = remainingUsd <= 0.01m ? PricingCalculator.RoundToDigital(totalPaidBsS - sale.TotalBsS) : 0m;
+
+            // 8.187-T2 (F2a, S2/S6): el remanente efectivo financiado se constituye como Cuenta por
+            // Cobrar DESPUÉS de fijar los totales definitivos de la factura y ANTES de persistir:
+            // la obligación y la venta entran en el mismo SaveChanges/transacción (factura al emitir).
+            if (hasFinancedRemainder)
+            {
+                await CreateCreditReceivableAsync(sale, financedBsS, financedUsd, cancellationToken);
+            }
 
             // Synchronous Stock Deduction inside Transaction (H-SAL-2 / H-INV-1 / A1)
             var productsDict = new Dictionary<int, SaleProductInfoDto>();
@@ -372,7 +450,9 @@ public partial class SalesService
                 _context.IdempotentRequests.Add(new IdempotentRequest
                 {
                     Key = idempotencyKey,
-                    RequestPath = $"/api/sales/{saleId}/complete",
+                    // El cierre regular conserva su ruta histórica; el checkout a crédito (T3/F2b)
+                    // puede pasar una ruta propia para que el replay idempotente no colisione.
+                    RequestPath = idempotentRequestPath ?? $"/api/sales/{saleId}/complete",
                     PayloadHash = idempotencyPayloadHash,
                     StatusCode = 200,
                     ResponseBody = JsonSerializer.Serialize(sale.InvoiceNumber.Value),
