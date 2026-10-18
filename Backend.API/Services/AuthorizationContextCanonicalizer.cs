@@ -71,6 +71,34 @@ public static class AuthorizationContextCanonicalizer
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalJson)));
     }
 
+    /// <summary>
+    /// T2a (Paso 13, S4): contexto del egreso de caja chica. El hash liga la sesión, la moneda
+    /// física, ambos montos bimonetarios y la categoría exactos; el gasto no pertenece a una venta.
+    /// </summary>
+    public static AuthorizationContextPayload BuildPettyCashExpensePayload(PettyCashExpenseAuthorizationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return new AuthorizationContextPayload(
+            ComputePettyCashExpenseHash(context),
+            BuildPettyCashExpenseDisplayJson(context));
+    }
+
+    public static string ComputePettyCashExpenseHash(PettyCashExpenseAuthorizationContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        var canonicalJson = string.Concat(
+            "{\"sessionId\":", context.SessionId.ToString(CultureInfo.InvariantCulture),
+            ",\"currency\":", ((int)context.Currency).ToString(CultureInfo.InvariantCulture),
+            ",\"amountBsS\":", FormatDecimal(context.AmountBsS),
+            ",\"amountUsd\":", FormatDecimal(context.AmountUsd),
+            ",\"category\":", ((int)context.Category).ToString(CultureInfo.InvariantCulture),
+            "}");
+
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalJson)));
+    }
+
     private static string BuildDisplayJson(ManualPriceOverrideContext context, string? productName)
     {
         var boundedName = productName is { Length: > MaxProductNameLength }
@@ -100,6 +128,18 @@ public static class AuthorizationContextCanonicalizer
             saleId = context.SaleId,
             financedUSD = context.FinancedUSD,
             availableCreditUSD = context.AvailableCreditUSD
+        });
+    }
+
+    private static string BuildPettyCashExpenseDisplayJson(PettyCashExpenseAuthorizationContext context)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            sessionId = context.SessionId,
+            currency = (int)context.Currency,
+            amountBsS = context.AmountBsS,
+            amountUsd = context.AmountUsd,
+            category = (int)context.Category
         });
     }
 
@@ -136,6 +176,25 @@ public sealed record CreditOverLimitContext
     public decimal FinancedUSD { get; init; }
 
     public decimal AvailableCreditUSD { get; init; }
+}
+
+/// <summary>
+/// T2a (Paso 13, S4): contexto canónico de la autorización del gasto de caja chica. Se calcula
+/// igual al crear la solicitud (hub/REST) y al consumir el token (registro/anulación), de modo que
+/// el token quede ligado a la sesión, la moneda física, los montos bimonetarios y la categoría que
+/// el supervisor realmente aprobó. El gasto no pertenece a una venta.
+/// </summary>
+public sealed record PettyCashExpenseAuthorizationContext
+{
+    public int SessionId { get; init; }
+
+    public Sales.Module.Entities.PettyCashCurrency Currency { get; init; }
+
+    public decimal AmountBsS { get; init; }
+
+    public decimal AmountUsd { get; init; }
+
+    public Sales.Module.Entities.PettyCashCategory Category { get; init; }
 }
 
 public sealed record AuthorizationContextPayload(string ContextHash, string ContextJson);

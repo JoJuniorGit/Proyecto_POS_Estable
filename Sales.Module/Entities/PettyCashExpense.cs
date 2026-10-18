@@ -48,6 +48,10 @@ public class PettyCashExpense
     // Numero de referencia del comprobante/recibo/factura fisica que respalda la entrega.
     public string ReferenceNumber { get; set; } = string.Empty;
 
+    // T2a (S3): clave de idempotencia del registro. Un reintento con la misma clave replica el
+    // gasto persistido (sin doble movimiento) y el indice unico filtrado la protege en DB.
+    public string? IdempotencyKey { get; set; }
+
     public int CreatedByUserId { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 

@@ -63,6 +63,12 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
             return await CreateCreditOverLimitAsync(request, requesterUserId, requesterName, requesterRole, cancellationToken);
         }
 
+        // T2a (Paso 13, S4): el egreso de caja chica tiene su propio contexto canonico sin venta.
+        if (request.ActionType == AuthorizationActionType.PettyCashExpense)
+        {
+            return await CreatePettyCashExpenseAsync(request, requesterUserId, requesterName, requesterRole, cancellationToken);
+        }
+
         if (request.ActionType != AuthorizationActionType.ManualPriceOverride)
         {
             // SaleCancellation u otra accion no habilitada por este contrato: el servicio la
@@ -114,17 +120,17 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
         UserRole requesterRole,
         CancellationToken cancellationToken)
     {
-        if (request.CustomerId is null || request.FinancedUSD is null || request.AvailableCreditUSD is null)
+        if (request.SaleId is null || request.CustomerId is null || request.FinancedUSD is null || request.AvailableCreditUSD is null)
         {
             return new CreateAuthorizationResult(
                 CreateAuthorizationOutcome.UnknownAction,
-                Message: "La solicitud de sobregiro de crédito requiere cliente, monto a financiar y crédito disponible.");
+                Message: "La solicitud de sobregiro de crédito requiere venta, cliente, monto a financiar y crédito disponible.");
         }
 
         var operation = new CreditOverLimitContext
         {
             CustomerId = request.CustomerId.Value,
-            SaleId = request.SaleId,
+            SaleId = request.SaleId.Value,
             FinancedUSD = request.FinancedUSD.Value,
             AvailableCreditUSD = request.AvailableCreditUSD.Value
         };
@@ -138,6 +144,65 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
             RequesterRole = requesterRole,
             ActionType = AuthorizationActionType.CreditOverLimit,
             SaleId = request.SaleId,
+            ContextJson = payload.ContextJson,
+            ContextHash = payload.ContextHash,
+            Terminal = request.Terminal
+        };
+
+        var result = await _authorizationService.CreateAsync(command, cancellationToken);
+
+        if (result.Outcome == CreateAuthorizationOutcome.Created && result.Request is not null)
+        {
+            await _notifier.NotifyRequestCreatedAsync(result.Request, cancellationToken);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// T2a (Paso 13, S4): creación del canal del gasto de caja chica. Misma máquina de
+    /// estados/TTL/notifier; cambia solo la acción y el contexto canónico sin venta (sesión,
+    /// moneda, montos bimonetarios, categoría). SignalR no ejecuta data annotations, por eso la
+    /// completitud del contexto se valida aquí (fail-closed).
+    /// </summary>
+    private async Task<CreateAuthorizationResult> CreatePettyCashExpenseAsync(
+        RequestAuthorizationContract request,
+        int requesterUserId,
+        string requesterName,
+        UserRole requesterRole,
+        CancellationToken cancellationToken)
+    {
+        if (request.PettyCashSessionId is null
+            || request.PettyCashCurrency is null
+            || request.PettyCashAmountBsS is null
+            || request.PettyCashAmountUsd is null
+            || request.PettyCashCategory is null)
+        {
+            return new CreateAuthorizationResult(
+                CreateAuthorizationOutcome.UnknownAction,
+                Message: "La solicitud del gasto de caja chica requiere sesión, moneda, montos bimonetarios y categoría.");
+        }
+
+        var operation = new PettyCashExpenseAuthorizationContext
+        {
+            SessionId = request.PettyCashSessionId.Value,
+            Currency = request.PettyCashCurrency.Value,
+            AmountBsS = request.PettyCashAmountBsS.Value,
+            AmountUsd = request.PettyCashAmountUsd.Value,
+            Category = request.PettyCashCategory.Value
+        };
+
+        var payload = AuthorizationContextCanonicalizer.BuildPettyCashExpensePayload(operation);
+
+        var command = new CreateAuthorizationRequestDto
+        {
+            RequestedByUserId = requesterUserId,
+            RequestedByName = requesterName,
+            RequesterRole = requesterRole,
+            ActionType = AuthorizationActionType.PettyCashExpense,
+            // El gasto de caja chica no pertenece a una venta: la sesión viaja en el contexto
+            // canónico y el binding de consumo se resuelve con SaleId NULL.
+            SaleId = null,
             ContextJson = payload.ContextJson,
             ContextHash = payload.ContextHash,
             Terminal = request.Terminal
@@ -273,6 +338,53 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
             cancellationToken);
 
         return new AuthorizationConsumeResult(MapConsumeOutcome(result.Outcome), result.Message);
+    }
+
+    /// <summary>
+    /// T2a (Paso 13, S4): consumo single-use del token del egreso de caja chica. Mismo binding
+    /// exacto del override manual/sobregiro: usuario REAL de la petición, acción PettyCashExpense,
+    /// sin venta (NULL) y hash del contexto (sesión, moneda, montos, categoría). En éxito devuelve
+    /// también la solicitud consumida y el supervisor que autorizó, para que el controlador
+    /// complete AuthorizedByUserId/AuthorizationRequestId del gasto.
+    /// </summary>
+    public async Task<AuthorizationConsumeResult> ConsumePettyCashExpenseAsync(
+        string rawToken,
+        int? actingUserId,
+        PettyCashExpenseAuthorizationContext operation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+
+        var claims = _tokenService.Validate(rawToken);
+        if (claims is null)
+        {
+            return new AuthorizationConsumeResult(AuthorizationConsumeStatus.InvalidToken, "El token de autorización no es válido o ya expiró.");
+        }
+
+        if (actingUserId is null)
+        {
+            return new AuthorizationConsumeResult(AuthorizationConsumeStatus.WrongUser);
+        }
+
+        // El binding se valida contra el usuario y el contexto REALES de la peticion: derivarlos
+        // de las claims del token los volveria circulares (mismo contrato del override manual).
+        var contextHash = AuthorizationContextCanonicalizer.ComputePettyCashExpenseHash(operation);
+
+        var result = await _authorizationService.TryConsumeAsync(
+            claims.RequestId,
+            actingUserId.Value,
+            AuthorizationActionType.PettyCashExpense,
+            saleId: null,
+            contextHash,
+            cancellationToken);
+
+        if (result.Outcome != ConsumeAuthorizationOutcome.Consumed)
+        {
+            return new AuthorizationConsumeResult(MapConsumeOutcome(result.Outcome), result.Message);
+        }
+
+        var request = await _authorizationService.GetAsync(claims.RequestId, viewerUserId: 0, viewerIsElevated: true, cancellationToken);
+        return new AuthorizationConsumeResult(AuthorizationConsumeStatus.Consumed, null, claims.RequestId, request?.ResolvedByUserId);
     }
 
     public async Task<int> ExpireStaleAsync(CancellationToken cancellationToken = default)

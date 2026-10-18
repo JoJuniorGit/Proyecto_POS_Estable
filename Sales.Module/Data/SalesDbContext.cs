@@ -682,6 +682,14 @@ modelBuilder.Entity<User>().HasData(
             entity.Property(expense => expense.Beneficiary).IsRequired().HasMaxLength(150);
             entity.Property(expense => expense.ReferenceNumber).IsRequired().HasMaxLength(100);
             entity.Property(expense => expense.CancellationReason).HasMaxLength(500);
+
+            // T2a (S3): idempotencia del registro; unica solo cuando la clave existe
+            // (NULL multiple permitido), mismo contrato de ReceivablePayments/CreditReturns.
+            entity.Property(expense => expense.IdempotencyKey).HasMaxLength(100);
+            entity.HasIndex(expense => expense.IdempotencyKey)
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL")
+                .HasDatabaseName("IX_PettyCashExpenses_IdempotencyKey");
         });
     }
 }

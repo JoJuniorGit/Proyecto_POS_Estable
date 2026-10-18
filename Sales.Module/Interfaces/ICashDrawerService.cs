@@ -51,6 +51,15 @@ public interface ICashDrawerService
         CancellationToken cancellationToken = default);
 
     Task<decimal> GetCurrentBalanceLocalAsync(int sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T2a (Paso 13, S2/S3): saldo fisico teorico del turno en la moneda indicada. Apertura de esa
+    /// moneda + cobros fisicos del bucket de su metodo de pago − salidas fisicas del mismo bucket.
+    /// El bucket se decide por la moneda canonica del metodo (PaymentMethod.Currency); los
+    /// movimientos sin metodo caen en Bs.S y el efectivo no fisico nunca cuenta.
+    /// </summary>
+    Task<decimal> GetPhysicalBalanceAsync(int sessionId, PettyCashCurrency currency, CancellationToken cancellationToken = default);
+
     Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300, CancellationToken cancellationToken = default);
     Task<Core.DTOs.PagedResultDto<CashTransactionResponseDto>> GetHistoryPagedAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default);
 }

@@ -866,6 +866,10 @@ namespace Sales.Module.Migrations
                     b.Property<decimal>("HistoricalRate")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<string>("ReferenceNumber")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -895,6 +899,11 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("CreatedByUserId")
                         .HasDatabaseName("IX_PettyCashExpenses_CreatedByUserId");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PettyCashExpenses_IdempotencyKey")
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
 
                     b.HasIndex("SessionId")
                         .HasDatabaseName("IX_PettyCashExpenses_SessionId");

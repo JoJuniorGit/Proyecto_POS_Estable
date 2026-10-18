@@ -8,12 +8,16 @@ namespace Backend.API.Hubs;
 /// 8.150 (T3, design D4): contrato cliente-facing del hub de autorizaciones (T4). La accion v1
 /// es ManualPriceOverride (comportamiento historico: sin ActionType explicito se asume esa accion);
 /// T3b1 (F2b, S4) agrega CreditOverLimit, cuyo contexto lleva cliente, monto a financiar y credito
-/// disponible. La identidad del solicitante la completa el hub desde el JWT.
+/// disponible. T2a (Paso 13, S4) agrega PettyCashExpense, cuyo contexto lleva sesion, moneda,
+/// montos bimonetarios y categoria (sin venta asociada). La identidad del solicitante la completa
+/// el hub desde el JWT.
 /// </summary>
 public sealed class RequestAuthorizationContract : IValidatableObject
 {
+    // Nullable desde T2a: las acciones sin venta (caja chica) viajan sin SaleId. La venta sigue
+    // siendo obligatoria para las acciones historicas (Validate la exige explicitamente).
     [Range(1, int.MaxValue)]
-    public int SaleId { get; set; }
+    public int? SaleId { get; set; }
 
     // T3b1: nullable para que el contrato de sobregiro (sin producto) pase la validacion MVC;
     // IValidatableObject exige el producto cuando la accion es ManualPriceOverride.
@@ -47,6 +51,19 @@ public sealed class RequestAuthorizationContract : IValidatableObject
 
     public decimal? AvailableCreditUSD { get; set; }
 
+    // Contexto PettyCashExpense (T2a): sesion de caja, divisa fisica, montos bimonetarios y
+    // categoria operativa. Lo consumen la solicitud del hub y el reintento con token.
+    [Range(1, int.MaxValue)]
+    public int? PettyCashSessionId { get; set; }
+
+    public Sales.Module.Entities.PettyCashCurrency? PettyCashCurrency { get; set; }
+
+    public decimal? PettyCashAmountBsS { get; set; }
+
+    public decimal? PettyCashAmountUsd { get; set; }
+
+    public Sales.Module.Entities.PettyCashCategory? PettyCashCategory { get; set; }
+
     [StringLength(100)]
     public string? Terminal { get; set; }
 
@@ -58,6 +75,13 @@ public sealed class RequestAuthorizationContract : IValidatableObject
     {
         if (ActionType == AuthorizationActionType.ManualPriceOverride)
         {
+            if (SaleId is null)
+            {
+                yield return new ValidationResult(
+                    "La venta es obligatoria para la autorización de precio manual.",
+                    new[] { nameof(SaleId) });
+            }
+
             if (ProductId is null)
             {
                 yield return new ValidationResult(
@@ -70,6 +94,13 @@ public sealed class RequestAuthorizationContract : IValidatableObject
 
         if (ActionType == AuthorizationActionType.CreditOverLimit)
         {
+            if (SaleId is null)
+            {
+                yield return new ValidationResult(
+                    "La venta es obligatoria para la autorización de sobregiro de crédito.",
+                    new[] { nameof(SaleId) });
+            }
+
             if (CustomerId is null)
             {
                 yield return new ValidationResult(
@@ -89,6 +120,46 @@ public sealed class RequestAuthorizationContract : IValidatableObject
                 yield return new ValidationResult(
                     "El crédito disponible es obligatorio para la autorización de sobregiro.",
                     new[] { nameof(AvailableCreditUSD) });
+            }
+
+            yield break;
+        }
+
+        if (ActionType == AuthorizationActionType.PettyCashExpense)
+        {
+            if (PettyCashSessionId is null)
+            {
+                yield return new ValidationResult(
+                    "La sesión de caja es obligatoria para la autorización del gasto de caja chica.",
+                    new[] { nameof(PettyCashSessionId) });
+            }
+
+            if (PettyCashCurrency is null)
+            {
+                yield return new ValidationResult(
+                    "La moneda del gasto de caja chica es obligatoria para la autorización.",
+                    new[] { nameof(PettyCashCurrency) });
+            }
+
+            if (PettyCashAmountBsS is null or <= 0m)
+            {
+                yield return new ValidationResult(
+                    "El monto Bs.S del gasto de caja chica es obligatorio (mayor a cero).",
+                    new[] { nameof(PettyCashAmountBsS) });
+            }
+
+            if (PettyCashAmountUsd is null or <= 0m)
+            {
+                yield return new ValidationResult(
+                    "El monto USD del gasto de caja chica es obligatorio (mayor a cero).",
+                    new[] { nameof(PettyCashAmountUsd) });
+            }
+
+            if (PettyCashCategory is null)
+            {
+                yield return new ValidationResult(
+                    "La categoría del gasto de caja chica es obligatoria para la autorización.",
+                    new[] { nameof(PettyCashCategory) });
             }
 
             yield break;

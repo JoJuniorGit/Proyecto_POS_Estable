@@ -135,6 +135,19 @@ public class PettyCashPersistenceTests
             index => index.GetDatabaseName() == "IX_PettyCashExpenses_VoucherNumber");
         Assert.True(voucherIndex.IsUnique);
 
+        // T2a: idempotencia del gasto con clave opcional y unicidad solo cuando existe.
+        var idempotency = expense.FindProperty(nameof(PettyCashExpense.IdempotencyKey));
+        Assert.NotNull(idempotency);
+        Assert.Equal(typeof(string), idempotency!.ClrType);
+        Assert.True(idempotency.IsNullable);
+        Assert.Equal(100, idempotency.GetMaxLength());
+
+        var idempotencyIndex = Assert.Single(
+            expense.GetIndexes(),
+            index => index.GetDatabaseName() == "IX_PettyCashExpenses_IdempotencyKey");
+        Assert.True(idempotencyIndex.IsUnique);
+        Assert.Equal("\"IdempotencyKey\" IS NOT NULL", idempotencyIndex.GetFilter());
+
         Assert.Contains(expense.GetIndexes(), index => index.GetDatabaseName() == "IX_PettyCashExpenses_SessionId");
         Assert.Contains(expense.GetIndexes(), index => index.GetDatabaseName() == "IX_PettyCashExpenses_SessionId_Status");
         Assert.Contains(expense.GetIndexes(), index => index.GetDatabaseName() == "IX_PettyCashExpenses_CreatedByUserId");
@@ -228,6 +241,7 @@ public class PettyCashPersistenceTests
             Assert.Equal("Reparacion de vitrina principal", persisted.Concept);
             Assert.Equal("Ferreteria El Tornillo", persisted.Beneficiary);
             Assert.Equal("FACT-0001", persisted.ReferenceNumber);
+            Assert.Equal("pc-graph-key", persisted.IdempotencyKey);
             Assert.Equal(1, persisted.CreatedByUserId);
             Assert.Equal(FixedUtc, persisted.CreatedAtUtc);
             Assert.Equal(1, persisted.AuthorizedByUserId);
@@ -407,6 +421,62 @@ public class PettyCashPersistenceTests
         Assert.DoesNotContain("DROP TABLE IF EXISTS \"CashDrawerSessions\"", downSql);
     }
 
+    [Fact]
+    public async Task PettyCashIdempotencyKeyUniqueness_RejectsDuplicates_OnSqlite()
+    {
+        var (context, connection) = TestDatabaseFactory.CreateSqliteSalesDbContext();
+        using (connection)
+        using (context)
+        {
+            var session = CreateOpenSession();
+            var first = CreateExpense(session);
+            first.IdempotencyKey = "pc-key-duplicada";
+
+            context.AddRange(session, first);
+            await context.SaveChangesAsync();
+            context.ChangeTracker.Clear();
+
+            // Misma clave de idempotencia: viola IX_PettyCashExpenses_IdempotencyKey.
+            var duplicate = CreateExpense(session);
+            duplicate.VoucherNumber = 2;
+            duplicate.IdempotencyKey = "pc-key-duplicada";
+            context.PettyCashExpenses.Add(duplicate);
+
+            await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+            context.ChangeTracker.Clear();
+        }
+    }
+
+    [Fact]
+    public void Migration_AddPettyCashIdempotencyRev8188_IsAdditiveAndGuarded()
+    {
+        using var context = CreateNpgsqlModelContext();
+        var migrations = context.GetService<IMigrationsAssembly>();
+
+        var migrationKey = Assert.Single(migrations.Migrations.Keys, key => key.Contains("AddPettyCashIdempotencyRev8188"));
+
+        // Posterior a la migracion de caja chica de T1 — comparacion ordinal del prefijo.
+        Assert.True(string.CompareOrdinal(migrationKey.Substring(0, 14), "20261018165357") > 0,
+            $"El timestamp de {migrationKey} debe ser posterior a 20261018165357.");
+
+        var migration = (Migration)Activator.CreateInstance(migrations.Migrations[migrationKey].AsType())!;
+        Assert.Empty(migration.UpOperations.OfType<DropTableOperation>());
+        Assert.Empty(migration.UpOperations.OfType<DropColumnOperation>());
+
+        var script = context.GetService<IMigrator>().GenerateScript(
+            fromMigration: "20261018165357_AddPettyCashExpensesRev8188",
+            toMigration: migrationKey);
+
+        // Columna idempotente y indice unico filtrado (solo claves presentes).
+        Assert.Contains("ADD COLUMN IF NOT EXISTS \"IdempotencyKey\"", script);
+        Assert.Contains("CREATE UNIQUE INDEX IF NOT EXISTS \"IX_PettyCashExpenses_IdempotencyKey\"", script);
+        Assert.Contains("\"IdempotencyKey\" IS NOT NULL", script);
+        Assert.Contains("DO $$", script);
+
+        Assert.DoesNotContain("DROP TABLE", script);
+        Assert.DoesNotContain("DROP COLUMN", script);
+    }
+
     private static SalesDbContext CreateNpgsqlModelContext()
     {
         var options = new DbContextOptionsBuilder<SalesDbContext>()
@@ -447,6 +517,7 @@ public class PettyCashPersistenceTests
     {
         var session = CreateOpenSession();
         var expense = CreateExpense(session);
+        expense.IdempotencyKey = "pc-graph-key";
 
         // Movimiento de salida real y su reversa compensatoria (mismos snapshots, efecto neto 0).
         var expenseMovement = new CashTransaction

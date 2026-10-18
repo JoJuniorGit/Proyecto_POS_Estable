@@ -444,6 +444,62 @@ public class CashDrawerService : ICashDrawerService
         return session.OpeningBalanceLocal + netCash;
     }
 
+    /// <inheritdoc />
+    public async Task<decimal> GetPhysicalBalanceAsync(int sessionId, PettyCashCurrency currency, CancellationToken cancellationToken = default)
+    {
+        var session = await _context.CashDrawerSessions
+            .AsNoTracking()
+            .Where(s => s.Id == sessionId)
+            .Select(s => new { s.OpeningBalanceLocal, s.OpeningBalanceUsd })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (session == null) return 0m;
+
+        // La moneda del metodo es una propiedad computada (NotMapped): se materializan los
+        // metodos y se clasifican en memoria con el resolutor canonico, sin traducir la
+        // propiedad al SQL del proveedor.
+        var methods = await _context.PaymentMethods
+            .AsNoTracking()
+            .Select(method => new { method.Id, method.Name })
+            .ToListAsync(cancellationToken);
+        var currencyByMethodId = new Dictionary<int, string>(methods.Count);
+        foreach (var method in methods)
+        {
+            currencyByMethodId[method.Id] = PaymentMethodCurrencyResolver.Resolve(method.Name);
+        }
+
+        var movements = await _context.CashTransactions
+            .AsNoTracking()
+            .Where(t => t.SessionId == sessionId
+                     && t.IsPhysicalCash
+                     && t.Source != CashTransactionSource.Opening)
+            .Select(t => new { t.Type, t.AmountLocal, t.AmountUsd, t.PaymentMethodId })
+            .ToListAsync(cancellationToken);
+
+        bool isUsd = currency == PettyCashCurrency.Usd;
+        string expectedCurrency = isUsd ? PaymentMethodCurrencyResolver.Usd : PaymentMethodCurrencyResolver.LocalCurrency;
+
+        decimal net = 0m;
+        foreach (var movement in movements)
+        {
+            // Movimiento sin metodo de pago: bucket Bs.S (contrato de la gaveta local).
+            string movementCurrency = movement.PaymentMethodId.HasValue
+                && currencyByMethodId.TryGetValue(movement.PaymentMethodId.Value, out var methodCurrency)
+                    ? methodCurrency
+                    : PaymentMethodCurrencyResolver.LocalCurrency;
+
+            if (!string.Equals(movementCurrency, expectedCurrency, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            decimal amount = isUsd ? movement.AmountUsd : movement.AmountLocal;
+            net += movement.Type == CashTransactionType.Expense ? -amount : amount;
+        }
+
+        return (isUsd ? session.OpeningBalanceUsd : session.OpeningBalanceLocal) + net;
+    }
+
     public async Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300, CancellationToken cancellationToken = default)
     {
         return await _context.CashTransactions
