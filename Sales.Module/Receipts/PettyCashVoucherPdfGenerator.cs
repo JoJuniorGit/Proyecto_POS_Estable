@@ -13,7 +13,8 @@ namespace Sales.Module.Receipts;
 /// plomeria de <see cref="CreditPaymentReceiptPdfGenerator"/> (PDF 1.4 minimo, fuentes Type1,
 /// xref manual) con contenido propio: correlativo VCC-000001, fecha/hora de Venezuela,
 /// turno, categoria, concepto, beneficiario, referencia, monto nominal de la divisa extraida,
-/// equivalente bimonetario con la tasa congelada, cajero/autorizador, sello de anulacion y
+/// equivalente bimonetario con la tasa congelada, cajero/autorizador, sello de anulacion (con la
+/// linea del supervisor que aprobo la anulacion cuando exista, H3 del cierre 8.188) y
 /// espacios de firma "Entregado por" / "Recibido conforme por".
 /// </summary>
 public static class PettyCashVoucherPdfGenerator
@@ -118,13 +119,20 @@ public static class PettyCashVoucherPdfGenerator
 
         if (context.IsCancelled)
         {
-            // S5: la anulacion es logica; el documento impreso debe mostrar su marca.
+            // S5: la anulacion es logica; el documento impreso debe mostrar su marca. H3 (cierre
+            // 8.188): cuando hubo supervisor aprobador distinto del ejecutor se agrega su linea y
+            // la banda crece una linea; sin el, el render queda igual que antes.
+            bool hasCancellationAuthorizer = !string.IsNullOrWhiteSpace(context.CancellationAuthorizedName);
             sb.AppendLine("0.72 0.11 0.11 rg");
-            sb.AppendLine("40 330 532 48 re f");
+            sb.AppendLine(hasCancellationAuthorizer ? "40 316 532 62 re f" : "40 330 532 48 re f");
             WriteLeft(sb, "DOCUMENTO ANULADO", 55, 364, "/F2 12 Tf", "1 1 1 rg");
             string cancelledBy = context.CancelledByName is null ? PettyCashVoucherContext.UserNotFound : context.CancelledByName;
             WriteLeft(sb, $"Anulado el {context.CancelledAtVenezuela?.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture) ?? "-"} por {cancelledBy}", 55, 348, "/F1 8.5 Tf", "1 0.88 0.88 rg");
             WriteLeft(sb, $"Motivo: {Truncate(context.CancellationReason ?? "-", 96)}", 55, 336, "/F1 8.5 Tf", "1 0.88 0.88 rg");
+            if (hasCancellationAuthorizer)
+            {
+                WriteLeft(sb, $"Autorizó anulación: {Truncate(context.CancellationAuthorizedName!, 96)}", 55, 324, "/F1 8.5 Tf", "1 0.88 0.88 rg");
+            }
         }
 
         int signatureY = context.IsCancelled ? 250 : 320;

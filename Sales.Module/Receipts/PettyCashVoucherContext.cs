@@ -81,20 +81,30 @@ public sealed class PettyCashVoucherContext
 
     public string? CancelledByName { get; init; }
 
+    /// <summary>
+    /// H3 (cierre 8.188): supervisor que aprobo la anulacion (nombre resuelto). Null cuando no
+    /// hubo autorizador distinto del ejecutor (Admin directo/auto-autorizacion) o cuando el gasto
+    /// sigue activo; en esos casos el vale no imprime la linea "Autorizo anulacion". Un ID
+    /// presente sin fila de usuario cae a <see cref="UserNotFound"/> (mismo criterio del vale).
+    /// </summary>
+    public string? CancellationAuthorizedName { get; init; }
+
     public string? CancellationReason { get; init; }
 
     public bool IsCancelled => Status == PettyCashStatus.Cancelled;
 
     /// <summary>
     /// Arma el contexto desde el gasto persistido (con la sesion cargada) y los nombres ya
-    /// resueltos de cajero/autorizador/anulador. El autorizador sin usuario registrado en el
-    /// gasto se muestra como "N/A" (no aplico); un ID presente sin fila de usuario cae a "N/D".
+    /// resueltos de cajero/autorizador/anulador/aprobador de la anulacion. El autorizador sin
+    /// usuario registrado en el gasto se muestra como "N/A" (no aplico); un ID presente sin fila
+    /// de usuario cae a "N/D".
     /// </summary>
     public static PettyCashVoucherContext CreateFrom(
         PettyCashExpense expense,
         string? cashierName,
         string? authorizerName,
-        string? cancellerName = null)
+        string? cancellerName = null,
+        string? cancellationAuthorizerName = null)
     {
         ArgumentNullException.ThrowIfNull(expense);
 
@@ -121,6 +131,9 @@ public sealed class PettyCashVoucherContext
             Status = expense.Status,
             CancelledAtUtc = expense.CancelledAtUtc,
             CancelledByName = string.IsNullOrWhiteSpace(cancellerName) ? null : cancellerName.Trim(),
+            CancellationAuthorizedName = expense.CancellationAuthorizedByUserId is null
+                ? null
+                : string.IsNullOrWhiteSpace(cancellationAuthorizerName) ? UserNotFound : cancellationAuthorizerName.Trim(),
             CancellationReason = expense.CancellationReason
         };
     }

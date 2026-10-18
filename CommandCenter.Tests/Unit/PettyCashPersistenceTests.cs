@@ -155,6 +155,22 @@ public class PettyCashPersistenceTests
         Assert.Contains(expense.GetIndexes(), index => index.GetDatabaseName() == "IX_PettyCashExpenses_CancelledByUserId");
         Assert.Contains(expense.GetIndexes(), index => index.GetDatabaseName() == "IX_PettyCashExpenses_AuthorizationRequestId");
 
+        // H3 (cierre 8.188): supervisor que aprobo la anulacion (nullable, FK Restrict a Users)
+        // con su indice de trazabilidad.
+        var cancellationAuthorizer = expense.FindProperty(nameof(PettyCashExpense.CancellationAuthorizedByUserId));
+        Assert.NotNull(cancellationAuthorizer);
+        Assert.Equal(typeof(int?), cancellationAuthorizer!.ClrType);
+        Assert.Equal("integer", cancellationAuthorizer.GetColumnType());
+        Assert.True(cancellationAuthorizer.IsNullable);
+
+        Assert.Contains(expense.GetIndexes(), index => index.GetDatabaseName() == "IX_PettyCashExpenses_CancellationAuthorizedByUserId");
+
+        var cancellationAuthorizerForeignKey = Assert.Single(
+            expense.GetForeignKeys(),
+            foreignKey => foreignKey.Properties.Any(property => property.Name == nameof(PettyCashExpense.CancellationAuthorizedByUserId)));
+        Assert.Equal(DeleteBehavior.Restrict, cancellationAuthorizerForeignKey.DeleteBehavior);
+        Assert.False(cancellationAuthorizerForeignKey.IsRequired);
+
         // FK obligatoria y Restrict hacia la sesion; ninguna FK hacia CashTransaction:
         // el vinculo vive en CashTransaction.PettyCashExpenseId (sin ciclo).
         var sessionForeignKey = Assert.Single(
@@ -163,7 +179,7 @@ public class PettyCashPersistenceTests
         Assert.Equal(DeleteBehavior.Restrict, sessionForeignKey.DeleteBehavior);
         Assert.True(sessionForeignKey.IsRequired);
 
-        Assert.Equal(5, expense.GetForeignKeys().Count());
+        Assert.Equal(6, expense.GetForeignKeys().Count());
         Assert.All(expense.GetForeignKeys(), foreignKey => Assert.Equal(DeleteBehavior.Restrict, foreignKey.DeleteBehavior));
         Assert.DoesNotContain(expense.GetForeignKeys(), foreignKey => foreignKey.PrincipalEntityType.ClrType == typeof(CashTransaction));
 
@@ -213,6 +229,21 @@ public class PettyCashPersistenceTests
 
         Assert.Contains(transaction.GetIndexes(), index => index.GetDatabaseName() == "IX_CashTransactions_PettyCashExpenseId");
         Assert.NotNull(transaction.FindNavigation(nameof(CashTransaction.PettyCashExpense)));
+    }
+
+    [Fact]
+    public void SalesModel_MapsCashTransactionUsdAmountWithFourDecimals()
+    {
+        using var context = CreateNpgsqlModelContext();
+        var transaction = context.Model.FindEntityType(typeof(CashTransaction));
+
+        Assert.NotNull(transaction);
+
+        // H4 (cierre 8.188): el libro de caja conserva el cuarto decimal del USD nominal
+        // (mismo contrato de precision que PettyCashExpenses.AmountUsd).
+        var amountUsd = transaction!.FindProperty(nameof(CashTransaction.AmountUsd));
+        Assert.NotNull(amountUsd);
+        Assert.Equal("numeric(18,4)", amountUsd!.GetColumnType());
     }
 
     [Fact]
@@ -276,6 +307,69 @@ public class PettyCashPersistenceTests
 
             Assert.Equal(20.0000m, persistedSession.OpeningBalanceUsd);
             Assert.Null(persistedSession.ClosingBalanceUsd);
+        }
+    }
+
+    [Fact]
+    public async Task CancellationAuthorizer_RoundTrips_OnSqlite()
+    {
+        var (context, connection) = TestDatabaseFactory.CreateSqliteSalesDbContext();
+        using (connection)
+        using (context)
+        {
+            // El seed del modelo ya provee el usuario #1 (Admin "Administrador"); la columna es
+            // nullable y el valor sobrevive el round-trip (H3 del cierre 8.188).
+            var session = CreateOpenSession();
+            var expense = CreateExpense(session);
+            expense.CancellationAuthorizedByUserId = 1;
+
+            context.AddRange(session, expense);
+            await context.SaveChangesAsync();
+            context.ChangeTracker.Clear();
+
+            var persisted = await context.PettyCashExpenses
+                .AsNoTracking()
+                .SingleAsync(candidate => candidate.Id == expense.Id);
+
+            Assert.Equal(1, persisted.CancellationAuthorizedByUserId);
+        }
+    }
+
+    [Fact]
+    public async Task CashTransactionUsdAmount_KeepsFourDecimals_OnSqlite()
+    {
+        var (context, connection) = TestDatabaseFactory.CreateSqliteSalesDbContext();
+        using (connection)
+        using (context)
+        {
+            var session = CreateOpenSession();
+            context.CashDrawerSessions.Add(session);
+            await context.SaveChangesAsync();
+
+            // 365.55 / 36.55 = 10.001367... -> 10.0014 con la convencion de 4dp: el cuarto
+            // decimal es justamente el que la columna (18,2) perdia en Postgres (H4, 8.188).
+            var movement = new CashTransaction
+            {
+                SessionId = session.Id,
+                TransactionTime = FixedUtc,
+                Type = CashTransactionType.Expense,
+                Source = CashTransactionSource.PettyCashExpense,
+                AmountUsd = 10.0014m,
+                ExchangeRate = 36.5432m,
+                AmountLocal = 365.55m,
+                Description = "Gasto de caja chica con cuarto decimal",
+                IsPhysicalCash = true
+            };
+
+            context.CashTransactions.Add(movement);
+            await context.SaveChangesAsync();
+            context.ChangeTracker.Clear();
+
+            var persisted = await context.CashTransactions
+                .AsNoTracking()
+                .SingleAsync(candidate => candidate.Id == movement.Id);
+
+            Assert.Equal(10.0014m, persisted.AmountUsd);
         }
     }
 
@@ -503,6 +597,102 @@ public class PettyCashPersistenceTests
 
         Assert.DoesNotContain("DROP TABLE", script);
         Assert.DoesNotContain("DROP COLUMN", script);
+    }
+
+    [Fact]
+    public void Migration_AddPettyCashCancellationAuthorizerRev8188_IsAdditiveAndGuarded()
+    {
+        using var context = CreateNpgsqlModelContext();
+        var migrations = context.GetService<IMigrationsAssembly>();
+
+        var migrationKey = Assert.Single(migrations.Migrations.Keys, key => key.Contains("AddPettyCashCancellationAuthorizerRev8188"));
+
+        // Posterior a la migracion de idempotencia de T2a — comparacion ordinal del prefijo.
+        Assert.True(string.CompareOrdinal(migrationKey.Substring(0, 14), "20261018174334") > 0,
+            $"El timestamp de {migrationKey} debe ser posterior a 20261018174334.");
+
+        var migration = (Migration)Activator.CreateInstance(migrations.Migrations[migrationKey].AsType())!;
+        Assert.Empty(migration.UpOperations.OfType<DropTableOperation>());
+        Assert.Empty(migration.UpOperations.OfType<DropColumnOperation>());
+
+        var script = context.GetService<IMigrator>().GenerateScript(
+            fromMigration: "20261018174334_AddPettyCashIdempotencyRev8188",
+            toMigration: migrationKey);
+
+        // Columna nullable con guard information_schema, indice y FK Restrict con guard pg_constraint.
+        Assert.Contains("information_schema.columns", script);
+        Assert.Contains("ADD COLUMN IF NOT EXISTS \"CancellationAuthorizedByUserId\"", script);
+        Assert.Contains("integer NULL", script);
+        Assert.Contains("CREATE INDEX IF NOT EXISTS \"IX_PettyCashExpenses_CancellationAuthorizedByUserId\"", script);
+        Assert.Contains("pg_constraint", script);
+        Assert.Contains("FK_PettyCashExpenses_Users_CancellationAuthorizedByUserId", script);
+        Assert.Contains("ON DELETE RESTRICT", script);
+        Assert.Contains("DO $$", script);
+
+        Assert.DoesNotContain("DROP TABLE", script);
+        Assert.DoesNotContain("DROP COLUMN", script);
+
+        // Down espejo y seguro: FK -> indice -> columna, con guards idempotentes.
+        var downSql = string.Join(
+            Environment.NewLine,
+            migration.DownOperations.OfType<SqlOperation>().Select(operation => operation.Sql));
+
+        int dropConstraintIndex = downSql.IndexOf(
+            "DROP CONSTRAINT \"FK_PettyCashExpenses_Users_CancellationAuthorizedByUserId\"",
+            StringComparison.Ordinal);
+        int dropIndexIndex = downSql.IndexOf(
+            "DROP INDEX IF EXISTS \"IX_PettyCashExpenses_CancellationAuthorizedByUserId\"",
+            StringComparison.Ordinal);
+        int dropColumnIndex = downSql.IndexOf(
+            "DROP COLUMN IF EXISTS \"CancellationAuthorizedByUserId\"",
+            StringComparison.Ordinal);
+
+        Assert.True(dropConstraintIndex >= 0, "El Down debe soltar la FK del supervisor aprobador.");
+        Assert.True(dropIndexIndex > dropConstraintIndex, "El indice debe caer despues de su FK.");
+        Assert.True(dropColumnIndex > dropIndexIndex, "La columna debe caer despues del indice.");
+        Assert.DoesNotContain("DROP TABLE", downSql);
+    }
+
+    [Fact]
+    public void Migration_AlterCashTransactionAmountUsdPrecisionRev8188_IsIdempotentAndGuarded()
+    {
+        using var context = CreateNpgsqlModelContext();
+        var migrations = context.GetService<IMigrationsAssembly>();
+
+        var migrationKey = Assert.Single(migrations.Migrations.Keys, key => key.Contains("AlterCashTransactionAmountUsdPrecisionRev8188"));
+
+        // Posterior a la migracion del autorizador de anulacion — comparacion ordinal del prefijo.
+        Assert.True(string.CompareOrdinal(migrationKey.Substring(0, 14), "20261018174334") > 0,
+            $"El timestamp de {migrationKey} debe ser posterior a 20261018174334.");
+
+        var migration = (Migration)Activator.CreateInstance(migrations.Migrations[migrationKey].AsType())!;
+        Assert.Empty(migration.UpOperations.OfType<DropTableOperation>());
+        Assert.Empty(migration.UpOperations.OfType<DropColumnOperation>());
+
+        var script = context.GetService<IMigrator>().GenerateScript(
+            fromMigration: "20261018174334_AddPettyCashIdempotencyRev8188",
+            toMigration: migrationKey);
+
+        // Guard de data_type/precision/scale: solo altera si la columna no es numeric(18,4).
+        Assert.Contains("information_schema.columns", script);
+        Assert.Contains("data_type", script);
+        Assert.Contains("numeric_precision", script);
+        Assert.Contains("numeric_scale", script);
+        Assert.Contains("ALTER TABLE \"CashTransactions\" ALTER COLUMN \"AmountUsd\" TYPE numeric(18,4)", script);
+        Assert.Contains("DO $$", script);
+
+        Assert.DoesNotContain("DROP TABLE", script);
+        Assert.DoesNotContain("DROP COLUMN", script);
+
+        // Down revierte a numeric(18,2) con el mismo guard (jamas recrea la columna).
+        var downSql = string.Join(
+            Environment.NewLine,
+            migration.DownOperations.OfType<SqlOperation>().Select(operation => operation.Sql));
+
+        Assert.Contains("ALTER TABLE \"CashTransactions\" ALTER COLUMN \"AmountUsd\" TYPE numeric(18,2)", downSql);
+        Assert.Contains("numeric_precision", downSql);
+        Assert.DoesNotContain("DROP COLUMN", downSql);
+        Assert.DoesNotContain("DROP TABLE", downSql);
     }
 
     private static SalesDbContext CreateNpgsqlModelContext()

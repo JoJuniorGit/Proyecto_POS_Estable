@@ -10,7 +10,9 @@ namespace Sales.Module.Entities;
 /// (snapshot inmutable: al anular jamas se relee la tasa), mas la trazabilidad administrativa
 /// (categoria, concepto, beneficiario y referencia del comprobante).
 /// La anulacion es logica (Status/CancelledAtUtc/CancelledByUserId/motivo) y compensa con un
-/// CashTransaction Income PettyCashReversal: el registro historico nunca se borra.
+/// CashTransaction Income PettyCashReversal: el registro historico nunca se borra. El supervisor
+/// que aprobo la anulacion (cuando la jerarquia lo exigio) se vincula en
+/// <see cref="CancellationAuthorizedByUserId"/> (H3 del cierre 8.188).
 /// El vinculo con el libro transaccional vive en <see cref="CashTransaction.PettyCashExpenseId"/>
 /// (el gasto y su reversa apuntan al gasto), evitando el ciclo de FKs entre ambas tablas.
 /// </summary>
@@ -63,6 +65,12 @@ public class PettyCashExpense
 
     public DateTime? CancelledAtUtc { get; set; }
     public int? CancelledByUserId { get; set; }
+
+    // H3 (cierre 8.188): supervisor que aprobo la anulacion cuando la jerarquia la exigio
+    // (Manager/Cashier anulando con token). Null en la anulacion directa de Admin o cuando el
+    // aprobador declarado es el propio ejecutor (no hay supervisor distinto que auditar).
+    public int? CancellationAuthorizedByUserId { get; set; }
+
     public string? CancellationReason { get; set; }
 
     // Movimiento Expense original y su reversa compensatoria Income (efecto neto 0).

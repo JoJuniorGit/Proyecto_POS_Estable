@@ -103,6 +103,24 @@ public class PettyCashServiceTests
         return session;
     }
 
+    /// <summary>
+    /// H3 (8.188): usuarios para la resolucion de nombres del vale. El usuario #1 (Admin
+    /// "Administrador") ya viene del seed del modelo; se agrega el Gerente #2 supervisor.
+    /// </summary>
+    private static async Task SeedUsersAsync(SalesDbContext db)
+    {
+        db.Users.Add(new User
+        {
+            Id = 2,
+            Cedula = "V-00000002",
+            Name = "Gerente Dos",
+            Username = "gerente2",
+            FullName = "Gerente Dos",
+            Role = UserRole.Manager
+        });
+        await db.SaveChangesAsync();
+    }
+
     private static PettyCashExpenseRequest Request(
         PettyCashCurrency currency = PettyCashCurrency.BsS,
         decimal amount = 365.50m,
@@ -168,6 +186,28 @@ public class PettyCashServiceTests
     }
 
     [Fact]
+    public async Task RegisterAsync_InBsS_PersistsFourDecimalAmountUsdInExpenseMovement()
+    {
+        using var stack = new PettyCashStack();
+        await SeedPaymentMethodsAsync(stack.Context);
+        await SeedOpenSessionAsync(stack.Context, openingLocal: 1000m);
+
+        // 365.55 / 36.55 = 10.001367... -> 10.0014 con la convencion 4dp: el libro transaccional
+        // debe conservar el cuarto decimal (H4 del cierre 8.188; la columna era 18,2 en Postgres).
+        var expense = await stack.Service.RegisterAsync(
+            Request(amount: 365.55m),
+            actingUserId: 1,
+            actingRole: UserRole.Admin);
+
+        Assert.Equal(10.0014m, expense.AmountUsd);
+
+        var movement = await stack.Context.CashTransactions.AsNoTracking()
+            .SingleAsync(candidate => candidate.Source == CashTransactionSource.PettyCashExpense);
+        Assert.Equal(10.0014m, movement.AmountUsd);
+        Assert.Equal(expense.AmountUsd, movement.AmountUsd);
+    }
+
+    [Fact]
     public async Task RegisterAsync_InUsd_ComputesDualValuationAndUsesUsdBucket()
     {
         using var stack = new PettyCashStack();
@@ -190,6 +230,30 @@ public class PettyCashServiceTests
         Assert.Equal(11, movement.PaymentMethodId);
 
         Assert.Equal(50m - 20m, await stack.Drawer.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.Usd));
+        Assert.Equal(1000m, await stack.Drawer.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.BsS));
+    }
+
+    [Fact]
+    public async Task RegisterAsync_InUsd_KeepsFourDecimalAmountInMovementAndPhysicalBucket()
+    {
+        using var stack = new PettyCashStack();
+        await SeedPaymentMethodsAsync(stack.Context);
+        var session = await SeedOpenSessionAsync(stack.Context, openingLocal: 1000m, openingUsd: 50m);
+
+        // H4 (8.188): el nominal USD de 4dp viaja exacto al movimiento y al bucket fisico de la
+        // gaveta (la columna (18,2) truncaba el 4to decimal en Postgres).
+        var expense = await stack.Service.RegisterAsync(
+            Request(currency: PettyCashCurrency.Usd, amount: 20.1234m),
+            actingUserId: 1,
+            actingRole: UserRole.Admin);
+
+        Assert.Equal(20.1234m, expense.AmountUsd);
+
+        var movement = await stack.Context.CashTransactions.AsNoTracking()
+            .SingleAsync(candidate => candidate.Source == CashTransactionSource.PettyCashExpense);
+        Assert.Equal(20.1234m, movement.AmountUsd);
+
+        Assert.Equal(50m - 20.1234m, await stack.Drawer.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.Usd));
         Assert.Equal(1000m, await stack.Drawer.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.BsS));
     }
 
@@ -423,6 +487,87 @@ public class PettyCashServiceTests
         Assert.Equal(expense.AmountBsS, reversal.AmountLocal);
         Assert.Equal(expense.HistoricalRate, reversal.ExchangeRate);
         Assert.Equal(50m, await stack.Drawer.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.Usd));
+    }
+
+    [Fact]
+    public async Task CancelAsync_WithSupervisorAuthorization_LinksApproverToExpenseAndVoucher()
+    {
+        using var stack = new PettyCashStack();
+        await SeedPaymentMethodsAsync(stack.Context);
+        await SeedUsersAsync(stack.Context);
+        await SeedOpenSessionAsync(stack.Context, openingLocal: 1000m);
+
+        var expense = await stack.Service.RegisterAsync(Request(amount: 100m), actingUserId: 1, actingRole: UserRole.Admin);
+
+        // Gerente ejecuta la anulacion; el Admin #1 la aprueba (token consumido por el controlador).
+        var cancelled = await stack.Service.CancelAsync(
+            expense.Id,
+            "Proveedor no entrego el pedido",
+            actingUserId: 2,
+            actingRole: UserRole.Manager,
+            authorizedByUserId: 1);
+
+        Assert.Equal(PettyCashStatus.Cancelled, cancelled.Status);
+        Assert.Equal(2, cancelled.CancelledByUserId);
+
+        var persisted = await stack.Context.PettyCashExpenses.AsNoTracking().SingleAsync();
+        Assert.Equal(1, persisted.CancellationAuthorizedByUserId);
+
+        // El vale resuelve ambos nombres: quien anulo y quien aprobo (H3 del cierre 8.188).
+        var data = await stack.Service.GetVoucherDataAsync(expense.Id);
+        Assert.NotNull(data);
+        Assert.Equal("Gerente Dos", data!.Context.CancelledByName);
+        Assert.Equal("Administrador", data.Context.CancellationAuthorizedName);
+    }
+
+    [Fact]
+    public async Task CancelAsync_AdminDirect_LeavesCancellationAuthorizerNull()
+    {
+        using var stack = new PettyCashStack();
+        await SeedPaymentMethodsAsync(stack.Context);
+        await SeedUsersAsync(stack.Context);
+        await SeedOpenSessionAsync(stack.Context, openingLocal: 1000m);
+
+        var expense = await stack.Service.RegisterAsync(Request(amount: 100m), actingUserId: 1, actingRole: UserRole.Admin);
+
+        // Admin anula directo: no hay supervisor distinto que registrar.
+        var cancelled = await stack.Service.CancelAsync(
+            expense.Id,
+            "Gasto duplicado",
+            actingUserId: 1,
+            actingRole: UserRole.Admin);
+
+        Assert.Equal(PettyCashStatus.Cancelled, cancelled.Status);
+
+        var persisted = await stack.Context.PettyCashExpenses.AsNoTracking().SingleAsync();
+        Assert.Null(persisted.CancellationAuthorizedByUserId);
+
+        var data = await stack.Service.GetVoucherDataAsync(expense.Id);
+        Assert.NotNull(data);
+        Assert.Null(data!.Context.CancellationAuthorizedName);
+    }
+
+    [Fact]
+    public async Task CancelAsync_WhenApproverEqualsActingUser_IsNotStoredAsSupervisor()
+    {
+        using var stack = new PettyCashStack();
+        await SeedPaymentMethodsAsync(stack.Context);
+        await SeedUsersAsync(stack.Context);
+        await SeedOpenSessionAsync(stack.Context, openingLocal: 1000m);
+
+        var expense = await stack.Service.RegisterAsync(Request(amount: 100m), actingUserId: 1, actingRole: UserRole.Admin);
+
+        // Caso limite: el aprobador declarado es el propio ejecutor -> no existe supervisor
+        // distinto y la trazabilidad queda en null (misma regla de Admin directo).
+        await stack.Service.CancelAsync(
+            expense.Id,
+            "Gasto duplicado",
+            actingUserId: 2,
+            actingRole: UserRole.Manager,
+            authorizedByUserId: 2);
+
+        var persisted = await stack.Context.PettyCashExpenses.AsNoTracking().SingleAsync();
+        Assert.Null(persisted.CancellationAuthorizedByUserId);
     }
 
     [Fact]

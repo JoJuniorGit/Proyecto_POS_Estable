@@ -486,7 +486,7 @@ namespace Sales.Module.Migrations
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("AmountUsd")
-                        .HasColumnType("decimal(18,2)");
+                        .HasColumnType("decimal(18,4)");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -836,6 +836,9 @@ namespace Sales.Module.Migrations
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
 
+                    b.Property<int?>("CancellationAuthorizedByUserId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -893,6 +896,9 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("AuthorizedByUserId")
                         .HasDatabaseName("IX_PettyCashExpenses_AuthorizedByUserId");
+
+                    b.HasIndex("CancellationAuthorizedByUserId")
+                        .HasDatabaseName("IX_PettyCashExpenses_CancellationAuthorizedByUserId");
 
                     b.HasIndex("CancelledByUserId")
                         .HasDatabaseName("IX_PettyCashExpenses_CancelledByUserId");
@@ -1453,6 +1459,11 @@ namespace Sales.Module.Migrations
                     b.HasOne("Core.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("AuthorizedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CancellationAuthorizedByUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Core.Entities.User", null)

@@ -47,7 +47,7 @@ public class CashTransaction
     public CashTransactionSource Source { get; set; }
 
     // Amount stored in USD, but UI typically shows Bs.S (AmountUsd * ExchangeRate)
-    [Column(TypeName = "decimal(18,2)")]
+    [Column(TypeName = "decimal(18,4)")]
     public decimal AmountUsd { get; set; }
 
     [Column(TypeName = "decimal(18,4)")]

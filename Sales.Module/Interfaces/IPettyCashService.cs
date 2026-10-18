@@ -40,7 +40,9 @@ public interface IPettyCashService
     /// Anula un gasto de su sesión original abierta con motivo obligatorio. Admin anula directo;
     /// Manager y Cashier requieren autorización supervisora (<paramref name="authorizedByUserId"/>
     /// llega del token consumido por el controlador). Genera la reversa compensatoria Income con
-    /// los snapshots exactos del gasto.
+    /// los snapshots exactos del gasto. H3 (cierre 8.188): cuando el aprobador es distinto del
+    /// ejecutor, queda vinculado en <c>PettyCashExpense.CancellationAuthorizedByUserId</c> y el
+    /// vale imprime la línea "Autorizó anulación"; la anulación directa de Admin queda en null.
     /// </summary>
     Task<PettyCashExpenseResultDto> CancelAsync(
         int expenseId,

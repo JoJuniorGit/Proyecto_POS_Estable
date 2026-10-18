@@ -341,6 +341,15 @@ public class PettyCashService : IPettyCashService
                 expense.Status = PettyCashStatus.Cancelled;
                 expense.CancelledAtUtc = DateTime.UtcNow;
                 expense.CancelledByUserId = actingUserId.Value;
+
+                // H3 (cierre 8.188): se vincula al supervisor aprobador SOLO si es distinto del
+                // ejecutor; la anulacion directa de Admin (sin token) o una auto-autorizacion
+                // quedan en null, porque no hay un supervisor distinto que auditar.
+                expense.CancellationAuthorizedByUserId =
+                    authorizedByUserId.HasValue && authorizedByUserId.Value != actingUserId.Value
+                        ? authorizedByUserId
+                        : null;
+
                 expense.CancellationReason = cancellationReason;
 
                 var reversal = new CashTransaction
@@ -423,8 +432,9 @@ public class PettyCashService : IPettyCashService
         }
 
         // Los nombres no se snapshotean en el gasto (solo las FKs de auditoria): el vale los
-        // resuelve al imprimir, con "N/A" cuando no hubo autorizador y "N/D" si la fila falta.
-        var userIds = new[] { expense.CreatedByUserId, expense.AuthorizedByUserId, expense.CancelledByUserId }
+        // resuelve al imprimir, con "N/A" cuando no hubo autorizador, "N/D" si la fila falta y
+        // la linea "Autorizo anulacion" solo cuando hay supervisor aprobador distinto (H3).
+        var userIds = new[] { expense.CreatedByUserId, expense.AuthorizedByUserId, expense.CancelledByUserId, expense.CancellationAuthorizedByUserId }
             .Where(userId => userId.HasValue)
             .Select(userId => userId!.Value)
             .Distinct()
@@ -440,7 +450,8 @@ public class PettyCashService : IPettyCashService
             expense,
             userNames.GetValueOrDefault(expense.CreatedByUserId),
             expense.AuthorizedByUserId.HasValue ? userNames.GetValueOrDefault(expense.AuthorizedByUserId.Value) : null,
-            expense.CancelledByUserId.HasValue ? userNames.GetValueOrDefault(expense.CancelledByUserId.Value) : null);
+            expense.CancelledByUserId.HasValue ? userNames.GetValueOrDefault(expense.CancelledByUserId.Value) : null,
+            expense.CancellationAuthorizedByUserId.HasValue ? userNames.GetValueOrDefault(expense.CancellationAuthorizedByUserId.Value) : null);
 
         return new PettyCashVoucherData(context, expense.CreatedByUserId);
     }

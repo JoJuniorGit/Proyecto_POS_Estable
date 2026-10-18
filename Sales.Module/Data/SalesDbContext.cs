@@ -273,7 +273,10 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceUsd).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingBalanceUsd).HasColumnType("decimal(18,4)");
 
-        modelBuilder.Entity<CashTransaction>().Property(t => t.AmountUsd).HasColumnType("decimal(18,2)");
+        // H4 (cierre 8.188): el libro de caja conserva el cuarto decimal del USD nominal (la
+        // columna era numeric(18,2) y el alta de caja chica escribe 4dp: se perdia el 4to decimal
+        // en Postgres). La anotacion [Column] de la entidad queda obsoleta: fluida prevalece.
+        modelBuilder.Entity<CashTransaction>().Property(t => t.AmountUsd).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashTransaction>().Property(t => t.ExchangeRate).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashTransaction>().Property(t => t.AmountLocal).HasColumnType("decimal(18,2)");
 
@@ -645,6 +648,13 @@ modelBuilder.Entity<User>().HasData(
                 .HasForeignKey(expense => expense.CancelledByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // H3 (cierre 8.188): supervisor que aprobo la anulacion (nullable; solo se completa
+            // cuando hubo autorizacion jerarquica con un aprobador distinto del ejecutor).
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(expense => expense.CancellationAuthorizedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             entity.HasOne<AuthorizationRequest>()
                 .WithMany()
                 .HasForeignKey(expense => expense.AuthorizationRequestId)
@@ -670,6 +680,9 @@ modelBuilder.Entity<User>().HasData(
 
             entity.HasIndex(expense => expense.CancelledByUserId)
                 .HasDatabaseName("IX_PettyCashExpenses_CancelledByUserId");
+
+            entity.HasIndex(expense => expense.CancellationAuthorizedByUserId)
+                .HasDatabaseName("IX_PettyCashExpenses_CancellationAuthorizedByUserId");
 
             entity.HasIndex(expense => expense.AuthorizationRequestId)
                 .HasDatabaseName("IX_PettyCashExpenses_AuthorizationRequestId");

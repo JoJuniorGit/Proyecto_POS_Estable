@@ -77,6 +77,7 @@ public class PettyCashVoucherTests
         PettyCashStatus status = PettyCashStatus.Active,
         DateTime? cancelledAtUtc = null,
         int? cancelledByUserId = null,
+        int? cancellationAuthorizedByUserId = null,
         string? cancellationReason = null)
     {
         return new PettyCashExpense
@@ -98,6 +99,7 @@ public class PettyCashVoucherTests
             Status = status,
             CancelledAtUtc = cancelledAtUtc,
             CancelledByUserId = cancelledByUserId,
+            CancellationAuthorizedByUserId = cancellationAuthorizedByUserId,
             CancellationReason = cancellationReason,
             Session = new CashDrawerSession
             {
@@ -123,7 +125,8 @@ public class PettyCashVoucherTests
         SalesDbContext db,
         PettyCashStatus status = PettyCashStatus.Active,
         int? cancelledByUserId = null,
-        string? cancellationReason = null)
+        string? cancellationReason = null,
+        int? cancellationAuthorizedByUserId = null)
     {
         await SeedUsersAsync(db);
 
@@ -144,6 +147,7 @@ public class PettyCashVoucherTests
                 ? new DateTime(2026, 10, 18, 15, 30, 0, DateTimeKind.Utc)
                 : null,
             cancelledByUserId: cancelledByUserId,
+            cancellationAuthorizedByUserId: cancellationAuthorizedByUserId,
             cancellationReason: cancellationReason);
         expense.Session = null!;
         expense.SessionId = session.Id;
@@ -253,6 +257,41 @@ public class PettyCashVoucherTests
         Assert.Equal(new DateTime(2026, 10, 18, 11, 30, 0), context.CancelledAtVenezuela);
         Assert.Equal("Administrador", context.CancelledByName);
         Assert.Equal("Proveedor no entrego el pedido", context.CancellationReason);
+        // Sin supervisor aprobador registrado no hay linea de autorizacion de la anulacion.
+        Assert.Null(context.CancellationAuthorizedName);
+    }
+
+    [Fact]
+    public void CreateFrom_CancelledWithCancellationAuthorizer_ExposesDistinctSupervisor()
+    {
+        var expense = BuildExpense(
+            status: PettyCashStatus.Cancelled,
+            cancelledAtUtc: new DateTime(2026, 10, 18, 15, 30, 0, DateTimeKind.Utc),
+            cancelledByUserId: ManagerUserId,
+            cancellationAuthorizedByUserId: 1,
+            cancellationReason: "Proveedor no entrego el pedido");
+
+        var context = PettyCashVoucherContext.CreateFrom(expense, "Cajero 70", "Gerente Dos", "Gerente Dos", "Administrador");
+
+        Assert.True(context.IsCancelled);
+        Assert.Equal("Gerente Dos", context.CancelledByName);
+        Assert.Equal("Administrador", context.CancellationAuthorizedName);
+    }
+
+    [Fact]
+    public void CreateFrom_CancellationAuthorizerWithoutUserRow_FallsBackToNotFound()
+    {
+        var expense = BuildExpense(
+            status: PettyCashStatus.Cancelled,
+            cancelledAtUtc: new DateTime(2026, 10, 18, 15, 30, 0, DateTimeKind.Utc),
+            cancelledByUserId: ManagerUserId,
+            cancellationAuthorizedByUserId: 999,
+            cancellationReason: "Proveedor no entrego el pedido");
+
+        var context = PettyCashVoucherContext.CreateFrom(expense, "Cajero 70", "Gerente Dos", "Gerente Dos", null);
+
+        // El ID existe pero la fila de usuario no: dato anomalo, mismo criterio "N/D" del resto del vale.
+        Assert.Equal(PettyCashVoucherContext.UserNotFound, context.CancellationAuthorizedName);
     }
 
     [Fact]
@@ -320,6 +359,28 @@ public class PettyCashVoucherTests
         Assert.Contains("18/10/2026 11:30", content);
         Assert.Contains("Administrador", content);
         Assert.Contains("Proveedor no entrego el pedido", content);
+        // Sin supervisor aprobador el render queda igual que antes (sin linea de autorizacion).
+        Assert.DoesNotContain(@"Autoriz\363 anulaci\363n", content);
+    }
+
+    [Fact]
+    public void BuildPdf_CancelledWithCancellationAuthorizer_ShowsAuthorizationLine()
+    {
+        var expense = BuildExpense(
+            status: PettyCashStatus.Cancelled,
+            cancelledAtUtc: new DateTime(2026, 10, 18, 15, 30, 0, DateTimeKind.Utc),
+            cancelledByUserId: ManagerUserId,
+            cancellationAuthorizedByUserId: 1,
+            cancellationReason: "Proveedor no entrego el pedido");
+        var context = PettyCashVoucherContext.CreateFrom(expense, "Cajero 70", "Gerente Dos", "Gerente Dos", "Administrador");
+
+        var content = Encoding.ASCII.GetString(
+            PettyCashVoucherPdfGenerator.BuildPdf(context, MoneyDisplayFormat.Venezuelan));
+
+        Assert.Contains("ANULADO", content);
+        Assert.Contains("Gerente Dos", content);
+        // "Autorizó anulación: ..." viaja escapado en octal por la fuente WinAnsi del generador.
+        Assert.Contains(@"Autoriz\363 anulaci\363n: Administrador", content);
     }
 
     // ------------------------------------------------------------------ servicio (nombres + 404)
@@ -365,6 +426,24 @@ public class PettyCashVoucherTests
         Assert.Equal("Administrador", data.Context.CancelledByName);
         Assert.Equal("Proveedor no entrego el pedido", data.Context.CancellationReason);
         Assert.Equal(new DateTime(2026, 10, 18, 11, 30, 0), data.Context.CancelledAtVenezuela);
+    }
+
+    [Fact]
+    public async Task GetVoucherDataAsync_CancelledWithSupervisor_ResolvesCancellationAuthorizerName()
+    {
+        using var stack = new VoucherStack();
+        var expense = await SeedExpenseAsync(
+            stack.Context,
+            status: PettyCashStatus.Cancelled,
+            cancelledByUserId: ManagerUserId,
+            cancellationAuthorizedByUserId: 1,
+            cancellationReason: "Proveedor no entrego el pedido");
+
+        var data = await stack.Service.GetVoucherDataAsync(expense.Id);
+
+        Assert.NotNull(data);
+        Assert.Equal("Gerente Dos", data!.Context.CancelledByName);
+        Assert.Equal("Administrador", data.Context.CancellationAuthorizedName);
     }
 
     // ------------------------------------------------------------------ endpoint on-demand (ownership)
