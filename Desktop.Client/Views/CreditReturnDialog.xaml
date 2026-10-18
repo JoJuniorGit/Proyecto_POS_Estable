@@ -1,0 +1,128 @@
+<UserControl x:Class="Desktop.Client.Views.CreditReturnDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             mc:Ignorable="d"
+             Width="620" MinHeight="440"
+             d:DataContext="{d:DesignInstance Type=vm:CreditReturnDialogViewModel}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#FFF7ED" BorderBrush="#FED7AA" BorderThickness="1" CornerRadius="8" Padding="16,12" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Devolución de Venta a Crédito" FontSize="18" FontWeight="Bold" Foreground="#1E293B"/>
+                    <TextBlock FontSize="12" Foreground="#9A3412" FontWeight="SemiBold" Margin="0,2,0,0">
+                        <Run Text="{Binding CustomerName, Mode=OneWay}"/>
+                        <Run Text=" · Factura "/>
+                        <Run Text="{Binding InvoiceDisplay, Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock Text="SALDO PENDIENTE" FontSize="10" FontWeight="Bold" Foreground="#9A3412" HorizontalAlignment="Right"/>
+                    <TextBlock Text="{Binding BalanceUSD, StringFormat='$ {0:N2}'}" FontSize="16" FontWeight="Bold" Foreground="#B45309" HorizontalAlignment="Right"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Lines -->
+        <Border Grid.Row="1" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Background="#FFFFFF" ClipToBounds="True" Margin="0,0,0,12">
+            <DockPanel>
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="80"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="90"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="PRODUCTO" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                    <TextBlock Grid.Column="1" Text="VENDIDO" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                    <TextBlock Grid.Column="2" Text="PRECIO USD" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                    <TextBlock Grid.Column="3" Text="DEVOLVER" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Center"/>
+                    <TextBlock Grid.Column="4" Text="SUBTOTAL" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                </Grid>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="220">
+                    <ItemsControl ItemsSource="{Binding Lines}" AutomationProperties.AutomationId="CreditReturn_Lines">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#F1F5F9" BorderThickness="0,0,0,1" Padding="0,6">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="90"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding ProductName}" FontSize="12" Foreground="#1E293B" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding MaxQuantity, StringFormat='{}{0:0.###}'}" FontSize="12" Foreground="#64748B" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding UnitPriceUSD, StringFormat='${0:N2}'}" FontSize="12" Foreground="#64748B" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBox Grid.Column="3"
+                                                 AutomationProperties.AutomationId="CreditReturn_QuantityInput"
+                                                 Text="{Binding QuantityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                                 FontSize="12" Height="30" Padding="6,2" Margin="8,0"
+                                                 HorizontalContentAlignment="Right"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding SubtotalUSD, StringFormat='${0:N2}'}" FontWeight="Bold" FontSize="12" Foreground="#0F172A" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Reason -->
+        <StackPanel Grid.Row="2" Margin="0,0,0,14">
+            <TextBox AutomationProperties.AutomationId="CreditReturn_ReasonInput"
+                     Text="{Binding Reason, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     MaxLength="500"
+                     materialDesign:HintAssist.Hint="Motivo de la devolución (opcional, máx. 500)"
+                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"/>
+            <TextBlock Text="El valor devuelto y el reembolso del overpago los calcula el servidor sobre la base efectiva. La caja solo paga el excedente efectivamente cobrado."
+                       FontSize="10" FontStyle="Italic" Foreground="#64748B" Margin="2,4,0,0" TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Footer -->
+        <Grid Grid.Row="3">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="Total solicitado:" FontSize="12" Foreground="#64748B" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding RequestedReturnDisplay}" FontSize="15" FontWeight="Bold" Foreground="#0F172A" Margin="6,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="CANCELAR"
+                        Command="{Binding CloseCommand}"
+                        AutomationProperties.AutomationId="CreditReturn_CancelButton"
+                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                        Height="38" Padding="18,0" Margin="0,0,10,0"/>
+                <Button Content="REGISTRAR DEVOLUCIÓN"
+                        Command="{Binding ConfirmCommand}"
+                        AutomationProperties.AutomationId="CreditReturn_ConfirmButton"
+                        Style="{DynamicResource MaterialDesignRaisedButton}"
+                        Background="#B45309" Foreground="White"
+                        Height="38" Padding="20,0" FontWeight="Bold"
+                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
+                        materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsProcessing}"
+                        materialDesign:ButtonProgressAssist.IsIndeterminate="True"
+                        materialDesign:ButtonProgressAssist.Value="-1"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

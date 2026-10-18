@@ -462,6 +462,340 @@ public class SalesService : ISalesService
             throw new System.Exception(ApiErrorParser.FromBody(err, "Error del servidor"));
         }
     }
+
+    // ── Paso 11/12 (F3): crédito CxC ──
+
+    public async Task<CreditProfileClientDto> GetCreditProfileAsync(
+        int customerId,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            $"api/sales/customers/{customerId}/credit-profile",
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo cargar el perfil crediticio del cliente.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<CreditProfileClientDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer el perfil crediticio del cliente.");
+    }
+
+    public async Task<CreditProfileClientDto> UpdateCreditProfileAsync(
+        int customerId,
+        CreditProfileUpdateClientDto request,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.PutAsJsonAsync(
+            $"api/sales/customers/{customerId}/credit-profile",
+            request,
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo actualizar el perfil crediticio del cliente.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<CreditProfileClientDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer el perfil crediticio actualizado.");
+    }
+
+    public async Task<CreditStatementClientDto> GetCreditStatementAsync(
+        int customerId,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            $"api/sales/customers/{customerId}/credit-statement",
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo cargar el estado de cuenta del cliente.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<CreditStatementClientDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer el estado de cuenta del cliente.");
+    }
+
+    public async Task<CreditReceivablesClientDto> GetCreditReceivablesAsync(
+        CreditReceivablesFilterClientDto filter,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        filter ??= new CreditReceivablesFilterClientDto();
+        var query = new System.Text.StringBuilder("api/sales/credit-receivables");
+        var separator = '?';
+
+        void Append(string name, string value)
+        {
+            query.Append(separator).Append(name).Append('=').Append(value);
+            separator = '&';
+        }
+
+        if (filter.CustomerId.HasValue)
+        {
+            Append("customerId", filter.CustomerId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Status))
+        {
+            Append("status", Uri.EscapeDataString(filter.Status.Trim()));
+        }
+
+        if (filter.OverdueOnly)
+        {
+            Append("overdueOnly", "true");
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            Append("search", Uri.EscapeDataString(filter.Search.Trim()));
+        }
+
+        using var response = await _httpClient.GetAsync(query.ToString(), cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo cargar la cartera de cuentas por cobrar.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<CreditReceivablesClientDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer la cartera de cuentas por cobrar.");
+    }
+
+    public async Task<int> CompleteCreditSaleAsync(
+        int saleId,
+        decimal exchangeRate,
+        IEnumerable<SalePaymentDto> payments,
+        int? cashierId = null,
+        string? authorizationToken = null,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        var request = new { ExchangeRate = exchangeRate, Payments = payments, CashierId = cashierId };
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{saleId}/complete-credit")
+        {
+            Content = JsonContent.Create(request)
+        };
+        if (!string.IsNullOrWhiteSpace(authorizationToken))
+        {
+            httpRequest.Headers.Add("X-Authorization-Token", authorizationToken);
+        }
+
+        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, $"Error del servidor ({(int)response.StatusCode})");
+        }
+
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        int invoiceNumber = int.Parse(content, System.Globalization.CultureInfo.InvariantCulture);
+        WeakReferenceMessenger.Default.Send(new SaleCompletedNotificationMessage(invoiceNumber));
+        return invoiceNumber;
+    }
+
+    public async Task<CreditPaymentResultClientDto> RegisterCreditPaymentAsync(
+        CreditPaymentRequestClientDto request,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/sales/credit-payments")
+        {
+            Content = JsonContent.Create(request)
+        };
+        if (!string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        {
+            httpRequest.Headers.Add("Idempotency-Key", request.IdempotencyKey);
+        }
+
+        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo registrar el abono.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<CreditPaymentResultClientDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer el resultado del abono.");
+    }
+
+    public async Task<CreditCancelClientResultDto> CancelCreditSaleAsync(
+        int saleId,
+        string? reason,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.PostAsJsonAsync(
+            $"api/sales/{saleId}/credit-cancel",
+            new { Reason = reason },
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo anular la venta a crédito.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<CreditCancelClientResultDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer el resultado de la anulación.");
+    }
+
+    public async Task<CreditReturnClientResultDto> RegisterCreditReturnAsync(
+        int saleId,
+        CreditReturnRequestClientDto request,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{saleId}/credit-return")
+        {
+            Content = JsonContent.Create(request)
+        };
+        if (!string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        {
+            httpRequest.Headers.Add("Idempotency-Key", request.IdempotencyKey);
+        }
+
+        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo registrar la devolución.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<CreditReturnClientResultDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer el resultado de la devolución.");
+    }
+
+    public async Task<byte[]?> GetCreditSaleReceiptAsync(
+        int saleId,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync($"api/sales/{saleId}/credit-receipt", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo generar el comprobante de venta a crédito.");
+        }
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+    }
+
+    public async Task<byte[]?> GetCreditPaymentReceiptAsync(
+        int paymentId,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync($"api/sales/credit-payments/{paymentId}/receipt", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo generar el comprobante de abono.");
+        }
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+    }
+
+    private static async Task ThrowCreditErrorAsync(
+        System.Net.Http.HttpResponseMessage response,
+        string fallback)
+    {
+        string body = await response.Content.ReadAsStringAsync();
+        string message = ApiErrorParser.FromBody(body, fallback);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.Forbidden
+            && ApiErrorParser.TryGetAuthorizationRequirement(body, out var authorizationAction))
+        {
+            if (string.Equals(
+                    authorizationAction,
+                    nameof(Core.Entities.AuthorizationActionType.CreditOverLimit),
+                    System.StringComparison.OrdinalIgnoreCase)
+                && TryParseCreditOverLimitContext(body, out var context))
+            {
+                throw new CreditOverLimitAuthorizationException(message, context!);
+            }
+
+            throw new AuthorizationRequiredException(message, authorizationAction);
+        }
+
+        throw new System.InvalidOperationException(message);
+    }
+
+    /// <summary>
+    /// Reconstruye el contexto exacto del 403 de sobregiro. Si el cuerpo no trae todos los campos
+    /// del contrato, el llamador degrada al 403 genérico (sin contexto no se puede pedir el token).
+    /// </summary>
+    private static bool TryParseCreditOverLimitContext(
+        string body,
+        out CreditOverLimitAuthorizationRequestContext? context)
+    {
+        context = null;
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object
+                || !TryGetJsonProperty(root, "authorizationContext", out var payload)
+                || payload.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (!TryGetJsonProperty(payload, "saleId", out var saleElement)
+                || !saleElement.TryGetInt32(out int saleId)
+                || !TryGetJsonProperty(payload, "customerId", out var customerElement)
+                || !customerElement.TryGetInt32(out int customerId)
+                || !TryGetJsonProperty(payload, "financedUSD", out var financedElement)
+                || !financedElement.TryGetDecimal(out decimal financedUsd)
+                || !TryGetJsonProperty(payload, "availableCreditUSD", out var availableElement)
+                || !availableElement.TryGetDecimal(out decimal availableCreditUsd))
+            {
+                return false;
+            }
+
+            string? customerName = TryGetJsonProperty(payload, "customerName", out var nameElement)
+                && nameElement.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? nameElement.GetString()
+                    : null;
+
+            context = new CreditOverLimitAuthorizationRequestContext
+            {
+                SaleId = saleId,
+                CustomerId = customerId,
+                CustomerName = customerName,
+                FinancedUSD = financedUsd,
+                AvailableCreditUSD = availableCreditUsd,
+                Terminal = System.Environment.MachineName
+            };
+            return true;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetJsonProperty(
+        System.Text.Json.JsonElement element,
+        string name,
+        out System.Text.Json.JsonElement value)
+    {
+        if (element.TryGetProperty(name, out value))
+        {
+            return true;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, System.StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
 }
 
 

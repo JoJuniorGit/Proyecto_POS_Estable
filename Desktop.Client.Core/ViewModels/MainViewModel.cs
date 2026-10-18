@@ -41,6 +41,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly UsersManagementViewModel? _usersManagementViewModel;
     private readonly AuthorizationNotificationViewModel? _authorizationNotificationViewModel;
     private readonly StockKardexViewModel? _stockKardexViewModel;
+    private readonly CreditReceivablesViewModel? _creditReceivablesViewModel;
 
     private readonly IHealthPollingService? _healthPollingService;
     private readonly IExchangeRateService? _exchangeRateService;
@@ -67,7 +68,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IExchangeRateService? exchangeRateService = null,
         SupplierInvoiceViewModel? supplierInvoiceViewModel = null,
         AuthorizationNotificationViewModel? authorizationNotificationViewModel = null,
-        StockKardexViewModel? stockKardexViewModel = null)
+        StockKardexViewModel? stockKardexViewModel = null,
+        CreditReceivablesViewModel? creditReceivablesViewModel = null)
     {
         UserSession = userSession;
         _loginViewModel = loginViewModel;
@@ -85,6 +87,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _usersManagementViewModel = usersManagementViewModel;
         _authorizationNotificationViewModel = authorizationNotificationViewModel;
         _stockKardexViewModel = stockKardexViewModel;
+        _creditReceivablesViewModel = creditReceivablesViewModel;
         _healthPollingService = healthPollingService;
         _dialogService = dialogService;
         _exchangeRateService = exchangeRateService;
@@ -165,7 +168,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _dailyClosureViewModel,
             _usersManagementViewModel,
             _authorizationNotificationViewModel,
-            _stockKardexViewModel
+            _stockKardexViewModel,
+            _creditReceivablesViewModel
         };
 
         foreach (var vm in viewModels)
@@ -333,6 +337,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Title = "RETIROS PENDIENTES";
         CurrentViewModel = _pendingPickupsViewModel;
         _pendingPickupsViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToPendingPickups");
+    }
+
+    [RelayCommand]
+    private void NavigateToCreditReceivables()
+    {
+        if (UserSession == null || !UserSession.IsLoggedIn || _creditReceivablesViewModel == null) return;
+        Title = "CUENTAS POR COBRAR (CxC)";
+        CurrentViewModel = _creditReceivablesViewModel;
+        _creditReceivablesViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToCreditReceivables");
     }
 
     [RelayCommand]

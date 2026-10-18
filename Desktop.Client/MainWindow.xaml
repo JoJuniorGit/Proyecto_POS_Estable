@@ -66,6 +66,18 @@
         <DataTemplate DataType="{x:Type vm:PendingPickupsViewModel}">
             <views:PendingPickupsView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CreditReceivablesViewModel}">
+            <views:CreditReceivablesView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CreditPaymentDialogViewModel}">
+            <views:CreditPaymentDialog/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CreditStatementDialogViewModel}">
+            <views:CreditStatementDialog/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CreditReturnDialogViewModel}">
+            <views:CreditReturnDialog/>
+        </DataTemplate>
     </Window.Resources>
 
 
@@ -264,6 +276,22 @@
                                                          Width="18" Height="18"
                                                          VerticalAlignment="Center"/>
                                 <TextBlock Text="Retiros Pendientes"
+                                           Margin="10,0,0,0"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Cuentas por Cobrar (CxC) -->
+                        <Button x:Name="BtnCreditReceivables"
+                                AutomationProperties.AutomationId="Nav_BtnCreditReceivables"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToCreditReceivablesCommand}"
+                                ToolTip="Cartera de Cuentas por Cobrar y abonos">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="CashMultiple"
+                                                         Width="18" Height="18"
+                                                         VerticalAlignment="Center"/>
+                                <TextBlock Text="Cuentas por Cobrar"
                                            Margin="10,0,0,0"
                                            VerticalAlignment="Center"/>
                             </StackPanel>

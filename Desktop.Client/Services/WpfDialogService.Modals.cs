@@ -564,8 +564,22 @@ public partial class WpfDialogService
     /// ShowDialog (contrato T9), abre el dialogo y mapea la fase final a un resultado tipado. Un
     /// fallo de creacion degrada a Failed con mensaje visible (residual T9 cubierto por T10).
     /// </summary>
-    public async System.Threading.Tasks.Task<AuthorizationWaitResult?> ShowAuthorizationWaitAsync(
+    public System.Threading.Tasks.Task<AuthorizationWaitResult?> ShowAuthorizationWaitAsync(
         AuthorizationRequestContext context,
+        Func<string, System.Threading.Tasks.Task> retry)
+        => ShowAuthorizationWaitCoreAsync(context, retry);
+
+    /// <summary>
+    /// T4 (F3, S4): flujo de espera para acciones protegidas con contexto genérico (sobregiro de
+    /// crédito). Comparte exactamente el mismo ciclo de vida y mapeo de fases que el precio manual.
+    /// </summary>
+    public System.Threading.Tasks.Task<AuthorizationWaitResult?> ShowAuthorizationWaitAsync(
+        IAuthorizationRequestContext context,
+        Func<string, System.Threading.Tasks.Task> retry)
+        => ShowAuthorizationWaitCoreAsync(context, retry);
+
+    private async System.Threading.Tasks.Task<AuthorizationWaitResult?> ShowAuthorizationWaitCoreAsync(
+        IAuthorizationRequestContext context,
         Func<string, System.Threading.Tasks.Task> retry)
     {
         if (Application.Current == null || _authorizationHubService == null || context == null || retry == null)

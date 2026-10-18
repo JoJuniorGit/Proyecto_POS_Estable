@@ -107,6 +107,18 @@ public interface IDialogService
         Func<string, Task> retry) => Task.FromResult<AuthorizationWaitResult?>(null);
 
     /// <summary>
+    /// T4 (F3, S4): sobrecarga genérica del flujo de espera para acciones protegidas distintas del
+    /// precio manual (p. ej. <see cref="CreditOverLimitAuthorizationRequestContext"/>). La
+    /// implementación por defecto delega al contrato histórico cuando el contexto es de precio
+    /// manual y, en cualquier otro caso, equivale a cancelado (stubs headless).
+    /// </summary>
+    Task<AuthorizationWaitResult?> ShowAuthorizationWaitAsync(
+        IAuthorizationRequestContext context,
+        Func<string, Task> retry) => context is AuthorizationRequestContext manual
+            ? ShowAuthorizationWaitAsync(manual, retry)
+            : Task.FromResult<AuthorizationWaitResult?>(null);
+
+    /// <summary>
     /// 8.150 (T10, design D7): modal interrumpente de notificaciones admin (aprobar/rechazar,
     /// motivo opcional, badge de cola y aviso de carrera/expiracion). No dispone el ViewModel:
     /// su ciclo de vida pertenece a la sesion.

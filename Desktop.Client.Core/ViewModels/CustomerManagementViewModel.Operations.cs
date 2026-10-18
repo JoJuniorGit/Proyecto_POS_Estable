@@ -21,6 +21,7 @@ public partial class CustomerManagementViewModel
         Phone = string.Empty;
         CreditLimitText = "0.00";
         IsActive = true;
+        ClearCreditProfileFields();
     }
 
     [RelayCommand]

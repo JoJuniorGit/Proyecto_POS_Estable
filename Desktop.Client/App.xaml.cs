@@ -275,6 +275,9 @@ public partial class App : Application
 
         builder.Services.AddSingleton<PendingPickupsViewModel>();
 
+        // T4 (F3): cartera CxC, abonos y estado de cuenta (Admin/Manager/Cashier).
+        builder.Services.AddSingleton<CreditReceivablesViewModel>();
+
         builder.Services.AddSingleton<SettingsViewModel>();
         builder.Services.AddSingleton<ExchangeRateViewModel>();
 
