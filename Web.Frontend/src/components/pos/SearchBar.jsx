@@ -6,6 +6,29 @@ import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { useDebounce } from '../../hooks/useDebounce';
 import { shouldRefetchOnRateChange } from '../../utils/formatters';
 
+/**
+ * 8.186-T7 (S1, refactor H3): decisión del ÚNICO efecto de búsqueda para un commit de React.
+ * El efecto corre una vez por commit cuando cambia [exchangeRate, debouncedQuery, categoryId];
+ * esta función fusiona los dos efectos de 8.186-T2 en UNA acción: 'clear' sin búsqueda activa,
+ * 'skip' cuando el cambio no amerita petición (transición inicial 0 → tasa o repeticiones, vía
+ * shouldRefetchOnRateChange) y 'fetch' cuando cambió la consulta/categoría o la tasa real.
+ * Tasa y consulta en el mismo commit producen un solo 'fetch' (elimina la duplicación H3).
+ * @param {{rate: number, query: string, categoryId: (number|string|undefined)}} previousTrigger
+ * @param {{rate: number, query: string, categoryId: (number|string|undefined)}} nextTrigger
+ * @returns {'clear'|'skip'|'fetch'}
+ */
+export function resolveSuggestionFetchMode(previousTrigger, nextTrigger) {
+  const previous = previousTrigger || {};
+  const next = nextTrigger || {};
+  if (!String(next.query || '').trim()) return 'clear';
+
+  const queryOrCategoryChanged =
+    previous.query !== next.query || previous.categoryId !== next.categoryId;
+  if (queryOrCategoryChanged) return 'fetch';
+
+  return shouldRefetchOnRateChange(previous.rate, next.rate) ? 'fetch' : 'skip';
+}
+
 const SearchBar = forwardRef(function SearchBar({ onSelectProduct, categoryId }, ref) {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -17,34 +40,38 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct, categoryId },
 
   const debouncedQuery = useDebounce(query, 300);
 
-  // 8.186-T2 (S1): la tasa vigente llega por SignalR; al cambiar, la búsqueda activa se relanza
-  // para que el servidor reproyecte el efectivo. La transición inicial 0 → tasa no refetchea (el
-  // fetch de montaje ya usó la tasa del servidor) y los valores repetidos no disparan loops.
-  const previousRateRef = useRef(exchangeRate);
-  const rateFetchRef = useRef(null);
-  useEffect(() => {
-    const previousRate = previousRateRef.current;
-    previousRateRef.current = exchangeRate;
+  // 8.186-T7 (S1, H3): UN solo camino de fetch de sugerencias. El efecto corre una vez por commit
+  // cuando cambia [exchangeRate, debouncedQuery, categoryId] y `resolveSuggestionFetchMode` decide:
+  // consulta/categoría cambiadas → fetch; tasa real distinta (SignalR) → refetch para reproyectar el
+  // efectivo; transición inicial 0 → tasa o repeticiones → skip (el fetch ya usó la proyección del
+  // servidor); sin consulta activa → clear. Tasa y consulta en el mismo commit → un único fetch.
+  const previousTriggerRef = useRef({ rate: exchangeRate, query: debouncedQuery, categoryId });
+  const fetchControllerRef = useRef(null);
 
-    if (!shouldRefetchOnRateChange(previousRate, exchangeRate)) {
-      // La consulta cambió (el efecto principal ya refetchea) o la tasa no cambió: descarta el
-      // refetch de tasa en vuelo de OTRA consulta para no pisar resultados frescos.
-      if (rateFetchRef.current && rateFetchRef.current.queryText !== debouncedQuery) {
-        rateFetchRef.current.controller.abort();
-        rateFetchRef.current = null;
-      }
+  useEffect(() => {
+    const previousTrigger = previousTriggerRef.current;
+    const nextTrigger = { rate: exchangeRate, query: debouncedQuery, categoryId };
+    previousTriggerRef.current = nextTrigger;
+
+    const mode = resolveSuggestionFetchMode(previousTrigger, nextTrigger);
+
+    if (mode === 'clear') {
+      fetchControllerRef.current?.abort();
+      fetchControllerRef.current = null;
+      setSuggestions([]);
+      setIsOpen(false);
+      setLoading(false);
       return;
     }
+    if (mode === 'skip') return;
 
-    const queryText = debouncedQuery;
-    if (!queryText.trim()) return;
-
-    rateFetchRef.current?.controller.abort();
+    // Cada nuevo disparo aborta la petición anterior; sólo la petición vigente cierra el loading.
+    fetchControllerRef.current?.abort();
     const controller = new AbortController();
-    rateFetchRef.current = { controller, queryText };
+    fetchControllerRef.current = controller;
     setLoading(true);
 
-    getProductSuggestions(queryText, controller.signal, categoryId)
+    getProductSuggestions(debouncedQuery, controller.signal, categoryId)
       .then((results) => {
         if (controller.signal.aborted) return;
         setSuggestions(results || []);
@@ -53,6 +80,7 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct, categoryId },
       .catch((err) => {
         if (err.name !== 'AbortError') {
           console.error('[SearchBar] Error en búsqueda:', err);
+          setSuggestions([]);
         }
       })
       .finally(() => {
@@ -60,8 +88,11 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct, categoryId },
       });
   }, [exchangeRate, debouncedQuery, categoryId]);
 
-  // El refetch por tasa se aborta al desmontar (mismo patrón AbortController usado arriba).
-  useEffect(() => () => rateFetchRef.current?.controller.abort(), []);
+  // El fetch en vuelo se aborta al desmontar (abortar sin petición es no-op, StrictMode-safe).
+  useEffect(() => () => {
+    fetchControllerRef.current?.abort();
+    fetchControllerRef.current = null;
+  }, []);
 
   // Permite que la página POS limpie el buscador o le dé foco con F2.
   useImperativeHandle(ref, () => ({
@@ -78,37 +109,6 @@ const SearchBar = forwardRef(function SearchBar({ onSelectProduct, categoryId },
       setIsOpen(false);
     },
   }));
-
-  // Cancelar peticiones fetch en vuelo al cambiar la búsqueda debounced o la categoría
-  useEffect(() => {
-    if (!debouncedQuery.trim()) {
-      setSuggestions([]);
-      setIsOpen(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    setLoading(true);
-
-    getProductSuggestions(debouncedQuery, controller.signal, categoryId)
-      .then((results) => {
-        setSuggestions(results || []);
-        setIsOpen(true);
-      })
-      .catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.error('[SearchBar] Error en búsqueda:', err);
-          setSuggestions([]);
-        }
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-
-    return () => {
-      controller.abort();
-    };
-  }, [debouncedQuery, categoryId]);
 
   // Handle outside click to close dropdown
   useEffect(() => {

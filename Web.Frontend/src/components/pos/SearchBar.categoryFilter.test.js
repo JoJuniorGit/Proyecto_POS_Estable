@@ -85,8 +85,12 @@ describe('POS search — categoría en sugerencias (8.179-T3, S4)', () => {
       'las sugerencias deben viajar con la categoría activa'
     );
     assert.ok(
-      searchBarSource.includes('}, [debouncedQuery, categoryId]);'),
-      'categoryId debe estar en las dependencias del efecto de búsqueda'
+      searchBarSource.includes('}, [exchangeRate, debouncedQuery, categoryId]);'),
+      'categoryId debe estar en las dependencias del ÚNICO efecto de búsqueda (8.186-T7)'
+    );
+    assert.ok(
+      searchBarSource.includes('previous.categoryId !== next.categoryId'),
+      'la decisión del efecto debe refetchear cuando cambia la categoría'
     );
   });
 
