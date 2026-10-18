@@ -23,6 +23,7 @@ const CatalogPage = lazy(() => import('./pages/CatalogPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
 const PendingOrdersPage = lazy(() => import('./pages/PendingOrdersPage'));
 const PendingPickupsPage = lazy(() => import('./pages/PendingPickupsPage'));
+const CreditReceivablesPage = lazy(() => import('./pages/CreditReceivablesPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const RegisterClosePage = lazy(() => import('./pages/RegisterClosePage'));
 const StockCountPage = lazy(() => import('./pages/StockCountPage'));
@@ -183,6 +184,8 @@ function MainApp() {
         return <PendingOrdersPage onNavigate={handleNavigate} />;
       case 'pickups':
         return <PendingPickupsPage />;
+      case 'credit':
+        return <CreditReceivablesPage />;
       case 'register':
         return <RegisterPage />;
       case 'closing':

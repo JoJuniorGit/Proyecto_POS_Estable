@@ -1,1 +1,0 @@
-import{j as e,n as t,t as n,w as r}from"./AccessDenied-Fsk6tsc0.js";var i=e();function a({view:e,message:a,children:o}){let{user:s}=r();return t(s?.role,e)?o:(0,i.jsx)(n,{message:a})}export{a as t};

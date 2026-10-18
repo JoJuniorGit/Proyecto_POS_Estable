@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import { getCustomers, createCustomer } from '../../services/customerApi';
+import CreditProfilePanel from '../credit/CreditProfilePanel';
+import { useAuth } from '../../context/AuthContext';
+import { normalizeRole } from '../../navigation/roleViews';
 import useDebounce from '../../hooks/useDebounce';
 import { Search, UserPlus, AlertCircle, Check, CheckCircle2 } from 'lucide-react';
 import './CustomerModal.css';
+import '../credit/credit.css';
 
 const VALID_RIF_PREFIXES = ['V', 'E', 'J', 'G', 'P'];
 const VALID_PHONE_PREFIXES = [
@@ -21,6 +25,11 @@ export default function CustomerModal({
   const [loading, setLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [error, setError] = useState(null);
+
+  // T5 (S1/S4): el perfil crediticio solo lo editan Admin/Manager; el cajero lo ve en lectura.
+  const { user } = useAuth();
+  const normalizedRole = normalizeRole(user?.role);
+  const canEditCreditProfile = normalizedRole === 'Admin' || normalizedRole === 'Manager';
 
   // Form for new customer
   const [cedulaOrRif, setCedulaOrRif] = useState('');
@@ -341,6 +350,15 @@ export default function CustomerModal({
 
         )}
       </div>
+
+      {/* T5 (S1): perfil crediticio del cliente seleccionado (lectura para caja, edición Admin/Manager). */}
+      {tab === 'search' && selectedCustomer && (
+        <CreditProfilePanel
+          key={selectedCustomer.id}
+          customer={selectedCustomer}
+          canEdit={canEditCreditProfile}
+        />
+      )}
 
       {/* Footer Buttons - Exclusivo para la pestaña de Búsqueda */}
       {tab === 'search' && (

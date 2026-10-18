@@ -4,6 +4,7 @@ import {
   History,
   Clock,
   PackageCheck,
+  HandCoins,
   Landmark,
   ClipboardCheck,
   ClipboardList,
@@ -23,6 +24,7 @@ const NAV_SECTIONS = [
       { id: 'pos', label: 'Punto de Venta', icon: ShoppingCart },
       { id: 'pending', label: 'Cuentas Abiertas', icon: Clock },
       { id: 'pickups', label: 'Retiros Pendientes', icon: PackageCheck },
+      { id: 'credit', label: 'Cuentas por Cobrar', icon: HandCoins },
     ],
   },
   {
