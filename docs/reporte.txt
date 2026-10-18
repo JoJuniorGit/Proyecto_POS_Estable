@@ -16148,3 +16148,39 @@ D1. Residuales aceptados: carril Postgres real no ejercitado (locks, nextval, mi
     sesion); rollover abre con OpeningBalanceUsd=0; acentos del PDF escapados; auto-autorizacion de
     Admin/Manager figura con su propio nombre; sin E2E WPF especifico de caja chica.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XXI) - CIERRE DE HALLAZGOS H1-H4 DE CAJA CHICA (8.188) - 2026-10-18
+================================================================================
+Cierre de los hallazgos no bloqueantes de la verificacion T6 del Paso 13.
+
+A. IMPLEMENTACION
+A1. H1 (Medium): la rama "Manager > umbral requiere Admin" y la anulacion de Manager quedaron
+    operativas: en `AuthorizationService.CreateAsync` el cortocircuito ElevationNotRequired pasa a
+    ser explicito por accion (solo Manager + PettyCashExpense puede emitir la solicitud Pending), y
+    la resolucion es action-specific (solicitud PettyCash creada por Manager: solo Admin; creada por
+    Cashier: Manager o Admin; Admin resuelve cualquiera; cualquier otro rol falla cerrado sin
+    reclamar la fila). ManualPriceOverride/CreditOverLimit conservan su semantica. Commit `dfd4679`.
+A2. H2 (Low): el Down de `20261018165357` suelta primero la FK (guard `pg_constraint`), el indice y
+    la columna de `CashTransactions.PettyCashExpenseId`, y recien despues dropea la tabla/secuencia;
+    Up intacto; validado tambien con el script de downgrade real del migrador. Commit `39f16fc`.
+A3. H3 (Low): `PettyCashExpense.CancellationAuthorizedByUserId` (FK Restrict + indice, migracion
+    `20261018222455`) vincula al supervisor aprobador de la anulacion cuando es distinto del
+    ejecutor; el vale imprime "Autorizo anulacion: {nombre}" solo cuando existe. Commit `059cfe3`.
+A4. H4 (Low): `CashTransactions.AmountUsd` pasa a numeric(18,4) (migracion `20261018222527` con
+    guard data_type/precision/scale; Down revierte a 18,2 con guard) y la anotacion de la entidad
+    quedo alineada; el bucket fisico USD conserva el 4to decimal. Commit `059cfe3`.
+
+B. EVIDENCIA
+B1. RED->GREEN: H1 149/149 (creacion Manager Pending, resolve Admin-only, E2E registro/anulacion,
+    regresiones Manual/Credit); H2 15/15 (orden del Down + script de downgrade); H3+H4 61/61 + 109/109.
+B2. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+B3. Suite completa: CommandCenter.Tests **3426/3426**; `dotnet ef has-pending-model-changes` limpio.
+B4. Rango: commits `dfd4679` (H1), `39f16fc` (H2), `059cfe3` (H3+H4).
+
+C. NOTA
+C1. Sigue pendiente el carril Postgres real (locks, nextval/ALTER TYPE/Down y precision 18,4 se
+    validaron por script/modelo/drift, no contra Npgsql vivo). Residuales restantes del ANEXO XX D1
+    sin cambios (cierre diario sin USD, web sin token, label crudo en supervision, OPEX ventana
+    borde, rollover USD 0, acentos PDF, auto-autorizacion, sin E2E especifico de caja chica).
+================================================================================
