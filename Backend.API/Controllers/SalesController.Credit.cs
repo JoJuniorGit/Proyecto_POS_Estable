@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Backend.API.Attributes;
+using Backend.API.Services;
 using Core.DTOs;
 using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
@@ -21,6 +22,10 @@ public partial class SalesController
     /// de contado (pago persistido + caja) y el remanente efectivo no cubierto se financia como
     /// Cuenta por Cobrar sin ingresar a la gaveta. Exige cliente registrado y elegible; los
     /// bloqueos de solvencia en español se resuelven en el middleware de dominio (400/409).
+    /// T3b1 (S4): cuando el ÚNICO bloqueo es el sobregiro de cupo, responde 403 con
+    /// authorizationRequired/authorizationAction=CreditOverLimit + contexto (mismo contrato del
+    /// gate de precio manual); con un X-Authorization-Token vigente para el contexto exacto, lo
+    /// consume (single-use) y reintenta habilitando SOLO la excepción de sobregiro.
     /// </summary>
     [RequireSecurityStampValidation]
     [Authorize(Roles = "Admin,Manager,Cashier")]
@@ -44,11 +49,33 @@ public partial class SalesController
             : request.CashierId;
         request.CashierId = effectiveCashierId;
 
+        try
+        {
+            return await CompleteCreditSaleCoreAsync(id, request, creditOverLimitAuthorized: false, cancellationToken);
+        }
+        catch (CreditOverLimitRequiresAuthorizationException signal)
+        {
+            return await ResolveCreditOverLimitAsync(id, request, signal, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// T3b1 (S4): intento de cierre con la bandera de autorización resuelta. La ruta regular del
+    /// endpoint siempre llega con false (el sobregiro debe señalarse); el reintento tras consumir
+    /// el token llega con true y el servicio vuelve a validar el resto de los bloqueos.
+    /// </summary>
+    private async Task<ActionResult> CompleteCreditSaleCoreAsync(
+        int saleId,
+        CreditSaleRequest request,
+        bool creditOverLimitAuthorized,
+        CancellationToken cancellationToken)
+    {
         int invoiceNumber = await _salesService.CompleteCreditSaleAsync(
-            id,
+            saleId,
             request,
             GetActorUserId(),
-            HttpContext?.RequestAborted ?? default);
+            creditOverLimitAuthorized,
+            cancellationToken);
 
         if (Response?.Headers != null)
         {
@@ -56,6 +83,74 @@ public partial class SalesController
         }
 
         return Ok(invoiceNumber);
+    }
+
+    /// <summary>
+    /// T3b1 (S4): traduce la señal de sobregiro al canal de autorizaciones. Sin token (o con token
+    /// inválido/ajeno/ya usado/contexto distinto) responde el 403 del contrato de acciones
+    /// protegidas con el contexto exacto —los mismos valores que el hash liga al token—; con token
+    /// vigente lo consume y reintenta el cierre con la única excepción habilitada. Los bloqueos no
+    /// autorizables no llegan aquí: el servicio no emite la señal para ellos.
+    /// </summary>
+    private async Task<ActionResult> ResolveCreditOverLimitAsync(
+        int saleId,
+        CreditSaleRequest request,
+        CreditOverLimitRequiresAuthorizationException signal,
+        CancellationToken cancellationToken)
+    {
+        string? authorizationToken = Request.Headers.TryGetValue(AuthorizationTokenHeader, out var headerValues)
+            ? headerValues.ToString()
+            : null;
+
+        if (!string.IsNullOrWhiteSpace(authorizationToken) && _authorizationCoordinator is not null)
+        {
+            var operation = new CreditOverLimitContext
+            {
+                CustomerId = signal.CustomerId,
+                SaleId = signal.SaleId,
+                FinancedUSD = signal.FinancedUSD,
+                AvailableCreditUSD = signal.AvailableCreditUSD
+            };
+
+            var consume = await _authorizationCoordinator.ConsumeCreditOverLimitAsync(
+                authorizationToken,
+                saleId,
+                GetActorUserId(),
+                operation,
+                cancellationToken);
+
+            if (consume.Status == AuthorizationConsumeStatus.Consumed)
+            {
+                try
+                {
+                    return await CompleteCreditSaleCoreAsync(saleId, request, creditOverLimitAuthorized: true, cancellationToken);
+                }
+                catch (CreditOverLimitRequiresAuthorizationException)
+                {
+                    // El flag habilita únicamente el sobregiro: si el contexto cambió entre el
+                    // intento y el reintento, el cierre no se completa (token ya consumido) y la
+                    // cajera debe generar una solicitud nueva, igual que el gate de precio manual.
+                }
+            }
+        }
+
+        // Contexto exacto del 403: el hub debe reenviarlo (customerId, financedUSD,
+        // availableCreditUSD) para que la solicitud quede ligada al mismo hash del token.
+        var extensions = new System.Collections.Generic.Dictionary<string, object?>
+        {
+            ["authorizationRequired"] = true,
+            ["authorizationAction"] = "CreditOverLimit",
+            ["authorizationContext"] = new System.Collections.Generic.Dictionary<string, object?>
+            {
+                ["saleId"] = signal.SaleId,
+                ["customerId"] = signal.CustomerId,
+                ["customerName"] = signal.CustomerName,
+                ["financedUSD"] = signal.FinancedUSD,
+                ["availableCreditUSD"] = signal.AvailableCreditUSD
+            }
+        };
+
+        return this.ApiForbidden($"{signal.Message} Se requiere autorización de un Administrador o Supervisor.", extensions);
     }
 
     /// <summary>

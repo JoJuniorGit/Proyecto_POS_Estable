@@ -56,10 +56,53 @@ public class CreditEligibilityResultDto
     /// <summary>Motivos de bloqueo en español (vacío cuando IsEligible es true).</summary>
     public System.Collections.Generic.List<string> Blockers { get; set; } = new();
 
+    /// <summary>T3b1 (S4): nombre del cliente evaluado, para el contexto de presentación de la autorización.</summary>
+    public string? CustomerName { get; set; }
+
     public decimal RequestedAmountUSD { get; set; }
     public decimal CreditLimitUSD { get; set; }
     public decimal CurrentDebtUSD { get; set; }
     public decimal AvailableCreditUSD { get; set; }
+}
+
+/// <summary>
+/// T3b1 (F2b, S4): señal de dominio del cierre a crédito cuando el ÚNICO bloqueo de solvencia es
+/// el sobregiro de cupo (monto a financiar &gt; crédito disponible). El controlador la traduce al
+/// contrato 403 con authorizationAction=CreditOverLimit y el contexto exacto que el hub debe
+/// reproducir para solicitar la autorización; con un token vigente el cierre reintenta habilitando
+/// SOLO esta excepción. Los demás bloqueos (bloqueo manual, mora, deshabilitado, plazo inválido,
+/// cliente inactivo/inexistente) jamás producen esta señal ni se omiten con un token.
+/// Vive junto a los contratos de crédito (Core) porque cruza la frontera dominio → API.
+/// </summary>
+public sealed class CreditOverLimitRequiresAuthorizationException : InvalidOperationException
+{
+    public int SaleId { get; }
+
+    public int CustomerId { get; }
+
+    public string? CustomerName { get; }
+
+    /// <summary>Monto efectivo en USD que se pretende financiar (derivado del Bs.S efectivo / tasa de emisión).</summary>
+    public decimal FinancedUSD { get; }
+
+    /// <summary>Crédito disponible del cliente al momento del intento (puede ser negativo).</summary>
+    public decimal AvailableCreditUSD { get; }
+
+    public CreditOverLimitRequiresAuthorizationException(
+        int saleId,
+        int customerId,
+        string? customerName,
+        decimal financedUSD,
+        decimal availableCreditUSD,
+        string message)
+        : base(message)
+    {
+        SaleId = saleId;
+        CustomerId = customerId;
+        CustomerName = customerName;
+        FinancedUSD = financedUSD;
+        AvailableCreditUSD = availableCreditUSD;
+    }
 }
 
 /// <summary>

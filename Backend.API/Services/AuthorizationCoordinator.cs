@@ -56,9 +56,23 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(requesterName);
 
+        // T3b1 (F2b, S4): el contrato transporta la accion; el sobregiro de credito tiene su
+        // propio contexto canonico y jamas comparte payload con el override manual de precios.
+        if (request.ActionType == AuthorizationActionType.CreditOverLimit)
+        {
+            return await CreateCreditOverLimitAsync(request, requesterUserId, requesterName, requesterRole, cancellationToken);
+        }
+
+        if (request.ActionType != AuthorizationActionType.ManualPriceOverride)
+        {
+            // SaleCancellation u otra accion no habilitada por este contrato: el servicio la
+            // aceptaria por estar definida en el enum, asi que se rechaza antes de persistir.
+            return new CreateAuthorizationResult(CreateAuthorizationOutcome.UnknownAction, Message: AuthorizationMessages.UnknownAction);
+        }
+
         var operation = new ManualPriceOverrideContext
         {
-            ProductId = request.ProductId,
+            ProductId = request.ProductId ?? 0,
             Quantity = request.Quantity,
             CustomUnitPriceUsd = request.CustomUnitPriceUsd,
             CustomUnitPriceLocal = request.CustomUnitPriceLocal
@@ -72,6 +86,57 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
             RequestedByName = requesterName,
             RequesterRole = requesterRole,
             ActionType = AuthorizationActionType.ManualPriceOverride,
+            SaleId = request.SaleId,
+            ContextJson = payload.ContextJson,
+            ContextHash = payload.ContextHash,
+            Terminal = request.Terminal
+        };
+
+        var result = await _authorizationService.CreateAsync(command, cancellationToken);
+
+        if (result.Outcome == CreateAuthorizationOutcome.Created && result.Request is not null)
+        {
+            await _notifier.NotifyRequestCreatedAsync(result.Request, cancellationToken);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// T3b1 (F2b, S4): creacion del canal de sobregiro. La misma maquina de estados/TTL/notifier
+    /// del override manual; cambia solo la accion y el contexto canonico de credito. SignalR no
+    /// ejecuta data annotations, por eso la completitud del contexto se valida aqui (fail-closed).
+    /// </summary>
+    private async Task<CreateAuthorizationResult> CreateCreditOverLimitAsync(
+        RequestAuthorizationContract request,
+        int requesterUserId,
+        string requesterName,
+        UserRole requesterRole,
+        CancellationToken cancellationToken)
+    {
+        if (request.CustomerId is null || request.FinancedUSD is null || request.AvailableCreditUSD is null)
+        {
+            return new CreateAuthorizationResult(
+                CreateAuthorizationOutcome.UnknownAction,
+                Message: "La solicitud de sobregiro de crédito requiere cliente, monto a financiar y crédito disponible.");
+        }
+
+        var operation = new CreditOverLimitContext
+        {
+            CustomerId = request.CustomerId.Value,
+            SaleId = request.SaleId,
+            FinancedUSD = request.FinancedUSD.Value,
+            AvailableCreditUSD = request.AvailableCreditUSD.Value
+        };
+
+        var payload = AuthorizationContextCanonicalizer.BuildCreditOverLimitPayload(operation, request.CustomerName);
+
+        var command = new CreateAuthorizationRequestDto
+        {
+            RequestedByUserId = requesterUserId,
+            RequestedByName = requesterName,
+            RequesterRole = requesterRole,
+            ActionType = AuthorizationActionType.CreditOverLimit,
             SaleId = request.SaleId,
             ContextJson = payload.ContextJson,
             ContextHash = payload.ContextHash,
@@ -168,6 +233,41 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
             claims.RequestId,
             actingUserId.Value,
             AuthorizationActionType.ManualPriceOverride,
+            saleId,
+            contextHash,
+            cancellationToken);
+
+        return new AuthorizationConsumeResult(MapConsumeOutcome(result.Outcome), result.Message);
+    }
+
+    public async Task<AuthorizationConsumeResult> ConsumeCreditOverLimitAsync(
+        string rawToken,
+        int saleId,
+        int? actingUserId,
+        CreditOverLimitContext operation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+
+        var claims = _tokenService.Validate(rawToken);
+        if (claims is null)
+        {
+            return new AuthorizationConsumeResult(AuthorizationConsumeStatus.InvalidToken, "El token de autorización no es válido o ya expiró.");
+        }
+
+        if (actingUserId is null)
+        {
+            return new AuthorizationConsumeResult(AuthorizationConsumeStatus.WrongUser);
+        }
+
+        // Mismo binding del override manual: la venta y el usuario se validan contra la peticion
+        // REAL (derivarlos de las claims del token los volveria circulares).
+        var contextHash = AuthorizationContextCanonicalizer.ComputeCreditOverLimitHash(operation);
+
+        var result = await _authorizationService.TryConsumeAsync(
+            claims.RequestId,
+            actingUserId.Value,
+            AuthorizationActionType.CreditOverLimit,
             saleId,
             contextHash,
             cancellationToken);

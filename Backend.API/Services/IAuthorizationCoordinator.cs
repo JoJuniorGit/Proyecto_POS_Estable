@@ -42,6 +42,18 @@ public interface IAuthorizationCoordinator
         ManualPriceOverrideContext operation,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// T3b1 (F2b, S4): consumo single-use del token de la excepción de sobregiro (accion
+    /// CreditOverLimit). Espeja <see cref="ConsumeAsync"/> pero liga el token al contexto de
+    /// crédito (cliente, venta, monto financiado, crédito disponible) en lugar del producto.
+    /// </summary>
+    Task<AuthorizationConsumeResult> ConsumeCreditOverLimitAsync(
+        string rawToken,
+        int saleId,
+        int? actingUserId,
+        CreditOverLimitContext operation,
+        CancellationToken cancellationToken = default);
+
     Task<int> ExpireStaleAsync(CancellationToken cancellationToken = default);
 
     Task<AuthorizationRequestDto?> GetAsync(

@@ -20,11 +20,14 @@ public partial class SalesService
     /// lo cobrado genera pagos/caja como en el cierre regular y el remanente efectivo en Bs.S por
     /// encima del polvo decimal se financia como Cuenta por Cobrar. La factura se emite al
     /// completar, el stock se descuenta de inmediato y el monto financiado no ingresa a la gaveta.
+    /// T3b1 (S4): <paramref name="creditOverLimitAuthorized"/> solo lo habilita el controlador
+    /// después de consumir el token CreditOverLimit para el contexto exacto de esta venta.
     /// </summary>
     public async Task<int> CompleteCreditSaleAsync(
         int saleId,
         CreditSaleRequest request,
         int? actingUserId = null,
+        bool creditOverLimitAuthorized = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -41,7 +44,8 @@ public partial class SalesService
             cancellationToken,
             actingUserId,
             allowFinancedRemainder: true,
-            idempotentRequestPath: null);
+            idempotentRequestPath: null,
+            creditOverLimitAuthorized: creditOverLimitAuthorized);
     }
 
     /// <summary>
@@ -72,6 +76,7 @@ public partial class SalesService
         Sale sale,
         decimal financedBsS,
         decimal financedUsd,
+        bool creditOverLimitAuthorized,
         CancellationToken cancellationToken)
     {
         // Fail-closed: sin el servicio de crédito no hay evaluación de solvencia posible.
@@ -86,7 +91,28 @@ public partial class SalesService
         var eligibility = await _creditService.EvaluateEligibilityAsync(customerId, financedUsd, cancellationToken);
         if (!eligibility.IsEligible)
         {
-            throw new InvalidOperationException(string.Join(" ", eligibility.Blockers));
+            // T3b1 (S4): el sobregiro de cupo es la ÚNICA excepción autorizable por supervisor y lo
+            // es solo cuando es el ÚNICO bloqueo (un bloqueo acumulado con mora, bloqueo manual o
+            // cualquier otro defecto jamas se convierte en señal autorizable).
+            bool isOverLimitOnlyBlocker = eligibility.Blockers.Count == 1
+                && eligibility.RequestedAmountUSD > eligibility.AvailableCreditUSD;
+
+            if (isOverLimitOnlyBlocker && !creditOverLimitAuthorized)
+            {
+                throw new CreditOverLimitRequiresAuthorizationException(
+                    saleId: sale.Id,
+                    customerId: customerId,
+                    customerName: eligibility.CustomerName,
+                    financedUSD: financedUsd,
+                    availableCreditUSD: eligibility.AvailableCreditUSD,
+                    message: string.Join(" ", eligibility.Blockers));
+            }
+
+            if (!isOverLimitOnlyBlocker)
+            {
+                // Bloqueos no autorizables: ni el flag del token los omite.
+                throw new InvalidOperationException(string.Join(" ", eligibility.Blockers));
+            }
         }
 
         // Defensivo (S5): la obligación es única por venta (IX_Receivables_SaleId). El reintento

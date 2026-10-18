@@ -280,17 +280,23 @@ public class CreditSaleCheckoutTests
     }
 
     [Fact]
-    public async Task CompleteCreditSale_OverLimit_IsRejected()
+    public async Task CompleteCreditSale_OverLimit_RequiresSupervisorAuthorization()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
         var customer = await SeedCustomerAsync(context, creditLimitUsd: 50m);
         var sale = await SeedPendingSaleAsync(context, customer.Id, unitPriceUsd: 100m);
         var (service, _, _) = CreateHarness(context);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        // T3b1 (S4): el sobregiro de cupo ya no es un rechazo genérico; es la señal de dominio que
+        // exige autorización de supervisor con el contexto exacto del cierre (T3b1 la consume).
+        var ex = await Assert.ThrowsAsync<CreditOverLimitRequiresAuthorizationException>(() =>
             service.CompleteCreditSaleAsync(sale.Id, new CreditSaleRequest { ExchangeRate = 50m }));
 
         Assert.Contains("Crédito insuficiente", ex.Message);
+        Assert.Equal(sale.Id, ex.SaleId);
+        Assert.Equal(customer.Id, ex.CustomerId);
+        Assert.Equal(100.0000m, ex.FinancedUSD);
+        Assert.Equal(50.0000m, ex.AvailableCreditUSD);
         Assert.Equal(0, await context.Receivables.AsNoTracking().CountAsync());
     }
 

@@ -27,8 +27,14 @@ public interface ISalesService
     /// polvo decimal se financia como Cuenta por Cobrar y no toca la gaveta. La factura se emite al
     /// completar, el stock se descuenta de inmediato y el reintento devuelve la misma factura.
     /// Devuelve el número de factura (mismo contrato del cierre regular).
+    /// T3b1 (S4): cuando el ÚNICO bloqueo de solvencia es el sobregiro de cupo, el servicio lanza
+    /// <see cref="Core.DTOs.CreditOverLimitRequiresAuthorizationException"/> con el contexto exacto
+    /// (solo si <paramref name="creditOverLimitAuthorized"/> es false). Con el flag en true —ruta
+    /// exclusiva del token ya consumido por el controlador— el sobregiro deja de bloquear, pero
+    /// bloqueo manual, mora, línea deshabilitada, plazo inválido y cliente inexistente/inactivo
+    /// jamas se omiten.
     /// </summary>
-    Task<int> CompleteCreditSaleAsync(int saleId, CreditSaleRequest request, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<int> CompleteCreditSaleAsync(int saleId, CreditSaleRequest request, int? actingUserId = null, bool creditOverLimitAuthorized = false, System.Threading.CancellationToken cancellationToken = default);
 
     /// <summary>
     /// T3a (F2b, S3/S6): registra un abono CxC contra la cartera del cliente (FIFO por

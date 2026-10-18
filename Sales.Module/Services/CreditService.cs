@@ -94,6 +94,7 @@ public class CreditService : ICreditService
         }
 
         result.CreditLimitUSD = customer.CreditLimitUSD;
+        result.CustomerName = customer.Name;
 
         if (!customer.IsActive)
         {

@@ -48,7 +48,8 @@ public partial class SalesService
             cancellationToken,
             actingUserId,
             allowFinancedRemainder: false,
-            idempotentRequestPath: null);
+            idempotentRequestPath: null,
+            creditOverLimitAuthorized: false);
     }
 
     /// <summary>
@@ -70,7 +71,10 @@ public partial class SalesService
         System.Threading.CancellationToken cancellationToken,
         int? actingUserId,
         bool allowFinancedRemainder,
-        string? idempotentRequestPath)
+        string? idempotentRequestPath,
+        // T3b1 (S4): exclusivo del cierre a crédito; false preserva byte a byte la ruta regular y
+        // la primera pasada del cierre a crédito (que debe señalar el sobregiro sin omitirlo).
+        bool creditOverLimitAuthorized = false)
     {
         var correlationId = Guid.NewGuid().ToString("N");
         _logger?.LogInformation("[TX_START] CorrelationId={CorrelationId}, SaleId={SaleId}, IsolationLevel=ReadCommitted", correlationId, saleId);
@@ -380,7 +384,7 @@ public partial class SalesService
             // la obligación y la venta entran en el mismo SaveChanges/transacción (factura al emitir).
             if (hasFinancedRemainder)
             {
-                await CreateCreditReceivableAsync(sale, financedBsS, financedUsd, cancellationToken);
+                await CreateCreditReceivableAsync(sale, financedBsS, financedUsd, creditOverLimitAuthorized, cancellationToken);
             }
 
             // Synchronous Stock Deduction inside Transaction (H-SAL-2 / H-INV-1 / A1)

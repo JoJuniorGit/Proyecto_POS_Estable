@@ -16,6 +16,13 @@ public sealed record SaleReceiptData(SaleReceiptContext Context, int? CashierId,
 /// </summary>
 public sealed record CreditPaymentReceiptData(CreditPaymentReceiptContext Context, int? ReceivedByUserId);
 
+/// <summary>
+/// T3b1 (F2b, S5): comprobante de venta a crédito + cajero firmante de la venta. Venta sin
+/// obligación CxC asociada ⇒ <see cref="HasReceivable"/> false y <see cref="Context"/> null
+/// (el controlador responde 400); venta inexistente ⇒ el servicio devuelve null (404).
+/// </summary>
+public sealed record CreditSaleReceiptData(CreditSaleReceiptContext? Context, int? CashierId, bool HasReceivable);
+
 public interface ISalesReceiptService
 {
     Task<SaleReceiptData?> GetReceiptDataAsync(int saleId, CancellationToken cancellationToken = default);
@@ -26,6 +33,12 @@ public interface ISalesReceiptService
     /// del día (≤ 0 ⇒ el contexto conserva la tasa del abono para la proyección Bs.S).
     /// </summary>
     Task<CreditPaymentReceiptData?> GetCreditPaymentReceiptDataAsync(int paymentId, decimal todayRate, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T3b1 (F2b, S5): carga la venta completada (ítems, pagos, snapshot de cliente) junto con su
+    /// obligación CxC para armar el comprobante de venta a crédito. Venta inexistente → null.
+    /// </summary>
+    Task<CreditSaleReceiptData?> GetCreditSaleReceiptDataAsync(int saleId, CancellationToken cancellationToken = default);
 }
 
 public class SalesReceiptService : ISalesReceiptService
@@ -86,5 +99,28 @@ public class SalesReceiptService : ISalesReceiptService
 
         var context = CreditPaymentReceiptContext.CreateFrom(payment, currentDebtUsd, todayRate, laterAllocations);
         return new CreditPaymentReceiptData(context, payment.ReceivedByUserId);
+    }
+
+    public async Task<CreditSaleReceiptData?> GetCreditSaleReceiptDataAsync(int saleId, CancellationToken cancellationToken = default)
+    {
+        var sale = await _db.Sales
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(s => s.Items)
+            .Include(s => s.Payments).ThenInclude(p => p.PaymentMethod)
+            .FirstOrDefaultAsync(s => s.Id == saleId, cancellationToken);
+
+        if (sale == null) return null;
+
+        // T3b1 (S5): el comprobante solo existe para ventas con obligación CxC (factura a crédito);
+        // una venta de contado completada no tiene documento de entrega a crédito.
+        var receivable = await _db.Receivables
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.SaleId == saleId, cancellationToken);
+
+        return new CreditSaleReceiptData(
+            receivable == null ? null : CreditSaleReceiptContext.CreateFrom(sale, receivable),
+            sale.CashierId,
+            receivable != null);
     }
 }
