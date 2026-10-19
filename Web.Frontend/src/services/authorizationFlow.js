@@ -117,7 +117,8 @@ export const AUTHORIZATION_SETTLEMENTS = Object.freeze({
  * 8.151 (W2, R5/design D5): liquida el resultado que recibe el caller segun la fase alcanzada.
  * - rejection: { ok:false, outcome:'rejected', reason, resolvedByName } (acuse abierto)
  * - expired-dismissal: { ok:false, outcome:'expired' } (desestimar sin reintentar)
- * - manual-cancel: { ok:false, cancelled:true } (cancelacion desde la espera)
+ * - manual-cancel: { ok:false, cancelled:true } (cancelacion desde la espera; tambien cierra una
+ *   concesion granted/local cuya ejecucion fallo, con paridad WPF donde Cancelar sigue disponible)
  * Devuelve null cuando la fase no corresponde al trigger (sin liquidacion pendiente).
  */
 export function getAuthorizationSettlement(state, trigger) {
@@ -139,7 +140,9 @@ export function getAuthorizationSettlement(state, trigger) {
   }
 
   if (trigger === AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL
-    && state.phase === AUTHORIZATION_PHASES.WAITING) {
+    && (state.phase === AUTHORIZATION_PHASES.WAITING
+      || state.phase === AUTHORIZATION_PHASES.GRANTED
+      || state.phase === AUTHORIZATION_PHASES.LOCAL)) {
     return { ok: false, cancelled: true };
   }
 
@@ -165,4 +168,45 @@ export function getRemainingSeconds(expiresAt, now = Date.now()) {
 export function isAuthorizationExpired(expiresAt, now = Date.now()) {
   if (!expiresAt) return false;
   return getRemainingSeconds(expiresAt, now) <= 0;
+}
+
+// Residual 3 (8.188, S4): fallback REST del flujo de espera. Sin socket vivo el push de
+// resolucion nunca llega a la terminal solicitante; el sondeo del estado recupera la resolucion
+// (y el token del solicitante) sin depender del reconnect. 2s: latencia perceptible minima.
+export const AUTHORIZATION_STATUS_POLL_INTERVAL_MS = 2000;
+
+/**
+ * Poller inyectable del estado de la solicitud (GET /api/authorizations/{id}) mientras la espera
+ * esta viva y el socket del hub no esta conectado. El provider lo arranca/para segun la fase;
+ * con el socket vivo manda el push de SignalR y no se sondea.
+ */
+export function createAuthorizationStatusPoller({
+  intervalMs = AUTHORIZATION_STATUS_POLL_INTERVAL_MS,
+  isHubConnected,
+  recover,
+  setIntervalFn = setInterval,
+  clearIntervalFn = clearInterval,
+} = {}) {
+  if (typeof isHubConnected !== 'function' || typeof recover !== 'function') {
+    throw new Error('createAuthorizationStatusPoller requiere { isHubConnected, recover }.');
+  }
+
+  let timer = null;
+
+  return {
+    start() {
+      if (timer !== null) return;
+      timer = setIntervalFn(() => {
+        if (!isHubConnected()) recover();
+      }, intervalMs);
+    },
+    stop() {
+      if (timer === null) return;
+      clearIntervalFn(timer);
+      timer = null;
+    },
+    isRunning() {
+      return timer !== null;
+    },
+  };
 }

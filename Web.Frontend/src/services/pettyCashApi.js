@@ -7,18 +7,19 @@ import { api } from './api';
  * valoración bimonetaria, la liquidez por gaveta y la autorización jerárquica. Acá NO se recalcula
  * ninguna política ni snapshot: solo se transportan los datos y se parsea el 403 del contrato.
  *
- * Residual T5 (documentado): el 403 `authorizationAction=PettyCashExpense` no se reintenta a
- * ciegas. Esta terminal web no transporta el contexto de caja chica en el hub de autorizaciones
- * en esta fase, por lo que la autorización presencial/supervisora se completa desde una caja WPF.
+ * Residual 3 (8.188): el reintento autorizado con `X-Authorization-Token` y la misma
+ * Idempotency-Key lo compone `pettyCashAuthorization.js`; este cliente solo transporta el header.
  */
 
 export const PETTY_CASH_AUTHORIZATION_ACTION = 'PettyCashExpense';
 
-/** Mensaje único del gate web de autorización (misma limitación que el 403 de crédito). */
+/**
+ * Mensaje del fallback fail-closed: el 403 llegó marcado como autorización de caja chica pero sin
+ * contexto utilizable, por lo que no se puede crear la solicitud (contexto exacto == hash del token).
+ */
 export const PETTY_CASH_AUTHORIZATION_MESSAGE =
   'La operación de caja chica requiere autorización de un Administrador o Supervisor. ' +
-  'En esta fase, la autorización debe realizarse de forma presencial desde una caja WPF (escritorio); ' +
-  'esta terminal web no puede generar el token de autorización.';
+  'No se pudo iniciar la solicitud de autorización remota con el contexto recibido; reintente la operación.';
 
 export const PettyCashCurrency = Object.freeze({
   BsS: 0,
@@ -177,9 +178,9 @@ export function extractPettyCashAuthorizationContext(error) {
 }
 
 /**
- * Mensaje claro del gate web: autorización presencial/supervisora desde una caja WPF en esta fase.
- * Adjunta el contexto del 403 (sesión, categoría y montos duales) para que el operador sepa qué
- * operación quedó pendiente de autorización. Los formateadores son opcionales (fallback 2dp).
+ * Mensaje del fallback del gate de caja chica (contexto inutilizable o error del contrato): indica
+ * la autorización supervisora y adjunta el contexto del 403 (sesión, categoría y montos duales)
+ * para que el operador sepa qué operación quedó pendiente. Formateadores opcionales (fallback 2dp).
  */
 export function buildPettyCashAuthorizationMessage(error, formatters = {}) {
   const formatBsS = typeof formatters.formatBsS === 'function'

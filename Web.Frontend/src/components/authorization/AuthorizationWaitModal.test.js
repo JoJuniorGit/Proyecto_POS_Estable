@@ -46,6 +46,29 @@ describe('AuthorizationWaitModal (structural, SSR)', () => {
     assert.ok(!html.includes(AUTHORIZATION_STRINGS.rejected), 'waiting state must not show the rejection copy');
   });
 
+  it('1b. renders the petty cash context of the wait (session, category and dual amounts)', () => {
+    const html = render({
+      context: {
+        actionType: 4,
+        pettyCashSessionId: 42,
+        pettyCashCurrency: 1,
+        pettyCashAmountBsS: 1825,
+        pettyCashAmountUsd: 50,
+        pettyCashCategory: 2,
+        terminal: 'Caja-Web-01',
+      },
+    });
+
+    assert.match(html, /Esperando autorización remota\.\.\./);
+    assert.match(html, /Sesión/);
+    assert.match(html, /#42/);
+    assert.match(html, /Categoría/);
+    assert.match(html, /Mantenimiento y Reparaciones/);
+    assert.match(html, /Bs\.S 1825\.00/);
+    assert.match(html, /\$ 50\.00/);
+    assert.ok(!html.includes('Factura'), 'la caja chica no tiene venta asociada');
+  });
+
   it('2. opens the supervisor credential form and keeps the wait state on invalid credentials', () => {
     const html = render({ isLocalFormOpen: true, localError: AUTHORIZATION_STRINGS.invalidCredentials });
 

@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react';
 import Modal from '../ui/Modal';
 import { CircleX, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
 import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
+import { useAuthorization } from '../authorization/AuthorizationProvider';
 import {
-  buildPettyCashAuthorizationMessage,
   cancelPettyCashExpense,
   getPettyCashCategoryLabel,
-  isPettyCashAuthorizationError,
 } from '../../services/pettyCashApi';
+import {
+  getWebTerminalLabel,
+  submitPettyCashWithAuthorization,
+} from '../../services/pettyCashAuthorization';
 import {
   getPettyCashVoucherCode,
   requiresPettyCashCancellationAuthorization,
@@ -17,11 +20,11 @@ import './RegisterModals.css';
 import './PettyCashModals.css';
 
 /**
- * T5 (Paso 13 / 8.188, S5): anulación lógica de un gasto de caja chica.
- * Solo Admin anula directo con motivo obligatorio (el servidor genera la reversa compensatoria
- * con los snapshots congelados). Manager y Cashier requieren autorización supervisora y esta
- * terminal web no produce el token en esta fase: se informa el gate presencial (caja WPF) en vez
- * de reintentar a ciegas.
+ * T5 (Paso 13 / 8.188, S5) + residual 3: anulación lógica de un gasto de caja chica. Admin anula
+ * directo con motivo obligatorio (el servidor genera la reversa compensatoria con los snapshots
+ * congelados). Manager y Cashier requieren autorización supervisora: al confirmar se abre el
+ * diálogo de espera con el contexto exacto del gasto (403 del servidor) y, al aprobarse, se
+ * reintenta UNA vez con X-Authorization-Token. Nunca se reintenta a ciegas.
  */
 export default function PettyCashCancelModal({
   isOpen,
@@ -31,6 +34,7 @@ export default function PettyCashCancelModal({
   onSuccess,
 }) {
   const { formatBsS, formatUSD } = useCurrencyFormat();
+  const { startWait } = useAuthorization();
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -69,16 +73,24 @@ export default function PettyCashCancelModal({
 
     setLoading(true);
     try {
-      const result = await cancelPettyCashExpense(expense.id, reason);
-      onSuccess?.(result);
+      const outcome = await submitPettyCashWithAuthorization({
+        submit: (options) => cancelPettyCashExpense(expense.id, reason, options),
+        startWait,
+        terminal: getWebTerminalLabel(),
+        formatBsS,
+        formatUSD,
+      });
+
+      if (!outcome.ok) {
+        setAuthorizationMessage(outcome.message);
+        return;
+      }
+
+      onSuccess?.(outcome.result);
       onClose?.();
     } catch (err) {
-      if (isPettyCashAuthorizationError(err)) {
-        setAuthorizationMessage(buildPettyCashAuthorizationMessage(err, { formatBsS, formatUSD }));
-      } else {
-        console.error('Error anulando el gasto de caja chica:', err);
-        setError(err?.message || 'No se pudo anular el gasto de caja chica.');
-      }
+      console.error('Error anulando el gasto de caja chica:', err);
+      setError(err?.message || 'No se pudo anular el gasto de caja chica.');
     } finally {
       setLoading(false);
     }
@@ -108,50 +120,48 @@ export default function PettyCashCancelModal({
           <span className="pcm-close-hint">{expenseSummary}</span>
         </div>
 
-        {requiresSupervisor ? (
+        {requiresSupervisor && (
           <div className="alert alert-warning flex-align-center gap-2 text-sm">
             <ShieldAlert size={18} className="flex-shrink-0" />
             <span>
-              La anulación de un gasto de caja chica requiere autorización de un Administrador y, en
-              esta fase, debe realizarse de forma presencial desde una caja WPF; esta terminal web no
-              puede generar el token de autorización.
+              La anulación de un gasto de caja chica requiere autorización de un Administrador o
+              Supervisor. Al confirmar se abrirá la espera de autorización y la anulación se
+              completará cuando la solicitud sea aprobada.
             </span>
           </div>
-        ) : (
-          <>
-            <div className="form-group mb-3">
-              <label className="form-label font-medium" htmlFor="petty-cash-cancel-reason">
-                Motivo de la anulación *
-              </label>
-              <textarea
-                id="petty-cash-cancel-reason"
-                className="form-control"
-                rows={3}
-                maxLength={500}
-                placeholder="Ej. Comprobante duplicado; el gasto se registró dos veces."
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                disabled={loading}
-              />
-              <small className="text-muted text-xs mt-1 block">{reason.length}/500 caracteres</small>
-            </div>
-
-            <p className="text-muted text-xs mb-3">
-              La anulación conserva el registro histórico y genera una reversa compensatoria con los
-              montos y la tasa originales (efecto neto 0 en la gaveta).
-            </p>
-
-            <div className="modal-actions flex-center gap-3 pt-2 regmod-actions">
-              <button type="button" className="btn btn-outline flex-center regmod-btn-130" onClick={onClose} disabled={loading}>
-                Cancelar
-              </button>
-              <button type="submit" className="btn btn-danger flex-center gap-2 font-bold regmod-btn-180" disabled={loading}>
-                {loading ? <Loader2 size={16} className="animate-spin" /> : <CircleX size={16} />}
-                CONFIRMAR ANULACIÓN
-              </button>
-            </div>
-          </>
         )}
+
+        <div className="form-group mb-3">
+          <label className="form-label font-medium" htmlFor="petty-cash-cancel-reason">
+            Motivo de la anulación *
+          </label>
+          <textarea
+            id="petty-cash-cancel-reason"
+            className="form-control"
+            rows={3}
+            maxLength={500}
+            placeholder="Ej. Comprobante duplicado; el gasto se registró dos veces."
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            disabled={loading}
+          />
+          <small className="text-muted text-xs mt-1 block">{reason.length}/500 caracteres</small>
+        </div>
+
+        <p className="text-muted text-xs mb-3">
+          La anulación conserva el registro histórico y genera una reversa compensatoria con los
+          montos y la tasa originales (efecto neto 0 en la gaveta).
+        </p>
+
+        <div className="modal-actions flex-center gap-3 pt-2 regmod-actions">
+          <button type="button" className="btn btn-outline flex-center regmod-btn-130" onClick={onClose} disabled={loading}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn btn-danger flex-center gap-2 font-bold regmod-btn-180" disabled={loading}>
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <CircleX size={16} />}
+            CONFIRMAR ANULACIÓN
+          </button>
+        </div>
       </form>
     </Modal>
   );

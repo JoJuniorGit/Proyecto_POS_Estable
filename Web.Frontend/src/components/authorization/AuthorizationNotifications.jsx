@@ -3,6 +3,7 @@ import { Check, ShieldAlert, Timer, X } from 'lucide-react';
 import { registerOpenModal } from '../../utils/modalRegistry';
 import { AUTHORIZATION_EVENT_NAMES, authorizationHub } from '../../services/authorizationHub.js';
 import { getRemainingSeconds } from '../../services/authorizationFlow.js';
+import { getPettyCashCategoryLabel } from '../../services/pettyCashApi.js';
 import './AuthorizationNotifications.css';
 
 // 8.150 (T8, design D7): textos de la notificacion admin. El mensaje de carrera es el formato
@@ -68,6 +69,20 @@ export function buildAuthorizationDetail(context) {
   if (context.customUnitPriceLocal != null) {
     parts.push(`Precio Bs.S: ${Number(context.customUnitPriceLocal).toFixed(2)}`);
   }
+
+  // Residual 3 (8.188): el contexto de caja chica del push lleva sesión, categoría y montos
+  // bimonetarios. Solo ese contexto (sin venta ni producto) entra por esta rama.
+  if (context.sessionId != null && (context.amountBsS != null || context.amountUsd != null)) {
+    parts.push(`Sesión #${context.sessionId}`);
+    if (context.category != null) {
+      parts.push(getPettyCashCategoryLabel(context.category));
+    }
+    const amounts = [];
+    if (context.amountBsS != null) amounts.push(`Bs.S ${Number(context.amountBsS).toFixed(2)}`);
+    if (context.amountUsd != null) amounts.push(`$ ${Number(context.amountUsd).toFixed(2)}`);
+    if (amounts.length > 0) parts.push(amounts.join(' / '));
+  }
+
   return parts.join('. ');
 }
 

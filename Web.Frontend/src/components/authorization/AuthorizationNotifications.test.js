@@ -100,6 +100,20 @@ describe('AuthorizationNotifications message builders', () => {
     );
     assert.strictEqual(buildAuthorizationDetail(null), '');
   });
+
+  it('4b. formats the petty cash detail of the supervisor queue (residual 3)', () => {
+    const context = { sessionId: 42, currency: 1, amountBsS: 1825, amountUsd: 50, category: 2 };
+
+    assert.strictEqual(
+      buildAuthorizationDetail(context),
+      'Sesión #42. Mantenimiento y Reparaciones. Bs.S 1825.00 / $ 50.00'
+    );
+    assert.strictEqual(
+      buildAuthorizationNotificationMessage({ actionType: 'PettyCashExpense', requestedByName: 'Cajero 01', context }),
+      'El cajero Cajero 01 solicita autorización para un gasto de caja chica.'
+        + ' Sesión #42. Mantenimiento y Reparaciones. Bs.S 1825.00 / $ 50.00'
+    );
+  });
 });
 
 describe('AuthorizationNotifications queue reducer', () => {

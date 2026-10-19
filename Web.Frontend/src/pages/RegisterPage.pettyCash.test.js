@@ -11,6 +11,7 @@ import React from 'react';
 import RegisterPage from './RegisterPage.jsx';
 import { AuthProvider } from '../context/AuthContext';
 import { ExchangeRateProvider } from '../context/ExchangeRateContext';
+import { AuthorizationProvider } from '../components/authorization/AuthorizationProvider.jsx';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.resolve(__dirname, 'RegisterPage.jsx'), 'utf-8');
@@ -32,10 +33,14 @@ globalThis.localStorage = {
 };
 
 function renderPage() {
+  // La pagina real vive dentro del AuthorizationProvider (App.jsx): los modales de caja chica
+  // consumen el flujo de espera (residual 3).
   return renderToString(
     <AuthProvider>
       <ExchangeRateProvider>
-        <RegisterPage />
+        <AuthorizationProvider>
+          <RegisterPage />
+        </AuthorizationProvider>
       </ExchangeRateProvider>
     </AuthProvider>
   );

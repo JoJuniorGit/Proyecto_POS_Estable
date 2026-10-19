@@ -123,6 +123,20 @@ describe('pettyCashApi — registro, anulación, listado y saldos', () => {
     assert.strictEqual(fetchCalls[0].config.headers['Idempotency-Key'], 'pk-2');
   });
 
+  it('3b. the authorized retry replays the same idempotency key with the token header', async () => {
+    const draft = { currency: 1, amount: 50, category: 2, concept: 'c', beneficiary: 'b', referenceNumber: 'r' };
+
+    await registerPettyCashExpense(draft, { idempotencyKey: 'pk-attempt' });
+    await registerPettyCashExpense(draft, { idempotencyKey: 'pk-attempt', authorizationToken: 'tok-1' });
+
+    assert.strictEqual(fetchCalls.length, 2);
+    assert.strictEqual(fetchCalls[0].config.headers['Idempotency-Key'], 'pk-attempt');
+    assert.ok(!('X-Authorization-Token' in fetchCalls[0].config.headers));
+    assert.strictEqual(fetchCalls[1].config.headers['Idempotency-Key'], 'pk-attempt');
+    assert.strictEqual(fetchCalls[1].config.headers['X-Authorization-Token'], 'tok-1');
+    assert.strictEqual(JSON.parse(fetchCalls[1].config.body).idempotencyKey, 'pk-attempt');
+  });
+
   it('4. cancel POSTs the mandatory reason to the cancel route with optional token', async () => {
     await cancelPettyCashExpense(7, '  comprobante duplicado  ');
     assert.strictEqual(fetchCalls[0].config.method, 'POST');
@@ -229,7 +243,7 @@ describe('pettyCashApi — 403 authorizationAction=PettyCashExpense', () => {
     global.fetch = originalFetch;
   });
 
-  it('10. surfaces the exact context and the web-phase authorization guidance', async () => {
+  it('10. surfaces the exact context and the fail-closed authorization guidance', async () => {
     global.fetch = async () => jsonResponse({
       title: 'Forbidden',
       status: 403,
@@ -263,7 +277,8 @@ describe('pettyCashApi — 403 authorizationAction=PettyCashExpense', () => {
 
         const message = buildPettyCashAuthorizationMessage(err);
         assert.match(message, /Administrador o Supervisor/);
-        assert.match(message, /WPF/);
+        assert.match(message, /reintente la operación/);
+        assert.doesNotMatch(message, /WPF/);
         assert.match(message, /Sesión #42/);
         return true;
       }

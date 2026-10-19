@@ -3,15 +3,18 @@ import Modal from '../ui/Modal';
 import AtmAmountInput from '../ui/AtmAmountInput';
 import { HandCoins, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
 import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
+import { useAuthorization } from '../authorization/AuthorizationProvider';
 import { createCheckoutKeyHolder } from '../../utils/idempotency';
 import {
   PETTY_CASH_CATEGORY_OPTIONS,
   PETTY_CASH_CURRENCY_OPTIONS,
   PettyCashCurrency,
-  buildPettyCashAuthorizationMessage,
-  isPettyCashAuthorizationError,
   registerPettyCashExpense,
 } from '../../services/pettyCashApi';
+import {
+  getWebTerminalLabel,
+  submitPettyCashWithAuthorization,
+} from '../../services/pettyCashAuthorization';
 import {
   computePettyCashEquivalent,
   validatePettyCashDraft,
@@ -20,11 +23,11 @@ import './RegisterModals.css';
 import './PettyCashModals.css';
 
 /**
- * T5 (Paso 13 / 8.188, S1/S4): registro de un egreso de caja chica. El operador elige la divisa
- * física, captura el nominal y ve la equivalencia dual a la tasa vigente; el servidor resuelve la
- * tasa BCV, el snapshot bimonetario y la liquidez. Ante el 403 de autorización se muestra el
- * contrato (autorización presencial/supervisora desde una caja WPF en esta fase) sin reintentar
- * a ciegas: la clave de idempotencia queda estable por si el operador reintenta el mismo intento.
+ * T5 (Paso 13 / 8.188, S1/S4) + residual 3: registro de un egreso de caja chica. El operador elige
+ * la divisa física, captura el nominal y ve la equivalencia dual a la tasa vigente; el servidor
+ * resuelve la tasa BCV, el snapshot bimonetario y la liquidez. Ante el 403 de autorización se abre
+ * el diálogo de espera con el contexto exacto del servidor y, al aprobarse, se reintenta UNA vez
+ * con X-Authorization-Token y la MISMA Idempotency-Key del intento original (sin reintentos ciegos).
  */
 export default function PettyCashExpenseModal({
   isOpen,
@@ -35,6 +38,7 @@ export default function PettyCashExpenseModal({
   onSuccess,
 }) {
   const { formatBsS, formatUSD } = useCurrencyFormat();
+  const { startWait } = useAuthorization();
   const [currency, setCurrency] = useState(PettyCashCurrency.BsS);
   const [amount, setAmount] = useState(0);
   const [category, setCategory] = useState('');
@@ -45,8 +49,9 @@ export default function PettyCashExpenseModal({
   const [error, setError] = useState('');
   const [authorizationMessage, setAuthorizationMessage] = useState('');
 
-  // La clave es estable mientras dura el intento (reintento de red o del operador comparte la
-  // misma clave) y se resetea al abrir/cerrar el modal para la próxima operación.
+  // La clave es estable mientras dura el intento (reintento de red, reintento autorizado con el
+  // token y reenvío del operador comparten la misma clave) y se resetea al abrir/cerrar el modal
+  // y al registrar con éxito para la próxima operación.
   const cashKeyHolderRef = useRef(null);
   if (!cashKeyHolderRef.current) {
     cashKeyHolderRef.current = createCheckoutKeyHolder();
@@ -104,25 +109,35 @@ export default function PettyCashExpenseModal({
 
     setLoading(true);
     try {
-      const result = await registerPettyCashExpense({
-        currency,
-        amount,
-        category: Number(category),
-        concept,
-        beneficiary,
-        referenceNumber,
-      }, { idempotencyKey: cashKeyHolderRef.current.getOrCreateKey() });
+      // Intento inicial sin token; el 403 del contrato abre la espera y el reintento autorizado
+      // (una única vez) lo compone el servicio de caja chica.
+      const outcome = await submitPettyCashWithAuthorization({
+        submit: (options) => registerPettyCashExpense({
+          currency,
+          amount,
+          category: Number(category),
+          concept,
+          beneficiary,
+          referenceNumber,
+        }, options),
+        startWait,
+        getIdempotencyKey: () => cashKeyHolderRef.current.getOrCreateKey(),
+        terminal: getWebTerminalLabel(),
+        formatBsS,
+        formatUSD,
+      });
+
+      if (!outcome.ok) {
+        setAuthorizationMessage(outcome.message);
+        return;
+      }
 
       cashKeyHolderRef.current.reset();
-      onSuccess?.(result);
+      onSuccess?.(outcome.result);
       handleClose();
     } catch (err) {
-      if (isPettyCashAuthorizationError(err)) {
-        setAuthorizationMessage(buildPettyCashAuthorizationMessage(err, { formatBsS, formatUSD }));
-      } else {
-        console.error('Error registrando el gasto de caja chica:', err);
-        setError(err?.message || 'No se pudo registrar el gasto de caja chica.');
-      }
+      console.error('Error registrando el gasto de caja chica:', err);
+      setError(err?.message || 'No se pudo registrar el gasto de caja chica.');
     } finally {
       setLoading(false);
     }
@@ -150,8 +165,8 @@ export default function PettyCashExpenseModal({
             <ShieldAlert size={18} className="flex-shrink-0" />
             <span>
               El registro de caja chica iniciado por un cajero requiere autorización de un Administrador
-              o Supervisor. En esta fase, la autorización debe realizarse de forma presencial desde una
-              caja WPF.
+              o Supervisor. Al confirmar se abrirá la espera de autorización y el gasto se completará
+              cuando la solicitud sea aprobada.
             </span>
           </div>
         )}

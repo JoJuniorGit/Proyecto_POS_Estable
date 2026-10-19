@@ -24,8 +24,8 @@ export function canCloseCashDrawerSession(role) {
 
 /**
  * La anulación exige token supervisor para Manager y Cashier (S5); solo Admin anula directo.
- * Esta terminal web no produce el token en esta fase, así que el modal lo informa en vez de
- * reintentar a ciegas.
+ * Es gating de presentación (qué aviso se muestra), nunca una política: el servidor decide; el
+ * modal abre la espera de autorización y reintenta con el token (residual 3).
  */
 export function requiresPettyCashCancellationAuthorization(role) {
   return role !== 'Admin';

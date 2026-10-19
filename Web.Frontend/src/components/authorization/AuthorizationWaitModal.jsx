@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Lock, ShieldAlert, Timer, User } from 'lucide-react';
 import { registerOpenModal } from '../../utils/modalRegistry';
 import { AUTHORIZATION_PHASES, AUTHORIZATION_STRINGS } from '../../services/authorizationFlow.js';
+import { getPettyCashCategoryLabel } from '../../services/pettyCashApi.js';
 import './AuthorizationWaitModal.css';
 
 function formatCountdown(totalSeconds) {
@@ -135,6 +136,30 @@ export default function AuthorizationWaitModal({
               <div className="awm-context-row">
                 <span className="awm-context-label">Precio Bs.S</span>
                 <span className="awm-context-value">{`Bs.S ${Number(context.customUnitPriceLocal).toFixed(2)}`}</span>
+              </div>
+            )}
+            {context.pettyCashSessionId != null && (
+              <div className="awm-context-row">
+                <span className="awm-context-label">Sesión</span>
+                <span className="awm-context-value">{`#${context.pettyCashSessionId}`}</span>
+              </div>
+            )}
+            {context.pettyCashCategory != null && (
+              <div className="awm-context-row">
+                <span className="awm-context-label">Categoría</span>
+                <span className="awm-context-value">{getPettyCashCategoryLabel(context.pettyCashCategory)}</span>
+              </div>
+            )}
+            {context.pettyCashAmountBsS != null && (
+              <div className="awm-context-row">
+                <span className="awm-context-label">Monto Bs.S</span>
+                <span className="awm-context-value">{`Bs.S ${Number(context.pettyCashAmountBsS).toFixed(2)}`}</span>
+              </div>
+            )}
+            {context.pettyCashAmountUsd != null && (
+              <div className="awm-context-row">
+                <span className="awm-context-label">Monto USD</span>
+                <span className="awm-context-value">{`$ ${Number(context.pettyCashAmountUsd).toFixed(2)}`}</span>
               </div>
             )}
           </div>

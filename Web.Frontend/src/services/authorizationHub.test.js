@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
+  AUTHORIZATION_ACTION_TYPES,
   AUTHORIZATION_EVENT_NAMES,
   buildAuthorizationRequestPayload,
   createAuthorizationHubClient,
@@ -123,6 +124,26 @@ describe('authorizationHub payload builder', () => {
       terminal: null,
     });
     assert.ok(Object.values(payload).every((value) => value === null));
+  });
+
+  it('1c. maps the PettyCashExpense context with actionType and without saleId (residual 3)', () => {
+    assert.strictEqual(AUTHORIZATION_ACTION_TYPES.PettyCashExpense, 4);
+
+    const context = {
+      actionType: AUTHORIZATION_ACTION_TYPES.PettyCashExpense,
+      pettyCashSessionId: 42,
+      pettyCashCurrency: 1,
+      pettyCashAmountBsS: 1825,
+      pettyCashAmountUsd: 50,
+      pettyCashCategory: 2,
+      terminal: 'Caja-Web-01',
+    };
+
+    const payload = buildAuthorizationRequestPayload(context);
+
+    assert.deepStrictEqual(payload, context);
+    assert.ok(!('saleId' in payload), 'la caja chica viaja sin venta (el servidor persiste NULL)');
+    assert.ok(!('productId' in payload), 'el contexto de caja chica no se degrada al override manual');
   });
 });
 
