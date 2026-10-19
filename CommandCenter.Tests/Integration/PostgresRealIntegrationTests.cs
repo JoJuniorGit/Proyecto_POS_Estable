@@ -1,8 +1,6 @@
 using System;
 using System.Threading.Tasks;
 using Backend.API.Jobs;
-using CommandCenter.Tests.Builders;
-using Core.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -12,9 +10,10 @@ using Xunit;
 namespace CommandCenter.Tests.Integration;
 
 /// <summary>
-/// Pruebas de integración con PostgreSQL real o contenedor Docker (CI/Staging).
-/// Permite aislar y filtrar ejecuciones locales ligeras mediante [Trait("Category", "RequiresDocker")].
-/// Para omitir en ejecuciones sin Docker/Postgres: dotnet test --filter "Category!=RequiresDocker".
+/// Pruebas de integración con PostgreSQL real sobre bases AISLADAS por test (carril
+/// <see cref="PostgresTestLane"/>: TEST_POSTGRES_CONNECTION o fallback Development). Sin conexión
+/// utilizable el carril falla EXPLÍCITO con la instrucción de configuración (nunca silent-pass);
+/// la base apuntada por la cadena base no se escribe (cada test crea su cc_pg_lane_&lt;guid&gt;).
 /// </summary>
 [Trait("Category", "RequiresDocker")]
 [Collection(PostgresRealCollection.Name)]
@@ -23,26 +22,10 @@ public class PostgresRealIntegrationTests
     [Fact]
     public async Task PostgresRealConnection_WhenConfigured_ExecutesSuccessfully()
     {
-        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connStr))
-        {
-            // 8.9-L2: TEST_POSTGRES_CONNECTION es un contrato de CI (requiere PostgreSQL real
-            // o contenedor). En local la prueba se omite de forma DOCUMENTADA (no silenciosa);
-            // en CI (GITHUB_ACTIONS=true) un fallo de configuración se hace visible en lugar
-            // de pasar vacío.
-            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")))
-            {
-                throw new InvalidOperationException(
-                    "TEST_POSTGRES_CONNECTION no está definida en CI. Configure PostgreSQL real para ejecutar PostgresRealIntegrationTests.");
-            }
+        await using var database = await IsolatedPostgresDatabase.CreateAsync();
+        await using var context = database.CreateSalesDbContext();
 
-            return;
-        }
-
-        using var context = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        Assert.NotNull(context);
-        bool canConnect = await context.Database.CanConnectAsync();
-        Assert.True(canConnect);
+        Assert.True(await context.Database.CanConnectAsync());
     }
 
     [Fact]
@@ -52,23 +35,13 @@ public class PostgresRealIntegrationTests
         // transaccion manual REVENTABA en Produccion: NpgsqlRetryingExecutionStrategy no admite
         // transacciones user-initiated fuera del lambda de CreateExecutionStrategy(). El job debe
         // procesar un mensaje Pending end-to-end con la configuracion real (EnableRetryOnFailure).
-        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connStr))
-        {
-            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")))
-            {
-                throw new InvalidOperationException(
-                    "TEST_POSTGRES_CONNECTION no está definida en CI. Configure PostgreSQL real para ejecutar PostgresRealIntegrationTests.");
-            }
-
-            return;
-        }
+        await using var database = await IsolatedPostgresDatabase.CreateAsync();
+        string connStr = database.ConnectionString;
 
         Guid seededId;
-        using (var seedContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContextWithRetry())
+        await using (var seedContext = database.CreateSalesDbContextWithRetry())
         {
-            Assert.NotNull(seedContext);
-            var message = new OutboxMessage
+            var message = new Core.Entities.OutboxMessage
             {
                 Id = Guid.NewGuid(),
                 EventType = "SaleCompleted",
@@ -78,7 +51,7 @@ public class PostgresRealIntegrationTests
                 CreatedAtUtc = DateTime.UtcNow
             };
             seededId = message.Id;
-            seedContext!.OutboxMessages.Add(message);
+            seedContext.OutboxMessages.Add(message);
             await seedContext.SaveChangesAsync();
         }
 

@@ -19,7 +19,7 @@ namespace CommandCenter.Tests.Integration;
 /// (Program.cs + WebApplicationFactory), PostgreSQL real (Npgsql), clientes SignalR reales sobre
 /// TestServer (LongPolling) y HTTP real para la acción protegida. Cada escenario crea su propia
 /// base <c>pos_e2e_&lt;run&gt;</c>, la migra/siembra por el arranque real y la descarta al final.
-/// Gating del repo: sin TEST_POSTGRES_CONNECTION cada test retorna en silencio.
+/// Carril: sin conexión utilizable cada escenario falla EXPLÍCITO (nunca silent-pass).
 /// </summary>
 [Collection(PostgresRealCollection.Name)]
 [Trait("Category", "RequiresDocker")]
@@ -48,7 +48,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task HappyFullJourney_HubRequestRemoteApprovalHttpConsume_PersistsItemRequestAndRemoteAudit()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("journey");
-        if (!app.IsAvailable) return;
 
         var cashier = await app.CreateUserAsync(7001, UserRole.Cashier, "Cajero E2E Journey");
         var admin = await app.CreateUserAsync(7002, UserRole.Admin, "Admin E2E Journey");
@@ -165,8 +164,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task Race_TwoElevatedClientsResolve_FirstWinsAndSecondGetsExactMessage()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("race");
-        if (!app.IsAvailable) return;
-
         var cashier = await app.CreateUserAsync(7101, UserRole.Cashier, "Cajero E2E Race");
         var firstAdmin = await app.CreateUserAsync(7102, UserRole.Admin, "Admin E2E Race Uno");
         var secondAdmin = await app.CreateUserAsync(7103, UserRole.Admin, "Admin E2E Race Dos");
@@ -228,7 +225,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task LocalFallback_RealSupervisorCredentials_ResolvesLocalConsumesTokenAndFailsClosedOnWrongPassword()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("local");
-        if (!app.IsAvailable) return;
 
         const string supervisorPassword = "SuperClaveE2E123!";
         var cashier = await app.CreateUserAsync(7201, UserRole.Cashier, "Cajero E2E Local");
@@ -316,7 +312,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task Expiry_RealHostedSweepJob_ExpiresPushesAndAuditsNullResolver()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("expiry");
-        if (!app.IsAvailable) return;
 
         var cashier = await app.CreateUserAsync(7301, UserRole.Cashier, "Cajero E2E Expiry");
         await app.CreateProductAsync(9731, "Producto E2E Expiry", priceUsd: 5m, priceBsS: 250m);
@@ -382,7 +377,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task AuditImmutability_RealPostgresTrigger_RejectsUpdateAndDeleteWithoutChangingRow()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("audit");
-        if (!app.IsAvailable) return;
 
         var cashier = await app.CreateUserAsync(7401, UserRole.Cashier, "Cajero E2E Audit");
         var admin = await app.CreateUserAsync(7402, UserRole.Admin, "Admin E2E Audit");
@@ -438,7 +432,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task TokenBinding_ApprovedForSaleA_RejectedOnSaleBWithoutBurningTheToken()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("binding");
-        if (!app.IsAvailable) return;
 
         var cashier = await app.CreateUserAsync(7501, UserRole.Cashier, "Cajero E2E Binding");
         var admin = await app.CreateUserAsync(7502, UserRole.Admin, "Admin E2E Binding");
@@ -500,7 +493,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task Cancellation_RequesterCancels_PersistsAuditPushesClosureWithoutTokenAndBlocksApproval()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("cancel");
-        if (!app.IsAvailable) return;
 
         var cashier = await app.CreateUserAsync(7601, UserRole.Cashier, "Cajero E2E Cancel");
         var admin = await app.CreateUserAsync(7602, UserRole.Admin, "Admin E2E Cancel");

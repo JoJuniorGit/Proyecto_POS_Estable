@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using CommandCenter.Tests.Builders;
 using CommandCenter.Tests.Integration;
 using Core.Interfaces;
 using MediatR;
@@ -16,6 +15,11 @@ using Xunit;
 
 namespace CommandCenter.Tests;
 
+/// <summary>
+/// Claim concurrente de ventas en espera contra PostgreSQL real en base AISLADA por test (carril
+/// <see cref="PostgresTestLane"/>). Sin conexión utilizable el carril falla EXPLÍCITO (nunca
+/// silent-pass) y la base apuntada por la cadena base no se escribe.
+/// </summary>
 [Trait("Category", "RequiresDocker")]
 [Collection(PostgresRealCollection.Name)]
 public class HoldOrderClaimTestsPostgres
@@ -47,24 +51,14 @@ public class HoldOrderClaimTestsPostgres
     [Fact]
     public async Task ClaimSaleAsync_TwoConcurrentClaims_ExactlyOneWins()
     {
-        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connStr)) return;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync();
 
         const int saleId = 987654;
         const int firstUserId = 9001;
         const int secondUserId = 9002;
 
-        using (var seedContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext())
+        await using (var seedContext = database.CreateSalesDbContext())
         {
-            if (seedContext == null) return;
-
-            var existing = await seedContext.Sales.FirstOrDefaultAsync(s => s.Id == saleId);
-            if (existing != null)
-            {
-                seedContext.Sales.Remove(existing);
-                await seedContext.SaveChangesAsync();
-            }
-
             seedContext.Sales.Add(new Sale
             {
                 Id = saleId,
@@ -75,9 +69,8 @@ public class HoldOrderClaimTestsPostgres
             await seedContext.SaveChangesAsync();
         }
 
-        using var firstContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        using var secondContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        if (firstContext == null || secondContext == null) return;
+        await using var firstContext = database.CreateSalesDbContext();
+        await using var secondContext = database.CreateSalesDbContext();
 
         var firstService = CreateService(firstContext);
         var secondService = CreateService(secondContext);

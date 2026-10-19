@@ -1,7 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CommandCenter.Tests.Builders;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Sales.Module.Entities;
@@ -11,43 +12,27 @@ using Xunit;
 namespace CommandCenter.Tests.Integration;
 
 /// <summary>
-/// Pruebas de integración transaccional compartida con PostgreSQL real (CI/Staging o Contenedor Docker).
-/// Valida la coordinación de transacciones compartidas entre SalesDbContext e InventoryDbContext sobre la misma conexión física.
-/// Se aísla de las suites unitarias locales mediante el trait [Trait("Category", "RequiresDocker")].
+/// Pruebas de integración transaccional compartida con PostgreSQL real sobre bases AISLADAS por
+/// test (carril <see cref="PostgresTestLane"/>). Valida la coordinación de transacciones
+/// compartidas entre SalesDbContext e InventoryDbContext sobre la misma conexión física y la
+/// barrera atómica de egresos concurrentes. Sin conexión utilizable el carril falla EXPLÍCITO
+/// (nunca silent-pass); la base apuntada por la cadena base no se escribe.
 /// </summary>
 [Trait("Category", "RequiresDocker")]
 [Collection(PostgresRealCollection.Name)]
 public class PostgresRealSharedTransactionTests
 {
-    private static string? GetConnectionString()
-    {
-        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connStr))
-        {
-            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")))
-            {
-                throw new InvalidOperationException(
-                    "TEST_POSTGRES_CONNECTION no está definida en CI. Configure PostgreSQL real para ejecutar PostgresRealSharedTransactionTests.");
-            }
-
-            return null;
-        }
-
-        return connStr;
-    }
-
     [Fact]
     public async Task PostgresSharedTransaction_WhenConfigured_CanSharePhysicalTransaction()
     {
-        var connStr = GetConnectionString();
-        if (connStr == null) return;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync();
 
         // 8.11: patrón correcto para compartir UNA transacción física entre dos DbContexts:
         // ambos contextos deben enlazarse a la MISMA conexión ADO .NET (UseNpgsql(connection)).
         // La versión previa iniciaba la transacción sobre la conexión del SalesDbContext y luego
         // intentaba UseTransactionAsync en un InventoryDbContext con conexión propia (pooling),
         // lo que fallaba con "The specified transaction is not associated with the current connection".
-        await using var connection = new Npgsql.NpgsqlConnection(connStr);
+        await using var connection = new Npgsql.NpgsqlConnection(database.ConnectionString);
         await connection.OpenAsync();
         await using var rawDbTx = await connection.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted);
 
@@ -67,7 +52,7 @@ public class PostgresRealSharedTransactionTests
         Assert.NotNull(salesContext.Database.CurrentTransaction);
         Assert.NotNull(inventoryContext.Database.CurrentTransaction);
 
-        // Revertir para mantener la base de datos limpia
+        // Revertir para mantener la base aislada limpia antes del DROP final.
         await rawDbTx.RollbackAsync();
     }
 
@@ -79,98 +64,69 @@ public class PostgresRealSharedTransactionTests
     [Fact]
     public async Task ConcurrentPhysicalExpenses_CannotOverdrawBalance()
     {
-        var connStr = GetConnectionString();
-        if (connStr == null) return;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync();
 
-        using var ctx = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        if (ctx == null) return;
-
+        await using var ctx = database.CreateSalesDbContext();
         var strategy = ctx.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
             var service = new CashDrawerService(ctx);
             var session = await service.OpenSessionAsync(1000m, 50m);
 
-            // Limpieza previa: cerrar la sesión para no contaminar otros tests del contenedor.
-            try
+            // 300 + 400 = 700 <= 1000 (OK) -> no debe lanzar
+            await service.AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 300m, 6m, 50m, "Egreso A", isPhysicalCash: true);
+            await service.AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 400m, 8m, 50m, "Egreso B", isPhysicalCash: true);
+
+            // Quedan 300 Bs.S: dos egresos concurrentes de 200 cada uno = 400 > 300.
+            // Cada tarea usa SU PROPIO DbContext/servicio: el fallo esperado es la barrera de
+            // saldo (el advisory lock serializa check+insert), no una carrera de contexto compartido.
+            Exception? failureA = null;
+            Exception? failureB = null;
+            var tA = Task.Run(async () =>
             {
-                // 300 + 400 = 700 <= 1000 (OK) -> no debe lanzar
-                await service.AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 300m, 6m, 50m, "Egreso A", isPhysicalCash: true);
-                await service.AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 400m, 8m, 50m, "Egreso B", isPhysicalCash: true);
-
-                // Quedan 300 Bs.S: dos egresos concurrentes de 200 cada uno = 400 > 300.
-                // Cada tarea usa SU PROPIO DbContext/servicio: el fallo esperado es la barrera de
-                // saldo (el advisory lock serializa check+insert), no una carrera de contexto compartido.
-                Exception? failureA = null;
-                Exception? failureB = null;
-                var tA = Task.Run(async () =>
-                {
-                    using var ctxA = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-                    try { await new CashDrawerService(ctxA!).AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 200m, 4m, 50m, "Egreso conc A", isPhysicalCash: true); }
-                    catch (Exception ex) { failureA = ex; }
-                });
-                var tB = Task.Run(async () =>
-                {
-                    using var ctxB = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-                    try { await new CashDrawerService(ctxB!).AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 200m, 4m, 50m, "Egreso conc B", isPhysicalCash: true); }
-                    catch (Exception ex) { failureB = ex; }
-                });
-                await Task.WhenAll(tA, tB);
-
-                var failures = new[] { failureA, failureB }.Where(f => f != null).ToList();
-                var failure = Assert.Single(failures);
-                var balanceFailure = Assert.IsType<InvalidOperationException>(failure);
-                Assert.Contains("Saldo de efectivo en caja insuficiente para realizar el egreso", balanceFailure.Message);
-
-                var finalBalance = await service.GetCurrentBalanceLocalAsync(session.Id);
-                Assert.False(finalBalance < 0, $"El saldo no debe ser negativo tras la barrera atómica (obtuvo {finalBalance}).");
-
-                await service.CloseSessionAsync(finalBalance, 50m);
-            }
-            finally
+                await using var ctxA = database.CreateSalesDbContext();
+                try { await new CashDrawerService(ctxA).AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 200m, 4m, 50m, "Egreso conc A", isPhysicalCash: true); }
+                catch (Exception ex) { failureA = ex; }
+            });
+            var tB = Task.Run(async () =>
             {
-                // Asegurar que no queden sesiones abiertas en el contenedor.
-                var active = await service.GetActiveSessionAsync();
-                if (active != null)
-                {
-                    await service.CloseSessionAsync(await service.GetCurrentBalanceLocalAsync(active.Id), 50m);
-                }
-            }
+                await using var ctxB = database.CreateSalesDbContext();
+                try { await new CashDrawerService(ctxB).AddTransactionAsync(session.Id, CashTransactionType.Expense, CashTransactionSource.CashOut, 200m, 4m, 50m, "Egreso conc B", isPhysicalCash: true); }
+                catch (Exception ex) { failureB = ex; }
+            });
+            await Task.WhenAll(tA, tB);
+
+            var failures = new[] { failureA, failureB }.Where(f => f != null).ToList();
+            var failure = Assert.Single(failures);
+            var balanceFailure = Assert.IsType<InvalidOperationException>(failure);
+            Assert.Contains("Saldo de efectivo en caja insuficiente para realizar el egreso", balanceFailure.Message);
+
+            var finalBalance = await service.GetCurrentBalanceLocalAsync(session.Id);
+            Assert.False(finalBalance < 0, $"El saldo no debe ser negativo tras la barrera atómica (obtuvo {finalBalance}).");
+
+            await service.CloseSessionAsync(finalBalance, 50m);
         });
     }
 
     [Fact]
     public async Task RecordSaleChangeAsync_WithoutAmbientTransaction_ThrowsInvalidOperationException()
     {
-        var connStr = GetConnectionString();
-        if (connStr == null) return;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync();
 
-        using var ctx = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        if (ctx == null) return;
-
+        await using var ctx = database.CreateSalesDbContext();
         var service = new CashDrawerService(ctx);
         var session = await service.OpenSessionAsync(1000m, 50m);
-        try
-        {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                service.RecordSaleChangeAsync(
-                    sessionId: session.Id,
-                    changeUsd: 0.4m,
-                    changeBsS: 20m,
-                    exchangeRate: 50m,
-                    description: "Vuelto sin transacción",
-                    saleId: 1,
-                    cashPaymentMethodId: 1));
 
-            Assert.Contains("transacción compartida del cobro", ex.Message);
-        }
-        finally
-        {
-            var active = await service.GetActiveSessionAsync();
-            if (active != null)
-            {
-                await service.CloseSessionAsync(await service.GetCurrentBalanceLocalAsync(active.Id), 50m);
-            }
-        }
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RecordSaleChangeAsync(
+                sessionId: session.Id,
+                changeUsd: 0.4m,
+                changeBsS: 20m,
+                exchangeRate: 50m,
+                description: "Vuelto sin transacción",
+                saleId: 1,
+                cashPaymentMethodId: 1));
+
+        Assert.Contains("transacción compartida del cobro", ex.Message);
     }
 }

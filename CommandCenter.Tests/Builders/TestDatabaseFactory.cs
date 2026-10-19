@@ -182,9 +182,25 @@ public static class TestDatabaseFactory
         var custExists = (long)(await custCheck.ExecuteScalarAsync())! > 0;
         if (!custExists)
         {
-            await using var insertCust = new Npgsql.NpgsqlCommand(
-                "INSERT INTO \"Customers\" (\"Id\", \"Name\", \"CedulaOrRif\", \"Phone\", \"CreditLimitUSD\", \"IsDefault\", \"IsActive\", \"CreatedAt\") VALUES (1, 'Consumidor Final', 'V-00000000', '', 0, true, true, NOW())",
+            // 8.187: el perfil crediticio es NOT NULL en el modelo (sin default de DB en esquemas
+            // creados por EnsureCreated): el INSERT explícito debe fijar los valores seguros
+            // (crédito deshabilitado) o la siembra revienta con 23502 en una base recién creada.
+            // Los esquemas legados previos a 8.187 no tienen las columnas: se detecta paridad para
+            // no romper bases stale (documentadas como descartables).
+            await using var creditColumnsCheck = new Npgsql.NpgsqlCommand(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' " +
+                "AND table_name = 'Customers' AND column_name = 'IsCreditEnabled'",
                 conn, tx);
+            bool hasCreditColumns = (long)(await creditColumnsCheck.ExecuteScalarAsync())! > 0;
+
+            string insertCustSql = hasCreditColumns
+                ? "INSERT INTO \"Customers\" (\"Id\", \"Name\", \"CedulaOrRif\", \"Phone\", \"CreditLimitUSD\", \"IsDefault\", \"IsActive\", \"CreatedAt\", " +
+                  "\"IsCreditEnabled\", \"PaymentTermDays\", \"CreditGraceDays\", \"CreditStatus\") " +
+                  "VALUES (1, 'Consumidor Final', 'V-00000000', '', 0, true, true, NOW(), false, 30, 0, 0)"
+                : "INSERT INTO \"Customers\" (\"Id\", \"Name\", \"CedulaOrRif\", \"Phone\", \"CreditLimitUSD\", \"IsDefault\", \"IsActive\", \"CreatedAt\") " +
+                  "VALUES (1, 'Consumidor Final', 'V-00000000', '', 0, true, true, NOW())";
+
+            await using var insertCust = new Npgsql.NpgsqlCommand(insertCustSql, conn, tx);
             await insertCust.ExecuteNonQueryAsync();
         }
 

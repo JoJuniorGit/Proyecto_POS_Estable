@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.Integration;
 using Core.Entities;
 using Core.Security;
 using Microsoft.Data.Sqlite;
@@ -1443,15 +1444,13 @@ public class AuthorizationServiceTests
     [Fact]
     public async Task CreateAsync_ConcurrentPostgresCreates_OneCreatedAndOneDeduplicated()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync();
 
         var userId = Random.Shared.Next(800_000, 899_999);
         var saleId = Random.Shared.Next(800_000, 899_999);
 
-        using var firstContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        using var secondContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        if (firstContext is null || secondContext is null) return;
+        await using var firstContext = database.CreateSalesDbContext();
+        await using var secondContext = database.CreateSalesDbContext();
 
         var firstService = CreateService(firstContext);
         var secondService = CreateService(secondContext);
@@ -1465,22 +1464,18 @@ public class AuthorizationServiceTests
         Assert.NotNull(results[0].Request);
         Assert.Equal(results[0].Request!.Id, results[1].Request!.Id);
 
-        using var verificationContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        if (verificationContext is null) return;
+        await using var verificationContext = database.CreateSalesDbContext();
         var pending = await verificationContext.AuthorizationRequests.AsNoTracking()
             .Where(row => row.RequestedByUserId == userId && row.SaleId == saleId && row.Status == AuthorizationStatus.Pending)
             .ToListAsync();
         Assert.Single(pending);
-        await verificationContext.AuthorizationRequests
-            .Where(row => row.RequestedByUserId == userId)
-            .ExecuteDeleteAsync();
     }
 
     [Fact]
     public async Task CreateAsync_ConcurrentNullSaleCollisionOnPostgres_TranslatesUniqueViolationToDeduplicated()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        // Carril: sin conexión utilizable falla EXPLÍCITO (nunca silent-pass).
+        var connectionString = PostgresTestLane.RequireResolution().ConnectionString;
 
         const int userId = 86001;
         var databaseName = $"pos_auth_null_sale_{Guid.NewGuid():N}";
