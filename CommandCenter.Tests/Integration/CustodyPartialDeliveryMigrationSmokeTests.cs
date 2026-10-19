@@ -1,12 +1,19 @@
-using System;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using Sales.Module.Data;
 using Xunit;
 
 namespace CommandCenter.Tests.Integration;
 
+/// <summary>
+/// Smoke real de la migración de custodia: siembra ventas/ítems legacy sobre el esquema previo
+/// (<c>AddMissingUserSecurityColumnsRev8142</c>), aplica la migración de custodia y verifica
+/// columnas/tablas/backfill. Corre en una base AISLADA por test del carril
+/// <see cref="PostgresTestLane"/> (creada vacía y eliminada al final); antes creaba una base por
+/// nombre GUID solo cuando TEST_POSTGRES_CONNECTION existía y retornaba en silencio si faltaba
+/// (silent-pass). Sin conexión utilizable el lane falla EXPLÍCITO.
+/// </summary>
+[Trait("Category", "RequiresDocker")]
 [Collection(PostgresRealCollection.Name)]
 public class CustodyPartialDeliveryMigrationSmokeTests
 {
@@ -15,83 +22,36 @@ public class CustodyPartialDeliveryMigrationSmokeTests
     [Fact]
     public async Task Migration_AddsCustodySchema_AndBackfillsDeliveredOnly()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            return;
-        }
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(applyMigrations: false);
+        await using var context = database.CreateSalesDbContext();
 
-        var smokeDatabaseName = $"pos_custody_partial_{Guid.NewGuid():N}";
-        var testConnectionString = new NpgsqlConnectionStringBuilder(connectionString)
-        {
-            Database = smokeDatabaseName
-        }.ConnectionString;
-        var adminConnectionString = new NpgsqlConnectionStringBuilder(connectionString)
-        {
-            Database = "postgres"
-        }.ConnectionString;
+        await context.Database.MigrateAsync(PreviousMigrationId);
+        await context.Database.ExecuteSqlRawAsync(SeedLegacySalesSql);
+        await context.Database.MigrateAsync();
 
-        await CreateSmokeDatabaseAsync(adminConnectionString, smokeDatabaseName);
-        try
-        {
-            var options = new DbContextOptionsBuilder<SalesDbContext>()
-                .UseNpgsql(testConnectionString)
-                .Options;
-            await using var context = new SalesDbContext(options);
+        var deliveredQuantityColumnCount = await context.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns " +
+            "WHERE table_schema = 'public' AND table_name = 'SaleItems' " +
+            "AND column_name = 'DeliveredQuantity' AND data_type = 'numeric' " +
+            "AND numeric_precision = 18 AND numeric_scale = 3 AND is_nullable = 'NO'")
+            .SingleAsync();
+        Assert.Equal(1, deliveredQuantityColumnCount);
 
-            await context.Database.MigrateAsync(PreviousMigrationId);
-            await context.Database.ExecuteSqlRawAsync(SeedLegacySalesSql);
-            await context.Database.MigrateAsync();
+        var custodyTableCount = await context.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.tables " +
+            "WHERE table_schema = 'public' AND table_name IN ('SaleDeliveries', 'SaleDeliveryItems')")
+            .SingleAsync();
+        Assert.Equal(2, custodyTableCount);
 
-            var deliveredQuantityColumnCount = await context.Database.SqlQueryRaw<int>(
-                "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.columns " +
-                "WHERE table_schema = 'public' AND table_name = 'SaleItems' " +
-                "AND column_name = 'DeliveredQuantity' AND data_type = 'numeric' " +
-                "AND numeric_precision = 18 AND numeric_scale = 3 AND is_nullable = 'NO'")
-                .SingleAsync();
-            Assert.Equal(1, deliveredQuantityColumnCount);
+        var deliveredQuantity = await context.Database.SqlQueryRaw<decimal>(
+            "SELECT \"DeliveredQuantity\" AS \"Value\" FROM \"SaleItems\" WHERE \"Id\" = 920001")
+            .SingleAsync();
+        var custodyQuantity = await context.Database.SqlQueryRaw<decimal>(
+            "SELECT \"DeliveredQuantity\" AS \"Value\" FROM \"SaleItems\" WHERE \"Id\" = 920002")
+            .SingleAsync();
 
-            var custodyTableCount = await context.Database.SqlQueryRaw<int>(
-                "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.tables " +
-                "WHERE table_schema = 'public' AND table_name IN ('SaleDeliveries', 'SaleDeliveryItems')")
-                .SingleAsync();
-            Assert.Equal(2, custodyTableCount);
-
-            var deliveredQuantity = await context.Database.SqlQueryRaw<decimal>(
-                "SELECT \"DeliveredQuantity\" AS \"Value\" FROM \"SaleItems\" WHERE \"Id\" = 920001")
-                .SingleAsync();
-            var custodyQuantity = await context.Database.SqlQueryRaw<decimal>(
-                "SELECT \"DeliveredQuantity\" AS \"Value\" FROM \"SaleItems\" WHERE \"Id\" = 920002")
-                .SingleAsync();
-
-            Assert.Equal(4.500m, deliveredQuantity);
-            Assert.Equal(0m, custodyQuantity);
-        }
-        finally
-        {
-            await DropSmokeDatabaseAsync(adminConnectionString, smokeDatabaseName);
-        }
-    }
-
-    private static async Task CreateSmokeDatabaseAsync(string connectionString, string databaseName)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-
-        await using var createDatabase = new NpgsqlCommand(
-            $"CREATE DATABASE \"{databaseName}\"",
-            connection);
-        await createDatabase.ExecuteNonQueryAsync();
-    }
-
-    private static async Task DropSmokeDatabaseAsync(string connectionString, string databaseName)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var dropDatabase = new NpgsqlCommand(
-            $"DROP DATABASE \"{databaseName}\" WITH (FORCE)",
-            connection);
-        await dropDatabase.ExecuteNonQueryAsync();
+        Assert.Equal(4.500m, deliveredQuantity);
+        Assert.Equal(0m, custodyQuantity);
     }
 
     private const string SeedLegacySalesSql = """

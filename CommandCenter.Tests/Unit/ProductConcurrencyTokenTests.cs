@@ -1,6 +1,6 @@
 using System;
 using System.Threading.Tasks;
-using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.Integration;
 using Core.DTOs;
 using Core.Entities;
 using Inventory.Module.Data;
@@ -13,6 +13,13 @@ namespace CommandCenter.Tests.Unit;
 // El token xmin solo es efectivo a traves del camino de actualizacion rastreado
 // (FindAsync + CurrentValues.SetValues en InventoryService.UpdateProductAsync):
 // un refactor a un update detached o a ExecuteUpdate lo evadiria sin aviso.
+//
+// El test de conflicto corre contra PostgreSQL real en base AISLADA por test (carril
+// PostgresTestLane): antes escribia en la base COMPARTIDA del harness legacy
+// (TestSchemaBootstrap.EnsureSharedSchema) y con TEST_POSTGRES_CONNECTION ausente retornaba
+// en silencio. Ahora sin conexion utilizable falla EXPLICITO (nunca silent-pass).
+[Trait("Category", "RequiresDocker")]
+[Collection(PostgresRealCollection.Name)]
 public class ProductConcurrencyTokenTests
 {
     private const string NpgsqlConnectionString = "Host=localhost;Database=none;Username=none;Password=none";
@@ -49,20 +56,14 @@ public class ProductConcurrencyTokenTests
     }
 
     [Fact]
-    [Trait("Category", "RequiresDocker")]
     public async Task UpdateProductFromDto_StaleToken_Conflicts()
     {
-        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connStr)) return;
-
-        TestSchemaBootstrap.EnsureSharedSchema(connStr);
-
-        var options = new DbContextOptionsBuilder<InventoryDbContext>()
-            .UseNpgsql(connStr)
-            .Options;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(
+            applyMigrations: false,
+            applyInventoryMigrations: true);
 
         int productId;
-        using (var seedContext = new InventoryDbContext(options))
+        await using (var seedContext = database.CreateInventoryDbContext())
         {
             var product = new Product
             {
@@ -77,11 +78,11 @@ public class ProductConcurrencyTokenTests
             productId = product.Id;
         }
 
-        using var staleContext = new InventoryDbContext(options);
+        await using var staleContext = database.CreateInventoryDbContext();
         var staleService = new InventoryService(staleContext);
         await staleContext.Products.FirstAsync(p => p.Id == productId);
 
-        using (var writerContext = new InventoryDbContext(options))
+        await using (var writerContext = database.CreateInventoryDbContext())
         {
             var writerService = new InventoryService(writerContext);
             await writerService.UpdateProductFromDtoAsync(productId, new UpdateProductDto

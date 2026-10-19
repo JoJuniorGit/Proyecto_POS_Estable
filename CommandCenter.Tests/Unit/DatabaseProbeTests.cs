@@ -2,11 +2,18 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Backend.API.Startup;
+using CommandCenter.Tests.Integration;
 using Npgsql;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
 
+// El probe corre contra bases AISLADAS del carril PostgreSQL real (PostgresTestLane):
+// - El caso valido crea una base GUID vacia y la sondea completa (existencia + privilegio CREATE).
+// - El caso de credencial invalida reutiliza la conexion resuelta del carril con password erronea.
+// Sin conexion utilizable el carril falla EXPLICITO con la instruccion de configuracion
+// (nunca silent-pass).
+[Collection(PostgresRealCollection.Name)]
 public class DatabaseProbeTests
 {
     [Fact]
@@ -24,12 +31,11 @@ public class DatabaseProbeTests
     [Fact]
     public async Task RunAsync_WithValidConnectionString_ReturnsOk()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(applyMigrations: false);
 
         using var output = new StringWriter();
 
-        var code = await DatabaseProbe.RunAsync(connectionString, output);
+        var code = await DatabaseProbe.RunAsync(database.ConnectionString, output);
 
         Assert.Equal(0, code);
         Assert.Contains("RESULT: OK", output.ToString());
@@ -38,10 +44,9 @@ public class DatabaseProbeTests
     [Fact]
     public async Task RunAsync_WithInvalidPassword_ReturnsConfigurationError()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        var connection = PostgresTestLane.RequireResolution();
 
-        var invalid = new NpgsqlConnectionStringBuilder(connectionString) { Password = "wrong-for-test" };
+        var invalid = new NpgsqlConnectionStringBuilder(connection.ConnectionString) { Password = "wrong-for-test" };
         using var output = new StringWriter();
 
         var code = await DatabaseProbe.RunAsync(invalid.ConnectionString, output);

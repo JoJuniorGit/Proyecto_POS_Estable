@@ -17,6 +17,19 @@ public sealed record E2eBootstrapState(string ProductName, string ProductSku, de
 /// <summary>Usuario creado por la API real (8.151-W5: cajero del E2E de WebSockets).</summary>
 public sealed record E2eCreatedUser(int Id, string Cedula, string Name);
 
+/// <summary>Gasto de caja chica del listado real (subconjunto estable del contrato del servidor).</summary>
+public sealed record E2ePettyCashExpense(
+    int Id,
+    long VoucherNumber,
+    decimal AmountBsS,
+    decimal AmountUsd,
+    string Concept,
+    int Status,
+    string? CancellationReason);
+
+/// <summary>Descarga binaria del vale (bytes + content type) verificada contra la API real.</summary>
+public sealed record E2eVoucherDownload(byte[] Bytes, string? ContentType);
+
 /// <summary>
 /// Bootstrap del harness contra la API real (HttpClient simple, sin mocks): login del admin
 /// sembrado, rotación de la clave forzada, tasa de cambio y producto de prueba. Todas las
@@ -182,10 +195,120 @@ public sealed class E2eApiClient : IDisposable
         return json.RootElement.GetProperty("id").GetInt32();
     }
 
+    /// <summary>
+    /// Abre una sesión de caja por la API real (POST /api/cashdrawer/open) y devuelve su id. Es el
+    /// sustrato de los flujos que exigen turno activo (p. ej. caja chica): la UI no ofrece una
+    /// acción de apertura, la sesión nace del cobro o de esta superficie administrativa.
+    /// </summary>
+    public async Task<int> OpenCashDrawerSessionAsync(
+        string bearerToken,
+        decimal openingBalanceLocal,
+        decimal exchangeRate,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "api/cashdrawer/open",
+            new { OpeningBalanceLocal = openingBalanceLocal, CurrentExchangeRate = exchangeRate },
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "open cash drawer session", body);
+
+        using var json = JsonDocument.Parse(body);
+        return json.RootElement.GetProperty("id").GetInt32();
+    }
+
+    /// <summary>Gastos del turno (activos y anulados) según el servidor real.</summary>
+    public async Task<IReadOnlyList<E2ePettyCashExpense>> GetPettyCashExpensesAsync(
+        string bearerToken,
+        int sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"api/cashdrawer/petty-cash?sessionId={sessionId}",
+            payload: null,
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "get petty cash expenses", body);
+
+        using var json = JsonDocument.Parse(body);
+        var expenses = new List<E2ePettyCashExpense>();
+        foreach (var item in json.RootElement.EnumerateArray())
+        {
+            expenses.Add(ParsePettyCashExpense(item));
+        }
+
+        return expenses;
+    }
+
+    /// <summary>
+    /// Anula un gasto de caja chica por la API real (POST .../cancel) con motivo obligatorio y
+    /// devuelve el estado resultante. Es el MISMO endpoint que consume el botón de anulación de la
+    /// fila; la grilla <c>PerformantDataGrid</c> no expone sus celdas a UIA, por lo que los flujos
+    /// E2E ejercen esta acción contra la API y verifican su reflejo en el panel.
+    /// </summary>
+    public async Task<E2ePettyCashExpense> CancelPettyCashExpenseAsync(
+        string bearerToken,
+        int expenseId,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            $"api/cashdrawer/petty-cash/{expenseId}/cancel",
+            new { Reason = reason },
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "cancel petty cash expense", body);
+
+        using var json = JsonDocument.Parse(body);
+        return ParsePettyCashExpense(json.RootElement);
+    }
+
+    /// <summary>
+    /// Descarga el vale PDF del gasto contra el endpoint real (mismo camino del botón de la UI).
+    /// Un estado no exitoso falla con el cuerpo de la respuesta para diagnóstico.
+    /// </summary>
+    public async Task<E2eVoucherDownload> DownloadPettyCashVoucherAsync(
+        string bearerToken,
+        int expenseId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"api/cashdrawer/petty-cash/{expenseId}/receipt",
+            payload: null,
+            bearerToken,
+            cancellationToken);
+        var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException(
+                $"La descarga del vale de caja chica #{expenseId} falló con {(int)response.StatusCode} {response.ReasonPhrase}. " +
+                $"Cuerpo: {System.Text.Encoding.UTF8.GetString(bytes)}");
+        }
+
+        return new E2eVoucherDownload(bytes, response.Content.Headers.ContentType?.MediaType);
+    }
+
     public void Dispose()
     {
         _httpClient.Dispose();
     }
+
+    private static E2ePettyCashExpense ParsePettyCashExpense(JsonElement item) => new(
+        item.GetProperty("id").GetInt32(),
+        item.GetProperty("voucherNumber").GetInt64(),
+        item.GetProperty("amountBsS").GetDecimal(),
+        item.GetProperty("amountUsd").GetDecimal(),
+        ReadString(item, "concept") ?? string.Empty,
+        item.GetProperty("status").GetInt32(),
+        ReadString(item, "cancellationReason"));
 
     private async Task<HttpResponseMessage> SendAsync(
         HttpMethod method,

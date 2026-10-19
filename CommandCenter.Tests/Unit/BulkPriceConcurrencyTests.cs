@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.Integration;
 using Core.DTOs;
 using Core.Entities;
 using Inventory.Module.Data;
@@ -13,25 +13,23 @@ namespace CommandCenter.Tests.Unit;
 
 // 8.181-T1 (S1): el apply masivo usa el camino rastreado (Find/Where + SaveChanges) para conservar
 // el token xmin; un producto modificado por otro usuario debe disparar DbUpdateConcurrencyException
-// con rollback total (el controller lo mapea a 409). Requiere PostgreSQL (TEST_POSTGRES_CONNECTION);
-// sin esa variable el test es no-op, igual que ProductConcurrencyTokenTests.
+// con rollback total (el controller lo mapea a 409). Corre contra PostgreSQL real en base AISLADA
+// por test (carril PostgresTestLane); antes usaba la base COMPARTIDA del harness legacy y con
+// TEST_POSTGRES_CONNECTION ausente retornaba en silencio. Sin conexion utilizable el lane falla
+// EXPLICITO (nunca silent-pass).
+[Trait("Category", "RequiresDocker")]
+[Collection(PostgresRealCollection.Name)]
 public class BulkPriceConcurrencyTests
 {
     [Fact]
-    [Trait("Category", "RequiresDocker")]
     public async Task BulkUpdatePricesAsync_StaleTrackedProduct_ThrowsDbUpdateConcurrencyExceptionAndKeepsWriterValue()
     {
-        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connStr)) return;
-
-        TestSchemaBootstrap.EnsureSharedSchema(connStr);
-
-        var options = new DbContextOptionsBuilder<InventoryDbContext>()
-            .UseNpgsql(connStr)
-            .Options;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(
+            applyMigrations: false,
+            applyInventoryMigrations: true);
 
         int productId;
-        using (var seedContext = new InventoryDbContext(options))
+        await using (var seedContext = database.CreateInventoryDbContext())
         {
             var product = new Product
             {
@@ -47,11 +45,11 @@ public class BulkPriceConcurrencyTests
         }
 
         // Contexto "stale": ya tiene el producto rastreado con el xmin previo al cambio ajeno.
-        using var staleContext = new InventoryDbContext(options);
+        await using var staleContext = database.CreateInventoryDbContext();
         var staleService = new InventoryService(staleContext);
         await staleContext.Products.FirstAsync(p => p.Id == productId);
 
-        using (var writerContext = new InventoryDbContext(options))
+        await using (var writerContext = database.CreateInventoryDbContext())
         {
             var writerService = new InventoryService(writerContext);
             var writerResult = await writerService.BulkUpdatePricesAsync(new BulkPriceUpdateRequestDto
@@ -74,10 +72,8 @@ public class BulkPriceConcurrencyTests
             }
         }));
 
-        using (var verifyContext = new InventoryDbContext(options))
-        {
-            var persisted = await verifyContext.Products.AsNoTracking().SingleAsync(p => p.Id == productId);
-            Assert.Equal(6m, persisted.PriceRetailUSD); // rollback total: sobrevive el valor del primer writer
-        }
+        await using var verifyContext = database.CreateInventoryDbContext();
+        var persisted = await verifyContext.Products.AsNoTracking().SingleAsync(p => p.Id == productId);
+        Assert.Equal(6m, persisted.PriceRetailUSD); // rollback total: sobrevive el valor del primer writer
     }
 }
