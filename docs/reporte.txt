@@ -16184,3 +16184,69 @@ C1. Sigue pendiente el carril Postgres real (locks, nextval/ALTER TYPE/Down y pr
     sin cambios (cierre diario sin USD, web sin token, label crudo en supervision, OPEX ventana
     borde, rollover USD 0, acentos PDF, auto-autorizacion, sin E2E especifico de caja chica).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XXII) - RBAC CREDITICIO + QUICK WINS DE CAJA CHICA + CARRIL POSTGRES REAL (8.187/8.188) - 2026-10-18
+================================================================================
+Pedido del mantenedor: (a) segregacion estricta de funciones crediticias (Admin/Manager vs
+Cashier); (b) cierre de los quick wins de caja chica (labels de supervision, auto-autorizacion,
+acentos del PDF, OPEX anclado por sesion); (c) carril Postgres real para cerrar el residual
+sistemico de locks/nextval/xmin/migraciones/precision.
+
+A. RBAC CREDITICIO
+A1. Contacto vs credito: POST/PUT de clientes habilitado para Cashier solo sobre datos de contacto;
+    los campos crediticios se descartan server-side para TODOS los roles (el credito se gestiona
+    unicamente por PUT credit-profile, Admin/Manager; Cashier 403). El panel crediticio se oculta
+    (no solo deshabilita) para Cashier en WPF y Web; Cashier conserva lectura de estado/disponible.
+A2. Limite por debajo de la deuda: `AvailableCreditUsd = max(0, limite - deuda)`; utilizacion puede
+    superar 100%; las ventas sobre cupo caen por elegibilidad (sin afectar el cobro de obligaciones).
+A3. Borrado fisico: bloqueado con error claro cuando el cliente tiene cualquier obligacion de
+    cartera (FK Restrict como defensa final). Revocacion/bloqueo/rehabilitacion siguen exclusivos de
+    Admin/Manager. Commit `ffb0ae0`.
+
+B. QUICK WINS CAJA CHICA
+B1. Label "PettyCashExpense" -> "un gasto de caja chica" en la cola de supervision (WPF + Web).
+B2. Registro directo (Admin/Manager): el autorizador solo se vincula si es distinto del ejecutor
+    (regla espejo de H3 en anulacion); el vale muestra "N/A" en registros directos.
+B3. PDF del vale: escapes WinAnsi completos (¿=\277, ¡=\241, °=\260) sin "?" en textos clave.
+B4. OPEX del cierre anclado por `DailyClosure.SessionId` (migracion `20261018231728`, FK+indice;
+    fallback de ventana solo para cierres legados). Commit `a9bf7d7`.
+
+C. CARRIL POSTGRES REAL
+C1. `PostgresTestLane`: resolucion `TEST_POSTGRES_CONNECTION` -> fallback Development, sonda unica de
+    conectividad y mensaje accionable; SIN conexion los tests FALLAN explicito (nunca silent-pass);
+    bases aisladas `cc_pg_lane_<guid>` con `MigrateAsync` + `DROP DATABASE ... WITH (FORCE)`;
+    extension para migrar schema Inventory.
+C2. Cobertura Npgsql real: advisory lock clase 3 (abonos CxC, espera observada en `pg_locks`) y
+    clase 4 (barrido de mora global + idempotencia); conflicto `xmin` con reintento fresco;
+    `nextval('petty_cash_voucher_seq')` (1, 2, DEFAULT=3); migraciones Up/Down (AmountUsd
+    18,4->18,2, orden FK->indice->columna->tabla) y bucket fisico USD con 4dp exacto.
+C3. Clases legacy migradas al lane (fin del silent-pass en el filtro ~Postgres):
+    HoldOrderClaimTestsPostgres, SalesServicePostgresHistoryTests, AuthorizationPersistenceTests,
+    AuthorizationServiceTests, AuthorizationEndToEndPostgresTests(+Helpers),
+    SupplierInvoiceApplyIntegrationTests; 4 clases de fase 1 ya convertidas.
+C4. Defecto real destapado y corregido: `SeedStandardSalesDataAsync` rompia con 23502 en toda base
+    fresca post-8.187 (`Customers.IsCreditEnabled` NOT NULL sin default de DB) — habria tumbado el
+    `pos_test` fresco de CI; fix con paridad de columnas + alineacion de secuencias seriales.
+    Commit `b2bcf26`.
+
+D. EVIDENCIA
+D1. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+D2. Filtro `~Postgres` con TEST_POSTGRES_CONNECTION: **35/35** en base fresca y **35/35** apuntando
+    a la base stale `pos_test` (independencia del estado; antes 32/35). Sin env var: 30 fallos
+    explicitos + 5 pases unit legitimas + 0 omitidos (0 silent-pass).
+D3. Suite completa con env: 3453/3459 — los 6 fallos son clases gated FUERA del filtro ~Postgres
+    (CashAdvanceEnvelopeTests x3, ProductConcurrencyTokenTests x1, BulkPriceConcurrencyTests x1, +1)
+    que ahora ejecutan contra Npgsql real y fallan por harness/base compartida (fase 3 candidata).
+D4. Web: npm test 590/590; lint limpio; build OK.
+D5. Commits: `a9bf7d7` (quick wins), `ffb0ae0` (RBAC), `b2bcf26` (carril Postgres).
+
+E. NOTA
+E1. `appsettings.Development.json` tiene credencial vencida en esta maquina (28P01): sin env var el
+    carril falla explicito por diseno; para un run verde exportar TEST_POSTGRES_CONNECTION o
+    corregir la credencial de desarrollo.
+E2. Flake one-off observado una vez (run Debug con build frio colgado 30 min, sin leftovers); no
+    reprodujo en 4 corridas completas posteriores.
+E3. Fase 3 recomendada: migrar al lane las clases gated restantes fuera de ~Postgres (las 6 de D3 y
+    las listadas en el handoff: DatabaseProbeTests, MigrationSmokeTests, etc.).
+================================================================================
