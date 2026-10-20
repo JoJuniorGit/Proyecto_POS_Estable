@@ -113,6 +113,11 @@ public sealed class FullStackFixture : IDisposable
 
     public string? DatabaseName { get; }
 
+    /// <summary>Conexión a la base AISLADA del test (solo válida después de InitializeAsync).</summary>
+    public string DatabaseConnectionString => string.IsNullOrWhiteSpace(_derivedConnectionString)
+        ? throw new InvalidOperationException("La base aislada del harness no está inicializada.")
+        : _derivedConnectionString;
+
     public string BackendBaseAddress => _backendBaseAddress;
 
     public string ClientSettingsPath { get; }
