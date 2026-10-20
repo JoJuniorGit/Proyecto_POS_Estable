@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using CommandCenter.Wpf.E2ETests.Fixtures;
 using Xunit;
 
-namespace CommandCenter.Wpf.E2ETests.Tests;
+namespace CommandCenter.Tests.Unit.E2E;
 
 /// <summary>
 /// Política de reintentos UIA (S4 / D7): solo fallas transitorias de transporte

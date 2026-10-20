@@ -25,6 +25,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="FlaUI.Core" />
+    <PackageReference Include="FlaUI.UIA3" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+  </ItemGroup>
+
+  <!-- El harness full-stack vive en el proyecto E2E; se compila también aquí para los tests de
+       integración/unitarios que se degradaron desde la cúpula E2E (WU1). -->
+  <ItemGroup>
+    <Compile Include="..\tests\CommandCenter.Wpf.E2ETests\Fixtures\*.cs" Link="E2E\Fixtures\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <ProjectReference Include="..\Backend.API\Backend.API.csproj" />

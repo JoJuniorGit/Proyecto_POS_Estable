@@ -40,12 +40,20 @@ public class WpfAppFixture : IDisposable
 
         if (appPath == null)
         {
-            // Search standard build output directories
-            var baseDir = AppContext.BaseDirectory;
-            var candidate1 = Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\..\Desktop.Client\bin\Release\net10.0-windows\Desktop.Client.exe"));
-            var candidate2 = Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\..\Desktop.Client\bin\Debug\net10.0-windows\Desktop.Client.exe"));
-            var candidate3 = Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\..\Desktop.Client\bin\Release\net10.0-windows10.0.19041.0\Desktop.Client.exe"));
-            var candidate4 = Path.GetFullPath(Path.Combine(baseDir, @"Desktop.Client.exe"));
+            // Resolver desde la raíz del repo (marcador CommandCenter.slnx): el harness se compila y
+            // ejecuta también desde CommandCenter.Tests, donde el número de niveles hasta la raíz
+            // difiere del proyecto E2E.
+            var root = new DirectoryInfo(AppContext.BaseDirectory);
+            while (root is not null && !File.Exists(Path.Combine(root.FullName, "CommandCenter.slnx")))
+            {
+                root = root.Parent;
+            }
+
+            var baseDir = root?.FullName ?? AppContext.BaseDirectory;
+            var candidate1 = Path.Combine(baseDir, @"Desktop.Client\bin\Release\net10.0-windows\Desktop.Client.exe");
+            var candidate2 = Path.Combine(baseDir, @"Desktop.Client\bin\Debug\net10.0-windows\Desktop.Client.exe");
+            var candidate3 = Path.Combine(baseDir, @"Desktop.Client\bin\Release\net10.0-windows10.0.19041.0\Desktop.Client.exe");
+            var candidate4 = Path.Combine(baseDir, @"Desktop.Client.exe");
 
             appPath = File.Exists(candidate1) ? candidate1 :
                       File.Exists(candidate2) ? candidate2 :

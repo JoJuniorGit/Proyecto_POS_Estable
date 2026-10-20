@@ -2,7 +2,7 @@ using System;
 using CommandCenter.Wpf.E2ETests.Fixtures;
 using Xunit;
 
-namespace CommandCenter.Wpf.E2ETests.Tests;
+namespace CommandCenter.Tests.Unit.E2E;
 
 /// <summary>
 /// Política de gating del harness full-stack, sin tocar PostgreSQL: la variable de entorno con la

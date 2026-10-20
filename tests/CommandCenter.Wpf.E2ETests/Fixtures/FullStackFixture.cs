@@ -348,11 +348,18 @@ public sealed class FullStackFixture : IDisposable
 
     private static string FindBackendExecutable()
     {
-        var baseDir = AppContext.BaseDirectory;
+        // Raíz por marcador: el harness también se ejecuta desde CommandCenter.Tests (WU1).
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "CommandCenter.slnx")))
+        {
+            root = root.Parent;
+        }
+
+        var baseDir = root?.FullName ?? AppContext.BaseDirectory;
         var candidates = new[]
         {
-            Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\..\Backend.API\bin\Release\net10.0\Backend.API.exe")),
-            Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\..\Backend.API\bin\Debug\net10.0\Backend.API.exe"))
+            Path.Combine(baseDir, @"Backend.API\bin\Release\net10.0\Backend.API.exe"),
+            Path.Combine(baseDir, @"Backend.API\bin\Debug\net10.0\Backend.API.exe")
         };
 
         foreach (var candidate in candidates)

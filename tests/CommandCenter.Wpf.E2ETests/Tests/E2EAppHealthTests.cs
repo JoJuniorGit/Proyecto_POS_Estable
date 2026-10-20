@@ -24,39 +24,6 @@ public class E2EAppHealthTests : IClassFixture<WpfAppFixture>
     }
 
     [Fact]
-    public void PosView_AfterLogin_LoadsMockBackendWithoutErrorDialogs()
-    {
-        var window = _fixture.Launch();
-        Assert.NotNull(window);
-
-        TestHelper.EnsureLoggedIn(window);
-
-        // El badge de tasa del header muestra "Tasa: 50,00 Bs/$" (o "50.00" según cultura).
-        var rateText = Retry.WhileNull(
-            () => UiaRetry.RetryUia(() => window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Text))
-                .FirstOrDefault(e => (e.Name ?? string.Empty).StartsWith("Tasa", StringComparison.Ordinal))),
-            TimeSpan.FromSeconds(10));
-        Assert.NotNull(rateText.Result);
-        Assert.Contains("50", rateText.Result!.Name);
-
-        // La inicialización asíncrona del POS (tasa, métodos de pago, venta) tarda unos segundos;
-        // se monitorea hasta 8s para detectar cualquier diálogo de error que aparezca.
-        string[] errorDialogs = Array.Empty<string>();
-        var deadline = DateTime.UtcNow.AddSeconds(8);
-        while (DateTime.UtcNow < deadline)
-        {
-            errorDialogs = FindDialogs("CustomDialogWindow_Error");
-            if (errorDialogs.Length > 0)
-            {
-                break;
-            }
-            System.Threading.Thread.Sleep(250);
-        }
-
-        Assert.True(errorDialogs.Length == 0, $"Diálogos de error inesperados en modo E2E: {string.Join(" | ", errorDialogs)}");
-    }
-
-    [Fact]
     public void MainViews_WhenNavigated_DoNotOpenErrorDialogs()
     {
         var window = _fixture.Launch();

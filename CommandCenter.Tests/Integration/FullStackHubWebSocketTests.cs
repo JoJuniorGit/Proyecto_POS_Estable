@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
 using Xunit;
 
-namespace CommandCenter.Wpf.E2ETests.Tests;
+namespace CommandCenter.Tests.Integration;
 
 /// <summary>
 /// R9 (8.151, design D8): WebSockets reales contra el backend real del harness full-stack. Sin
