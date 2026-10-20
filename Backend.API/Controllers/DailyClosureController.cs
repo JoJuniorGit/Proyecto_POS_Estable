@@ -85,7 +85,8 @@ public class DailyClosureController : ControllerBase
                 Observation: request.Observation,
                 Declarations: request.Details
                     .Select(d => new DeclaredPaymentAmount(d.PaymentMethodId, d.ActualAmountBsS))
-                    .ToList());
+                    .ToList(),
+                ActualClosingBalanceUsd: request.ActualClosingBalanceUsd);
 
             var result = await _closureService.CreateClosureFromCommandAsync(command, cancellationToken);
             bool isElevated = User.IsInRole(nameof(Core.Entities.UserRole.Admin)) || User.IsInRole(nameof(Core.Entities.UserRole.Manager));
@@ -95,7 +96,11 @@ public class DailyClosureController : ControllerBase
                 {
                     Details = result.Details
                         .Select(d => d with { SystemAmount = 0m, Difference = 0m, Status = "Blind" })
-                        .ToList()
+                        .ToList(),
+                    // Blind 8.153: el esperado y la diferencia USD tampoco se exponen al no
+                    // supervisor; el contado informado por el usuario se conserva.
+                    ExpectedClosingBalanceUsd = null,
+                    DifferenceUsd = null
                 };
             }
 

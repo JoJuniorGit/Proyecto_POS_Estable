@@ -290,6 +290,11 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<DailyClosure>().Property(dc => dc.TotalExpectedBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<DailyClosure>().Property(dc => dc.TotalActualBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<DailyClosure>().Property(dc => dc.TotalDifferenceBsS).HasColumnType("decimal(18,2)");
+
+        // Residual 8.187-8.188: arqueo USD del cierre diario (nominal 4dp, nullable).
+        modelBuilder.Entity<DailyClosure>().Property(dc => dc.ExpectedClosingBalanceUsd).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<DailyClosure>().Property(dc => dc.ActualClosingBalanceUsd).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<DailyClosure>().Property(dc => dc.DifferenceUsd).HasColumnType("decimal(18,4)");
         // 8.149 (SRE-02): un único cierre por fecha (guard transaccional + índice único).
         modelBuilder.Entity<DailyClosure>().HasIndex(dc => dc.ClosureDate).IsUnique();
 

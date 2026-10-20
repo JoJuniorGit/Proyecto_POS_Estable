@@ -22,7 +22,10 @@ public static class ShiftReportMapper
             closure.TotalDifferenceBsS,
             closure.Observation,
             closure.Details.Select(MapDetail).ToList(),
-            pettyCashSummary);
+            pettyCashSummary,
+            closure.ExpectedClosingBalanceUsd,
+            closure.ActualClosingBalanceUsd,
+            closure.DifferenceUsd);
     }
 
     /// <summary>

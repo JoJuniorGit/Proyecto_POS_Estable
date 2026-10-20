@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getActivePaymentMethods } from '../services/paymentApi';
 import { api } from '../services/api';
-import { closeShift, getCurrentShiftReport } from '../services/shiftApi';
+import {
+  canViewUsdReconciliation,
+  closeShift,
+  getCurrentShiftReport,
+  validateActualClosingBalanceUsd,
+} from '../services/shiftApi';
 import { useAuth } from '../context/AuthContext';
 import { useCurrencyFormat } from '../context/CurrencyFormatContext';
 import { shouldRecoverClosedShift } from '../utils/shiftRecovery';
@@ -38,6 +43,8 @@ function RegisterClosePageContent() {
   const [methods, setMethods] = useState([]);
   const [exchangeRate, setExchangeRate] = useState(0);
   const [declaredAmounts, setDeclaredAmounts] = useState({});
+  // Residual 8.187-8.188: conteo físico USD opcional (vacío = contrato previo sin arqueo USD).
+  const [actualClosingBalanceUsd, setActualClosingBalanceUsd] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -111,10 +118,20 @@ function RegisterClosePageContent() {
     return Object.values(declaredAmounts).every((val) => !val || val === 0);
   };
 
+  const hasUsdCount = actualClosingBalanceUsd !== '' && actualClosingBalanceUsd !== null
+    && actualClosingBalanceUsd !== undefined;
+  const canViewUsd = canViewUsdReconciliation(user?.role);
+
   // Step 1: Pre-submit trigger
   const handleProcessClick = (e) => {
     e.preventDefault();
     setError(null);
+
+    const usdError = validateActualClosingBalanceUsd(actualClosingBalanceUsd);
+    if (usdError) {
+      setError(usdError);
+      return;
+    }
 
     if (isAllZeroes()) {
       setIsZeroConfirmOpen(true);
@@ -142,7 +159,7 @@ function RegisterClosePageContent() {
     }));
 
     try {
-      const report = await closeShift(payloadAmounts);
+      const report = await closeShift(payloadAmounts, actualClosingBalanceUsd);
       setZReport(report);
     } catch (err) {
       console.error('[RegisterClosePage] Error enviando cierre:', err);
@@ -216,6 +233,36 @@ function RegisterClosePageContent() {
               <div><strong>Tasa del Día:</strong> <span className="font-mono font-bold">{formatAmount(zReport.exchangeRate || exchangeRate, 2)} Bs/$</span></div>
             </div>
           </div>
+
+          {/* Residual 8.187-8.188: arqueo físico USD del cierre. Esperado y diferencia solo se
+              muestran a supervisores (blind 8.153); el contado se conserva para el cajero. */}
+          {(zReport.actualClosingBalanceUsd !== null && zReport.actualClosingBalanceUsd !== undefined) && (
+            <div className="border rounded p-3 mb-4">
+              <div className="font-bold text-sm mb-2">Arqueo físico USD</div>
+              <div className="flex-between flex-align-center text-sm mb-1">
+                <span className="text-muted">Efectivo USD contado:</span>
+                <span className="font-mono font-bold">{formatUSD(zReport.actualClosingBalanceUsd)}</span>
+              </div>
+              {canViewUsd && zReport.expectedClosingBalanceUsd !== null
+                && zReport.expectedClosingBalanceUsd !== undefined && (
+                <div className="flex-between flex-align-center text-sm mb-1">
+                  <span className="text-muted">Efectivo USD esperado:</span>
+                  <span className="font-mono">{formatUSD(zReport.expectedClosingBalanceUsd)}</span>
+                </div>
+              )}
+              {canViewUsd && zReport.differenceUsd !== null && zReport.differenceUsd !== undefined && (
+                <div className="flex-between flex-align-center text-sm">
+                  <span className="text-muted">Diferencia USD:</span>
+                  <span
+                    className="font-mono font-bold"
+                    style={{ color: zReport.differenceUsd < 0 ? 'var(--danger)' : 'var(--success)' }}
+                  >
+                    {zReport.differenceUsd > 0 ? '+' : ''}{formatUSD(zReport.differenceUsd)}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Vista de Tarjetas Responsivas para Móvil (Reporte Z) */}
           <div className="zreport-mobile-cards-view mb-4">
@@ -436,6 +483,27 @@ function RegisterClosePageContent() {
               })}
             </div>
 
+            {/* Residual 8.187-8.188: conteo USD opcional, independiente del desglose por método. */}
+            <div className="register-close-method-card mb-4">
+              <div className="register-close-method-info">
+                <div className="font-bold flex-align-center gap-2 text-sm sm:text-base">
+                  <span>Efectivo USD contado (opcional)</span>
+                  <span className="register-currency-badge currency-badge-usd">USD</span>
+                </div>
+                <p className="text-muted text-xs mt-1 mb-0">
+                  Si se deja vacío se conserva el cierre sin arqueo USD.
+                </p>
+              </div>
+              <div className="register-close-method-input-wrapper">
+                <AtmAmountInput
+                  value={actualClosingBalanceUsd}
+                  onChange={(numericVal) => setActualClosingBalanceUsd(numericVal)}
+                  placeholder={currencyFormat === 'Venezuelan' ? '0,00' : '0.00'}
+                  prefix="$"
+                />
+              </div>
+            </div>
+
             <button
               type="submit"
               className="btn btn-primary btn-lg btn-block flex-center gap-2 text-base font-semibold rcl-btn-lg"
@@ -521,6 +589,13 @@ function RegisterClosePageContent() {
               </tbody>
             </table>
           </div>
+
+          {hasUsdCount && (
+            <div className="flex-between flex-align-center text-sm mb-3 p-2 rounded border">
+              <span className="text-muted">Efectivo USD contado (opcional):</span>
+              <span className="font-mono font-bold">{formatUSD(Number(actualClosingBalanceUsd) || 0)}</span>
+            </div>
+          )}
 
           <div className="flex-center gap-2 flex-wrap pt-2 border-top">
             <button type="button" className="btn btn-outline" onClick={() => setIsPreSendModalOpen(false)} disabled={isSubmitting}>

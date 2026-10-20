@@ -19,7 +19,12 @@ public sealed record CloseShiftResult(
     string CashierCedula,
     DateTime ClosedAt,
     decimal ExchangeRate,
-    IReadOnlyList<ShiftReportDetailResult> Details);
+    IReadOnlyList<ShiftReportDetailResult> Details,
+    // Residual 8.187-8.188: arqueo USD del cierre. El controller anula esperado/diferencia para
+    // roles no supervisores (blind 8.153); el contado se conserva tal como lo informo el usuario.
+    decimal? ExpectedClosingBalanceUsd = null,
+    decimal? ActualClosingBalanceUsd = null,
+    decimal? DifferenceUsd = null);
 
 public sealed record ShiftReportDetailResult(
     int PaymentMethodId,

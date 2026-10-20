@@ -30,6 +30,20 @@ public class DailyClosure
     public string? Observation { get; set; }
 
     /// <summary>
+    /// Residual 8.187-8.188: arqueo fisico USD del cierre diario. El esperado se congela desde el
+    /// bucket USD de la sesion de caja al momento del cierre; el contado viaja opcional desde el
+    /// cliente. Los tres campos permanecen null cuando no se informo conteo USD (compatibilidad).
+    /// </summary>
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? ExpectedClosingBalanceUsd { get; set; }
+
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? ActualClosingBalanceUsd { get; set; }
+
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? DifferenceUsd { get; set; }
+
+    /// <summary>
     /// Quick win 8.188 (Paso 13): sesion de caja que este cierre cierra. Es el ancla exacta del
     /// renglon informativo OPEX (gastos Active del turno) al releer el cierre; los cierres legados
     /// sin sesion quedan en null y usan el fallback de la ventana del cierre anterior.

@@ -26,6 +26,7 @@
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>   <!-- Header -->
+            <RowDefinition Height="Auto"/>   <!-- Conteo USD -->
             <RowDefinition Height="*"/>      <!-- DataGrid -->
             <RowDefinition Height="Auto"/>   <!-- Summary -->
             <RowDefinition Height="Auto"/>   <!-- Observation -->
@@ -129,9 +130,102 @@
         </Border>
 
         <!-- ═══════════════════════════════════════════
+             RESIDUAL 8.187-8.188: ARQUEO FÍSICO USD (OPCIONAL)
+             El esperado/diferencia solo se muestran a supervisores y fuera del cierre ciego.
+             ═══════════════════════════════════════════ -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource MaterialDesignCardBackground}"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16,12"
+                Margin="0,0,0,16"
+                Effect="{StaticResource EnterpriseCardShadow}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="Efectivo USD contado (opcional)"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#475569"/>
+                    <TextBlock Text="Si se deja vacío se conserva el comportamiento previo del cierre (sin arqueo USD)."
+                               FontSize="11"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               Margin="0,2,0,6"/>
+                    <Border Background="#F1F5F9"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1.5"
+                            CornerRadius="4"
+                            Padding="4,2"
+                            Width="180"
+                            HorizontalAlignment="Left">
+                        <TextBox Text="{Binding ActualClosingBalanceUsdText, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.AutomationId="DailyClosure_UsdCountText"
+                                 materialDesign:HintAssist.Hint="0.00"
+                                 TextAlignment="Right"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Padding="6,4"
+                                 FontWeight="Bold"
+                                 FontSize="13"
+                                 Foreground="#1E293B"
+                                 Typography.NumeralAlignment="Tabular"/>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="16,0,0,0"
+                            Visibility="{Binding ShowUsdReconciliation, Converter={StaticResource BoolToVis}}">
+                    <Border Background="#F8FAFC"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14,8"
+                            Margin="0,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="ESPERADO USD"
+                                       FontSize="10" FontWeight="Bold"
+                                       Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                            <TextBlock Text="{Binding ExpectedClosingBalanceUsdDisplay}"
+                                       AutomationProperties.AutomationId="DailyClosure_ExpectedUsdText"
+                                       FontSize="16" FontWeight="Bold"
+                                       Foreground="#5E35B1"
+                                       Margin="0,2,0,0"
+                                       Typography.NumeralAlignment="Tabular"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="#F8FAFC"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14,8">
+                        <StackPanel>
+                            <TextBlock Text="DIFERENCIA USD"
+                                       FontSize="10" FontWeight="Bold"
+                                       Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                            <TextBlock Text="{Binding DifferenceUsdDisplay}"
+                                       AutomationProperties.AutomationId="DailyClosure_DifferenceUsdText"
+                                       FontSize="16" FontWeight="Bold"
+                                       Foreground="#1E293B"
+                                       Margin="0,2,0,0"
+                                       Typography.NumeralAlignment="Tabular"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═══════════════════════════════════════════
              LOADING INDICATOR
              ═══════════════════════════════════════════ -->
-        <ProgressBar Grid.Row="1"
+        <ProgressBar Grid.Row="2"
                      IsIndeterminate="True"
                      VerticalAlignment="Top"
                      Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
@@ -140,7 +234,7 @@
         <!-- ═══════════════════════════════════════════
              2. DATAGRID MODERNO (Sin líneas verticales, headers gris tenue)
              ═══════════════════════════════════════════ -->
-        <Border Grid.Row="1"
+        <Border Grid.Row="2"
                 Background="{DynamicResource MaterialDesignCardBackground}"
                 BorderBrush="#E2E8F0"
                 BorderThickness="1"
@@ -290,7 +384,7 @@
         <!-- ═══════════════════════════════════════════
              3. SUMMARY TOTALS (Tarjetas Unificadas)
              ═══════════════════════════════════════════ -->
-        <Border Grid.Row="2"
+        <Border Grid.Row="3"
                 Background="{DynamicResource MaterialDesignCardBackground}"
                 BorderBrush="#E2E8F0"
                 BorderThickness="1"
@@ -390,7 +484,7 @@
         <!-- ═══════════════════════════════════════════
              4. OBSERVATION TEXTAREA (Recuadro Real + Contador)
              ═══════════════════════════════════════════ -->
-        <Border Grid.Row="3"
+        <Border Grid.Row="4"
                 Background="#FFFFFF"
                 BorderBrush="#CBD5E1"
                 BorderThickness="1"
@@ -435,7 +529,7 @@
         <!-- ═══════════════════════════════════════════
              5. FOOTER BUTTONS
              ═══════════════════════════════════════════ -->
-        <StackPanel Grid.Row="4"
+        <StackPanel Grid.Row="5"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,16,0,0">

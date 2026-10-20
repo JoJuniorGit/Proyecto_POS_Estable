@@ -89,6 +89,12 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
 
     public bool CanToggleBlindClosing => UserSession?.IsAdmin == true;
 
+    /// <summary>
+    /// Residual 8.187-8.188: el arqueo USD esperado/diferencia solo se muestra a supervisores,
+    /// igual que el esperado Bs.S (blind closing 8.153). El cajero conserva el conteo ciego.
+    /// </summary>
+    public bool CanViewExpectedUsd => UserSession?.IsAdmin == true || UserSession?.IsManager == true;
+
     public DailyClosureViewModel(IDailyClosureClientService closureService, IDialogService dialogService, UserSession? userSession = null, IFilePickerDialog? filePicker = null)
     {
         _closureService = closureService;
@@ -153,6 +159,10 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(DifferenceStatusLabel));
                 OnPropertyChanged(nameof(DifferenceStatusColor));
+                OnPropertyChanged(nameof(CanViewUsdExpected));
+                OnPropertyChanged(nameof(ShowUsdReconciliation));
+                OnPropertyChanged(nameof(ExpectedClosingBalanceUsdDisplay));
+                OnPropertyChanged(nameof(DifferenceUsdDisplay));
             }
         }
     }
@@ -171,6 +181,93 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
     }
 
     public string ObservationCounterText => $"{Observation?.Length ?? 0} / 500";
+
+    /// <summary>
+    /// Residual 8.187-8.188: conteo fisico USD opcional. Se guarda como texto para distinguir
+    /// "vacio" (sin conteo, contrato previo) de "0.00" (conteo en cero), algo que un decimal no
+    /// puede expresar con el binding actual de la vista.
+    /// </summary>
+    private string _actualClosingBalanceUsdText = string.Empty;
+    public string ActualClosingBalanceUsdText
+    {
+        get => _actualClosingBalanceUsdText;
+        set
+        {
+            if (SetProperty(ref _actualClosingBalanceUsdText, value))
+            {
+                OnPropertyChanged(nameof(HasUsdCountInput));
+            }
+        }
+    }
+
+    public bool HasUsdCountInput => !string.IsNullOrWhiteSpace(ActualClosingBalanceUsdText);
+
+    /// <summary>
+    /// Resultado del ultimo cierre creado. Es la unica fuente del esperado/diferencia USD: el
+    /// servidor los calcula por bucket de la sesion y los oculta a roles no supervisores.
+    /// </summary>
+    private DailyClosureDto? _lastCreatedClosure;
+    public DailyClosureDto? LastCreatedClosure
+    {
+        get => _lastCreatedClosure;
+        private set
+        {
+            if (SetProperty(ref _lastCreatedClosure, value))
+            {
+                OnPropertyChanged(nameof(HasUsdClosureResult));
+                OnPropertyChanged(nameof(ShowUsdReconciliation));
+                OnPropertyChanged(nameof(ExpectedClosingBalanceUsdDisplay));
+                OnPropertyChanged(nameof(DifferenceUsdDisplay));
+            }
+        }
+    }
+
+    public bool HasUsdClosureResult => LastCreatedClosure?.ActualClosingBalanceUsd.HasValue == true;
+
+    /// <summary>Esperado/diferencia se muestran solo cuando el rol y el modo ciego lo permiten.</summary>
+    public bool CanViewUsdExpected => CanViewExpectedUsd && !IsBlindClosing;
+
+    public bool ShowUsdReconciliation => CanViewUsdExpected && HasUsdClosureResult;
+
+    public string ExpectedClosingBalanceUsdDisplay => ShowUsdReconciliation
+        && LastCreatedClosure?.ExpectedClosingBalanceUsd is { } expected
+            ? PettyCashLabels.FormatUsd(expected)
+            : "—";
+
+    public string DifferenceUsdDisplay => ShowUsdReconciliation
+        && LastCreatedClosure?.DifferenceUsd is { } difference
+            ? (difference > 0 ? "+" : string.Empty) + PettyCashLabels.FormatUsd(difference)
+            : "—";
+
+    /// <summary>
+    /// Interpreta el conteo USD: vacio = sin conteo (null), texto invalido o negativo = error de
+    /// validacion. Reutiliza el parser tolerante del Core (es-VE/internacional).
+    /// </summary>
+    public bool TryGetActualClosingBalanceUsd(out decimal? amount, out string? error)
+    {
+        amount = null;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(ActualClosingBalanceUsdText))
+        {
+            return true;
+        }
+
+        if (!FlexibleDecimalParser.TryParse(ActualClosingBalanceUsdText, out decimal parsed))
+        {
+            error = "Ingrese un conteo USD válido o deje el campo vacío.";
+            return false;
+        }
+
+        if (parsed < 0m)
+        {
+            error = "El conteo de efectivo USD no puede ser negativo.";
+            return false;
+        }
+
+        amount = Math.Round(parsed, 4, MidpointRounding.AwayFromZero);
+        return true;
+    }
 
     private decimal _totalExpectedBsS;
     public decimal TotalExpectedBsS
@@ -282,7 +379,7 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         }
     }
 
-    private string BuildConfirmationMessage()
+    private string BuildConfirmationMessage(decimal? actualClosingBalanceUsd)
     {
         var userName = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Usuario";
         var dateStr = LocalClosureNow().ToString("dd/MM/yyyy HH:mm");
@@ -302,6 +399,10 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             }
             sb.AppendLine("-----------------------------------");
             sb.AppendLine($"TOTAL DECLARADO: {MoneyFormat.N2(TotalActualBsS)} Bs.S");
+            if (actualClosingBalanceUsd.HasValue)
+            {
+                sb.AppendLine($"EFECTIVO USD CONTADO: {PettyCashLabels.FormatUsd(actualClosingBalanceUsd.Value)}");
+            }
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Observaciones: {Observation}");
@@ -331,6 +432,10 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             sb.AppendLine($"TOTAL DECLARADO: {MoneyFormat.N2(TotalActualBsS)} Bs.S");
             var totalDiffSign = TotalDifferenceBsS >= 0 ? "+" : "";
             sb.AppendLine($"DIFERENCIA NETA: {totalDiffSign}{MoneyFormat.N2(TotalDifferenceBsS)} Bs.S ({DifferenceStatusLabel})");
+            if (actualClosingBalanceUsd.HasValue)
+            {
+                sb.AppendLine($"EFECTIVO USD CONTADO: {PettyCashLabels.FormatUsd(actualClosingBalanceUsd.Value)}");
+            }
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Observaciones: {Observation}");
@@ -338,6 +443,36 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             sb.AppendLine("\n¿Desea confirmar y registrar este cierre contable?");
             return sb.ToString();
         }
+    }
+
+    /// <summary>
+    /// Mensaje de exito con el arqueo USD cuando el servidor lo devolvio y el rol puede verlo.
+    /// El cajero conserva el cierre ciego (solo se le confirma que el cierre fue registrado).
+    /// </summary>
+    private string BuildSuccessMessage()
+    {
+        var message = "Cierre diario procesado y guardado exitosamente. Comprobantes guardados automáticamente en Descargas y en Documentos\\Registro de cierres.\n\nLos acumuladores de ingresos y egresos han sido reiniciados a 0.00 Bs.S para el nuevo turno.";
+
+        if (!ShowUsdReconciliation || LastCreatedClosure is not { ActualClosingBalanceUsd: { } actual } closure)
+        {
+            return message;
+        }
+
+        var usd = new System.Text.StringBuilder();
+        usd.AppendLine();
+        usd.AppendLine();
+        usd.AppendLine("ARQUEO FÍSICO USD:");
+        usd.AppendLine($"  Contado:    {PettyCashLabels.FormatUsd(actual)}");
+        if (closure.ExpectedClosingBalanceUsd is { } expected)
+        {
+            usd.AppendLine($"  Esperado:   {PettyCashLabels.FormatUsd(expected)}");
+        }
+        if (closure.DifferenceUsd is { } difference)
+        {
+            usd.AppendLine($"  Diferencia: {(difference > 0 ? "+" : string.Empty)}{PettyCashLabels.FormatUsd(difference)}");
+        }
+
+        return message + usd.ToString().TrimEnd();
     }
 
     [RelayCommand]
@@ -349,7 +484,13 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             return;
         }
 
-        string confirmMessage = BuildConfirmationMessage();
+        if (!TryGetActualClosingBalanceUsd(out decimal? actualClosingBalanceUsd, out string? usdError))
+        {
+            _dialogService.ShowWarning("Advertencia", usdError ?? "Ingrese un conteo USD válido o deje el campo vacío.");
+            return;
+        }
+
+        string confirmMessage = BuildConfirmationMessage(actualClosingBalanceUsd);
         string dialogTitle = IsBlindClosing ? "Confirmar Arqueo a Ciegas" : "Confirmar Cierre Diario (Admin)";
 
         bool confirmed = _dialogService.ShowConfirm(dialogTitle, confirmMessage);
@@ -363,6 +504,7 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
                 ClosureDate = DateTime.UtcNow,
                 UserId = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Admin",
                 Observation = Observation,
+                ActualClosingBalanceUsd = actualClosingBalanceUsd,
                 Details = DetailRows.Select(r => new Services.CreateClosureDetailRequest
                 {
                     PaymentMethodId = r.PaymentMethodId,
@@ -372,10 +514,10 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
                 }).ToList()
             };
 
-            await _closureService.CreateClosureAsync(request);
+            LastCreatedClosure = await _closureService.CreateClosureAsync(request);
             IsSaved = true;
             CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger.Default.Send(new Desktop.Client.Messages.ShiftClosedMessage());
-            _dialogService.ShowInfo("Éxito de Cierre", "Cierre diario procesado y guardado exitosamente. Comprobantes guardados automáticamente en Descargas y en Documentos\\Registro de cierres.\n\nLos acumuladores de ingresos y egresos han sido reiniciados a 0.00 Bs.S para el nuevo turno.");
+            _dialogService.ShowInfo("Éxito de Cierre", BuildSuccessMessage());
             await LoadExpectedTotalsAsync();
         }
         catch (Exception ex)

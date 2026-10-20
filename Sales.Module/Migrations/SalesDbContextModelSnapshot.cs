@@ -717,10 +717,19 @@ namespace Sales.Module.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<decimal?>("ActualClosingBalanceUsd")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<DateTime>("ClosureDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal?>("DifferenceUsd")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal>("ExchangeRate")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("ExpectedClosingBalanceUsd")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<string>("Observation")

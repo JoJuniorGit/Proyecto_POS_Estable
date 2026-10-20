@@ -390,6 +390,15 @@ public partial class DailyClosureService : IDailyClosureService
         decimal exchangeRate,
         CancellationToken cancellationToken)
     {
+        // Residual 8.187-8.188: el conteo USD es opcional, pero si se informa debe ser un arqueo
+        // fisico valido (mismo contrato que el cierre de sesion de caja).
+        if (command.ActualClosingBalanceUsd is < 0m)
+        {
+            throw new ArgumentException(
+                "El saldo final de arqueo de caja en USD no puede ser negativo.",
+                nameof(command));
+        }
+
         IDbContextTransaction? transaction = await OpenSerializableTransactionAsync(cancellationToken);
 
         try
@@ -409,6 +418,29 @@ public partial class DailyClosureService : IDailyClosureService
             // Quick win 8.188: la sesion abierta tambien viaja para anclar el cierre.
             var (pettyCashWindowStartUtc, pettyCashWindowEndUtc, pettyCashSessionId) =
                 await ResolveClosureWindowAsync(command.ClosureDateUtc, cancellationToken);
+
+            // Residual 8.187-8.188: el esperado USD se congela ANTES del rollover, desde el bucket
+            // fisico USD de la sesion que este cierre clausura. Se reutiliza el calculo canonico
+            // por moneda de la gaveta (PaymentMethodCurrencyResolver), sin heuristica de nombres.
+            // Sin conteo informado, o sin sesion activa, los tres campos quedan null y se conserva
+            // el contrato previo; nunca se inventa un esperado en cero.
+            decimal? actualClosingBalanceUsd = command.ActualClosingBalanceUsd is { } actualUsd
+                ? Math.Round(actualUsd, 4, MidpointRounding.AwayFromZero)
+                : null;
+            decimal? expectedClosingBalanceUsd = null;
+            decimal? differenceUsd = null;
+            if (actualClosingBalanceUsd.HasValue && pettyCashSessionId.HasValue)
+            {
+                decimal physicalUsd = await _cashDrawerService.GetPhysicalBalanceAsync(
+                    pettyCashSessionId.Value,
+                    PettyCashCurrency.Usd,
+                    cancellationToken);
+                expectedClosingBalanceUsd = Math.Round(physicalUsd, 4, MidpointRounding.AwayFromZero);
+                differenceUsd = Math.Round(
+                    actualClosingBalanceUsd.Value - expectedClosingBalanceUsd.Value,
+                    4,
+                    MidpointRounding.AwayFromZero);
+            }
 
             var expectedTotals = await GetExpectedTotalsForWindowAsync(
                 pettyCashWindowStartUtc,
@@ -439,6 +471,9 @@ public partial class DailyClosureService : IDailyClosureService
                 Observation = resolvedUser.Observation,
                 ExchangeRate = exchangeRate,
                 SessionId = pettyCashSessionId,
+                ExpectedClosingBalanceUsd = expectedClosingBalanceUsd,
+                ActualClosingBalanceUsd = actualClosingBalanceUsd,
+                DifferenceUsd = differenceUsd,
                 Details = details
             };
 
@@ -465,7 +500,10 @@ public partial class DailyClosureService : IDailyClosureService
                 resolvedUser.CashierCedula,
                 savedClosure.ClosureDate,
                 exchangeRate,
-                reportDetails);
+                reportDetails,
+                expectedClosingBalanceUsd,
+                actualClosingBalanceUsd,
+                differenceUsd);
         }
         catch
         {
