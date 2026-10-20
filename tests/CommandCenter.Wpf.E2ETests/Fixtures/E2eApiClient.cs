@@ -447,6 +447,74 @@ public sealed class E2eApiClient : IDisposable
         return rows;
     }
 
+    /// <summary>Habilita/ajusta el perfil de crédito del cliente (Admin/Manager).</summary>
+    public async Task UpdateCreditProfileAsync(
+        string bearerToken,
+        int customerId,
+        decimal creditLimitUsd,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Put,
+            $"api/sales/customers/{customerId}/credit-profile",
+            new
+            {
+                IsCreditEnabled = true,
+                CreditLimitUSD = creditLimitUsd,
+                PaymentTermDays = 30,
+                CreditGraceDays = 0,
+                CreditNotes = "Perfil creado por el E2E de CxC"
+            },
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "update credit profile", body);
+    }
+
+    /// <summary>Completa la venta en curso como crédito (obligación CxC en USD).</summary>
+    public async Task CompleteCreditSaleAsync(
+        string bearerToken,
+        int saleId,
+        decimal exchangeRate,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            $"api/sales/{saleId}/complete-credit",
+            new { ExchangeRate = exchangeRate, Payments = Array.Empty<object>() },
+            bearerToken,
+            cancellationToken,
+            idempotencyKey: Guid.NewGuid().ToString("N"));
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "complete credit sale", body);
+    }
+
+    /// <summary>Registra un abono real de cartera (FIFO por defecto) a la tasa vigente.</summary>
+    public async Task RegisterCreditPaymentAsync(
+        string bearerToken,
+        int customerId,
+        decimal amountUsd,
+        int paymentMethodId = 1,
+        CancellationToken cancellationToken = default)
+    {
+        string idempotencyKey = Guid.NewGuid().ToString("N");
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "api/sales/credit-payments",
+            new
+            {
+                CustomerId = customerId,
+                AmountUSD = amountUsd,
+                PaymentMethodId = paymentMethodId,
+                IdempotencyKey = idempotencyKey
+            },
+            bearerToken,
+            cancellationToken,
+            idempotencyKey);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "register credit payment", body);
+    }
+
     public void Dispose()
     {
         _httpClient.Dispose();
