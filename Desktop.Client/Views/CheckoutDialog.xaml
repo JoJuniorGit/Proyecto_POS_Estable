@@ -136,7 +136,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <materialDesign:PackIcon Kind="AccountCredit" Width="18" Height="18" Foreground="#B45309" VerticalAlignment="Center"/>
+                                <materialDesign:PackIcon Kind="CashMultiple" Width="18" Height="18" Foreground="#B45309" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding CustomerDisplay}" FontWeight="Bold" Foreground="#92400E" Margin="8,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                             <Button Grid.Column="1"

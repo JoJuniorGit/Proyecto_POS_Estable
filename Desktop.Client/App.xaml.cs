@@ -107,7 +107,22 @@ public partial class App : Application
 
     private void RecordUnhandledException(string fileCategory, string logContext, Exception ex)
     {
-        try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] " + fileCategory + ": " + ex.Message + "\n" + ex.StackTrace + "\n\n"); } catch { }
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append('[').Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).Append("] ")
+              .Append(fileCategory).Append(": ").Append(ex.GetType().FullName).Append(": ")
+              .Append(ex.Message).Append('\n').Append(ex.StackTrace).Append('\n');
+
+            for (var inner = ex.InnerException; inner != null; inner = inner.InnerException)
+            {
+                sb.Append("--- Inner: ").Append(inner.GetType().FullName).Append(": ")
+                  .Append(inner.Message).Append('\n').Append(inner.StackTrace).Append('\n');
+            }
+
+            File.AppendAllText(_crashPath, sb.ToString() + "\n");
+        }
+        catch { }
         Core.Logging.AppLogger.LogCrash(ex, logContext);
     }
 
