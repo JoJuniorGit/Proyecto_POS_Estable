@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -29,6 +30,12 @@ public sealed record E2ePettyCashExpense(
 
 /// <summary>Descarga binaria del vale (bytes + content type) verificada contra la API real.</summary>
 public sealed record E2eVoucherDownload(byte[] Bytes, string? ContentType);
+
+/// <summary>Totales reales del preview de cobro (sin persistir) para sembrar apartados.</summary>
+public sealed record E2eCheckoutPreview(decimal TotalUSD, decimal TotalBsS);
+
+/// <summary>Fila del listado real de mercancía pendiente por retirar.</summary>
+public sealed record E2ePendingPickup(int SaleId, decimal TotalUnits, decimal DeliveredUnits, string DeliveryStatus);
 
 /// <summary>
 /// Bootstrap del harness contra la API real (HttpClient simple, sin mocks): login del admin
@@ -296,6 +303,150 @@ public sealed class E2eApiClient : IDisposable
         return new E2eVoucherDownload(bytes, response.Content.Headers.ContentType?.MediaType);
     }
 
+    /// <summary>Crea un cliente real (el apartado exige cliente con cédula/teléfono válidos).</summary>
+    public async Task<int> CreateCustomerAsync(
+        string bearerToken,
+        string cedula,
+        string name,
+        string phone,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "api/sales/customers",
+            new { CedulaOrRif = cedula, Name = name, Phone = phone },
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "create customer", body);
+
+        using var json = JsonDocument.Parse(body);
+        return json.RootElement.GetProperty("id").GetInt32();
+    }
+
+    /// <summary>Asocia el cliente real a la venta en curso (PUT /api/sales/{id}/customer).</summary>
+    public async Task SetSaleCustomerAsync(string bearerToken, int saleId, int customerId, CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Put,
+            $"api/sales/{saleId}/customer",
+            new { CustomerId = customerId },
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "set sale customer", body);
+    }
+
+    /// <summary>Agrega una línea real al carrito (POST /api/sales/{id}/items).</summary>
+    public async Task AddItemAsync(
+        string bearerToken,
+        int saleId,
+        int productId,
+        decimal quantity,
+        decimal exchangeRate,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            $"api/sales/{saleId}/items",
+            new { ProductId = productId, Quantity = quantity, ExchangeRate = exchangeRate },
+            bearerToken,
+            cancellationToken,
+            idempotencyKey: Guid.NewGuid().ToString("N"));
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "add sale item", body);
+    }
+
+    /// <summary>Totales del preview de cobro real, sin persistir la venta.</summary>
+    public async Task<E2eCheckoutPreview> PreviewCheckoutAsync(
+        string bearerToken,
+        int saleId,
+        decimal exchangeRate,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            $"api/sales/{saleId}/checkout-preview",
+            new { ExchangeRate = exchangeRate, Payments = Array.Empty<object>() },
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "checkout preview", body);
+
+        using var json = JsonDocument.Parse(body);
+        return new E2eCheckoutPreview(
+            json.RootElement.GetProperty("totalUSD").GetDecimal(),
+            json.RootElement.GetProperty("totalBsS").GetDecimal());
+    }
+
+    /// <summary>
+    /// Completa la venta como apartado pagado (IsPendingPickup): efectivo con redondeo de caja, pago
+    /// al 100%. El cliente real ya debe estar asociado a la venta.
+    /// </summary>
+    public async Task CompletePendingPickupAsync(
+        string bearerToken,
+        int saleId,
+        decimal exchangeRate,
+        E2eCheckoutPreview preview,
+        CancellationToken cancellationToken = default)
+    {
+        decimal paidBsS = Math.Ceiling(preview.TotalBsS);
+        decimal roundingAdjustment = paidBsS - preview.TotalBsS;
+
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            $"api/sales/{saleId}/complete",
+            new
+            {
+                ExchangeRate = exchangeRate,
+                RoundingAdjustment = roundingAdjustment,
+                IsPendingPickup = true,
+                Payments = new[]
+                {
+                    new
+                    {
+                        PaymentMethodId = 1,
+                        Amount = preview.TotalUSD,
+                        AmountBsS = paidBsS,
+                        ExchangeRate = exchangeRate
+                    }
+                }
+            },
+            bearerToken,
+            cancellationToken,
+            idempotencyKey: Guid.NewGuid().ToString("N"));
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "complete pending pickup", body);
+    }
+
+    /// <summary>Apartados reales del servidor (mercancía en custodia, con unidades entregadas).</summary>
+    public async Task<IReadOnlyList<E2ePendingPickup>> GetPendingPickupsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            "api/sales/pending-pickups?limit=200&offset=0",
+            payload: null,
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "get pending pickups", body);
+
+        using var json = JsonDocument.Parse(body);
+        var rows = new List<E2ePendingPickup>();
+        foreach (var item in json.RootElement.EnumerateArray())
+        {
+            rows.Add(new E2ePendingPickup(
+                item.GetProperty("saleId").GetInt32(),
+                item.GetProperty("totalUnits").GetDecimal(),
+                item.GetProperty("deliveredUnits").GetDecimal(),
+                ReadString(item, "deliveryStatus") ?? string.Empty));
+        }
+
+        return rows;
+    }
+
     public void Dispose()
     {
         _httpClient.Dispose();
@@ -315,12 +466,18 @@ public sealed class E2eApiClient : IDisposable
         string relativeUri,
         object? payload,
         string? bearerToken,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? idempotencyKey = null)
     {
         using var request = new HttpRequestMessage(method, relativeUri);
         if (payload != null)
         {
             request.Content = JsonContent.Create(payload);
+        }
+
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            request.Headers.Add("Idempotency-Key", idempotencyKey);
         }
 
         if (!string.IsNullOrWhiteSpace(bearerToken))
