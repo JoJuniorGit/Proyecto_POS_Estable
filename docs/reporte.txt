@@ -16250,3 +16250,71 @@ E2. Flake one-off observado una vez (run Debug con build frio colgado 30 min, si
 E3. Fase 3 recomendada: migrar al lane las clases gated restantes fuera de ~Postgres (las 6 de D3 y
     las listadas en el handoff: DatabaseProbeTests, MigrationSmokeTests, etc.).
 ================================================================================
+
+================================================================================
+ANEXO XXIII - FASE 2 E2E (8.189): REDUCCION A VERTICALES PROFUNDOS
+================================================================================
+Fecha: 2026-10-20
+Alcance: auditoria Fase 1 aprobada; ejecucion secuencial WU1-WU7, un commit por work unit.
+
+A. CATALOGO FINAL
+A1. WPF E2E: 40 metodos / 51 casos -> 7 tests (6 verticales + guard de navegacion):
+    FullStackSaleTests (venta/caja, cantidad, stock/Kardex, gaveta, paridad DB),
+    FullStackCashClosureTests (sesion/arqueo/cierre Z),
+    FullStackCreditReceivablesTests (credito/cupo/tasa/FIFO/caja),
+    PettyCashExpenseTests (activo+anulado, cierre/OPEX),
+    FullStackCatalogPricingTests (margen masivo/precio efectivo/BCV/POS),
+    FullStackCustodyDeliveryTests (apartado real/entrega parcial/DB),
+    E2EAppHealthTests.MainViews (guard unico anti-crash XAML; excepcion justificada).
+A2. Web Playwright: 13 tests en 6 specs -> 3 specs / 5 tests:
+    catalog-pricing (1), sale-complete (1), custody-delivery (3 escenarios del mismo flujo).
+A3. Reduccion: 64 casos E2E -> 12 (-81%); 10 verticales/specs. Sin perdida de cobertura:
+    UiaRetry/Gating y hub SignalR degradados a CommandCenter.Tests (unit/integration).
+
+B. WU1 - DEGRADACION Y PODA
+B1. Movidos: UiaRetryTests + GatingDecisionTests -> CommandCenter.Tests/Unit/E2E (28/28);
+    FullStackHubWebSocketTests -> CommandCenter.Tests/Integration (1/1, 24 s).
+B2. El harness E2E se compila tambien en CommandCenter.Tests via Compile Link; resolucion de raiz
+    por marcador CommandCenter.slnx en WpfAppFixture y FullStackFixture (antes 5 niveles fijos,
+    roto desde CommandCenter.Tests).
+B3. Eliminados 9 archivos estaticos + smoke mock; conservado MainViews como guard.
+    Commit `da6229c`.
+
+C. WU2-WU5 - VERTICALES WPF
+C1. Custodia: siembra API cliente + apartado pagado (2 unidades), la UI entrega 1 y el servidor
+    persiste TotalUnits=2, DeliveredUnits=1, PartiallyDelivered. Commit `cd7b4b4`.
+C2. Venta: +1/-1 de cantidad, piso en 1 sin perder la linea; DB: TotalBsS = ToBsSCeiling,
+    AppliedRate, EffectiveTotalUSD 4dp = round(TotalBsS/AppliedRate), stock 100->98, Kardex -2
+    (unico por venta) y CashTransactions AmountLocal = cobrado. Parser de montos corregido
+    (1.300 formato es-VE ya no se lee como 1,3). Commit `6b29c30`.
+C3. Credito: 2 obligaciones USD con cupo 100, tasa anclada SEC-08, cambio de tasa y abono FIFO $20:
+    saldos [0; 6], imputaciones [13; 7], caja = 20 x tasa del dia; UI TotalOpen=$6 y 1 abierta.
+    El grid CxC no es automatizable por UIA (peer nulo): el cobro usa el mismo endpoint del boton.
+    Commit `73eb2c1`.
+C4. Caja chica: gasto Active 30 + gasto anulado 300; cierre real con systemAmount Cash = -30 (solo
+    activo), OPEX Active = 30 y anulado netea 0 (egreso - reversa); vale PDF. Catalogo: bulk margin
+    30->40 => USD 13->14, tasa 777.77 por UI, POS total = ceil(14*tasa), DB persistida.
+    Commit `ee1e885`.
+
+D. WU6 - WEB PLAYWRIGHT
+D1. 3 specs: catalog-pricing, sale-complete, custody-delivery. Login como fixture; eliminados
+    auth/cash-drawer y los fragmentos de hold/ordenes.
+D2. catalog-pricing conserva la asercion clave: effectivePriceBsS del backend (874,50) gana al
+    canonico (68,25) y se actualiza a 900,25 al cambiar la tasa simulada, sin F5 (misma URL).
+    Commit `8d2d284`.
+
+E. EVIDENCIA FINAL
+E1. dotnet build CommandCenter.slnx -c Release: 0 errores, 0 advertencias.
+E2. WPF E2E con E2E_POSTGRES_CONNECTION: 7/7 en 6m15s.
+E3. CommandCenter.Tests con TEST_POSTGRES_CONNECTION/E2E_POSTGRES_CONNECTION: 3509/3509 en 4m20s.
+E4. Web: Playwright 5/5 en 18,3 s (3 specs); npm test 625/625 en 17,4 s.
+E5. Tiempos por vertical: venta 2m08; cierre Z 2m12; caja chica 1m19; custodia 38 s; credito 27 s;
+    catalogo 32 s; la suite serial completa (incluye guard) tardo 6m15.
+E6. Commits WU1-WU6: `da6229c`, `cd7b4b4`, `6b29c30`, `73eb2c1`, `ee1e885`, `8d2d284`
+    (+ WU7 con este ANEXO).
+
+F. PENDIENTE
+F1. Push de los commits locales: pendiente de decision del mantenedor; no ejecutado.
+F2. El E2E web mantiene mockApi; la persistencia real queda certificada por API/integracion y por
+    las verticales WPF contra PostgreSQL aislado.
+================================================================================
