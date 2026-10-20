@@ -9,6 +9,7 @@ using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
 using FlaUI.Core.Tools;
 using FlaUI.UIA3;
+using Npgsql;
 using Xunit;
 
 namespace CommandCenter.Wpf.E2ETests.Tests;
@@ -49,6 +50,9 @@ public class PettyCashExpenseTests : IClassFixture<FullStackFixture>
     private const string CancellationReason = "E2E anulación del gasto";
     private const int PettyCashStatusActive = 0;
     private const int PettyCashStatusCancelled = 1;
+
+    /// <summary>Gasto que permanece Active para el renglón OPEX del cierre Z.</summary>
+    private const decimal ActiveExpenseAmountBsS = 30m;
 
     private readonly FullStackFixture _fixture;
 
@@ -173,6 +177,72 @@ public class PettyCashExpenseTests : IClassFixture<FullStackFixture>
             Assert.True(download.Bytes.Length > 0, "El vale descargado llegó vacío.");
             Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(download.Bytes, 0, Math.Min(4, download.Bytes.Length)));
             Assert.Equal("application/pdf", download.ContentType);
+
+            // 11) Segundo gasto que permanece Active: el cierre debe reportar SOLO este en OPEX.
+            var activeExpense2 = await api.RegisterPettyCashExpenseAsync(
+                token,
+                ActiveExpenseAmountBsS,
+                "Gasto activo E2E",
+                "Beneficiario Activo E2E",
+                "REF-ACTIVA-E2E");
+            var activeExpensePersisted = (await api.GetPettyCashExpensesAsync(token, sessionId))
+                .SingleOrDefault(expense => expense.Id == activeExpense2.Id)
+                ?? throw new InvalidOperationException("El servidor no reporta el gasto activo del cierre.");
+            Assert.Equal(PettyCashStatusActive, activeExpensePersisted.Status);
+
+            refreshButton = WaitForEnabledButton(window, "CashDrawer_PettyCashRefreshButton", findTimeout)
+                ?? throw new InvalidOperationException(
+                    $"El panel no expuso el refresh tras el gasto activo. {DescribeUi(window)}");
+            refreshButton.Invoke();
+            Assert.True(
+                WaitForSummaryText(window, "1 activo(s)", findTimeout),
+                $"El panel no reflejó el gasto activo del cierre. {DescribePettyCashGrid(window)}");
+            Assert.True(
+                WaitForPettyCashRowCount(window, 2, findTimeout),
+                $"El listado no conservó la fila anulada junto a la activa. {DescribePettyCashGrid(window)}");
+
+            // 12) Cierre Z real: el renglón OPEX solo suma el gasto Active; el par Expense/Reversal
+            //     del gasto anulado netea cero en gaveta.
+            var closureDate = DateTime.UtcNow;
+            var expectedTotals = await api.GetExpectedTotalsAsync(token, closureDate);
+            var closure = await api.CreateDailyClosureAsync(token, closureDate, expectedTotals);
+            Assert.True(closure.ClosureId > 0, "El cierre no devolvió un id persistido.");
+            // El esperado de Cash solo descuenta el gasto Active: -30 (si contara el anulado sería -60).
+            Assert.Equal(-ActiveExpenseAmountBsS, closure.CashSystemAmount);
+
+            await using var database = new NpgsqlConnection(_fixture.DatabaseConnectionString);
+            await database.OpenAsync();
+
+            async Task<decimal> NetCashAsync(string concept)
+            {
+                // El egreso original no siempre materializa PettyCashExpenseId en la misma
+                // transacción; el neteo fiable es por sesión + descripción + signo del Type
+                // (Income=0, Expense=1).
+                await using var command = new NpgsqlCommand(
+                    "SELECT COALESCE(SUM(CASE WHEN \"Type\" = 0 THEN \"AmountLocal\" ELSE -\"AmountLocal\" END), 0) " +
+                    "FROM \"CashTransactions\" WHERE \"SessionId\" = @session " +
+                    "AND \"Source\" IN (9, 10) AND \"Description\" LIKE @pattern",
+                    database);
+                command.Parameters.AddWithValue("session", sessionId);
+                command.Parameters.AddWithValue("pattern", $"%{concept}%");
+                return (decimal)(await command.ExecuteScalarAsync()
+                    ?? throw new InvalidOperationException($"No se pudo leer el efecto de caja de '{concept}'."));
+            }
+
+            Assert.Equal(0m, await NetCashAsync(ExpenseConcept)); // anulado: egreso − reversa
+            Assert.Equal(-ActiveExpenseAmountBsS, await NetCashAsync("Gasto activo E2E"));
+
+            // Renglón OPEX del cierre: solo gastos Active de la sesión (el anulado no suma).
+            await using (var opexCommand = new NpgsqlCommand(
+                "SELECT COALESCE(SUM(\"AmountBsS\"), 0) FROM \"PettyCashExpenses\" " +
+                "WHERE \"SessionId\" = @session AND \"Status\" = 0",
+                database))
+            {
+                opexCommand.Parameters.AddWithValue("session", sessionId);
+                var opex = (decimal)(await opexCommand.ExecuteScalarAsync()
+                    ?? throw new InvalidOperationException("No se pudo leer el renglón OPEX de la base aislada."));
+                Assert.Equal(ActiveExpenseAmountBsS, opex);
+            }
 
             AssertNoErrorDialogs("cierre del flujo de caja chica");
         }

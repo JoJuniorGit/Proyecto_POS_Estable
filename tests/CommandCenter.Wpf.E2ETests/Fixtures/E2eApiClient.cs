@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -36,6 +37,12 @@ public sealed record E2eCheckoutPreview(decimal TotalUSD, decimal TotalBsS);
 
 /// <summary>Fila del listado real de mercancía pendiente por retirar.</summary>
 public sealed record E2ePendingPickup(int SaleId, decimal TotalUnits, decimal DeliveredUnits, string DeliveryStatus);
+
+/// <summary>Esperado del cierre por método de pago.</summary>
+public sealed record E2eExpectedTotal(int PaymentMethodId, string PaymentMethodName, decimal ExpectedAmountBsS);
+
+/// <summary>Cierre real: id y effectivo esperado del método Cash (solo gastos Active).</summary>
+public sealed record E2eDailyClosure(int ClosureId, decimal CashSystemAmount);
 
 /// <summary>
 /// Bootstrap del harness contra la API real (HttpClient simple, sin mocks): login del admin
@@ -515,6 +522,140 @@ public sealed class E2eApiClient : IDisposable
         EnsureSuccess(response, "register credit payment", body);
     }
 
+    /// <summary>Registra un gasto de caja chica real (el turno activo se resuelve en el servidor).</summary>
+    public async Task<E2ePettyCashExpense> RegisterPettyCashExpenseAsync(
+        string bearerToken,
+        decimal amountBsS,
+        string concept,
+        string beneficiary,
+        string referenceNumber,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "api/cashdrawer/petty-cash",
+            new
+            {
+                Currency = 0, // BsS
+                Amount = amountBsS,
+                Category = 5, // Varios
+                Concept = concept,
+                Beneficiary = beneficiary,
+                ReferenceNumber = referenceNumber,
+                IdempotencyKey = Guid.NewGuid().ToString("N")
+            },
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "register petty cash expense", body);
+
+        using var json = JsonDocument.Parse(body);
+        return ParsePettyCashExpense(json.RootElement);
+    }
+
+    /// <summary>Esperado del cierre por método para la fecha indicada.</summary>
+    public async Task<IReadOnlyList<E2eExpectedTotal>> GetExpectedTotalsAsync(
+        string bearerToken,
+        DateTime dateUtc,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"api/dailyclosure/expected-totals?dateUtc={Uri.EscapeDataString(dateUtc.ToString("O"))}",
+            payload: null,
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "get expected totals", body);
+
+        using var json = JsonDocument.Parse(body);
+        var totals = new List<E2eExpectedTotal>();
+        foreach (var item in json.RootElement.EnumerateArray())
+        {
+            totals.Add(new E2eExpectedTotal(
+                item.GetProperty("paymentMethodId").GetInt32(),
+                ReadString(item, "paymentMethodName") ?? string.Empty,
+                item.GetProperty("expectedAmountBsS").GetDecimal()));
+        }
+
+        return totals;
+    }
+
+    /// <summary>Crea el cierre real declarando como contado exactamente el esperado por método.</summary>
+    public async Task<E2eDailyClosure> CreateDailyClosureAsync(
+        string bearerToken,
+        DateTime dateUtc,
+        IReadOnlyList<E2eExpectedTotal> expectedTotals,
+        CancellationToken cancellationToken = default)
+    {
+        var details = expectedTotals.Select(total => new
+        {
+            PaymentMethodId = total.PaymentMethodId,
+            PaymentMethodName = total.PaymentMethodName,
+            ExpectedAmountBsS = total.ExpectedAmountBsS,
+            // El esperado puede ser negativo por egresos de caja chica; el contado declarado no.
+            ActualAmountBsS = Math.Max(0m, total.ExpectedAmountBsS)
+        }).ToArray();
+
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "api/dailyclosure",
+            new { ClosureDate = dateUtc, Observation = "Cierre E2E caja chica", Details = details },
+            bearerToken,
+            cancellationToken,
+            idempotencyKey: Guid.NewGuid().ToString("N"));
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "create daily closure", body);
+
+        using var json = JsonDocument.Parse(body);
+        var root = json.RootElement;
+        decimal cashSystemAmount = 0m;
+        if (TryGetProperty(root, "details", out var detailsElement) && detailsElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var detail in detailsElement.EnumerateArray())
+            {
+                if (TryGetProperty(detail, "paymentMethodId", out var method) &&
+                    method.GetInt32() == 1 &&
+                    TryGetProperty(detail, "systemAmount", out var systemAmount))
+                {
+                    cashSystemAmount = systemAmount.GetDecimal();
+                    break;
+                }
+            }
+        }
+
+        return new E2eDailyClosure(
+            GetRequired(root, "closureId", body).GetInt32(),
+            cashSystemAmount);
+    }
+
+    /// <summary>Edición masiva real de margen retail (puntos porcentuales) sobre el producto.</summary>
+    public async Task ApplyBulkRetailMarginAsync(
+        string bearerToken,
+        int productId,
+        decimal marginPercent,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "api/products/bulk-prices/apply",
+            new
+            {
+                ProductIds = new[] { productId },
+                Operations = new[]
+                {
+                    new { Field = 2, Mode = 0, Value = marginPercent } // RetailMargin / SetFixed
+                },
+                RetailRoundingRule = 0,     // ExactMath
+                WholesaleRoundingRule = 0,  // ExactMath
+                CashBsRoundingRule = 0      // ExactMath
+            },
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "apply bulk retail margin", body);
+    }
+
     public void Dispose()
     {
         _httpClient.Dispose();
@@ -590,6 +731,31 @@ public sealed class E2eApiClient : IDisposable
             return false;
         }
     }
+
+    private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
+    {
+        if (element.TryGetProperty(name, out value))
+        {
+            return true;
+        }
+
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static JsonElement GetRequired(JsonElement element, string name, string body)
+        => TryGetProperty(element, name, out var value)
+            ? value
+            : throw new InvalidOperationException($"La respuesta del cierre no contiene '{name}'. Cuerpo: {body}");
 
     private static string? ReadString(JsonElement element, string name)
         => element.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String
