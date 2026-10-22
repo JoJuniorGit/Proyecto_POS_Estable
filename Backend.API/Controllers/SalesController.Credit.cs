@@ -49,13 +49,26 @@ public partial class SalesController
             : request.CashierId;
         request.CashierId = effectiveCashierId;
 
+        string requestPath = $"/api/sales/{id}/complete-credit";
+        string bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var resolved = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            bodyJson,
+            parseNumericBodyAsInvoice: true);
+
+        if (resolved.ShouldStop)
+        {
+            return resolved.BlockingResult!;
+        }
+
         try
         {
-            return await CompleteCreditSaleCoreAsync(id, request, creditOverLimitAuthorized: false, cancellationToken);
+            return await CompleteCreditSaleCoreAsync(id, request, creditOverLimitAuthorized: false, resolved, requestPath, cancellationToken);
         }
         catch (CreditOverLimitRequiresAuthorizationException signal)
         {
-            return await ResolveCreditOverLimitAsync(id, request, signal, cancellationToken);
+            return await ResolveCreditOverLimitAsync(id, request, signal, resolved, requestPath, cancellationToken);
         }
     }
 
@@ -68,21 +81,36 @@ public partial class SalesController
         int saleId,
         CreditSaleRequest request,
         bool creditOverLimitAuthorized,
+        IdempotencyResolution idempotency,
+        string requestPath,
         CancellationToken cancellationToken)
     {
-        int invoiceNumber = await _salesService.CompleteCreditSaleAsync(
-            saleId,
-            request,
-            GetActorUserId(),
-            creditOverLimitAuthorized,
-            cancellationToken);
-
-        if (Response?.Headers != null)
+        try
         {
-            Response.Headers["X-Cache-Lookup"] = "MISS";
-        }
+            int invoiceNumber = await _salesService.CompleteCreditSaleAsync(
+                saleId,
+                request,
+                GetActorUserId(),
+                creditOverLimitAuthorized,
+                cancellationToken);
 
-        return Ok(invoiceNumber);
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "MISS";
+            }
+
+            await _idempotencyResolver.RegisterSuccessAsync(
+                idempotency,
+                requestPath,
+                invoiceNumber.ToString(),
+                cancellationToken);
+
+            return Ok(invoiceNumber);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash, parseNumericBodyAsInvoice: true);
+        }
     }
 
     /// <summary>
@@ -96,6 +124,8 @@ public partial class SalesController
         int saleId,
         CreditSaleRequest request,
         CreditOverLimitRequiresAuthorizationException signal,
+        IdempotencyResolution idempotency,
+        string requestPath,
         CancellationToken cancellationToken)
     {
         string? authorizationToken = Request.Headers.TryGetValue(AuthorizationTokenHeader, out var headerValues)
@@ -123,7 +153,7 @@ public partial class SalesController
             {
                 try
                 {
-                    return await CompleteCreditSaleCoreAsync(saleId, request, creditOverLimitAuthorized: true, cancellationToken);
+                    return await CompleteCreditSaleCoreAsync(saleId, request, creditOverLimitAuthorized: true, idempotency, requestPath, cancellationToken);
                 }
                 catch (CreditOverLimitRequiresAuthorizationException)
                 {
@@ -205,6 +235,19 @@ public partial class SalesController
         int? actingUserId = GetActorUserId();
         request.ReceivedByUserId = actingUserId ?? request.ReceivedByUserId;
 
+        string requestPath = "/api/sales/credit-payments";
+        string bodyJson = actingUserId + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var resolved = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            bodyJson,
+            parseNumericBodyAsInvoice: false);
+
+        if (resolved.ShouldStop)
+        {
+            return (ActionResult<CreditPaymentResultDto>)resolved.BlockingResult!;
+        }
+
         try
         {
             var result = await _salesService.RegisterCreditPaymentAsync(
@@ -212,7 +255,23 @@ public partial class SalesController
                 actingUserId,
                 HttpContext?.RequestAborted ?? default);
 
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "MISS";
+            }
+
+            await _idempotencyResolver.RegisterSuccessAsync(
+                resolved,
+                requestPath,
+                System.Text.Json.JsonSerializer.Serialize(result),
+                cancellationToken);
+
             return Ok(result);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            var collisionResult = await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash, parseNumericBodyAsInvoice: false);
+            return (ActionResult<CreditPaymentResultDto>)collisionResult;
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
@@ -269,15 +328,45 @@ public partial class SalesController
             return this.ApiForbidden("Acceso denegado: no tiene permisos para anular esta venta.");
         }
 
+        int? actingUserId = GetActorUserId();
+        string requestPath = $"/api/sales/{id}/credit-cancel";
+        string bodyJson = actingUserId + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var resolved = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            bodyJson,
+            parseNumericBodyAsInvoice: false);
+
+        if (resolved.ShouldStop)
+        {
+            return (ActionResult<CreditCancelResultDto>)resolved.BlockingResult!;
+        }
+
         try
         {
             var result = await _salesService.CancelCreditSaleAsync(
                 id,
                 request?.Reason,
-                GetActorUserId(),
+                actingUserId,
                 HttpContext?.RequestAborted ?? cancellationToken);
 
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "MISS";
+            }
+
+            await _idempotencyResolver.RegisterSuccessAsync(
+                resolved,
+                requestPath,
+                System.Text.Json.JsonSerializer.Serialize(result),
+                cancellationToken);
+
             return Ok(result);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            var collisionResult = await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash, parseNumericBodyAsInvoice: false);
+            return (ActionResult<CreditCancelResultDto>)collisionResult;
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {
@@ -315,15 +404,45 @@ public partial class SalesController
             return this.ApiForbidden("Acceso denegado: no tiene permisos para registrar devoluciones de esta venta.");
         }
 
+        int? actingUserId = GetActorUserId();
+        string requestPath = $"/api/sales/{id}/credit-return";
+        string bodyJson = actingUserId + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var resolved = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            bodyJson,
+            parseNumericBodyAsInvoice: false);
+
+        if (resolved.ShouldStop)
+        {
+            return (ActionResult<CreditReturnResultDto>)resolved.BlockingResult!;
+        }
+
         try
         {
             var result = await _salesService.RegisterCreditReturnAsync(
                 id,
                 request,
-                GetActorUserId(),
+                actingUserId,
                 HttpContext?.RequestAborted ?? cancellationToken);
 
+            if (Response?.Headers != null)
+            {
+                Response.Headers["X-Cache-Lookup"] = "MISS";
+            }
+
+            await _idempotencyResolver.RegisterSuccessAsync(
+                resolved,
+                requestPath,
+                System.Text.Json.JsonSerializer.Serialize(result),
+                cancellationToken);
+
             return Ok(result);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            var collisionResult = await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash, parseNumericBodyAsInvoice: false);
+            return (ActionResult<CreditReturnResultDto>)collisionResult;
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)
         {

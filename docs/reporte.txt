@@ -16318,3 +16318,56 @@ F1. Push de los commits locales: pendiente de decision del mantenedor; no ejecut
 F2. El E2E web mantiene mockApi; la persistencia real queda certificada por API/integracion y por
     las verticales WPF contra PostgreSQL aislado.
 ================================================================================
+
+================================================================================
+ANEXO XXIV - AUDITORIA INTEGRAL FASES 1-4: REMEDIACION DE SEGURIDAD, RENDIMIENTO, IDEMPOTENCIA Y CALCULO FINANCIERO (8.190) - 2026-10-22
+================================================================================
+Alcance: Remediacion de los hallazgos criticos y de alto impacto detectados durante la auditoria
+integral de 4 fases (DevSecOps, Performance Engineering, Clean Code/Higiene y SRE/Concurrencia).
+
+A. REMEDIACIONES IMPLEMENTADAS
+
+A1. FASE 1 (DevSecOps):
+    - [SEC-F1-03] En Backend.API/Controllers/SalesController.cs y SalesController.HoldOrders.cs, se
+      incorporo el atributo [RequireSecurityStampValidation] en los endpoints mutacionales de items,
+      tasas, retenciones (hold) y pagos (AddItemAsync, RemoveItemAsync, UpdateItemQuantityAsync,
+      UpdateExchangeRateAsync, HoldSaleAsync, UpdateSaleItemsAsync, AddPaymentAsync,
+      AddPaymentsBatchAsync, CancelSaleAsync). Esto fuerza la verificacion inmediata de
+      revocacion/cambio de credenciales en BD (ventana estricta <= 5 s), impidiendo la manipulacion
+      residual desde JWTs revocados o cuentas desactivadas.
+
+A2. FASE 2 (Performance Engineering):
+    - [PERF-F2-01] En Sales.Module/Services/ClosurePdfGenerator.cs: disposicion determinista con
+      using var ms = new MemoryStream() y using var writer = new StreamWriter(ms, Encoding.ASCII, leaveOpen: true)
+      en GenerateClosurePdfAsync, eliminando buffers huerfanos y memory leaks durante la exportacion masiva
+      de reportes de cierre.
+    - [PERF-F2-02] En Sales.Module/Services/SalesService.History.cs: poda de la consulta preliminar en
+      ConfirmPickupAsync. Se eliminaron los includes redundantes de Customer, Cashier y Payments con sus
+      respectivas split queries que eran descartados antes de invocar DeliverPartialAsync, reduciendo
+      la carga de red a un unico fetch de solo Items.
+
+A3. FASE 3 (Clean Code / Higiene Financiera):
+    - [CLEAN-F3-01] En Web.Frontend/src/components/register/CashAdvanceModal.jsx: correcion del truncamiento
+      entero en computeAdvanceSummary. El calculo de comisiones paso de Math.round(x) a redondeo centesimal
+      Math.round((x + EPSILON) * 100) / 100, asegurando paridad estricta con el redondeo MidpointRounding.AwayFromZero
+      a 2 decimales ejecutado en CashAdvanceCoordinator.cs. Suite de pruebas web ampliada con caso fraccionario.
+
+A4. FASE 4 (SRE / Concurrencia e Idempotencia):
+    - [SRE-F4-01] En Backend.API/Controllers/PettyCashController.cs: inyeccion de IdempotencyRequestResolver
+      en RegisterAsync, CancelAsync, RegisterWithAuthorizationAsync y CancelWithAuthorizationAsync.
+      Ahora cada egreso y anulacion de caja chica valida el encabezado Idempotency-Key, previene dobles
+      salidas de dinero ante reintentos de red y maneja colisiones concurrentes de clave duplicada (IX_IdempotentRequests).
+    - [SRE-F4-02] En Backend.API/Controllers/SalesController.Credit.cs: integracion completa de
+      IdempotencyRequestResolver en RegisterCreditPaymentAsync, CancelCreditSaleAsync y
+      RegisterCreditReturnAsync. Evita cobros dobles de abonos CxC y reprocesamientos de devoluciones/anulaciones
+      a credito por desconexion.
+
+B. EVIDENCIA Y VERIFICACION
+
+B1. Compilacion: dotnet build CommandCenter.slnx -c Release (0 errores, 0 advertencias).
+B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 suites).
+    npm run lint (oxlint) -> 0 errores, 0 advertencias.
+B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (filtro sin carril de BD externa no levantada) ->
+    563/563 tests superados (100% de exito en las suites de credito, caja chica, idempotencia y PDF).
+B4. Cobertura: Core 0.8190 >= 0.70 | Sales.Module 0.8971 >= 0.80 | Inventory.Module 0.8777 >= 0.72.
+================================================================================

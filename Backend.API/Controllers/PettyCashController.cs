@@ -35,19 +35,22 @@ public class PettyCashController : ControllerBase
     // Opcional para preservar la construccion directa historica de tests; si falta, el gate de
     // autorizacion falla cerrado con el 403 del contrato.
     private readonly IAuthorizationCoordinator? _authorizationCoordinator;
-    // Opcional (mismo patron): el ajuste CurrencyFormat matiza el formato monetario del vale.
     private readonly ISystemSettingsService? _settingsService;
+    private readonly IdempotencyRequestResolver _idempotencyResolver;
 
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public PettyCashController(
         IPettyCashService pettyCashService,
         ICurrentUserService currentUserService,
         IAuthorizationCoordinator? authorizationCoordinator = null,
-        ISystemSettingsService? settingsService = null)
+        ISystemSettingsService? settingsService = null,
+        IIdempotencyService? idempotencyService = null)
     {
         _pettyCashService = pettyCashService;
         _currentUserService = currentUserService;
         _authorizationCoordinator = authorizationCoordinator;
         _settingsService = settingsService;
+        _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
     /// <summary>
@@ -70,6 +73,16 @@ public class PettyCashController : ControllerBase
             return this.ApiBadRequest("La solicitud del gasto de caja chica es requerida.");
         }
 
+        string requestPath = HttpContext?.Request?.Path.Value ?? "/api/cashdrawer/petty-cash";
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(request));
+        if (idempotency.ShouldStop)
+        {
+            return idempotency.BlockingResult!;
+        }
+
         // El usuario autenticado prevalece como ejecutor del gasto (la firma no es delegable por
         // el cuerpo de la petición; mismo contrato del cierre de venta y del abono CxC).
         int? actingUserId = GetActorUserId();
@@ -83,11 +96,17 @@ public class PettyCashController : ControllerBase
                 actingRole,
                 cancellationToken: cancellationToken);
 
+            await _idempotencyResolver.RegisterSuccessAsync(
+                idempotency,
+                requestPath,
+                System.Text.Json.JsonSerializer.Serialize(result),
+                cancellationToken);
+
             return Ok(result);
         }
         catch (PettyCashAuthorizationRequiredException signal)
         {
-            return await RegisterWithAuthorizationAsync(request, signal, actingUserId, actingRole, cancellationToken);
+            return await RegisterWithAuthorizationAsync(request, signal, actingUserId, actingRole, idempotency, requestPath, cancellationToken);
         }
         catch (KeyNotFoundException ex)
         {
@@ -100,6 +119,10 @@ public class PettyCashController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return this.ApiConflict(ex.Message);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
         }
     }
 
@@ -120,6 +143,16 @@ public class PettyCashController : ControllerBase
         [FromBody] PettyCashCancelRequest? request,
         CancellationToken cancellationToken = default)
     {
+        string requestPath = HttpContext?.Request?.Path.Value ?? $"/api/cashdrawer/petty-cash/{id}/cancel";
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(request));
+        if (idempotency.ShouldStop)
+        {
+            return idempotency.BlockingResult!;
+        }
+
         int? actingUserId = GetActorUserId();
         UserRole? actingRole = _currentUserService.UserRole;
 
@@ -132,11 +165,17 @@ public class PettyCashController : ControllerBase
                 actingRole,
                 cancellationToken: cancellationToken);
 
+            await _idempotencyResolver.RegisterSuccessAsync(
+                idempotency,
+                requestPath,
+                System.Text.Json.JsonSerializer.Serialize(result),
+                cancellationToken);
+
             return Ok(result);
         }
         catch (PettyCashAuthorizationRequiredException signal)
         {
-            return await CancelWithAuthorizationAsync(id, request, signal, actingUserId, actingRole, cancellationToken);
+            return await CancelWithAuthorizationAsync(id, request, signal, actingUserId, actingRole, idempotency, requestPath, cancellationToken);
         }
         catch (KeyNotFoundException ex)
         {
@@ -149,6 +188,10 @@ public class PettyCashController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return this.ApiConflict(ex.Message);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
         }
     }
 
@@ -228,6 +271,8 @@ public class PettyCashController : ControllerBase
         PettyCashAuthorizationRequiredException signal,
         int? actingUserId,
         UserRole? actingRole,
+        IdempotencyResolution idempotency,
+        string requestPath,
         CancellationToken cancellationToken)
     {
         string? authorizationToken = ReadAuthorizationToken();
@@ -252,6 +297,12 @@ public class PettyCashController : ControllerBase
                         authorizationRequestId: consume.RequestId,
                         cancellationToken: cancellationToken);
 
+                    await _idempotencyResolver.RegisterSuccessAsync(
+                        idempotency,
+                        requestPath,
+                        System.Text.Json.JsonSerializer.Serialize(result),
+                        cancellationToken);
+
                     return Ok(result);
                 }
                 catch (PettyCashAuthorizationRequiredException)
@@ -271,6 +322,10 @@ public class PettyCashController : ControllerBase
                 {
                     return this.ApiConflict(ex.Message);
                 }
+                catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+                {
+                    return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
+                }
             }
         }
 
@@ -286,6 +341,8 @@ public class PettyCashController : ControllerBase
         PettyCashAuthorizationRequiredException signal,
         int? actingUserId,
         UserRole? actingRole,
+        IdempotencyResolution idempotency,
+        string requestPath,
         CancellationToken cancellationToken)
     {
         string? authorizationToken = ReadAuthorizationToken();
@@ -310,6 +367,12 @@ public class PettyCashController : ControllerBase
                         consume.AuthorizedByUserId,
                         cancellationToken);
 
+                    await _idempotencyResolver.RegisterSuccessAsync(
+                        idempotency,
+                        requestPath,
+                        System.Text.Json.JsonSerializer.Serialize(result),
+                        cancellationToken);
+
                     return Ok(result);
                 }
                 catch (PettyCashAuthorizationRequiredException)
@@ -327,6 +390,10 @@ public class PettyCashController : ControllerBase
                 catch (InvalidOperationException ex)
                 {
                     return this.ApiConflict(ex.Message);
+                }
+                catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+                {
+                    return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
                 }
             }
         }

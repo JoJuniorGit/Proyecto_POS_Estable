@@ -15,15 +15,11 @@ public partial class SalesService
 {
     public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        // 8.9-M17: una sola consulta; se mapea el DTO desde la entidad ya cargada (sin doble fetch).
-        // 8.159 (PERF-03 residual): este fetch es solo de validación (la entidad no se muta aquí).
+        // 8.188 (PERF-F2-02): optimización de rendimiento: fetch liviano solo de Items para validación preliminar
+        // sin disparar split queries innecesarias de Customer, Cashier y Payments descartadas antes de DeliverPartialAsync.
         var sale = await _context.Sales
             .AsNoTracking()
-            .AsSplitQuery()
-            .Include(s => s.Customer)
-            .Include(s => s.Cashier)
             .Include(s => s.Items)
-            .Include(s => s.Payments).ThenInclude(p => p.PaymentMethod)
             .FirstOrDefaultAsync(s => s.Id == saleId, cancellationToken);
 
         if (sale == null) throw new KeyNotFoundException("Venta no encontrada.");

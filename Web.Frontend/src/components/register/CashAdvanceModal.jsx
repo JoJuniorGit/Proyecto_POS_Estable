@@ -21,8 +21,8 @@ export function computeAdvanceSummary({ amountBsS, percentage, exchangeRate }) {
     return { hasResolvedCommission: false, commissionBsS: null, totalChargedBsS: null, totalChargedUsd: null };
   }
 
-  const commissionBsS = Math.round(numRequested * (percentage / 100));
-  const totalChargedBsS = numRequested + commissionBsS;
+  const commissionBsS = Math.round((numRequested * (percentage / 100) + Number.EPSILON) * 100) / 100;
+  const totalChargedBsS = Math.round((numRequested + commissionBsS + Number.EPSILON) * 100) / 100;
   const totalChargedUsd = exchangeRate > 0 ? totalChargedBsS / exchangeRate : 0;
 
   return { hasResolvedCommission: true, commissionBsS, totalChargedBsS, totalChargedUsd };

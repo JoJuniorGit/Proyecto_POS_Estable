@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Backend.API.Attributes;
 using Backend.API.Services;
 using Core.DTOs;
 using Sales.Module.DTOs;
@@ -10,6 +11,7 @@ namespace Backend.API.Controllers;
 
 public partial class SalesController
 {
+    [RequireSecurityStampValidation]
     [HttpPost("{id}/hold")]
     public async Task<ActionResult<SaleDto>> HoldSaleAsync(int id, [FromBody] HoldSaleRequestDto request, CancellationToken cancellationToken = default)
     {
@@ -39,6 +41,7 @@ public partial class SalesController
         }
     }
 
+    [RequireSecurityStampValidation]
     [HttpPut("{id}/items")]
     public async Task<ActionResult<SaleDto>> UpdateSaleItemsAsync(int id, [FromBody] UpdateSaleItemsRequestDto request, CancellationToken cancellationToken = default)
     {
@@ -59,6 +62,7 @@ public partial class SalesController
         }
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost("{id}/payments")]
     public async Task<ActionResult<SaleDto>> AddPaymentAsync(int id, [FromBody] AddPaymentRequestDto request, CancellationToken cancellationToken = default)
     {
@@ -88,6 +92,7 @@ public partial class SalesController
         }
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost("{id}/payments/batch")]
     public async Task<ActionResult<SaleDto>> AddPaymentsBatchAsync(int id, [FromBody] System.Collections.Generic.List<AddPaymentRequestDto> request, CancellationToken cancellationToken = default)
     {
@@ -129,6 +134,7 @@ public partial class SalesController
         return Ok(pending);
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost("{id}/cancel")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<IActionResult> CancelSaleAsync(int id, CancellationToken cancellationToken = default)

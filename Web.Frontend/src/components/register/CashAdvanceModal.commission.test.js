@@ -44,6 +44,12 @@ describe('CashAdvanceModal — server-resolved commission (REQ-CAP-02/03)', () =
     assert.equal(unresolved.commissionBsS, null);
     assert.equal(unresolved.totalChargedBsS, null);
     assert.equal(unresolved.totalChargedUsd, null);
+
+    const fractional = computeAdvanceSummary({ amountBsS: 250, percentage: 7.5, exchangeRate: 50 });
+    assert.equal(fractional.hasResolvedCommission, true);
+    assert.equal(fractional.commissionBsS, 18.75);
+    assert.equal(fractional.totalChargedBsS, 268.75);
+    assert.equal(fractional.totalChargedUsd, 5.375);
   });
 
   it('reads the new server route and blocks submission while unresolved', () => {

@@ -11,8 +11,8 @@ public static class ClosurePdfGenerator
 {
     public static byte[] GeneratePdf(DailyClosureResponseDto closure, bool isBlind = false, MoneyDisplayFormat format = MoneyDisplayFormat.Venezuelan)
     {
-        var ms = new MemoryStream();
-        var writer = new StreamWriter(ms, Encoding.ASCII);
+        using var ms = new MemoryStream();
+        using var writer = new StreamWriter(ms, Encoding.ASCII, leaveOpen: true);
 
         string dateStr = closure.ClosureDate.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss");
         string userName = string.IsNullOrWhiteSpace(closure.UserId) ? "Cajero Activo" : closure.UserId;
