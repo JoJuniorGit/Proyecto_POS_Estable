@@ -16371,3 +16371,56 @@ B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (filtro sin carril
     563/563 tests superados (100% de exito en las suites de credito, caja chica, idempotencia y PDF).
 B4. Cobertura: Core 0.8190 >= 0.70 | Sales.Module 0.8971 >= 0.80 | Inventory.Module 0.8777 >= 0.72.
 ================================================================================
+
+
+ANEXO XXV - REMEDIACION CRITICA DEVSECOPS, RENDIMIENTO Y CONCURRENCIA DE CAJA (8.191) - 2026-10-22
+================================================================================
+Alcance: Remediacion de vulnerabilidades criticas y de rendimiento detectadas en la auditoria:
+validacion estricta de sellos de seguridad en controllers administrativos, proteccion contra fugas
+de descriptores de socket HTTP en Desktop y Backend, atomicidad relacional en la apertura de gaveta
+de caja e interoperabilidad de idempotencia en caja chica.
+
+A. REMEDIACIONES IMPLEMENTADAS
+
+A1. FASE 1 (DevSecOps - Control de Acceso y Revocacion):
+    - [SEC-F1-04] En Backend.API/Controllers/UsersController.cs y SettingsController.cs, se incorporo
+      el atributo [RequireSecurityStampValidation] a nivel de clase. En AuthorizationsController.cs se
+      agrego en ResolveAsync. Esto elimina la ventana de micro-cache de 45 segundos, forzando la
+      verificacion inmediata en base de datos de credenciales y sellos de seguridad revocados para
+      cualquier mutacion administrativa o resolucion remota de autorizaciones.
+
+A2. FASE 2 (Performance Engineering - Fuga de Sockets):
+    - [PERF-F2-03] En Desktop.Client.Core/Services/HealthPollingService.cs: adicion de bloque using var
+      en la invocacion _httpClient.GetAsync("health", cancellationToken) dentro del bucle de polling
+      PollLoopAsync. Elimina la acumulacion masiva de HttpResponseMessage y descriptores de sockets no
+      liberados durante caidas o desconexiones de red en el cliente WPF.
+    - [PERF-F2-04] En Backend.API/Services/BcvScraperService.cs: adicion de using var en la respuesta
+      HTTP GetAsync("https://www.bcv.org.ve/"), liberando inmediatamente los buffers y sockets nativos
+      tras cada raspado programado de la tasa oficial.
+
+A3. FASE 3 (Clean Code / Higiene de Excepciones):
+    - [CLEAN-F3-02] En Desktop.Client.Core/ViewModels/SupplierInvoiceViewModel.Suppliers.cs: eliminacion
+      del anti-patron de catch vacio (silent swallow) en la consulta de tasa de proveedores. Se
+      incorpora registro formal de advertencia con AppLogger.LogWarn preservando la resiliencia operativa
+      de la interfaz sin ocultar fallas de infraestructura.
+
+A4. FASE 4 (SRE / Concurrencia Transaccional e Idempotencia):
+    - [SRE-F4-03] En Sales.Module/Services/CashDrawerService.cs: envolvimiento de OpenSessionAsync en una
+      transaccion relacional unica atoma (BeginTransactionAsync) bajo PostgreSQL. La creacion de la
+      entidad CashDrawerSession y su movimiento inicial de apertura en CashTransactions se confirman o
+      revierten en conjunto, eliminando el edge case de sesiones abiertas huerfanas de transaccion ante
+      caidas abruptas.
+    - [SRE-F4-04] En Backend.API/Controllers/PettyCashController.cs: soporte bidireccional de la clave
+      de idempotencia (promocion automatica desde request.IdempotencyKey al encabezado Idempotency-Key
+      si el header viene vacio), blindando al servidor contra dobles egresos de caja chica sin romper
+      la suite de pruebas unitarias.
+
+B. EVIDENCIA Y VERIFICACION
+
+B1. Compilacion: dotnet build CommandCenter.slnx -c Release -> 0 errores, 0 advertencias.
+B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 suites).
+    npm run lint (oxlint) -> 0 errores, 0 advertencias.
+B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (filtro sin carril de BD externa no levantada) ->
+    3464/3464 tests superados (100% de exito en las suites de caja, autorizaciones, idempotencia y salud).
+B4. Cobertura: Core 0.8406 >= 0.70 | Sales.Module 0.8990 >= 0.80 | Inventory.Module 0.8973 >= 0.72.
+================================================================================

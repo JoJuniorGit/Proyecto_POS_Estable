@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Backend.API.Attributes;
 using Backend.API.Hubs;
 using Backend.API.Services;
 using Core.Entities;
@@ -108,6 +109,7 @@ public class AuthorizationsController : ControllerBase
         });
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost("{id:int}/resolve")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ResolveAsync(

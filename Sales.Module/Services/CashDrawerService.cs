@@ -112,26 +112,60 @@ public class CashDrawerService : ICashDrawerService
             Status = CashDrawerStatus.Open
         };
 
+        bool isInMemory = _context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
+        var ambientTransaction = _context.Database.CurrentTransaction;
+        bool ownsTransaction = !isInMemory && ambientTransaction == null;
+
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? ownTransaction = null;
+        if (ownsTransaction)
+        {
+            ownTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        }
+
         try
         {
             _context.CashDrawerSessions.Add(session);
             await _context.SaveChangesAsync(cancellationToken);
+
+            await AddTransactionAsync(
+                session.Id,
+                CashTransactionType.Income,
+                CashTransactionSource.Opening,
+                openingBalanceLocal,
+                currentExchangeRate > 0 ? openingBalanceLocal / currentExchangeRate : 0,
+                currentExchangeRate,
+                "Monto de apertura de caja",
+                cancellationToken: cancellationToken
+            );
+
+            if (ownTransaction != null)
+            {
+                await ownTransaction.CommitAsync(cancellationToken);
+            }
         }
         catch (DbUpdateException ex)
         {
+            if (ownTransaction != null)
+            {
+                await ownTransaction.RollbackAsync(cancellationToken);
+            }
             throw new InvalidOperationException("Ya existe una sesión de caja activa.", ex);
         }
-
-        await AddTransactionAsync(
-            session.Id,
-            CashTransactionType.Income,
-            CashTransactionSource.Opening,
-            openingBalanceLocal,
-            currentExchangeRate > 0 ? openingBalanceLocal / currentExchangeRate : 0,
-            currentExchangeRate,
-            "Monto de apertura de caja",
-            cancellationToken: cancellationToken
-        );
+        catch
+        {
+            if (ownTransaction != null)
+            {
+                await ownTransaction.RollbackAsync(cancellationToken);
+            }
+            throw;
+        }
+        finally
+        {
+            if (ownTransaction != null)
+            {
+                await ownTransaction.DisposeAsync();
+            }
+        }
 
         return MapSession(session);
     }

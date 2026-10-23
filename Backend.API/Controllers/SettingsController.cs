@@ -4,6 +4,7 @@ using Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using Backend.API.Attributes;
 using Backend.API.Services;
 using System;
 using System.Threading;
@@ -11,6 +12,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize(Roles = "Admin,Manager")]
 [ApiController]
 [Route("api/[controller]")]

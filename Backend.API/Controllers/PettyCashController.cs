@@ -74,6 +74,11 @@ public class PettyCashController : ControllerBase
         }
 
         string requestPath = HttpContext?.Request?.Path.Value ?? "/api/cashdrawer/petty-cash";
+        if (Request?.Headers != null && string.IsNullOrWhiteSpace(Request.Headers["Idempotency-Key"]) && !string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        {
+            Request.Headers["Idempotency-Key"] = request.IdempotencyKey;
+        }
+
         var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
             this,
             requestPath,

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Backend.API.Attributes;
 using Backend.API.Services;
 using Core.Logging;
 using Core.Interfaces;
@@ -13,6 +14,7 @@ using Sales.Module.Services;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/[controller]")]

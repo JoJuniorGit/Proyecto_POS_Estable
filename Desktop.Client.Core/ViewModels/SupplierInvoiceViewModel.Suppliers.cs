@@ -378,9 +378,10 @@ public partial class SupplierInvoiceViewModel
                 SetAppliedRateTextProgrammatically(FormatAppliedRateText(currentRate.Rate));
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Sin tasa vigente la factura Bs.S queda bloqueada; el usuario puede escribirla a mano.
+            Core.Logging.AppLogger.LogWarn($"[SupplierInvoice] No se pudo obtener la tasa de cambio vigente: {ex.Message}");
         }
     }
 
