@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Reflection;
 using System.Security.Claims;
 using System.Threading;
@@ -10,11 +12,17 @@ using Backend.API.Controllers;
 using Backend.API.Middleware;
 using Backend.API.Services;
 using Core.DTOs;
+using Core.Entities;
 using Core.Interfaces;
+using ISalesService = Sales.Module.Interfaces.ISalesService;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Moq;
+using Moq.Protected;
+using Sales.Module.Data;
 using Sales.Module.DTOs;
 using Sales.Module.Interfaces;
 using Xunit;
@@ -193,5 +201,139 @@ public class DevSecOpsPhase1HardeningTests
 
         Assert.True(nextCalled);
         validator.Verify(v => v.ValidateStampAsync(42, "stamp-123", false), Times.Once);
+    }
+
+    [Fact]
+    public async Task ValidateStampAsync_WhenForceImmediateCheckIsTrue_BypassesMemoryCacheDirectly()
+    {
+        var options = new DbContextOptionsBuilder<SalesDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        await using var db = new SalesDbContext(options);
+        const int testUserId = 77;
+        const string initialStamp = "initial-valid-stamp";
+        db.Users.Add(new User
+        {
+            Id = testUserId,
+            Cedula = "V-77777777",
+            Username = "user77",
+            Name = "User 77",
+            FullName = "User 77",
+            Role = UserRole.Cashier,
+            IsActive = true,
+            SecurityStamp = initialStamp
+        });
+        await db.SaveChangesAsync();
+
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var validator = new SecurityStampValidator(db, cache);
+
+        // 1. Llamada normal puebla la caché
+        Assert.True(await validator.ValidateStampAsync(testUserId, initialStamp, forceImmediateCheck: false));
+
+        // 2. Modificación directa en la base de datos sin llamar a InvalidateUserStamp
+        var userInDb = await db.Users.SingleAsync(u => u.Id == testUserId);
+        userInDb.SecurityStamp = "new-rotated-stamp";
+        await db.SaveChangesAsync();
+
+        // 3. Con forceImmediateCheck = false, todavía devuelve true desde la caché
+        Assert.True(await validator.ValidateStampAsync(testUserId, initialStamp, forceImmediateCheck: false));
+
+        // 4. Con forceImmediateCheck = true (SEC-01), salta la caché en memoria y detecta la revocación inmediatamente
+        Assert.False(await validator.ValidateStampAsync(testUserId, initialStamp, forceImmediateCheck: true));
+        Assert.True(await validator.ValidateStampAsync(testUserId, "new-rotated-stamp", forceImmediateCheck: true));
+    }
+
+    [Fact]
+    public async Task RegisterCreditPaymentAsync_PromotesBodyIdempotencyKeyToHeader()
+    {
+        var salesService = new Mock<ISalesService>();
+        salesService
+            .Setup(s => s.RegisterCreditPaymentAsync(It.IsAny<CreditPaymentRequest>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreditPaymentResultDto { PaymentId = 101 });
+
+        var controller = CreateController(salesService.Object, "Cashier");
+        var request = new CreditPaymentRequest
+        {
+            CustomerId = 1,
+            AmountUSD = 20m,
+            PaymentMethodId = 1,
+            IdempotencyKey = "body-key-test-01"
+        };
+
+        var result = await controller.RegisterCreditPaymentAsync(request, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal("body-key-test-01", controller.Request.Headers["Idempotency-Key"].ToString());
+    }
+
+    [Fact]
+    public async Task RegisterCreditReturnAsync_PromotesBodyIdempotencyKeyToHeader()
+    {
+        var salesService = new Mock<ISalesService>();
+        salesService
+            .Setup(s => s.GetSaleAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SaleDto { Id = 10, Status = "Completed", CashierId = 42 });
+        salesService
+            .Setup(s => s.RegisterCreditReturnAsync(It.IsAny<int>(), It.IsAny<CreditReturnRequest>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CreditReturnResultDto { ReturnId = 202 });
+
+        var controller = CreateController(salesService.Object, "Cashier");
+        var request = new CreditReturnRequest
+        {
+            IdempotencyKey = "ret-key-test-02",
+            Items = new List<CreditReturnItemRequest> { new() { SaleItemId = 1, Quantity = 1m } }
+        };
+
+        var result = await controller.RegisterCreditReturnAsync(10, request, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal("ret-key-test-02", controller.Request.Headers["Idempotency-Key"].ToString());
+    }
+
+    [Fact]
+    public async Task SupplierInvoiceService_ConfirmAsync_AttachesIdempotencyKeyHeader()
+    {
+        HttpRequestMessage? capturedRequest = null;
+        var handlerMock = new Mock<HttpMessageHandler>();
+        handlerMock.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequest = req)
+            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                {
+                    "id": 1,
+                    "supplierId": 2,
+                    "supplierName": "Proveedor Test",
+                    "invoiceNumber": "INV-001",
+                    "status": "Confirmed",
+                    "totalUSD": 100.0,
+                    "totalBsS": 3650.0,
+                    "appliedRate": 36.5,
+                    "currency": "USD",
+                    "lines": []
+                }
+                """, System.Text.Encoding.UTF8, "application/json")
+            });
+
+        var httpClient = new HttpClient(handlerMock.Object)
+        {
+            BaseAddress = new Uri("http://localhost:5000/")
+        };
+
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+        var request = new ConfirmSupplierInvoiceRequestDto(Array.Empty<ConfirmLineDto>());
+
+        var result = await service.ConfirmAsync(1, request, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.NotNull(capturedRequest);
+        Assert.True(capturedRequest!.Headers.Contains("Idempotency-Key"));
+        var key = capturedRequest.Headers.GetValues("Idempotency-Key").FirstOrDefault();
+        Assert.StartsWith("inv-conf-1-", key);
     }
 }

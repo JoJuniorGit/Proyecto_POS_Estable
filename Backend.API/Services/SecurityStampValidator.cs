@@ -58,12 +58,13 @@ public class SecurityStampValidator : ISecurityStampValidator
 
         string cacheKey = $"sec_stamp_{userId}";
 
-        if (_cache.TryGetValue(cacheKey, out CachedStamp? cached))
+        // 8.194 (SEC-01): si se solicita verificación inmediata (mutaciones, endpoints protegidos o hubs SignalR),
+        // se salta la micro-caché en memoria para garantizar revocación instantánea sin ventana de gracia.
+        if (!forceImmediateCheck && _cache.TryGetValue(cacheKey, out CachedStamp? cached))
         {
-            var maxAge = ResolveCacheWindow(forceImmediateCheck);
             if (cached != null
                 && string.Equals(cached.Value, tokenStamp, StringComparison.Ordinal)
-                && DateTime.UtcNow - cached.IssuedAtUtc < maxAge)
+                && DateTime.UtcNow - cached.IssuedAtUtc < CacheDuration)
             {
                 return true;
             }

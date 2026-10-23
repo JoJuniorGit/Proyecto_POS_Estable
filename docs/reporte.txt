@@ -16532,3 +16532,39 @@ B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 sui
 B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (suites de remediacion de auditoria F1-F4) ->
     33/33 tests superados (100% exito).
 ================================================================================
+
+
+ANEXO XXVIII - REMEDIACION DE SEGURIDAD Y CONTROL DE ACCESO (DEVSECOPS FASE 1) (8.194) - 2026-10-23
+================================================================================
+Alcance: Remediacion estricta de las vulnerabilidades identificadas en la Fase 1 de la auditoria
+DevSecOps (micro-cache grace window en SecurityStamp, promocion bidireccional de idempotencia en
+pagos/devoluciones de credito, proteccion en confirmacion de facturas de proveedores y sanitizacion de DTOs).
+
+A. REMEDIACIONES IMPLEMENTADAS
+
+A1. FASE 1 (DevSecOps y Control de Acceso):
+    - [SEC-01] En Backend.API/Services/SecurityStampValidator.cs: eliminacion de la ventana de gracia
+      del micro-cache en memoria cuando forceImmediateCheck es true. Si la peticion es de mutacion
+      (POST, PUT, DELETE, PATCH), esta marcada con [RequireSecurityStampValidation] o proviene de
+      invocaciones directas de SignalR Hubs, se evalua el sello de seguridad directamente contra PostgreSQL,
+      garantizando revocacion de credenciales y sesiones en tiempo real con 0 segundos de tolerancia.
+    - [SEC-02] En Backend.API/Controllers/SalesController.Credit.cs: promocion bidireccional automatica de
+      request.IdempotencyKey a Request.Headers["Idempotency-Key"] en RegisterCreditPaymentAsync y
+      RegisterCreditReturnAsync. Garantiza que transacciones de abono o devolucion enviadas con clave
+      de idempotencia en el payload JSON queden blindadas por el IdempotencyMiddleware contra duplicados de red.
+    - [SEC-03] En Desktop.Client.Core/Services/SupplierInvoiceService.cs: adjuncion explicita del encabezado
+      HTTP Idempotency-Key en ConfirmAsync utilizando HttpRequestMessage, previniendo doble confirmacion o
+      procesamiento de inventario por reintentos ante timeouts de conexion.
+    - [SEC-04] En Web.Frontend/src/components/pos/HoldSaleModal.jsx: sanitizacion y calculo monetario en
+      centavos enteros (Math.round((finalPaymentBsS / exchangeRate) * 100) / 100) para pedidos en espera,
+      depuracion de variables no utilizadas y eliminacion de warnings de linter.
+    - Test Suite: CommandCenter.Tests/Unit/DevSecOpsPhase1HardeningTests.cs (ampliada de 16 a 20 tests).
+
+B. EVIDENCIA Y VERIFICACION
+
+B1. Compilacion: dotnet build CommandCenter.slnx -c Release -> 0 errores, 0 advertencias.
+B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 suites).
+    npm run lint (oxlint) -> 0 errores, 0 advertencias.
+B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (DevSecOpsPhase1HardeningTests) ->
+    20/20 tests superados (100% de exito).
+================================================================================

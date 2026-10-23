@@ -204,10 +204,12 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        using var response = await _httpClient.PostAsJsonAsync(
-            $"api/supplier-invoices/{invoiceId}/confirm",
-            request,
-            cancellationToken);
+        using var message = new HttpRequestMessage(HttpMethod.Post, $"api/supplier-invoices/{invoiceId}/confirm")
+        {
+            Content = JsonContent.Create(request)
+        };
+        message.Headers.Add("Idempotency-Key", $"inv-conf-{invoiceId}-{Guid.NewGuid():N}");
+        using var response = await _httpClient.SendAsync(message, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await ReadRequiredResponseAsync<SupplierInvoiceDetailDto>(response, cancellationToken);
     }

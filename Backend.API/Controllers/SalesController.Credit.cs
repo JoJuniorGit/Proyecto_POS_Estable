@@ -236,6 +236,10 @@ public partial class SalesController
         request.ReceivedByUserId = actingUserId ?? request.ReceivedByUserId;
 
         string requestPath = "/api/sales/credit-payments";
+        if (Request?.Headers != null && string.IsNullOrWhiteSpace(Request.Headers["Idempotency-Key"]) && !string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        {
+            Request.Headers["Idempotency-Key"] = request.IdempotencyKey;
+        }
         string bodyJson = actingUserId + "|" + System.Text.Json.JsonSerializer.Serialize(request);
         var resolved = await _idempotencyResolver.ResolveIfPresentAsync(
             this,
@@ -406,6 +410,10 @@ public partial class SalesController
 
         int? actingUserId = GetActorUserId();
         string requestPath = $"/api/sales/{id}/credit-return";
+        if (Request?.Headers != null && string.IsNullOrWhiteSpace(Request.Headers["Idempotency-Key"]) && !string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        {
+            Request.Headers["Idempotency-Key"] = request.IdempotencyKey;
+        }
         string bodyJson = actingUserId + "|" + System.Text.Json.JsonSerializer.Serialize(request);
         var resolved = await _idempotencyResolver.ResolveIfPresentAsync(
             this,

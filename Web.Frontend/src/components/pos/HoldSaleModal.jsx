@@ -202,7 +202,6 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
   const isCashSelected = !!selectedMethod?.isCash;
   // El efectivo solo acepta montos enteros (sin centavos): se normaliza antes de enviar.
   const finalPaymentBsS = isCashSelected ? Math.trunc(initialBsS) : initialBsS;
-  const finalPaymentUsd = exchangeRate > 0 ? finalPaymentBsS / exchangeRate : 0;
 
   const handleCancel = () => {
     holdKeyHolderRef.current.reset();
@@ -232,7 +231,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
       const initialPaymentsList = (enablePayment && finalPaymentBsS > 0) ? [{
         paymentMethodId: parseInt(paymentMethodId, 10),
         amountBsS: finalPaymentBsS,
-        amountUSD: parseFloat(finalPaymentUsd.toFixed(2)),
+        amountUSD: exchangeRate > 0 ? Math.round((finalPaymentBsS / exchangeRate) * 100) / 100 : 0,
         exchangeRate: exchangeRate,
         referenceNumber: reference.trim() || null
       }] : null;
