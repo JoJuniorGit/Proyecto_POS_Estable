@@ -98,4 +98,47 @@ public class CleanCodePhase3Tests
         // Verify Release was indeed attempted
         salesMock.Verify(s => s.ReleaseSaleAsync(sale.Id, false, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task ExchangeRateService_GetCurrentRateAsync_WhenHttpFails_LogsWarningAndReturnsFallback()
+    {
+        // Setup HttpClient that throws network error
+        var handler = new MockHttpMessageHandler((req) => throw new System.Net.Http.HttpRequestException("Connection refused"));
+        var httpClient = new System.Net.Http.HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000") };
+
+        using var service = new ExchangeRateService(httpClient, enableRealtime: false);
+
+        var (rate, lastUpdated) = await service.GetCurrentRateAsync();
+        Assert.Equal(0m, rate);
+        Assert.Null(lastUpdated);
+    }
+
+    [Fact]
+    public void AuthorizationHubService_Dispose_ExecutesCleanlyWithoutThrowing()
+    {
+        var httpClient = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://localhost:5000") };
+        var hubService = new AuthorizationHubService(httpClient, enableRealtime: false);
+
+        var exception = Record.Exception(() => hubService.Dispose());
+        Assert.Null(exception);
+
+        // Double dispose is idempotent
+        var doubleDispose = Record.Exception(() => hubService.Dispose());
+        Assert.Null(doubleDispose);
+    }
+
+    private class MockHttpMessageHandler : System.Net.Http.HttpMessageHandler
+    {
+        private readonly Func<System.Net.Http.HttpRequestMessage, System.Net.Http.HttpResponseMessage> _handler;
+
+        public MockHttpMessageHandler(Func<System.Net.Http.HttpRequestMessage, System.Net.Http.HttpResponseMessage> handler)
+        {
+            _handler = handler;
+        }
+
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(_handler(request));
+        }
+    }
 }

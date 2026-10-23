@@ -16602,3 +16602,35 @@ B2. Backend Tests: dotnet test CommandCenter.Tests -c Release (PerformancePhase2
 B3. Backend Tests de Integracion/Regresion: AuthorizationServiceTests (61/61 unitarios sin Postgres externo)
     y CategoryServiceTests/ProductImportExportTests (58/58 unitarios) -> 100% de exito.
 ================================================================================
+
+
+ANEXO XXX - REMEDIACION DE HIGIENE, MANTENIBILIDAD Y CLEAN CODE (FASE 3) (8.196) - 2026-10-23
+================================================================================
+Alcance: Remediacion estricta de deuda tecnica y principios de Clean Code identificados en la Fase 3
+(erradicacion de bloques de captura de excepcion silenciosa / silent swallowing en clientes desktop y web,
+y desacoplamiento de logica de redondeo monetario y sugerencia de montos en componentes de presentacion).
+
+A. REMEDIACIONES IMPLEMENTADAS
+
+A1. FASE 3 (Higiene, Mantenibilidad y Clean Code):
+    - [CLEAN-01] En Desktop.Client.Core/Services/AuthorizationHubService.cs y ExchangeRateService.cs:
+      eliminacion de todas las capturas de excepcion vacias (catch {}) en metodos criticos de apagado,
+      disposicion asincrona y sincronizacion inicial de tasas. Se incorporo registro estructurado
+      defensivo via ClientStateLogger.LogWarning con contexto descriptivo del servicio emisor.
+    - [CLEAN-01] En Web.Frontend/src/services/api.js: eliminacion del anti-patron de silenciamiento mudo
+      en validaciones de URL, reclamo de emparejamiento y limpieza de almacenamiento en respuestas 401,
+      incorporando alertas observables en consola (console.warn) para auditoria y telemetria en tiempo de ejecucion.
+    - [CLEAN-02] En Web.Frontend/src/utils/money.js y components/checkout/PaymentForm.jsx: extraccion de la
+      logica de calculo de montos sugeridos segun tipo de medio de pago (efectivo entero vs digital con centavos)
+      a la funcion de dominio resolveSuggestedPaymentAmount, manteniendo el componente React enfocado puramente
+      en la presentacion e interaccion de usuario (SRP / Clean Architecture).
+    - Test Suite: CommandCenter.Tests/Unit/CleanCodePhase3Tests.cs (ampliada de 4 a 6 tests unitarios).
+
+B. EVIDENCIA Y VERIFICACION
+
+B1. Compilacion: dotnet build CommandCenter.slnx -c Release -> 0 errores, 0 advertencias.
+B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 suites).
+    npm run lint (oxlint) -> 0 errores, 0 advertencias.
+B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (CleanCodePhase3Tests) ->
+    6/6 tests superados (100% de exito).
+================================================================================

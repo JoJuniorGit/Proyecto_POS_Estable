@@ -557,13 +557,19 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
             {
                 await _hubConnection.StopAsync().ConfigureAwait(false);
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                ClientStateLogger.LogWarning($"Aviso al detener conexión SignalR: {ex.Message}", nameof(AuthorizationHubService));
+            }
 
             try
             {
                 await _hubConnection.DisposeAsync().ConfigureAwait(false);
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                ClientStateLogger.LogWarning($"Aviso al disponer conexión SignalR: {ex.Message}", nameof(AuthorizationHubService));
+            }
         }
 
         GC.SuppressFinalize(this);
@@ -582,7 +588,10 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
         {
             _ = Task.Run(async () => await DisposeAsync().ConfigureAwait(false));
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            ClientStateLogger.LogWarning($"Aviso al despachar DisposeAsync: {ex.Message}", nameof(AuthorizationHubService));
+        }
     }
 
     private sealed class CreateAuthorizationResponse

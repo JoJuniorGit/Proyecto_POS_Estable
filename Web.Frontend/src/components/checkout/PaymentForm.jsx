@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { formatNumberEs, amountToCents } from '../../utils/formatters';
-import { bsToUsd } from '../../utils/money';
+import { bsToUsd, resolveSuggestedPaymentAmount } from '../../utils/money';
 import './PaymentForm.css';
 
 export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAddPayment }) {
@@ -23,14 +23,10 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
   const isCashSelected = !!selectedMethod?.isCash;
   const isManuallyEditedRef = useRef(false);
 
-  // Prellenar el monto al cambiar saldo restante o método de pago, sin sobreescribir edición manual
+  // Prellenar el monto al cambiar saldo restante o método de pago, sin sobreescribir edición manual (CLEAN-02)
   useEffect(() => {
     if (!isManuallyEditedRef.current) {
-      if (remainingBsS > 0) {
-        setAmountText(isCashSelected ? Math.round(remainingBsS).toString() : remainingBsS.toFixed(2));
-      } else {
-        setAmountText('');
-      }
+      setAmountText(resolveSuggestedPaymentAmount(remainingBsS, isCashSelected));
     }
   }, [remainingBsS, isCashSelected, selectedMethodId]);
 
