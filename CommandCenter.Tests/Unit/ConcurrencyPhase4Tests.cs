@@ -119,4 +119,58 @@ public class ConcurrencyPhase4Tests
         Assert.Contains("FAC-001", contentResult.Content);
         supplierServiceMock.Verify(s => s.ConfirmAsync(It.IsAny<int>(), It.IsAny<ConfirmSupplierInvoiceRequestDto>(), It.IsAny<CancellationToken>()), Times.Never);
     }
+
+    [Fact]
+    public async Task AppLogger_LogStructuredSecurity_EnqueuesValidJsonLine()
+    {
+        string action = "TEST_SECURITY_ACTION";
+        int userId = 42;
+        string path = "/api/test/secure";
+        string ip = "127.0.0.1";
+        string reason = "UnitTestValidation";
+
+        Core.Logging.AppLogger.LogStructuredSecurity(action, userId, path, ip, reason, new { Detail = "ExtraInfo" });
+        await Core.Logging.AppLogger.FlushAsync();
+
+        string logFile = Core.Logging.AppLogger.SecurityAuditLogPath;
+        Assert.True(System.IO.File.Exists(logFile));
+
+        var lines = await System.IO.File.ReadAllLinesAsync(logFile);
+        var matchingLine = System.Linq.Enumerable.LastOrDefault(lines, l => l.Contains(action));
+        Assert.NotNull(matchingLine);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(matchingLine);
+        var root = doc.RootElement;
+        Assert.Equal("SECURITY-AUDIT", root.GetProperty("Level").GetString());
+        Assert.Equal(action, root.GetProperty("Action").GetString());
+        Assert.Equal(userId, root.GetProperty("UserId").GetInt32());
+        Assert.Equal(path, root.GetProperty("Path").GetString());
+        Assert.Equal(ip, root.GetProperty("IpAddress").GetString());
+        Assert.Equal(reason, root.GetProperty("Reason").GetString());
+    }
+
+    [Fact]
+    public async Task CashDrawerService_OpenSessionAsync_WhenSessionAlreadyActive_ThrowsInvalidOperationException()
+    {
+        var options = new DbContextOptionsBuilder<Sales.Module.Data.SalesDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        using var db = new Sales.Module.Data.SalesDbContext(options);
+        var activeSession = new Sales.Module.Entities.CashDrawerSession
+        {
+            Id = 1,
+            Status = Sales.Module.Entities.CashDrawerStatus.Open,
+            OpenedAt = DateTime.UtcNow,
+            OpeningBalanceLocal = 100m,
+            OpeningExchangeRate = 50m
+        };
+        db.CashDrawerSessions.Add(activeSession);
+        await db.SaveChangesAsync();
+
+        var drawerService = new CashDrawerService(db);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => drawerService.OpenSessionAsync(50m, 50m));
+        Assert.Contains("Ya existe una sesión de caja activa", ex.Message);
+    }
 }

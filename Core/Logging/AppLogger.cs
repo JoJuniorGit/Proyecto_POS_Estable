@@ -46,6 +46,44 @@ public static class AppLogger
         WriteLog(SecurityAuditLogPath, "SECURITY-AUDIT", message);
     }
 
+    /// <summary>
+    /// SRE-01: Registro estructurado en formato JSON para ingestión directa por Grafana Loki, Datadog o Elasticsearch.
+    /// </summary>
+    public static void LogStructuredSecurity(string action, int? userId, string path, string? ipAddress, string reason, object? extraContext = null)
+    {
+        var entry = new
+        {
+            Timestamp = DateTime.UtcNow.ToString("O"),
+            Level = "SECURITY-AUDIT",
+            Action = action,
+            UserId = userId,
+            Path = path,
+            IpAddress = ipAddress,
+            Reason = reason,
+            Context = extraContext
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(entry);
+        AsyncLogSink.Enqueue(SecurityAuditLogPath, json + Environment.NewLine);
+    }
+
+    /// <summary>
+    /// SRE-01: Registro estructurado de eventos operativos con contexto clave-valor.
+    /// </summary>
+    public static void LogStructured(string filePath, string level, string message, object? context = null)
+    {
+        var entry = new
+        {
+            Timestamp = DateTime.UtcNow.ToString("O"),
+            Level = level,
+            Message = message,
+            Context = context
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(entry);
+        AsyncLogSink.Enqueue(filePath, json + Environment.NewLine);
+    }
+
     public static void LogCrash(Exception ex, string context = "General")
     {
 #if DEBUG

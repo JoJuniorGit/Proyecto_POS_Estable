@@ -365,7 +365,7 @@ public partial class SalesService
         int updateRetryAttempt = 0;
         var updatedSale = await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
-            if (updateRetryAttempt++ > 0)
+            if (updateRetryAttempt++ > 0 || _context.Database.IsRelational())
             {
                 _context.ChangeTracker.Clear();
             }

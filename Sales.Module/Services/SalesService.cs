@@ -484,7 +484,7 @@ public partial class SalesService : ISalesService
         int cancelRetryAttempt = 0;
         bool wasCancelled = await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
-            if (cancelRetryAttempt++ > 0)
+            if (cancelRetryAttempt++ > 0 || _context.Database.IsRelational())
             {
                 _context.ChangeTracker.Clear();
             }

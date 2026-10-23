@@ -16634,3 +16634,36 @@ B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 sui
 B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (CleanCodePhase3Tests) ->
     6/6 tests superados (100% de exito).
 ================================================================================
+
+
+ANEXO XXXI - REMEDIACION DE CONCURRENCIA, EDGE CASES Y OBSERVABILIDAD (FASE 4 / SRE) (8.197) - 2026-10-23
+================================================================================
+Alcance: Remediacion estricta de condiciones de carrera, desincronizaciones de ChangeTracker
+y capacidades de observabilidad identificadas en la Fase 4 (SRE).
+
+A. REMEDIACIONES IMPLEMENTADAS
+
+A1. FASE 4 (Concurrencia, Edge Cases y Observabilidad):
+    - [SRE-01] En Core/Logging/AppLogger.cs y Backend.API/Middleware/SecurityStampValidationMiddleware.cs:
+      incorporacion de sobrecargas de registro estructurado (LogStructuredSecurity y LogStructured)
+      en formato JSON con atributos clave-valor (Timestamp ISO-8601, Level, Action, UserId, Path,
+      IpAddress, Reason, Context) para su facil ingestion por herramientas de observabilidad
+      (Grafana Loki, Datadog, Elasticsearch) preservando compatibilidad con los logs planos existentes.
+    - [SRE-02] En Sales.Module/Services/CashDrawerService.cs: eliminacion de condicion de carrera en
+      apertura simultanea de turnos fisicos de caja (OpenSessionAsync) mediante bloqueo consultivo
+      transaccional exclusivo en PostgreSQL (SELECT pg_advisory_xact_lock(999888777)) y doble chequeo
+      atomico antes de persistir, evitando colisiones concurrentes y violaciones de indice unico parcial.
+    - [SRE-03] En Sales.Module/Services/SalesService.cs y SalesService.HoldOrders.cs: limpieza preventiva
+      del ChangeTracker de EF Core (_context.ChangeTracker.Clear()) en reintentos transaccionales de
+      CancelSaleAsync y UpdateSaleItemsAsync bajo CreateExecutionStrategy(), garantizando que reintentos
+      de red u optimistas no operen sobre entidades sucias o en estado desincronizado.
+    - Test Suite: CommandCenter.Tests/Unit/ConcurrencyPhase4Tests.cs (ampliada de 3 a 5 tests unitarios).
+
+B. EVIDENCIA Y VERIFICACION
+
+B1. Compilacion: dotnet build CommandCenter.slnx -c Release -> 0 errores, 0 advertencias.
+B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 suites).
+    npm run lint (oxlint) -> 0 errores, 0 advertencias.
+B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (ConcurrencyPhase4Tests) ->
+    5/5 tests superados (100% de exito).
+================================================================================

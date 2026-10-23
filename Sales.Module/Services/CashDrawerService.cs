@@ -124,6 +124,18 @@ public class CashDrawerService : ICashDrawerService
 
         try
         {
+            if (ownTransaction != null && _context.Database.IsRelational())
+            {
+                // SRE-02: Bloqueo consultivo en PostgreSQL para serializar la apertura concurrente de sesiones de caja
+                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(999888777)", cancellationToken);
+
+                // Doble chequeo bajo el lock para evitar carrera
+                if (await GetActiveSessionAsync(cancellationToken) != null)
+                {
+                    throw new InvalidOperationException("Ya existe una sesión de caja activa.");
+                }
+            }
+
             _context.CashDrawerSessions.Add(session);
             await _context.SaveChangesAsync(cancellationToken);
 

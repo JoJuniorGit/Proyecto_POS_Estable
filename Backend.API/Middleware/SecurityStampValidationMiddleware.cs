@@ -68,6 +68,7 @@ public class SecurityStampValidationMiddleware
                 {
                     AppLogger.LogWarn($"[AUTH] Token revoked or stamp invalid for UserId={userId} on {context.Request.Path} (forceImmediate={forceImmediate})");
                     AppLogger.LogSecurityAudit($"[AUTH_REJECTED] UserId={userId}, Path={context.Request.Path}, IP={context.Connection.RemoteIpAddress}, Reason=RevokedStamp, ForceImmediate={forceImmediate}");
+                    AppLogger.LogStructuredSecurity("AUTH_REJECTED", userId, context.Request.Path, context.Connection.RemoteIpAddress?.ToString(), "RevokedStamp", new { ForceImmediate = forceImmediate });
                     await WriteUnauthorizedResponse(context, "La sesión ha sido revocada o las credenciales del usuario cambiaron. Inicie sesión nuevamente.");
                     return;
                 }
