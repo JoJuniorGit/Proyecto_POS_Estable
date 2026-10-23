@@ -247,14 +247,32 @@ public partial class InventoryService
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                     : p.StockQuantity,
-                // 8.179-T1 (S3): subconsulta EF al junction (Product no tiene navegación inversa).
-                Categories = _context.ProductCategories
-                    .Where(pc => pc.ProductId == p.Id)
-                    .OrderBy(pc => pc.Category.Name)
-                    .Select(pc => new Core.DTOs.CategoryRefDto(pc.CategoryId, pc.Category.Name))
-                    .ToList(),
+                // 8.192: Batch loading de categorias posterior para evitar subconsulta correlacionada N+1
             })
             .ToListAsync(token);
+
+        // 8.192: Carga en lote de categorias asociadas para los items de la pagina actual
+        if (items.Count > 0)
+        {
+            var productIds = items.Select(x => x.Id).ToList();
+            var categoryLinks = await _context.ProductCategories.AsNoTracking()
+                .Where(pc => productIds.Contains(pc.ProductId))
+                .OrderBy(pc => pc.Category.Name)
+                .Select(pc => new { pc.ProductId, Category = new Core.DTOs.CategoryRefDto(pc.CategoryId, pc.Category.Name) })
+                .ToListAsync(token);
+
+            var categoryLookup = categoryLinks
+                .GroupBy(x => x.ProductId)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<Core.DTOs.CategoryRefDto>)g.Select(x => x.Category).ToList());
+
+            foreach (var item in items)
+            {
+                if (categoryLookup.TryGetValue(item.Id, out var cats))
+                {
+                    item.Categories = cats;
+                }
+            }
+        }
 
         // 8.186-T1 (S1/S3): proyección server-side del efectivo Detal/Mayor para la grilla web con
         // UNA lectura de regla/tasa/toggle por request (la regla cruda ya viaja en el DTO).

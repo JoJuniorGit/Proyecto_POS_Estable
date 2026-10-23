@@ -147,8 +147,10 @@ public partial class SalesService : ISalesService
 
     public async Task<SaleDto> StartSaleAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var defaultCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.IsDefault, cancellationToken) 
-                           ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1, cancellationToken);
+        var defaultCustomer = await _context.Customers.AsNoTracking()
+            .Where(c => c.IsDefault || c.Id == 1)
+            .OrderByDescending(c => c.IsDefault)
+            .FirstOrDefaultAsync(cancellationToken);
         
         if (defaultCustomer == null)
             throw new InvalidOperationException("Cliente por defecto no encontrado en la configuración del sistema. Verifique que la base de datos esté correctamente sembrada.");

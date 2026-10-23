@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using Core.DTOs;
+using Core.Helpers;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -96,13 +97,13 @@ public partial class ProductImportService
 
                         // Financial Logic (Calculated from cost and profit margin)
                         dto.PriceRetailUSD = dto.CostPriceUSD > 0 && dto.ProfitMarginRetail > 0
-                            ? Math.Ceiling(dto.CostPriceUSD * (1m + dto.ProfitMarginRetail / 100m) * 100m) / 100m
+                            ? PricingCalculator.RoundPriceUp(dto.CostPriceUSD * (1m + dto.ProfitMarginRetail / 100m))
                             : 0m;
 
                         if (dto.HasWholesale)
                         {
                             dto.PriceWholesaleUSD = dto.CostPriceUSD > 0 && dto.ProfitMarginWholesale > 0
-                                ? Math.Ceiling(dto.CostPriceUSD * (1m + dto.ProfitMarginWholesale / 100m) * 100m) / 100m
+                                ? PricingCalculator.RoundPriceUp(dto.CostPriceUSD * (1m + dto.ProfitMarginWholesale / 100m))
                                 : dto.PriceRetailUSD;
                         }
                         else
@@ -232,13 +233,13 @@ public partial class ProductImportService
             dto.IsActive = true;
 
             dto.PriceRetailUSD = dto.CostPriceUSD > 0 && dto.ProfitMarginRetail > 0
-                ? Math.Ceiling(dto.CostPriceUSD * (1m + dto.ProfitMarginRetail / 100m) * 100m) / 100m
+                ? PricingCalculator.RoundPriceUp(dto.CostPriceUSD * (1m + dto.ProfitMarginRetail / 100m))
                 : 0m;
 
             if (dto.HasWholesale)
             {
                 dto.PriceWholesaleUSD = dto.CostPriceUSD > 0 && dto.ProfitMarginWholesale > 0
-                    ? Math.Ceiling(dto.CostPriceUSD * (1m + dto.ProfitMarginWholesale / 100m) * 100m) / 100m
+                    ? PricingCalculator.RoundPriceUp(dto.CostPriceUSD * (1m + dto.ProfitMarginWholesale / 100m))
                     : dto.PriceRetailUSD;
             }
             else

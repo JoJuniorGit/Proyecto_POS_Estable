@@ -532,7 +532,10 @@ public partial class DailyClosureService : IDailyClosureService
 
         if (int.TryParse(userId, out int userIdInt))
         {
-            var user = await _context.Users.FindAsync(new object[] { userIdInt }, cancellationToken);
+            var user = await _context.Users.AsNoTracking()
+                .Where(u => u.Id == userIdInt)
+                .Select(u => new { u.Id, u.Name, u.Cedula, u.Username })
+                .FirstOrDefaultAsync(cancellationToken);
             if (user != null)
             {
                 cashierName = user.Name;

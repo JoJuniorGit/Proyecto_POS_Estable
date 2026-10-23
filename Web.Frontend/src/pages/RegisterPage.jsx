@@ -13,7 +13,8 @@ import {
   Clock,
   CheckCircle,
   Wallet,
-  Lock
+  Lock,
+  AlertCircle
 } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { useAuth } from '../context/AuthContext';
@@ -56,6 +57,7 @@ function RegisterPageContent() {
   const [session, setSession] = useState(null);
   const [historyTransactions, setHistoryTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   // Discrete filter states for movements
   const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'income', 'expense'
@@ -121,6 +123,7 @@ function RegisterPageContent() {
 
   const loadSession = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [sessionData, historyData] = await Promise.all([
         api.get('/api/cashdrawer/active-session'),
@@ -134,6 +137,7 @@ function RegisterPageContent() {
       await loadPettyCash(sessionData?.id);
     } catch (err) {
       console.error('[RegisterPage] Error al obtener sesión de caja:', err);
+      setLoadError(err?.message || 'Error al obtener la información de la sesión de caja');
     } finally {
       setLoading(false);
     }
@@ -294,6 +298,13 @@ function RegisterPageContent() {
         >
           <ShieldAlert size={18} className="color-warning flex-shrink-0 reg-alert-icon" />
           <span>Acceso limitado: Los botones <strong>CASH IN</strong> y <strong>CASH OUT</strong> están restringidos a usuarios con rol <strong>Administrador</strong>.</span>
+        </div>
+      )}
+
+      {loadError && (
+        <div className="alert alert-danger mb-4 flex-align-center gap-2" role="alert">
+          <AlertCircle size={18} className="flex-shrink-0" />
+          <span>{loadError}</span>
         </div>
       )}
 

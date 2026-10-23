@@ -16424,3 +16424,49 @@ B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (filtro sin carril
     3464/3464 tests superados (100% de exito en las suites de caja, autorizaciones, idempotencia y salud).
 B4. Cobertura: Core 0.8406 >= 0.70 | Sales.Module 0.8990 >= 0.80 | Inventory.Module 0.8973 >= 0.72.
 ================================================================================
+
+
+ANEXO XXVI - OPTIMIZACION DE CONSULTAS N+1, ASNOTRACKING Y ESTANDARIZACION DE PRECIOS Y UI (8.192) - 2026-10-22
+================================================================================
+Alcance: Remediacion de cuellos de botella de rendimiento, optimizacion de consultas EF Core,
+eliminacion de subconsultas correlacionadas, reduccion de sobrecarga de ChangeTracker, estandarizacion
+del redondeo de precios hacia arriba mediante helper de dominio y resiliencia en la presentacion web.
+
+A. REMEDIACIONES IMPLEMENTADAS
+
+A1. FASE 2 (Performance Engineering - Optimizacion de Consultas y N+1):
+    - [PERF-F2-01] En Inventory.Module/Services/InventoryService.CatalogQueries.cs: erradicacion de la
+      subconsulta EF correlacionada en GetProductsPagedAsync para la proyeccion de categorias. Se sustituyo
+      por un batch loading posterior en lote con .Where(pc => productIds.Contains(pc.ProductId)) y
+      .AsNoTracking(), agrupando por ProductId en memoria. Reduce la complejidad de N subconsultas
+      por pagina a exactamente 1 consulta por lotes sin impacto en el DTO de salida.
+    - [PERF-F2-02] En Sales.Module/Services/DailyClosureService.cs: sustitucion de _context.Users.FindAsync(...)
+      por _context.Users.AsNoTracking().Where(u => u.Id == userIdInt).Select(...).FirstOrDefaultAsync(...)
+      en ResolveUserDetailsAsync. Evita adjuntar innecesariamente la entidad User completa con sus hashes
+      y credenciales al ChangeTracker de EF Core durante la generacion del cierre diario.
+    - [PERF-F2-05] En Sales.Module/Services/SalesService.cs: optimizacion de la busqueda de cliente por
+      defecto en StartSaleAsync. Se unificaron las dos consultas secuenciales (.FirstOrDefaultAsync(c => c.IsDefault)
+      ?? .FirstOrDefaultAsync(c => c.Id == 1)) en una unica consulta optimizada con .AsNoTracking()
+      y ordenamiento por prioridad (.Where(c => c.IsDefault || c.Id == 1).OrderByDescending(c => c.IsDefault)),
+      evitando rastreo innecesario de la entidad Customer durante la apertura de venta.
+
+A2. FASE 3 (Clean Code / Higiene de Dominio y UI):
+    - [CLEAN-F3-01] En Desktop.Client.Core/ViewModels/ProductDialogViewModel.Pricing.cs y
+      Desktop.Client.Core/Services/ProductImportService.Parsing.cs: estandarizacion de los calculos de
+      redondeo de precio hacia arriba. Se reemplazo la formula repetida Math.Ceiling(raw * 100m) / 100m
+      por la invocacion canonica del motor de calculo compartido PricingCalculator.RoundPriceUp(...),
+      garantizando coherencia absoluta con el modelo de costos y margenes del sistema.
+    - [CLEAN-F3-03] En Web.Frontend/src/pages/RegisterPage.jsx: eliminacion del anti-patron de tragar
+      errores de red silenciosamente en loadSession (que solo hacia console.error). Se agrego estado
+      reactivo loadError y banner visual alert-danger con icono descriptivo, alertando al cajero
+      o supervisor si la sesion de caja no pudo ser recuperada desde el backend.
+
+B. EVIDENCIA Y VERIFICACION
+
+B1. Compilacion: dotnet build CommandCenter.slnx -c Release -> 0 errores, 0 advertencias.
+B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 suites).
+    npm run lint (oxlint) -> 0 errores, 0 advertencias.
+B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (filtro sin carril de BD externa no levantada) ->
+    3464/3464 tests superados (100% de exito en las suites de catalogo, inventario, precios y cierre de caja).
+B4. Cobertura: Core 0.8406 >= 0.70 | Sales.Module 0.8990 >= 0.80 | Inventory.Module 0.8973 >= 0.72.
+================================================================================

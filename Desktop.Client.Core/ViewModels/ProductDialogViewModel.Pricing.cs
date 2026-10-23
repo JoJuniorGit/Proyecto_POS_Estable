@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System;
 using System.ComponentModel.DataAnnotations;
+using Core.Helpers;
 
 namespace Desktop.Client.ViewModels;
 
@@ -138,8 +139,7 @@ public partial class ProductDialogViewModel
         {
             if (trigger == "Cost" || trigger == "MarginRetail")
             {
-                decimal rawPrice = CostPriceUSD * (1m + (ProfitMarginRetail / 100m));
-                PriceRetailUSD = Math.Ceiling(rawPrice * 100m) / 100m;
+                PriceRetailUSD = PricingCalculator.RoundPriceUp(CostPriceUSD * (1m + (ProfitMarginRetail / 100m)));
             }
             else if (trigger == "PriceRetail")
             {
@@ -163,8 +163,7 @@ public partial class ProductDialogViewModel
             {
                 if (trigger == "Cost" || trigger == "MarginWholesale")
                 {
-                    decimal rawWholesalePrice = CostPriceUSD * (1m + (ProfitMarginWholesale / 100m));
-                    PriceWholesaleUSD = Math.Ceiling(rawWholesalePrice * 100m) / 100m;
+                    PriceWholesaleUSD = PricingCalculator.RoundPriceUp(CostPriceUSD * (1m + (ProfitMarginWholesale / 100m)));
                 }
                 else if (trigger == "PriceWholesale")
                 {
