@@ -373,10 +373,11 @@ public class CashDrawerController : ControllerBase
         }
 
         const string requestPath = "/api/cashdrawer/cash-advance";
-        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+        var idempotency = await _idempotencyResolver.ResolveAsync(
             this,
             requestPath,
-            System.Text.Json.JsonSerializer.Serialize(request));
+            System.Text.Json.JsonSerializer.Serialize(request),
+            missingKeyMessage: "El encabezado Idempotency-Key es obligatorio para procesar adelantos de efectivo.");
         if (idempotency.ShouldStop)
         {
             return idempotency.BlockingResult!;

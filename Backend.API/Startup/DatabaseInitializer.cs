@@ -337,7 +337,8 @@ END $$;");
         catch (System.Exception ex)
         {
             var criticalMsg = "[ERROR CRÍTICO] Error ejecutando las migraciones de base de datos. Abortando el arranque. " + ex.Message;
-            Console.WriteLine(criticalMsg);
+            Console.Error.WriteLine(criticalMsg);
+            AppLogger.LogCrash(ex, "Database.Migrate.Startup");
             AppLogger.LogDbError(ex, "Database.Migrate");
             Environment.ExitCode = 1;
             return false;

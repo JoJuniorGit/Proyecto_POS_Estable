@@ -146,6 +146,14 @@ export default function BarcodeScannerModal({
       zxingReaderRef.current = null;
     }
 
+    if (revocationListenerRef.current) {
+      try {
+        const { track, handler } = revocationListenerRef.current;
+        track?.removeEventListener?.('ended', handler);
+      } catch {}
+      revocationListenerRef.current = null;
+    }
+
     if (activeStreamRef.current) {
       try {
         activeStreamRef.current.getTracks().forEach((t) => {

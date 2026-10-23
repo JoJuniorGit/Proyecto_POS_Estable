@@ -24,9 +24,15 @@ public partial class SalesController
 
         var (items, totalCount) = await _salesService.GetCustomersAsync(query, page, pageSize, recentOnly, cancellationToken);
         Response.Headers["X-Total-Count"] = totalCount.ToString();
+
+        bool canViewCredit = User.IsInRole("Admin") || User.IsInRole("Manager");
+        var sanitizedItems = canViewCredit
+            ? items.ToList()
+            : items.Select(c => { c.CreditLimitUSD = 0m; return c; }).ToList();
+
         return Ok(new CustomerPagedResultDto
         {
-            Items = items.ToList(),
+            Items = sanitizedItems,
             TotalCount = totalCount,
             Page = page,
             PageSize = pageSize
@@ -40,6 +46,10 @@ public partial class SalesController
         try
         {
             var customer = await _salesService.GetDefaultCustomerAsync(cancellationToken);
+            if (!User.IsInRole("Admin") && !User.IsInRole("Manager"))
+            {
+                customer.CreditLimitUSD = 0m;
+            }
             return Ok(customer);
         }
         catch (System.Collections.Generic.KeyNotFoundException)
@@ -78,6 +88,10 @@ public partial class SalesController
     public async Task<ActionResult<CustomerDto>> CreateCustomerAsync([FromBody] CreateCustomerDto request, CancellationToken cancellationToken = default)
     {
         var customer = await _salesService.CreateCustomerAsync(request, cancellationToken);
+        if (!User.IsInRole("Admin") && !User.IsInRole("Manager"))
+        {
+            customer.CreditLimitUSD = 0m;
+        }
         return Ok(customer);
     }
 
@@ -93,6 +107,10 @@ public partial class SalesController
         try
         {
             var customer = await _salesService.UpdateCustomerAsync(id, request, cancellationToken);
+            if (!User.IsInRole("Admin") && !User.IsInRole("Manager"))
+            {
+                customer.CreditLimitUSD = 0m;
+            }
             return Ok(customer);
         }
         catch (System.Collections.Generic.KeyNotFoundException ex)

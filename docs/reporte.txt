@@ -16470,3 +16470,65 @@ B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (filtro sin carril
     3464/3464 tests superados (100% de exito en las suites de catalogo, inventario, precios y cierre de caja).
 B4. Cobertura: Core 0.8406 >= 0.70 | Sales.Module 0.8990 >= 0.80 | Inventory.Module 0.8973 >= 0.72.
 ================================================================================
+
+
+ANEXO XXVII - REMEDIACION INTEGRAL DE AUDITORIA TECNICA (8.193) - 2026-10-23
+================================================================================
+Alcance: Remediacion integral de las 4 fases de auditoria tecnica de la solucion: DevSecOps (Fase 1),
+Performance Engineering (Fase 2), Higiene y Clean Code (Fase 3), y Concurrencia y SRE (Fase 4).
+
+A. REMEDIACIONES IMPLEMENTADAS
+
+A1. FASE 1 (DevSecOps y Control de Acceso):
+    - [SEC-02] En Backend.API/Controllers/SalesController.Credit.cs: restriccion de CancelCreditSaleAsync
+      al rol [Authorize(Roles = "Admin,Manager")]. Impide que un cajero cancele o anule saldos crediticios
+      sin la autorizacion debida.
+    - [SEC-03] En Backend.API/Middleware/SecurityStampValidationMiddleware.cs: forzado de verificacion inmediata
+      de sello de seguridad (forceImmediate = true) para todas las mutaciones HTTP (POST, PUT, DELETE, PATCH).
+      Se aplico [RequireSecurityStampValidation] a controladores criticos (Sales, Products, PaymentMethods, ExchangeRate).
+    - [SEC-04] En Backend.API/Controllers/SalesController.Customers.cs: enmascaramiento de CreditLimitUSD = 0m
+      para usuarios sin rol elevado en busquedas rapidas del punto de venta.
+    - Test Suite: CommandCenter.Tests/Unit/DevSecOpsPhase1HardeningTests.cs (16 tests).
+
+A2. FASE 2 (Performance Engineering y Gestion de Recursos):
+    - [PERF-01/02] En Inventory.Module/Services/InventoryService.VariantQueries.cs: inclusion de .AsNoTracking()
+      en consultas de lectura de variantes y reubicacion de la carga de entidades dentro de CreateExecutionStrategy().ExecuteAsync()
+      con ChangeTracker.Clear() para evitar datos obsoletos en reintentos.
+    - [PERF-02] En Desktop.Client/Services/WpfDialogService.Modals.cs: envoltura con using var vm para
+      VariantManagementViewModel, CustomerPickerViewModel, PairingQrViewModel y ServerConnectionViewModel,
+      evitando fugas de memoria y tareas asincronas huerfanas en el despachador de WPF.
+    - [PERF-03] En Web.Frontend/src/components/pos/BarcodeScannerModal.jsx: remocion explicita del event listener
+      track.removeEventListener('ended', handler) en stopActiveStream(), eliminando retencion de hardware de camara.
+    - [PERF-05] En Sales.Module/Services/SalesService.Checkout.cs: resolucion defensiva de tasa BCV fuera del
+      bloque transaccional y del lock pg_advisory_xact_lock, minimizando el tiempo de retencion de cerraduras.
+    - Test Suite: CommandCenter.Tests/Unit/PerformancePhase2Tests.cs (3 tests).
+
+A3. FASE 3 (Higiene, Mantenibilidad y Clean Code):
+    - [CLEAN-01] En Desktop.Client.Core/Services/SaleRecoveryStore.cs: erradicacion de bloques catch vacios
+      mediante registro estructurado con ClientStateLogger.LogError y ClientStateLogger.LogWarning.
+    - [CLEAN-02] En Desktop.Client.Core/ViewModels/PendingOrdersViewModel.cs: captura y trazabilidad de fallos
+      de red al liberar bloqueos de pedidos en bloques finally via ClientStateLogger.LogWarning.
+    - [CLEAN-03] En Backend.API/Startup/DatabaseInitializer.cs: incorporacion de AppLogger.LogCrash en
+      migraciones fallidas y redireccion de mensajes criticos a Console.Error.
+    - Test Suite: CommandCenter.Tests/Unit/CleanCodePhase3Tests.cs (4 tests).
+
+A4. FASE 4 (Concurrencia, Edge Cases y Observabilidad):
+    - [SRE-01] En Sales.Module/Services/CashDrawerService.cs: serializacion de todas las mutaciones fisicas
+      de efectivo (Income y Expense) bajo pg_advisory_xact_lock(sessionId).
+    - [SRE-02] En Backend.API/Controllers/CashDrawerController.cs: forzado de idempotencia obligatoria (ResolveAsync)
+      en el endpoint de adelanto de efectivo (/api/cashdrawer/cash-advance).
+    - [SRE-03] En Backend.API/Controllers/SupplierInvoicesController.cs: integracion de IdempotencyRequestResolver
+      en ConfirmAsync para devolver la respuesta previa (200 OK) ante reintentos de red sin fallar con 400.
+    - [SRE-04] En Backend.API/Controllers/ProductsController.cs: captura de DbUpdateConcurrencyException en UpdateAsync
+      para retornar HTTP 409 Conflict con ProblemDetails en lugar de errores 500 no controlados.
+    - [SRE-05] En Backend.API/Middleware/SecurityStampValidationMiddleware.cs: registro de auditoria de seguridad
+      mediante AppLogger.LogSecurityAudit con UserId, Path e IP.
+    - Test Suite: CommandCenter.Tests/Unit/ConcurrencyPhase4Tests.cs (3 tests).
+
+B. EVIDENCIA Y VERIFICACION
+
+B1. Compilacion: dotnet build CommandCenter.slnx -c Release -> 0 errores, 0 advertencias.
+B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 suites).
+B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (suites de remediacion de auditoria F1-F4) ->
+    33/33 tests superados (100% exito).
+================================================================================

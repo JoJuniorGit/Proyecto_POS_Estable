@@ -306,7 +306,7 @@ public partial class WpfDialogService
     {
         if (Application.Current == null) return null;
 
-        var vm = new ViewModels.CustomerPickerViewModel(_salesService);
+        using var vm = new ViewModels.CustomerPickerViewModel(_salesService);
         await vm.InitializeAsync();
 
         CustomerDto? result = null;
@@ -439,7 +439,7 @@ public partial class WpfDialogService
             var httpClient = _httpClientFactory.CreateClient("SalesApi");
             httpClient.BaseAddress = new Uri(serverAddr);
 
-            var vm = new ViewModels.PairingQrViewModel(httpClient);
+            using var vm = new ViewModels.PairingQrViewModel(httpClient);
             var dialog = new PairingQrDialog(vm);
             if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
             {
@@ -473,7 +473,7 @@ public partial class WpfDialogService
         using var _ = TrackModal();
         Action openDialog = () =>
         {
-            var vm = new ViewModels.ServerConnectionViewModel(_connectionManager, _scannerService);
+            using var vm = new ViewModels.ServerConnectionViewModel(_connectionManager, _scannerService);
             var dialog = new ServerConnectionDialog(vm);
             if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
             {
@@ -543,7 +543,7 @@ public partial class WpfDialogService
         using var _ = TrackModal();
         Action openDialog = () =>
         {
-            var vm = new ViewModels.VariantManagementViewModel(_productService, _exchangeRateService, this, parentProduct);
+            using var vm = new ViewModels.VariantManagementViewModel(_productService, _exchangeRateService, this, parentProduct);
             var dialog = new VariantManagementDialog(vm);
             if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
             {

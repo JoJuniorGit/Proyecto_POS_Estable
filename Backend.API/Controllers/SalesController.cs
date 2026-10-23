@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]

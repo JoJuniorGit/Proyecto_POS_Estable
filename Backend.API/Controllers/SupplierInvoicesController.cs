@@ -19,15 +19,21 @@ public sealed class SupplierInvoicesController : ControllerBase
 
     private readonly ISupplierInvoiceService _supplierInvoiceService;
     private readonly IOcrExtractionService _ocrExtractionService;
+    private readonly Services.IdempotencyRequestResolver _idempotencyResolver;
 
+    [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public SupplierInvoicesController(
         ISupplierInvoiceService supplierInvoiceService,
-        IOcrExtractionService ocrExtractionService)
+        IOcrExtractionService ocrExtractionService,
+        ICurrentUserService currentUserService,
+        IIdempotencyService? idempotencyService = null)
     {
         ArgumentNullException.ThrowIfNull(supplierInvoiceService);
         ArgumentNullException.ThrowIfNull(ocrExtractionService);
+        ArgumentNullException.ThrowIfNull(currentUserService);
         _supplierInvoiceService = supplierInvoiceService;
         _ocrExtractionService = ocrExtractionService;
+        _idempotencyResolver = new Services.IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
     [HttpPost]
@@ -71,8 +77,31 @@ public sealed class SupplierInvoicesController : ControllerBase
         [FromBody] ConfirmSupplierInvoiceRequestDto request,
         CancellationToken cancellationToken)
     {
-        var invoice = await _supplierInvoiceService.ConfirmAsync(id, request, cancellationToken);
-        return Ok(invoice);
+        string requestPath = $"/api/supplier-invoices/{id}/confirm";
+        string bodyJson = JsonSerializer.Serialize(request, WebJsonOptions);
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            bodyJson);
+        if (idempotency.ShouldStop)
+        {
+            return idempotency.BlockingResult!;
+        }
+
+        try
+        {
+            var invoice = await _supplierInvoiceService.ConfirmAsync(id, request, cancellationToken);
+            await _idempotencyResolver.RegisterSuccessAsync(
+                idempotency,
+                requestPath,
+                JsonSerializer.Serialize(invoice, WebJsonOptions),
+                cancellationToken);
+            return Ok(invoice);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (Services.IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
+        }
     }
 
     [HttpPost("{id:int}/lines/{lineId:int}/create-product")]

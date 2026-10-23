@@ -311,7 +311,7 @@ public partial class SalesController
     /// sello de seguridad que el cierre a crédito.
     /// </summary>
     [RequireSecurityStampValidation]
-    [Authorize(Roles = "Admin,Manager,Cashier")]
+    [Authorize(Roles = "Admin,Manager")]
     [HttpPost("{id}/credit-cancel")]
     [ProducesResponseType(typeof(CreditCancelResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]

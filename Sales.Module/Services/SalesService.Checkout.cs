@@ -106,6 +106,20 @@ public partial class SalesService
                 throw new ArgumentException("Para registrar una venta a crédito se requiere seleccionar o crear un cliente registrado (Nombre, Cédula y Teléfono).");
             }
 
+            if (exchangeRate <= 0)
+            {
+                throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio AppliedRate inválida o no inicializada (<= 0).");
+            }
+
+            // 8.5-A5/8.6-B3 / PERF-05: Anclaje de tasa BCV del día vs. tasa recibida del cliente.
+            // Se resuelve ANTES de abrir la transacción SQL y los locks para minimizar la contención transaccional.
+            exchangeRate = await ResolveAnchoredRateAsync(
+                exchangeRate,
+                contextLabel: "CompleteSale",
+                referenceId: saleId);
+
+            decimal roundedAppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
+
             await using var transaction = _context.Database.IsRelational()
                 ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
                 : null;
@@ -154,21 +168,7 @@ public partial class SalesService
                     sale.CashierId = cashierId.Value;
                 }
 
-                if (exchangeRate <= 0)
-                {
-                    throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio AppliedRate inválida o no inicializada (<= 0).");
-                }
-
-                // 8.5-A5/8.6-B3: Anclaje de tasa BCV del día vs. tasa recibida del cliente.
-                // Si el desvío supera la tolerancia configurable (>10% por defecto) la tasa BCEV del día
-                // se ANCLA como tasa efectiva (evita manipulación del AppliedRate / shortage enmascarado);
-                // desvíos ≥ ±100% se rechazan. Sin catch-swallow: los errores del BCV se auditan.
-                exchangeRate = await ResolveAnchoredRateAsync(
-                    exchangeRate,
-                    contextLabel: "CompleteSale",
-                    referenceId: saleId);
-
-                sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
+                sale.AppliedRate = roundedAppliedRate;
                 await RecalculateTotalAsync(sale);
 
             decimal existingPaidUsd = sale.Payments.Sum(p => p.Amount);

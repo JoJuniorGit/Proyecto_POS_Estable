@@ -108,7 +108,9 @@ public class CashDrawerCashAdvanceSecurityTests
             currentUser.Object,
             new TimeZoneProvider(settings.Object),
             coordinator);
-        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["Idempotency-Key"] = "ADVANCE-TEST-" + Guid.NewGuid().ToString("N");
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
         return new Harness(controller, capture, userService);
     }

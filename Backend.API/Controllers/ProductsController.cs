@@ -11,8 +11,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Backend.API.Attributes;
+
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize(Roles = "Admin,Manager,Cashier")]
 [ApiController]
 [Route("api/[controller]")]
@@ -116,6 +119,10 @@ public partial class ProductsController : ControllerBase
         catch (System.Collections.Generic.KeyNotFoundException)
         {
             return this.ApiNotFound($"Producto con ID {id} no encontrado.");
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return this.ApiConflict("The product was modified concurrently by another operation. Please reload and try again.");
         }
     }
 

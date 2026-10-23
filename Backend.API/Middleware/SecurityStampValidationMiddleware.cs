@@ -51,16 +51,23 @@ public class SecurityStampValidationMiddleware
                 if (string.IsNullOrWhiteSpace(stampClaim))
                 {
                     AppLogger.LogWarn($"[AUTH] Request rejected: missing security_stamp claim for UserId={userId} on {context.Request.Path}");
+                    AppLogger.LogSecurityAudit($"[AUTH_REJECTED] UserId={userId}, Path={context.Request.Path}, IP={context.Connection.RemoteIpAddress}, Reason=MissingSecurityStamp");
                     await WriteUnauthorizedResponse(context, "El token no posee un sello de seguridad válido. Por favor inicie sesión nuevamente.");
                     return;
                 }
 
-                bool forceImmediate = endpoint?.Metadata.GetMetadata<RequireSecurityStampValidationAttribute>() != null;
+                bool isMutatingMethod = HttpMethods.IsPost(context.Request.Method) ||
+                                        HttpMethods.IsPut(context.Request.Method) ||
+                                        HttpMethods.IsDelete(context.Request.Method) ||
+                                        HttpMethods.IsPatch(context.Request.Method);
+
+                bool forceImmediate = isMutatingMethod || (endpoint?.Metadata.GetMetadata<RequireSecurityStampValidationAttribute>() != null);
 
                 bool isValid = await validator.ValidateStampAsync(userId, stampClaim, forceImmediate);
                 if (!isValid)
                 {
                     AppLogger.LogWarn($"[AUTH] Token revoked or stamp invalid for UserId={userId} on {context.Request.Path} (forceImmediate={forceImmediate})");
+                    AppLogger.LogSecurityAudit($"[AUTH_REJECTED] UserId={userId}, Path={context.Request.Path}, IP={context.Connection.RemoteIpAddress}, Reason=RevokedStamp, ForceImmediate={forceImmediate}");
                     await WriteUnauthorizedResponse(context, "La sesión ha sido revocada o las credenciales del usuario cambiaron. Inicie sesión nuevamente.");
                     return;
                 }

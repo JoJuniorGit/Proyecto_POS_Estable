@@ -341,13 +341,13 @@ public class CashDrawerService : ICashDrawerService
                     }
                 }
 
+                if (isPhysicalCash && source != CashTransactionSource.Closing && !isInMemory)
+                {
+                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", new object[] { sessionId }, cancellationToken);
+                }
+
                 if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
                 {
-                    if (!isInMemory)
-                    {
-                        await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", new object[] { sessionId }, cancellationToken);
-                    }
-
                     var currentBalance = await GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
                     if (currentBalance < amountLocal)
                     {
