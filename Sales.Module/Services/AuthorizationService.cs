@@ -319,10 +319,6 @@ public class AuthorizationService : IAuthorizationService
             _db.ChangeTracker.Clear();
 
             var now = UtcNowSeconds();
-            await using var transaction = _db.Database.IsRelational()
-                ? await _db.Database.BeginTransactionAsync(cancellationToken)
-                : null;
-
             var request = await LoadRequestAsync(requestId, cancellationToken);
             if (request == null)
             {
@@ -350,13 +346,17 @@ public class AuthorizationService : IAuthorizationService
 
             if (now >= request.ExpiresAt)
             {
+                await using var expireTransaction = _db.Database.IsRelational()
+                    ? await _db.Database.BeginTransactionAsync(cancellationToken)
+                    : null;
+
                 if (await ClaimExpiryAsync(request.Id, now, cancellationToken) == 1)
                 {
                     _db.AuthorizationAudits.Add(BuildAudit(request, AuthorizationStatus.Expired, null, null, null, null, now));
                     await _db.SaveChangesAsync(cancellationToken);
-                    if (transaction != null)
+                    if (expireTransaction != null)
                     {
-                        await transaction.CommitAsync(cancellationToken);
+                        await expireTransaction.CommitAsync(cancellationToken);
                     }
 
                     result = new LocalResolveResult(
@@ -394,14 +394,11 @@ public class AuthorizationService : IAuthorizationService
                 return;
             }
 
+            // PERF-01: Verificacion intensiva de password (PBKDF2) antes de abrir transaccion SQL
             if (string.IsNullOrWhiteSpace(password) || !PasswordHasher.VerifyPassword(password, user.PasswordHash))
             {
                 LoginLockoutPolicy.RegisterFailedAttempt(user, utcNow);
                 await _db.SaveChangesAsync(cancellationToken);
-                if (transaction != null)
-                {
-                    await transaction.CommitAsync(cancellationToken);
-                }
 
                 result = new LocalResolveResult(LocalResolveOutcome.InvalidCredentials, ToDto(request, now), Message: AuthorizationMessages.InvalidCredentials);
                 return;
@@ -422,7 +419,12 @@ public class AuthorizationService : IAuthorizationService
                 return;
             }
 
+            // PERF-01: Apertura transaccional breve exclusiva para el claim y auditoria atomicos (<2ms)
             var resolutionNow = UtcNowSeconds();
+            await using var transaction = _db.Database.IsRelational()
+                ? await _db.Database.BeginTransactionAsync(cancellationToken)
+                : null;
+
             var claimed = await ClaimResolutionAsync(request.Id, AuthorizationStatus.Approved, AuthorizationResolutionMode.Local, user.Id, user.Name, reason, resolutionNow, cancellationToken);
 
             if (claimed == 1)

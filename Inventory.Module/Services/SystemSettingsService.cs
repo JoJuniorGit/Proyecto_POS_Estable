@@ -11,7 +11,9 @@ namespace Inventory.Module.Services;
 public class SystemSettingsService : ISystemSettingsService
 {
     private const string CachePrefix = "system_setting_";
+    private const string NullSentinel = "__SYSTEM_SETTING_NULL__";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan NegativeCacheTtl = TimeSpan.FromSeconds(15);
     private readonly InventoryDbContext _context;
     private readonly IMemoryCache? _cache;
 
@@ -21,22 +23,19 @@ public class SystemSettingsService : ISystemSettingsService
         _cache = cache;
     }
 
-    // 8.7-M6: caché de 30 s por clave (mismo patrón del micro-caché de tasa) para no consultar
-    // SelectedTimeZoneId/RateDeviationTolerancePct en cada request (antes era 4-5 queries).
+    // 8.7-M6 / PERF-03: caché de 30 s por clave con negative caching (15 s) para claves inexistentes
+    // evitando DB hammering repetitivo en configuraciones opcionales o no inicializadas.
     public async Task<string?> GetSettingAsync(string key)
     {
         var cacheKey = CachePrefix + key;
         if (_cache != null && _cache.TryGetValue(cacheKey, out string? cached) && cached != null)
         {
-            return cached;
+            return cached == NullSentinel ? null : cached;
         }
 
         var setting = await _context.SystemSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == key);
         var value = setting?.Value;
 
-        // 8.9-L12: no cachear string.Empty — un key inexistente no debe quedar "falsamente
-        // resuelto" durante el TTL devolviendo "" en lugar de null. Los keys ausentes se
-        // re-consultan en la siguiente petición.
         if (_cache != null)
         {
             if (!string.IsNullOrEmpty(value))
@@ -49,7 +48,11 @@ public class SystemSettingsService : ISystemSettingsService
             }
             else
             {
-                _cache.Remove(cacheKey);
+                _cache.Set(cacheKey, NullSentinel, new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = NegativeCacheTtl,
+                    Size = 1
+                });
             }
         }
 

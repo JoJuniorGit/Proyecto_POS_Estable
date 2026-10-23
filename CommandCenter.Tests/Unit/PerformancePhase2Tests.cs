@@ -10,6 +10,7 @@ using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Inventory.Module.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using Xunit;
 
@@ -91,5 +92,78 @@ public class PerformancePhase2Tests
         // Parent should NOT be tracked in ChangeTracker because it was read AsNoTracking
         var parentEntry = db.ChangeTracker.Entries<Product>().FirstOrDefault(e => e.Entity.Id == 10);
         Assert.Null(parentEntry);
+    }
+
+    [Fact]
+    public async Task SystemSettingsService_NegativeCaching_CachesNullSentinelAndInvalidatesOnSet()
+    {
+        var options = new DbContextOptionsBuilder<Inventory.Module.Data.InventoryDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        using var db = new Inventory.Module.Data.InventoryDbContext(options);
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var service = new SystemSettingsService(db, cache);
+
+        // 1. Missing key returns null
+        var value = await service.GetSettingAsync("UnconfiguredOptionalKey");
+        Assert.Null(value);
+
+        // 2. Negative cache entry must be present with the null sentinel
+        var cacheKey = "system_setting_UnconfiguredOptionalKey";
+        Assert.True(cache.TryGetValue(cacheKey, out string? cachedSentinel));
+        Assert.Equal("__SYSTEM_SETTING_NULL__", cachedSentinel);
+
+        // 3. Second query hits negative cache without hitting DB
+        var cachedValue = await service.GetSettingAsync("UnconfiguredOptionalKey");
+        Assert.Null(cachedValue);
+
+        // 4. Setting the value invalidates cache and returns the new value
+        await service.SetSettingAsync("UnconfiguredOptionalKey", "ConfiguredValue");
+        var freshValue = await service.GetSettingAsync("UnconfiguredOptionalKey");
+        Assert.Equal("ConfiguredValue", freshValue);
+    }
+
+    [Fact]
+    public async Task BulkImportProducts_CategoriesLoadedAsNoTracking_DoesNotTrackExistingCategories()
+    {
+        var options = new DbContextOptionsBuilder<Inventory.Module.Data.InventoryDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        using var db = new Inventory.Module.Data.InventoryDbContext(options);
+        var existingCategory = new Category
+        {
+            Id = 42,
+            Name = "Bebidas",
+            NormalizedName = "BEBIDAS"
+        };
+        db.Categories.Add(existingCategory);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var currentUser = new Mock<Core.Interfaces.ICurrentUserService>();
+        currentUser.Setup(u => u.CanMutateCatalog).Returns(true);
+        var service = new InventoryService(db, currentUser.Object);
+
+        var importDtos = new List<ProductImportDto>
+        {
+            new ProductImportDto
+            {
+                Name = "Refresco Cola",
+                SKU = "REF-COLA",
+                CostPriceUSD = 1m,
+                PriceRetailUSD = 2m,
+                StockQuantity = 10m,
+                CategoryPath = "Bebidas"
+            }
+        };
+
+        var (added, _) = await service.BulkImportProductsAsync(importDtos, overwriteMerge: false);
+        Assert.Equal(1, added);
+
+        // Existing category should not be attached to ChangeTracker as Unchanged or Modified
+        var categoryEntry = db.ChangeTracker.Entries<Category>().FirstOrDefault(e => e.Entity.Id == 42);
+        Assert.Null(categoryEntry);
     }
 }

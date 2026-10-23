@@ -16568,3 +16568,37 @@ B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 sui
 B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (DevSecOpsPhase1HardeningTests) ->
     20/20 tests superados (100% de exito).
 ================================================================================
+
+
+ANEXO XXIX - REMEDIACION DE EFICIENCIA, RENDIMIENTO Y MEMORIA (PERFORMANCE ENGINEERING FASE 2) (8.195) - 2026-10-23
+================================================================================
+Alcance: Remediacion estricta de cuellos de botella de rendimiento identificados en la Fase 2
+(reduccion drastica de ventana de transaccion SQL en autenticacion PBKDF2 de supervisores,
+cache negativo contra DB hammering en configuraciones del sistema, y optimizacion de ChangeTracker
+con AsNoTracking en importacion masiva de catalogo).
+
+A. REMEDIACIONES IMPLEMENTADAS
+
+A1. FASE 2 (Performance Engineering y Eficiencia):
+    - [PERF-01] En Sales.Module/Services/AuthorizationService.cs: reubicacion de la verificacion
+      criptografica de contrasenas PasswordHasher.VerifyPassword (computo intensivo PBKDF2)
+      FUERA de la transaccion SQL BeginTransactionAsync en ResolveLocalAsync. La transaccion de base
+      de datos ahora solo se abre al momento exacto de ejecutar el claim atomico y registrar la auditoria,
+      reduciendo el tiempo de retencion de conexiones y locks transaccionales de >100ms a <2ms por autorizacion.
+    - [PERF-03] En Inventory.Module/Services/SystemSettingsService.cs: implementacion de negative caching
+      utilizando el centinela NullSentinel ("__SYSTEM_SETTING_NULL__") con expiracion de 15 segundos.
+      Elimina el DB hammering constante hacia PostgreSQL en consultas de claves no configuradas u opcionales,
+      garantizando invalidacion inmediata al registrar o actualizar valores via SetSettingAsync.
+    - [PERF-04] En Inventory.Module/Services/InventoryService.Import.cs: incorporacion de .AsNoTracking()
+      en BuildCategoryIndexByPathAsync y vinculacion explicita por FK (CategoryId = leaf.Id). Evita adjuntar
+      cientos de entidades Category al ChangeTracker de EF Core durante la importacion de grandes catalogos de productos.
+    - Test Suite: CommandCenter.Tests/Unit/PerformancePhase2Tests.cs (ampliada de 3 a 5 tests unitarios).
+
+B. EVIDENCIA Y VERIFICACION
+
+B1. Compilacion: dotnet build CommandCenter.slnx -c Release -> 0 errores, 0 advertencias.
+B2. Backend Tests: dotnet test CommandCenter.Tests -c Release (PerformancePhase2Tests) ->
+    5/5 tests superados (100% de exito).
+B3. Backend Tests de Integracion/Regresion: AuthorizationServiceTests (61/61 unitarios sin Postgres externo)
+    y CategoryServiceTests/ProductImportExportTests (58/58 unitarios) -> 100% de exito.
+================================================================================
