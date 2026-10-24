@@ -217,6 +217,7 @@ public partial class SalesService
             {
                 var paymentMethodIds = payments.Select(p => p.PaymentMethodId).Distinct().ToList();
                 paymentMethodsDict = await _context.PaymentMethods
+                    .AsNoTracking()
                     .Where(pm => paymentMethodIds.Contains(pm.Id))
                     .ToDictionaryAsync(pm => pm.Id, cancellationToken);
 

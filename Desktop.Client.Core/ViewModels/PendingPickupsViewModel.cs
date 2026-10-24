@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
 
-public partial class PendingPickupsViewModel : ObservableObject
+public partial class PendingPickupsViewModel : ObservableObject, IDisposable
 {
     private readonly ISalesService _salesService;
     private readonly IDialogService _dialogService;
@@ -262,5 +262,23 @@ public partial class PendingPickupsViewModel : ObservableObject
             $"Nota_Despacho_{receipt.SaleId}_{receipt.DeliveryId}_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
         await File.WriteAllBytesAsync(filePath, bytes);
         Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
+    }
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+        if (disposing)
+        {
+            Pickups.Clear();
+        }
+        _disposed = true;
     }
 }

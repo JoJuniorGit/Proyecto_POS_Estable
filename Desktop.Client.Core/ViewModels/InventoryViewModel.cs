@@ -481,7 +481,10 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 UpdateState();
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            ClientStateLogger.LogInfo("Carga de productos cancelada.", nameof(InventoryViewModel));
+        }
         catch (Exception ex)
         {
             ClientStateLogger.LogError($"Fallo al cargar los productos: {ex.Message}", nameof(InventoryViewModel));
@@ -494,8 +497,14 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             {
                 _loadLock.Release();
             }
-            catch (ObjectDisposedException) { }
-            catch (SemaphoreFullException) { }
+            catch (ObjectDisposedException ex)
+            {
+                ClientStateLogger.LogWarning($"_loadLock ya descartado al liberar en LoadProductsAsync: {ex.Message}", nameof(InventoryViewModel));
+            }
+            catch (SemaphoreFullException ex)
+            {
+                ClientStateLogger.LogWarning($"_loadLock ya liberado en LoadProductsAsync: {ex.Message}", nameof(InventoryViewModel));
+            }
         }
     }
 
@@ -560,7 +569,10 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 UpdateMerge();
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            ClientStateLogger.LogInfo("Fusión de productos cancelada.", nameof(InventoryViewModel));
+        }
         catch (Exception ex)
         {
             ClientStateLogger.LogError($"Fallo al fusionar los cambios del catálogo: {ex.Message}", nameof(InventoryViewModel));
@@ -573,8 +585,14 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             {
                 _loadLock.Release();
             }
-            catch (ObjectDisposedException) { }
-            catch (SemaphoreFullException) { }
+            catch (ObjectDisposedException ex)
+            {
+                ClientStateLogger.LogWarning($"_loadLock ya descartado al liberar en MergeProductsAsync: {ex.Message}", nameof(InventoryViewModel));
+            }
+            catch (SemaphoreFullException ex)
+            {
+                ClientStateLogger.LogWarning($"_loadLock ya liberado en MergeProductsAsync: {ex.Message}", nameof(InventoryViewModel));
+            }
         }
     }
 
@@ -586,13 +604,19 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             oldCts?.Cancel();
             oldCts?.Dispose();
         }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException ex)
+        {
+            ClientStateLogger.LogWarning($"CTS ya descartado durante Dispose: {ex.Message}", nameof(InventoryViewModel));
+        }
 
         try
         {
             _loadLock.Dispose();
         }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException ex)
+        {
+            ClientStateLogger.LogWarning($"_loadLock ya descartado durante Dispose: {ex.Message}", nameof(InventoryViewModel));
+        }
 
         if (UserSession != null)
         {

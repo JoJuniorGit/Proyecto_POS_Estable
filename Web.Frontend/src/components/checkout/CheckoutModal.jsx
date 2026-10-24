@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react';
 
+import { bsToUsd } from '../../utils/money.js';
 import { createCheckoutKeyHolder } from '../../utils/idempotency.js';
 import Modal from '../ui/Modal';
 import ConfirmModal from '../ui/ConfirmModal';
@@ -109,7 +110,7 @@ export function resolveTotalEffectiveUsd({
     }
   }
 
-  return rateToUse > 0 ? Math.round((targetTotalBsS / rateToUse) * 100) / 100 : targetTotalUSD;
+  return rateToUse > 0 ? bsToUsd(targetTotalBsS, rateToUse) : targetTotalUSD;
 }
 
 /**
@@ -295,7 +296,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
     targetTotalUSD,
     rateToUse,
   });
-  const effectiveRemainingUsd = rateToUse > 0 ? Math.round((remainingBsS / rateToUse) * 100) / 100 : remainingUsd;
+  const effectiveRemainingUsd = rateToUse > 0 ? bsToUsd(remainingBsS, rateToUse) : remainingUsd;
 
   useEffect(() => {
     if (!isOpen || !previewRequest.saleId || creditSuccess) {

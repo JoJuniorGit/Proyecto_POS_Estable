@@ -30,7 +30,7 @@ public partial class ColumnMappingItem : ObservableObject
     }
 }
 
-public partial class ImportProductsViewModel : ObservableObject
+public partial class ImportProductsViewModel : ObservableObject, IDisposable
 {
     private readonly IProductImportService _importService;
     private readonly IExchangeRateService _exchangeRateService;
@@ -513,5 +513,25 @@ public partial class ImportProductsViewModel : ObservableObject
     private void ShowInfo(string title, string message)
     {
         _dialogService?.ShowInfo(title, message);
+    }
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+        if (disposing)
+        {
+            WeakReferenceMessenger.Default.UnregisterAll(this);
+            ImportedProducts.Clear();
+            ColumnMappings.Clear();
+        }
+        _disposed = true;
     }
 }

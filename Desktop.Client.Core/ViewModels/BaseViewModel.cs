@@ -35,8 +35,14 @@ public abstract class BaseViewModel : ObservableObject, IDisposable
         {
             _cts.Cancel();
         }
-        catch (ObjectDisposedException) { }
-        catch (AggregateException) { }
+        catch (ObjectDisposedException ex)
+        {
+            ClientStateLogger.LogWarning($"CTS descartado en OnFatalErrorActivated: {ex.Message}", nameof(BaseViewModel));
+        }
+        catch (AggregateException ex)
+        {
+            ClientStateLogger.LogWarning($"Error al cancelar CTS en OnFatalErrorActivated: {ex.Message}", nameof(BaseViewModel));
+        }
     }
 
     private void OnFatalErrorResetInternal()
@@ -55,8 +61,14 @@ public abstract class BaseViewModel : ObservableObject, IDisposable
             oldCts?.Cancel();
             oldCts?.Dispose();
         }
-        catch (ObjectDisposedException) { }
-        catch (AggregateException) { }
+        catch (ObjectDisposedException ex)
+        {
+            ClientStateLogger.LogWarning($"CTS descartado en OnFatalErrorReset: {ex.Message}", nameof(BaseViewModel));
+        }
+        catch (AggregateException ex)
+        {
+            ClientStateLogger.LogWarning($"Error al cancelar CTS en OnFatalErrorReset: {ex.Message}", nameof(BaseViewModel));
+        }
 
         try
         {
@@ -123,8 +135,14 @@ public abstract class BaseViewModel : ObservableObject, IDisposable
                 oldCts?.Cancel();
                 oldCts?.Dispose();
             }
-            catch (ObjectDisposedException) { }
-            catch (AggregateException) { }
+            catch (ObjectDisposedException ex)
+            {
+                ClientStateLogger.LogWarning($"CTS descartado en Dispose: {ex.Message}", nameof(BaseViewModel));
+            }
+            catch (AggregateException ex)
+            {
+                ClientStateLogger.LogWarning($"Error al cancelar CTS en Dispose: {ex.Message}", nameof(BaseViewModel));
+            }
         }
 
         _disposed = true;

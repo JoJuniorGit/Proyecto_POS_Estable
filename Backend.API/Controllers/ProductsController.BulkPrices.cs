@@ -60,14 +60,33 @@ public partial class ProductsController
             return this.ApiForbidden("El rol Cajero no tiene permisos para modificar el catálogo.");
         }
 
+        string requestPath = "/api/products/bulk-prices/apply";
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+            this,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(request));
+        if (idempotency.ShouldStop)
+        {
+            return idempotency.BlockingResult!;
+        }
+
         try
         {
             var result = await _inventoryService.BulkUpdatePricesAsync(request, cancellationToken);
+            await _idempotencyResolver.RegisterSuccessAsync(
+                idempotency,
+                requestPath,
+                System.Text.Json.JsonSerializer.Serialize(result),
+                cancellationToken);
             return Ok(result);
         }
         catch (System.UnauthorizedAccessException)
         {
             return this.ApiForbidden("No tiene permisos para realizar esta operación.");
+        }
+        catch (DbUpdateException ex) when (Backend.API.Services.IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
+        {
+            return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, idempotency.Key, idempotency.PayloadHash);
         }
         catch (DbUpdateConcurrencyException)
         {

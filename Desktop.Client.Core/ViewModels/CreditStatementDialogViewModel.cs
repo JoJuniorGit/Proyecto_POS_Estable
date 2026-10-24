@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,9 +11,10 @@ namespace Desktop.Client.ViewModels;
 /// T4 (F3, S6): estado de cuenta dual del cliente. Presenta el saldo USD, su equivalente Bs.S a
 /// la tasa del día, la cartera y el historial de abonos con el FX realizado; no recalcula saldos.
 /// </summary>
-public partial class CreditStatementDialogViewModel : ObservableObject
+public partial class CreditStatementDialogViewModel : ObservableObject, IDisposable
 {
     private readonly IDialogService _dialogService;
+    private bool _disposed;
 
     public CreditStatementDialogViewModel(CreditStatementClientDto statement, IDialogService dialogService)
     {
@@ -58,5 +60,22 @@ public partial class CreditStatementDialogViewModel : ObservableObject
     private void Close()
     {
         _dialogService.CloseCurrentModal(null);
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+        if (disposing)
+        {
+            Receivables.Clear();
+            Payments.Clear();
+        }
+        _disposed = true;
     }
 }

@@ -16667,3 +16667,55 @@ B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 sui
 B3. Backend Tests: dotnet test CommandCenter.Tests -c Release (ConcurrencyPhase4Tests) ->
     5/5 tests superados (100% de exito).
 ================================================================================
+
+
+ANEXO XXXII - REMEDIACION INTEGRAL DE AUDITORIA TECNICA (FASES 1 A 4 COMPLEMENTARIAS) (8.198) - 2026-10-24
+================================================================================
+Alcance: Remediacion complementaria de las 4 fases de auditoria tecnica (DevSecOps,
+Rendimiento, Clean Code y Concurrencia/SRE) en Backend, Desktop y Frontend Web.
+
+A. REMEDIACIONES IMPLEMENTADAS
+
+A1. FASE 1 (DevSecOps):
+    - [SEC-08] En Backend.API/Controllers/SalesController.History.cs: tipado estricto
+      de GetHistoryAsync y GetHistoryDetailAsync a ActionResult<PagedResultDto<SaleHistoryDto>>
+      y ActionResult<SaleHistoryDto>, cerrando potenciales fugas de entidades o sobreexposicion
+      de metadatos de dominio y decorando contratos con ProducesResponseType.
+    - [SEC-09] En Backend.API/Controllers/CashDrawerController.cs y Sales.Module/Services/SalesService.Mapping.cs:
+      establecimiento de limite superior defensivo en tasas de cambio (0 < rate <= 1_000_000),
+      protegiendo contra desbordamientos numericos o inyeccion de tasas corruptas sin vulnerar
+      la operacion offline fail-open (Anexo 8.5-A5).
+
+A2. FASE 2 (Rendimiento y Recursos):
+    - [PERF-04] En Desktop.Client/Services/ScannerFeedbackService.cs: retencion y disposicion
+      determinista de los buffers MemoryStream subyacentes de SoundPlayer, previniendo retenciones
+      de memoria no gestionada en la reproduccion de feedback de scanner.
+    - [PERF-05] En Desktop.Client.Core/ViewModels (ImportProductsViewModel.cs, PendingPickupsViewModel.cs
+      y CreditStatementDialogViewModel.cs): implementacion de IDisposable para limpieza de colecciones
+      y desregistro estricto de suscripciones en WeakReferenceMessenger, evitando retenciones de memoria.
+    - [PERF-06] En Sales.Module/Services/SalesService.Checkout.cs: incorporacion de .AsNoTracking()
+      en la consulta de metodos de pago durante el flujo de checkout.
+
+A3. FASE 3 (Higiene y Clean Code):
+    - [CLEAN-03] En Desktop.Client.Core/ViewModels (BaseViewModel.cs e InventoryViewModel.cs):
+      eliminacion de bloques catch mudos (catch { }), reemplazandolos con registro estructurado
+      mediante ClientStateLogger.LogWarning e Info.
+    - [CLEAN-04] En Web.Frontend/src/components/checkout/CheckoutModal.jsx: eliminacion de duplicacion
+      de calculo de conversion en presentacion, sustituyendo por la funcion de dominio bsToUsd.
+
+A4. FASE 4 (Concurrencia, Edge Cases y Observabilidad):
+    - [SRE-04] En Backend.API/Controllers/ProductsController.BulkPrices.cs: integracion completa
+      de IdempotencyRequestResolver (ResolveIfPresentAsync y RegisterCompletedResponseAsync)
+      para la aplicacion masiva de precios, garantizando ejecucion idempotente y deteccion de colisiones.
+    - [SRE-05] En Backend.API/Controllers/UsersController.cs e IdempotencyRequestResolver.cs:
+      incorporacion de registro estructurado JSON seguro contra HttpContext nulo
+      (AppLogger.LogStructuredSecurity) en operaciones administrativas criticas y colisiones de payload.
+
+B. EVIDENCIA Y VERIFICACION
+
+B1. Compilacion: dotnet build CommandCenter.slnx -c Release -> 0 errores, 0 advertencias.
+B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 suites).
+    npm run lint (oxlint) -> 0 errores, 0 advertencias.
+B3. Backend Tests: dotnet test CommandCenter.Tests -c Release -> 3.497 tests unitarios y de dominio
+    superados (100% de exito en pruebas locales no dependientes de carril PostgreSQL externo).
+================================================================================

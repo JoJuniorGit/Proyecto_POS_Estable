@@ -271,8 +271,7 @@ public class CashDrawerController : ControllerBase
 
     private static decimal ValidateAndRoundClientRate(decimal clientRate)
     {
-        if (clientRate <= 0m)
-        {
+        if (clientRate <= 0m || clientRate > 1000000m) {
             throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio inválida o no inicializada (<= 0).");
         }
 

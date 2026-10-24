@@ -130,7 +130,7 @@ public partial class SalesService
     /// </summary>
     private async Task<decimal> ResolveAnchoredRateAsync(decimal clientRate, string contextLabel, int referenceId)
     {
-        if (clientRate <= 0m)
+        if (clientRate <= 0m || clientRate > 1000000m)
         {
             throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio AppliedRate inválida o no inicializada (<= 0).");
         }

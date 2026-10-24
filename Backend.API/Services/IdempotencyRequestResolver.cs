@@ -98,6 +98,7 @@ public sealed class IdempotencyRequestResolver
         {
             var clientIp = controller.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
             AppLogger.LogSecurityAudit($"[IDEMPOTENCY_MISMATCH] Key={idempotencyKey}, Path={requestPath}, IP={clientIp}, Timestamp={DateTime.UtcNow:O}");
+            AppLogger.LogStructuredSecurity("IDEMPOTENCY_MISMATCH", null, requestPath, clientIp, "PayloadMismatch", new { IdempotencyKey = idempotencyKey });
             return new IdempotencyResolution(true, controller.ApiUnprocessableEntity(PayloadMismatchMessage), null, null);
         }
 
