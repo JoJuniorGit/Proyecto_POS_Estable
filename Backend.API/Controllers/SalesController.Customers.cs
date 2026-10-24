@@ -28,7 +28,7 @@ public partial class SalesController
         bool canViewCredit = User.IsInRole("Admin") || User.IsInRole("Manager");
         var sanitizedItems = canViewCredit
             ? items.ToList()
-            : items.Select(c => { c.CreditLimitUSD = 0m; return c; }).ToList();
+            : items.Select(SanitizeCustomer).ToList();
 
         return Ok(new CustomerPagedResultDto
         {
@@ -48,7 +48,7 @@ public partial class SalesController
             var customer = await _salesService.GetDefaultCustomerAsync(cancellationToken);
             if (!User.IsInRole("Admin") && !User.IsInRole("Manager"))
             {
-                customer.CreditLimitUSD = 0m;
+                return Ok(SanitizeCustomer(customer));
             }
             return Ok(customer);
         }
@@ -56,6 +56,20 @@ public partial class SalesController
         {
             return this.ApiNotFound("Cliente por defecto no encontrado.");
         }
+    }
+
+    private static CustomerDto SanitizeCustomer(CustomerDto customer)
+    {
+        return new CustomerDto
+        {
+            Id = customer.Id,
+            CedulaOrRif = customer.CedulaOrRif,
+            Name = customer.Name,
+            Phone = customer.Phone,
+            IsActive = customer.IsActive,
+            IsDefault = customer.IsDefault,
+            CreditLimitUSD = 0m
+        };
     }
 
     [HttpPut("{id}/customer")]

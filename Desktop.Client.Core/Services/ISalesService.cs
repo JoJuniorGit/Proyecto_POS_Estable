@@ -250,6 +250,7 @@ public interface ISalesService
         IEnumerable<SalePaymentDto> payments,
         int? cashierId = null,
         string? authorizationToken = null,
+        string? idempotencyKey = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>Registra un abono CxC (FIFO o facturas explícitas); la tasa la resuelve el servidor.</summary>

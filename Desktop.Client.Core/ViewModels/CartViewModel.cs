@@ -491,11 +491,24 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
     }
 
+    public Task CommitItemQuantityFromTextAsync(int itemId, string? rawText)
+    {
+        decimal q = 0m;
+        if (!decimal.TryParse(rawText, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out q))
+        {
+            _ = decimal.TryParse(rawText, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out q);
+        }
+
+        return CommitItemQuantityAsync(itemId, q);
+    }
+
     public async Task CommitItemQuantityAsync(int itemId, decimal newQty)
     {
         if (CurrentSale == null) return;
         try
         {
+            newQty = System.Math.Round(newQty, 3, System.MidpointRounding.AwayFromZero);
+
             // Edicion manual protegida (paridad con el input web): un valor confirmado <= 0
             // revierte a 1 — nunca elimina la linea (el borrado es exclusivo del 🗑/Supr).
             if (newQty <= 0m) newQty = 1m;

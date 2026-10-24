@@ -18,4 +18,7 @@ public class CreditSaleRequest
 
     /// <summary>Pagos iniciales (abono) aplicados al contado; solo lo efectivamente cobrado ingresa a caja.</summary>
     public IEnumerable<SalePaymentDto> Payments { get; set; } = new List<SalePaymentDto>();
+
+    /// <summary>Clave de idempotencia provista opcionalmente en el cuerpo para ser promovida a header.</summary>
+    public string? IdempotencyKey { get; set; }
 }

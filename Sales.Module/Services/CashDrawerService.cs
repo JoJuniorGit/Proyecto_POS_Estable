@@ -124,9 +124,10 @@ public class CashDrawerService : ICashDrawerService
 
         try
         {
-            if (ownTransaction != null && _context.Database.IsRelational())
+            if (_context.Database.IsNpgsql())
             {
                 // SRE-02: Bloqueo consultivo en PostgreSQL para serializar la apertura concurrente de sesiones de caja
+                // (tanto bajo transacción propia como bajo transacción ambiente). Provider-safe: se omite en SQLite/InMemory.
                 await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(999888777)", cancellationToken);
 
                 // Doble chequeo bajo el lock para evitar carrera

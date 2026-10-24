@@ -13,6 +13,7 @@ using Backend.API.Attributes;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize]
 [ApiController]
 [Route("api/shifts")]

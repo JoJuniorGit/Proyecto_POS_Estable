@@ -500,6 +500,10 @@ public partial class PosViewModel
             OnPropertyChanged(nameof(CurrentExchangeRate));
             OnPropertyChanged(nameof(IsRateOutdated));
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[PosViewModel] Error al sincronizar tasa BCV: {ex.Message}", "PosSync");
+            _dialogService?.ShowError("Error de Sincronización", $"No se pudo sincronizar la tasa BCV oficial: {ex.Message}");
+        }
     }
 }

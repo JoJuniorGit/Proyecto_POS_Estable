@@ -565,13 +565,16 @@ public class SalesService : ISalesService
         IEnumerable<SalePaymentDto> payments,
         int? cashierId = null,
         string? authorizationToken = null,
+        string? idempotencyKey = null,
         System.Threading.CancellationToken cancellationToken = default)
     {
-        var request = new { ExchangeRate = exchangeRate, Payments = payments, CashierId = cashierId };
+        var effectiveKey = !string.IsNullOrWhiteSpace(idempotencyKey) ? idempotencyKey : Guid.NewGuid().ToString("N");
+        var request = new { ExchangeRate = exchangeRate, Payments = payments, CashierId = cashierId, IdempotencyKey = effectiveKey };
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"api/sales/{saleId}/complete-credit")
         {
             Content = JsonContent.Create(request)
         };
+        httpRequest.Headers.Add("Idempotency-Key", effectiveKey);
         if (!string.IsNullOrWhiteSpace(authorizationToken))
         {
             httpRequest.Headers.Add("X-Authorization-Token", authorizationToken);

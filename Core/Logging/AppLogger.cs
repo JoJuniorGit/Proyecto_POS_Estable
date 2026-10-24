@@ -17,7 +17,10 @@ public static class AppLogger
                 Directory.CreateDirectory(_logsDir);
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[AppLogger] Failed to initialize logs directory '{_logsDir}': {ex.Message}");
+        }
     }
 
     public static string StartLogPath => Path.Combine(_logsDir, "start.log");
@@ -82,6 +85,46 @@ public static class AppLogger
 
         var json = System.Text.Json.JsonSerializer.Serialize(entry);
         AsyncLogSink.Enqueue(filePath, json + Environment.NewLine);
+    }
+
+    /// <summary>
+    /// SRE-01: Registro estructurado de caídas de aplicación en formato JSON con metadatos clave-valor.
+    /// </summary>
+    public static void LogStructuredCrash(Exception ex, string context = "General", object? extraContext = null)
+    {
+        var entry = new
+        {
+            Timestamp = DateTime.UtcNow.ToString("O"),
+            Level = "CRASH",
+            Context = context,
+            ExceptionType = ex.GetType().FullName,
+            Message = ex.Message,
+            StackTrace = ex.StackTrace,
+            InnerException = ex.InnerException?.Message,
+            Metadata = extraContext
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(entry);
+        AsyncLogSink.Enqueue(CrashLogPath, json + Environment.NewLine);
+    }
+
+    /// <summary>
+    /// SRE-01: Registro estructurado de errores de base de datos en formato JSON con metadatos clave-valor.
+    /// </summary>
+    public static void LogStructuredDbError(Exception ex, string context = "Database", object? extraContext = null)
+    {
+        var entry = new
+        {
+            Timestamp = DateTime.UtcNow.ToString("O"),
+            Level = "DB-ERROR",
+            Context = context,
+            ExceptionType = ex.GetType().FullName,
+            Message = ex.Message,
+            StackTrace = ex.StackTrace,
+            InnerException = ex.InnerException?.Message,
+            Metadata = extraContext
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(entry);
+        AsyncLogSink.Enqueue(DbErrorsLogPath, json + Environment.NewLine);
     }
 
     public static void LogCrash(Exception ex, string context = "General")

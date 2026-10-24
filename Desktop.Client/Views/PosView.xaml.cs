@@ -172,16 +172,7 @@ public partial class PosView : UserControl
         {
             if (e.EditingElement is TextBox tb)
             {
-                // Edicion manual protegida: texto invalido/vacio confirma 0 y el carrito lo
-                // revierte a 1 (piso de cantidad) — la edicion nunca elimina la linea.
-                decimal q = 0m;
-                if (!decimal.TryParse(tb.Text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out q))
-                {
-                    _ = decimal.TryParse(tb.Text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out q);
-                }
-
-                decimal rounded = System.Math.Round(q, 3, System.MidpointRounding.AwayFromZero);
-                _ = posVm.Cart.CommitItemQuantityAsync(itemVm.Id, rounded);
+                _ = posVm.Cart.CommitItemQuantityFromTextAsync(itemVm.Id, tb.Text);
             }
         }
     }

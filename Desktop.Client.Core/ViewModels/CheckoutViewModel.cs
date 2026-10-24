@@ -883,7 +883,8 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
                 payments,
                 _userSession?.CurrentUser?.Id,
                 authorizationToken: null,
-                _cts?.Token ?? default);
+                idempotencyKey: null,
+                cancellationToken: _cts?.Token ?? default);
 
             CloseAfterCreditSale(invoiceNumber);
         }
@@ -915,8 +916,9 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
                     CurrentExchangeRate,
                     payments,
                     _userSession?.CurrentUser?.Id,
-                    token,
-                    _cts?.Token ?? default);
+                    authorizationToken: token,
+                    idempotencyKey: null,
+                    cancellationToken: _cts?.Token ?? default);
             });
         }
         catch (System.Exception ex)

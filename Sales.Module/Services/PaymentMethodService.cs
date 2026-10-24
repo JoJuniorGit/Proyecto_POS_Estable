@@ -312,7 +312,7 @@ public class PaymentMethodService : IPaymentMethodService
         {
             try
             {
-                using var cmd = _context.Database.GetDbConnection().CreateCommand();
+                await using var cmd = _context.Database.GetDbConnection().CreateCommand();
                 cmd.CommandText = "SELECT nextval('paymentmethod_displayorder_seq');";
                 if (_context.Database.CurrentTransaction != null)
                 {

@@ -16,6 +16,7 @@ namespace Backend.API.Controllers;
 /// credenciales del supervisor dentro del servicio. Los mensajes exactos viven en
 /// <see cref="AuthorizationMessages"/>.
 /// </summary>
+[RequireSecurityStampValidation]
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]

@@ -89,20 +89,22 @@ export async function getCreditReceivables(filter = {}, signal) {
 /**
  * Cierra una venta a crédito (total o mixta): los pagos iniciales que se informen atraviesan el
  * mismo camino del contado; el remanente no cubierto se financia como Cuenta por Cobrar. El
- * `authorizationToken` (flujo de espera) es opcional y viaja en X-Authorization-Token; el
- * backend no expone Idempotency-Key para este endpoint (residual T2/T3).
+ * `authorizationToken` (flujo de espera) es opcional y viaja en X-Authorization-Token; la
+ * clave de idempotencia se genera automáticamente o se provee y viaja en header y body.
  * @returns {Promise<number>} Número de factura
  */
-export async function completeCreditSale(saleId, { exchangeRate, payments = [], cashierId = null, authorizationToken = null } = {}) {
-  const options = {};
+export async function completeCreditSale(saleId, { exchangeRate, payments = [], cashierId = null, authorizationToken = null, idempotencyKey = null } = {}) {
+  const key = idempotencyKey || createIdempotencyKey('credit-complete');
+  const headers = { 'Idempotency-Key': key };
   if (authorizationToken) {
-    options.headers = { 'X-Authorization-Token': authorizationToken };
+    headers['X-Authorization-Token'] = authorizationToken;
   }
   return await api.post(`/api/sales/${saleId}/complete-credit`, {
     exchangeRate,
     cashierId,
     payments,
-  }, options);
+    idempotencyKey: key,
+  }, { headers });
 }
 
 function createIdempotencyKey(prefix) {

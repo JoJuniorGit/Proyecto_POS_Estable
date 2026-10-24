@@ -37,6 +37,11 @@ public partial class SalesController
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult> CompleteCreditSaleAsync(int id, [FromBody] CreditSaleRequest request, CancellationToken cancellationToken = default)
     {
+        if (request == null)
+        {
+            return this.ApiBadRequest("La solicitud de venta a crédito es requerida.");
+        }
+
         if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {
             return this.ApiForbidden("Acceso denegado: no tiene permisos para completar esta venta.");
@@ -50,6 +55,11 @@ public partial class SalesController
         request.CashierId = effectiveCashierId;
 
         string requestPath = $"/api/sales/{id}/complete-credit";
+        if (Request?.Headers != null && string.IsNullOrWhiteSpace(Request.Headers["Idempotency-Key"]) && !string.IsNullOrWhiteSpace(request.IdempotencyKey))
+        {
+            Request.Headers["Idempotency-Key"] = request.IdempotencyKey;
+        }
+
         string bodyJson = GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
         var resolved = await _idempotencyResolver.ResolveIfPresentAsync(
             this,

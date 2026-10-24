@@ -61,7 +61,7 @@ public partial class InventoryService
         // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy en producción.
         return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            using var transaction = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+            await using var transaction = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
             try
             {
             var skusToImport = productList.Where(IsImportable).Select(p => p.SKU.Trim()).Distinct().ToList();

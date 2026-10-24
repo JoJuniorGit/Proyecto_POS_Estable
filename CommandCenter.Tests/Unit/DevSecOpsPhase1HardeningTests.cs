@@ -131,6 +131,13 @@ public class DevSecOpsPhase1HardeningTests
     [InlineData(typeof(PaymentMethodsController))]
     [InlineData(typeof(ExchangeRateController))]
     [InlineData(typeof(UsersController))]
+    [InlineData(typeof(AdministrationController))]
+    [InlineData(typeof(ReceiptsController))]
+    [InlineData(typeof(AuthorizationsController))]
+    [InlineData(typeof(DailyClosureController))]
+    [InlineData(typeof(CashDrawerController))]
+    [InlineData(typeof(ShiftsController))]
+    [InlineData(typeof(PettyCashController))]
     public void AdministrativeAndCoreControllers_HaveRequireSecurityStampValidationAttribute(Type controllerType)
     {
         var attr = controllerType.GetCustomAttribute<RequireSecurityStampValidationAttribute>();
@@ -335,5 +342,68 @@ public class DevSecOpsPhase1HardeningTests
         Assert.True(capturedRequest!.Headers.Contains("Idempotency-Key"));
         var key = capturedRequest.Headers.GetValues("Idempotency-Key").FirstOrDefault();
         Assert.StartsWith("inv-conf-1-", key);
+    }
+
+    [Fact]
+    public async Task GetCustomersAsync_WhenRoleIsCashier_DoesNotMutateOriginalItems()
+    {
+        var salesService = new Mock<ISalesService>();
+        var originalCustomer = new CustomerDto { Id = 1, Name = "Cliente Inmutable", CreditLimitUSD = 2500m };
+        var customers = new List<CustomerDto> { originalCustomer };
+        salesService.Setup(s => s.GetCustomersAsync(null, 1, 20, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((customers, 1));
+
+        var controller = CreateController(salesService.Object, "Cashier");
+        var result = await controller.GetCustomersAsync(cancellationToken: CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var pagedResult = Assert.IsType<CustomerPagedResultDto>(okResult.Value);
+
+        Assert.Equal(0m, pagedResult.Items[0].CreditLimitUSD);
+        // La instancia original preserva su valor intacto (sin mutación destructiva en memoria)
+        Assert.Equal(2500m, originalCustomer.CreditLimitUSD);
+    }
+
+    [Fact]
+    public async Task GetDefaultCustomerAsync_WhenRoleIsCashier_DoesNotMutateOriginalCustomer()
+    {
+        var salesService = new Mock<ISalesService>();
+        var defaultCustomer = new CustomerDto { Id = 1, Name = "Consumidor Inmutable", CreditLimitUSD = 1800m };
+        salesService.Setup(s => s.GetDefaultCustomerAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(defaultCustomer);
+
+        var controller = CreateController(salesService.Object, "Cashier");
+        var result = await controller.GetDefaultCustomerAsync(CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var customer = Assert.IsType<CustomerDto>(okResult.Value);
+
+        Assert.Equal(0m, customer.CreditLimitUSD);
+        // La instancia original retenida por el servicio o caché no fue mutada
+        Assert.Equal(1800m, defaultCustomer.CreditLimitUSD);
+    }
+
+    [Fact]
+    public async Task CompleteCreditSaleAsync_PromotesBodyIdempotencyKeyToHeader()
+    {
+        var salesService = new Mock<ISalesService>();
+        salesService
+            .Setup(s => s.GetSaleAuthMetadataAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(("Pending", 42));
+        salesService
+            .Setup(s => s.CompleteCreditSaleAsync(It.IsAny<int>(), It.IsAny<CreditSaleRequest>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(999);
+
+        var controller = CreateController(salesService.Object, "Cashier");
+        var request = new CreditSaleRequest
+        {
+            ExchangeRate = 45m,
+            IdempotencyKey = "body-key-credit-complete-01"
+        };
+
+        var result = await controller.CompleteCreditSaleAsync(1, request, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal("body-key-credit-complete-01", controller.Request.Headers["Idempotency-Key"].ToString());
     }
 }

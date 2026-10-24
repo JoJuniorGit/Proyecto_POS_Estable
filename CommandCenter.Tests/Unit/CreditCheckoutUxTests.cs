@@ -212,10 +212,10 @@ public class CreditCheckoutUxTests
         };
 
         sales.Setup(s => s.CompleteCreditSaleAsync(
-                9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), 9, null, It.IsAny<CancellationToken>()))
+                9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), 9, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new CreditOverLimitAuthorizationException("Se requiere autorización.", context));
         sales.Setup(s => s.CompleteCreditSaleAsync(
-                9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), 9, "tok-1", It.IsAny<CancellationToken>()))
+                9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), 9, "tok-1", It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(321);
 
         CreditOverLimitAuthorizationRequestContext? captured = null;
@@ -233,7 +233,7 @@ public class CreditCheckoutUxTests
         Assert.Equal(7, captured!.CustomerId);
         Assert.Equal(200m, captured.FinancedUSD);
         Assert.Equal(50m, captured.AvailableCreditUSD);
-        sales.Verify(s => s.CompleteCreditSaleAsync(9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), 9, "tok-1", It.IsAny<CancellationToken>()), Times.Once);
+        sales.Verify(s => s.CompleteCreditSaleAsync(9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), 9, "tok-1", It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
         dialog.Verify(d => d.CloseCurrentModal(321), Times.Once);
         dialog.Verify(d => d.ShowError(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
     }
@@ -253,7 +253,7 @@ public class CreditCheckoutUxTests
             AvailableCreditUSD = 50m
         };
         sales.Setup(s => s.CompleteCreditSaleAsync(
-                9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), 9, null, It.IsAny<CancellationToken>()))
+                9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), 9, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new CreditOverLimitAuthorizationException("Se requiere autorización.", context));
         dialog.Setup(d => d.ShowAuthorizationWaitAsync(It.IsAny<IAuthorizationRequestContext>(), It.IsAny<Func<string, Task>>()))
             .ReturnsAsync(new AuthorizationWaitResult(AuthorizationWaitOutcome.Rejected, null, "Límite excedido."));
@@ -290,7 +290,7 @@ public class CreditCheckoutUxTests
             });
         sales.Setup(s => s.GetCreditProfileAsync(7, It.IsAny<CancellationToken>())).ReturnsAsync(Profile());
         sales.Setup(s => s.CompleteCreditSaleAsync(
-                9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), 9, null, It.IsAny<CancellationToken>()))
+                9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), 9, null, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(321);
         dialog.Setup(d => d.ShowModalAsync(It.IsAny<object>(), "RootDialog"))
             .Returns<object, string?>(async (content, _) =>
@@ -347,7 +347,7 @@ public class CreditCheckoutUxTests
         await vm.FinalizeSaleCommand.ExecuteAsync(null);
 
         sales.Verify(s => s.CompleteSaleAsync(9, Rate, It.IsAny<IEnumerable<SalePaymentDto>>(), It.IsAny<decimal>(), 9, false, It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
-        sales.Verify(s => s.CompleteCreditSaleAsync(It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<IEnumerable<SalePaymentDto>>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        sales.Verify(s => s.CompleteCreditSaleAsync(It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<IEnumerable<SalePaymentDto>>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         vm.Dispose();
     }
 }

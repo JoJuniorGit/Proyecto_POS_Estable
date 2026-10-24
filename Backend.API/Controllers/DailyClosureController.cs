@@ -13,6 +13,7 @@ using Backend.API.Services;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]

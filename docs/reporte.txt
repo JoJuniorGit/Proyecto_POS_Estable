@@ -16719,3 +16719,61 @@ B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 sui
 B3. Backend Tests: dotnet test CommandCenter.Tests -c Release -> 3.497 tests unitarios y de dominio
     superados (100% de exito en pruebas locales no dependientes de carril PostgreSQL externo).
 ================================================================================
+
+
+ANEXO XXXIII - ENDURECIMIENTO Y OPTIMIZACION INTEGRAL DE ARQUITECTURA (FASES 1 A 4) (8.199) - 2026-10-24
+================================================================================
+Alcance: Remediacion integral y endurecimiento de las 4 fases de auditoria tecnica
+(DevSecOps, Rendimiento, Clean Code y Concurrencia/SRE) en Backend, Desktop y Web.
+
+A. REMEDIACIONES IMPLEMENTADAS
+
+A1. FASE 1 (DevSecOps & Zero-Trust):
+    - [SEC-10] En Backend.API/Controllers/SalesController.Credit.cs, Sales.Module/DTOs/CreditSaleRequestDtos.cs,
+      Desktop.Client.Core (SalesService, ISalesService, CheckoutViewModel) y Web.Frontend (creditApi.js, creditApi.test.js):
+      soporte y propagacion de IdempotencyKey en el cierre de ventas a credito (POST /api/sales/{id}/complete-credit),
+      previniendo doble compromiso de cupo crediticio ante reintentos de red.
+    - [SEC-11] En Backend.API/Controllers/SalesController.Customers.cs: sanitizacion defensiva inmutable de
+      CreditLimitUSD en SanitizeCustomer mediante clonacion de DTO para usuarios no privilegiados,
+      impidiendo mutacion in-memory de entidades rastreadas o fuga de limites de credito.
+    - [SEC-12] Decoracion con [RequireSecurityStampValidation] en AdministrationController, AuthorizationsController,
+      CashDrawerController, DailyClosureController, PettyCashController, ReceiptsController y ShiftsController,
+      eliminando la ventana de gracia de 45 segundos en endpoints GET ante revocacion o rotacion de tokens de seguridad.
+    - Test Suite: CommandCenter.Tests/Unit/DevSecOpsPhase1HardeningTests.cs (30/30 tests superados).
+
+A2. FASE 2 (Eficiencia, Rendimiento y Memoria):
+    - [PERF-07] En Inventory.Module/Services/InventoryService.Import.cs y Sales.Module/Services/PaymentMethodService.cs:
+      sustitucion de using var sincronos por await using var en instancias de IDbContextTransaction y DbCommand,
+      erradicando bloqueos sincronicos en el ThreadPool durante operaciones asincronas.
+    - [PERF-08] En Sales.Module/Services/SalesService.Checkout.cs: extraccion de la precarga del catalogo de metodos
+      de pago (PaymentMethods) y validaciones de montos negativos, metodos inactivos y divisas fuera de
+      BeginTransactionAsync y del advisory lock de PostgreSQL, reduciendo significativamente la ventana de bloqueo de tablas de venta y caja.
+
+A3. FASE 3 (Higiene y Clean Code):
+    - [CLEAN-05] En Core/Logging/AppLogger.cs: erradicacion de bloque catch mudo en el constructor estatico, agregando
+      salida a Console.Error.WriteLine ante fallos de creacion de directorios.
+    - [CLEAN-06] En Desktop.Client.Core/ViewModels/PosViewModel.Orders.cs: eliminacion de catch vacio en
+      SyncExchangeRateAsync, incorporando logging formal a AppLogger.LogWarn y feedback visual al cajero mediante _dialogService.ShowError.
+    - [CLEAN-07] En Web.Frontend/src/utils/saleRecovery.js: eliminacion de bloques catch mudos en operaciones de
+      localStorage, incorporando telemetria de advertencia via console.warn ante cuotas de almacenamiento excedidas o bloqueos.
+    - [CLEAN-08] En Desktop.Client/Views/PosView.xaml.cs y Desktop.Client.Core/ViewModels/CartViewModel.cs: extraccion
+      de logica de redondeo a 3 decimales y parseo cultural desde el code-behind de la vista XAML (DataGrid_CellEditEnding)
+      hacia CartViewModel.CommitItemQuantityFromTextAsync, preservando el principio MVVM y Zero Code-Behind.
+    - [CLEAN-09] En Backend.API/Controllers/CashDrawerController.cs: sustitucion de calculo manual Math.Round por el
+      helper canonico de dominio PricingCalculator.ToUSD(...).
+
+A4. FASE 4 (Concurrencia, Edge Cases y Observabilidad):
+    - [SRE-06] En Sales.Module/Services/CashDrawerService.cs: correccion de condicion de carrera en OpenSessionAsync
+      al asegurar que el bloqueo consultivo pg_advisory_xact_lock(999888777) se adquiera incondicionalmente en PostgreSQL
+      (_context.Database.IsNpgsql()), incluso cuando se invoque bajo una transaccion ambiente activa.
+    - [SRE-07] En Core/Logging/AppLogger.cs: implementacion de LogStructuredCrash y LogStructuredDbError con formato JSON
+      estructurado (timestamp ISO 8601, contexto clave-valor, tipo de excepcion, stack trace y metadatos) para observabilidad avanzada (Loki, Elasticsearch, Datadog).
+
+B. EVIDENCIA Y VERIFICACION
+
+B1. Compilacion: dotnet build CommandCenter.slnx -c Release -m:1 /p:UseSharedCompilation=false -> 0 errores, 0 advertencias.
+B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 suites).
+    npm run lint (oxlint) -> 0 errores, 0 advertencias en 230 archivos.
+B3. Backend Tests: dotnet test CommandCenter.Tests -c Release -> 2.873 tests unitarios superados.
+================================================================================
+

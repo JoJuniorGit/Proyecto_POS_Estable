@@ -178,17 +178,19 @@ describe('creditApi — cierre a crédito, abonos, anulación y devolución', ()
     global.fetch = originalFetch;
   });
 
-  it('9. completeCreditSale POSTs the exact route/body and omits the token header by default', async () => {
+  it('9. completeCreditSale POSTs the exact route/body, sends Idempotency-Key, and omits the token header by default', async () => {
     const payments = [{ paymentMethodId: 1, amount: 20, amountBsS: 730, amountLocal: 730, referenceNumber: null }];
-    await completeCreditSale(9, { exchangeRate: 36.5, cashierId: 4, payments });
+    await completeCreditSale(9, { exchangeRate: 36.5, cashierId: 4, payments, idempotencyKey: 'idem-sale-1' });
 
     assert.strictEqual(fetchCalls[0].config.method, 'POST');
     assert.strictEqual(fetchCalls[0].url, 'http://localhost:5000/api/sales/9/complete-credit');
+    assert.strictEqual(fetchCalls[0].config.headers['Idempotency-Key'], 'idem-sale-1');
     assert.ok(!('X-Authorization-Token' in fetchCalls[0].config.headers), 'sin token no se envía el header');
     assert.deepStrictEqual(JSON.parse(fetchCalls[0].config.body), {
       exchangeRate: 36.5,
       cashierId: 4,
       payments,
+      idempotencyKey: 'idem-sale-1',
     });
   });
 
@@ -196,6 +198,7 @@ describe('creditApi — cierre a crédito, abonos, anulación y devolución', ()
     await completeCreditSale(9, { exchangeRate: 36.5, payments: [], authorizationToken: 'tok-1' });
 
     assert.strictEqual(fetchCalls[0].config.headers['X-Authorization-Token'], 'tok-1');
+    assert.ok(fetchCalls[0].config.headers['Idempotency-Key'], 'incluye clave de idempotencia generada');
   });
 
   it('11. registerCreditPayment posts the body key and the Idempotency-Key header (FIFO: receivableIds null)', async () => {

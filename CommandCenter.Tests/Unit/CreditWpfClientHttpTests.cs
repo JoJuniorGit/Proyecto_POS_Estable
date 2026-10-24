@@ -183,6 +183,7 @@ public class CreditWpfClientHttpTests
         Assert.Equal("tok-1", Assert.Single(handler.LastRequest.Headers.GetValues("X-Authorization-Token")));
         Assert.Contains("\"exchangeRate\":36.50", handler.LastBody);
         Assert.Contains("\"cashierId\":4", handler.LastBody);
+        Assert.True(handler.LastRequest.Headers.Contains("Idempotency-Key"));
     }
 
     [Fact]

@@ -15,6 +15,7 @@ using Backend.API.Services;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
@@ -210,7 +211,7 @@ public class CashDrawerController : ControllerBase
         try
         {
             decimal anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, referenceId: request.SessionId, cancellationToken: cancellationToken);
-            decimal amountUsd = Math.Round(request.AmountLocal / anchoredRate, 2, MidpointRounding.AwayFromZero);
+            decimal amountUsd = Core.Helpers.PricingCalculator.ToUSD(request.AmountLocal, anchoredRate);
 
             var transaction = await _cashDrawerService.AddTransactionAsync(
                 request.SessionId,

@@ -120,6 +120,47 @@ public partial class SalesService
 
             decimal roundedAppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
 
+            // PERF-06: Pre-validación de métodos de pago y carga de catálogo fuera de la transacción
+            // y del advisory lock para reducir la ventana de contención sobre tablas de ventas/caja.
+            var paymentMethodsDict = new Dictionary<int, PaymentMethod>();
+            if (payments != null && payments.Any())
+            {
+                var paymentMethodIds = payments.Select(p => p.PaymentMethodId).Distinct().ToList();
+                paymentMethodsDict = await _context.PaymentMethods
+                    .AsNoTracking()
+                    .Where(pm => paymentMethodIds.Contains(pm.Id))
+                    .ToDictionaryAsync(pm => pm.Id, cancellationToken);
+
+                foreach (var p in payments)
+                {
+                    // 8.7-B2: Rechazo de montos NEGATIVOS por método, validado sobre los valores crudos
+                    // antes de resolver la conversión (un negativo no puede quedar enmascarado por el par).
+                    // Los ceros absolutos se purgan en la sanitización pre-persistencia y los montos mixtos
+                    // (una sola moneda) se resuelven en el par USD/Bs.S consistente.
+                    if (p.Amount < 0m || p.AmountLocal < 0m)
+                    {
+                        throw new ArgumentException($"La validación del método de pago (PaymentMethodId={p.PaymentMethodId}) rechaza montos negativos. Monto USD={p.Amount}, Monto Bs.S={p.AmountLocal}.");
+                    }
+
+                    var (_, amountLocal) = ResolveConsistentPaymentAmounts(p.Amount, p.AmountLocal, exchangeRate);
+
+                    paymentMethodsDict.TryGetValue(p.PaymentMethodId, out var paymentMethod);
+
+                    // 8.6-B3: Validación pre-persistencia del método de pago: un PaymentMethodId inexistente
+                    // o inactivo aborta el cobro (evita asociar pagos a configuraciones inválidas).
+                    if (paymentMethod == null || !paymentMethod.IsActive)
+                    {
+                        throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={p.PaymentMethodId}. Verifique la configuración de métodos de pago.");
+                    }
+
+                    // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
+                    if (paymentMethod.IsCash && amountLocal % 1 != 0)
+                    {
+                        throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
+                    }
+                }
+            }
+
             await using var transaction = _context.Database.IsRelational()
                 ? await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken)
                 : null;
@@ -212,42 +253,13 @@ public partial class SalesService
                 sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();
             }
 
-            var paymentMethodsDict = new Dictionary<int, PaymentMethod>();
             if (payments != null && payments.Any())
             {
-                var paymentMethodIds = payments.Select(p => p.PaymentMethodId).Distinct().ToList();
-                paymentMethodsDict = await _context.PaymentMethods
-                    .AsNoTracking()
-                    .Where(pm => paymentMethodIds.Contains(pm.Id))
-                    .ToDictionaryAsync(pm => pm.Id, cancellationToken);
-
                 foreach (var p in payments)
                 {
-                    // 8.7-B2: Rechazo de montos NEGATIVOS por método, validado sobre los valores crudos
-                    // antes de resolver la conversión (un negativo no puede quedar enmascarado por el par).
-                    // Los ceros absolutos se purgan en la sanitización pre-persistencia y los montos mixtos
-                    // (una sola moneda) se resuelven en el par USD/Bs.S consistente.
-                    if (p.Amount < 0m || p.AmountLocal < 0m)
-                    {
-                        throw new ArgumentException($"La validación del método de pago (PaymentMethodId={p.PaymentMethodId}) rechaza montos negativos. Monto USD={p.Amount}, Monto Bs.S={p.AmountLocal}.");
-                    }
-
                     var (amountUsd, amountLocal) = ResolveConsistentPaymentAmounts(p.Amount, p.AmountLocal, exchangeRate);
 
                     paymentMethodsDict.TryGetValue(p.PaymentMethodId, out var paymentMethod);
-
-                    // 8.6-B3: Validación pre-persistencia del método de pago: un PaymentMethodId inexistente
-                    // o inactivo aborta el cobro (evita asociar pagos a configuraciones inválidas).
-                    if (paymentMethod == null || !paymentMethod.IsActive)
-                    {
-                        throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={p.PaymentMethodId}. Verifique la configuración de métodos de pago.");
-                    }
-
-                    // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
-                    if (paymentMethod.IsCash && amountLocal % 1 != 0)
-                    {
-                        throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
-                    }
 
                     _logger?.LogDebug("[CURRENCY CONVERSION DEBUG] Método: {Method}, Monto Bs.S: {BsS}, Tasa AppliedRate: {Rate}, Monto USD Calculado: {Usd}", p.PaymentMethodId, amountLocal, exchangeRate, amountUsd);
 

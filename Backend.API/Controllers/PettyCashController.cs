@@ -23,6 +23,7 @@ namespace Backend.API.Controllers;
 /// inválido/ajeno/ya usado/contexto distinto) responden 403 con authorizationAction=PettyCashExpense
 /// y el contexto exacto; con un X-Authorization-Token vigente lo consumen (single-use) y reintentan.
 /// </summary>
+[RequireSecurityStampValidation]
 [Authorize]
 [ApiController]
 [Route("api/cashdrawer/petty-cash")]
