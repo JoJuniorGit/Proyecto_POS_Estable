@@ -16777,3 +16777,48 @@ B2. Frontend Tests: npm test en Web.Frontend -> 625/625 tests superados (136 sui
 B3. Backend Tests: dotnet test CommandCenter.Tests -c Release -> 2.873 tests unitarios superados.
 ================================================================================
 
+================================================================================
+ANEXO POST-CIERRE (XXXIV) - REMEDIACIÓN DE LA AUDITORÍA FINANCIERA BIMONETARIA PRE-PASO 14 (8.200) - 2026-10-25
+================================================================================
+Pedido del mantenedor: "aplica el plan quirurgico. con 2dp con techo"
+
+A. CAMBIOS
+A1. Gaveta dual real: `OpenSessionRequest.OpeningBalanceUsd` y `OpenSessionAsync(..., openingBalanceUsd)`;
+    el alta manual persiste el fondo USD y el rollover/la creación automática transfieren
+    `ClosingBalanceUsd` (o el saldo físico por moneda) a la sesión siguiente. `GetCurrentBalanceLocalAsync`
+    ahora suma SOLO movimientos de métodos Bs.S (los USD no financian egresos locales). El vuelto se
+    atribuye al método cash de Bs.S, no al primer cash del pago original.
+A2. Reporte Z desde movimientos fechados: `SalePayments` por `CreatedAt` real (incluye apartados OnHold;
+    filas legadas sin timestamp caen a `Sale.Date` con piso UTC seguro para Npgsql), `ReceivablePayments`
+    por recepción y libro físico para vueltos, `CreditRefund`, `CashAdvance`, `CashIn/CashOut/ManualAdjustment`.
+    Se excluyen `Opening/Closing`, los ingresos ya representados (`SalePayment` Income y `CreditPayment`)
+    y se mantiene la caja chica Active deducida una sola vez por moneda exacta (sin doble resta).
+A3. Reembolso CxC protegido: lock de sesión después del lock por cliente, validación de liquidez en la
+    gaveta física de la moneda del reembolso y enrutamiento al efectivo local cuando el último pago fue
+    no-cash (nunca un egreso físico sobre un método electrónico).
+A4. WPF: la edición masiva mantiene `PriceUSD == PriceRetailUSD`; POS, variantes y editor de pedidos
+    calculan el Bs.S efectivo con el canal Detal y la regla cash del artículo.
+A5. Idempotencia: `Idempotency-Key` obligatorio en abonos CxC y gastos de caja chica; el replay de caja
+    chica se resuelve antes de leer la tasa BCV.
+A6. Precisión: se conserva la tasa operativa con techo a 2 decimales (`RoundExchangeRateCeiling`) aunque
+    las columnas persistan 18,4, con pruebas de contrato explícitas.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B2. Regresiones focalizadas de las áreas tocadas (sin carril Postgres): 645/645.
+B3. Nuevos `FinancialAuditRemediationTests`: 11/11 (OnHold en Z, adelanto/manuales sin doble cómputo,
+    caja chica una vez, gaveta local vs USD, rollover dual, tasa 2dp, idempotencia obligatoria).
+B4. Suite completa sin carril Postgres: 3522 superados; 14 fallos ambientales/pre-existentes (10 del
+    carril Postgres sin credencial válida 28P01 y 4 de OcrExtraction por DI del host de pruebas).
+B5. `Wpf.E2ETests`: 7/7. No se modificó el frontend Web.
+
+C. RESIDUALES
+C1. La UI de apertura no expone un campo USD (el backend/API y el rollover sí); el alta manual envía 0.
+C2. `PaymentMethod.Currency` sigue derivándose del nombre (regla canónica 8.9-M16): renombrar un método
+    puede reclasificar movimientos históricos en el arqueo.
+C3. El carril PostgreSQL real no se ejercitó por credencial vencida; los locks y tipos nuevos quedan
+    cubiertos por modelo/pruebas unitarias, no por ejecución viva.
+C4. Los 4 fallos de OcrExtraction son previos a este cambio (DI `ICurrentUserService` en el host de tests).
+================================================================================
+
+
