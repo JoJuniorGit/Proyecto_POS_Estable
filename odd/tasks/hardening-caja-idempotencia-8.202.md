@@ -23,9 +23,9 @@ Runner: `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj` + `pwsh scr
 
 | ID | Specs | Ruta | Estado | Evidencia |
 | --- | --- | --- | --- | --- |
-| H1 | S1, S2, S3 | directa | pendiente | — |
-| H2 | S4, S5 | directa | pendiente | — |
-| H3 | S6 | directa | pendiente | — |
+| H1 | S1, S2, S3 | directa | completado | `9d8cf88`; build 0/0; 413/413 focalizados sin carril |
+| H2 | S4, S5 | directa | completado | `5dc1743`; build 0/0; 390/390 focalizados sin carril |
+| H3 | S6 | directa | completado | 2 archivos nuevos, 4 tests; carril PostgreSQL 39/39 |
 | H4 | S7, S8, S9, S10, S12 | directa | pendiente | — |
 
 Ruta directa justificada: el padre ya mapeó los archivos y líneas exactos en la auditoría; los cuatro work units son un único refactor entrelazado (contratos de servicio, locks y tests) donde un writer por tarea duplicaría contexto y riesgo de drift. Se mantiene un solo writer secuencial.
@@ -35,6 +35,7 @@ Ruta directa justificada: el padre ya mapeó los archivos y líneas exactos en l
 - **L1 (pedido original, verbatim):** ver bloque siguiente.
 - **L2 (2026-10-26):** se elige reordenar el bloque de vuelto del checkout para que el lock de sesión cubra solo la persistencia final y no la deducción de stock. Se conserva el orden canónico `Sale/Customer -> Session`.
 - **L3 (2026-10-26):** la paginación de CxC queda opcional para no truncar la cartera que consumen WPF/Web; el objetivo P2 se cumple moviendo filtros y totales a SQL.
+- **L4 (2026-10-26, H3):** la carrera cierre-vs-checkout admite dos desenlaces válidos: (a) el checkout ya resolvió la sesión y el cierre gana → falla con "sesión de caja cerrada"; (b) el cierre commitea antes de `GetOrCreateActiveSessionAsync` → el alta automática abre una sesión posterior y el cobro se asienta allí. La invariante certificada es que **nunca** se escribe en la sesión cerrada; ambos desenlaces se prueban en el mismo test. Evidencia: 4/4 tests nuevos y 39/39 del carril PostgreSQL.
 
 ### L1 — Pedido original
 
