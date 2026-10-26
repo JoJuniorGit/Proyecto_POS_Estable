@@ -16973,3 +16973,35 @@ C4. La ventana de idempotencia de precios masivos deduplica el mismo payload+act
     una segunda aplicación intencional del mismo payload dentro de esa ventana devuelve el primer
     resultado. Es el comportamiento seguro esperado para operaciones relativas.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE (XXXVIII) - REFACTOR ESTRUCTURAL Y LOGGING (8.204) - 2026-10-26
+================================================================================
+Pedido del mantenedor: "procede" sobre el backlog estructural de la auditoría.
+
+A. CAMBIOS
+A1. `CashDrawerBalanceService` (nuevo, internal): extrae `GetCurrentBalanceLocalAsync`,
+    `GetPhysicalBalanceAsync` y el mapa canónico de moneda por método. `CashDrawerService` delega
+    y conserva exactamente las firmas públicas y la agregación SQL de 8.202.
+A2. `CashDrawerIdempotencyStore` (nuevo, internal): extrae replay, persistencia, existencia y
+    detección de colisión única de la idempotencia de movimientos manuales. `AddTransactionAsync`
+    mantiene la reserva/replay atómicos y el TTL de 24 h.
+A3. `AuthService` migra a `ILogger<AuthService>` con templates estructurados (`{Username}`,
+    `{Attempt}`, `{LockoutEnd}`); los eventos de auditoría usan `AppLogger.LogStructuredSecurity`.
+A4. PBKDF2-SHA256 sube a 600.000 iteraciones. Se agrega `NeedsRehash`; `AuthenticateAsync`
+    rehashea transparentemente credenciales legadas en el próximo login exitoso. Los hashes
+    existentes siguen verificando por su contador embebido.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B2. Suite focalizada de caja/auth/password: **141/141**.
+B3. Suite completa con carril PostgreSQL activo: **3593/3593**, 0 fallos, 0 omitidos.
+B4. `PosSearchSuggestionsRoundingTests` falló una vez por timing bajo paralelismo; pasó aislado y
+    volvió a pasar en la segunda corrida completa. No pertenece a los archivos modificados.
+
+C. RESIDUALES (siguiente fase estructural)
+C1. Split de `SalesService` por caso de uso y extracción del anclaje de tasa del controlador.
+C2. Matemática de preview en `CreditPaymentDialogViewModel`/`CreditPaymentModal`.
+C3. Rate limit del hub de autorizaciones, hardening de pairing/health y credenciales locales de
+    desarrollo (`appsettings.Development.json`, ignorado por git).
+================================================================================

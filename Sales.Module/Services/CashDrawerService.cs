@@ -17,10 +17,14 @@ namespace Sales.Module.Services;
 public class CashDrawerService : ICashDrawerService
 {
     private readonly SalesDbContext _context;
+    private readonly CashDrawerBalanceService _balances;
+    private readonly CashDrawerIdempotencyStore _idempotency;
 
     public CashDrawerService(SalesDbContext context)
     {
-        _context = context;
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _balances = new CashDrawerBalanceService(_context);
+        _idempotency = new CashDrawerIdempotencyStore(_context);
     }
 
     public async Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync(CancellationToken cancellationToken = default)
@@ -444,7 +448,7 @@ public class CashDrawerService : ICashDrawerService
                 // con la MISMA clave sin ejecutar el efecto una segunda vez.
                 if (idempotency is not null)
                 {
-                    var replay = await TryReadIdempotentTransactionAsync(idempotency, cancellationToken);
+                    var replay = await _idempotency.TryReadAsync(idempotency, cancellationToken);
                     if (replay is not null)
                     {
                         if (ownTransaction is not null)
@@ -488,7 +492,7 @@ public class CashDrawerService : ICashDrawerService
                 {
                     // Misma transacción que el movimiento: si el insert choca con una clave
                     // concurrente, el rollback revierte también el CashTransaction.
-                    await PersistIdempotentTransactionAsync(idempotency, dto, cancellationToken);
+                    await _idempotency.PersistAsync(idempotency, dto, cancellationToken);
                 }
 
                 if (ownTransaction != null)
@@ -498,7 +502,7 @@ public class CashDrawerService : ICashDrawerService
 
                 return dto;
             }
-            catch (DbUpdateException ex) when (idempotency is not null && IsIdempotentRequestUniqueViolation(ex))
+            catch (DbUpdateException ex) when (idempotency is not null && CashDrawerIdempotencyStore.IsUniqueViolation(ex))
             {
                 // La clave la ganó otra transacción: se revierte este movimiento y se replica la
                 // respuesta ya confirmada. PostgreSQL bloquea el insert hasta que la otra tx
@@ -516,7 +520,7 @@ public class CashDrawerService : ICashDrawerService
                 }
 
                 _context.ChangeTracker.Clear();
-                var replay = await TryReadIdempotentTransactionAsync(idempotency, CancellationToken.None);
+                var replay = await _idempotency.TryReadAsync(idempotency, CancellationToken.None);
                 if (replay is not null)
                 {
                     return replay;
@@ -548,7 +552,7 @@ public class CashDrawerService : ICashDrawerService
                 operation: async (_, _, _) => (CashTransactionResponseDto?)await ExecuteWithinTransactionAsync(),
                 verifySucceeded: async (_, _, verifyToken) =>
                 {
-                    bool exists = await IdempotentTransactionExistsAsync(idempotency, verifyToken);
+                    bool exists = await _idempotency.ExistsAsync(idempotency, verifyToken);
                     return new ExecutionResult<CashTransactionResponseDto?>(exists, default);
                 },
                 cancellationToken: cancellationToken);
@@ -561,87 +565,11 @@ public class CashDrawerService : ICashDrawerService
             // verifySucceeded=true: el commit sí ocurrió aunque la conexión se cortó. Se recupera
             // la respuesta persistida en lugar de repetir el movimiento.
             _context.ChangeTracker.Clear();
-            dto = await TryReadIdempotentTransactionAsync(idempotency!, cancellationToken);
+            dto = await _idempotency.TryReadAsync(idempotency!, cancellationToken);
             return dto ?? throw new InvalidOperationException("No se pudo confirmar el resultado de la transacción de caja.");
         }
 
         return await ExecuteWithinTransactionAsync();
-    }
-
-    private async Task<CashTransactionResponseDto?> TryReadIdempotentTransactionAsync(
-        CashTransactionIdempotency idempotency,
-        CancellationToken cancellationToken)
-    {
-        var existing = await _context.IdempotentRequests
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                record => record.Key == idempotency.Key && record.RequestPath == idempotency.RequestPath,
-                cancellationToken);
-
-        if (existing is null || existing.ExpiresAtUtc <= DateTime.UtcNow)
-        {
-            return null;
-        }
-
-        if (existing.UserId != idempotency.UserId
-            || existing.PayloadHash.Length != idempotency.PayloadHash.Length
-            || !CryptographicOperations.FixedTimeEquals(existing.PayloadHash, idempotency.PayloadHash)
-            || string.IsNullOrWhiteSpace(existing.ResponseBody))
-        {
-            return null;
-        }
-
-        return JsonSerializer.Deserialize<CashTransactionResponseDto>(existing.ResponseBody);
-    }
-
-    private async Task PersistIdempotentTransactionAsync(
-        CashTransactionIdempotency idempotency,
-        CashTransactionResponseDto dto,
-        CancellationToken cancellationToken)
-    {
-        var now = DateTime.UtcNow;
-        _context.IdempotentRequests.Add(new IdempotentRequest
-        {
-            Key = idempotency.Key,
-            RequestPath = idempotency.RequestPath,
-            PayloadHash = idempotency.PayloadHash,
-            StatusCode = 200,
-            ResponseBody = idempotency.SerializeResponse(dto),
-            UserId = idempotency.UserId,
-            CreatedAtUtc = now,
-            ExpiresAtUtc = now.AddHours(24)
-        });
-
-        await _context.SaveChangesAsync(cancellationToken);
-    }
-
-    private async Task<bool> IdempotentTransactionExistsAsync(
-        CashTransactionIdempotency? idempotency,
-        CancellationToken cancellationToken)
-    {
-        if (idempotency is null)
-        {
-            return false;
-        }
-
-        return await _context.IdempotentRequests
-            .AsNoTracking()
-            .AnyAsync(
-                record => record.Key == idempotency.Key && record.RequestPath == idempotency.RequestPath,
-                cancellationToken);
-    }
-
-    private static bool IsIdempotentRequestUniqueViolation(DbUpdateException ex)
-    {
-        if (ex.InnerException is Npgsql.PostgresException postgresException)
-        {
-            return postgresException.SqlState == "23505"
-                && (string.IsNullOrEmpty(postgresException.ConstraintName)
-                    || postgresException.ConstraintName.Contains("IdempotentRequests", StringComparison.Ordinal));
-        }
-
-        return ex.Message.Contains("IdempotentRequests", StringComparison.Ordinal)
-            || ex.InnerException?.Message.Contains("IdempotentRequests", StringComparison.Ordinal) == true;
     }
 
     public async Task<CashTransactionResponseDto> RecordSaleChangeAsync(
@@ -718,139 +646,12 @@ public class CashDrawerService : ICashDrawerService
         return MapTransaction(changeTx);
     }
 
-    public async Task<decimal> GetCurrentBalanceLocalAsync(int sessionId, CancellationToken cancellationToken = default)
-    {
-        var session = await _context.CashDrawerSessions
-            .AsNoTracking()
-            .Where(s => s.Id == sessionId)
-            .Select(s => new { s.OpeningBalanceLocal })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (session == null) return 0;
-
-        // 8.202-H1 (S3): agregación server-side por (método, tipo). Solo se materializa una fila
-        // por combinación, nunca el libro completo de la sesión, para acortar la retención del
-        // advisory lock durante los chequeos de liquidez.
-        var groups = await _context.CashTransactions
-            .AsNoTracking()
-            .Where(t => t.SessionId == sessionId
-                     && t.IsPhysicalCash
-                     && t.Source != CashTransactionSource.Opening)
-            .GroupBy(t => new { t.PaymentMethodId, t.Type })
-            .Select(group => new
-            {
-                group.Key.PaymentMethodId,
-                group.Key.Type,
-                AmountLocal = group.Sum(t => t.AmountLocal)
-            })
-            .ToListAsync(cancellationToken);
-
-        if (groups.Count == 0)
-        {
-            return session.OpeningBalanceLocal;
-        }
-
-        // El saldo local es estrictamente Bs.S: los movimientos de métodos USD no pueden
-        // financiar un egreso local ni inflar el carry-over (gaveta física segregada).
-        var currencyByMethodId = await LoadMethodCurrencyMapAsync(cancellationToken);
-
-        decimal net = 0m;
-        foreach (var group in groups)
-        {
-            string movementCurrency = group.PaymentMethodId.HasValue
-                && currencyByMethodId.TryGetValue(group.PaymentMethodId.Value, out var methodCurrency)
-                    ? methodCurrency
-                    : PaymentMethodCurrencyResolver.LocalCurrency;
-
-            if (!string.Equals(movementCurrency, PaymentMethodCurrencyResolver.LocalCurrency, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            net += group.Type == CashTransactionType.Expense ? -group.AmountLocal : group.AmountLocal;
-        }
-
-        return session.OpeningBalanceLocal + net;
-    }
-
-    /// <summary>
-    /// Moneda canónica por método de pago. Usa la moneda persistida (8.201) y cae al nombre
-    /// histórico solo para filas legadas sin Currency.
-    /// </summary>
-    private async Task<Dictionary<int, string>> LoadMethodCurrencyMapAsync(CancellationToken cancellationToken)
-    {
-        var methods = await _context.PaymentMethods
-            .AsNoTracking()
-            .Select(method => new { method.Id, method.Name, method.Currency })
-            .ToListAsync(cancellationToken);
-
-        var currencyByMethodId = new Dictionary<int, string>(methods.Count);
-        foreach (var method in methods)
-        {
-            currencyByMethodId[method.Id] =
-                PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name);
-        }
-
-        return currencyByMethodId;
-    }
+    public Task<decimal> GetCurrentBalanceLocalAsync(int sessionId, CancellationToken cancellationToken = default)
+        => _balances.GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
 
     /// <inheritdoc />
-    public async Task<decimal> GetPhysicalBalanceAsync(int sessionId, PettyCashCurrency currency, CancellationToken cancellationToken = default)
-    {
-        var session = await _context.CashDrawerSessions
-            .AsNoTracking()
-            .Where(s => s.Id == sessionId)
-            .Select(s => new { s.OpeningBalanceLocal, s.OpeningBalanceUsd })
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (session == null) return 0m;
-
-        // 8.202-H1 (S3): una sola proyección agrupada por (método, tipo) devuelve ambos buckets;
-        // el saldo de la moneda pedida se resuelve sobre ese conjunto acotado.
-        var groups = await _context.CashTransactions
-            .AsNoTracking()
-            .Where(t => t.SessionId == sessionId
-                     && t.IsPhysicalCash
-                     && t.Source != CashTransactionSource.Opening)
-            .GroupBy(t => new { t.PaymentMethodId, t.Type })
-            .Select(group => new
-            {
-                group.Key.PaymentMethodId,
-                group.Key.Type,
-                AmountLocal = group.Sum(t => t.AmountLocal),
-                AmountUsd = group.Sum(t => t.AmountUsd)
-            })
-            .ToListAsync(cancellationToken);
-
-        bool isUsd = currency == PettyCashCurrency.Usd;
-        if (groups.Count == 0)
-        {
-            return isUsd ? session.OpeningBalanceUsd : session.OpeningBalanceLocal;
-        }
-
-        var currencyByMethodId = await LoadMethodCurrencyMapAsync(cancellationToken);
-        string expectedCurrency = isUsd ? PaymentMethodCurrencyResolver.Usd : PaymentMethodCurrencyResolver.LocalCurrency;
-
-        decimal net = 0m;
-        foreach (var group in groups)
-        {
-            // Movimiento sin metodo de pago: bucket Bs.S (contrato de la gaveta local).
-            string movementCurrency = group.PaymentMethodId.HasValue
-                && currencyByMethodId.TryGetValue(group.PaymentMethodId.Value, out var methodCurrency)
-                    ? methodCurrency
-                    : PaymentMethodCurrencyResolver.LocalCurrency;
-
-            if (!string.Equals(movementCurrency, expectedCurrency, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            decimal amount = isUsd ? group.AmountUsd : group.AmountLocal;
-            net += group.Type == CashTransactionType.Expense ? -amount : amount;
-        }
-
-        return (isUsd ? session.OpeningBalanceUsd : session.OpeningBalanceLocal) + net;
-    }
+    public Task<decimal> GetPhysicalBalanceAsync(int sessionId, PettyCashCurrency currency, CancellationToken cancellationToken = default)
+        => _balances.GetPhysicalBalanceAsync(sessionId, currency, cancellationToken);
 
     public async Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300, CancellationToken cancellationToken = default)
     {
