@@ -244,11 +244,20 @@ public class AuthorizationCoordinator : IAuthorizationCoordinator
         string username,
         string password,
         string? reason = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? callerUserId = null,
+        bool callerIsElevated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
 
-        var result = await _authorizationService.ResolveLocalAsync(requestId, username, password, reason, cancellationToken);
+        var result = await _authorizationService.ResolveLocalAsync(
+            requestId,
+            username,
+            password,
+            reason,
+            cancellationToken,
+            callerUserId,
+            callerIsElevated);
 
         var token = result.Outcome == LocalResolveOutcome.Resolved && result.Request is not null
             ? IssueToken(result.Request)

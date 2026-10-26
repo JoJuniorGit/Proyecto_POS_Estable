@@ -1,3 +1,4 @@
+using Core.Entities;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -14,7 +15,7 @@ using System.Threading.Tasks;
 
 namespace Sales.Module.Services;
 
-public partial class DailyClosureService : IDailyClosureService
+public partial class DailyClosureService : IDailyClosureService, IAtomicIdempotentClosureService
 {
     // Filas legadas sin CreatedAt quedan por debajo de este piso y caen a la fecha de la venta.
     // Se usa un timestamp UTC explícito (no default(DateTime)) para que Npgsql pueda
@@ -353,8 +354,26 @@ public partial class DailyClosureService : IDailyClosureService
         return user?.Name;
     }
 
-    public async Task<CloseShiftResult> CreateClosureFromCommandAsync(
+    public Task<CloseShiftResult> CreateClosureFromCommandAsync(
         CreateClosureCommand command,
+        CancellationToken cancellationToken)
+        => CreateClosureCoreAsync(command, idempotencyKey: null, payloadHash: null, requestPath: null, responseBodyFactory: null, cancellationToken);
+
+    public Task<CloseShiftResult> CreateClosureFromCommandAtomicAsync(
+        CreateClosureCommand command,
+        string? idempotencyKey,
+        byte[]? payloadHash,
+        string? requestPath,
+        Func<CloseShiftResult, string>? responseBodyFactory,
+        CancellationToken cancellationToken)
+        => CreateClosureCoreAsync(command, idempotencyKey, payloadHash, requestPath, responseBodyFactory, cancellationToken);
+
+    private async Task<CloseShiftResult> CreateClosureCoreAsync(
+        CreateClosureCommand command,
+        string? idempotencyKey,
+        byte[]? payloadHash,
+        string? requestPath,
+        Func<CloseShiftResult, string>? responseBodyFactory,
         CancellationToken cancellationToken)
     {
         decimal exchangeRate = await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken);
@@ -366,14 +385,14 @@ public partial class DailyClosureService : IDailyClosureService
 
         if (_context.Database.CurrentTransaction is not null)
         {
-            return await ExecuteClosureCommandAsync(command, exchangeRate, cancellationToken);
+            return await ExecuteClosureCommandAsync(command, exchangeRate, idempotencyKey, payloadHash, requestPath, responseBodyFactory, cancellationToken);
         }
 
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(() =>
         {
             _context.ChangeTracker.Clear();
-            return ExecuteClosureCommandAsync(command, exchangeRate, cancellationToken);
+            return ExecuteClosureCommandAsync(command, exchangeRate, idempotencyKey, payloadHash, requestPath, responseBodyFactory, cancellationToken);
         });
     }
 
@@ -395,6 +414,10 @@ public partial class DailyClosureService : IDailyClosureService
     private async Task<CloseShiftResult> ExecuteClosureCommandAsync(
         CreateClosureCommand command,
         decimal exchangeRate,
+        string? idempotencyKey,
+        byte[]? payloadHash,
+        string? requestPath,
+        Func<CloseShiftResult, string>? responseBodyFactory,
         CancellationToken cancellationToken)
     {
         // Residual 8.187-8.188: el conteo USD es opcional, pero si se informa debe ser un arqueo
@@ -503,15 +526,7 @@ public partial class DailyClosureService : IDailyClosureService
                 cancellationToken);
             await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate, cancellationToken);
 
-            if (transaction is not null)
-            {
-                await transaction.CommitAsync(cancellationToken);
-            }
-
-            // 8.7-B5: los comprobantes se escriben DESPUÉS del commit, fuera de la transacción Serializable.
-            await WriteClosedClosureReceiptsAsync(savedClosure, cancellationToken);
-
-            return new CloseShiftResult(
+            var result = new CloseShiftResult(
                 savedClosure.Id,
                 resolvedUser.CashierName,
                 resolvedUser.CashierCedula,
@@ -521,6 +536,37 @@ public partial class DailyClosureService : IDailyClosureService
                 expectedClosingBalanceUsd,
                 actualClosingBalanceUsd,
                 differenceUsd);
+
+            // SRE-02a: el registro de idempotencia se persiste dentro de la MISMA transacción
+            // Serializable que el cierre. Si el proceso cae antes del commit, no queda ni cierre
+            // ni clave huérfana; si cae después, ambos quedaron confirmados.
+            if (!string.IsNullOrWhiteSpace(idempotencyKey) && payloadHash != null)
+            {
+                int? actorUserId = int.TryParse(command.UserId, out var parsedUserId) ? parsedUserId : null;
+                _context.IdempotentRequests.Add(new IdempotentRequest
+                {
+                    Key = idempotencyKey,
+                    RequestPath = requestPath ?? "/api/dailyclosure",
+                    PayloadHash = payloadHash,
+                    StatusCode = 200,
+                    ResponseBody = responseBodyFactory?.Invoke(result)
+                        ?? System.Text.Json.JsonSerializer.Serialize(result),
+                    UserId = actorUserId,
+                    CreatedAtUtc = DateTime.UtcNow,
+                    ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
+                });
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+
+            // 8.7-B5: los comprobantes se escriben DESPUÉS del commit, fuera de la transacción Serializable.
+            await WriteClosedClosureReceiptsAsync(savedClosure, cancellationToken);
+
+            return result;
         }
         catch
         {

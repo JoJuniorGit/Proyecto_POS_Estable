@@ -33,7 +33,9 @@ public interface IAuthorizationCoordinator
         string username,
         string password,
         string? reason = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        int? callerUserId = null,
+        bool callerIsElevated = false);
 
     Task<AuthorizationConsumeResult> ConsumeAsync(
         string rawToken,

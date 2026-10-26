@@ -13,26 +13,51 @@ public partial class SalesService
 {
     public async Task<SaleHistoryDto> ConfirmPickupAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        // 8.188 (PERF-F2-02): fetch liviano solo de Items para validación preliminar
-        // sin disparar split queries innecesarias de Customer, Cashier y Payments descartadas antes de DeliverPartialAsync.
-        var sale = await _context.Sales
+        // PERF-R03: proyección liviana para la validación previa. No se materializa el grafo
+        // completo de la venta; DeliverPartialAsync hace su propia carga transaccional.
+        var pickup = await _context.Sales
             .AsNoTracking()
-            .Include(s => s.Items)
-            .FirstOrDefaultAsync(s => s.Id == saleId, cancellationToken);
+            .Where(s => s.Id == saleId)
+            .Select(s => new
+            {
+                s.Id,
+                s.InvoiceNumber,
+                s.Status,
+                s.DeliveryStatus,
+                s.ClaimedByUserId,
+                s.ClaimedByUserName,
+                s.ClaimAction,
+                s.ClaimedAtUtc,
+                PendingItems = s.Items
+                    .Where(item => item.Quantity > item.DeliveredQuantity)
+                    .Select(item => new { item.Id, item.Quantity, item.DeliveredQuantity })
+                    .ToList()
+            })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        if (sale == null) throw new KeyNotFoundException("Venta no encontrada.");
+        if (pickup == null) throw new KeyNotFoundException("Venta no encontrada.");
 
-        EnsureHoldClaimAccess(sale, actingUserId);
+        // El guard de custodia se evalúa con los campos proyectados: no hace falta cargar el
+        // grafo completo para distinguir un pedido reclamado por otro cajero.
+        EnsureHoldClaimAccess(new Sale
+        {
+            Id = pickup.Id,
+            Status = pickup.Status,
+            ClaimedByUserId = pickup.ClaimedByUserId,
+            ClaimedByUserName = pickup.ClaimedByUserName,
+            ClaimAction = pickup.ClaimAction,
+            ClaimedAtUtc = pickup.ClaimedAtUtc
+        }, actingUserId);
 
-        var invalidPickupMessage = $"El pedido #{sale.InvoiceNumber ?? sale.Id} no se encuentra en estado Pendiente por Retirar.";
-        if (sale.Status != SaleStatus.Completed
-            || (sale.DeliveryStatus != SaleDeliveryStatus.PendingPickup
-                && sale.DeliveryStatus != SaleDeliveryStatus.PartiallyDelivered))
+        var invalidPickupMessage = $"El pedido #{pickup.InvoiceNumber ?? pickup.Id} no se encuentra en estado Pendiente por Retirar.";
+        if (pickup.Status != SaleStatus.Completed
+            || (pickup.DeliveryStatus != SaleDeliveryStatus.PendingPickup
+                && pickup.DeliveryStatus != SaleDeliveryStatus.PartiallyDelivered))
         {
             throw new InvalidOperationException(invalidPickupMessage);
         }
 
-        var pendingItems = sale.Items
+        var pendingItems = pickup.PendingItems
             .Select(item => (SaleItemId: item.Id, Quantity: item.Quantity - item.DeliveredQuantity))
             .Where(item => item.Quantity > 0m)
             .ToList();

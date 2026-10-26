@@ -53,9 +53,16 @@ public partial class ProductsController : ControllerBase
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        if (!_currentUserService.CanMutateCatalog && string.Equals(sortBy, "cost", System.StringComparison.OrdinalIgnoreCase))
+        if (!_currentUserService.CanMutateCatalog && !string.IsNullOrWhiteSpace(sortBy))
         {
-            sortBy = "name";
+            // SEC-14: el servicio acepta "cost" y "costprice". Normalizamos ambos para que
+            // ningún alias permita inferir el costo por el orden de la respuesta.
+            var normalizedSort = sortBy.Trim();
+            if (string.Equals(normalizedSort, "cost", System.StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedSort, "costprice", System.StringComparison.OrdinalIgnoreCase))
+            {
+                sortBy = "name";
+            }
         }
 
         // 8.179-T1 (S4): categoryId filtra por la categoría y todo su subárbol.

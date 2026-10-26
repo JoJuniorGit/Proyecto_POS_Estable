@@ -35,6 +35,21 @@ public sealed record ShiftReportDetailResult(
     decimal Difference,
     string Status);
 
+/// <summary>
+/// 8.207 (SRE-02a): capacidad opcional para que el cierre registre su idempotencia dentro de la
+/// misma transacción Serializable que la mutación de negocio.
+/// </summary>
+public interface IAtomicIdempotentClosureService
+{
+    Task<CloseShiftResult> CreateClosureFromCommandAtomicAsync(
+        CreateClosureCommand command,
+        string? idempotencyKey,
+        byte[]? payloadHash,
+        string? requestPath,
+        Func<CloseShiftResult, string>? responseBodyFactory,
+        CancellationToken cancellationToken);
+}
+
 public interface IDailyClosureService
 {
     Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc, CancellationToken cancellationToken = default);

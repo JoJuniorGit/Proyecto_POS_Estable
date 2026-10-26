@@ -89,11 +89,12 @@ public class DailyClosureController : ControllerBase
                     .ToList(),
                 ActualClosingBalanceUsd: request.ActualClosingBalanceUsd);
 
-            var result = await _closureService.CreateClosureFromCommandAsync(command, cancellationToken);
-            bool isElevated = User.IsInRole(nameof(Core.Entities.UserRole.Admin)) || User.IsInRole(nameof(Core.Entities.UserRole.Manager));
-            if (!isElevated && result?.Details != null)
+            CloseShiftResult MaskForCaller(CloseShiftResult result)
             {
-                result = result with
+                bool isElevated = User.IsInRole(nameof(Core.Entities.UserRole.Admin)) || User.IsInRole(nameof(Core.Entities.UserRole.Manager));
+                if (isElevated || result.Details == null) return result;
+
+                return result with
                 {
                     Details = result.Details
                         .Select(d => d with { SystemAmount = 0m, Difference = 0m, Status = "Blind" })
@@ -105,10 +106,34 @@ public class DailyClosureController : ControllerBase
                 };
             }
 
-            if (idempotency.HasValue && requestPath != null)
+            CloseShiftResult result;
+            if (idempotency.HasValue && _closureService is IAtomicIdempotentClosureService atomicClosureService)
             {
-                await _idempotencyResolver.RegisterSuccessAsync(idempotency.Value, requestPath, System.Text.Json.JsonSerializer.Serialize(result), cancellationToken);
+                // SRE-02a: el servicio real persiste la clave dentro de la misma transacción
+                // Serializable del cierre, incluso cuando el replay necesita el cuerpo enmascarado.
+                result = await atomicClosureService.CreateClosureFromCommandAtomicAsync(
+                    command,
+                    idempotency.Value.Key,
+                    idempotency.Value.PayloadHash,
+                    requestPath,
+                    masked => System.Text.Json.JsonSerializer.Serialize(MaskForCaller(masked)),
+                    cancellationToken);
             }
+            else
+            {
+                result = await _closureService.CreateClosureFromCommandAsync(command, cancellationToken);
+                result = MaskForCaller(result);
+                if (idempotency.HasValue && requestPath != null)
+                {
+                    await _idempotencyResolver.RegisterSuccessAsync(
+                        idempotency.Value,
+                        requestPath,
+                        System.Text.Json.JsonSerializer.Serialize(result),
+                        cancellationToken);
+                }
+            }
+
+            result = MaskForCaller(result);
 
             if (Response?.Headers != null)
             {

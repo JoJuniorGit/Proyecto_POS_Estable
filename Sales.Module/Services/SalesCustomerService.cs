@@ -141,8 +141,17 @@ internal sealed class SalesCustomerService
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var lower = query.Trim().ToLower();
-            q = q.Where(c => c.Name.ToLower().Contains(lower) || c.CedulaOrRif.ToLower().Contains(lower));
+            var term = query.Trim();
+            if (_context.Database.IsNpgsql())
+            {
+                var pattern = $"%{term}%";
+                q = q.Where(c => EF.Functions.ILike(c.Name, pattern) || EF.Functions.ILike(c.CedulaOrRif, pattern));
+            }
+            else
+            {
+                var lower = term.ToLower();
+                q = q.Where(c => c.Name.ToLower().Contains(lower) || c.CedulaOrRif.ToLower().Contains(lower));
+            }
         }
 
         int totalCount = await q.CountAsync(cancellationToken);
@@ -174,7 +183,9 @@ internal sealed class SalesCustomerService
             throw new ArgumentException("Cédula/RIF y Nombre son campos obligatorios.");
 
         var normalizedCedula = request.CedulaOrRif.Trim().ToUpperInvariant();
-        var exists = await _context.Customers.AnyAsync(c => c.CedulaOrRif.ToUpper() == normalizedCedula, cancellationToken);
+        var exists = _context.Database.IsNpgsql()
+            ? await _context.Customers.AnyAsync(c => EF.Functions.ILike(c.CedulaOrRif, normalizedCedula), cancellationToken)
+            : await _context.Customers.AnyAsync(c => c.CedulaOrRif.ToUpper() == normalizedCedula, cancellationToken);
         if (exists)
             throw new InvalidOperationException($"Ya existe un cliente registrado con la Cédula/RIF '{request.CedulaOrRif}'.");
 
@@ -230,7 +241,9 @@ internal sealed class SalesCustomerService
             throw new ArgumentException("Cédula/RIF y Nombre son campos obligatorios.");
 
         var normalizedCedula = request.CedulaOrRif.Trim().ToUpperInvariant();
-        var exists = await _context.Customers.AnyAsync(c => c.Id != id && c.CedulaOrRif.ToUpper() == normalizedCedula, cancellationToken);
+        var exists = _context.Database.IsNpgsql()
+            ? await _context.Customers.AnyAsync(c => c.Id != id && EF.Functions.ILike(c.CedulaOrRif, normalizedCedula), cancellationToken)
+            : await _context.Customers.AnyAsync(c => c.Id != id && c.CedulaOrRif.ToUpper() == normalizedCedula, cancellationToken);
         if (exists)
             throw new InvalidOperationException($"Ya existe otro cliente registrado con la Cédula/RIF '{request.CedulaOrRif}'.");
 

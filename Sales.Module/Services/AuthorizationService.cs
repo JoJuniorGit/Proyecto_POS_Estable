@@ -307,7 +307,9 @@ public class AuthorizationService : IAuthorizationService
         string username,
         string password,
         string? reason = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? callerUserId = null,
+        bool callerIsElevated = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(username);
 
@@ -321,6 +323,16 @@ public class AuthorizationService : IAuthorizationService
             var now = UtcNowSeconds();
             var request = await LoadRequestAsync(requestId, cancellationToken);
             if (request == null)
+            {
+                result = new LocalResolveResult(LocalResolveOutcome.NotFound, Message: AuthorizationMessages.RequestNotFound);
+                return;
+            }
+
+            // SEC-15: un cajero solo puede resolver localmente una solicitud propia. Los roles
+            // elevados conservan la capacidad de resolver solicitudes de cualquier terminal.
+            if (callerUserId.HasValue
+                && !callerIsElevated
+                && request.RequestedByUserId != callerUserId.Value)
             {
                 result = new LocalResolveResult(LocalResolveOutcome.NotFound, Message: AuthorizationMessages.RequestNotFound);
                 return;
@@ -389,6 +401,14 @@ public class AuthorizationService : IAuthorizationService
             LoginLockoutPolicy.ClearExpiredLockout(user, utcNow);
 
             if (!user.IsActive || string.IsNullOrWhiteSpace(user.PasswordHash))
+            {
+                result = new LocalResolveResult(LocalResolveOutcome.InvalidCredentials, ToDto(request, now), Message: AuthorizationMessages.InvalidCredentials);
+                return;
+            }
+
+            // SEC-15: un supervisor con cambio de contraseña pendiente no puede aprobar
+            // operaciones con su credencial temporal.
+            if (user.MustChangePassword)
             {
                 result = new LocalResolveResult(LocalResolveOutcome.InvalidCredentials, ToDto(request, now), Message: AuthorizationMessages.InvalidCredentials);
                 return;
@@ -815,6 +835,17 @@ public class AuthorizationService : IAuthorizationService
         var searchLower = searchInput.ToLower();
         var withV = searchInput.StartsWith("V-", StringComparison.OrdinalIgnoreCase) ? searchLower : "v-" + searchLower;
         var digitsOnly = Regex.Replace(searchInput, @"[^\d]", "");
+
+        if (_db.Database.IsNpgsql())
+        {
+            return await _db.Users.FirstOrDefaultAsync(user =>
+                EF.Functions.ILike(user.Username, searchInput) ||
+                EF.Functions.ILike(user.Cedula, searchInput) ||
+                EF.Functions.ILike(user.Cedula, withV) ||
+                (digitsOnly.Length > 0 &&
+                    (EF.Functions.ILike(user.Cedula, "v-" + digitsOnly) || user.Cedula == digitsOnly)),
+                cancellationToken);
+        }
 
         return await _db.Users.FirstOrDefaultAsync(user => user.Username.ToLower() == searchLower ||
                                                            user.Cedula.ToLower() == searchLower ||

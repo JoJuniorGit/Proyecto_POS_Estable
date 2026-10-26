@@ -164,7 +164,38 @@ public class DailyClosureServiceUnitTests
     }
 
     [Fact]
-    public async Task CreateClosureFromCommand_MissingActivePaymentMethods_PopulatesAuthoritativeTotals()
+    public async Task CreateClosureFromCommandAtomicAsync_PersistsIdempotencyRecord()
+    {
+        var (service, context) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Cajero1",
+            null,
+            new List<DeclaredPaymentAmount> { new(1, 10m) });
+        var payloadHash = new byte[] { 1, 2, 3, 4 };
+
+        var result = await service.CreateClosureFromCommandAtomicAsync(
+            command,
+            "closure-atomic-1",
+            payloadHash,
+            "/api/dailyclosure",
+            _ => "masked-response",
+            CancellationToken.None);
+
+        var record = await context.IdempotentRequests
+            .AsNoTracking()
+            .SingleAsync(r => r.Key == "closure-atomic-1");
+
+        Assert.Equal("/api/dailyclosure", record.RequestPath);
+        Assert.Equal("masked-response", record.ResponseBody);
+        Assert.Equal(200, record.StatusCode);
+        Assert.True(result.ClosureId > 0);
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommand_MissingActiveElectronicMethod_ThrowsWithoutPersisting()
     {
         var (service, context) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
@@ -182,17 +213,11 @@ public class DailyClosureServiceUnitTests
             null,
             new List<DeclaredPaymentAmount> { new(1, 10m) });
 
-        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => service.CreateClosureFromCommandAsync(command, CancellationToken.None));
 
-        // El método 4 omitido debe haberse poblado automáticamente con su total esperado de 750 Bs.S
-        var method4Detail = await context.ClosureDetails
-            .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.DailyClosureId == result.ClosureId && d.PaymentMethodId == 4);
-        Assert.NotNull(method4Detail);
-        Assert.Equal(750m, method4Detail.ExpectedAmountBsS);
-        // Para métodos no-efectivo se consolida automáticamente
-        Assert.Equal(750m, method4Detail.ActualAmountBsS);
-        Assert.Equal(0m, method4Detail.DifferenceBsS);
+        Assert.Contains("Pago Móvil", ex.Message);
+        Assert.Empty(await context.DailyClosures.AsNoTracking().ToListAsync());
     }
 
     [Fact]

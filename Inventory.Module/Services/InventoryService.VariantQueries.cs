@@ -135,8 +135,17 @@ public partial class InventoryService
 
         if (!string.IsNullOrWhiteSpace(filter))
         {
-            var lower = filter.Trim().ToLower();
-            query = query.Where(p => p.Name.ToLower().Contains(lower) || p.SKU.ToLower().Contains(lower));
+            var term = filter.Trim();
+            if (_context.Database.IsNpgsql())
+            {
+                var pattern = $"%{term}%";
+                query = query.Where(p => EF.Functions.ILike(p.Name, pattern) || EF.Functions.ILike(p.SKU, pattern));
+            }
+            else
+            {
+                var lower = term.ToLower();
+                query = query.Where(p => p.Name.ToLower().Contains(lower) || p.SKU.ToLower().Contains(lower));
+            }
         }
 
         int totalCount = await query.CountAsync(token);

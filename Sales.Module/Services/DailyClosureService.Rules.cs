@@ -111,7 +111,24 @@ public partial class DailyClosureService
             if (!existingMethodIds.Contains(exp.PaymentMethodId))
             {
                 methodEntities.TryGetValue(exp.PaymentMethodId, out var methodEntity);
-                decimal actualAmount = (methodEntity != null && methodEntity.IsCash) ? 0m : exp.ExpectedAmountBsS;
+                bool isCash = methodEntity?.IsCash ?? false;
+
+                // SEC-12: un método electrónico ACTIVO con movimientos no se auto-aprueba. El
+                // cajero debe declarar su arqueo; de lo contrario el cierre mostraría una
+                // diferencia cero sobre un monto que nunca fue contado. Un método desactivado
+                // no puede declararse desde la UI: se incluye con contado 0 para exponer la
+                // diferencia real sin bloquear el cierre.
+                bool requiresExplicitCount = methodEntity is { IsActive: true }
+                    && !isCash
+                    && exp.ExpectedAmountBsS > 0m;
+                if (requiresExplicitCount)
+                {
+                    throw new ArgumentException(
+                        $"Debe declarar el monto del método electrónico '{exp.PaymentMethodName}' (esperado {exp.ExpectedAmountBsS:0.00} Bs.S) antes de cerrar.",
+                        nameof(expectedTotals));
+                }
+
+                decimal actualAmount = 0m;
 
                 details.Add(new ClosureDetail
                 {

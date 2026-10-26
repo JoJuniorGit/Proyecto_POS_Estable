@@ -248,7 +248,46 @@ public partial class SalesService : ISalesService
         return ValidateAndAdjustQuantity(product, quantity);
     }
 
-    public async Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
+    public async Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, string? requestPath = null)
+    {
+        if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyPayloadHash == null)
+        {
+            return await AddItemCoreAsync(saleId, productId, quantity, exchangeRate, customUnitPriceUsd, customUnitPriceLocal, isPriceOverrideAuthorized, actingUserId, cancellationToken);
+        }
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+        var isRetry = false;
+        return await strategy.ExecuteAsync(async () =>
+        {
+            if (isRetry)
+            {
+                _context.ChangeTracker.Clear();
+            }
+            isRetry = true;
+
+            await using var transaction = _context.Database.IsRelational()
+                ? await _context.Database.BeginTransactionAsync(cancellationToken)
+                : null;
+
+            var dto = await AddItemCoreAsync(saleId, productId, quantity, exchangeRate, customUnitPriceUsd, customUnitPriceLocal, isPriceOverrideAuthorized, actingUserId, cancellationToken);
+            RegisterIdempotencyRecord(
+                idempotencyKey,
+                idempotencyPayloadHash,
+                requestPath ?? $"/api/sales/{saleId}/items",
+                JsonSerializer.Serialize(dto),
+                actingUserId);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            if (transaction != null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+
+            return dto;
+        });
+    }
+
+    private async Task<SaleDto> AddItemCoreAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, bool isPriceOverrideAuthorized, int? actingUserId, System.Threading.CancellationToken cancellationToken)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
@@ -298,7 +337,6 @@ public partial class SalesService : ISalesService
 
         await RecalculateTotalAsync(sale);
         ValidateHoldSaleTotal(sale);
-
         await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
     }

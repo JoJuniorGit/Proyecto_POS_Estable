@@ -17063,3 +17063,38 @@ C1. `SalesService` aún concentra checkout, pricing, mutaciones de entrega y otr
 C2. Matemática de preview en la UI, hardening de health/pairing y credenciales locales de
     desarrollo siguen abiertos.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE (XLI) - CIERRE DE RESIDUALES DE AUDITORÍA (8.207) - 2026-10-26
+================================================================================
+Pedido del mantenedor: cerrar los problemas residuales de la auditoría en el orden acordado.
+
+A. CAMBIOS
+A1. SEC-12: un método electrónico ACTIVO con esperado > 0 y omitido en el cierre ya no se
+    auto-completa con el esperado; el cierre se rechaza con un mensaje accionable. Un método
+    desactivado (no declarable desde la UI) se incluye con contado 0 para exponer la diferencia.
+A2. SRE-02a: `AddItem` registra su idempotencia dentro de la misma transacción que la mutación;
+    el cierre diario hace lo mismo mediante `IAtomicIdempotentClosureService`, con el cuerpo
+    enmascarado para el replay. Ya no hay una segunda transacción huérfana.
+A3. SEC-15: `local-resolve` exige que el llamador no elevado sea el solicitante y rechaza
+    supervisores con `MustChangePassword` pendiente.
+A4. SEC-14: `sortBy=cost` y `sortBy=costprice` se normalizan y enmascaran para roles sin permiso
+    de catálogo.
+A5. PERF-R03: `ConfirmPickupAsync` usa una proyección liviana (sin grafo completo) y conserva el
+    guard de custodia con los campos proyectados.
+A6. PERF-R01: la similitud de facturas proveedor resuelve todos los nombres en una sola consulta
+    `unnest` sobre el índice GIN; se conserva el fallback por nombre para tests/proveedores.
+A7. PERF-13: las búsquedas usan `ILIKE` en PostgreSQL y conservan `ToLower` en InMemory.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B2. Focalizados: cierre 24/24, AddItem idempotencia 14/14, autorización 143/143 (2 PG-gated),
+    custodia 4/4, similitud PostgreSQL 1/1.
+B3. Suite completa con carril PostgreSQL activo: **3602/3602**, 0 fallos, 0 omitidos.
+
+C. RESIDUALES
+C1. Quedan 12 hallazgos parciales de la matriz de verificación: CLEAN-05-RES, CLEAN-06-RES,
+    CLEAN-07, CLEAN-08, PERF-08, PERF-09, PERF-10, PERF-R04, SRE-09, SRE-10, SRE-11 y SRE-12.
+C2. El split completo de `SalesService` (checkout/pricing) y el hardening de health/pairing
+    continúan como trabajo estructural separado.
+================================================================================

@@ -222,8 +222,19 @@ public partial class SalesController : ControllerBase
 
         try
         {
-            var sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized, GetActorUserId(), cancellationToken);
-            await _idempotencyResolver.RegisterSuccessAsync(resolved, requestPath, System.Text.Json.JsonSerializer.Serialize(sale), cancellationToken);
+            var sale = await _salesService.AddItemAsync(
+                id,
+                request.ProductId,
+                request.Quantity,
+                request.ExchangeRate,
+                request.CustomUnitPriceUsd,
+                request.CustomUnitPriceLocal,
+                isAuthorized,
+                GetActorUserId(),
+                cancellationToken,
+                resolved.Key,
+                resolved.PayloadHash,
+                requestPath);
 
             if (Response?.Headers != null)
             {

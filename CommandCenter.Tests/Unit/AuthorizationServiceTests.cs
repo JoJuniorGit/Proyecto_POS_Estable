@@ -82,7 +82,8 @@ public class AuthorizationServiceTests
         string? password = null,
         bool isActive = true,
         int accessFailedCount = 0,
-        DateTime? lockoutEndUtc = null)
+        DateTime? lockoutEndUtc = null,
+        bool mustChangePassword = false)
     {
         var user = new User
         {
@@ -95,7 +96,8 @@ public class AuthorizationServiceTests
             IsActive = isActive,
             PasswordHash = password is null ? string.Empty : PasswordHasher.HashPassword(password),
             AccessFailedCount = accessFailedCount,
-            LockoutEndUtc = lockoutEndUtc
+            LockoutEndUtc = lockoutEndUtc,
+            MustChangePassword = mustChangePassword
         };
         db.Users.Add(user);
         await db.SaveChangesAsync();
@@ -525,6 +527,54 @@ public class AuthorizationServiceTests
         Assert.Equal(80, audit.ResolvedByUserId);
         Assert.Equal("Usuario 80", audit.ResolvedByName);
         Assert.Equal("Autorizado en sitio", audit.Reason);
+    }
+
+    [Fact]
+    public async Task ResolveLocalAsync_NonElevatedCallerForAnotherUsersRequest_ReturnsNotFoundWithoutAudit()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        await SeedUserAsync(db, 80, UserRole.Admin, password: "SuperClave123!");
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+
+        var result = await service.ResolveLocalAsync(
+            created.Request!.Id,
+            "usuario80",
+            "SuperClave123!",
+            callerUserId: 99,
+            callerIsElevated: false);
+
+        Assert.Equal(LocalResolveOutcome.NotFound, result.Outcome);
+        Assert.Equal("La solicitud de autorización no existe.", result.Message);
+        Assert.Equal(0, await db.AuthorizationAudits.CountAsync());
+
+        var persisted = await LoadRequestAsync(db, created.Request.Id);
+        Assert.Equal(AuthorizationStatus.Pending, persisted.Status);
+    }
+
+    [Fact]
+    public async Task ResolveLocalAsync_SupervisorMustChangePassword_FailsClosedWithoutAudit()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        await SeedUserAsync(db, 82, UserRole.Admin, password: "SuperClave123!", mustChangePassword: true);
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+
+        var result = await service.ResolveLocalAsync(
+            created.Request!.Id,
+            "usuario82",
+            "SuperClave123!",
+            callerUserId: 70,
+            callerIsElevated: false);
+
+        Assert.Equal(LocalResolveOutcome.InvalidCredentials, result.Outcome);
+        Assert.Equal("Credenciales inválidas o sin privilegios para autorizar.", result.Message);
+        Assert.Equal(0, await db.AuthorizationAudits.CountAsync());
+
+        var persisted = await LoadRequestAsync(db, created.Request.Id);
+        Assert.Equal(AuthorizationStatus.Pending, persisted.Status);
     }
 
     [Fact]

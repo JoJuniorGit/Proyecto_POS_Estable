@@ -181,7 +181,7 @@ public class AuthorizationsController : ControllerBase
         [FromBody] LocalResolveAuthorizationRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (!TryReadIdentity(out _))
+        if (!TryReadIdentity(out var identity))
         {
             return this.ApiUnauthorized("No autorizado.");
         }
@@ -191,7 +191,15 @@ public class AuthorizationsController : ControllerBase
             return this.ApiBadRequest(AuthorizationMessages.InvalidCredentials);
         }
 
-        var result = await _coordinator.ResolveLocalAsync(id, request.Username, request.Password, request.Reason, cancellationToken);
+        bool callerIsElevated = identity.Role is UserRole.Admin or UserRole.Manager;
+        var result = await _coordinator.ResolveLocalAsync(
+            id,
+            request.Username,
+            request.Password,
+            request.Reason,
+            cancellationToken,
+            identity.UserId,
+            callerIsElevated);
 
         return result.Outcome switch
         {
