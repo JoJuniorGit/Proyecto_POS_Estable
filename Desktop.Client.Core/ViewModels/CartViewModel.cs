@@ -536,13 +536,19 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             var dirtyItems = CartItems.Where(i => i.IsQuantityDirty).ToList();
             if (dirtyItems.Count == 0) return;
 
-            foreach (var item in dirtyItems)
-            {
-                // Edicion manual protegida: un borrador confirmado <= 0 revierte a 1 (nunca 0 al
-                // servidor y nunca eliminacion implicita por la cantidad).
-                decimal qty = item.Model.Quantity <= 0m ? 1m : item.Model.Quantity;
-                await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, qty, _exchangeRateService.CurrentRate);
-            }
+            // PERF-10: una sola llamada batch en lugar de un PUT por ítem modificado.
+            // Edicion manual protegida: un borrador confirmado <= 0 revierte a 1 (nunca 0 al
+            // servidor y nunca eliminacion implicita por la cantidad).
+            var updates = dirtyItems
+                .Select(item => new UpdateSaleItemDto
+                {
+                    SaleItemId = item.Id,
+                    ProductId = item.Model.ProductId,
+                    Quantity = item.Model.Quantity <= 0m ? 1m : item.Model.Quantity,
+                    UnitPrice = item.Model.UnitPrice
+                })
+                .ToList();
+            await _salesService.UpdateSaleItemsAsync(CurrentSale.Id, updates, _exchangeRateService.CurrentRate);
             var reloaded = await _salesService.GetSaleAsync(CurrentSale.Id);
             CurrentSale = reloaded;
         }

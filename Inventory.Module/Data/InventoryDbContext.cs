@@ -384,6 +384,16 @@ public class InventoryDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(line => line.ResolvedProductId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // SRE-09: token de concurrencia para que dos confirmaciones simultáneas de la
+            // misma línea no dupliquen StockMovements.
+            if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+            {
+                entity.Property<uint>("xmin")
+                    .HasColumnType("xid")
+                    .ValueGeneratedOnAddOrUpdate()
+                    .IsConcurrencyToken();
+            }
         });
 
         // 8.180-T1 (S1): sesión de conteo físico (molde SupplierInvoice: status string(32) + xmin

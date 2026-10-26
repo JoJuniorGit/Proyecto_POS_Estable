@@ -33,6 +33,9 @@ public partial class SettingsViewModel
         }
         catch (Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogError(
+                $"No se pudo iniciar el reinicio del sistema: {ex.Message}",
+                nameof(SettingsViewModel));
             _dialogService?.ShowError("Reinicio de Sistema", $"No se pudo iniciar el reinicio: {ex.Message}");
         }
         finally

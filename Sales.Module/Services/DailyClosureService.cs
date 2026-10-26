@@ -443,21 +443,26 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
                     cancellationToken);
             }
 
-            // 8.149 (SRE-02): guard intra-transacción contra un segundo cierre para la misma
-            // fecha; el índice único de ClosureDate es la defensa de último recurso ante carreras.
-            bool closureDateTaken = await _context.DailyClosures
-                .AsNoTracking()
-                .AnyAsync(dc => dc.ClosureDate == command.ClosureDateUtc, cancellationToken);
-            if (closureDateTaken)
-            {
-                throw new InvalidOperationException(DuplicateClosureDateMessage);
-            }
-
             // T2b (S2): la ventana del OPEX es la misma que usa el esperado; se resuelve una sola
             // vez ANTES de persistir para no depender del estado posterior al guardado/rollover.
             // Quick win 8.188: la sesion abierta tambien viaja para anclar el cierre.
             var (pettyCashWindowStartUtc, pettyCashWindowEndUtc, pettyCashSessionId) =
                 await ResolveClosureWindowAsync(command.ClosureDateUtc, cancellationToken);
+
+            // SRE-10: el duplicado se evalúa por sesión de caja. El sistema soporta varios
+            // cierres por día (turnos); lo que no puede repetirse es el cierre de la misma
+            // sesión. Sin sesión activa se conserva el guard exacto por timestamp.
+            bool closureTaken = pettyCashSessionId.HasValue
+                ? await _context.DailyClosures
+                    .AsNoTracking()
+                    .AnyAsync(dc => dc.SessionId == pettyCashSessionId.Value, cancellationToken)
+                : await _context.DailyClosures
+                    .AsNoTracking()
+                    .AnyAsync(dc => dc.ClosureDate == command.ClosureDateUtc, cancellationToken);
+            if (closureTaken)
+            {
+                throw new InvalidOperationException(DuplicateClosureDateMessage);
+            }
 
             // Residual 8.187-8.188: el esperado USD se congela ANTES del rollover, desde el bucket
             // fisico USD de la sesion que este cierre clausura. Se reutiliza el calculo canonico

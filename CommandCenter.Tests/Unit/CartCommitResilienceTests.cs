@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -98,7 +99,7 @@ public class CartCommitResilienceTests
         cart.CartItems[0].Model.Quantity = 3m;
         cart.CartItems[1].Model.Quantity = 4m;
 
-        mockSales.Setup(s => s.UpdateItemQuantityAsync(101, 1, 3m, Rate))
+        mockSales.Setup(s => s.UpdateSaleItemsAsync(101, It.IsAny<IEnumerable<UpdateSaleItemDto>>(), Rate))
                  .ThrowsAsync(new InvalidOperationException("flush-down"));
         mockSales.Setup(s => s.GetSaleAsync(101)).ReturnsAsync(PendingSale((1, 1m), (2, 1m)));
 
@@ -125,9 +126,9 @@ public class CartCommitResilienceTests
         var afterRemoval = PendingSale((1, 10m));
         var callOrder = new System.Collections.Generic.List<string>();
 
-        mockSales.Setup(s => s.UpdateItemQuantityAsync(101, 1, 10m, Rate))
+        mockSales.Setup(s => s.UpdateSaleItemsAsync(101, It.IsAny<IEnumerable<UpdateSaleItemDto>>(), Rate))
                  .Callback(() => callOrder.Add("commit-item-1"))
-                 .ReturnsAsync(committedSale);
+                 .Returns(Task.CompletedTask);
         mockSales.Setup(s => s.GetSaleAsync(101))
                  .Callback(() => callOrder.Add("reload"))
                  .ReturnsAsync(committedSale);

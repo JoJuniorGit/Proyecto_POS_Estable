@@ -139,7 +139,13 @@ function RegisterPageContent() {
       await loadPettyCash(sessionData?.id);
     } catch (err) {
       console.error('[RegisterPage] Error al obtener sesión de caja:', err);
-      setLoadError(err?.message || 'Error al obtener la información de la sesión de caja');
+      const status = err?.status;
+      const message = status === 404 || status === 204
+        ? 'No hay una sesión de caja activa.'
+        : status >= 500
+          ? 'El servidor no está disponible. Intente nuevamente en unos segundos.'
+          : (err?.message || 'Error al obtener la información de la sesión de caja');
+      setLoadError(message);
     } finally {
       setLoading(false);
     }

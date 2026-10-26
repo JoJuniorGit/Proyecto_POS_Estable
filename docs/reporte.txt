@@ -17098,3 +17098,40 @@ C1. Quedan 12 hallazgos parciales de la matriz de verificación: CLEAN-05-RES, C
 C2. El split completo de `SalesService` (checkout/pricing) y el hardening de health/pairing
     continúan como trabajo estructural separado.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE (XLI) - CIERRE FINAL DE RESIDUALES DE AUDITORÍA (8.208) - 2026-10-26
+================================================================================
+Pedido del mantenedor: cerrar los 2 abiertos y los 12 parciales restantes.
+
+A. CAMBIOS
+A1. CLEAN-11/12: se eliminaron `BaseViewModel.cs`, `CheckoutSummary.jsx`, `CheckoutHeader.jsx`
+    y sus tests huérfanos. `SupplierInvoiceViewModel` y `ExchangeRateViewModel` delegan en
+    `FlexibleDecimalParser`.
+A2. CLEAN-05/06: PendingOrders usa `isFullLiquidation` del preview del servidor; el checkout WPF
+    compara contra el saldo canónico sin tolerancia fija. Settings revierte el formato optimista y
+    registra los fallos; el reinicio también deja traza.
+A3. CLEAN-07/08: `UserService.GetUsersAsync` lanza con log en vez de devolver vacío;
+    `CustomerPickerViewModel` y `RegisterPage` distinguen cancelación, 404/204 y 5xx con log.
+A4. PERF-08/09: `AddItem` reutiliza el snapshot de producto; `StartSale` y el adelanto usan el
+    cliente por defecto cacheado. PERF-10: el carrito sincroniza cantidades con un único PUT batch.
+A5. PERF-R04: `PosViewModel` dispone el carrito, los `Process.Start` usan `using`, el OCR lee
+    dimensiones del IHDR sin decodificar el PNG y los diálogos limpian sus callbacks.
+A6. SRE-09: `SupplierInvoiceLine` tiene token `xmin`; migración de snapshot
+    `20261026162847_AddSupplierInvoiceLineXmin` (Up vacío, sin cambio de esquema).
+A7. SRE-10: idempotencia opcional en apertura/cierre de caja y stage de facturas; el guard de
+    cierre diario es por sesión de caja (permite múltiples turnos por día).
+A8. SRE-11/12: el 403 por excepción se audita antes de burbujear; el handler global emite un
+    evento estructurado por excepción y los logs críticos usan contrapresión acotada.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B2. Suite .NET completa con PostgreSQL aislado: **3595/3595**, 0 fallos, 0 omitidos.
+B3. Web: `npm test` **626/626**, `npm run lint` limpio, `npm run build` OK.
+B4. El clúster PostgreSQL aislado se detuvo al finalizar.
+
+C. ESTADO FINAL
+C1. Matriz de auditoría de 4 fases: **39/39 encabezados cerrados** (0 abiertos, 0 parciales).
+C2. Decisiones de despliegue que no son defectos de código: el desktop conserva HTTP en LAN por
+    compatibilidad (H-02) y `appsettings.Development.json` sigue siendo local/gitignored (H-03).
+================================================================================

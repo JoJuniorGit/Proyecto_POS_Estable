@@ -26,6 +26,7 @@ public partial class CashAdvanceRegisterDialog : Window
             Close();
         };
         ConfigureOwner();
+        Closed += (_, _) => viewModel.CloseAction = null;
     }
 
     private void ConfigureOwner()

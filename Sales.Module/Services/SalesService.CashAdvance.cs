@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Core.DTOs;
 using Core.Entities;
@@ -82,9 +83,16 @@ public partial class SalesService
             resolvedCashierId = defaultUser?.Id;
         }
 
-        // 3. Obtener cliente por defecto
-        var defaultCustomer = await _context.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.IsDefault, cancellationToken)
-                           ?? await _context.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == 1, cancellationToken);
+        // 3. Obtener cliente por defecto (cacheado; PERF-09)
+        CustomerDto? defaultCustomer = null;
+        try
+        {
+            defaultCustomer = await _customers.GetDefaultCustomerAsync(cancellationToken);
+        }
+        catch (KeyNotFoundException)
+        {
+            // Se conserva el fallback histórico para instalaciones sin cliente sembrado.
+        }
 
         int customerId = defaultCustomer?.Id ?? 1;
         string customerName = defaultCustomer?.Name ?? "CLIENTE CONTADO";

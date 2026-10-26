@@ -43,7 +43,18 @@ public sealed class SupplierInvoicesController : ControllerBase
         [FromBody] StageSupplierInvoiceRequestDto request,
         CancellationToken cancellationToken)
     {
+        // SRE-10: idempotencia opcional para reintentos de red del staging.
+        string requestPath = "/api/supplier-invoices";
+        string bodyJson = _idempotencyResolver.GetActorUserId() + "|" + JsonSerializer.Serialize(request, WebJsonOptions);
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(this, requestPath, bodyJson);
+        if (idempotency.ShouldStop) return idempotency.BlockingResult!;
+
         var invoice = await _supplierInvoiceService.StageAsync(request, cancellationToken);
+        await _idempotencyResolver.RegisterSuccessAsync(
+            idempotency,
+            requestPath,
+            JsonSerializer.Serialize(invoice, WebJsonOptions),
+            cancellationToken);
         return CreatedAtAction(nameof(GetAsync), new { id = invoice.Id }, invoice);
     }
 

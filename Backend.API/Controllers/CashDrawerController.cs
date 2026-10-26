@@ -120,6 +120,12 @@ public class CashDrawerController : ControllerBase
     [HttpPost("open-session")]
     public async Task<ActionResult<CashDrawerSessionResponseDto>> OpenSessionAsync([FromBody] OpenSessionRequest request, CancellationToken cancellationToken)
     {
+        // SRE-10: idempotencia opcional para reintentos de red de la apertura.
+        string requestPath = "/api/cashdrawer/open-session";
+        string bodyJson = _idempotencyResolver.GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(this, requestPath, bodyJson);
+        if (idempotency.ShouldStop) return idempotency.BlockingResult!;
+
         // 8.168 (SEC-04-RES): anclar la tasa de apertura al valor oficial BCV cuando existe.
         decimal anchoredRate = await ResolveAnchoredRateAsync(request.CurrentExchangeRate, referenceId: 0, cancellationToken: cancellationToken);
         var session = await _cashDrawerService.OpenSessionAsync(
@@ -127,7 +133,13 @@ public class CashDrawerController : ControllerBase
             anchoredRate,
             cancellationToken: cancellationToken,
             openingBalanceUsd: request.OpeningBalanceUsd);
-        return Ok(await MapLocalTimesAsync(session, cancellationToken));
+        var mapped = await MapLocalTimesAsync(session, cancellationToken);
+        await _idempotencyResolver.RegisterSuccessAsync(
+            idempotency,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(mapped),
+            cancellationToken);
+        return Ok(mapped);
     }
 
     [RequireSecurityStampValidation]
@@ -135,6 +147,12 @@ public class CashDrawerController : ControllerBase
     [HttpPost("close")]
     public async Task<ActionResult<CashDrawerSessionResponseDto>> CloseSessionAsync([FromBody] CloseSessionRequest request, CancellationToken cancellationToken)
     {
+        // SRE-10: idempotencia opcional para reintentos de red del cierre.
+        string requestPath = "/api/cashdrawer/close";
+        string bodyJson = _idempotencyResolver.GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(this, requestPath, bodyJson);
+        if (idempotency.ShouldStop) return idempotency.BlockingResult!;
+
         // 8.168 (SEC-04-RES): anclar la tasa de cierre al valor oficial BCV cuando existe.
         decimal anchoredRate = await ResolveAnchoredRateAsync(request.CurrentExchangeRate, referenceId: 0, cancellationToken: cancellationToken);
         var session = await _cashDrawerService.CloseSessionAsync(
@@ -142,7 +160,13 @@ public class CashDrawerController : ControllerBase
             anchoredRate,
             actualClosingBalanceUsd: request.ActualClosingBalanceUsd,
             cancellationToken: cancellationToken);
-        return Ok(await MapLocalTimesAsync(session, cancellationToken));
+        var mapped = await MapLocalTimesAsync(session, cancellationToken);
+        await _idempotencyResolver.RegisterSuccessAsync(
+            idempotency,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(mapped),
+            cancellationToken);
+        return Ok(mapped);
     }
 
     [HttpGet("current-balance")]

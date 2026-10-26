@@ -543,7 +543,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       const rawPayments = buildRawPayments();
 
       if (onCompleteSale) {
-        await onCompleteSale(rawPayments, roundingAdjustment, effectiveIsPendingPickup, checkoutKeyHolderRef.current.getOrCreateKey());
+        await onCompleteSale(rawPayments, roundingAdjustment, effectiveIsPendingPickup, checkoutKeyHolderRef.current.getOrCreateKey(), isFullLiquidation);
         checkoutKeyHolderRef.current.reset();
       } else {
         const invoiceNumber = await completeSale(

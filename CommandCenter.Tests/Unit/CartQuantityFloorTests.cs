@@ -177,12 +177,18 @@ public class CartQuantityFloorTests
         cart.CartItems[0].QuantityText = "0";
 
         var echoed = PendingSale((1, 1m, Core.Entities.UnitOfMeasureType.Und));
-        mockSales.Setup(s => s.UpdateItemQuantityAsync(101, 1, 1m, Rate)).ReturnsAsync(echoed);
+        mockSales.Setup(s => s.UpdateSaleItemsAsync(101, It.IsAny<IEnumerable<UpdateSaleItemDto>>(), Rate))
+            .Returns(Task.CompletedTask);
         mockSales.Setup(s => s.GetSaleAsync(101)).ReturnsAsync(echoed);
 
         await cart.FlushAllQuantitiesAsync();
 
-        mockSales.Verify(s => s.UpdateItemQuantityAsync(101, 1, 1m, Rate), Times.Once);
+        mockSales.Verify(
+            s => s.UpdateSaleItemsAsync(
+                101,
+                It.Is<IEnumerable<UpdateSaleItemDto>>(items => items.Single().Quantity == 1m),
+                Rate),
+            Times.Once);
         mockSales.Verify(s => s.RemoveItemAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<decimal>()), Times.Never);
         Assert.Single(cart.CartItems);
         Assert.Equal(1m, cart.CartItems[0].Model.Quantity);

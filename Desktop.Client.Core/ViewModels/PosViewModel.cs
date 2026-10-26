@@ -545,6 +545,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
         }
         catch (ObjectDisposedException) { }
 
+        _cart?.Dispose();
         WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 

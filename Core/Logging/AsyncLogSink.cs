@@ -75,6 +75,32 @@ internal static class AsyncLogSink
         }
     }
 
+    /// <summary>
+    /// SRE-12: variante para logs críticos (5xx/crash). Si el canal está lleno, espera un
+    /// breve margen de contrapresión en lugar de descartar la entrada.
+    /// </summary>
+    public static bool EnqueueCritical(string filePath, string line)
+    {
+        var entry = new LogEntry(filePath, line, null);
+        if (_writer.TryWrite(entry))
+        {
+            return true;
+        }
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+            _writer.WriteAsync(entry, cts.Token).AsTask().GetAwaiter().GetResult();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Interlocked.Increment(ref _dropped);
+            ReportFailure("EnqueueCritical", ex);
+            return false;
+        }
+    }
+
     public static async Task FlushAsync()
     {
         if (_reader.Completion.IsCompleted)

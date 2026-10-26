@@ -336,16 +336,13 @@ function PendingOrdersPageContent() {
           isOpen={!!selectedSaleForCheckout}
           onClose={handleCloseCheckout}
           overrideSale={selectedSaleForCheckout}
-          onCompleteSale={async (paymentList, roundingAdjustment, isPendingPickup, idempotencyKey) => {
+          onCompleteSale={async (paymentList, roundingAdjustment, isPendingPickup, idempotencyKey, isFullLiquidation) => {
             try {
               const targetSaleId = selectedSaleForCheckout.id;
-              const currentPaidUsd = selectedSaleForCheckout.totalPaidUSD || 0;
-              const totalUsd = selectedSaleForCheckout.totalUSD || 0;
-              const paidNowUsd = paymentList.reduce((acc, p) => acc + (p.amount || 0), 0);
-              const remainingDebtAfterUsd = totalUsd - (currentPaidUsd + paidNowUsd);
-              const isFullyCompleted = remainingDebtAfterUsd <= 0.05;
 
-              if (isFullyCompleted) {
+              // CLEAN-05-RES: la liquidación total la decide el preview del servidor
+              // (`isFullyPaid`); la UI no recalcula una tolerancia local.
+              if (isFullLiquidation) {
                 const invoiceNumber = await completeSale(targetSaleId, exchangeRate, paymentList, roundingAdjustment, null, isPendingPickup, idempotencyKey);
                 setSelectedSaleForCheckout(null);
                 await releaseActiveLock();

@@ -153,13 +153,8 @@ public partial class SalesService : ISalesService
 
     public async Task<SaleDto> StartSaleAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var defaultCustomer = await _context.Customers.AsNoTracking()
-            .Where(c => c.IsDefault || c.Id == 1)
-            .OrderByDescending(c => c.IsDefault)
-            .FirstOrDefaultAsync(cancellationToken);
-        
-        if (defaultCustomer == null)
-            throw new InvalidOperationException("Cliente por defecto no encontrado en la configuración del sistema. Verifique que la base de datos esté correctamente sembrada.");
+        // PERF-09: usa el cliente por defecto cacheado en lugar de consultar Customers por venta.
+        var defaultCustomer = await _customers.GetDefaultCustomerAsync(cancellationToken);
 
         var sale = new Sale
         {
@@ -332,7 +327,7 @@ public partial class SalesService : ISalesService
         }
         else
         {
-            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule, cancellationToken));
+            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, product, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule, cancellationToken));
         }
 
         await RecalculateTotalAsync(sale);
@@ -374,7 +369,7 @@ public partial class SalesService : ISalesService
         // SEC-09: Do not merge a standard item addition into an existing item with an authorized custom price.
         if (existingItem.IsCustomPrice && !customUnitPriceUsd.HasValue && !customUnitPriceLocal.HasValue)
         {
-            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, quantity, null, null, effectiveCashRule, cancellationToken));
+            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, product, quantity, null, null, effectiveCashRule, cancellationToken));
             return;
         }
 
@@ -395,16 +390,12 @@ public partial class SalesService : ISalesService
             return;
         }
 
-        await MergeExistingItemAsync(existingItem, productId, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule, cancellationToken);
+        await MergeExistingItemAsync(existingItem, product, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule);
     }
 
-    private async Task MergeExistingItemAsync(SaleItem existingItem, int productId, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule, System.Threading.CancellationToken cancellationToken)
+    private static Task MergeExistingItemAsync(SaleItem existingItem, SaleProductInfoDto? productInfo, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule)
     {
         existingItem.Quantity += quantity;
-        var productInfo = (customUnitPriceUsd.HasValue && customUnitPriceLocal.HasValue)
-            ? null
-            : await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
-
         decimal grossPrice = customUnitPriceUsd ?? productInfo?.PriceUSD ?? existingItem.UnitPrice;
         decimal grossPriceBsS = customUnitPriceLocal ?? productInfo?.PriceBsS ?? existingItem.UnitPriceBsS;
 
@@ -412,11 +403,12 @@ public partial class SalesService : ISalesService
         existingItem.UnitPriceBsS = Math.Round(grossPriceBsS, 4);
         existingItem.IsCustomPrice = existingItem.IsCustomPrice || customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue;
         existingItem.RoundingRuleCashBs = effectiveCashRule;
+        return Task.CompletedTask;
     }
 
-    private async Task<SaleItem> BuildNewSaleItemAsync(int saleId, int productId, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule, System.Threading.CancellationToken cancellationToken)
+    private async Task<SaleItem> BuildNewSaleItemAsync(int saleId, int productId, SaleProductInfoDto? product, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule, System.Threading.CancellationToken cancellationToken)
     {
-        var fetchedProduct = await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
+        var fetchedProduct = product ?? await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
         if (fetchedProduct == null) throw new KeyNotFoundException($"Product {productId} not found.");
 
         if (fetchedProduct.IsGroupHeader)

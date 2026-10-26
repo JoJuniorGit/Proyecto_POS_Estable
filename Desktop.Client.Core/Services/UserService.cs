@@ -131,8 +131,14 @@ public class UserService : IUserService
 
     public async Task<List<UserDto>> GetUsersAsync()
     {
-        var response = await _httpClient.GetAsync("api/users");
-        if (!response.IsSuccessStatusCode) return new List<UserDto>();
+        using var response = await _httpClient.GetAsync("api/users");
+        if (!response.IsSuccessStatusCode)
+        {
+            string message = await ExtractErrorMessageAsync(response, "No se pudieron cargar los usuarios.");
+            Core.Logging.ClientStateLogger.LogError(message, nameof(UserService));
+            throw new InvalidOperationException(message);
+        }
+
         return await response.Content.ReadFromJsonAsync<List<UserDto>>() ?? new List<UserDto>();
     }
 

@@ -535,62 +535,7 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     /// 8.168: parseo decimal permisivo para edición interactiva (acepta coma o punto, ".5", "10.").
     /// </summary>
     public static bool TryParseFlexibleDecimal(string? raw, out decimal result)
-    {
-        result = 0m;
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return false;
-        }
-
-        var normalized = raw.Trim().Replace(" ", string.Empty, StringComparison.Ordinal);
-        if (!normalized.Any(char.IsAsciiDigit))
-        {
-            return false;
-        }
-
-        var commaIndex = normalized.LastIndexOf(',');
-        var dotIndex = normalized.LastIndexOf('.');
-        if (commaIndex >= 0 && dotIndex >= 0)
-        {
-            normalized = commaIndex > dotIndex
-                ? normalized.Replace(".", string.Empty, StringComparison.Ordinal).Replace(',', '.')
-                : normalized.Replace(",", string.Empty, StringComparison.Ordinal);
-        }
-        else if (commaIndex >= 0)
-        {
-            normalized = normalized.Replace(',', '.');
-        }
-
-        if (normalized.StartsWith('.'))
-        {
-            normalized = "0" + normalized;
-        }
-        else if (normalized.StartsWith("-.", StringComparison.Ordinal))
-        {
-            normalized = "-0." + normalized[2..];
-        }
-        else if (normalized.StartsWith("+.", StringComparison.Ordinal))
-        {
-            normalized = "+0." + normalized[2..];
-        }
-
-        if (normalized.EndsWith('.'))
-        {
-            normalized = normalized[..^1];
-        }
-
-        if (! decimal.TryParse(
-                normalized,
-                NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
-                CultureInfo.InvariantCulture,
-                out var parsed))
-        {
-            return false;
-        }
-
-        result = parsed;
-        return true;
-    }
+        => FlexibleDecimalParser.TryParse(raw, out result);
 
     private decimal CalculateUnitCostUsd()
     {

@@ -104,7 +104,7 @@ public static class AppLogger
             Metadata = extraContext
         };
         var json = System.Text.Json.JsonSerializer.Serialize(entry);
-        AsyncLogSink.Enqueue(CrashLogPath, json + Environment.NewLine);
+        AsyncLogSink.EnqueueCritical(CrashLogPath, json + Environment.NewLine);
     }
 
     /// <summary>
@@ -124,7 +124,7 @@ public static class AppLogger
             Metadata = extraContext
         };
         var json = System.Text.Json.JsonSerializer.Serialize(entry);
-        AsyncLogSink.Enqueue(DbErrorsLogPath, json + Environment.NewLine);
+        AsyncLogSink.EnqueueCritical(DbErrorsLogPath, json + Environment.NewLine);
     }
 
     public static void LogCrash(Exception ex, string context = "General")
@@ -142,12 +142,12 @@ public static class AppLogger
             msg += $"\nInner Exception: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}";
         }
 #endif
-        WriteLog(CrashLogPath, "CRASH", msg);
+        WriteLog(CrashLogPath, "CRASH", msg, critical: true);
     }
 
     public static void LogCrash(string message, string context = "General")
     {
-        WriteLog(CrashLogPath, "CRASH", $"Context: {context}\nMessage: {message}");
+        WriteLog(CrashLogPath, "CRASH", $"Context: {context}\nMessage: {message}", critical: true);
     }
 
     public static void LogDbError(Exception ex, string context = "Database")
@@ -165,21 +165,27 @@ public static class AppLogger
             msg += $"\nInner Exception: {ex.InnerException.GetType().FullName}: {ex.InnerException.Message}";
         }
 #endif
-        WriteLog(DbErrorsLogPath, "DB-ERROR", msg);
-        WriteLog(CrashLogPath, "CRASH", msg);
+        WriteLog(DbErrorsLogPath, "DB-ERROR", msg, critical: true);
+        WriteLog(CrashLogPath, "CRASH", msg, critical: true);
     }
 
     public static void LogDbError(string message, string context = "Database")
     {
         var msg = $"Context: {context}\nMessage: {message}";
-        WriteLog(DbErrorsLogPath, "DB-ERROR", msg);
-        WriteLog(CrashLogPath, "CRASH", msg);
+        WriteLog(DbErrorsLogPath, "DB-ERROR", msg, critical: true);
+        WriteLog(CrashLogPath, "CRASH", msg, critical: true);
     }
 
-    private static void WriteLog(string filePath, string level, string message)
+    private static void WriteLog(string filePath, string level, string message, bool critical = false)
     {
         var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
         var formatted = $"[{timestamp}] [{level}] {message}\n----------------------------------------\n";
+        if (critical)
+        {
+            AsyncLogSink.EnqueueCritical(filePath, formatted);
+            return;
+        }
+
         AsyncLogSink.Enqueue(filePath, formatted);
     }
 }
