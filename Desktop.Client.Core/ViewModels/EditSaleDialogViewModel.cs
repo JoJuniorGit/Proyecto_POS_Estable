@@ -89,6 +89,7 @@ public partial class EditSaleDialogViewModel : ObservableObject, IDisposable
                     UnitPriceWholesaleUSD = item.UnitPrice,
                     Quantity = item.Quantity,
                     ExchangeRate = _exchangeRate,
+                    RoundingRuleCashBs = item.RoundingRuleCashBs,
                     IsWholesaleSale = string.Equals(sale.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase)
                 };
 
@@ -137,6 +138,7 @@ public partial class EditSaleDialogViewModel : ObservableObject, IDisposable
                 MinWholesaleQuantity = selectedProduct.MinWholesaleQuantity,
                 Quantity = 1m,
                 ExchangeRate = _exchangeRate,
+                RoundingRuleCashBs = selectedProduct.RoundingRuleCashBs,
                 IsWholesaleSale = string.Equals(_sale?.PriceListType, "Wholesale", StringComparison.OrdinalIgnoreCase)
             };
 

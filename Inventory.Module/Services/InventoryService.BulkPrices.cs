@@ -559,6 +559,7 @@ public partial class InventoryService
     {
         var product = item.Product;
         var scratch = item.Scratch;
+        bool retailChannelChanged = EffectiveBulkRetailUsd(product) != EffectiveBulkRetailUsd(scratch);
         product.PriceRetailUSD = scratch.PriceRetailUSD;
         product.PriceWholesaleUSD = scratch.PriceWholesaleUSD;
         product.CostPriceUSD = scratch.CostPriceUSD;
@@ -566,7 +567,10 @@ public partial class InventoryService
         product.ProfitMarginWholesale = scratch.ProfitMarginWholesale;
         product.HasWholesale = scratch.HasWholesale;
         product.MinWholesaleQuantity = scratch.MinWholesaleQuantity;
-        product.PriceUSD = scratch.PriceUSD;
+        // Invariante de todo el catálogo: PriceUSD espeja el canal Detal. Create/Update/Import y
+        // facturas de proveedor ya lo mantienen; la edición masiva debe hacer lo mismo o las
+        // superficies que leen PriceUSD (POS/grid WPF) muestran el precio anterior.
+        product.PriceUSD = retailChannelChanged ? scratch.PriceRetailUSD : scratch.PriceUSD;
         product.Cost = scratch.Cost;
         product.ProfitPercentage = scratch.ProfitPercentage;
         // Spec V0.15: la política por artículo (override 8.184) se escribe solo si el plan la cambió;

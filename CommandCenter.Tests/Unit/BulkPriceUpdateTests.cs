@@ -904,4 +904,30 @@ public class BulkPriceUpdateTests
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.PreviewBulkPriceUpdateAsync(request));
     }
+
+    [Fact]
+    public async Task BulkUpdatePricesAsync_RetailChange_KeepsPriceUsdMirroringRetailChannel()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 50m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Cemento",
+            SKU = "CEM-BULK-1",
+            CostPriceUSD = 4m,
+            ProfitMarginRetail = 50m,
+            PriceRetailUSD = 6m
+        });
+
+        var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 8m));
+        await service.BulkUpdatePricesAsync(request);
+
+        var product = await context.Products.AsNoTracking().SingleAsync(candidate => candidate.Id == created.Id);
+        // Invariante del catálogo: PriceUSD espeja el canal Detal para que POS/grid WPF no
+        // sigan mostrando el precio anterior tras la edición masiva.
+        Assert.Equal(8m, product.PriceRetailUSD);
+        Assert.Equal(8m, product.PriceUSD);
+        Assert.Equal(400m, product.PriceBsS);
+    }
 }
