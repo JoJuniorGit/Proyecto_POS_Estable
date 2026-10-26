@@ -2,7 +2,10 @@ using Core.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -61,10 +64,11 @@ public partial class ProductsController
         }
 
         string requestPath = "/api/products/bulk-prices/apply";
+        string bodyJson = System.Text.Json.JsonSerializer.Serialize(request);
         var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
             this,
             requestPath,
-            System.Text.Json.JsonSerializer.Serialize(request));
+            bodyJson);
         if (idempotency.ShouldStop)
         {
             return idempotency.BlockingResult!;
@@ -72,7 +76,13 @@ public partial class ProductsController
 
         try
         {
-            var result = await _inventoryService.BulkUpdatePricesAsync(request, cancellationToken);
+            // 8.203 (auditoría R-03): ventana de idempotencia server-side derivada del payload y
+            // del actor. No requiere cambios de contrato en Web/WPF y cubre reintentos de red
+            // concurrentes sobre operaciones relativas (Increase/DecreasePercent).
+            var result = await _inventoryService.BulkUpdatePricesAsync(
+                request,
+                cancellationToken,
+                BuildAutoIdempotency(requestPath, bodyJson));
             await _idempotencyResolver.RegisterSuccessAsync(
                 idempotency,
                 requestPath,
@@ -101,5 +111,19 @@ public partial class ProductsController
         {
             return this.ApiNotFound(ex.Message);
         }
+    }
+
+    private BulkPriceIdempotency BuildAutoIdempotency(string requestPath, string bodyJson)
+    {
+        int userId = int.TryParse(_currentUserService.UserId, out int parsed) ? parsed : 0;
+        byte[] payloadHash = SHA256.HashData(Encoding.UTF8.GetBytes(bodyJson));
+        string key = $"bulk-auto-{userId}-{Convert.ToHexString(payloadHash).ToLowerInvariant()}";
+
+        return new BulkPriceIdempotency(
+            key,
+            requestPath,
+            payloadHash,
+            userId == 0 ? null : userId,
+            TimeSpan.FromSeconds(60));
     }
 }

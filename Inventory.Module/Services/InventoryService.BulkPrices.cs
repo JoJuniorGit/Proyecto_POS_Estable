@@ -64,7 +64,10 @@ public partial class InventoryService
         return BuildBulkPriceResult(exchangeRate, selectionIds.Count, plan);
     }
 
-    public async Task<BulkPriceUpdateResultDto> BulkUpdatePricesAsync(BulkPriceUpdateRequestDto request, CancellationToken cancellationToken = default)
+    public async Task<BulkPriceUpdateResultDto> BulkUpdatePricesAsync(
+        BulkPriceUpdateRequestDto request,
+        CancellationToken cancellationToken = default,
+        BulkPriceIdempotency? idempotency = null)
     {
         EnsureCatalogMutationPermission();
         ValidateBulkPriceRequest(request);
@@ -77,6 +80,7 @@ public partial class InventoryService
         }
 
         BulkPriceUpdateResultDto? result = null;
+        bool isReplay = false;
 
         // 8.16-H02: la transacción manual vive DENTRO de CreateExecutionStrategy().ExecuteAsync()
         // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy.
@@ -84,39 +88,164 @@ public partial class InventoryService
         {
             await using var transaction = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
 
-            var products = await _context.Products
-                .Where(p => selectionIds.Contains(p.Id))
-                .OrderBy(p => p.Id)
-                .ToListAsync(cancellationToken);
-
-            var plan = await BuildBulkPricePlanAsync(products, request, exchangeRate, cancellationToken);
-
-            var errorItem = plan.FirstOrDefault(item => item.Row.IsError);
-            if (errorItem != null)
+            try
             {
-                // All-or-nothing (S1): si algún producto resulta inválido no se escribe NINGUNO.
-                throw new ArgumentException($"La actualización masiva no se aplicó: {errorItem.Product.Name} ({errorItem.Product.SKU}): {errorItem.Row.SkipReason}");
-            }
+                if (idempotency is not null && _context.Database.IsNpgsql())
+                {
+                    // 8.203 (R-03): un lock global serializa applies concurrentes; luego la ventana
+                    // de idempotencia se reserva en la MISMA transacción del cambio de precios.
+                    await _context.Database.ExecuteSqlRawAsync(
+                        "SELECT pg_advisory_xact_lock({0}, {1})",
+                        new object[] { BulkPriceAdvisoryLockClass, BulkPriceAdvisoryLockKey },
+                        cancellationToken);
 
-            foreach (var item in plan.Where(item => item.HasChanges))
+                    await _context.Database.ExecuteSqlRawAsync(
+                        "DELETE FROM \"IdempotentRequests\" WHERE \"Key\" = {0} AND \"RequestPath\" = {1} AND \"ExpiresAtUtc\" <= NOW()",
+                        new object[] { idempotency.Key, idempotency.RequestPath },
+                        cancellationToken);
+
+                    var replay = await TryReadBulkPriceIdempotentResponseAsync(idempotency, cancellationToken);
+                    if (replay is not null)
+                    {
+                        result = replay;
+                        isReplay = true;
+                        if (transaction is not null)
+                        {
+                            await transaction.RollbackAsync(cancellationToken);
+                        }
+
+                        return;
+                    }
+
+                    await ReserveBulkPriceIdempotencyAsync(idempotency, cancellationToken);
+                }
+
+                var products = await _context.Products
+                    .Where(p => selectionIds.Contains(p.Id))
+                    .OrderBy(p => p.Id)
+                    .ToListAsync(cancellationToken);
+
+                var plan = await BuildBulkPricePlanAsync(products, request, exchangeRate, cancellationToken);
+
+                var errorItem = plan.FirstOrDefault(item => item.Row.IsError);
+                if (errorItem != null)
+                {
+                    // All-or-nothing (S1): si algún producto resulta inválido no se escribe NINGUNO.
+                    throw new ArgumentException($"La actualización masiva no se aplicó: {errorItem.Product.Name} ({errorItem.Product.SKU}): {errorItem.Row.SkipReason}");
+                }
+
+                foreach (var item in plan.Where(item => item.HasChanges))
+                {
+                    ApplyBulkPriceState(item);
+                }
+
+                await PropagateBulkPriceGroupsAsync(plan, exchangeRate, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+
+                result = BuildBulkPriceResult(exchangeRate, selectionIds.Count, plan);
+
+                if (idempotency is not null && _context.Database.IsNpgsql())
+                {
+                    await _context.Database.ExecuteSqlRawAsync(
+                        "UPDATE \"IdempotentRequests\" SET \"ResponseBody\" = {0}, \"StatusCode\" = 200 WHERE \"Key\" = {1} AND \"RequestPath\" = {2}",
+                        new object[] { System.Text.Json.JsonSerializer.Serialize(result), idempotency.Key, idempotency.RequestPath },
+                        cancellationToken);
+                }
+
+                if (transaction != null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                }
+            }
+            catch (Exception ex) when (idempotency is not null && IsBulkPriceIdempotencyUniqueViolation(ex))
             {
-                ApplyBulkPriceState(item);
+                if (transaction is not null)
+                {
+                    try
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+                    }
+                    catch (Exception rollbackException)
+                    {
+                        Core.Logging.AppLogger.LogWarn(
+                            $"[BulkPrices] Falló el rollback tras colisión de idempotencia: {rollbackException.Message}",
+                            "Inventory");
+                    }
+                }
+
+                _context.ChangeTracker.Clear();
+                var replay = await TryReadBulkPriceIdempotentResponseAsync(idempotency, CancellationToken.None);
+                if (replay is not null)
+                {
+                    result = replay;
+                    isReplay = true;
+                    return;
+                }
+
+                throw;
             }
-
-            await PropagateBulkPriceGroupsAsync(plan, exchangeRate, cancellationToken);
-            await _context.SaveChangesAsync(cancellationToken);
-
-            if (transaction != null)
-            {
-                await transaction.CommitAsync(cancellationToken);
-            }
-
-            result = BuildBulkPriceResult(exchangeRate, selectionIds.Count, plan);
         }, cancellationToken);
 
-        // S1: invalidación de cachés de producto recién después del commit.
-        InvalidateAllProductCaches();
+        // S1: invalidación de cachés de producto recién después del commit. Un replay no escribió.
+        if (!isReplay)
+        {
+            InvalidateAllProductCaches();
+        }
+
         return result!;
+    }
+
+    private const int BulkPriceAdvisoryLockClass = 6;
+    private const int BulkPriceAdvisoryLockKey = 0;
+
+    private async Task ReserveBulkPriceIdempotencyAsync(
+        BulkPriceIdempotency idempotency,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        await _context.Database.ExecuteSqlRawAsync(
+            "INSERT INTO \"IdempotentRequests\" (\"Key\", \"RequestPath\", \"PayloadHash\", \"StatusCode\", \"ResponseBody\", \"UserId\", \"CreatedAtUtc\", \"ExpiresAtUtc\") " +
+            "VALUES ({0}, {1}, {2}, 200, '', {3}, {4}, {5})",
+            new object[]
+            {
+                idempotency.Key,
+                idempotency.RequestPath,
+                idempotency.PayloadHash,
+                idempotency.UserId.HasValue ? idempotency.UserId.Value : DBNull.Value,
+                now,
+                now.Add(idempotency.Ttl)
+            },
+            cancellationToken);
+    }
+
+    private async Task<BulkPriceUpdateResultDto?> TryReadBulkPriceIdempotentResponseAsync(
+        BulkPriceIdempotency idempotency,
+        CancellationToken cancellationToken)
+    {
+        var body = await _context.Database
+            .SqlQueryRaw<string>(
+                "SELECT \"ResponseBody\" AS \"Value\" FROM \"IdempotentRequests\" WHERE \"Key\" = {0} AND \"RequestPath\" = {1} AND \"ExpiresAtUtc\" > NOW()",
+                idempotency.Key,
+                idempotency.RequestPath)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        return System.Text.Json.JsonSerializer.Deserialize<BulkPriceUpdateResultDto>(body);
+    }
+
+    private static bool IsBulkPriceIdempotencyUniqueViolation(Exception exception)
+    {
+        var postgresException = exception as Npgsql.PostgresException
+            ?? exception.InnerException as Npgsql.PostgresException;
+
+        return postgresException is not null
+            && postgresException.SqlState == "23505"
+            && (string.IsNullOrEmpty(postgresException.ConstraintName)
+                || postgresException.ConstraintName.Contains("IdempotentRequests", StringComparison.Ordinal));
     }
 
     // ---------------------------------------------------------------------------------------------

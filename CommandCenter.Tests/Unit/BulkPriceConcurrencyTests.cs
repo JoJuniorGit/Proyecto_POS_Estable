@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Integration;
 using Core.DTOs;
 using Core.Entities;
+using Core.Helpers;
 using Inventory.Module.Data;
 using Inventory.Module.Services;
 using Microsoft.EntityFrameworkCore;
@@ -75,5 +78,73 @@ public class BulkPriceConcurrencyTests
         await using var verifyContext = database.CreateInventoryDbContext();
         var persisted = await verifyContext.Products.AsNoTracking().SingleAsync(p => p.Id == productId);
         Assert.Equal(6m, persisted.PriceRetailUSD); // rollback total: sobrevive el valor del primer writer
+    }
+
+    [Fact]
+    public async Task BulkUpdatePricesAsync_SameIdempotencyKey_AppliesRelativeOperationOnce()
+    {
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(
+            applyMigrations: true,
+            applyInventoryMigrations: true);
+
+        int productId;
+        await using (var seedContext = database.CreateInventoryDbContext())
+        {
+            seedContext.ExchangeRateHistory.Add(new ExchangeRateHistory
+            {
+                Date = TimeZoneHelper.GetVenezuelaDate(),
+                Rate = 50m,
+                UpdatedAt = DateTime.UtcNow
+            });
+
+            var product = new Product
+            {
+                Name = "Bulk Idempotency Probe",
+                SKU = $"BIDEM-{Guid.NewGuid():N}"[..20],
+                PriceRetailUSD = 100m,
+                PriceUSD = 100m,
+                PriceWholesaleUSD = 90m,
+                CostPriceUSD = 40m,
+                IsActive = true
+            };
+            seedContext.Products.Add(product);
+            await seedContext.SaveChangesAsync();
+            productId = product.Id;
+        }
+
+        var request = new BulkPriceUpdateRequestDto
+        {
+            ProductIds = new List<int> { productId },
+            Operations = new List<BulkPriceOperationDto>
+            {
+                new() { Field = BulkPriceField.RetailPrice, Mode = BulkPriceMode.IncreasePercent, Value = 10m }
+            }
+        };
+
+        byte[] payloadHash = SHA256.HashData(Encoding.UTF8.GetBytes("bulk-price-idempotency-test"));
+        var idempotency = new BulkPriceIdempotency(
+            $"bulk-auto-test-{Guid.NewGuid():N}",
+            "/api/products/bulk-prices/apply",
+            payloadHash,
+            UserId: 1,
+            Ttl: TimeSpan.FromSeconds(60));
+
+        await using (var firstContext = database.CreateInventoryDbContext())
+        {
+            var first = await new InventoryService(firstContext)
+                .BulkUpdatePricesAsync(request, default, idempotency);
+            Assert.Equal(1, first.UpdatedCount);
+        }
+
+        await using (var replayContext = database.CreateInventoryDbContext())
+        {
+            var replay = await new InventoryService(replayContext)
+                .BulkUpdatePricesAsync(request, default, idempotency);
+            Assert.Equal(1, replay.UpdatedCount);
+        }
+
+        await using var verifyContext = database.CreateInventoryDbContext();
+        var persisted = await verifyContext.Products.AsNoTracking().SingleAsync(p => p.Id == productId);
+        Assert.Equal(110m, persisted.PriceRetailUSD);
     }
 }

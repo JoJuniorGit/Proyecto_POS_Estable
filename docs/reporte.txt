@@ -16928,3 +16928,48 @@ C3. Los índices Z son btree simples por fecha; conviene revisar `EXPLAIN ANALYZ
 C4. El carril PostgreSQL sigue usando autenticación `trust` local; el test de credenciales usa un
     usuario inexistente para ser determinista también en ese modo.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE (XXXVII) - REMEDIACIÓN AUDITORÍA DEVSECOPS/PERFORMANCE (8.203) - 2026-10-26
+================================================================================
+Pedido del mantenedor: "solucionalo" sobre los hallazgos ALTO/MEDIO de la auditoría integral
+(seguridad, rendimiento, clean code y concurrencia/observabilidad).
+
+A. CAMBIOS
+A1. Logging (P-01/C-02): `AsyncLogSink` usa un `StreamWriter` bufferizado por archivo, rota por
+    tamaño, contabiliza descartes/fallos y reporta a stderr; se eliminaron los `catch { }`. Un
+    `FlushAsync` explícito vacía y cierra los handles para que lectores externos abran el archivo.
+A2. Factura proveedor (H-01): el confirm valida la tasa solicitada contra
+    `ITodayExchangeRateProvider`; un desvío >10% se rechaza antes de abrir la transacción y un
+    fallo del proveedor falla cerrado. Se mantiene la validación de moneda canónica.
+A3. Caja/cierre/hubs (R-04/R-05/R-06): `RecordSaleChangeAsync` revalida `Open` bajo el lock de
+    sesión; el cierre diario toma un advisory lock transaccional de clase 5 que cubre el rollover;
+    `AuthorizationHub` propaga `Context.ConnectionAborted` a las operaciones de dominio.
+A4. Precios masivos (R-03): `apply` usa una ventana de idempotencia server-side de 60 s derivada
+    del payload y del actor. El registro se reserva/actualiza en la MISMA transacción del
+    `InventoryDbContext` (SQL crudo PostgreSQL) bajo un advisory lock global; el replay devuelve
+    el resultado persistido sin reaplicar operaciones relativas. Web/WPF no cambian contrato.
+A5. JWT (H-02): `RequireHttpsMetadata` default `true` fuera de Development. El transporte Web ya
+    fuerza HTTPS/HSTS cuando hay certificado; el uso HTTP del desktop en LAN sigue siendo una
+    decisión de despliegue.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B2. Suite completa con carril PostgreSQL activo: **3592 superados, 0 fallos, 0 omitidos**.
+B3. `BulkPriceConcurrencyTests`: **2/2** (incluye `SameIdempotencyKey_AppliesRelativeOperationOnce`
+    contra PostgreSQL real, verificando que 100 + 10% quede en 110 y no en 121).
+B4. `AsyncLoggingTests` + `ConcurrencyPhase4Tests`: **10/10**.
+B5. Test nuevo de anclaje de tasa de factura proveedor: verde.
+B6. No se agregaron migraciones EF; no hay drift nuevo.
+
+C. RESIDUALES (backlog estructural, no regresiones de esta remediación)
+C1. God objects (`CashDrawerService`, `SalesService`) y migración completa de `AppLogger` a
+    `ILogger<T>` estructurado: refactor multi-sesión, no seguro en un solo commit.
+C2. Matemática de preview en `CreditPaymentDialogViewModel`/`CreditPaymentModal`: usar totales y
+    preview del servidor; la UI debe limitarse a formatear.
+C3. El desktop sigue usando HTTP en LAN por compatibilidad; si se exige HTTPS end-to-end, es una
+    decisión de despliegue con impacto en el cliente.
+C4. La ventana de idempotencia de precios masivos deduplica el mismo payload+actor durante 60 s;
+    una segunda aplicación intencional del mismo payload dentro de esa ventana devuelve el primer
+    resultado. Es el comportamiento seguro esperado para operaciones relativas.
+================================================================================

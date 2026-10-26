@@ -40,7 +40,10 @@ public interface IInventoryService
     // 8.181-T1 (S1-S4): edición masiva de precios. Preview sin escrituras; apply en UNA transacción
     // all-or-nothing. Ambas comparten el mismo motor de cálculo (S4).
     Task<Core.DTOs.BulkPriceUpdateResultDto> PreviewBulkPriceUpdateAsync(Core.DTOs.BulkPriceUpdateRequestDto request, System.Threading.CancellationToken cancellationToken = default);
-    Task<Core.DTOs.BulkPriceUpdateResultDto> BulkUpdatePricesAsync(Core.DTOs.BulkPriceUpdateRequestDto request, System.Threading.CancellationToken cancellationToken = default);
+    Task<Core.DTOs.BulkPriceUpdateResultDto> BulkUpdatePricesAsync(
+        Core.DTOs.BulkPriceUpdateRequestDto request,
+        System.Threading.CancellationToken cancellationToken = default,
+        Core.DTOs.BulkPriceIdempotency? idempotency = null);
     Task<byte[]> ExportProductsAsync(string format, bool activeOnly, string? filter = null, System.Threading.CancellationToken cancellationToken = default);
     Task<byte[]> GenerateTemplateAsync(string format, System.Threading.CancellationToken cancellationToken = default);
     Task EnrollInTransactionAsync(System.Data.Common.DbTransaction transaction, System.Threading.CancellationToken cancellationToken = default);
