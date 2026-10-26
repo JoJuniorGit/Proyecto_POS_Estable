@@ -226,10 +226,14 @@ public class PettyCashAuthorizationTests
         currentUser.SetupGet(service => service.UserId).Returns(userId);
         currentUser.SetupGet(service => service.UserRole).Returns(role);
 
-        return new PettyCashController(stack.Service, currentUser.Object, stack.Coordinator)
+        var controller = new PettyCashController(stack.Service, currentUser.Object, stack.Coordinator)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
+        // Contrato endurecido: el registro de caja chica exige Idempotency-Key.
+        controller.ControllerContext.HttpContext.Request.Headers["Idempotency-Key"] =
+            $"test-petty-{Guid.NewGuid():N}";
+        return controller;
     }
 
     // ------------------------------------------------------------------ helper puro (umbral)

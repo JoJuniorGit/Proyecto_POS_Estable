@@ -688,4 +688,29 @@ public class PettyCashServiceTests
         Assert.NotNull(expenses[1].CashTransactionId);
         Assert.Empty(await stack.Service.GetSessionExpensesAsync(9999));
     }
+
+    [Fact]
+    public async Task RegisterAsync_IdempotentReplay_DoesNotRequireLiveRate()
+    {
+        using var stack = new PettyCashStack();
+        await SeedPaymentMethodsAsync(stack.Context);
+        await SeedOpenSessionAsync(stack.Context, openingLocal: 1000m);
+
+        var request = Request(idempotencyKey: "pc-replay-1");
+        var first = await stack.Service.RegisterAsync(request, actingUserId: 1, actingRole: UserRole.Admin);
+
+        // La tasa viva deja de estar disponible: el replay debe responder desde el snapshot
+        // persistido, sin volver a valorar ni duplicar movimientos.
+        stack.Inventory
+            .Setup(inventory => inventory.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("BCV no disponible"));
+
+        var replay = await stack.Service.RegisterAsync(request, actingUserId: 1, actingRole: UserRole.Admin);
+
+        Assert.True(replay.IsReplay);
+        Assert.Equal(first.Id, replay.Id);
+        Assert.Equal(first.HistoricalRate, replay.HistoricalRate);
+        Assert.Equal(1, await stack.Context.PettyCashExpenses.AsNoTracking().CountAsync());
+        Assert.Equal(1, await stack.Context.CashTransactions.AsNoTracking().CountAsync());
+    }
 }

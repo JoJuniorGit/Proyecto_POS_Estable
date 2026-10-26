@@ -80,10 +80,11 @@ public class PettyCashController : ControllerBase
             Request.Headers["Idempotency-Key"] = request.IdempotencyKey;
         }
 
-        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+        var idempotency = await _idempotencyResolver.ResolveAsync(
             this,
             requestPath,
-            System.Text.Json.JsonSerializer.Serialize(request));
+            System.Text.Json.JsonSerializer.Serialize(request),
+            missingKeyMessage: "El encabezado Idempotency-Key es obligatorio para registrar un gasto de caja chica.");
         if (idempotency.ShouldStop)
         {
             return idempotency.BlockingResult!;

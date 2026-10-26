@@ -661,6 +661,9 @@ public class CreditPaymentTests
         {
             HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = user }
         };
+        // Contrato endurecido: el abono CxC exige Idempotency-Key.
+        controller.ControllerContext.HttpContext.Request.Headers["Idempotency-Key"] =
+            $"test-credit-pay-{Guid.NewGuid():N}";
     }
 
     private static async Task<Customer> SeedCustomerAsync(SalesDbContext context, int graceDays = 0)

@@ -128,11 +128,6 @@ public class PettyCashService : IPettyCashService
             throw new InvalidOperationException("Se requiere un usuario autenticado para registrar el gasto de caja chica.");
         }
 
-        decimal exchangeRate = await ResolveTodayRateAsync(cancellationToken);
-        (decimal amountBsS, decimal amountUsd) = ComputeDualValuation(request.Currency, request.Amount, exchangeRate);
-        decimal thresholdUsd = await ResolveThresholdAsync(cancellationToken);
-        bool requiresAuthorization = PettyCashAuthorizationPolicy.RequiresAuthorization(amountUsd, actingRole, thresholdUsd);
-
         int retryAttempt = 0;
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
@@ -152,13 +147,19 @@ public class PettyCashService : IPettyCashService
 
             try
             {
-                // El replay se resuelve antes de crear sesión o validar liquidez: un gasto ya
-                // persistido debe replicarse tal cual, sin efectos nuevos.
+                // El replay se resuelve antes de crear sesión, leer la tasa o validar liquidez: un
+                // gasto ya persistido se replica tal cual, sin depender de la tasa BCV vigente
+                // (el snapshot original es la única autoridad).
                 var replay = await FindExistingExpenseAsync(idempotencyKey, cancellationToken);
                 if (replay is not null)
                 {
                     return replay;
                 }
+
+                decimal exchangeRate = await ResolveTodayRateAsync(cancellationToken);
+                (decimal amountBsS, decimal amountUsd) = ComputeDualValuation(request.Currency, request.Amount, exchangeRate);
+                decimal thresholdUsd = await ResolveThresholdAsync(cancellationToken);
+                bool requiresAuthorization = PettyCashAuthorizationPolicy.RequiresAuthorization(amountUsd, actingRole, thresholdUsd);
 
                 var session = await _cashDrawerService.GetOrCreateActiveSessionAsync(exchangeRate, cancellationToken);
 

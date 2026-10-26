@@ -251,10 +251,11 @@ public partial class SalesController
             Request.Headers["Idempotency-Key"] = request.IdempotencyKey;
         }
         string bodyJson = actingUserId + "|" + System.Text.Json.JsonSerializer.Serialize(request);
-        var resolved = await _idempotencyResolver.ResolveIfPresentAsync(
+        var resolved = await _idempotencyResolver.ResolveAsync(
             this,
             requestPath,
             bodyJson,
+            missingKeyMessage: "El encabezado Idempotency-Key es obligatorio para registrar un abono.",
             parseNumericBodyAsInvoice: false);
 
         if (resolved.ShouldStop)
