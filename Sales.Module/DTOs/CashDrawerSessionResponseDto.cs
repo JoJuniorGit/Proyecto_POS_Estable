@@ -11,8 +11,10 @@ public sealed record CashDrawerSessionResponseDto
     public DateTime? ClosedAtLocal { get; init; }
     public CashDrawerStatus Status { get; init; }
     public decimal OpeningBalanceLocal { get; init; }
+    public decimal OpeningBalanceUsd { get; init; }
     public decimal OpeningExchangeRate { get; init; }
     public decimal? ClosingBalanceLocal { get; init; }
+    public decimal? ClosingBalanceUsd { get; init; }
     public decimal? ClosingExchangeRate { get; init; }
     public IReadOnlyList<CashTransactionResponseDto> Transactions { get; init; } = [];
 }

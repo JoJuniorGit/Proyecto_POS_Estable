@@ -47,7 +47,7 @@ public class AdvanceCommissionClientDto
 public interface ICashDrawerService
 {
     Task<CashDrawerSessionDto?> GetActiveSessionAsync();
-    Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate);
+    Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, decimal openingBalanceUsd = 0m);
     Task<CashDrawerSessionDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate);
 
     /// <summary>
@@ -161,8 +161,10 @@ public class CashDrawerSessionDto
     public System.DateTime? ClosedAt { get; set; }
     public CashDrawerStatus Status { get; set; }
     public decimal OpeningBalanceLocal { get; set; }
+    public decimal OpeningBalanceUsd { get; set; }
     public decimal OpeningExchangeRate { get; set; }
     public decimal? ClosingBalanceLocal { get; set; }
+    public decimal? ClosingBalanceUsd { get; set; }
     public decimal? ClosingExchangeRate { get; set; }
 
     // Needed by CashDrawerView's "Recent Transactions" grid.

@@ -27,9 +27,14 @@ public class CashDrawerService : ICashDrawerService
         return await response.Content.ReadFromJsonAsync<CashDrawerSessionDto>();
     }
 
-    public async Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate)
+    public async Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, decimal openingBalanceUsd = 0m)
     {
-        var request = new { OpeningBalanceLocal = openingBalanceLocal, CurrentExchangeRate = currentExchangeRate };
+        var request = new
+        {
+            OpeningBalanceLocal = openingBalanceLocal,
+            OpeningBalanceUsd = openingBalanceUsd,
+            CurrentExchangeRate = currentExchangeRate
+        };
         var response = await _httpClient.PostAsJsonAsync("api/cashdrawer/open", request);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<CashDrawerSessionDto>())!;

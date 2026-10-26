@@ -313,15 +313,32 @@ public partial class SalesService
                     throw new ArgumentException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
                 }
 
-                int? cashMethodId = sale.Payments.FirstOrDefault(p => paymentMethodsDict.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)?.PaymentMethodId;
+                // El vuelto se entrega en Bs.S (changeBsS): se atribuye al método de efectivo de la
+                // moneda local, nunca al primer efectivo del pago original (que puede ser USD).
+                int? cashMethodId = null;
+                foreach (var paymentMethodId in sale.Payments.Select(p => p.PaymentMethodId).Distinct())
+                {
+                    if (paymentMethodsDict.TryGetValue(paymentMethodId, out var cashMethod)
+                        && cashMethod.IsCash
+                        && string.Equals(cashMethod.Currency, PaymentMethodCurrencyResolver.LocalCurrency, StringComparison.Ordinal))
+                    {
+                        cashMethodId = paymentMethodId;
+                        break;
+                    }
+                }
 
                 // Ingresos cash de la venta aún en el tracker (persistidos junto con todo el cobro): se informan
                 // al chequeo de saldo para que el vuelto NO se rechace por no verlos aún en la BD.
+                // Solo el efectivo local financia un vuelto en Bs.S.
                 decimal pendingCashIncomeBsS = _context.CashTransactions.Local
                     .Where(t => t.SessionId == activeSession.Id
                              && t.Type == CashTransactionType.Income
                              && t.Source == CashTransactionSource.SalePayment
-                             && t.IsPhysicalCash)
+                             && t.IsPhysicalCash
+                             && t.PaymentMethodId.HasValue
+                             && paymentMethodsDict.TryGetValue(t.PaymentMethodId.Value, out var localCashMethod)
+                             && localCashMethod.IsCash
+                             && string.Equals(localCashMethod.Currency, PaymentMethodCurrencyResolver.LocalCurrency, StringComparison.Ordinal))
                     .Sum(t => t.AmountLocal);
 
                 await _cashDrawerService.RecordSaleChangeAsync(

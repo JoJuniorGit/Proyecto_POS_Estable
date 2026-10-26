@@ -3,6 +3,13 @@ namespace Sales.Module.DTOs;
 public class OpenSessionRequest
 {
     public decimal OpeningBalanceLocal { get; set; }
+
+    /// <summary>
+    /// Fondo físico inicial de la gaveta USD. Opcional para conservar el contrato previo;
+    /// ausente equivale a 0. El rollover automático lo transfiere desde el cierre anterior.
+    /// </summary>
+    public decimal OpeningBalanceUsd { get; set; }
+
     public decimal CurrentExchangeRate { get; set; }
 }
 

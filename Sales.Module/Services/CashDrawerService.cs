@@ -65,14 +65,18 @@ public class CashDrawerService : ICashDrawerService
             .FirstOrDefaultAsync(cancellationToken);
 
         decimal carryOverBalance = 0;
+        decimal carryOverBalanceUsd = 0;
         if (lastSession != null)
         {
             carryOverBalance = lastSession.ClosingBalanceLocal ?? await GetCurrentBalanceLocalAsync(lastSession.Id, cancellationToken);
+            // La gaveta USD sobrevive al turno: sin conteo informado se transfiere el saldo
+            // físico teórico por moneda, nunca el agregado local.
+            carryOverBalanceUsd = lastSession.ClosingBalanceUsd ?? await GetPhysicalBalanceAsync(lastSession.Id, PettyCashCurrency.Usd, cancellationToken);
         }
 
         try
         {
-            return await OpenSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken);
+            return await OpenSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken, carryOverBalanceUsd);
         }
         catch (Exception ex) when (ex is InvalidOperationException or DbUpdateException)
         {
@@ -85,11 +89,16 @@ public class CashDrawerService : ICashDrawerService
         }
     }
 
-    public async Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default)
+    public async Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default, decimal openingBalanceUsd = 0m)
     {
         if (openingBalanceLocal < 0)
         {
             throw new ArgumentException("El saldo inicial de apertura de caja no puede ser negativo.", nameof(openingBalanceLocal));
+        }
+
+        if (openingBalanceUsd < 0m)
+        {
+            throw new ArgumentException("El saldo inicial de apertura de caja en USD no puede ser negativo.", nameof(openingBalanceUsd));
         }
 
         if (currentExchangeRate <= 0)
@@ -108,6 +117,7 @@ public class CashDrawerService : ICashDrawerService
         {
             OpenedAt = DateTime.UtcNow,
             OpeningBalanceLocal = openingBalanceLocal,
+            OpeningBalanceUsd = openingBalanceUsd,
             OpeningExchangeRate = currentExchangeRate,
             Status = CashDrawerStatus.Open
         };
@@ -302,9 +312,14 @@ public class CashDrawerService : ICashDrawerService
         if (activeSession == null) return;
 
         decimal carryOverBalance = await GetCurrentBalanceLocalAsync(activeSession.Id, cancellationToken);
+        decimal carryOverBalanceUsd = await GetPhysicalBalanceAsync(activeSession.Id, PettyCashCurrency.Usd, cancellationToken);
 
-        await CloseSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken: cancellationToken);
-        await OpenSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken);
+        await CloseSessionAsync(
+            carryOverBalance,
+            currentExchangeRate,
+            actualClosingBalanceUsd: carryOverBalanceUsd,
+            cancellationToken: cancellationToken);
+        await OpenSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken, carryOverBalanceUsd);
     }
 
     public async Task<CashTransactionResponseDto> AddTransactionAsync(
@@ -492,16 +507,54 @@ public class CashDrawerService : ICashDrawerService
 
         if (session == null) return 0;
 
-        var netCash = await _context.CashTransactions
+        // El saldo local es estrictamente Bs.S: los movimientos de métodos USD no pueden
+        // financiar un egreso local ni inflar el carry-over (gaveta física segregada).
+        var currencyByMethodId = await LoadMethodCurrencyMapAsync(cancellationToken);
+        var movements = await _context.CashTransactions
             .AsNoTracking()
             .Where(t => t.SessionId == sessionId
                      && t.IsPhysicalCash
                      && t.Source != CashTransactionSource.Opening)
-            .SumAsync(t => t.Type == CashTransactionType.Expense
-                ? -(decimal?)t.AmountLocal
-                : (decimal?)t.AmountLocal, cancellationToken) ?? 0m;
+            .Select(t => new { t.Type, t.AmountLocal, t.PaymentMethodId })
+            .ToListAsync(cancellationToken);
 
-        return session.OpeningBalanceLocal + netCash;
+        decimal net = 0m;
+        foreach (var movement in movements)
+        {
+            string movementCurrency = movement.PaymentMethodId.HasValue
+                && currencyByMethodId.TryGetValue(movement.PaymentMethodId.Value, out var methodCurrency)
+                    ? methodCurrency
+                    : PaymentMethodCurrencyResolver.LocalCurrency;
+
+            if (!string.Equals(movementCurrency, PaymentMethodCurrencyResolver.LocalCurrency, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            net += movement.Type == CashTransactionType.Expense ? -movement.AmountLocal : movement.AmountLocal;
+        }
+
+        return session.OpeningBalanceLocal + net;
+    }
+
+    /// <summary>
+    /// Moneda canónica por método de pago, materializada en memoria porque
+    /// <see cref="PaymentMethod.Currency"/> es una propiedad computada (NotMapped).
+    /// </summary>
+    private async Task<Dictionary<int, string>> LoadMethodCurrencyMapAsync(CancellationToken cancellationToken)
+    {
+        var methods = await _context.PaymentMethods
+            .AsNoTracking()
+            .Select(method => new { method.Id, method.Name })
+            .ToListAsync(cancellationToken);
+
+        var currencyByMethodId = new Dictionary<int, string>(methods.Count);
+        foreach (var method in methods)
+        {
+            currencyByMethodId[method.Id] = PaymentMethodCurrencyResolver.Resolve(method.Name);
+        }
+
+        return currencyByMethodId;
     }
 
     /// <inheritdoc />
@@ -515,18 +568,7 @@ public class CashDrawerService : ICashDrawerService
 
         if (session == null) return 0m;
 
-        // La moneda del metodo es una propiedad computada (NotMapped): se materializan los
-        // metodos y se clasifican en memoria con el resolutor canonico, sin traducir la
-        // propiedad al SQL del proveedor.
-        var methods = await _context.PaymentMethods
-            .AsNoTracking()
-            .Select(method => new { method.Id, method.Name })
-            .ToListAsync(cancellationToken);
-        var currencyByMethodId = new Dictionary<int, string>(methods.Count);
-        foreach (var method in methods)
-        {
-            currencyByMethodId[method.Id] = PaymentMethodCurrencyResolver.Resolve(method.Name);
-        }
+        var currencyByMethodId = await LoadMethodCurrencyMapAsync(cancellationToken);
 
         var movements = await _context.CashTransactions
             .AsNoTracking()
@@ -634,8 +676,10 @@ public class CashDrawerService : ICashDrawerService
         ClosedAtLocal = session.ClosedAtLocal,
         Status = session.Status,
         OpeningBalanceLocal = session.OpeningBalanceLocal,
+        OpeningBalanceUsd = session.OpeningBalanceUsd,
         OpeningExchangeRate = session.OpeningExchangeRate,
         ClosingBalanceLocal = session.ClosingBalanceLocal,
+        ClosingBalanceUsd = session.ClosingBalanceUsd,
         ClosingExchangeRate = session.ClosingExchangeRate,
         Transactions = session.Transactions.Select(MapTransaction).ToList()
     };
