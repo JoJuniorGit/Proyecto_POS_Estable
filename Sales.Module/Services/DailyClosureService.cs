@@ -16,11 +16,11 @@ namespace Sales.Module.Services;
 
 public partial class DailyClosureService : IDailyClosureService
 {
-    private const int UnattributedChangeMethodId = 0;
-
-    // T3b2-fix (S7): el reembolso físico sin método se atribuye al primer método de efectivo,
-    // igual que el vuelto sin método.
-    private const int UnattributedRefundMethodId = 0;
+    // Filas legadas sin CreatedAt quedan por debajo de este piso y caen a la fecha de la venta.
+    // Se usa un timestamp UTC explícito (no default(DateTime)) para que Npgsql pueda
+    // parametrizarlo en timestamptz sin conflicto de Kind.
+    private static readonly DateTime LegacyPaymentTimestampFloor =
+        new(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
     // 8.149 (SRE-02): mensaje exacto del conflicto de fecha duplicada (guard + índice único).
     public const string DuplicateClosureDateMessage = "Ya existe un cierre para esta fecha.";
@@ -54,20 +54,21 @@ public partial class DailyClosureService : IDailyClosureService
         DateTime endUtc,
         CancellationToken cancellationToken)
     {
-        var salesTotals = await _context.SalePayments
+        // Cobros de venta por la FECHA REAL del pago: incluye apartados (OnHold) y ventas
+        // completadas por igual. Filas legadas sin CreatedAt caen a la fecha de la venta para
+        // no perder el movimiento de la ventana.
+        var expectedByMethod = await _context.SalePayments
             .AsNoTracking()
             .Where(sp => sp.Sale != null
-                && sp.Sale.Status == SaleStatus.Completed
-                && sp.Sale.Date >= startUtc
-                && sp.Sale.Date < endUtc)
+                && ((sp.CreatedAt >= startUtc && sp.CreatedAt < endUtc)
+                    || (sp.CreatedAt < LegacyPaymentTimestampFloor
+                        && sp.Sale.Date >= startUtc
+                        && sp.Sale.Date < endUtc)))
             .GroupBy(sp => sp.PaymentMethodId)
             .Select(g => new { PaymentMethodId = g.Key, TotalBsS = g.Sum(sp => sp.AmountBsS) })
             .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
 
-        // T3a (F2b, S3/S6): los abonos CxC cobrados dentro de la MISMA ventana del cierre computan
-        // en lo esperado del método (el efectivo del abono ya entró a la gaveta como Income con
-        // origen CreditPayment). La semántica de ventas/vueltos queda intacta: aquí solo se suman
-        // abonos y el ajuste de vueltos (Source=SalePayment) no los toca.
+        // Abonos CxC por la fecha de recepción real (incluye métodos electrónicos).
         var creditPaymentTotals = await _context.ReceivablePayments
             .AsNoTracking()
             .Where(payment => payment.PaymentMethodId != null
@@ -79,47 +80,25 @@ public partial class DailyClosureService : IDailyClosureService
 
         foreach (var creditPaymentTotal in creditPaymentTotals)
         {
-            salesTotals.TryGetValue(creditPaymentTotal.Key, out decimal saleTotal);
-            salesTotals[creditPaymentTotal.Key] = saleTotal + creditPaymentTotal.Value;
+            expectedByMethod[creditPaymentTotal.Key] =
+                expectedByMethod.GetValueOrDefault(creditPaymentTotal.Key) + creditPaymentTotal.Value;
         }
 
-        var changeTotals = await _context.CashTransactions
+        // Libro físico del turno. Solo aporta las fuentes que NO están ya representadas por los
+        // cobros anteriores ni por la entidad de caja chica; de lo contrario el esperado se duplicaría:
+        //   - SalePayment Income      -> ya sumado en SalePayments.
+        //   - CreditPayment           -> ya sumado en ReceivablePayments.
+        //   - PettyCash*              -> se resta una sola vez desde PettyCashExpenses (Active).
+        // Aportan: vueltos (SalePayment Expense), CreditRefund, CashAdvance, CashIn/CashOut y
+        // ManualAdjustment. Opening/Closing no son movimientos de turno.
+        var ledgerMovements = await _context.CashTransactions
             .AsNoTracking()
-            .Where(ct => ct.Type == CashTransactionType.Expense
-                && ct.Source == CashTransactionSource.SalePayment
-                && ct.IsPhysicalCash
+            .Where(ct => ct.IsPhysicalCash
+                && ct.Source != CashTransactionSource.Opening
+                && ct.Source != CashTransactionSource.Closing
                 && ct.TransactionTime >= startUtc
                 && ct.TransactionTime < endUtc)
-            .GroupBy(ct => ct.PaymentMethodId)
-            .Select(g => new { PaymentMethodId = g.Key ?? UnattributedChangeMethodId, TotalBsS = g.Sum(ct => ct.AmountLocal) })
-            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
-
-        // T3b2-fix (S7): los reembolsos por devolución de crédito (Expense, origen CreditRefund)
-        // sacan de la gaveta el dinero que había entrado por el pago inicial o los abonos; se
-        // descuentan del esperado del método con la MISMA semántica del vuelto: solo efectivo
-        // físico y el reembolso sin método se atribuye al primer método de efectivo.
-        var refundTotals = await _context.CashTransactions
-            .AsNoTracking()
-            .Where(ct => ct.Type == CashTransactionType.Expense
-                && ct.Source == CashTransactionSource.CreditRefund
-                && ct.IsPhysicalCash
-                && ct.TransactionTime >= startUtc
-                && ct.TransactionTime < endUtc)
-            .GroupBy(ct => ct.PaymentMethodId)
-            .Select(g => new { PaymentMethodId = g.Key ?? UnattributedRefundMethodId, TotalBsS = g.Sum(ct => ct.AmountLocal) })
-            .ToDictionaryAsync(x => x.PaymentMethodId, x => x.TotalBsS, cancellationToken);
-
-        // T2b (Paso 13 / 8.188, S2): caja chica. Cada gasto Active de la ventana se deduce del
-        // metodo de efectivo de SU moneda (jamas del "primer efectivo" si no coincide). Se usa
-        // AmountBsS porque todo el esperado del cierre esta expresado en Bs.S. Los gastos
-        // Cancelled no se restan: su par Expense+Reversal ya netea 0 en la gaveta y la reversa
-        // tampoco se suma aqui.
-        var pettyCashExpenses = await _context.PettyCashExpenses
-            .AsNoTracking()
-            .Where(expense => expense.Status == PettyCashStatus.Active
-                && expense.CreatedAtUtc >= startUtc
-                && expense.CreatedAtUtc < endUtc)
-            .Select(expense => new PettyCashExpenseAmount(expense.Currency, expense.AmountBsS))
+            .Select(ct => new { ct.Type, ct.Source, ct.AmountLocal, ct.PaymentMethodId })
             .ToListAsync(cancellationToken);
 
         var allMethods = await _context.PaymentMethods
@@ -129,51 +108,124 @@ public partial class DailyClosureService : IDailyClosureService
             .ThenBy(p => p.Name)
             .ToListAsync(cancellationToken);
 
-        var relevantMethods = allMethods
-            .Where(p => p.IsActive || salesTotals.ContainsKey(p.Id))
-            .ToList();
+        // Movimientos sin método: se atribuyen al primer efectivo (misma semántica histórica del
+        // vuelto/reembolso sin atribución), nunca a un método no-cash.
+        var firstCashMethodId = allMethods.FirstOrDefault(p => p.IsActive && p.IsCash)?.Id
+            ?? allMethods.FirstOrDefault(p => p.IsCash)?.Id;
 
-        var firstCashMethodId = relevantMethods.FirstOrDefault(p => p.IsCash)?.Id;
-
-        var pettyCashDeductions = ResolvePettyCashDeductions(pettyCashExpenses, relevantMethods);
-
-        var result = new List<ExpectedTotalDto>();
-        foreach (var method in relevantMethods)
+        decimal unattributedNetBsS = 0m;
+        foreach (var movement in ledgerMovements)
         {
-            salesTotals.TryGetValue(method.Id, out decimal expected);
-
-            if (method.IsCash)
+            if (movement.Source == CashTransactionSource.CreditPayment)
             {
-                changeTotals.TryGetValue(method.Id, out decimal change);
-                if (method.Id == firstCashMethodId)
-                {
-                    changeTotals.TryGetValue(UnattributedChangeMethodId, out decimal unattributedChange);
-                    change += unattributedChange;
-                }
-                expected -= change;
-
-                refundTotals.TryGetValue(method.Id, out decimal refund);
-                if (method.Id == firstCashMethodId)
-                {
-                    refundTotals.TryGetValue(UnattributedRefundMethodId, out decimal unattributedRefund);
-                    refund += unattributedRefund;
-                }
-                expected -= refund;
-
-                pettyCashDeductions.TryGetValue(method.Id, out decimal pettyCash);
-                expected -= pettyCash;
+                continue;
             }
 
-            result.Add(new ExpectedTotalDto
+            if (movement.Source == CashTransactionSource.SalePayment
+                && movement.Type == CashTransactionType.Income)
+            {
+                continue;
+            }
+
+            if (movement.Source is CashTransactionSource.PettyCashExpense or CashTransactionSource.PettyCashReversal)
+            {
+                continue;
+            }
+
+            decimal signedAmount = movement.Type == CashTransactionType.Expense
+                ? -movement.AmountLocal
+                : movement.AmountLocal;
+
+            if (movement.PaymentMethodId is int methodId)
+            {
+                expectedByMethod[methodId] = expectedByMethod.GetValueOrDefault(methodId) + signedAmount;
+            }
+            else
+            {
+                unattributedNetBsS += signedAmount;
+            }
+        }
+
+        if (firstCashMethodId is int firstCashId && unattributedNetBsS != 0m)
+        {
+            expectedByMethod[firstCashId] = expectedByMethod.GetValueOrDefault(firstCashId) + unattributedNetBsS;
+        }
+
+        // Caja chica: cada gasto Active de la ventana se deduce UNA vez del método cash de su
+        // moneda exacta (sin heurística del primer efectivo). Cancelados y su reversa netean cero
+        // y no participan del esperado ni del renglón OPEX.
+        var pettyCashExpenses = await _context.PettyCashExpenses
+            .AsNoTracking()
+            .Where(expense => expense.Status == PettyCashStatus.Active
+                && expense.CreatedAtUtc >= startUtc
+                && expense.CreatedAtUtc < endUtc)
+            .Select(expense => new PettyCashExpenseAmount(expense.Currency, expense.AmountBsS))
+            .ToListAsync(cancellationToken);
+
+        foreach (var pettyCashDeduction in ResolvePettyCashDeductions(pettyCashExpenses, allMethods))
+        {
+            expectedByMethod[pettyCashDeduction.Key] =
+                expectedByMethod.GetValueOrDefault(pettyCashDeduction.Key) - pettyCashDeduction.Value;
+        }
+
+        var relevantMethods = allMethods
+            .Where(p => p.IsActive
+                || expectedByMethod.ContainsKey(p.Id)
+                || p.Id == firstCashMethodId)
+            .ToList();
+
+        return relevantMethods
+            .Select(method => new ExpectedTotalDto
             {
                 PaymentMethodId = method.Id,
                 PaymentMethodName = method.Name,
-                ExpectedAmountBsS = expected
-            });
+                ExpectedAmountBsS = expectedByMethod.GetValueOrDefault(method.Id)
+            })
+            .ToList();
+    }
+
+    /// <summary>
+    /// Atribución explícita de la caja chica por moneda. Si no existe un método de efectivo de la
+    /// moneda del gasto se omite solo esa deducción (fail-safe) y se registra el aviso; entre
+    /// métodos de la misma moneda se usa el de menor Id, el mismo criterio de PettyCashService.
+    /// </summary>
+    private static Dictionary<int, decimal> ResolvePettyCashDeductions(
+        IReadOnlyList<PettyCashExpenseAmount> expenses,
+        IReadOnlyList<PaymentMethod> methods)
+    {
+        var deductions = new Dictionary<int, decimal>();
+
+        foreach (var currencyGroup in expenses.GroupBy(expense => expense.Currency))
+        {
+            string expectedCurrency = currencyGroup.Key == PettyCashCurrency.Usd
+                ? PaymentMethodCurrencyResolver.Usd
+                : PaymentMethodCurrencyResolver.LocalCurrency;
+
+            PaymentMethod? target = methods
+                .Where(method => method.IsCash
+                    && string.Equals(
+                        PaymentMethodCurrencyResolver.Resolve(method.Name),
+                        expectedCurrency,
+                        StringComparison.Ordinal))
+                .OrderBy(method => method.Id)
+                .FirstOrDefault();
+
+            if (target is null)
+            {
+                Core.Logging.AppLogger.LogWarn(
+                    $"[DailyClosureService] No existe un método de pago de efectivo {(currencyGroup.Key == PettyCashCurrency.Usd ? "USD" : "Bs.S")} para atribuir la caja chica del cierre; se omite la deducción de {currencyGroup.Sum(expense => expense.AmountBsS):0.00} Bs.S.",
+                    "DailyClosure");
+                continue;
+            }
+
+            deductions[target.Id] = currencyGroup.Sum(expense => expense.AmountBsS);
         }
 
-        return result;
+        return deductions;
     }
+
+    /// <summary>Proyección liviana del gasto para el cálculo del esperado del cierre.</summary>
+    private sealed record PettyCashExpenseAmount(PettyCashCurrency Currency, decimal AmountBsS);
 
     private async Task<(DateTime StartUtc, DateTime EndExclusiveUtc, int? SessionId)> ResolveClosureWindowAsync(
         DateTime dateUtc,
@@ -199,56 +251,6 @@ public partial class DailyClosureService : IDailyClosureService
         // como ancla exacta del renglon OPEX al releer el cierre.
         return (startUtc, endUtc, activeSession?.Id);
     }
-
-    /// <summary>
-    /// T2b (S2): atribucion explicita de la caja chica por moneda. Si no existe un metodo de
-    /// efectivo de la moneda del gasto, se registra el aviso y se omite solo esa deduccion
-    /// (fail-safe) sin tocar los demas metodos. Entre metodos de efectivo de la misma moneda
-    /// se usa el de menor Id, el mismo criterio con el que PettyCashService resuelve la gaveta.
-    /// </summary>
-    private static Dictionary<int, decimal> ResolvePettyCashDeductions(
-        IReadOnlyList<PettyCashExpenseAmount> expenses,
-        IReadOnlyList<PaymentMethod> relevantMethods)
-    {
-        var deductions = new Dictionary<int, decimal>();
-
-        foreach (var currencyGroup in expenses.GroupBy(expense => expense.Currency))
-        {
-            PaymentMethod? target = ResolveCashMethodForCurrency(relevantMethods, currencyGroup.Key);
-            if (target is null)
-            {
-                Core.Logging.AppLogger.LogWarn(
-                    $"[DailyClosureService] No existe un método de pago de efectivo {(currencyGroup.Key == PettyCashCurrency.Usd ? "USD" : "Bs.S")} para atribuir la caja chica del cierre; se omite la deducción de {currencyGroup.Sum(expense => expense.AmountBsS):0.00} Bs.S.",
-                    "DailyClosure");
-                continue;
-            }
-
-            deductions[target.Id] = currencyGroup.Sum(expense => expense.AmountBsS);
-        }
-
-        return deductions;
-    }
-
-    private static PaymentMethod? ResolveCashMethodForCurrency(
-        IReadOnlyList<PaymentMethod> methods,
-        PettyCashCurrency currency)
-    {
-        string expectedCurrency = currency == PettyCashCurrency.Usd
-            ? PaymentMethodCurrencyResolver.Usd
-            : PaymentMethodCurrencyResolver.LocalCurrency;
-
-        return methods
-            .Where(method => method.IsCash
-                && string.Equals(
-                    PaymentMethodCurrencyResolver.Resolve(method.Name),
-                    expectedCurrency,
-                    StringComparison.Ordinal))
-            .OrderBy(method => method.Id)
-            .FirstOrDefault();
-    }
-
-    /// <summary>Proyeccion liviana del gasto para el calculo del esperado del cierre.</summary>
-    private sealed record PettyCashExpenseAmount(PettyCashCurrency Currency, decimal AmountBsS);
 
     public async Task<DailyClosureResponseDto?> GetClosureAsync(int id, CancellationToken cancellationToken = default)
     {

@@ -359,7 +359,7 @@ public class CheckoutAndPaymentTests
         var baseTime = DateTime.UtcNow.Date.AddHours(10); // 10:00 AM today
         var sale = new Sale { Id = 10, Status = SaleStatus.Completed, Date = baseTime };
         context.Sales.Add(sale);
-        context.SalePayments.Add(new SalePayment { SaleId = 10, PaymentMethodId = 1, AmountBsS = 500m });
+        context.SalePayments.Add(new SalePayment { SaleId = 10, PaymentMethodId = 1, AmountBsS = 500m, CreatedAt = baseTime });
         await context.SaveChangesAsync();
 
         var service = DailyClosureTestHelper.CreateService(context);
@@ -393,7 +393,7 @@ public class CheckoutAndPaymentTests
         var baseTime = DateTime.UtcNow.Date.AddHours(10); // 10:00 AM today
         var saleOld = new Sale { Id = 11, Status = SaleStatus.Completed, Date = baseTime };
         context.Sales.Add(saleOld);
-        context.SalePayments.Add(new SalePayment { SaleId = 11, PaymentMethodId = 1, AmountBsS = 300m });
+        context.SalePayments.Add(new SalePayment { SaleId = 11, PaymentMethodId = 1, AmountBsS = 300m, CreatedAt = baseTime });
         await context.SaveChangesAsync();
 
         var service = DailyClosureTestHelper.CreateService(context);
@@ -412,7 +412,7 @@ public class CheckoutAndPaymentTests
         // Register new sale at 14:00 PM (after closure)
         var saleNew = new Sale { Id = 12, Status = SaleStatus.Completed, Date = baseTime.AddHours(4) };
         context.Sales.Add(saleNew);
-        context.SalePayments.Add(new SalePayment { SaleId = 12, PaymentMethodId = 1, AmountBsS = 200m });
+        context.SalePayments.Add(new SalePayment { SaleId = 12, PaymentMethodId = 1, AmountBsS = 200m, CreatedAt = baseTime.AddHours(4) });
         await context.SaveChangesAsync();
 
         // Query expected totals at 15:00 PM

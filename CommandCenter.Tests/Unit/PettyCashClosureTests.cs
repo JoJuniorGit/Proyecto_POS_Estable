@@ -124,7 +124,8 @@ public class PettyCashClosureTests
             SaleId = saleId,
             PaymentMethodId = paymentMethodId,
             AmountBsS = amountBsS,
-            ExchangeRate = SeedRate
+            ExchangeRate = SeedRate,
+            CreatedAt = dateUtc
         });
         await context.SaveChangesAsync();
     }

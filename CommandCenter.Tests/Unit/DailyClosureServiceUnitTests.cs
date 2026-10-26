@@ -152,7 +152,7 @@ public class DailyClosureServiceUnitTests
         // Venta completada a las 21:00 hora de Venezuela
         var sale = new Sale { Id = 888, Status = SaleStatus.Completed, Date = utcEveningTime };
         context.Sales.Add(sale);
-        context.SalePayments.Add(new SalePayment { SaleId = 888, PaymentMethodId = 1, AmountBsS = 1200m });
+        context.SalePayments.Add(new SalePayment { SaleId = 888, PaymentMethodId = 1, AmountBsS = 1200m, CreatedAt = utcEveningTime });
         await context.SaveChangesAsync();
 
         // Consulta de esperados a las 22:30 hora de Venezuela (02:30 UTC del día siguiente)
@@ -247,7 +247,9 @@ public class DailyClosureServiceUnitTests
 
         var totals = await service.GetExpectedTotalsByPaymentMethodAsync(now);
 
-        Assert.Equal(850m, totals.First(t => t.PaymentMethodId == 1).ExpectedAmountBsS);
+        // 1000 del cobro − 150 de vuelto − 700 del adelanto de efectivo (egreso físico);
+        // el ingreso de la venta ya está representado por SalePayments y no se duplica.
+        Assert.Equal(150m, totals.First(t => t.PaymentMethodId == 1).ExpectedAmountBsS);
         Assert.Equal(500m, totals.First(t => t.PaymentMethodId == 3).ExpectedAmountBsS);
         Assert.Equal(0m, totals.First(t => t.PaymentMethodId == 2).ExpectedAmountBsS);
     }
