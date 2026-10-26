@@ -17035,3 +17035,31 @@ C1. `SalesService` aún concentra checkout, pricing, mutaciones de entrega y otr
 C2. Matemática de preview en la UI, rate limit del hub, hardening de health/pairing y credenciales
     locales de desarrollo siguen abiertos.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE (XL) - RATE LIMIT DEL HUB Y VERTICAL DE CLIENTES (8.206) - 2026-10-26
+================================================================================
+Pedido del mantenedor: avanzar con ambos residuales.
+
+A. CAMBIOS
+A1. `AuthorizationHubRateLimiter` (nuevo, singleton): ventana fija por usuario y operación,
+    configurable con `RateLimiting:AuthorizationHubPermitLimit` (default 10) y
+    `RateLimiting:AuthorizationHubWindowSeconds` (default 60). `RequestAuthorization` y
+    `ResolveAuthorization` devuelven un resultado fallido con segundos de reintento y no invocan
+    al coordinador cuando se agota el cupo. Usa `TimeProvider` para tests deterministas.
+A2. `SalesCustomerService` (nuevo, internal): extrae el catálogo de clientes y el cliente por
+    defecto (`GetDefaultCustomerAsync`, `GetCustomersAsync`, `CreateCustomerAsync`,
+    `UpdateCustomerAsync`, `DeleteCustomerAsync`) con su caché. `SalesService` delega con las
+    mismas firmas; `UpdateSaleCustomerAsync` queda en `SalesService` por mutar una venta.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B2. Tests nuevos del limitador y del hub: 4/4; hub existente: 26/26.
+B3. Focalizados de clientes: 100/100 (sin PG); los dos tests PG-gated quedan para el carril.
+B4. Suite completa con carril PostgreSQL activo: **3597/3597**, 0 fallos, 0 omitidos.
+
+C. RESIDUALES
+C1. `SalesService` aún concentra checkout, pricing, mutaciones de entrega y otras verticales.
+C2. Matemática de preview en la UI, hardening de health/pairing y credenciales locales de
+    desarrollo siguen abiertos.
+================================================================================

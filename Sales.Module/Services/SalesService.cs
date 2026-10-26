@@ -28,18 +28,18 @@ public partial class SalesService : ISalesService
     private readonly ICashDrawerService _cashDrawerService;
     private readonly ISystemSettingsService _settingsService;
     private readonly Microsoft.Extensions.Logging.ILogger<SalesService>? _logger;
-    private readonly IMemoryCache? _cache;
     private readonly Sales.Module.Receipts.IReceiptPrintQueue? _receiptPrintQueue;
     private readonly Sales.Module.Interfaces.IHoldOrderNotifier? _holdOrderNotifier;
     // 8.205: vertical de consultas de historial/entregas extraída para reducir la fachada.
     private readonly SalesHistoryService _history;
     // 8.205 (C-01): política de anclaje de tasa compartida con CashDrawerController.
     private readonly ExchangeRateAnchorService _rateAnchor;
+    // 8.206: catálogo de clientes extraído de la fachada.
+    private readonly SalesCustomerService _customers;
     // 8.187-T2 (F2a, S1/S2): perfil/elegibilidad de crédito para el cierre de venta a crédito.
     // Opcional para preservar la construcción directa histórica de tests (precedente 8.149/8.150);
     // el flujo de crédito falla cerrado si no está configurado.
     private readonly ICreditService? _creditService;
-    private const string DefaultCustomerCacheKey = "default_customer_cache";
     // 8.149 (SEC-02): mensaje único para ambos puntos de mutación de ítems de venta
     // (AddItemAsync y UpdateSaleItemsAsync). El adelanto de efectivo solo entra por CreateCashAdvanceSaleAsync.
     private const string CashAdvanceSaleItemRejectionMessage = "Los productos de adelanto de efectivo no pueden agregarse ni modificarse en una venta; use el flujo de adelanto de efectivo.";
@@ -59,13 +59,13 @@ public partial class SalesService : ISalesService
         _context = context;
         _history = new SalesHistoryService(context);
         _rateAnchor = new ExchangeRateAnchorService(inventoryService, settingsService, logger);
+        _customers = new SalesCustomerService(context, cache, logger);
         _inventoryService = inventoryService;
         _mediator = mediator;
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
         _holdOrderNotifier = holdOrderNotifier;
         _logger = logger;
-        _cache = cache;
         _receiptPrintQueue = receiptPrintQueue;
         _creditService = creditService;
     }

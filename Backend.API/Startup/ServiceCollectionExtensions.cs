@@ -236,6 +236,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton<Sales.Module.Receipts.IReceiptPrintQueue>(
             sp => sp.GetRequiredService<Backend.API.Services.ChannelReceiptPrintQueue>());
         builder.Services.AddSingleton<Backend.API.Metrics.RequestMetricsRegistry>();
+        builder.Services.AddSingleton<Backend.API.Services.IAuthorizationHubRateLimiter, Backend.API.Services.AuthorizationHubRateLimiter>();
         builder.Services.AddSingleton<Sales.Module.Receipts.IReceiptDocumentRenderer, Sales.Module.Receipts.SaleReceiptRenderer>();
         builder.Services.AddScoped<Sales.Module.Receipts.ISalesReceiptService, Sales.Module.Receipts.SalesReceiptService>();
         builder.Services.AddHostedService<Backend.API.Jobs.ReceiptPrintBackgroundService>();
