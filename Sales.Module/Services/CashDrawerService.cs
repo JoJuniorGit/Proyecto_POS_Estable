@@ -672,7 +672,22 @@ public class CashDrawerService : ICashDrawerService
             {
                 throw new InvalidOperationException("RecordSaleChangeAsync debe ejecutarse dentro de la transacción compartida del cobro para que el advisory lock sea efectivo.");
             }
-            await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", new object[] { sessionId }, cancellationToken);
+
+            // 8.203 (auditoría R-04): no alcanza con tomar el lock; se revalida Open dentro de
+            // la región bloqueada para que un cierre concurrente no reciba un vuelto tardío.
+            await LockOpenSessionForWriteAsync(sessionId, cancellationToken);
+        }
+        else
+        {
+            var sessionStatus = await _context.CashDrawerSessions
+                .AsNoTracking()
+                .Where(session => session.Id == sessionId)
+                .Select(session => (CashDrawerStatus?)session.Status)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (sessionStatus != CashDrawerStatus.Open)
+            {
+                throw new InvalidOperationException("No se pueden registrar movimientos en una sesión de caja cerrada.");
+            }
         }
 
         var currentBalanceDb = await GetCurrentBalanceLocalAsync(sessionId, cancellationToken);

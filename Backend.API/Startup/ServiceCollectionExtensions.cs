@@ -173,7 +173,11 @@ public static class ServiceCollectionExtensions
         })
         .AddJwtBearer(options =>
         {
-            options.RequireHttpsMetadata = builder.Configuration.GetValue<bool>("SecuritySettings:RequireHttpsMetadata", false);
+            // 8.203 (auditoría H-02): fuera de Development el default es exigir HTTPS para la
+            // metadata JWT. El transporte Web ya se fuerza en PipelineExtensions cuando hay cert.
+            options.RequireHttpsMetadata = builder.Configuration.GetValue<bool>(
+                "SecuritySettings:RequireHttpsMetadata",
+                !builder.Environment.IsDevelopment());
             options.SaveToken = true;
             options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
             {

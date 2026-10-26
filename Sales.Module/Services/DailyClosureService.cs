@@ -25,6 +25,11 @@ public partial class DailyClosureService : IDailyClosureService
     // 8.149 (SRE-02): mensaje exacto del conflicto de fecha duplicada (guard + índice único).
     public const string DuplicateClosureDateMessage = "Ya existe un cierre para esta fecha.";
 
+    // 8.203 (auditoría R-05): esquema de advisory locks del cierre diario. Serializa el cierre
+    // completo (guard de fecha + cálculo + persistencia + rollover de sesión) entre instancias.
+    private const int ClosureAdvisoryLockClass = 5;
+    private const int ClosureAdvisoryLockKey = 0;
+
     private readonly SalesDbContext _context;
     private readonly ITodayExchangeRateProvider _rateProvider;
     private readonly ICashDrawerService _cashDrawerService;
@@ -405,6 +410,16 @@ public partial class DailyClosureService : IDailyClosureService
 
         try
         {
+            // 8.203 (R-05): un lock de cierre global evita que dos fechas distintas intercalen el
+            // rollover de la misma sesión (cerrar la sesión que abrió el otro cierre).
+            if (_context.Database.IsNpgsql())
+            {
+                await _context.Database.ExecuteSqlRawAsync(
+                    "SELECT pg_advisory_xact_lock({0}, {1})",
+                    new object[] { ClosureAdvisoryLockClass, ClosureAdvisoryLockKey },
+                    cancellationToken);
+            }
+
             // 8.149 (SRE-02): guard intra-transacción contra un segundo cierre para la misma
             // fecha; el índice único de ClosureDate es la defensa de último recurso ante carreras.
             bool closureDateTaken = await _context.DailyClosures

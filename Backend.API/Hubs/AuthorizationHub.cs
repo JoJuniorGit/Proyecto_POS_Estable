@@ -91,7 +91,7 @@ public class AuthorizationHub : Hub
             identity.UserId,
             identity.Name,
             identity.Role,
-            CancellationToken.None);
+            Context.ConnectionAborted);
 
         if (result.Request is not null
             && result.Outcome is CreateAuthorizationOutcome.Created or CreateAuthorizationOutcome.Deduplicated)
@@ -127,7 +127,7 @@ public class AuthorizationHub : Hub
             identity.Name,
             approved,
             reason,
-            CancellationToken.None);
+            Context.ConnectionAborted);
 
         if (result.Outcome == ResolveAuthorizationOutcome.Resolved && result.Request is not null)
         {

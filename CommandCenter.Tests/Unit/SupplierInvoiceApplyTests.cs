@@ -966,10 +966,37 @@ public class SupplierInvoiceApplyTests
         Assert.Empty(await context.StockMovements.ToListAsync());
     }
 
+    [Fact]
+    public async Task ConfirmAsync_WithRateOutsideOfficialTolerance_RejectsBeforeApplying()
+    {
+        using var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context, rateProvider: new FixedRateProvider(50m));
+        var product = CreateProduct("APPLY-RATE-ANCHOR", 4m, 10m, 20m);
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
+
+        var line = CreateLine(product, 1m, 100m);
+        line.UnitCostDocument = 100m;
+        var invoice = await AddInvoiceAsync(context, CurrencyCodes.BsS, 50m, line);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ConfirmAsync(
+            invoice.Id,
+            new ConfirmSupplierInvoiceRequestDto(
+                new[] { new ConfirmLineDto(line.Id, true, null, null) },
+                AppliedRate: 80m)));
+
+        Assert.Contains("tasa", exception.Message, StringComparison.OrdinalIgnoreCase);
+        var persisted = await context.SupplierInvoices
+            .AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == invoice.Id);
+        Assert.Equal(SupplierInvoiceStatus.Draft, persisted.Status);
+    }
+
     private static SupplierInvoiceService CreateService(
         InventoryDbContext context,
         ICurrentUserService? currentUser = null,
-        Microsoft.Extensions.Caching.Memory.IMemoryCache? memoryCache = null)
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? memoryCache = null,
+        ITodayExchangeRateProvider? rateProvider = null)
     {
         var settings = Mock.Of<ISystemSettingsService>();
         var similaritySearch = Mock.Of<ISupplierProductSimilaritySearch>();
@@ -980,7 +1007,21 @@ public class SupplierInvoiceApplyTests
             similaritySearch,
             currentUser,
             Mock.Of<IProductManagementService>(),
-            memoryCache);
+            memoryCache,
+            rateProvider: rateProvider);
+    }
+
+    private sealed class FixedRateProvider : ITodayExchangeRateProvider
+    {
+        private readonly decimal _rate;
+
+        public FixedRateProvider(decimal rate)
+        {
+            _rate = rate;
+        }
+
+        public Task<decimal> GetEffectiveTodayRateAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(_rate);
     }
 
     private static async Task<SupplierInvoice> AddInvoiceAsync(

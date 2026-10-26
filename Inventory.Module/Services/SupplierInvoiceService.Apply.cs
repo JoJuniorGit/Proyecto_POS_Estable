@@ -53,6 +53,14 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("The applied exchange rate must be positive and within the supported range.", nameof(request));
         }
 
+        // 8.203 (auditoría H-01): la tasa de una corrección no es autoridad del cliente. Se
+        // contrasta contra la tasa oficial del día antes de abrir la transacción; si el proveedor
+        // no está disponible se falla cerrado (no se confirma con una tasa sin validar).
+        if (request.AppliedRate is decimal requestedRateForValidation)
+        {
+            await ValidateRequestedRateAgainstOfficialAsync(requestedRateForValidation, cancellationToken);
+        }
+
         // 8.182-T3 (S7): validación de la regla de redondeo del confirm. ExactMath (default) y
         // UsdPsychological operan sobre el USD recalculado; las reglas VES operan sobre el Bs.S del
         // canal y este flujo no tiene conversión viva aplicable (las facturas Bs.S renormalizan con
@@ -566,6 +574,49 @@ public partial class SupplierInvoiceService
         return lowered is > 0m && (unitCostUsd <= 0m || lowered.Value > unitCostUsd)
             ? (lowered.Value, true, true)
             : (wholesalePrice, false, false);
+    }
+
+    /// <summary>
+    /// 8.203: una corrección de tasa solo se admite dentro de ±10% de la tasa oficial del día.
+    /// Sin proveedor (tests directos/legacy) se conserva el contrato previo; en DI de producción
+    /// el proveedor siempre está registrado.
+    /// </summary>
+    private async Task ValidateRequestedRateAgainstOfficialAsync(
+        decimal requestedRate,
+        CancellationToken cancellationToken)
+    {
+        if (_rateProvider is null)
+        {
+            return;
+        }
+
+        decimal officialRate;
+        try
+        {
+            officialRate = await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "[SupplierInvoice] No se pudo obtener la tasa oficial para validar el confirm de la factura.");
+            throw new InvalidOperationException(
+                "No se pudo validar la tasa de la factura contra la tasa oficial del día. Reintente cuando la tasa esté disponible.",
+                ex);
+        }
+
+        if (officialRate <= 0m)
+        {
+            throw new InvalidOperationException(
+                "No hay una tasa oficial del día registrada para validar la tasa de la factura.");
+        }
+
+        decimal deviation = Math.Abs(requestedRate - officialRate) / officialRate;
+        if (deviation > MaxConfirmRateDeviation)
+        {
+            throw new ArgumentException(
+                $"La tasa {requestedRate:0.####} excede ±{MaxConfirmRateDeviation:P0} de la tasa oficial del día ({officialRate:0.####}). " +
+                "Corrija la tasa o solicite autorización antes de confirmar la factura.",
+                nameof(requestedRate));
+        }
     }
 
     private static void ValidateApprovedLine(SupplierInvoiceLine line, ConfirmLineDto confirmation)
