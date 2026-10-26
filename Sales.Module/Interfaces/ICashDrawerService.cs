@@ -21,6 +21,13 @@ public interface ICashDrawerService
 {
     Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync(CancellationToken cancellationToken = default);
     Task<CashDrawerSessionResponseDto?> GetActiveSessionWithTransactionsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 8.202-H1 (S2): toma el advisory lock de la sesión y revalida que siga <c>Open</c> antes de
+    /// permitir una escritura en la gaveta. Debe invocarse dentro de una transacción relacional
+    /// ambiente para que el lock viva hasta el commit; fuera de Npgsql valida el estado sin lock.
+    /// </summary>
+    Task<CashDrawerSessionResponseDto> LockOpenSessionForWriteAsync(int sessionId, CancellationToken cancellationToken = default);
     Task<CashDrawerSessionResponseDto> GetOrCreateActiveSessionAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default);
     Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default, decimal openingBalanceUsd = 0m);
     Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate, decimal? actualClosingBalanceUsd = null, CancellationToken cancellationToken = default);

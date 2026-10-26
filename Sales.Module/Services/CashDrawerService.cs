@@ -54,6 +54,39 @@ public class CashDrawerService : ICashDrawerService
         return MapSession(session) with { Transactions = transactions };
     }
 
+    /// <inheritdoc />
+    public async Task<CashDrawerSessionResponseDto> LockOpenSessionForWriteAsync(int sessionId, CancellationToken cancellationToken = default)
+    {
+        // 8.202-H1 (S2): el lock debe adquirirse ANTES de leer el estado. La relectura posterior
+        // garantiza que un cierre que ganó la carrera no deje pasar una escritura sobre la sesión
+        // ya cerrada (TOCTOU del chequeo previo al lock).
+        if (_context.Database.IsNpgsql())
+        {
+            if (_context.Database.CurrentTransaction is null)
+            {
+                throw new InvalidOperationException(
+                    "La sesión de caja debe bloquearse dentro de una transacción activa para que el advisory lock sea efectivo.");
+            }
+
+            await _context.Database.ExecuteSqlRawAsync(
+                "SELECT pg_advisory_xact_lock({0})",
+                new object[] { sessionId },
+                cancellationToken);
+        }
+
+        var session = await _context.CashDrawerSessions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == sessionId, cancellationToken)
+            ?? throw new InvalidOperationException("La sesión de caja indicada no existe.");
+
+        if (session.Status != CashDrawerStatus.Open)
+        {
+            throw new InvalidOperationException("No se pueden registrar movimientos en una sesión de caja cerrada.");
+        }
+
+        return MapSession(session);
+    }
+
     public async Task<CashDrawerSessionResponseDto> GetOrCreateActiveSessionAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default)
     {
         var session = await LoadActiveSessionEntityAsync(cancellationToken);
@@ -354,6 +387,23 @@ public class CashDrawerService : ICashDrawerService
 
             try
             {
+                // 8.202-H1 (S1): el lock se toma ANTES de validar el estado de la sesión. Si un
+                // cierre gana la carrera mientras esperamos, la relectura posterior lo detecta y
+                // aborta la escritura en lugar de persistir sobre una sesión ya cerrada.
+                if (isPhysicalCash && source != CashTransactionSource.Closing && _context.Database.IsNpgsql())
+                {
+                    if (_context.Database.CurrentTransaction is null)
+                    {
+                        throw new InvalidOperationException(
+                            "La transacción de caja debe ejecutarse dentro de una transacción activa para que el advisory lock sea efectivo.");
+                    }
+
+                    await _context.Database.ExecuteSqlRawAsync(
+                        "SELECT pg_advisory_xact_lock({0})",
+                        new object[] { sessionId },
+                        cancellationToken);
+                }
+
                 if (source != CashTransactionSource.Closing)
                 {
                     var targetSession = await _context.CashDrawerSessions
@@ -367,11 +417,6 @@ public class CashDrawerService : ICashDrawerService
                     {
                         throw new InvalidOperationException("La sesión de caja indicada no existe.");
                     }
-                }
-
-                if (isPhysicalCash && source != CashTransactionSource.Closing && !isInMemory)
-                {
-                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", new object[] { sessionId }, cancellationToken);
                 }
 
                 if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
@@ -507,22 +552,37 @@ public class CashDrawerService : ICashDrawerService
 
         if (session == null) return 0;
 
-        // El saldo local es estrictamente Bs.S: los movimientos de métodos USD no pueden
-        // financiar un egreso local ni inflar el carry-over (gaveta física segregada).
-        var currencyByMethodId = await LoadMethodCurrencyMapAsync(cancellationToken);
-        var movements = await _context.CashTransactions
+        // 8.202-H1 (S3): agregación server-side por (método, tipo). Solo se materializa una fila
+        // por combinación, nunca el libro completo de la sesión, para acortar la retención del
+        // advisory lock durante los chequeos de liquidez.
+        var groups = await _context.CashTransactions
             .AsNoTracking()
             .Where(t => t.SessionId == sessionId
                      && t.IsPhysicalCash
                      && t.Source != CashTransactionSource.Opening)
-            .Select(t => new { t.Type, t.AmountLocal, t.PaymentMethodId })
+            .GroupBy(t => new { t.PaymentMethodId, t.Type })
+            .Select(group => new
+            {
+                group.Key.PaymentMethodId,
+                group.Key.Type,
+                AmountLocal = group.Sum(t => t.AmountLocal)
+            })
             .ToListAsync(cancellationToken);
 
-        decimal net = 0m;
-        foreach (var movement in movements)
+        if (groups.Count == 0)
         {
-            string movementCurrency = movement.PaymentMethodId.HasValue
-                && currencyByMethodId.TryGetValue(movement.PaymentMethodId.Value, out var methodCurrency)
+            return session.OpeningBalanceLocal;
+        }
+
+        // El saldo local es estrictamente Bs.S: los movimientos de métodos USD no pueden
+        // financiar un egreso local ni inflar el carry-over (gaveta física segregada).
+        var currencyByMethodId = await LoadMethodCurrencyMapAsync(cancellationToken);
+
+        decimal net = 0m;
+        foreach (var group in groups)
+        {
+            string movementCurrency = group.PaymentMethodId.HasValue
+                && currencyByMethodId.TryGetValue(group.PaymentMethodId.Value, out var methodCurrency)
                     ? methodCurrency
                     : PaymentMethodCurrencyResolver.LocalCurrency;
 
@@ -531,7 +591,7 @@ public class CashDrawerService : ICashDrawerService
                 continue;
             }
 
-            net += movement.Type == CashTransactionType.Expense ? -movement.AmountLocal : movement.AmountLocal;
+            net += group.Type == CashTransactionType.Expense ? -group.AmountLocal : group.AmountLocal;
         }
 
         return session.OpeningBalanceLocal + net;
@@ -569,25 +629,38 @@ public class CashDrawerService : ICashDrawerService
 
         if (session == null) return 0m;
 
-        var currencyByMethodId = await LoadMethodCurrencyMapAsync(cancellationToken);
-
-        var movements = await _context.CashTransactions
+        // 8.202-H1 (S3): una sola proyección agrupada por (método, tipo) devuelve ambos buckets;
+        // el saldo de la moneda pedida se resuelve sobre ese conjunto acotado.
+        var groups = await _context.CashTransactions
             .AsNoTracking()
             .Where(t => t.SessionId == sessionId
                      && t.IsPhysicalCash
                      && t.Source != CashTransactionSource.Opening)
-            .Select(t => new { t.Type, t.AmountLocal, t.AmountUsd, t.PaymentMethodId })
+            .GroupBy(t => new { t.PaymentMethodId, t.Type })
+            .Select(group => new
+            {
+                group.Key.PaymentMethodId,
+                group.Key.Type,
+                AmountLocal = group.Sum(t => t.AmountLocal),
+                AmountUsd = group.Sum(t => t.AmountUsd)
+            })
             .ToListAsync(cancellationToken);
 
         bool isUsd = currency == PettyCashCurrency.Usd;
+        if (groups.Count == 0)
+        {
+            return isUsd ? session.OpeningBalanceUsd : session.OpeningBalanceLocal;
+        }
+
+        var currencyByMethodId = await LoadMethodCurrencyMapAsync(cancellationToken);
         string expectedCurrency = isUsd ? PaymentMethodCurrencyResolver.Usd : PaymentMethodCurrencyResolver.LocalCurrency;
 
         decimal net = 0m;
-        foreach (var movement in movements)
+        foreach (var group in groups)
         {
             // Movimiento sin metodo de pago: bucket Bs.S (contrato de la gaveta local).
-            string movementCurrency = movement.PaymentMethodId.HasValue
-                && currencyByMethodId.TryGetValue(movement.PaymentMethodId.Value, out var methodCurrency)
+            string movementCurrency = group.PaymentMethodId.HasValue
+                && currencyByMethodId.TryGetValue(group.PaymentMethodId.Value, out var methodCurrency)
                     ? methodCurrency
                     : PaymentMethodCurrencyResolver.LocalCurrency;
 
@@ -596,8 +669,8 @@ public class CashDrawerService : ICashDrawerService
                 continue;
             }
 
-            decimal amount = isUsd ? movement.AmountUsd : movement.AmountLocal;
-            net += movement.Type == CashTransactionType.Expense ? -amount : amount;
+            decimal amount = isUsd ? group.AmountUsd : group.AmountLocal;
+            net += group.Type == CashTransactionType.Expense ? -amount : amount;
         }
 
         return (isUsd ? session.OpeningBalanceUsd : session.OpeningBalanceLocal) + net;

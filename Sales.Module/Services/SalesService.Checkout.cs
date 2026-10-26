@@ -248,6 +248,29 @@ public partial class SalesService
 
             var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(exchangeRate, cancellationToken);
 
+            // 8.202-H1 (S2): orden canónico venta (clase 2) / cliente (clase 3) -> sesión. Solo se
+            // serializa el cierre cuando va a escribir en la gaveta (cobro cash o vuelto físico);
+            // el re-check bajo el lock aborta si la sesión se cerró mientras esperábamos.
+            bool requiresCashDrawerWrite = remainingBalanceBsS < -0.05m * exchangeRate;
+            if (!requiresCashDrawerWrite && payments != null)
+            {
+                foreach (var payment in payments)
+                {
+                    if (payment.Amount > 0m
+                        && paymentMethodsDict.TryGetValue(payment.PaymentMethodId, out var cashMethod)
+                        && cashMethod.IsCash)
+                    {
+                        requiresCashDrawerWrite = true;
+                        break;
+                    }
+                }
+            }
+
+            if (requiresCashDrawerWrite)
+            {
+                await _cashDrawerService.LockOpenSessionForWriteAsync(activeSession.Id, cancellationToken);
+            }
+
             if (!sale.InvoiceNumber.HasValue)
             {
                 sale.InvoiceNumber = await GenerateNextInvoiceNumberAsync();

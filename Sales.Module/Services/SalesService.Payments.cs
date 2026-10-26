@@ -96,7 +96,9 @@ public partial class SalesService
             // Si es efectivo y monto positivo, registrar en sesión activa de caja
             if (input.Method != null && input.Method.IsCash && input.AmountUsd > 0 && _cashDrawerService != null)
             {
-                var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(input.Rate);
+                var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(input.Rate, cancellationToken);
+                // 8.202-H1 (S2): venta (clase 2) -> sesión; el lock cubre el alta del movimiento.
+                await _cashDrawerService.LockOpenSessionForWriteAsync(activeSession.Id, cancellationToken);
                 var cashTx = new CashTransaction
                 {
                     SessionId = activeSession.Id,
@@ -232,6 +234,8 @@ public partial class SalesService
                 if (firstCashInput.Input != null && _cashDrawerService != null)
                 {
                     activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(firstCashInput.Input.Rate, cancellationToken);
+                    // 8.202-H1 (S2): un lock por lote cubre todos los abonos en efectivo.
+                    await _cashDrawerService.LockOpenSessionForWriteAsync(activeSession.Id, cancellationToken);
                 }
 
                 foreach (var (request, input) in computedInputs)

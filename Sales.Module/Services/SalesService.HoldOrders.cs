@@ -255,6 +255,20 @@ public partial class SalesService
                     Status = "Pending"
                 });
 
+                // 8.202-H1 (S2): el abono inicial en efectivo se preparó como entidad tracked antes
+                // de abrir la transacción. Se revalida su sesión bajo el lock antes de persistirlo.
+                if (_cashDrawerService != null)
+                {
+                    int? initialCashSessionId = preparedInitialEntries
+                        .Where(entry => entry.CashTx != null)
+                        .Select(entry => (int?)entry.CashTx!.SessionId)
+                        .FirstOrDefault();
+                    if (initialCashSessionId.HasValue)
+                    {
+                        await _cashDrawerService.LockOpenSessionForWriteAsync(initialCashSessionId.Value, cancellationToken);
+                    }
+                }
+
                 if (_cashDrawerService != null && remainingBalanceUsd < -0.05m)
                 {
                     decimal changeUsd = Math.Abs(remainingBalanceUsd);

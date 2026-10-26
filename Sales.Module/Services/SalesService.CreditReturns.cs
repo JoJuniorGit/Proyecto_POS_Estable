@@ -382,13 +382,9 @@ public partial class SalesService
                     // El reembolso se asienta como salida física y toma el lock de la gaveta DESPUÉS
                     // del lock por cliente (mismo orden que el cierre de venta: cliente -> sesión).
                     var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(resolvedRefundRate, cancellationToken);
-                    if (_context.Database.IsNpgsql())
-                    {
-                        await _context.Database.ExecuteSqlRawAsync(
-                            "SELECT pg_advisory_xact_lock({0})",
-                            new object[] { activeSession.Id },
-                            cancellationToken);
-                    }
+                    // 8.202-H1 (S2): el helper revalida Open bajo el mismo lock de la gaveta
+                    // (el orden cartera -> sesión ya se respetó con el lock de cliente).
+                    await _cashDrawerService.LockOpenSessionForWriteAsync(activeSession.Id, cancellationToken);
 
                     // La salida es física. Si el último pago fue efectivo se devuelve por la MISMA
                     // gaveta (USD o Bs.S) y se valida su liquidez; si fue no-cash, se enruta a la

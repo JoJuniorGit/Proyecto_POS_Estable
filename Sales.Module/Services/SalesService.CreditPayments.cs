@@ -177,6 +177,9 @@ public partial class SalesService
                     // Solo lo cobrado entra a la gaveta: mismo alta automática de sesión/carry-over
                     // del cobro de contado y misma convención IsPhysicalCash = true para efectivo.
                     var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(paymentRate, cancellationToken);
+                    // 8.202-H1 (S2): orden canónico cartera (clase 3) -> sesión. El re-check bajo el
+                    // lock impide asentar el abono en una gaveta que se cerró mientras esperábamos.
+                    await _cashDrawerService.LockOpenSessionForWriteAsync(activeSession.Id, cancellationToken);
                     cashTransaction = new CashTransaction
                     {
                         SessionId = activeSession.Id,
