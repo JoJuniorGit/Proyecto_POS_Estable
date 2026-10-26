@@ -16,6 +16,8 @@ public class InventoryDbContext : DbContext
     public DbSet<StockReservation> StockReservations { get; set; }
     public DbSet<SystemSetting> SystemSettings { get; set; }
     public DbSet<ExchangeRateHistory> ExchangeRateHistory { get; set; }
+    // 8.211-T2a (S4): tasas manuales diarias para pares distintos de USD/VES.
+    public DbSet<CurrencyPairRate> CurrencyPairRates { get; set; }
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<SupplierColumnMapping> SupplierColumnMappings { get; set; }
     public DbSet<SupplierOcrTemplate> SupplierOcrTemplates { get; set; }
@@ -189,6 +191,22 @@ public class InventoryDbContext : DbContext
         {
             entity.HasKey(e => e.Date);
             entity.Property(e => e.Rate).HasPrecision(18, 4);
+        });
+
+        // 8.211-T2a (S4): una tasa manual por par y fecha. USD/VES no se persiste aquí (sigue en
+        // ExchangeRateHistory) y UpdatedByUserId es solo auditoría, sin FK a usuarios.
+        modelBuilder.Entity<CurrencyPairRate>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.FromCurrencyCode).IsRequired().HasMaxLength(3);
+            entity.Property(r => r.ToCurrencyCode).IsRequired().HasMaxLength(3);
+            entity.Property(r => r.RateDate).HasColumnType("date");
+            entity.Property(r => r.Rate).HasColumnType("numeric(18,8)").HasPrecision(18, 8);
+            entity.HasIndex(r => new { r.RateDate, r.FromCurrencyCode, r.ToCurrencyCode })
+                .IsUnique()
+                .HasDatabaseName("IX_CurrencyPairRates_RateDate_From_To");
+            entity.ToTable(t =>
+                t.HasCheckConstraint("CK_CurrencyPairRates_Rate_Positive", "\"Rate\" > 0"));
         });
 
         modelBuilder.Entity<Supplier>(entity =>

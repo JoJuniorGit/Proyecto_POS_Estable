@@ -70,6 +70,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
         // 8.211-T1 (S1/S2/S3): perfil monetario configurable (contrato, persistencia y API).
         builder.Services.AddScoped<IMonetaryProfileService, MonetaryProfileService>();
+        // 8.211-T2a (S4): tasas manuales por par (USD/VES sigue en ExchangeRateHistory).
+        builder.Services.AddScoped<ICurrencyRateService, CurrencyRateService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
         builder.Services.AddScoped<IExchangeRateHistoryService, ExchangeRateHistoryService>();
         builder.Services.AddScoped<IInventoryHealthProbe, InventoryHealthProbe>();

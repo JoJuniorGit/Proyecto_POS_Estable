@@ -55,7 +55,8 @@ public static class ControllerFactory
             new ExchangeRateWriteService(context, new InventoryService(context), hubContext: hubContext),
             new TimeZoneProvider(settingsService),
             hubContext,
-            monetaryProfileService: new MonetaryProfileService(settingsService));
+            monetaryProfileService: new MonetaryProfileService(settingsService),
+            currencyRateService: new CurrencyRateService(context));
 
     public static UsersController CreateUsersController(
         SalesDbContext db,

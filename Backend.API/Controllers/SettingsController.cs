@@ -26,6 +26,7 @@ public class SettingsController : ControllerBase
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? _hubContext;
     private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache? _cache;
     private readonly IMonetaryProfileService? _monetaryProfileService;
+    private readonly ICurrencyRateService? _currencyRateService;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public SettingsController(
@@ -36,7 +37,8 @@ public class SettingsController : ControllerBase
         ITimeZoneProvider? timeZoneProvider = null,
         Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null,
         Microsoft.Extensions.Caching.Memory.IMemoryCache? cache = null,
-        IMonetaryProfileService? monetaryProfileService = null)
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         _settingsService = settingsService;
         _currentUserService = currentUserService;
@@ -46,6 +48,7 @@ public class SettingsController : ControllerBase
         _hubContext = hubContext;
         _cache = cache;
         _monetaryProfileService = monetaryProfileService;
+        _currencyRateService = currencyRateService;
     }
 
     [HttpGet("exchange-rate")]
@@ -265,6 +268,51 @@ public class SettingsController : ControllerBase
         try
         {
             return Ok(await service.SaveAsync(profile, cancellationToken));
+        }
+        catch (ArgumentException exception)
+        {
+            return this.ApiBadRequest(exception.Message);
+        }
+    }
+
+    // 8.211-T2a (S4): tasas manuales por par/fecha. GET queda cubierto por la política de clase
+    // (Admin/Manager); PUT exige Admin y el guard CanMutateSettings. F2a solo persiste y expone la
+    // configuración: la integración con checkout, ventas, caja y clientes es F3.
+    [HttpGet("manual-currency-rates")]
+    public async Task<ActionResult> GetManualCurrencyRatesAsync(
+        [FromQuery] DateOnly? date = null,
+        CancellationToken cancellationToken = default)
+    {
+        var service = _currencyRateService
+            ?? throw new InvalidOperationException("El servicio de tasas manuales de moneda no está configurado.");
+
+        return Ok(await service.GetManualRatesAsync(date, cancellationToken));
+    }
+
+    [HttpPut("manual-currency-rates")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> SetManualCurrencyRateAsync(
+        [FromBody] ManualCurrencyRateRequest? request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_currentUserService.CanMutateSettings)
+        {
+            return this.ApiForbidden("Su rol no tiene permisos para actualizar las tasas manuales de moneda.");
+        }
+
+        if (request is null)
+        {
+            return this.ApiBadRequest("La tasa manual de moneda es obligatoria.");
+        }
+
+        var service = _currencyRateService
+            ?? throw new InvalidOperationException("El servicio de tasas manuales de moneda no está configurado.");
+
+        int? userId = int.TryParse(_currentUserService.UserId, out var parsedUserId) ? parsedUserId : null;
+
+        try
+        {
+            return Ok(await service.SetManualRateAsync(request, userId, cancellationToken));
         }
         catch (ArgumentException exception)
         {
