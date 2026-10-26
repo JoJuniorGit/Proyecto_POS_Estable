@@ -379,9 +379,41 @@ public partial class SalesService
                     refundRate = resolvedRefundRate;
                     refundedBsS = Math.Round(overpayUsd * resolvedRefundRate, 2, MidpointRounding.AwayFromZero);
 
+                    // El reembolso se asienta como salida física y toma el lock de la gaveta DESPUÉS
+                    // del lock por cliente (mismo orden que el cierre de venta: cliente -> sesión).
+                    var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(resolvedRefundRate, cancellationToken);
+                    if (_context.Database.IsNpgsql())
+                    {
+                        await _context.Database.ExecuteSqlRawAsync(
+                            "SELECT pg_advisory_xact_lock({0})",
+                            new object[] { activeSession.Id },
+                            cancellationToken);
+                    }
+
+                    // La salida es física. Si el último pago fue efectivo se devuelve por la MISMA
+                    // gaveta (USD o Bs.S) y se valida su liquidez; si fue no-cash, se enruta a la
+                    // gaveta local en Bs.S. Nunca se asienta un egreso físico sobre un método
+                    // electrónico.
+                    (int refundMethodId, PettyCashCurrency refundCurrency) =
+                        await ResolveRefundCashRouteAsync(resolvedRefundMethodId, cancellationToken);
+
+                    decimal refundRequiredAmount = refundCurrency == PettyCashCurrency.Usd
+                        ? refundedUsd
+                        : refundedBsS;
+
+                    decimal availableInDrawer = await _cashDrawerService.GetPhysicalBalanceAsync(
+                        activeSession.Id,
+                        refundCurrency,
+                        cancellationToken);
+                    if (availableInDrawer < refundRequiredAmount)
+                    {
+                        string currencyName = refundCurrency == PettyCashCurrency.Usd ? "USD" : "Bs.S";
+                        throw new InvalidOperationException(
+                            $"Saldo de efectivo en {currencyName} insuficiente en la gaveta para reembolsar la devolución de la venta #{sale.Id}. Reembolso requerido: {MoneyFormat.N2(refundRequiredAmount)} {currencyName}.");
+                    }
+
                     // Salida de caja por el excedente efectivamente pagado: mismo alta automática de
                     // sesión/carry-over del cobro, tipo Expense y origen CreditRefund.
-                    var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(resolvedRefundRate, cancellationToken);
                     refundCashTransaction = new CashTransaction
                     {
                         SessionId = activeSession.Id,
@@ -394,7 +426,7 @@ public partial class SalesService
                         Description = $"Reembolso devolución venta N° {sale.InvoiceNumber} ({sale.Customer?.Name ?? sale.CustomerName ?? $"Cliente #{receivable.CustomerId}"})",
                         TransactionTime = DateTime.UtcNow,
                         SaleId = sale.Id,
-                        PaymentMethodId = resolvedRefundMethodId
+                        PaymentMethodId = refundMethodId
                     };
                     _context.CashTransactions.Add(refundCashTransaction);
                 }
@@ -515,6 +547,49 @@ public partial class SalesService
         }
 
         return MapCreditReturnResult(existing, existing.Sale, existing.Receivable, isReplay: true);
+    }
+
+    /// <summary>
+    /// Gaveta física del reembolso. Si el último pago fue efectivo se conserva su método y su
+    /// moneda (la devolución sale por la misma gaveta); si fue no-cash o no existe, se enruta al
+    /// primer método cash activo de Bs.S y la salida se valida contra esa gaveta.
+    /// </summary>
+    private async Task<(int MethodId, PettyCashCurrency Currency)> ResolveRefundCashRouteAsync(
+        int? lastPaymentMethodId,
+        CancellationToken cancellationToken)
+    {
+        var cashMethods = await _context.PaymentMethods
+            .AsNoTracking()
+            .Where(method => method.IsCash && method.IsActive && !method.IsDeleted)
+            .OrderBy(method => method.Id)
+            .Select(method => new { method.Id, method.Name })
+            .ToListAsync(cancellationToken);
+
+        if (lastPaymentMethodId is int lastMethodId)
+        {
+            var lastPaymentMethod = cashMethods.FirstOrDefault(method => method.Id == lastMethodId);
+            if (lastPaymentMethod is not null)
+            {
+                return string.Equals(
+                    PaymentMethodCurrencyResolver.Resolve(lastPaymentMethod.Name),
+                    PaymentMethodCurrencyResolver.Usd,
+                    StringComparison.Ordinal)
+                    ? (lastPaymentMethod.Id, PettyCashCurrency.Usd)
+                    : (lastPaymentMethod.Id, PettyCashCurrency.BsS);
+            }
+        }
+
+        var localCashMethod = cashMethods.FirstOrDefault(method => string.Equals(
+            PaymentMethodCurrencyResolver.Resolve(method.Name),
+            PaymentMethodCurrencyResolver.LocalCurrency,
+            StringComparison.Ordinal));
+
+        if (localCashMethod is null)
+        {
+            throw new InvalidOperationException("No existe un método de pago de efectivo en Bs.S configurado para asentar el reembolso de la devolución.");
+        }
+
+        return (localCashMethod.Id, PettyCashCurrency.BsS);
     }
 
     private static CreditReturnResultDto MapCreditReturnResult(

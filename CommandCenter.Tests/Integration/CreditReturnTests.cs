@@ -353,8 +353,10 @@ public class CreditReturnTests
         Assert.Equal(40m, cash.AmountUsd);
         Assert.Equal(2000.00m, cash.AmountLocal);
         Assert.Equal(50.0000m, cash.ExchangeRate);
-        // Tasa y método salen del SalePayment del pago inicial (método 2, no el primer efectivo).
-        Assert.Equal(2, cash.PaymentMethodId);
+        // Tasa del SalePayment inicial, pero la salida es física: un pago inicial no-cash se
+        // reembolsa por la gaveta de efectivo en Bs.S (método 3), nunca como egreso físico
+        // sobre el método electrónico.
+        Assert.Equal(3, cash.PaymentMethodId);
         Assert.Equal(sale.Id, cash.SaleId);
         Assert.True(cash.IsPhysicalCash);
 
@@ -376,6 +378,29 @@ public class CreditReturnTests
         cashDrawer.Verify(
             drawer => drawer.GetOrCreateActiveSessionAsync(50.0000m, It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task RegisterCreditReturn_WhenDrawerCannotCoverRefund_ThrowsAndWritesNoCash()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context);
+        await SeedPaymentMethodsAsync(context);
+        var (sale, receivable) = await SeedCreditSaleAsync(context, customer.Id, rate: 50m, (101, "Cemento", 1m, 100m, 5000m));
+        await SeedCreditPaymentAsync(context, receivable, amountUsd: 30m, paymentRate: 60m, receivedAtUtc: DateTime.UtcNow.AddMinutes(-5));
+        // La gaveta no puede cubrir el overpago de 30 USD (1.800 Bs.S a tasa 60).
+        var (service, _, _) = CreateHarness(context, drawerBalance: 10m);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RegisterCreditReturnAsync(
+            sale.Id,
+            new CreditReturnRequest
+            {
+                Items = new List<CreditReturnItemRequest> { new() { SaleItemId = sale.Items.Single().Id, Quantity = 1m } }
+            },
+            actingUserId: 7));
+
+        Assert.Contains("insuficiente", ex.Message);
+        Assert.Empty(await context.CashTransactions.AsNoTracking().ToListAsync());
     }
 
     [Fact]
@@ -781,7 +806,8 @@ public class CreditReturnTests
 
     private static (SalesService Service, Mock<IInventoryService> Inventory, Mock<ICashDrawerService> CashDrawer) CreateHarness(
         SalesDbContext context,
-        decimal bcvRate = 60m)
+        decimal bcvRate = 60m,
+        decimal drawerBalance = 1_000_000m)
     {
         var inventory = new Mock<IInventoryService>();
         inventory
@@ -799,6 +825,11 @@ public class CreditReturnTests
         cashDrawer
             .Setup(drawer => drawer.GetOrCreateActiveSessionAsync(It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
+        // El reembolso físico valida liquidez en la gaveta de su moneda: el harness simula fondo
+        // suficiente para aislar la lógica de devolución.
+        cashDrawer
+            .Setup(drawer => drawer.GetPhysicalBalanceAsync(It.IsAny<int>(), It.IsAny<PettyCashCurrency>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(drawerBalance);
         var settings = new Mock<ISystemSettingsService>();
 
         var service = new SalesService(
@@ -1017,7 +1048,8 @@ public class CreditReturnTests
     {
         context.PaymentMethods.AddRange(
             new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true, IsActive = true, DisplayOrder = 1 },
-            new PaymentMethod { Id = 2, Name = "Punto de Venta", IsCash = false, IsActive = true, DisplayOrder = 2 });
+            new PaymentMethod { Id = 2, Name = "Punto de Venta", IsCash = false, IsActive = true, DisplayOrder = 2 },
+            new PaymentMethod { Id = 3, Name = "Efectivo Bs.S", IsCash = true, IsActive = true, DisplayOrder = 3 });
         await context.SaveChangesAsync();
     }
 }
