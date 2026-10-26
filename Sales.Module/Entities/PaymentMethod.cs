@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Sales.Module.Entities;
 
@@ -19,10 +18,10 @@ public class PaymentMethod
     public bool IsDeleted { get; set; } = false;
 
     /// <summary>
-    /// 8.9-M16: moneda efectiva del método derivada por el backend (fuente de verdad) y
-    /// expuesta a los clientes para evitar heurísticas locales divergentes en el arqueo.
-    /// Computada, no persistida: no requiere migración.
+    /// 8.201: moneda de la gaveta (USD/Bs.S) persistida. Null en filas legadas: el resolver cae
+    /// a la regla histórica por nombre. Renombrar el método NO cambia este valor, de modo que los
+    /// movimientos históricos conservan su gaveta.
     /// </summary>
-    [NotMapped]
-    public string Currency => PaymentMethodCurrencyResolver.Resolve(Name);
+    [MaxLength(10)]
+    public string? Currency { get; set; }
 }

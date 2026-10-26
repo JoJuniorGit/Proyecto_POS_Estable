@@ -771,6 +771,10 @@ namespace Sales.Module.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("Currency")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<int>("DisplayOrder")
                         .HasColumnType("integer");
 
@@ -807,6 +811,7 @@ namespace Sales.Module.Migrations
                         new
                         {
                             Id = 1,
+                            Currency = "Bs.S",
                             DisplayOrder = 0,
                             IsActive = true,
                             IsCash = true,
@@ -817,6 +822,7 @@ namespace Sales.Module.Migrations
                         new
                         {
                             Id = 2,
+                            Currency = "Bs.S",
                             DisplayOrder = 0,
                             IsActive = true,
                             IsCash = false,

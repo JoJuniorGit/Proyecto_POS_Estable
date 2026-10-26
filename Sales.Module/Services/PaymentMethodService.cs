@@ -40,7 +40,7 @@ public class PaymentMethodService : IPaymentMethodService
             IsActive = method.IsActive,
             RequiresReference = method.RequiresReference,
             IsCash = method.IsCash,
-            Currency = method.Currency,
+            Currency = PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name),
             DisplayOrder = method.DisplayOrder,
             IsDeleted = method.IsDeleted
         };
@@ -60,25 +60,16 @@ public class PaymentMethodService : IPaymentMethodService
             Core.Logging.AppLogger.LogWarn($"[PaymentMethodService] Fallo al leer métodos de pago activos desde la caché; se consulta a la base de datos. {ex.Message}");
         }
 
+        // Se materializa y proyecta en memoria: la moneda efectiva puede caer al nombre en filas
+        // legadas y esa regla no es traducible a SQL en todos los proveedores.
         var methods = await _context.PaymentMethods
             .AsNoTracking()
             .Where(p => !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.DisplayOrder)
             .ThenBy(p => p.Name)
-            .Select(p => new PaymentMethodDto
-            {
-                Id = p.Id,
-                Name = p.Name,
-                IsActive = p.IsActive,
-                RequiresReference = p.RequiresReference,
-                IsCash = p.IsCash,
-                Currency = p.Currency,
-                DisplayOrder = p.DisplayOrder,
-                IsDeleted = p.IsDeleted
-            })
             .ToListAsync(cancellationToken);
 
-        var result = (IEnumerable<PaymentMethodDto>)(methods ?? new List<PaymentMethodDto>());
+        var result = (IEnumerable<PaymentMethodDto>)(methods.Select(ToDto).ToList());
 
         try
         {
@@ -115,20 +106,9 @@ public class PaymentMethodService : IPaymentMethodService
             .Where(p => !p.IsDeleted)
             .OrderBy(p => p.DisplayOrder)
             .ThenBy(p => p.Name)
-            .Select(p => new PaymentMethodDto
-            {
-                Id = p.Id,
-                Name = p.Name,
-                IsActive = p.IsActive,
-                RequiresReference = p.RequiresReference,
-                IsCash = p.IsCash,
-                Currency = p.Currency,
-                DisplayOrder = p.DisplayOrder,
-                IsDeleted = p.IsDeleted
-            })
             .ToListAsync(cancellationToken);
 
-        var result = (IEnumerable<PaymentMethodDto>)(methods ?? new List<PaymentMethodDto>());
+        var result = (IEnumerable<PaymentMethodDto>)(methods.Select(ToDto).ToList());
 
         try
         {
@@ -177,7 +157,10 @@ public class PaymentMethodService : IPaymentMethodService
             RequiresReference = dto.RequiresReference,
             IsCash = dto.IsCash,
             DisplayOrder = dto.DisplayOrder,
-            IsDeleted = false
+            IsDeleted = false,
+            // La moneda explícita manda; sin ella se deriva del nombre como hasta 8.200.
+            Currency = PaymentMethodCurrencyResolver.Normalize(dto.Currency)
+                ?? PaymentMethodCurrencyResolver.Resolve(cleanName)
         };
 
         if (entity.DisplayOrder <= 0)
@@ -229,6 +212,18 @@ public class PaymentMethodService : IPaymentMethodService
             throw new ArgumentException($"Ya existe otro método de pago activo con el nombre '{cleanName}'.");
         }
 
+        // 8.201: la moneda es un snapshot de la gaveta. Un renombre no la cambia y un cambio
+        // explícito sobre un método existente se rechaza (crear uno nuevo para otra moneda).
+        string existingCurrency = PaymentMethodCurrencyResolver.ResolveStoredOrName(existing.Currency, existing.Name);
+        string? requestedCurrency = PaymentMethodCurrencyResolver.Normalize(dto.Currency);
+        if (requestedCurrency is not null
+            && !string.Equals(requestedCurrency, existingCurrency, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"La moneda del método de pago '{existing.Name}' es {existingCurrency} y no puede cambiarse a {requestedCurrency}: los movimientos históricos quedarían reclasificados. Cree un método nuevo para la otra moneda.");
+        }
+
+        existing.Currency = existingCurrency;
         existing.Name = cleanName;
         existing.IsActive = dto.IsActive;
         existing.RequiresReference = dto.RequiresReference;
@@ -259,7 +254,19 @@ public class PaymentMethodService : IPaymentMethodService
     public Task<PaymentMethodDto> UpdateAsync(PaymentMethod method, CancellationToken cancellationToken = default)
     {
         if (method == null) throw new ArgumentNullException(nameof(method));
-        return UpdateAsync(ToDto(method), cancellationToken);
+
+        // Sin moneda explícita se envía vacío: un renombre NO debe derivar la moneda del nombre
+        // nuevo ni disparar el guard de cambio. La moneda persistida se conserva.
+        return UpdateAsync(new PaymentMethodDto
+        {
+            Id = method.Id,
+            Name = method.Name,
+            RequiresReference = method.RequiresReference,
+            IsCash = method.IsCash,
+            DisplayOrder = method.DisplayOrder,
+            IsActive = method.IsActive,
+            Currency = method.Currency ?? string.Empty
+        }, cancellationToken);
     }
 
     public async Task DeleteAsync(int id, CancellationToken cancellationToken = default)

@@ -617,7 +617,7 @@ public class PettyCashService : IPettyCashService
             .AsNoTracking()
             .Where(method => method.IsCash && method.IsActive && !method.IsDeleted)
             .OrderBy(method => method.Id)
-            .Select(method => new { method.Id, method.Name })
+            .Select(method => new { method.Id, method.Name, method.Currency })
             .ToListAsync(cancellationToken);
 
         string expectedCurrency = currency == PettyCashCurrency.Usd
@@ -625,7 +625,9 @@ public class PettyCashService : IPettyCashService
             : PaymentMethodCurrencyResolver.LocalCurrency;
 
         var match = cashMethods.FirstOrDefault(method => string.Equals(
-            PaymentMethodCurrencyResolver.Resolve(method.Name), expectedCurrency, StringComparison.Ordinal));
+            PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name),
+            expectedCurrency,
+            StringComparison.Ordinal));
 
         if (match is null)
         {

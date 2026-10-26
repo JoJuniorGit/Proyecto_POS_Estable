@@ -12,6 +12,10 @@ public class CreatePaymentMethodDto
     public bool IsCash { get; set; }
     public int DisplayOrder { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>Opcional: USD/Bs.S. Sin valor se deriva del nombre (regla histórica).</summary>
+    [MaxLength(10)]
+    public string? Currency { get; set; }
 }
 
 public class UpdatePaymentMethodDto
@@ -26,6 +30,10 @@ public class UpdatePaymentMethodDto
     public bool IsCash { get; set; }
     public int DisplayOrder { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>Opcional: null/omitido conserva la moneda persistida; un cambio explícito se rechaza.</summary>
+    [MaxLength(10)]
+    public string? Currency { get; set; }
 }
 
 public class PaymentMethodDto

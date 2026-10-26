@@ -562,7 +562,7 @@ public partial class SalesService
             .AsNoTracking()
             .Where(method => method.IsCash && method.IsActive && !method.IsDeleted)
             .OrderBy(method => method.Id)
-            .Select(method => new { method.Id, method.Name })
+            .Select(method => new { method.Id, method.Name, method.Currency })
             .ToListAsync(cancellationToken);
 
         if (lastPaymentMethodId is int lastMethodId)
@@ -571,7 +571,7 @@ public partial class SalesService
             if (lastPaymentMethod is not null)
             {
                 return string.Equals(
-                    PaymentMethodCurrencyResolver.Resolve(lastPaymentMethod.Name),
+                    PaymentMethodCurrencyResolver.ResolveStoredOrName(lastPaymentMethod.Currency, lastPaymentMethod.Name),
                     PaymentMethodCurrencyResolver.Usd,
                     StringComparison.Ordinal)
                     ? (lastPaymentMethod.Id, PettyCashCurrency.Usd)
@@ -580,7 +580,7 @@ public partial class SalesService
         }
 
         var localCashMethod = cashMethods.FirstOrDefault(method => string.Equals(
-            PaymentMethodCurrencyResolver.Resolve(method.Name),
+            PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name),
             PaymentMethodCurrencyResolver.LocalCurrency,
             StringComparison.Ordinal));
 

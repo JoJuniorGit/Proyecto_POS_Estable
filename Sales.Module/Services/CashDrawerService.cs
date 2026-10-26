@@ -538,20 +538,21 @@ public class CashDrawerService : ICashDrawerService
     }
 
     /// <summary>
-    /// Moneda canónica por método de pago, materializada en memoria porque
-    /// <see cref="PaymentMethod.Currency"/> es una propiedad computada (NotMapped).
+    /// Moneda canónica por método de pago. Usa la moneda persistida (8.201) y cae al nombre
+    /// histórico solo para filas legadas sin Currency.
     /// </summary>
     private async Task<Dictionary<int, string>> LoadMethodCurrencyMapAsync(CancellationToken cancellationToken)
     {
         var methods = await _context.PaymentMethods
             .AsNoTracking()
-            .Select(method => new { method.Id, method.Name })
+            .Select(method => new { method.Id, method.Name, method.Currency })
             .ToListAsync(cancellationToken);
 
         var currencyByMethodId = new Dictionary<int, string>(methods.Count);
         foreach (var method in methods)
         {
-            currencyByMethodId[method.Id] = PaymentMethodCurrencyResolver.Resolve(method.Name);
+            currencyByMethodId[method.Id] =
+                PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name);
         }
 
         return currencyByMethodId;

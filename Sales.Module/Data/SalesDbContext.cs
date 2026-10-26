@@ -319,6 +319,12 @@ modelBuilder.Entity<User>().HasData(
             .Property(p => p.IsDeleted)
             .HasDefaultValue(false);
 
+        // 8.201: moneda persistida de la gaveta. Nullable para filas legadas; la migración
+        // backfillea por la regla histórica del nombre y luego los renombres no la alteran.
+        modelBuilder.Entity<PaymentMethod>()
+            .Property(p => p.Currency)
+            .HasMaxLength(10);
+
         if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
         {
             modelBuilder.Entity<PaymentMethod>()
@@ -368,8 +374,8 @@ modelBuilder.Entity<User>().HasData(
 
         // Seed initial payment methods
         modelBuilder.Entity<PaymentMethod>().HasData(
-            new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true, IsDeleted = false },
-            new PaymentMethod { Id = 2, Name = "Card", IsActive = true, RequiresReference = true, IsCash = false, IsDeleted = false }
+            new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true, IsDeleted = false, Currency = PaymentMethodCurrencyResolver.LocalCurrency },
+            new PaymentMethod { Id = 2, Name = "Card", IsActive = true, RequiresReference = true, IsCash = false, IsDeleted = false, Currency = PaymentMethodCurrencyResolver.LocalCurrency }
         );
 
         // Sequences for consecutive invoice numbers (H-SAL-1 / A2) and atomic DisplayOrder (PostgreSQL)

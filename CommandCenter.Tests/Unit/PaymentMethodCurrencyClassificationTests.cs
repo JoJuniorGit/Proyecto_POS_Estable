@@ -223,4 +223,165 @@ public class PaymentMethodCurrencyClassificationTests
 
         Assert.Equal(0.13m, PricingCalculator.ToUSD(1m, 8m));
     }
+
+    [Theory]
+    [InlineData(null, "Efectivo USD", "USD")]
+    [InlineData("", "Divisas (USD)", "USD")]
+    [InlineData("usd", "Efectivo", "USD")]
+    [InlineData("Bs.S", "EFECTIVO USD", "Bs.S")]
+    [InlineData("VES", "Dólares", "Bs.S")]
+    public void ResolveStoredOrName_PrefersPersistedCurrencyOverName(
+        string? storedCurrency,
+        string name,
+        string expected)
+    {
+        Assert.Equal(expected, PaymentMethodCurrencyResolver.ResolveStoredOrName(storedCurrency, name));
+    }
+
+    [Fact]
+    public async Task Rename_DoesNotReclassifyHistoricalDrawerBuckets()
+    {
+        using var context = CreateInMemorySalesContext();
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 1,
+            Name = "Divisas (USD)",
+            Currency = PaymentMethodCurrencyResolver.Usd,
+            IsCash = true,
+            IsActive = true,
+            IsDeleted = false,
+            DisplayOrder = 1
+        });
+        context.CashDrawerSessions.Add(new CashDrawerSession
+        {
+            Id = 1,
+            OpenedAt = DateTime.UtcNow.AddHours(-1),
+            Status = CashDrawerStatus.Open,
+            OpeningBalanceLocal = 0m,
+            OpeningBalanceUsd = 0m,
+            OpeningExchangeRate = 50m
+        });
+        context.CashTransactions.Add(new CashTransaction
+        {
+            SessionId = 1,
+            Type = CashTransactionType.Income,
+            Source = CashTransactionSource.SalePayment,
+            AmountUsd = 10m,
+            AmountLocal = 500m,
+            ExchangeRate = 50m,
+            IsPhysicalCash = true,
+            PaymentMethodId = 1,
+            TransactionTime = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var service = new PaymentMethodService(context);
+        var renamed = await service.UpdateAsync(new PaymentMethodDto
+        {
+            Id = 1,
+            Name = "Dólares en efectivo",
+            Currency = string.Empty,
+            IsCash = true,
+            IsActive = true,
+            DisplayOrder = 1
+        });
+
+        Assert.Equal(PaymentMethodCurrencyResolver.Usd, renamed.Currency);
+
+        var drawer = new CashDrawerService(context);
+        Assert.Equal(10m, await drawer.GetPhysicalBalanceAsync(1, PettyCashCurrency.Usd));
+        Assert.Equal(0m, await drawer.GetCurrentBalanceLocalAsync(1));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ExplicitCurrencyChange_IsRejected()
+    {
+        using var context = CreateInMemorySalesContext();
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 1,
+            Name = "Divisas (USD)",
+            Currency = PaymentMethodCurrencyResolver.Usd,
+            IsCash = true,
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var service = new PaymentMethodService(context);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.UpdateAsync(new PaymentMethodDto
+        {
+            Id = 1,
+            Name = "Divisas (USD)",
+            Currency = PaymentMethodCurrencyResolver.LocalCurrency,
+            IsCash = true,
+            IsActive = true
+        }));
+
+        Assert.Contains("no puede cambiarse", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateAsync_UsesExplicitCurrencyOrDerivesFromName()
+    {
+        using var context = CreateInMemorySalesContext();
+        var service = new PaymentMethodService(context);
+
+        var explicitUsd = await service.CreateAsync(new PaymentMethodDto
+        {
+            Name = "Dólares en efectivo",
+            Currency = PaymentMethodCurrencyResolver.Usd,
+            IsCash = true,
+            IsActive = true
+        });
+        Assert.Equal(PaymentMethodCurrencyResolver.Usd, explicitUsd.Currency);
+
+        var derived = await service.CreateAsync(new PaymentMethodDto
+        {
+            Name = "Efectivo USD",
+            Currency = string.Empty,
+            IsCash = true,
+            IsActive = true
+        });
+        Assert.Equal(PaymentMethodCurrencyResolver.Usd, derived.Currency);
+    }
+
+    [Fact]
+    public async Task LegacyNullCurrency_FallsBackToHistoricalNameRule()
+    {
+        using var context = CreateInMemorySalesContext();
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 1,
+            Name = "Efectivo USD",
+            Currency = null,
+            IsCash = true,
+            IsActive = true
+        });
+        context.CashDrawerSessions.Add(new CashDrawerSession
+        {
+            Id = 1,
+            OpenedAt = DateTime.UtcNow.AddHours(-1),
+            Status = CashDrawerStatus.Open,
+            OpeningBalanceLocal = 0m,
+            OpeningBalanceUsd = 0m,
+            OpeningExchangeRate = 50m
+        });
+        context.CashTransactions.Add(new CashTransaction
+        {
+            SessionId = 1,
+            Type = CashTransactionType.Income,
+            Source = CashTransactionSource.SalePayment,
+            AmountUsd = 10m,
+            AmountLocal = 500m,
+            ExchangeRate = 50m,
+            IsPhysicalCash = true,
+            PaymentMethodId = 1,
+            TransactionTime = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var drawer = new CashDrawerService(context);
+        Assert.Equal(10m, await drawer.GetPhysicalBalanceAsync(1, PettyCashCurrency.Usd));
+        Assert.Equal(0m, await drawer.GetCurrentBalanceLocalAsync(1));
+    }
 }

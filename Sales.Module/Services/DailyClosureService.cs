@@ -204,7 +204,7 @@ public partial class DailyClosureService : IDailyClosureService
             PaymentMethod? target = methods
                 .Where(method => method.IsCash
                     && string.Equals(
-                        PaymentMethodCurrencyResolver.Resolve(method.Name),
+                        PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name),
                         expectedCurrency,
                         StringComparison.Ordinal))
                 .OrderBy(method => method.Id)

@@ -320,7 +320,10 @@ public partial class SalesService
                 {
                     if (paymentMethodsDict.TryGetValue(paymentMethodId, out var cashMethod)
                         && cashMethod.IsCash
-                        && string.Equals(cashMethod.Currency, PaymentMethodCurrencyResolver.LocalCurrency, StringComparison.Ordinal))
+                        && string.Equals(
+                            PaymentMethodCurrencyResolver.ResolveStoredOrName(cashMethod.Currency, cashMethod.Name),
+                            PaymentMethodCurrencyResolver.LocalCurrency,
+                            StringComparison.Ordinal))
                     {
                         cashMethodId = paymentMethodId;
                         break;
@@ -338,7 +341,10 @@ public partial class SalesService
                              && t.PaymentMethodId.HasValue
                              && paymentMethodsDict.TryGetValue(t.PaymentMethodId.Value, out var localCashMethod)
                              && localCashMethod.IsCash
-                             && string.Equals(localCashMethod.Currency, PaymentMethodCurrencyResolver.LocalCurrency, StringComparison.Ordinal))
+                             && string.Equals(
+                                 PaymentMethodCurrencyResolver.ResolveStoredOrName(localCashMethod.Currency, localCashMethod.Name),
+                                 PaymentMethodCurrencyResolver.LocalCurrency,
+                                 StringComparison.Ordinal))
                     .Sum(t => t.AmountLocal);
 
                 await _cashDrawerService.RecordSaleChangeAsync(
