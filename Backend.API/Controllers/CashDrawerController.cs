@@ -30,6 +30,8 @@ public class CashDrawerController : ControllerBase
     private readonly Sales.Module.Services.CashAdvanceCoordinator _cashAdvanceCoordinator;
     // 8.149 (SRE-02): clave obligatoria + replay para POST transaction.
     private readonly IdempotencyRequestResolver _idempotencyResolver;
+    // 8.205 (C-01): política de anclaje de tasa compartida con SalesService.
+    private readonly Sales.Module.Services.ExchangeRateAnchorService _rateAnchor;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public CashDrawerController(
@@ -50,6 +52,7 @@ public class CashDrawerController : ControllerBase
         _timeZoneProvider = timeZoneProvider;
         _cashAdvanceCoordinator = cashAdvanceCoordinator;
         _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
+        _rateAnchor = new Sales.Module.Services.ExchangeRateAnchorService(inventoryService, settingsService);
     }
 
     [HttpGet("active-session")]
@@ -262,79 +265,13 @@ public class CashDrawerController : ControllerBase
 
     private async Task<decimal> ResolveAnchoredRateAsync(decimal clientRate, int referenceId, CancellationToken cancellationToken)
     {
-        decimal roundedClientRate = ValidateAndRoundClientRate(clientRate);
-
-        var (hasOfficialRate, officialRate) = await TryGetOfficialRateAsync(roundedClientRate, referenceId, cancellationToken);
-        if (!hasOfficialRate)
+        var result = await _rateAnchor.ResolveAsync(clientRate, "CashDrawerController", referenceId, cancellationToken);
+        if (result.Outcome == Sales.Module.Services.ExchangeRateAnchorOutcome.Rejected)
         {
-            return roundedClientRate;
+            throw new ArgumentException($"La tasa de cambio {result.ClientRate} fue rechazada: excede ±100% de la tasa BCV oficial ({result.OfficialRate}). Contacte al supervisor.");
         }
 
-        decimal deviationPct = Math.Abs(roundedClientRate - officialRate) / officialRate;
-        if (deviationPct >= 1.0m)
-        {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Tasa rechazada por manipulación en txn manual #{referenceId}: recibida={roundedClientRate}, BCV={officialRate}, desvío={deviationPct:P2}");
-            throw new ArgumentException($"La tasa de cambio {roundedClientRate} fue rechazada: excede ±100% de la tasa BCV oficial ({officialRate}). Contacte al supervisor.");
-        }
-
-        decimal tolerancePct = await ResolveTolerancePctAsync(referenceId, cancellationToken);
-        if (deviationPct > tolerancePct)
-        {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Desvío de tasa ({deviationPct:P2} > {tolerancePct:P2}) en txn manual #{referenceId}. Se ANCLA: {roundedClientRate} -> {officialRate}");
-            return officialRate;
-        }
-
-        return roundedClientRate;
-    }
-
-    private static decimal ValidateAndRoundClientRate(decimal clientRate)
-    {
-        if (clientRate <= 0m || clientRate > 1000000m) {
-            throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio inválida o no inicializada (<= 0).");
-        }
-
-        return Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(clientRate);
-    }
-
-    private async Task<(bool HasOfficialRate, decimal OfficialRate)> TryGetOfficialRateAsync(decimal roundedClientRate, int referenceId, CancellationToken cancellationToken)
-    {
-        decimal officialRate;
-        try
-        {
-            officialRate = await _inventoryService.GetTodayExchangeRateAsync(cancellationToken);
-        }
-        catch (System.Exception ex)
-        {
-            Core.Logging.AppLogger.LogDbError(ex, "CashDrawerController.ResolveAnchoredRate");
-            return (false, 0m);
-        }
-
-        if (officialRate <= 0m)
-        {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Sin tasa BCV del día en CashDrawerController manual txn #{referenceId}. Fail-open: tasa recibida {roundedClientRate}.");
-            return (false, 0m);
-        }
-
-        return (true, officialRate);
-    }
-
-    private async Task<decimal> ResolveTolerancePctAsync(int referenceId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var toleranceSetting = await _settingsService.GetSettingAsync("RateDeviationTolerancePct");
-            if (decimal.TryParse(toleranceSetting, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
-                && parsed > 0m && parsed < 1.0m)
-            {
-                return parsed;
-            }
-        }
-        catch (System.Exception ex)
-        {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] No se pudo leer la tolerancia configurada en txn manual #{referenceId}; se usa default 10%. {ex.Message}");
-        }
-
-        return 0.10m;
+        return result.EffectiveRate;
     }
 
     private async Task<CashDrawerSessionResponseDto> MapLocalTimesAsync(CashDrawerSessionResponseDto session, CancellationToken cancellationToken)

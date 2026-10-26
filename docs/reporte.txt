@@ -17005,3 +17005,33 @@ C2. Matemática de preview en `CreditPaymentDialogViewModel`/`CreditPaymentModal
 C3. Rate limit del hub de autorizaciones, hardening de pairing/health y credenciales locales de
     desarrollo (`appsettings.Development.json`, ignorado por git).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE (XXXIX) - SPLIT DE SALESSERVICE Y ANCLAJE DE TASA (8.205) - 2026-10-26
+================================================================================
+Pedido del mantenedor: "procede" sobre el backlog estructural de la auditoría.
+
+A. CAMBIOS
+A1. `SalesHistoryService` (nuevo, internal): extrae la vertical de solo lectura de `SalesService`:
+    `GetSalesHistoryAsync`, `GetSaleHistoryDetailAsync`, `GetPendingPickupsAsync`,
+    `CountPendingPickupsAsync`, `MapToHistoryDetail` y `ToLikePattern`. `SalesService` delega con
+    las mismas firmas. `ConfirmPickupAsync` permanece en `SalesService` por ser una mutación.
+A2. `ExchangeRateAnchorService` (nuevo, política compartida): centraliza validación/redondeo de la
+    tasa recibida, lectura de la tasa BCV, tolerancia configurable y decisión
+    aceptar/anclar/rechazar/fail-open. `SalesService` y `CashDrawerController` usan la misma
+    política; se elimina la duplicación del controlador.
+A3. Se conservan los mensajes públicos de rechazo (`excede ±100%...`), el fail-open ante BCV
+    ausente/error y el default de tolerancia del 10%.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B2. Suite focalizada de historial/pickups: 35/35 (sin PG); rate/anchor: 48/48; caja: 88/88.
+B3. Suite completa con carril PostgreSQL activo: **3593/3593**, 0 fallos, 0 omitidos.
+B4. `SalesServicePostgresHistoryTests` pasó dentro de la suite completa con el clúster aislado.
+
+C. RESIDUALES
+C1. `SalesService` aún concentra checkout, pricing, mutaciones de entrega y otras verticales; el
+    split completo por caso de uso continúa en la próxima fase.
+C2. Matemática de preview en la UI, rate limit del hub, hardening de health/pairing y credenciales
+    locales de desarrollo siguen abiertos.
+================================================================================
