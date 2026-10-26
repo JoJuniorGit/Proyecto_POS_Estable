@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Core.Entities;
 using Core.Helpers;
 using Sales.Module.Data;
 using Sales.Module.DTOs;
@@ -7,6 +8,8 @@ using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using System;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Sales.Module.Services;
@@ -366,18 +369,35 @@ public class CashDrawerService : ICashDrawerService
         int? referenceId = null,
         bool isPhysicalCash = true,
         int? paymentMethodId = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        CashTransactionIdempotency? idempotency = null)
     {
         if (amountLocal <= 0 && source != CashTransactionSource.Closing && source != CashTransactionSource.Opening)
         {
             throw new ArgumentException("El monto de la transacción debe ser mayor a cero.", nameof(amountLocal));
         }
 
+        if (idempotency is not null)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(idempotency.Key);
+            ArgumentException.ThrowIfNullOrWhiteSpace(idempotency.RequestPath);
+            if (idempotency.PayloadHash.Length == 0)
+            {
+                throw new ArgumentException("El hash del payload idempotente es obligatorio.", nameof(idempotency));
+            }
+        }
+
         bool isInMemory = _context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
         var ambientTransaction = _context.Database.CurrentTransaction;
         bool ownsTransaction = !isInMemory && ambientTransaction == null;
 
-        async Task<CashTransaction> ExecuteWithinTransactionAsync()
+        if (idempotency is not null && !ownsTransaction && !isInMemory)
+        {
+            throw new InvalidOperationException(
+                "La idempotencia transaccional del movimiento manual requiere que el servicio controle su propia transacción.");
+        }
+
+        async Task<CashTransactionResponseDto> ExecuteWithinTransactionAsync()
         {
             IDbContextTransaction? ownTransaction = null;
             if (ownsTransaction)
@@ -419,6 +439,22 @@ public class CashDrawerService : ICashDrawerService
                     }
                 }
 
+                // 8.202-H2 (S4): replay bajo el lock de sesión. El chequeo del controlador ocurrió
+                // antes del lock; esta relectura cierra la ventana entre dos peticiones concurrentes
+                // con la MISMA clave sin ejecutar el efecto una segunda vez.
+                if (idempotency is not null)
+                {
+                    var replay = await TryReadIdempotentTransactionAsync(idempotency, cancellationToken);
+                    if (replay is not null)
+                    {
+                        if (ownTransaction is not null)
+                        {
+                            await ownTransaction.RollbackAsync(CancellationToken.None);
+                        }
+                        return replay;
+                    }
+                }
+
                 if (type == CashTransactionType.Expense && isPhysicalCash && source != CashTransactionSource.Closing)
                 {
                     var currentBalance = await GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
@@ -446,12 +482,47 @@ public class CashDrawerService : ICashDrawerService
                 _context.CashTransactions.Add(transaction);
                 await _context.SaveChangesAsync(cancellationToken);
 
+                var dto = MapTransaction(transaction);
+
+                if (idempotency is not null)
+                {
+                    // Misma transacción que el movimiento: si el insert choca con una clave
+                    // concurrente, el rollback revierte también el CashTransaction.
+                    await PersistIdempotentTransactionAsync(idempotency, dto, cancellationToken);
+                }
+
                 if (ownTransaction != null)
                 {
                     await ownTransaction.CommitAsync(cancellationToken);
                 }
 
-                return transaction;
+                return dto;
+            }
+            catch (DbUpdateException ex) when (idempotency is not null && IsIdempotentRequestUniqueViolation(ex))
+            {
+                // La clave la ganó otra transacción: se revierte este movimiento y se replica la
+                // respuesta ya confirmada. PostgreSQL bloquea el insert hasta que la otra tx
+                // commitea, por lo que al llegar acá el ganador ya es visible.
+                if (ownTransaction is not null)
+                {
+                    try
+                    {
+                        await ownTransaction.RollbackAsync(CancellationToken.None);
+                    }
+                    catch
+                    {
+                        // La conexión puede haberse perdido; el dispose cierra el intento.
+                    }
+                }
+
+                _context.ChangeTracker.Clear();
+                var replay = await TryReadIdempotentTransactionAsync(idempotency, CancellationToken.None);
+                if (replay is not null)
+                {
+                    return replay;
+                }
+
+                throw;
             }
             catch
             {
@@ -472,15 +543,105 @@ public class CashDrawerService : ICashDrawerService
 
         if (ownsTransaction)
         {
-            var transaction = await _context.Database.CreateExecutionStrategy().ExecuteAsync<object?, CashTransaction>(
+            var dto = await _context.Database.CreateExecutionStrategy().ExecuteAsync<object?, CashTransactionResponseDto?>(
                 state: null,
-                operation: (_, _, _) => ExecuteWithinTransactionAsync(),
-                verifySucceeded: null,
+                operation: async (_, _, _) => (CashTransactionResponseDto?)await ExecuteWithinTransactionAsync(),
+                verifySucceeded: async (_, _, verifyToken) =>
+                {
+                    bool exists = await IdempotentTransactionExistsAsync(idempotency, verifyToken);
+                    return new ExecutionResult<CashTransactionResponseDto?>(exists, default);
+                },
                 cancellationToken: cancellationToken);
-            return MapTransaction(transaction);
+
+            if (dto is not null)
+            {
+                return dto;
+            }
+
+            // verifySucceeded=true: el commit sí ocurrió aunque la conexión se cortó. Se recupera
+            // la respuesta persistida en lugar de repetir el movimiento.
+            _context.ChangeTracker.Clear();
+            dto = await TryReadIdempotentTransactionAsync(idempotency!, cancellationToken);
+            return dto ?? throw new InvalidOperationException("No se pudo confirmar el resultado de la transacción de caja.");
         }
 
-        return MapTransaction(await ExecuteWithinTransactionAsync());
+        return await ExecuteWithinTransactionAsync();
+    }
+
+    private async Task<CashTransactionResponseDto?> TryReadIdempotentTransactionAsync(
+        CashTransactionIdempotency idempotency,
+        CancellationToken cancellationToken)
+    {
+        var existing = await _context.IdempotentRequests
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                record => record.Key == idempotency.Key && record.RequestPath == idempotency.RequestPath,
+                cancellationToken);
+
+        if (existing is null || existing.ExpiresAtUtc <= DateTime.UtcNow)
+        {
+            return null;
+        }
+
+        if (existing.UserId != idempotency.UserId
+            || existing.PayloadHash.Length != idempotency.PayloadHash.Length
+            || !CryptographicOperations.FixedTimeEquals(existing.PayloadHash, idempotency.PayloadHash)
+            || string.IsNullOrWhiteSpace(existing.ResponseBody))
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<CashTransactionResponseDto>(existing.ResponseBody);
+    }
+
+    private async Task PersistIdempotentTransactionAsync(
+        CashTransactionIdempotency idempotency,
+        CashTransactionResponseDto dto,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        _context.IdempotentRequests.Add(new IdempotentRequest
+        {
+            Key = idempotency.Key,
+            RequestPath = idempotency.RequestPath,
+            PayloadHash = idempotency.PayloadHash,
+            StatusCode = 200,
+            ResponseBody = idempotency.SerializeResponse(dto),
+            UserId = idempotency.UserId,
+            CreatedAtUtc = now,
+            ExpiresAtUtc = now.AddHours(24)
+        });
+
+        await _context.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<bool> IdempotentTransactionExistsAsync(
+        CashTransactionIdempotency? idempotency,
+        CancellationToken cancellationToken)
+    {
+        if (idempotency is null)
+        {
+            return false;
+        }
+
+        return await _context.IdempotentRequests
+            .AsNoTracking()
+            .AnyAsync(
+                record => record.Key == idempotency.Key && record.RequestPath == idempotency.RequestPath,
+                cancellationToken);
+    }
+
+    private static bool IsIdempotentRequestUniqueViolation(DbUpdateException ex)
+    {
+        if (ex.InnerException is Npgsql.PostgresException postgresException)
+        {
+            return postgresException.SqlState == "23505"
+                && (string.IsNullOrEmpty(postgresException.ConstraintName)
+                    || postgresException.ConstraintName.Contains("IdempotentRequests", StringComparison.Ordinal));
+        }
+
+        return ex.Message.Contains("IdempotentRequests", StringComparison.Ordinal)
+            || ex.InnerException?.Message.Contains("IdempotentRequests", StringComparison.Ordinal) == true;
     }
 
     public async Task<CashTransactionResponseDto> RecordSaleChangeAsync(

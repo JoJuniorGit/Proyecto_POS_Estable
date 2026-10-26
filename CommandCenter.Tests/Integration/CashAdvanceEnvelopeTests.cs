@@ -144,7 +144,8 @@ public class CashAdvanceEnvelopeTests
         fakeDrawer.Setup(c => c.AddTransactionAsync(
             It.IsAny<int>(), It.IsAny<CashTransactionType>(), It.IsAny<CashTransactionSource>(),
             It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
-            It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>()))
+            It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(),
+            It.IsAny<CancellationToken>(), It.IsAny<Sales.Module.DTOs.CashTransactionIdempotency?>()))
             .ThrowsAsync(new InvalidOperationException("Simulated drawer failure"));
 
         var coordinator = new CashAdvanceCoordinator(context, salesService, fakeDrawer.Object, settingsMock.Object);

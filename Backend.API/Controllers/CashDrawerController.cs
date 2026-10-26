@@ -217,6 +217,20 @@ public class CashDrawerController : ControllerBase
             decimal anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, referenceId: request.SessionId, cancellationToken: cancellationToken);
             decimal amountUsd = Core.Helpers.PricingCalculator.ToUSD(request.AmountLocal, anchoredRate);
 
+            var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
+
+            // 8.202-H2 (S4): la respuesta idempotente se persiste dentro de la MISMA transacción
+            // que el movimiento. El serializador conserva la hora local del contrato HTTP.
+            Sales.Module.DTOs.CashTransactionIdempotency? transactionIdempotency =
+                resolved.Key is not null && resolved.PayloadHash is not null
+                    ? new Sales.Module.DTOs.CashTransactionIdempotency(
+                        resolved.Key,
+                        requestPath,
+                        resolved.PayloadHash,
+                        _idempotencyResolver.GetActorUserId(),
+                        dto => System.Text.Json.JsonSerializer.Serialize(MapLocalTime(dto, tz)))
+                    : null;
+
             var transaction = await _cashDrawerService.AddTransactionAsync(
                 request.SessionId,
                 request.Type,
@@ -228,11 +242,10 @@ public class CashDrawerController : ControllerBase
                 null,
                 true,
                 null,
-                cancellationToken);
+                cancellationToken,
+                transactionIdempotency);
 
-            var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
             var mapped = MapLocalTime(transaction, tz);
-            await _idempotencyResolver.RegisterSuccessAsync(resolved, requestPath, System.Text.Json.JsonSerializer.Serialize(mapped), cancellationToken);
 
             if (Response?.Headers != null)
             {
@@ -352,6 +365,20 @@ public class CashDrawerController : ControllerBase
         };
     }
 
+    /// <summary>
+    /// 8.202-H2: aplica la hora local del contrato a ambos movimientos del adelanto. Es idempotente
+    /// (siempre recalcula desde <c>TransactionTime</c> UTC), por lo que también se usa al serializar
+    /// la respuesta que se persiste para un replay.
+    /// </summary>
+    private static Sales.Module.Interfaces.CashAdvanceResultDto MapCashAdvanceLocalTimes(
+        Sales.Module.Interfaces.CashAdvanceResultDto result,
+        TimeZoneInfo tz)
+    {
+        result.ExpenseTransaction = MapLocalTime(result.ExpenseTransaction, tz);
+        result.IncomeTransaction = MapLocalTime(result.IncomeTransaction, tz);
+        return result;
+    }
+
     [HttpGet("advance-commission")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<CashAdvanceCommissionDto>> GetAdvanceCommissionAsync([FromQuery] bool isTransfer, CancellationToken cancellationToken)
@@ -397,6 +424,20 @@ public class CashDrawerController : ControllerBase
 
         try
         {
+            var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
+
+            // 8.202-H2 (S4): la respuesta idempotente se persiste dentro de la MISMA transacción
+            // que la venta y los dos movimientos de gaveta. El serializador congela la hora local.
+            Sales.Module.DTOs.CashAdvanceIdempotency? advanceIdempotency =
+                idempotency.Key is not null && idempotency.PayloadHash is not null
+                    ? new Sales.Module.DTOs.CashAdvanceIdempotency(
+                        idempotency.Key,
+                        requestPath,
+                        idempotency.PayloadHash,
+                        _idempotencyResolver.GetActorUserId(),
+                        advance => System.Text.Json.JsonSerializer.Serialize(MapCashAdvanceLocalTimes(advance, tz)))
+                    : null;
+
             var result = await _cashAdvanceCoordinator.ProcessAsync(
                 request.SessionId,
                 request.RequestedAmountLocal,
@@ -406,17 +447,10 @@ public class CashDrawerController : ControllerBase
                 anchoredRate,
                 cashierId,
                 userName,
-                cancellationToken);
+                cancellationToken,
+                advanceIdempotency);
 
-            var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
-            result.ExpenseTransaction = result.ExpenseTransaction with { TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.ExpenseTransaction.TransactionTime, tz) };
-            result.IncomeTransaction = result.IncomeTransaction with { TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.IncomeTransaction.TransactionTime, tz) };
-
-            await _idempotencyResolver.RegisterSuccessAsync(
-                idempotency,
-                requestPath,
-                System.Text.Json.JsonSerializer.Serialize(result),
-                cancellationToken);
+            result = MapCashAdvanceLocalTimes(result, tz);
 
             return Ok(result);
         }
