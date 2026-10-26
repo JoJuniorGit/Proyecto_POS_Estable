@@ -25,6 +25,7 @@ public class SettingsController : ControllerBase
     private readonly ITimeZoneProvider _timeZoneProvider;
     private readonly Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? _hubContext;
     private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache? _cache;
+    private readonly IMonetaryProfileService? _monetaryProfileService;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public SettingsController(
@@ -34,7 +35,8 @@ public class SettingsController : ControllerBase
         IExchangeRateWriteService? writeService = null,
         ITimeZoneProvider? timeZoneProvider = null,
         Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null,
-        Microsoft.Extensions.Caching.Memory.IMemoryCache? cache = null)
+        Microsoft.Extensions.Caching.Memory.IMemoryCache? cache = null,
+        IMonetaryProfileService? monetaryProfileService = null)
     {
         _settingsService = settingsService;
         _currentUserService = currentUserService;
@@ -43,6 +45,7 @@ public class SettingsController : ControllerBase
         _timeZoneProvider = timeZoneProvider ?? new Core.Services.TimeZoneProvider(settingsService);
         _hubContext = hubContext;
         _cache = cache;
+        _monetaryProfileService = monetaryProfileService;
     }
 
     [HttpGet("exchange-rate")]
@@ -226,6 +229,47 @@ public class SettingsController : ControllerBase
             CashBsRoundingRule = request.CashBsRoundingRule,
             EnforceMinimumMarginFloor = request.EnforceMinimumMarginFloor
         });
+    }
+
+    // 8.211-T1 (S1/S3): perfil monetario configurable. GET queda cubierto por la política de clase
+    // (Admin/Manager); PUT exige Admin y el guard CanMutateSettings. F1 no emite SignalR ni toca
+    // flujos financieros: solo almacena la configuración para las fases posteriores.
+    [HttpGet("monetary-profile")]
+    public async Task<ActionResult> GetMonetaryProfileAsync(CancellationToken cancellationToken = default)
+    {
+        var service = _monetaryProfileService
+            ?? throw new InvalidOperationException("El servicio de perfil monetario no está configurado.");
+
+        return Ok(await service.GetAsync(cancellationToken));
+    }
+
+    [HttpPut("monetary-profile")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult> SetMonetaryProfileAsync(
+        [FromBody] MonetaryProfileDto? profile,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_currentUserService.CanMutateSettings)
+        {
+            return this.ApiForbidden("Su rol no tiene permisos para actualizar el perfil monetario.");
+        }
+
+        if (profile is null)
+        {
+            return this.ApiBadRequest("El perfil monetario es obligatorio.");
+        }
+
+        var service = _monetaryProfileService
+            ?? throw new InvalidOperationException("El servicio de perfil monetario no está configurado.");
+
+        try
+        {
+            return Ok(await service.SaveAsync(profile, cancellationToken));
+        }
+        catch (ArgumentException exception)
+        {
+            return this.ApiBadRequest(exception.Message);
+        }
     }
 
     /// <summary>

@@ -68,6 +68,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IOcrExtractionService, OcrExtractionService>();
         builder.Services.AddScoped<IReservationService, Inventory.Module.Services.ReservationService>();
         builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
+        // 8.211-T1 (S1/S2/S3): perfil monetario configurable (contrato, persistencia y API).
+        builder.Services.AddScoped<IMonetaryProfileService, MonetaryProfileService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
         builder.Services.AddScoped<IExchangeRateHistoryService, ExchangeRateHistoryService>();
         builder.Services.AddScoped<IInventoryHealthProbe, InventoryHealthProbe>();

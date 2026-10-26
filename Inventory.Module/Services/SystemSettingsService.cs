@@ -59,23 +59,48 @@ public class SystemSettingsService : ISystemSettingsService
         return value;
     }
 
-    public async Task SetSettingAsync(string key, string value)
+    public Task SetSettingAsync(string key, string value)
+        => SetSettingsAsync(new Dictionary<string, string>(StringComparer.Ordinal) { [key] = value });
+
+    // 8.211-T1 (S2): escritura batch atómica. Un solo SaveChangesAsync cubre todas las claves y la
+    // invalidación de caché se hace después del commit, de modo que una lectura concurrente nunca
+    // observe una mezcla de valores viejos y nuevos.
+    public async Task SetSettingsAsync(IReadOnlyDictionary<string, string> values)
     {
-        var setting = await _context.SystemSettings.FirstOrDefaultAsync(s => s.Key == key);
-        if (setting == null)
+        ArgumentNullException.ThrowIfNull(values);
+
+        foreach (var pair in values)
         {
-            setting = new SystemSetting
-            {
-                Key = key,
-                Value = value,
-                LastUpdated = DateTime.UtcNow
-            };
-            _context.SystemSettings.Add(setting);
+            ArgumentException.ThrowIfNullOrWhiteSpace(pair.Key);
         }
-        else
+
+        if (values.Count == 0)
         {
-            setting.Value = value;
-            setting.LastUpdated = DateTime.UtcNow;
+            return;
+        }
+
+        var keys = values.Keys.ToList();
+        var existingSettings = (await _context.SystemSettings
+                .Where(s => keys.Contains(s.Key))
+                .ToListAsync())
+            .ToDictionary(s => s.Key, StringComparer.Ordinal);
+
+        var now = DateTime.UtcNow;
+        foreach (var pair in values)
+        {
+            if (existingSettings.TryGetValue(pair.Key, out var setting))
+            {
+                setting.Value = pair.Value;
+                setting.LastUpdated = now;
+                continue;
+            }
+
+            _context.SystemSettings.Add(new SystemSetting
+            {
+                Key = pair.Key,
+                Value = pair.Value,
+                LastUpdated = now
+            });
         }
 
         await _context.SaveChangesAsync();
@@ -83,7 +108,10 @@ public class SystemSettingsService : ISystemSettingsService
         // Invalidar la caché (efecto inmediato sin esperar TTL).
         if (_cache != null)
         {
-            _cache.Remove(CachePrefix + key);
+            foreach (var pair in values)
+            {
+                _cache.Remove(CachePrefix + pair.Key);
+            }
         }
     }
 }

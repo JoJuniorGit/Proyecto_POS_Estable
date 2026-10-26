@@ -15,4 +15,15 @@ public static class SettingKeys
         public const string DefaultCashBsRoundingRule = "Pricing.DefaultCashBsRoundingRule";
         public const string DefaultEnforceMinimumMarginFloor = "Pricing.DefaultEnforceMinimumMarginFloor";
     }
+
+    // 8.211-T1 (S2): perfil monetario configurable sobre el almacén key-value existente. El modo se
+    // persiste por NOMBRE (Single/Dual); los símbolos son texto de presentación recortado (1-8).
+    public static class Monetary
+    {
+        public const string Mode = "Monetary.Mode";
+        public const string PrimaryCurrencyCode = "Monetary.PrimaryCurrencyCode";
+        public const string PrimaryCurrencySymbol = "Monetary.PrimaryCurrencySymbol";
+        public const string SecondaryCurrencyCode = "Monetary.SecondaryCurrencyCode";
+        public const string SecondaryCurrencySymbol = "Monetary.SecondaryCurrencySymbol";
+    }
 }
