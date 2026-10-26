@@ -561,6 +561,46 @@
             </Border>
         </Grid>
 
+        <!-- 8.201 (S1): apertura dual de caja (fondo Bs.S + USD). Overlay solo sin sesión. -->
+        <Border Grid.Row="0" Grid.RowSpan="5" Background="#66000000"
+                Visibility="{Binding IsSessionInactive, Converter={StaticResource BooleanToVisibilityConverter}}"
+                AutomationProperties.AutomationId="CashDrawer_OpenOverlay">
+            <Border Width="520" Padding="28" CornerRadius="12"
+                    Background="{DynamicResource MaterialDesignPaper}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                        <materialDesign:PackIcon Kind="CashRegister" Width="28" Height="28"
+                                                 VerticalAlignment="Center" Margin="0,0,10,0"
+                                                 Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                        <TextBlock Text="Abrir Caja" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock Text="Declare el fondo físico inicial de cada gaveta. El fondo USD queda segregado y se transfiere automáticamente al turno siguiente."
+                               TextWrapping="Wrap" FontSize="12" Opacity="0.7" Margin="0,0,0,18"/>
+                    <TextBox materialDesign:HintAssist.Hint="Fondo inicial Bs.S *"
+                             Text="{Binding OpeningBalanceLocalText, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             AutomationProperties.AutomationId="CashDrawer_OpeningBalanceLocal"
+                             Margin="0,0,0,14"/>
+                    <TextBox materialDesign:HintAssist.Hint="Fondo inicial USD"
+                             Text="{Binding OpeningBalanceUsdText, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             AutomationProperties.AutomationId="CashDrawer_OpeningBalanceUsd"
+                             Margin="0,0,0,10"/>
+                    <TextBlock Text="{Binding OpeningRateDisplay}" FontSize="12" Opacity="0.7" Margin="0,0,0,18"/>
+                    <Button Command="{Binding OpenCashDrawerCommand}"
+                            Style="{DynamicResource MaterialDesignRaisedButton}"
+                            IsDefault="True"
+                            AutomationProperties.AutomationId="CashDrawer_OpenSessionButton"
+                            HorizontalAlignment="Right" MinWidth="150" Height="40">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="LockOpen" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="ABRIR CAJA" FontWeight="Bold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Border>
 
     </Grid>
 </UserControl>

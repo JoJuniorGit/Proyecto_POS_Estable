@@ -133,6 +133,18 @@ export async function getPettyCashVoucher(expenseId, signal) {
 }
 
 /**
+ * 8.201 (S1): apertura explícita de la sesión con fondo inicial segregado Bs.S/USD. El servidor
+ * persiste ambos saldos y el rollover los transfiere al turno siguiente.
+ */
+export async function openCashDrawerSession(payload = {}, signal) {
+  return await api.post('/api/cashdrawer/open', {
+    openingBalanceLocal: Number(payload?.openingBalanceLocal) || 0,
+    openingBalanceUsd: Number(payload?.openingBalanceUsd) || 0,
+    currentExchangeRate: Number(payload?.currentExchangeRate) || 0,
+  }, { signal });
+}
+
+/**
  * Cierre de la sesión de caja con conteo USD opcional (T2b, S2). El conteo Bs.S es obligatorio y
  * `actualClosingBalanceUsd` viaja null cuando no se informa: el comportamiento previo se conserva.
  */

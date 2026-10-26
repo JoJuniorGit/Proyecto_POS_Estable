@@ -107,6 +107,46 @@ export function validatePettyCashCancelReason(reason) {
 }
 
 /**
+ * Validación de la apertura (8.201, S1): ambos fondos son >= 0 y la tasa debe estar configurada.
+ * Un fondo en cero es válido (caja sin fondo inicial).
+ */
+export function validateCashDrawerOpenDraft({
+  openingBalanceLocal,
+  openingBalanceUsd,
+  currentExchangeRate,
+} = {}) {
+  const local = Number(openingBalanceLocal ?? 0);
+  if (!Number.isFinite(local) || local < 0) {
+    return 'Ingrese un fondo inicial válido en Bs.S (mayor o igual a cero).';
+  }
+
+  const usd = Number(openingBalanceUsd ?? 0);
+  if (!Number.isFinite(usd) || usd < 0) {
+    return 'Ingrese un fondo inicial válido en USD (mayor o igual a cero).';
+  }
+
+  const rate = Number(currentExchangeRate);
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return 'Configure la tasa de cambio vigente antes de abrir la caja.';
+  }
+
+  return null;
+}
+
+/** Payload de apertura dual: ambos fondos viajan siempre (0 es un valor válido). */
+export function buildCashDrawerOpenPayload({
+  openingBalanceLocal,
+  openingBalanceUsd,
+  currentExchangeRate,
+} = {}) {
+  return {
+    openingBalanceLocal: Number(openingBalanceLocal) || 0,
+    openingBalanceUsd: Number(openingBalanceUsd) || 0,
+    currentExchangeRate: Number(currentExchangeRate) || 0,
+  };
+}
+
+/**
  * Validación del cierre de sesión (S2): el conteo Bs.S es obligatorio (>= 0) y el USD, cuando se
  * informa, también debe ser >= 0. Vacío es válido (el contrato conserva el comportamiento previo).
  */

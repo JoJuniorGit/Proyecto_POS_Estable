@@ -28,6 +28,7 @@ import PettyCashPanel from '../components/register/PettyCashPanel';
 import PettyCashExpenseModal from '../components/register/PettyCashExpenseModal';
 import PettyCashCancelModal from '../components/register/PettyCashCancelModal';
 import CashDrawerCloseModal from '../components/register/CashDrawerCloseModal';
+import CashDrawerOpenModal from '../components/register/CashDrawerOpenModal';
 import { getPettyCashExpenses, getPettyCashPhysicalBalances } from '../services/pettyCashApi';
 import { canCloseCashDrawerSession, canUsePettyCash } from '../components/register/registerFormLogic';
 import Pagination from '../components/ui/Pagination';
@@ -86,6 +87,7 @@ function RegisterPageContent() {
   const [isPettyCashExpenseOpen, setIsPettyCashExpenseOpen] = useState(false);
   const [cancelTargetExpense, setCancelTargetExpense] = useState(null);
   const [isCloseCashDrawerOpen, setIsCloseCashDrawerOpen] = useState(false);
+  const [isOpenCashDrawerOpen, setIsOpenCashDrawerOpen] = useState(false);
 
   // Los gastos del turno se recargan junto con la sesión (el registro/anulación se reflejan de
   // inmediato). Los saldos físicos por gaveta solo se piden a supervisión: el Cashier conserva el
@@ -235,6 +237,18 @@ function RegisterPageContent() {
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Actualizar
           </button>
+
+          {!session && (
+            <button
+              type="button"
+              className="btn btn-primary flex-align-center justify-content-center gap-2 register-action-btn"
+              onClick={() => setIsOpenCashDrawerOpen(true)}
+              disabled={loading || !(Number(exchangeRate) > 0)}
+              title="Declarar el fondo inicial en Bs.S y USD y abrir la sesión"
+            >
+              <Landmark size={18} /> ABRIR CAJA
+            </button>
+          )}
 
           <button
             type="button"
@@ -698,6 +712,13 @@ function RegisterPageContent() {
           onSuccess={loadSession}
         />
       )}
+
+      <CashDrawerOpenModal
+        isOpen={isOpenCashDrawerOpen}
+        onClose={() => setIsOpenCashDrawerOpen(false)}
+        exchangeRate={exchangeRate}
+        onSuccess={loadSession}
+      />
     </div>
   );
 }

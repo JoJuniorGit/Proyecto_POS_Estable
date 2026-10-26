@@ -29,6 +29,8 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _activeSession, value))
             {
                 OnPropertyChanged(nameof(IsSessionActive));
+                OnPropertyChanged(nameof(IsSessionInactive));
+                OnPropertyChanged(nameof(CanOpenCashDrawer));
                 OnPropertyChanged(nameof(CanUsePettyCash));
                 OnPropertyChanged(nameof(CanCloseCashDrawer));
                 if (value is null)
@@ -135,6 +137,36 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool CanViewTheoreticalBalance => _userSession?.IsAdmin == true || _userSession?.IsManager == true;
 
+    /// <summary>
+    /// 8.201 (S1): apertura manual con fondo dual. Sin sesión activa, el overlay de apertura
+    /// declara el fondo Bs.S y el USD; el backend los persiste por separado.
+    /// </summary>
+    public bool IsSessionInactive => !IsSessionActive;
+    public bool CanOpenCashDrawer => IsSessionInactive && (_userSession == null || _userSession.IsLoggedIn);
+
+    private string _openingBalanceLocalText = "0";
+    public string OpeningBalanceLocalText
+    {
+        get => _openingBalanceLocalText;
+        set => SetProperty(ref _openingBalanceLocalText, value);
+    }
+
+    private string _openingBalanceUsdText = "0";
+    public string OpeningBalanceUsdText
+    {
+        get => _openingBalanceUsdText;
+        set => SetProperty(ref _openingBalanceUsdText, value);
+    }
+
+    private bool _isOpeningSession;
+    public bool IsOpeningSession
+    {
+        get => _isOpeningSession;
+        set => SetProperty(ref _isOpeningSession, value);
+    }
+
+    public string OpeningRateDisplay => $"Tasa: {CurrencyDisplay.Number(_exchangeRateService.CurrentRate)} / USD";
+
 
     public CashDrawerViewModel(
         ICashDrawerService cashDrawerService, 
@@ -166,6 +198,8 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             {
                 vm.UpdateFormattedBalances();
             }
+
+            vm.OnPropertyChanged(nameof(OpeningRateDisplay));
         });
 
         // 8.143: si el ajuste de moneda cambia en caliente (Settings o SignalR), re-formatear los
@@ -328,6 +362,52 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private async Task RefreshAsync() => await LoadSessionAsync();
+
+    /// <summary>
+    /// 8.201 (S1): abre la sesión con fondo inicial Bs.S + USD. El auto-alta por primer cobro no
+    /// se toca: este comando es la apertura explícita desde la vista de caja.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenCashDrawerAsync()
+    {
+        if (IsSessionActive || IsOpeningSession) return;
+
+        if (!FlexibleDecimalParser.TryParse(OpeningBalanceLocalText, out decimal local) || local < 0m)
+        {
+            _dialogService?.ShowWarning("Apertura de Caja", "Ingrese un fondo inicial válido en Bs.S (mayor o igual a cero).");
+            return;
+        }
+
+        if (!FlexibleDecimalParser.TryParse(OpeningBalanceUsdText, out decimal usd) || usd < 0m)
+        {
+            _dialogService?.ShowWarning("Apertura de Caja", "Ingrese un fondo inicial válido en USD (mayor o igual a cero).");
+            return;
+        }
+
+        decimal rate = _exchangeRateService.CurrentRate;
+        if (rate <= 0m)
+        {
+            _dialogService?.ShowWarning("Apertura de Caja", "Configure la tasa de cambio vigente antes de abrir la caja.");
+            return;
+        }
+
+        IsOpeningSession = true;
+        try
+        {
+            await _cashDrawerService.OpenSessionAsync(local, rate, usd);
+            OpeningBalanceLocalText = "0";
+            OpeningBalanceUsdText = "0";
+            await LoadSessionAsync();
+        }
+        catch (Exception ex)
+        {
+            _dialogService?.ShowError("Apertura de Caja", $"No se pudo abrir la caja: {ex.Message}");
+        }
+        finally
+        {
+            IsOpeningSession = false;
+        }
+    }
 
     [RelayCommand]
     private async Task ProcessCashInAsync()

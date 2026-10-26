@@ -12,6 +12,7 @@ import {
   getPettyCashExpenses,
   getPettyCashVoucher,
   getPettyCashPhysicalBalances,
+  openCashDrawerSession,
   closeCashDrawerSession,
   isPettyCashAuthorizationError,
   extractPettyCashAuthorizationContext,
@@ -228,6 +229,22 @@ describe('pettyCashApi — cierre de sesión con conteo USD opcional (T2b/S2)', 
       actualClosingBalanceLocal: 1250.5,
       currentExchangeRate: 36.5,
       actualClosingBalanceUsd: 20,
+    });
+  });
+
+  it('10. opens the drawer session with both currency funds', async () => {
+    await openCashDrawerSession({
+      openingBalanceLocal: 1250.5,
+      openingBalanceUsd: 20,
+      currentExchangeRate: 36.5,
+    });
+
+    assert.strictEqual(fetchCalls[0].config.method, 'POST');
+    assert.strictEqual(fetchCalls[0].url, 'http://localhost:5000/api/cashdrawer/open');
+    assert.deepStrictEqual(JSON.parse(fetchCalls[0].config.body), {
+      openingBalanceLocal: 1250.5,
+      openingBalanceUsd: 20,
+      currentExchangeRate: 36.5,
     });
   });
 });

@@ -13,6 +13,8 @@ import {
   validatePettyCashCancelReason,
   validateCashDrawerCloseDraft,
   buildCashDrawerClosePayload,
+  validateCashDrawerOpenDraft,
+  buildCashDrawerOpenPayload,
   getPettyCashVoucherCode,
   getPettyCashVoucherFileName,
   getPettyCashAuthorizerDisplay,
@@ -189,5 +191,51 @@ describe('registerFormLogic — presentación del listado', () => {
     assert.strictEqual(summary.activeCount, 2);
     assert.strictEqual(summary.totalBsS, 2190);
     assert.strictEqual(summary.totalUsd, 60);
+  });
+});
+
+describe('registerFormLogic - apertura dual de caja (8.201)', () => {
+  it('14. valida ambos fondos y exige tasa configurada', () => {
+    assert.strictEqual(validateCashDrawerOpenDraft({
+      openingBalanceLocal: 0,
+      openingBalanceUsd: 0,
+      currentExchangeRate: 50,
+    }), null);
+
+    assert.match(validateCashDrawerOpenDraft({
+      openingBalanceLocal: -1,
+      openingBalanceUsd: 0,
+      currentExchangeRate: 50,
+    }), /Bs\.S/);
+
+    assert.match(validateCashDrawerOpenDraft({
+      openingBalanceLocal: 0,
+      openingBalanceUsd: -1,
+      currentExchangeRate: 50,
+    }), /USD/);
+
+    assert.match(validateCashDrawerOpenDraft({
+      openingBalanceLocal: 0,
+      openingBalanceUsd: 0,
+      currentExchangeRate: 0,
+    }), /tasa/);
+  });
+
+  it('15. el payload envía ambos fondos y la tasa, con 0 como valor válido', () => {
+    assert.deepStrictEqual(buildCashDrawerOpenPayload({
+      openingBalanceLocal: 1250.5,
+      openingBalanceUsd: 20,
+      currentExchangeRate: 36.5,
+    }), {
+      openingBalanceLocal: 1250.5,
+      openingBalanceUsd: 20,
+      currentExchangeRate: 36.5,
+    });
+
+    assert.deepStrictEqual(buildCashDrawerOpenPayload({}), {
+      openingBalanceLocal: 0,
+      openingBalanceUsd: 0,
+      currentExchangeRate: 0,
+    });
   });
 });
