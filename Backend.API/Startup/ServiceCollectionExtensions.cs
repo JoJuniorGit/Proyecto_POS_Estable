@@ -325,6 +325,12 @@ public static class ServiceCollectionExtensions
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
 
+            // En el despliegue con reverse proxy el proxy corre en el mismo host. Se declara
+            // explícitamente loopback para que X-Forwarded-For/Proto se apliquen y el pairing
+            // no confunda una conexión remota con una local.
+            options.KnownProxies.Add(System.Net.IPAddress.Loopback);
+            options.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
+
             var knownProxiesConfig = builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>();
             if (knownProxiesConfig != null)
             {

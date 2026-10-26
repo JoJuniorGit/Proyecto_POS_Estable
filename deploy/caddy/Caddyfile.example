@@ -1,0 +1,16 @@
+{
+	# TLS termina en Caddy; el backend Kestrel escucha solo en loopback.
+	auto_https off
+	admin off
+}
+
+:8443 {
+	tls "C:/CommandCenter/BackendAPI/certs/pos-https.crt" "C:/CommandCenter/BackendAPI/certs/pos-https.key"
+	encode gzip
+
+	# Caddy envía X-Forwarded-For y X-Forwarded-Proto por defecto en reverse_proxy.
+	reverse_proxy 127.0.0.1:5000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+}

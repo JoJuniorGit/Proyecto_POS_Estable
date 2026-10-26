@@ -17170,3 +17170,35 @@ C2. El certificado del sitio debe ser confiable para navegadores/móviles; el de
 C3. Rotar el seed en User Secrets no cambia la contraseña de un administrador ya existente;
     ese usuario conserva el cambio obligatorio de contraseña en su próximo login.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE (XLIII) - REVERSE PROXY TLS (D) (8.210) - 2026-10-26
+================================================================================
+Pedido del mantenedor: aplicar C + D (enforcement escalonado de idempotencia y reverse proxy
+TLS). Se implementó D; C permanece en observación con el flag en false.
+
+A. CAMBIOS
+A1. `ReverseProxy:Enabled=true` hace que Kestrel escuche solo en `127.0.0.1:5000` y no abra
+    el puerto HTTPS directo; Caddy termina TLS en `8443` y reenvía al backend.
+A2. `ForwardedHeaders` confía explícitamente en loopback para que el proxy local preserve
+    `X-Forwarded-For`/`X-Forwarded-Proto`; pairing, rate limiting y auditoría reciben la IP real.
+A3. Se agregaron `deploy/caddy/Caddyfile.example`, `scripts/export-https-pem.ps1`,
+    `scripts/setup-caddy-proxy.ps1` y `docs/REVERSE_PROXY.md` con el procedimiento completo.
+A4. El desktop y Web usan `https://<host>:8443/`; el resolver conserva puertos HTTPS explícitos
+    como 8443, y el pairing anuncia ese puerto cuando el proxy está activo.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B2. Suite .NET completa con PostgreSQL aislado: **3614/3614**, 0 fallos, 0 omitidos.
+B3. Web: `npm test` **626/626**, `npm run lint` limpio, `npm run build` OK.
+B4. Scripts PowerShell validados sintácticamente. Caddy no está instalado en este entorno,
+    por lo que `caddy validate` y la prueba TLS real son pasos de despliegue.
+
+C. OPERACIÓN
+C1. Generar/exportar el certificado, ejecutar `setup-caddy-proxy.ps1`, configurar
+    `ReverseProxy__Enabled=true`, `ReverseProxy__HttpsPort=8443`, `Ports__Https=8443` y
+    reiniciar el servicio. Verificar health, SignalR y pairing a través del proxy.
+C2. Mantener `Idempotency:RequireCashSessionAndInvoiceStage=false` hasta confirmar que toda
+    la flota usa clientes nuevos; después activarlo por etapas.
+C3. El backend no debe exponer 5000 en el firewall cuando el proxy esté activo.
+================================================================================

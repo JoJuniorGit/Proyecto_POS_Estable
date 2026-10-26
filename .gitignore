@@ -241,6 +241,7 @@ ClientBin/
 *.jfm
 *.pfx
 Backend.API/certs/*.cer
+deploy/caddy/certs/
 *.publishsettings
 orleans.codegen.cs
 

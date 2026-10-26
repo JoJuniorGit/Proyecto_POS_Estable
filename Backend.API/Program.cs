@@ -71,10 +71,25 @@ try
     AppLogger.LogStart($"[AllowedHosts] Whitelist de hosts permitidos calculada ({computedAllowedHosts.Split(';', StringSplitOptions.RemoveEmptyEntries).Length} hosts).");
 
     int httpPort = int.TryParse(Environment.GetEnvironmentVariable("PORT") ?? Environment.GetEnvironmentVariable("ASPNETCORE_HTTP_PORT"), out int p) ? p : 5000;
-    int httpsPort = httpPort + 1;
+    bool reverseProxyEnabled = builder.Configuration.GetValue<bool>("ReverseProxy:Enabled");
+    int reverseProxyPort = builder.Configuration.GetValue<int?>("ReverseProxy:HttpsPort") ?? 8443;
+    int httpsPort = reverseProxyEnabled ? reverseProxyPort : httpPort + 1;
+
+    if (reverseProxyEnabled)
+    {
+        // D: TLS termina en Caddy/Nginx. Kestrel queda solo en loopback y no publica
+        // el puerto HTTPS directo; el proxy reenvía X-Forwarded-For/Proto.
+        builder.Configuration["Ports:Https"] = reverseProxyPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     builder.WebHost.ConfigureKestrel(kestrel =>
     {
+        if (reverseProxyEnabled)
+        {
+            kestrel.ListenLocalhost(httpPort);
+            return;
+        }
+
         kestrel.ListenAnyIP(httpPort);
         if (httpsCert != null)
         {
@@ -82,9 +97,16 @@ try
         }
     });
 
-    builder.Services.AddSingleton(new Backend.API.Services.HttpsRuntimeInfo(httpsCert != null, httpPort, httpsPort));
+    builder.Services.AddSingleton(new Backend.API.Services.HttpsRuntimeInfo(
+        reverseProxyEnabled || httpsCert != null,
+        httpPort,
+        httpsPort));
 
-    if (httpsCert != null)
+    if (reverseProxyEnabled)
+    {
+        AppLogger.LogStart($"HTTPS delegado al reverse proxy en el puerto {reverseProxyPort}; Kestrel escucha solo en loopback:{httpPort}.");
+    }
+    else if (httpsCert != null)
     {
         AppLogger.LogStart("HTTPS habilitado en https://0.0.0.0:5001 (certificado autofirmado)");
     }
@@ -155,7 +177,7 @@ try
     var app = builder.Build();
 
     // Composición del pipeline HTTP
-    app.ConfigureBackendPipeline(httpsCert, httpsPort);
+    app.ConfigureBackendPipeline(httpsCert, httpsPort, reverseProxyEnabled);
 
     // Ensure Database Exists, Migrations and Seed Data (fail-fast: abort startup on any failure)
     if (!await Backend.API.Startup.DatabaseInitializer.InitializeAsync(app, connectionString))

@@ -14,7 +14,11 @@ namespace Backend.API.Startup;
 /// </summary>
 public static class PipelineExtensions
 {
-    public static WebApplication ConfigureBackendPipeline(this WebApplication app, System.Security.Cryptography.X509Certificates.X509Certificate2? httpsCert, int httpsPort)
+    public static WebApplication ConfigureBackendPipeline(
+        this WebApplication app,
+        System.Security.Cryptography.X509Certificates.X509Certificate2? httpsCert,
+        int httpsPort,
+        bool behindReverseProxy = false)
     {
         // 8.7-L2: validación del encabezado Host contra la whitelist calculada (AllowedHosts).
         // Debe ejecutarse antes del manejo de encabezados reenviados para no confiar en Host externos.
@@ -34,7 +38,7 @@ public static class PipelineExtensions
         // H-02: con certificado activo, toda conexión remota HTTP (Web y Desktop) recibe 307 a
         // HTTPS, que preserva método/body. HTTP queda permitido solo en loopback para desarrollo
         // y automatización local. Detrás de proxy, UseForwardedHeaders ya fijó el esquema real.
-        if (httpsCert != null)
+        if (httpsCert != null || behindReverseProxy)
         {
             if (!app.Environment.IsDevelopment())
             {

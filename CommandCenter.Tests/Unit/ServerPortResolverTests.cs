@@ -51,6 +51,7 @@ public class ServerPortResolverTests
     [InlineData("http://192.168.1.50:5000/", "https://192.168.1.50:5001/")]
     [InlineData("http://192.168.1.50:8080/", "https://192.168.1.50:8081/")]
     [InlineData("https://192.168.1.50:7443/", "https://192.168.1.50:7443/")]
+    [InlineData("https://192.168.1.50:8443/", "https://192.168.1.50:8443/")]
     [InlineData("servidor.local", "https://servidor.local:5001/")]
     public void NormalizeHttpsAddress_UsesSecureSchemeAndHttpsPort(string address, string expected)
     {
