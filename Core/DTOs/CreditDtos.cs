@@ -86,6 +86,17 @@ public class CreditReceivablesFilterDto
     public bool OverdueOnly { get; set; }
 
     public string? Search { get; set; }
+
+    /// <summary>
+    /// 8.202-H4 (S7): página opcional (1-based). Sin <see cref="PageSize"/> se conserva el
+    /// contrato histórico que devuelve toda la cartera filtrada.
+    /// </summary>
+    public int? Page { get; set; }
+
+    /// <summary>
+    /// 8.202-H4 (S7): tamaño de página opcional, acotado a 1..500. Ausente = sin paginación.
+    /// </summary>
+    public int? PageSize { get; set; }
 }
 
 /// <summary>
@@ -108,6 +119,18 @@ public class CreditReceivablesListDto
 
     /// <summary>Tasa efectiva del día usada para la proyección Bs.S; 0 cuando no hay tasa.</summary>
     public decimal TodayRate { get; set; }
+
+    /// <summary>8.202-H4 (S7): cantidad total de obligaciones del conjunto filtrado (antes de paginar).</summary>
+    public int TotalCount { get; set; }
+
+    /// <summary>8.202-H4 (S7): página aplicada; null cuando el cliente no pidió paginación.</summary>
+    public int? Page { get; set; }
+
+    /// <summary>8.202-H4 (S7): tamaño de página aplicado; null cuando no se pidió paginación.</summary>
+    public int? PageSize { get; set; }
+
+    /// <summary>8.202-H4 (S7): true cuando quedan más filas después de la página devuelta.</summary>
+    public bool HasMore { get; set; }
 }
 
 /// <summary>Obligación CxC de la cartera global con su snapshot de emisión y saldo proyectado al día.</summary>

@@ -209,6 +209,11 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<SalePayment>()
             .HasIndex(p => p.PaymentMethodId);
 
+        // 8.202-H4 (S8): ventana del Cierre Z por fecha real del pago.
+        modelBuilder.Entity<SalePayment>()
+            .HasIndex(p => p.CreatedAt)
+            .HasDatabaseName("IX_SalePayments_CreatedAt");
+
         modelBuilder.Entity<Sale>()
             .HasIndex(s => s.InvoiceNumber)
             .IsUnique()
@@ -551,6 +556,10 @@ modelBuilder.Entity<User>().HasData(
             entity.HasIndex(payment => payment.PaymentMethodId)
                 .HasDatabaseName("IX_ReceivablePayments_PaymentMethodId");
 
+            // 8.202-H4 (S8): ventana del Cierre Z por fecha real del abono CxC.
+            entity.HasIndex(payment => payment.ReceivedAtUtc)
+                .HasDatabaseName("IX_ReceivablePayments_ReceivedAtUtc");
+
             entity.HasIndex(payment => payment.ReceivedByUserId)
                 .HasDatabaseName("IX_ReceivablePayments_ReceivedByUserId");
 
@@ -697,6 +706,10 @@ modelBuilder.Entity<User>().HasData(
 
             entity.HasIndex(expense => expense.CreatedByUserId)
                 .HasDatabaseName("IX_PettyCashExpenses_CreatedByUserId");
+
+            // 8.202-H4 (S8): ventana del Cierre Z por fecha de registro del gasto.
+            entity.HasIndex(expense => expense.CreatedAtUtc)
+                .HasDatabaseName("IX_PettyCashExpenses_CreatedAtUtc");
 
             entity.HasIndex(expense => expense.AuthorizedByUserId)
                 .HasDatabaseName("IX_PettyCashExpenses_AuthorizedByUserId");

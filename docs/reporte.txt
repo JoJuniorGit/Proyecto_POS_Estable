@@ -16865,3 +16865,66 @@ C4. El script del lane requiere los binarios de PostgreSQL instalados localmente
 ================================================================================
 
 
+
+================================================================================
+ANEXO POST-CIERRE (XXXVI) - HARDENING DE CAJA, IDEMPOTENCIA Y ESCALABILIDAD (8.202) - 2026-10-26
+================================================================================
+Pedido del mantenedor: ejecutar el plan H1-H4 de la auditoría no funcional, en 4 commits, con la
+suite unitaria, de integración y de concurrencia 100% en verde.
+
+A. CAMBIOS
+A1. H1 - Serialización estricta de sesión y saldos SQL:
+    - `CashDrawerService.AddTransactionAsync` adquiere `pg_advisory_xact_lock(sessionId)` ANTES de
+      validar el estado y relee la sesión dentro de la región bloqueada; si fue cerrada mientras
+      esperaba, aborta con "No se pueden registrar movimientos en una sesión de caja cerrada.".
+    - `LockOpenSessionForWriteAsync` centraliza el lock + re-check. Participan checkout, abonos de
+      venta en espera (individual y lote), abono inicial de HoldSale, cobros CxC y devoluciones CxC,
+      respetando el orden canónico Sale/Customer -> CashDrawerSession.
+    - `GetCurrentBalanceLocalAsync` y `GetPhysicalBalanceAsync` agregan por (PaymentMethodId, Type)
+      en SQL; ya no materializan todos los movimientos de la sesión mientras se retiene el lock.
+A2. H2 - Idempotencia atómica y commits ambiguos:
+    - `CashTransactionIdempotency` y `CashAdvanceIdempotency` llevan la clave al servicio/coordinador.
+      El `IdempotentRequest` se persiste en la MISMA transacción que el movimiento/venta, bajo el lock
+      de sesión; el replay se resuelve bajo el lock antes de repetir el efecto.
+    - `verifySucceeded` reemplaza `null`: ante un commit ambiguo consulta la clave persistida y
+      reconstruye la respuesta almacenada en lugar de repetir el movimiento/adelanto.
+A3. H3 - Concurrencia real PostgreSQL:
+    - `PostgresCashSessionConcurrencyTests`: cierre vs movimiento manual y cierre vs checkout.
+    - `PostgresCashIdempotencyConcurrencyTests`: misma clave en paralelo para movimiento manual y
+      adelanto; exactamente un efecto y una respuesta compartida.
+A4. H4 - Escalabilidad e higiene async:
+    - `GetCreditReceivablesAsync` resuelve búsqueda, mora, totales y página en SQL en PostgreSQL
+      (rama en memoria conservada para SQLite/InMemory). Paginación opt-in (`Page`/`PageSize`,
+      máximo 500) y campos aditivos `TotalCount`/`Page`/`PageSize`/`HasMore`.
+    - Migración idempotente `20261026045215_AddZReportDateIndexesRev8202`:
+      `IX_SalePayments_CreatedAt`, `IX_ReceivablePayments_ReceivedAtUtc`,
+      `IX_PettyCashExpenses_CreatedAtUtc`; snapshot sincronizado y guarda anti-drift en verde.
+    - OCR: `WaitAsync` no bloqueante para el gate de Tesseract; el trabajo CPU-bound sigue en
+      `Task.Run`. SecurityStamp: `CancellationToken` propagado desde `RequestAborted`/hub hasta EF.
+    - Se corrigieron dos tests de infraestructura que solo fallaban al ejecutar la suite completa con
+      el carril PostgreSQL vivo: `DailyClosureRetryIntegrationTests` fija `SalePayment.CreatedAt`
+      (la ventana Z usa la fecha real del pago desde 8.200) y `DatabaseProbeTests` usa un usuario
+      inexistente en lugar de una contraseña incorrecta (el clúster de test es `trust`). También se
+      registró `ICurrentUserService` en el host de `OcrExtractionEndpointTests` (los 4 fallos
+      preexistentes por DI quedaron cerrados).
+
+B. EVIDENCIA
+B1. Commits: H1 `9d8cf88`, H2 `5dc1743`, H3 `61d7e40`, H4 (este anexo).
+B2. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B3. Focalizados H1: 413/413. Focalizados H2: 390/390. Tests nuevos H3: 4/4 y carril PostgreSQL 39/39.
+B4. `dotnet ef migrations has-pending-model-changes`: sin cambios desde la última migración.
+B5. Carril PostgreSQL real (clúster aislado 18.1, puerto 55432): 40/40, incluidos los 4 tests de
+    concurrencia y el test SQL de CxC.
+B6. Suite completa CON carril PostgreSQL activo: 3590 superados, 0 fallos, 0 omitidos.
+B7. No se modificó Web ni WPF; no se ejecutaron sus suites (alcance backend de este hardening).
+
+C. RESIDUALES
+C1. Si el cierre gana antes de que el checkout resuelva la sesión, el alta automática abre una sesión
+    posterior y el cobro se asienta allí. La invariante certificada es que nunca se escribe en la
+    sesión cerrada; el test cubre ambos desenlaces.
+C2. La paginación de CxC es opt-in para no truncar la cartera que hoy consumen WPF/Web.
+C3. Los índices Z son btree simples por fecha; conviene revisar `EXPLAIN ANALYZE` con volumen real
+    antes de evaluar índices compuestos o INCLUDE.
+C4. El carril PostgreSQL sigue usando autenticación `trust` local; el test de credenciales usa un
+    usuario inexistente para ser determinista también en ese modo.
+================================================================================

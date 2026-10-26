@@ -63,7 +63,11 @@ public class SecurityStampValidationMiddleware
 
                 bool forceImmediate = isMutatingMethod || (endpoint?.Metadata.GetMetadata<RequireSecurityStampValidationAttribute>() != null);
 
-                bool isValid = await validator.ValidateStampAsync(userId, stampClaim, forceImmediate);
+                bool isValid = await validator.ValidateStampAsync(
+                    userId,
+                    stampClaim,
+                    forceImmediate,
+                    context.RequestAborted);
                 if (!isValid)
                 {
                     AppLogger.LogWarn($"[AUTH] Token revoked or stamp invalid for UserId={userId} on {context.Request.Path} (forceImmediate={forceImmediate})");

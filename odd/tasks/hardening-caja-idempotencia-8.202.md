@@ -26,7 +26,7 @@ Runner: `dotnet test CommandCenter.Tests/CommandCenter.Tests.csproj` + `pwsh scr
 | H1 | S1, S2, S3 | directa | completado | `9d8cf88`; build 0/0; 413/413 focalizados sin carril |
 | H2 | S4, S5 | directa | completado | `5dc1743`; build 0/0; 390/390 focalizados sin carril |
 | H3 | S6 | directa | completado | 2 archivos nuevos, 4 tests; carril PostgreSQL 39/39 |
-| H4 | S7, S8, S9, S10, S12 | directa | pendiente | — |
+| H4 | S7, S8, S9, S10, S12 | directa | completado | migración `20261026045215`; build 0/0; suite completa 3590/3590 con carril PG 40/40; `has-pending-model-changes` sin cambios |
 
 Ruta directa justificada: el padre ya mapeó los archivos y líneas exactos en la auditoría; los cuatro work units son un único refactor entrelazado (contratos de servicio, locks y tests) donde un writer por tarea duplicaría contexto y riesgo de drift. Se mantiene un solo writer secuencial.
 
@@ -36,6 +36,7 @@ Ruta directa justificada: el padre ya mapeó los archivos y líneas exactos en l
 - **L2 (2026-10-26):** se elige reordenar el bloque de vuelto del checkout para que el lock de sesión cubra solo la persistencia final y no la deducción de stock. Se conserva el orden canónico `Sale/Customer -> Session`.
 - **L3 (2026-10-26):** la paginación de CxC queda opcional para no truncar la cartera que consumen WPF/Web; el objetivo P2 se cumple moviendo filtros y totales a SQL.
 - **L4 (2026-10-26, H3):** la carrera cierre-vs-checkout admite dos desenlaces válidos: (a) el checkout ya resolvió la sesión y el cierre gana → falla con "sesión de caja cerrada"; (b) el cierre commitea antes de `GetOrCreateActiveSessionAsync` → el alta automática abre una sesión posterior y el cobro se asienta allí. La invariante certificada es que **nunca** se escribe en la sesión cerrada; ambos desenlaces se prueban en el mismo test. Evidencia: 4/4 tests nuevos y 39/39 del carril PostgreSQL.
+- **L5 (2026-10-26, H4):** la paginación de CxC es opt-in (`Page`/`PageSize`), por lo que los clientes actuales siguen recibiendo toda la cartera filtrada. La rama SQL se certifica con un test PostgreSQL dedicado (búsqueda por nombre/cédula/factura, mora por gracia, totales y páginas). La migración `20261026045215_AddZReportDateIndexesRev8202` usa `CREATE INDEX IF NOT EXISTS` y el snapshot quedó sincronizado (`has-pending-model-changes` sin drift). Se corrigieron dos tests de infraestructura preexistentes que fallaban solo al ejecutar la suite completa con el carril vivo: `DailyClosureRetryIntegrationTests` ahora fija `SalePayment.CreatedAt` (la ventana Z usa la fecha real del pago desde 8.200) y `DatabaseProbeTests` usa un usuario inexistente en lugar de una contraseña incorrecta (el clúster de test es `trust`). Evidencia final: build 0/0, suite completa 3590/3590 con carril PostgreSQL 40/40.
 
 ### L1 — Pedido original
 

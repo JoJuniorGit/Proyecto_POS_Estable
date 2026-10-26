@@ -152,7 +152,7 @@ public class DevSecOpsPhase1HardeningTests
     public async Task SecurityStampValidationMiddleware_WhenMutatingMethod_ForcesImmediateValidation(string httpMethod)
     {
         var validator = new Mock<ISecurityStampValidator>();
-        validator.Setup(v => v.ValidateStampAsync(42, "stamp-123", true))
+        validator.Setup(v => v.ValidateStampAsync(42, "stamp-123", true, It.IsAny<System.Threading.CancellationToken>()))
             .ReturnsAsync(true);
 
         var context = new DefaultHttpContext();
@@ -176,14 +176,14 @@ public class DevSecOpsPhase1HardeningTests
         await middleware.InvokeAsync(context, validator.Object);
 
         Assert.True(nextCalled);
-        validator.Verify(v => v.ValidateStampAsync(42, "stamp-123", true), Times.Once);
+        validator.Verify(v => v.ValidateStampAsync(42, "stamp-123", true, It.IsAny<System.Threading.CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task SecurityStampValidationMiddleware_WhenGetWithoutAttribute_UsesCachedWindow()
     {
         var validator = new Mock<ISecurityStampValidator>();
-        validator.Setup(v => v.ValidateStampAsync(42, "stamp-123", false))
+        validator.Setup(v => v.ValidateStampAsync(42, "stamp-123", false, It.IsAny<System.Threading.CancellationToken>()))
             .ReturnsAsync(true);
 
         var context = new DefaultHttpContext();
@@ -207,7 +207,7 @@ public class DevSecOpsPhase1HardeningTests
         await middleware.InvokeAsync(context, validator.Object);
 
         Assert.True(nextCalled);
-        validator.Verify(v => v.ValidateStampAsync(42, "stamp-123", false), Times.Once);
+        validator.Verify(v => v.ValidateStampAsync(42, "stamp-123", false, It.IsAny<System.Threading.CancellationToken>()), Times.Once);
     }
 
     [Fact]

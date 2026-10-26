@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Hubs;
 using Microsoft.AspNetCore.SignalR;
@@ -14,10 +15,12 @@ namespace Backend.API.Services;
 
 /// <summary>
 /// Validates user security stamps to enable immediate or micro-cached token revocation.
-/// Two-tier cache:
-///  - Mixed fingerprint (45 s): standard requests (sliding window).
-///  - Strict window (5 s): sensitive monetary endpoints that set forceImmediateCheck limit the
-///    DB hit to once every 5 seconds per user instead of once per request (8.7-M8).
+/// Two tiers:
+///  - Standard reads: 45 s absolute micro-cache.
+///  - Mutations / sensitive endpoints (<c>forceImmediateCheck</c>): ALWAYS query the database
+///    (no grace window, 8.194 SEC-01) and cache the verified stamp for the strict 5 s window so
+///    subsequent standard reads can reuse it. The parameter <c>forceImmediateCheck</c> never
+///    skips the DB read.
 /// 8.157 (SEC-07): además empuja "ForceDisconnect" a las conexiones SignalR del usuario
 /// (grupos user:{id} de ambos hubs) cuando se revocan credenciales.
 /// </summary>
@@ -49,7 +52,11 @@ public class SecurityStampValidator : ISecurityStampValidator
         _exchangeRateHub = exchangeRateHub;
     }
 
-    public async Task<bool> ValidateStampAsync(int userId, string tokenStamp, bool forceImmediateCheck = false)
+    public async Task<bool> ValidateStampAsync(
+        int userId,
+        string tokenStamp,
+        bool forceImmediateCheck = false,
+        CancellationToken cancellationToken = default)
     {
         if (userId <= 0 || string.IsNullOrWhiteSpace(tokenStamp))
         {
@@ -74,7 +81,7 @@ public class SecurityStampValidator : ISecurityStampValidator
             .AsNoTracking()
             .Where(u => u.Id == userId)
             .Select(u => new { u.SecurityStamp, u.IsActive, u.LockoutEndUtc })
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(cancellationToken);
 
         if (user == null || !user.IsActive || (user.LockoutEndUtc.HasValue && user.LockoutEndUtc.Value > DateTime.UtcNow))
         {

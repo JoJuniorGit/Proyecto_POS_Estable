@@ -42,11 +42,18 @@ public class DatabaseProbeTests
     }
 
     [Fact]
-    public async Task RunAsync_WithInvalidPassword_ReturnsConfigurationError()
+    public async Task RunAsync_WithInvalidCredentials_ReturnsConfigurationError()
     {
         var connection = PostgresTestLane.RequireResolution();
 
-        var invalid = new NpgsqlConnectionStringBuilder(connection.ConnectionString) { Password = "wrong-for-test" };
+        // 8.202-H4: un usuario inexistente falla tanto con `trust` (rol inexistente → 28000)
+        // como con scram/md5 (28P01). Una contraseña incorrecta NO falla en un clúster trust,
+        // que es el que usa el carril aislado; el usuario inválido mantiene el test determinista.
+        var invalid = new NpgsqlConnectionStringBuilder(connection.ConnectionString)
+        {
+            Username = "invalid-pos-test-user",
+            Password = "wrong-for-test"
+        };
         using var output = new StringWriter();
 
         var code = await DatabaseProbe.RunAsync(invalid.ConnectionString, output);

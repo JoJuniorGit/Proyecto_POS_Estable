@@ -277,7 +277,189 @@ public partial class CreditService : ICreditService
     {
         filter ??= new CreditReceivablesFilterDto();
         ReceivableStatus? statusFilter = ParseStatusFilter(filter.Status);
+        string? search = string.IsNullOrWhiteSpace(filter.Search) ? null : filter.Search.Trim();
+        int? page = filter.Page.HasValue ? Math.Max(1, filter.Page.Value) : null;
+        int? pageSize = filter.PageSize.HasValue ? Math.Clamp(filter.PageSize.Value, 1, 500) : null;
+        var venezuelaToday = TimeZoneHelper.GetVenezuelaDate();
+        decimal todayRate = _rateProvider != null
+            ? await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken)
+            : 0m;
 
+        // 8.202-H4 (S7): PostgreSQL resuelve filtros, mora, totales y página en SQL. Los
+        // proveedores de test (SQLite/InMemory) conservan el camino en memoria para no depender
+        // de traducciones que no soportan (DateOnly/AddDays con columna).
+        return _context.Database.IsNpgsql()
+            ? await GetCreditReceivablesFromPostgresAsync(
+                filter, statusFilter, search, page, pageSize, venezuelaToday, todayRate, cancellationToken)
+            : await GetCreditReceivablesFromMemoryAsync(
+                filter, statusFilter, search, page, pageSize, venezuelaToday, todayRate, cancellationToken);
+    }
+
+    private async Task<CreditReceivablesListDto> GetCreditReceivablesFromPostgresAsync(
+        CreditReceivablesFilterDto filter,
+        ReceivableStatus? statusFilter,
+        string? search,
+        int? page,
+        int? pageSize,
+        DateOnly venezuelaToday,
+        decimal todayRate,
+        CancellationToken cancellationToken)
+    {
+        var query = _context.Receivables.AsNoTracking().AsQueryable();
+
+        if (filter.CustomerId.HasValue)
+        {
+            int customerId = filter.CustomerId.Value;
+            query = query.Where(receivable => receivable.CustomerId == customerId);
+        }
+
+        if (statusFilter.HasValue)
+        {
+            ReceivableStatus status = statusFilter.Value;
+            query = query.Where(receivable => receivable.Status == status);
+        }
+
+        if (search is not null)
+        {
+            string pattern = ToLikePattern(search);
+            bool isNumericTerm = int.TryParse(search, out int invoiceNumber);
+            query = query.Where(receivable =>
+                EF.Functions.ILike(receivable.Customer!.Name, pattern)
+                || EF.Functions.ILike(receivable.Customer!.CedulaOrRif, pattern)
+                || (receivable.Sale != null
+                    && receivable.Sale.InvoiceNumber != null
+                    && receivable.Sale.InvoiceNumber.Value.ToString().Contains(search))
+                || (isNumericTerm
+                    && receivable.Sale != null
+                    && receivable.Sale.InvoiceNumber == invoiceNumber));
+        }
+
+        // Mora dinámica: dueDate (fecha UTC) + gracia < hoy Venezuela equivale a
+        // dueDate + gracia < hoy a las 00:00 UTC. La gracia es una columna por cliente.
+        DateTime overdueCutoffUtc = venezuelaToday.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        if (filter.OverdueOnly)
+        {
+            query = query.Where(receivable =>
+                (receivable.Status == ReceivableStatus.Vigente
+                    || receivable.Status == ReceivableStatus.Parcial
+                    || receivable.Status == ReceivableStatus.Vencida)
+                && receivable.BalanceUSD > BalanceToleranceUsd
+                && receivable.DueDateUtc.AddDays(receivable.Customer!.CreditGraceDays) < overdueCutoffUtc);
+        }
+
+        int totalCount = await query.CountAsync(cancellationToken);
+
+        var totals = await query
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                OpenCount = group.Count(receivable =>
+                    (receivable.Status == ReceivableStatus.Vigente
+                        || receivable.Status == ReceivableStatus.Parcial
+                        || receivable.Status == ReceivableStatus.Vencida)
+                    && receivable.BalanceUSD > BalanceToleranceUsd),
+                OpenTotalUsd = group.Sum(receivable =>
+                    (receivable.Status == ReceivableStatus.Vigente
+                        || receivable.Status == ReceivableStatus.Parcial
+                        || receivable.Status == ReceivableStatus.Vencida)
+                    && receivable.BalanceUSD > BalanceToleranceUsd
+                        ? receivable.BalanceUSD
+                        : 0m),
+                OverdueTotalUsd = group.Sum(receivable =>
+                    (receivable.Status == ReceivableStatus.Vigente
+                        || receivable.Status == ReceivableStatus.Parcial
+                        || receivable.Status == ReceivableStatus.Vencida)
+                    && receivable.BalanceUSD > BalanceToleranceUsd
+                    && receivable.DueDateUtc.AddDays(receivable.Customer!.CreditGraceDays) < overdueCutoffUtc
+                        ? receivable.BalanceUSD
+                        : 0m)
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        IQueryable<Receivable> ordered = query
+            .OrderBy(receivable => receivable.DueDateUtc)
+            .ThenBy(receivable => receivable.IssuedAtUtc)
+            .ThenBy(receivable => receivable.Id);
+
+        if (pageSize.HasValue)
+        {
+            int effectivePage = page ?? 1;
+            ordered = ordered
+                .Skip((effectivePage - 1) * pageSize.Value)
+                .Take(pageSize.Value);
+        }
+
+        var rows = await ordered
+            .Select(receivable => new
+            {
+                receivable.Id,
+                receivable.CustomerId,
+                CustomerName = receivable.Customer!.Name,
+                CustomerCedulaOrRif = receivable.Customer!.CedulaOrRif,
+                receivable.SaleId,
+                InvoiceNumber = receivable.Sale != null ? receivable.Sale.InvoiceNumber : null,
+                receivable.OriginalUSD,
+                receivable.BalanceUSD,
+                receivable.OriginalBsS,
+                receivable.HistoricalRate,
+                receivable.IssuedAtUtc,
+                receivable.DueDateUtc,
+                receivable.Status,
+                GraceDays = receivable.Customer!.CreditGraceDays
+            })
+            .ToListAsync(cancellationToken);
+
+        var result = new CreditReceivablesListDto
+        {
+            TodayRate = todayRate,
+            TotalCount = totalCount,
+            Page = pageSize.HasValue ? page ?? 1 : null,
+            PageSize = pageSize,
+            HasMore = pageSize.HasValue && (page ?? 1) * pageSize.Value < totalCount,
+            OpenCount = totals?.OpenCount ?? 0,
+            TotalOpenUSD = RoundUsd(totals?.OpenTotalUsd ?? 0m),
+            TotalOverdueUSD = RoundUsd(totals?.OverdueTotalUsd ?? 0m)
+        };
+
+        foreach (var row in rows)
+        {
+            bool isOverdue = row.BalanceUSD > BalanceToleranceUsd
+                && OpenStatuses.Contains(row.Status)
+                && IsOverdueBeyondGrace(row.DueDateUtc, row.GraceDays, venezuelaToday);
+
+            result.Items.Add(new CreditReceivableListItemDto
+            {
+                ReceivableId = row.Id,
+                CustomerId = row.CustomerId,
+                CustomerName = row.CustomerName,
+                CustomerCedulaOrRif = row.CustomerCedulaOrRif,
+                SaleId = row.SaleId,
+                InvoiceNumber = row.InvoiceNumber,
+                OriginalUSD = row.OriginalUSD,
+                BalanceUSD = row.BalanceUSD,
+                OriginalBsS = row.OriginalBsS,
+                HistoricalRate = row.HistoricalRate,
+                BalanceTodayBsS = PricingCalculator.ToBsS(row.BalanceUSD, todayRate),
+                IssuedAtUtc = row.IssuedAtUtc,
+                DueDateUtc = row.DueDateUtc,
+                Status = row.Status.ToString(),
+                IsOverdue = isOverdue
+            });
+        }
+
+        return result;
+    }
+
+    private async Task<CreditReceivablesListDto> GetCreditReceivablesFromMemoryAsync(
+        CreditReceivablesFilterDto filter,
+        ReceivableStatus? statusFilter,
+        string? search,
+        int? page,
+        int? pageSize,
+        DateOnly venezuelaToday,
+        decimal todayRate,
+        CancellationToken cancellationToken)
+    {
         var query = _context.Receivables
             .AsNoTracking()
             .AsSplitQuery()
@@ -297,22 +479,13 @@ public partial class CreditService : ICreditService
             query = query.Where(receivable => receivable.Status == status);
         }
 
-        // La mora depende de la gracia de cada cliente y del día corriente de Venezuela, por lo
-        // que se resuelve en memoria con la misma regla compartida por perfil, abonos y estado de
-        // cuenta; el estado persistido Vencida no se usa como sustituto de la mora dinámica.
         var entities = await query
             .OrderBy(receivable => receivable.DueDateUtc)
             .ThenBy(receivable => receivable.IssuedAtUtc)
             .ThenBy(receivable => receivable.Id)
             .ToListAsync(cancellationToken);
 
-        decimal todayRate = _rateProvider != null
-            ? await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken)
-            : 0m;
-        var venezuelaToday = TimeZoneHelper.GetVenezuelaDate();
-        string? search = string.IsNullOrWhiteSpace(filter.Search) ? null : filter.Search.Trim();
-
-        var result = new CreditReceivablesListDto { TodayRate = todayRate };
+        var filtered = new List<Receivable>(entities.Count);
         decimal openTotalUsd = 0m;
         decimal overdueTotalUsd = 0m;
         int openCount = 0;
@@ -336,24 +509,7 @@ public partial class CreditService : ICreditService
                 continue;
             }
 
-            result.Items.Add(new CreditReceivableListItemDto
-            {
-                ReceivableId = receivable.Id,
-                CustomerId = receivable.CustomerId,
-                CustomerName = receivable.Customer?.Name ?? string.Empty,
-                CustomerCedulaOrRif = receivable.Customer?.CedulaOrRif ?? string.Empty,
-                SaleId = receivable.SaleId,
-                InvoiceNumber = receivable.Sale?.InvoiceNumber,
-                OriginalUSD = receivable.OriginalUSD,
-                BalanceUSD = receivable.BalanceUSD,
-                OriginalBsS = receivable.OriginalBsS,
-                HistoricalRate = receivable.HistoricalRate,
-                BalanceTodayBsS = PricingCalculator.ToBsS(receivable.BalanceUSD, todayRate),
-                IssuedAtUtc = receivable.IssuedAtUtc,
-                DueDateUtc = receivable.DueDateUtc,
-                Status = receivable.Status.ToString(),
-                IsOverdue = isOverdue
-            });
+            filtered.Add(receivable);
 
             if (receivable.BalanceUSD > BalanceToleranceUsd && OpenStatuses.Contains(receivable.Status))
             {
@@ -366,11 +522,77 @@ public partial class CreditService : ICreditService
             }
         }
 
-        result.OpenCount = openCount;
-        result.TotalOpenUSD = RoundUsd(openTotalUsd);
-        result.TotalOverdueUSD = RoundUsd(overdueTotalUsd);
+        int totalCount = filtered.Count;
+        IEnumerable<Receivable> pageRows = filtered;
+        if (pageSize.HasValue)
+        {
+            int effectivePage = page ?? 1;
+            pageRows = pageRows
+                .Skip((effectivePage - 1) * pageSize.Value)
+                .Take(pageSize.Value);
+        }
+
+        var result = new CreditReceivablesListDto
+        {
+            TodayRate = todayRate,
+            TotalCount = totalCount,
+            Page = pageSize.HasValue ? page ?? 1 : null,
+            PageSize = pageSize,
+            HasMore = pageSize.HasValue && (page ?? 1) * pageSize.Value < totalCount,
+            OpenCount = openCount,
+            TotalOpenUSD = RoundUsd(openTotalUsd),
+            TotalOverdueUSD = RoundUsd(overdueTotalUsd)
+        };
+
+        foreach (var receivable in pageRows)
+        {
+            result.Items.Add(MapReceivable(receivable, todayRate, venezuelaToday));
+        }
+
         return result;
     }
+
+    private static CreditReceivableListItemDto MapReceivable(
+        Receivable receivable,
+        decimal todayRate,
+        DateOnly venezuelaToday)
+    {
+        bool isOverdue = receivable.BalanceUSD > BalanceToleranceUsd
+            && OpenStatuses.Contains(receivable.Status)
+            && IsOverdueBeyondGrace(
+                receivable.DueDateUtc,
+                receivable.Customer?.CreditGraceDays ?? 0,
+                venezuelaToday);
+
+        return new CreditReceivableListItemDto
+        {
+            ReceivableId = receivable.Id,
+            CustomerId = receivable.CustomerId,
+            CustomerName = receivable.Customer?.Name ?? string.Empty,
+            CustomerCedulaOrRif = receivable.Customer?.CedulaOrRif ?? string.Empty,
+            SaleId = receivable.SaleId,
+            InvoiceNumber = receivable.Sale?.InvoiceNumber,
+            OriginalUSD = receivable.OriginalUSD,
+            BalanceUSD = receivable.BalanceUSD,
+            OriginalBsS = receivable.OriginalBsS,
+            HistoricalRate = receivable.HistoricalRate,
+            BalanceTodayBsS = PricingCalculator.ToBsS(receivable.BalanceUSD, todayRate),
+            IssuedAtUtc = receivable.IssuedAtUtc,
+            DueDateUtc = receivable.DueDateUtc,
+            Status = receivable.Status.ToString(),
+            IsOverdue = isOverdue
+        };
+    }
+
+    /// <summary>
+    /// Escapa los comodines de LIKE/ILIKE para que la búsqueda sea "contiene texto plano".
+    /// PostgreSQL usa la barra invertida como escape por defecto.
+    /// </summary>
+    private static string ToLikePattern(string term) =>
+        "%" + term
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal) + "%";
 
     private static void ValidateProfileUpdate(CustomerCreditProfileUpdateDto request)
     {

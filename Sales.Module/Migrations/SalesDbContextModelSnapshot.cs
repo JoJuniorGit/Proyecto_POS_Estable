@@ -924,6 +924,9 @@ namespace Sales.Module.Migrations
                     b.HasIndex("CancelledByUserId")
                         .HasDatabaseName("IX_PettyCashExpenses_CancelledByUserId");
 
+                    b.HasIndex("CreatedAtUtc")
+                        .HasDatabaseName("IX_PettyCashExpenses_CreatedAtUtc");
+
                     b.HasIndex("CreatedByUserId")
                         .HasDatabaseName("IX_PettyCashExpenses_CreatedByUserId");
 
@@ -1056,6 +1059,9 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("PaymentMethodId")
                         .HasDatabaseName("IX_ReceivablePayments_PaymentMethodId");
+
+                    b.HasIndex("ReceivedAtUtc")
+                        .HasDatabaseName("IX_ReceivablePayments_ReceivedAtUtc");
 
                     b.HasIndex("ReceivedByUserId")
                         .HasDatabaseName("IX_ReceivablePayments_ReceivedByUserId");
@@ -1332,6 +1338,9 @@ namespace Sales.Module.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("IX_SalePayments_CreatedAt");
 
                     b.HasIndex("PaymentMethodId");
 
