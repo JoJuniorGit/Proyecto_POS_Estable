@@ -25,3 +25,9 @@ Rama: `V0.15`. Verificación: `dotnet build CommandCenter.slnx -c Release`, suit
 - **L1 (2026-10-26):** Inicio por aprobación del mantenedor. El seed de administrador se rotó en User Secrets; la contraseña del usuario existente no se modifica automáticamente. El password del rol `postgres` se conserva porque puede ser compartido con otras bases/proyectos.
 - **L2 (2026-10-26, cierre):** HTTPS remoto con 307 y loopback preservado; desktop migrado a `https://localhost:5001/` con pinning DPAPI común y pairing sin QR sin TLS; secretos de Development movidos a User Secrets y archivo local eliminado; claves idempotentes estables en WPF/Web y flag de enforcement preparado. Evidencia: build 0/0; suite .NET **3613/3613** con PostgreSQL; web **626/626**, lint limpio y build OK; clúster detenido.
 - **L3 (2026-10-26, reverse proxy):** D implementado con Caddy en `8443` y Kestrel en loopback cuando `ReverseProxy:Enabled=true`; `ForwardedHeaders` confía explícitamente en loopback; runbook `docs/REVERSE_PROXY.md`, scripts de exportación PEM y setup; Caddyfile de ejemplo. Evidencia actualizada: suite .NET **3614/3614** con PostgreSQL; web 626/626; clúster detenido.
+
+## Estado final
+
+- Matriz de auditoría de 4 fases: **39/39** cerrados (**0 abiertos, 0 parciales**).
+- Evidencia: build Release **0/0**; suite .NET **3614/3614** con PostgreSQL aislado; Web **626/626**, lint y build OK.
+- Cierre funcional en `638900d`; D queda como runbook (`docs/REVERSE_PROXY.md`) y SRE-10 permanece en rollout con el flag en `false` hasta actualizar toda la flota.
