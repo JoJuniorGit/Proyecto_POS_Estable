@@ -224,6 +224,39 @@ public class FinancialAuditRemediationTests
         Assert.Equal(880m, totals.Single(total => total.PaymentMethodId == 2).ExpectedAmountBsS);
     }
 
+    [Fact]
+    public async Task GetExpectedTotals_LegacyPaymentWithoutTimestamp_FallsBackToSaleDate()
+    {
+        using var context = CreateContext();
+        await SeedMethodsAsync(context);
+        var now = DateTime.UtcNow;
+
+        context.Sales.Add(new Sale
+        {
+            Id = 903,
+            Status = SaleStatus.Completed,
+            Date = now,
+            TotalUSD = 8m,
+            TotalBsS = 400m,
+            AppliedRate = Rate
+        });
+        context.SalePayments.Add(new SalePayment
+        {
+            SaleId = 903,
+            PaymentMethodId = 2,
+            Amount = 8m,
+            AmountBsS = 400m,
+            ExchangeRate = Rate,
+            CreatedAt = default
+        });
+        await context.SaveChangesAsync();
+
+        var totals = await DailyClosureTestHelper.CreateService(context)
+            .GetExpectedTotalsByPaymentMethodAsync(now);
+
+        Assert.Equal(400m, totals.Single(total => total.PaymentMethodId == 2).ExpectedAmountBsS);
+    }
+
     // ------------------------------------------------------------------ S1: gaveta dual
 
     [Fact]

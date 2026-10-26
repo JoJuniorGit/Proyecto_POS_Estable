@@ -16806,7 +16806,7 @@ A6. Precisión: se conserva la tasa operativa con techo a 2 decimales (`RoundExc
 B. EVIDENCIA
 B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
 B2. Regresiones focalizadas de las áreas tocadas (sin carril Postgres): 645/645.
-B3. Nuevos `FinancialAuditRemediationTests`: 11/11 (OnHold en Z, adelanto/manuales sin doble cómputo,
+B3. Nuevos `FinancialAuditRemediationTests`: 12/12 (OnHold en Z, legado sin timestamp, adelanto/manuales sin doble cómputo,
     caja chica una vez, gaveta local vs USD, rollover dual, tasa 2dp, idempotencia obligatoria).
 B4. Suite completa sin carril Postgres: 3522 superados; 14 fallos ambientales/pre-existentes (10 del
     carril Postgres sin credencial válida 28P01 y 4 de OcrExtraction por DI del host de pruebas).
