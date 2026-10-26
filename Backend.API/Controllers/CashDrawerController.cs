@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
@@ -89,6 +90,12 @@ public class CashDrawerController : ControllerBase
             || _currentUserService.UserRole == Core.Entities.UserRole.Cashier;
     }
 
+    private bool RequireLifecycleIdempotencyKey()
+    {
+        var configuration = HttpContext?.RequestServices?.GetService(typeof(IConfiguration)) as IConfiguration;
+        return configuration?.GetValue<bool>("Idempotency:RequireCashSessionAndInvoiceStage") == true;
+    }
+
     [HttpGet("history")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<IEnumerable<CashTransactionResponseDto>>> GetHistoryAsync([FromQuery] int limit = 300, CancellationToken cancellationToken = default)
@@ -123,7 +130,11 @@ public class CashDrawerController : ControllerBase
         // SRE-10: idempotencia opcional para reintentos de red de la apertura.
         string requestPath = "/api/cashdrawer/open-session";
         string bodyJson = _idempotencyResolver.GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
-        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(this, requestPath, bodyJson);
+        var idempotency = await _idempotencyResolver.ResolveWithPolicyAsync(
+            this,
+            requestPath,
+            bodyJson,
+            RequireLifecycleIdempotencyKey());
         if (idempotency.ShouldStop) return idempotency.BlockingResult!;
 
         // 8.168 (SEC-04-RES): anclar la tasa de apertura al valor oficial BCV cuando existe.
@@ -150,7 +161,11 @@ public class CashDrawerController : ControllerBase
         // SRE-10: idempotencia opcional para reintentos de red del cierre.
         string requestPath = "/api/cashdrawer/close";
         string bodyJson = _idempotencyResolver.GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
-        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(this, requestPath, bodyJson);
+        var idempotency = await _idempotencyResolver.ResolveWithPolicyAsync(
+            this,
+            requestPath,
+            bodyJson,
+            RequireLifecycleIdempotencyKey());
         if (idempotency.ShouldStop) return idempotency.BlockingResult!;
 
         // 8.168 (SEC-04-RES): anclar la tasa de cierre al valor oficial BCV cuando existe.

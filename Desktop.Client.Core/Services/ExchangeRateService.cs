@@ -61,7 +61,7 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
 
         if (enableRealtime)
         {
-            var baseAddress = httpClient.BaseAddress ?? new Uri("http://localhost:5000/");
+            var baseAddress = httpClient.BaseAddress ?? new Uri("https://localhost:5001/");
             var hubUri = new Uri(baseAddress, "hubs/exchange-rate");
 
             _hubConnection = new HubConnectionBuilder()

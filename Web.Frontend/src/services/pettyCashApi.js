@@ -71,7 +71,7 @@ function trimOrEmpty(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function createIdempotencyKey() {
+export function createIdempotencyKey() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
@@ -136,19 +136,28 @@ export async function getPettyCashVoucher(expenseId, signal) {
  * 8.201 (S1): apertura explícita de la sesión con fondo inicial segregado Bs.S/USD. El servidor
  * persiste ambos saldos y el rollover los transfiere al turno siguiente.
  */
-export async function openCashDrawerSession(payload = {}, signal) {
+export async function openCashDrawerSession(payload = {}, options = {}) {
+  const requestOptions = options && typeof options.aborted === 'boolean'
+    ? { signal: options }
+    : (options || {});
+  const idempotencyKey = requestOptions.idempotencyKey || createIdempotencyKey();
+
   return await api.post('/api/cashdrawer/open', {
     openingBalanceLocal: Number(payload?.openingBalanceLocal) || 0,
     openingBalanceUsd: Number(payload?.openingBalanceUsd) || 0,
     currentExchangeRate: Number(payload?.currentExchangeRate) || 0,
-  }, { signal });
+  }, buildAuthorizationOptions({ idempotencyKey, signal: requestOptions.signal }));
 }
 
 /**
  * Cierre de la sesión de caja con conteo USD opcional (T2b, S2). El conteo Bs.S es obligatorio y
  * `actualClosingBalanceUsd` viaja null cuando no se informa: el comportamiento previo se conserva.
  */
-export async function closeCashDrawerSession(payload = {}, signal) {
+export async function closeCashDrawerSession(payload = {}, options = {}) {
+  const requestOptions = options && typeof options.aborted === 'boolean'
+    ? { signal: options }
+    : (options || {});
+  const idempotencyKey = requestOptions.idempotencyKey || createIdempotencyKey();
   const rawUsd = payload?.actualClosingBalanceUsd;
   const hasUsd = rawUsd !== null && rawUsd !== undefined && rawUsd !== ''
     && Number.isFinite(Number(rawUsd));
@@ -157,7 +166,7 @@ export async function closeCashDrawerSession(payload = {}, signal) {
     actualClosingBalanceLocal: Number(payload?.actualClosingBalanceLocal) || 0,
     currentExchangeRate: Number(payload?.currentExchangeRate) || 0,
     actualClosingBalanceUsd: hasUsd ? Number(rawUsd) : null,
-  }, { signal });
+  }, buildAuthorizationOptions({ idempotencyKey, signal: requestOptions.signal }));
 }
 
 /** true cuando el error es el 403 del gate de caja chica (authorizationAction explícito). */

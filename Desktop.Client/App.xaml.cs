@@ -163,6 +163,10 @@ public partial class App : Application
             }
             else
             {
+                // HTTPS end-to-end en la LAN: certificados públicos se validan normalmente;
+                // certificados locales/autofirmados se aceptan solo por el pin TOFU del host.
+                clientBuilder.ConfigurePrimaryHttpMessageHandler(
+                    CertificatePinning.CreateHttpClientHandler);
                 clientBuilder.AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
             }
         }
@@ -172,7 +176,16 @@ public partial class App : Application
         var baseAddressStr = clientSettings.ServerBaseAddress;
         if (string.IsNullOrWhiteSpace(baseAddressStr) || baseAddressStr == "http://localhost:5000/")
         {
-            baseAddressStr = builder.Configuration["BackendSettings:BaseAddress"] ?? "http://localhost:5000/";
+            baseAddressStr = builder.Configuration["BackendSettings:BaseAddress"] ?? "https://localhost:5001/";
+        }
+        if (!isE2E)
+        {
+            var secureAddress = ServerPortResolver.NormalizeHttpsAddress(baseAddressStr);
+            if (!string.Equals(secureAddress, baseAddressStr, StringComparison.OrdinalIgnoreCase))
+            {
+                settingsStore.UpdateServerAddress(secureAddress, clientSettings.LastKnownServerMachineName);
+            }
+            baseAddressStr = secureAddress;
         }
         if (!baseAddressStr.EndsWith("/")) baseAddressStr += "/";
         var baseAddressUri = new Uri(baseAddressStr);
@@ -186,7 +199,14 @@ public partial class App : Application
         {
             client.BaseAddress = baseAddressUri;
         });
-        if (isE2E) healthClient.ConfigurePrimaryHttpMessageHandler<E2EMockHttpMessageHandler>();
+        if (isE2E)
+        {
+            healthClient.ConfigurePrimaryHttpMessageHandler<E2EMockHttpMessageHandler>();
+        }
+        else
+        {
+            healthClient.ConfigurePrimaryHttpMessageHandler(CertificatePinning.CreateHttpClientHandler);
+        }
 
         builder.Services.AddSingleton<IHealthPollingService>(sp =>
             new HealthPollingService(

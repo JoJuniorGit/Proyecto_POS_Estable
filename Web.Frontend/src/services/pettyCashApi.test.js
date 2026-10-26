@@ -207,10 +207,14 @@ describe('pettyCashApi — cierre de sesión con conteo USD opcional (T2b/S2)', 
   });
 
   it('8. sends actualClosingBalanceUsd: null when the optional USD count is omitted', async () => {
-    await closeCashDrawerSession({ actualClosingBalanceLocal: 1250.5, currentExchangeRate: 36.5 });
+    await closeCashDrawerSession(
+      { actualClosingBalanceLocal: 1250.5, currentExchangeRate: 36.5 },
+      { idempotencyKey: 'close-attempt-1' },
+    );
 
     assert.strictEqual(fetchCalls[0].config.method, 'POST');
     assert.strictEqual(fetchCalls[0].url, 'http://localhost:5000/api/cashdrawer/close');
+    assert.strictEqual(fetchCalls[0].config.headers['Idempotency-Key'], 'close-attempt-1');
     assert.deepStrictEqual(JSON.parse(fetchCalls[0].config.body), {
       actualClosingBalanceLocal: 1250.5,
       currentExchangeRate: 36.5,
@@ -225,6 +229,7 @@ describe('pettyCashApi — cierre de sesión con conteo USD opcional (T2b/S2)', 
       actualClosingBalanceUsd: 20,
     });
 
+    assert.ok(fetchCalls[0].config.headers['Idempotency-Key']);
     assert.deepStrictEqual(JSON.parse(fetchCalls[0].config.body), {
       actualClosingBalanceLocal: 1250.5,
       currentExchangeRate: 36.5,
@@ -237,10 +242,11 @@ describe('pettyCashApi — cierre de sesión con conteo USD opcional (T2b/S2)', 
       openingBalanceLocal: 1250.5,
       openingBalanceUsd: 20,
       currentExchangeRate: 36.5,
-    });
+    }, { idempotencyKey: 'open-attempt-1' });
 
     assert.strictEqual(fetchCalls[0].config.method, 'POST');
     assert.strictEqual(fetchCalls[0].url, 'http://localhost:5000/api/cashdrawer/open');
+    assert.strictEqual(fetchCalls[0].config.headers['Idempotency-Key'], 'open-attempt-1');
     assert.deepStrictEqual(JSON.parse(fetchCalls[0].config.body), {
       openingBalanceLocal: 1250.5,
       openingBalanceUsd: 20,

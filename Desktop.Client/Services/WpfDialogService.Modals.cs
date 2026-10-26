@@ -435,7 +435,7 @@ public partial class WpfDialogService
         using var _ = TrackModal();
         Action openDialog = () =>
         {
-            var serverAddr = _connectionManager.CurrentServerAddress ?? "http://localhost:5000/";
+            var serverAddr = _connectionManager.CurrentServerAddress ?? "https://localhost:5001/";
             var httpClient = _httpClientFactory.CreateClient("SalesApi");
             httpClient.BaseAddress = new Uri(serverAddr);
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -10,6 +11,11 @@ namespace Desktop.Client.Services;
 public class CashDrawerService : ICashDrawerService
 {
     private readonly HttpClient _httpClient;
+    private readonly object _idempotencyLock = new();
+    private string? _openSignature;
+    private string? _openIdempotencyKey;
+    private string? _closeSignature;
+    private string? _closeIdempotencyKey;
 
     public CashDrawerService(HttpClient httpClient)
     {
@@ -35,9 +41,18 @@ public class CashDrawerService : ICashDrawerService
             OpeningBalanceUsd = openingBalanceUsd,
             CurrentExchangeRate = currentExchangeRate
         };
-        var response = await _httpClient.PostAsJsonAsync("api/cashdrawer/open", request);
+        var signature = JsonSerializer.Serialize(request);
+        var idempotencyKey = GetStableKey(isOpen: true, signature);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/cashdrawer/open")
+        {
+            Content = JsonContent.Create(request)
+        };
+        httpRequest.Headers.Add("Idempotency-Key", idempotencyKey);
+        using var response = await _httpClient.SendAsync(httpRequest);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<CashDrawerSessionDto>())!;
+        var session = (await response.Content.ReadFromJsonAsync<CashDrawerSessionDto>())!;
+        CompleteStableKey(isOpen: true, signature);
+        return session;
     }
 
     public Task<CashDrawerSessionDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate)
@@ -60,9 +75,48 @@ public class CashDrawerService : ICashDrawerService
             request["actualClosingBalanceUsd"] = actualClosingBalanceUsd.Value;
         }
 
-        var response = await _httpClient.PostAsJsonAsync("api/cashdrawer/close", request);
+        var signature = JsonSerializer.Serialize(request);
+        var idempotencyKey = GetStableKey(isOpen: false, signature);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/cashdrawer/close")
+        {
+            Content = JsonContent.Create(request)
+        };
+        httpRequest.Headers.Add("Idempotency-Key", idempotencyKey);
+        using var response = await _httpClient.SendAsync(httpRequest);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<CashDrawerSessionDto>())!;
+        var session = (await response.Content.ReadFromJsonAsync<CashDrawerSessionDto>())!;
+        CompleteStableKey(isOpen: false, signature);
+        return session;
+    }
+
+    private string GetStableKey(bool isOpen, string signature)
+    {
+        lock (_idempotencyLock)
+        {
+            ref var storedSignature = ref (isOpen ? ref _openSignature : ref _closeSignature);
+            ref var storedKey = ref (isOpen ? ref _openIdempotencyKey : ref _closeIdempotencyKey);
+            if (!string.Equals(storedSignature, signature, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(storedKey))
+            {
+                storedSignature = signature;
+                storedKey = Guid.NewGuid().ToString("N");
+            }
+
+            return storedKey;
+        }
+    }
+
+    private void CompleteStableKey(bool isOpen, string signature)
+    {
+        lock (_idempotencyLock)
+        {
+            ref var storedSignature = ref (isOpen ? ref _openSignature : ref _closeSignature);
+            ref var storedKey = ref (isOpen ? ref _openIdempotencyKey : ref _closeIdempotencyKey);
+            if (string.Equals(storedSignature, signature, StringComparison.Ordinal))
+            {
+                storedSignature = null;
+                storedKey = null;
+            }
+        }
     }
 
     public async Task<decimal> GetCurrentBalanceLocalAsync(int sessionId)

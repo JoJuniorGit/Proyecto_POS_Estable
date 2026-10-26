@@ -81,7 +81,7 @@ public partial class ServerConnectionViewModel : ObservableObject, IDisposable
     {
         if (value)
         {
-            ServerAddress = "http://localhost:5000/";
+            ServerAddress = "https://localhost:5001/";
             IsRemoteServerMode = false;
         }
     }
@@ -165,6 +165,8 @@ public partial class ServerConnectionViewModel : ObservableObject, IDisposable
             ErrorMessage = TestResultMessage;
             return;
         }
+
+        ServerAddress = ServerPortResolver.NormalizeHttpsAddress(ServerAddress);
 
         IsTesting = true;
         TestSuccess = null;

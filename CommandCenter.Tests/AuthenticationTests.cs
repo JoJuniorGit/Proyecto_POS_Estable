@@ -483,7 +483,7 @@ public class AuthenticationTests
     }
 
     [Fact]
-    public void NetworkDiscoveryService_WithAndWithoutHttps_SetsQrPayloadAccordingly()
+    public void NetworkDiscoveryService_DoesNotAdvertiseRemotePairingQrWithoutHttps()
     {
         var service = new NetworkDiscoveryService();
 
@@ -491,8 +491,7 @@ public class AuthenticationTests
         var infoHttpOnly = service.GetPairingInfo(httpPort: 5000, httpsPort: 5001, isHttpsEnabled: false);
         Assert.False(infoHttpOnly.IsHttpsEnabled);
         Assert.Empty(infoHttpOnly.PrimaryHttpsUrl);
-        Assert.StartsWith("http://", infoHttpOnly.QrPayload);
-        Assert.Contains(":5000", infoHttpOnly.QrPayload);
+        Assert.Equal(string.Empty, infoHttpOnly.QrPayload);
 
         // 2. Con HTTPS activo
         var infoHttps = service.GetPairingInfo(httpPort: 5000, httpsPort: 5001, isHttpsEnabled: true);

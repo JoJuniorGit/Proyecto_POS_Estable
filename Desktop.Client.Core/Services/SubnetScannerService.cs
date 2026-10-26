@@ -16,7 +16,7 @@ namespace Desktop.Client.Services;
 public class DiscoveredServer
 {
     public string IpAddress { get; set; } = string.Empty;
-    public int Port { get; set; } = 5000;
+    public int Port { get; set; } = ServerPortResolver.HttpsPort;
     public string BaseUrl { get; set; } = string.Empty;
     public string MachineName { get; set; } = string.Empty;
     public string Service { get; set; } = string.Empty;
@@ -31,7 +31,7 @@ public class DiscoveredServer
 
 public interface ISubnetScannerService
 {
-    Task<DiscoveredServer?> ProbeSingleHostAsync(string hostOrIp, int port = 5000, int timeoutMs = 600, CancellationToken ct = default);
+    Task<DiscoveredServer?> ProbeSingleHostAsync(string hostOrIp, int port = 5001, int timeoutMs = 600, CancellationToken ct = default);
     Task<List<DiscoveredServer>> ScanSubnetAsync(IProgress<int>? progress = null, bool force = false, CancellationToken ct = default);
     Task<DiscoveredServer?> QuickDiscoverAsync(string? preferredHostOrIp = null, CancellationToken ct = default);
 }
@@ -184,7 +184,7 @@ public class SubnetScannerService : ISubnetScannerService
         }
 
         // Paso 1: Probar localhost
-        var localProbe = await ProbeSingleHostAsync("127.0.0.1", port: 5000, timeoutMs: 400, ct).ConfigureAwait(false);
+        var localProbe = await ProbeSingleHostAsync("127.0.0.1", port: ServerPortResolver.HttpsPort, timeoutMs: 400, ct).ConfigureAwait(false);
         if (localProbe != null)
             return localProbe;
 

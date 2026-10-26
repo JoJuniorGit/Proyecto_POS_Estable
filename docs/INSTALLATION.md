@@ -23,7 +23,7 @@ Guía básica para instalación, configuración y verificación del sistema.
 - **Arranque robusto fail-fast + auto-creación de BD** (`Program.cs`)
 - **Seed con `MustChangePassword`**: admin semilla marcado con cambio obligatorio
 - **Login con cambio obligatorio**: `403` con `requiresPasswordChange`
-- **Secretos en `secrets.json`**: no en variables de entorno ni `appsettings`
+- **Secretos**: User Secrets en Desarrollo y `secrets.json` protegido por ACL en Producción; nunca en `appsettings` versionados.
 
 ---
 
@@ -81,7 +81,7 @@ Fusión (orden de precedencia):
    nssm set PosBackendService AppDirectory "C:\...\BackendAPI"
    ```
 5. **Crear `BackendAPI\secrets.json`** (el instalador lo genera automáticamente).
-6. **Generar certificado HTTPS** (si se usa puerto 5001):
+6. **Generar certificado HTTPS** (requerido para conexiones remotas en puerto 5001):
    ```powershell
    .\scripts\create-https-cert.ps1 -Subject "CN=<nombre-del-equipo>" -SecretsFile "C:\...\BackendAPI\secrets.json"
    ```
@@ -89,7 +89,7 @@ Fusión (orden de precedencia):
    ```bat
    sc start PosBackendService
    ```
-8. **Instalar cliente** en equipos de caja apuntando al servidor.
+8. **Instalar cliente** en equipos de caja apuntando al servidor; la configuración HTTP heredada se migra a HTTPS automáticamente y el desktop fija certificados locales con DPAPI.
 
 ---
 

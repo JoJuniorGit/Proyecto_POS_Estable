@@ -51,7 +51,7 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
 
         if (enableRealtime)
         {
-            var baseAddress = httpClient.BaseAddress ?? new Uri("http://localhost:5000/");
+            var baseAddress = httpClient.BaseAddress ?? new Uri("https://localhost:5001/");
             var hubUri = new Uri(baseAddress, HubPath);
 
             _hubConnection = new HubConnectionBuilder()

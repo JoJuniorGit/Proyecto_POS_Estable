@@ -17135,3 +17135,38 @@ C1. Matriz de auditoría de 4 fases: **39/39 encabezados cerrados** (0 abiertos,
 C2. Decisiones de despliegue que no son defectos de código: el desktop conserva HTTP en LAN por
     compatibilidad (H-02) y `appsettings.Development.json` sigue siendo local/gitignored (H-03).
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE (XLII) - HTTPS DESKTOP, SECRETOS E IDEMPOTENCIA (8.209) - 2026-10-26
+================================================================================
+Pedido del mantenedor: "Procede con lo recomendado" sobre HTTPS, rotación de secretos y
+enforcement escalonado de Idempotency-Key.
+
+A. CAMBIOS
+A1. HTTPS remoto: con certificado activo, todo request HTTP no-loopback recibe 307 a HTTPS
+    preservando path/query/método; HTTP loopback queda solo para desarrollo y automatización.
+    El desktop normaliza direcciones guardadas a `https://…:5001`, usa el mismo callback de
+    pinning DPAPI en todos sus HttpClient y el pairing no publica ni reclama QR remoto sin TLS.
+A2. Secretos: `Backend.API` tiene `UserSecretsId`; ConnectionStrings, AdminSeedPassword,
+    RateLimiting y logging de Development se movieron a User Secrets. Se eliminó el
+    `appsettings.Development.json` local y se rotó el seed de bootstrap. La contraseña del rol
+    `postgres` no se rotó porque puede ser compartida con otras bases/proyectos.
+A3. Idempotencia: WPF y Web envían `Idempotency-Key` estable por payload en apertura/cierre de
+    caja; WPF también en staging de facturas proveedor. El servidor registra las solicitudes
+    legacy sin clave y el flag `Idempotency:RequireCashSessionAndInvoiceStage` (default false)
+    permite activar la obligatoriedad después de actualizar toda la flota.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B2. Suite .NET completa con PostgreSQL aislado: **3613/3613**, 0 fallos, 0 omitidos.
+B3. Web: `npm test` **626/626**, `npm run lint` limpio, `npm run build` OK.
+B4. El clúster PostgreSQL aislado se detuvo al finalizar.
+
+C. OPERACIÓN
+C1. Tras distribuir el nuevo Desktop/Web, activar `Idempotency:RequireCashSessionAndInvoiceStage=true`
+    en `BackendAPI/secrets.json`; antes de eso los clientes legacy siguen funcionando con warning.
+C2. El certificado del sitio debe ser confiable para navegadores/móviles; el desktop fija el
+    certificado local en el primer contacto por host (DPAPI) y rechaza cambios posteriores.
+C3. Rotar el seed en User Secrets no cambia la contraseña de un administrador ya existente;
+    ese usuario conserva el cambio obligatorio de contraseña en su próximo login.
+================================================================================

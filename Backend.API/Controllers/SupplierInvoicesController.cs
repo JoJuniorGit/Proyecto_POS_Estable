@@ -6,6 +6,7 @@ using Inventory.Module.Services.Ocr;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 
 namespace Backend.API.Controllers;
 
@@ -46,7 +47,12 @@ public sealed class SupplierInvoicesController : ControllerBase
         // SRE-10: idempotencia opcional para reintentos de red del staging.
         string requestPath = "/api/supplier-invoices";
         string bodyJson = _idempotencyResolver.GetActorUserId() + "|" + JsonSerializer.Serialize(request, WebJsonOptions);
-        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(this, requestPath, bodyJson);
+        var configuration = HttpContext?.RequestServices?.GetService(typeof(IConfiguration)) as IConfiguration;
+        var idempotency = await _idempotencyResolver.ResolveWithPolicyAsync(
+            this,
+            requestPath,
+            bodyJson,
+            configuration?.GetValue<bool>("Idempotency:RequireCashSessionAndInvoiceStage") == true);
         if (idempotency.ShouldStop) return idempotency.BlockingResult!;
 
         var invoice = await _supplierInvoiceService.StageAsync(request, cancellationToken);

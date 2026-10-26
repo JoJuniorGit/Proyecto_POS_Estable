@@ -9,6 +9,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,6 +18,9 @@ namespace Desktop.Client.Services;
 public partial class SupplierInvoiceService : ISupplierInvoiceService
 {
     private readonly HttpClient _httpClient;
+    private readonly object _stageIdempotencyLock = new();
+    private string? _stagePayloadSignature;
+    private string? _stageIdempotencyKey;
 
     public SupplierInvoiceService(HttpClient httpClient)
     {
@@ -174,12 +178,45 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        using var response = await _httpClient.PostAsJsonAsync(
-            "api/supplier-invoices",
-            request,
-            cancellationToken);
+        string payloadSignature = JsonSerializer.Serialize(request);
+        string idempotencyKey = GetStageIdempotencyKey(payloadSignature);
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/supplier-invoices")
+        {
+            Content = JsonContent.Create(request)
+        };
+        httpRequest.Headers.Add("Idempotency-Key", idempotencyKey);
+        using var response = await _httpClient.SendAsync(httpRequest, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await ReadRequiredResponseAsync<SupplierInvoiceDetailDto>(response, cancellationToken);
+        var staged = await ReadRequiredResponseAsync<SupplierInvoiceDetailDto>(response, cancellationToken);
+        ClearStageIdempotencyKey(payloadSignature);
+        return staged;
+    }
+
+    private string GetStageIdempotencyKey(string payloadSignature)
+    {
+        lock (_stageIdempotencyLock)
+        {
+            if (!string.Equals(_stagePayloadSignature, payloadSignature, StringComparison.Ordinal)
+                || string.IsNullOrWhiteSpace(_stageIdempotencyKey))
+            {
+                _stagePayloadSignature = payloadSignature;
+                _stageIdempotencyKey = Guid.NewGuid().ToString("N");
+            }
+
+            return _stageIdempotencyKey;
+        }
+    }
+
+    private void ClearStageIdempotencyKey(string payloadSignature)
+    {
+        lock (_stageIdempotencyLock)
+        {
+            if (string.Equals(_stagePayloadSignature, payloadSignature, StringComparison.Ordinal))
+            {
+                _stagePayloadSignature = null;
+                _stageIdempotencyKey = null;
+            }
+        }
     }
 
     public async Task<SupplierInvoiceDetailDto?> GetInvoiceAsync(
@@ -304,4 +341,3 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         await response.Content.ReadFromJsonAsync<TResponse>(cancellationToken: cancellationToken)
         ?? throw new InvalidOperationException("The supplier invoice API returned an empty response.");
 }
-

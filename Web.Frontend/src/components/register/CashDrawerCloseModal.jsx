@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from '../ui/Modal';
 import AtmAmountInput from '../ui/AtmAmountInput';
 import { Lock, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
 import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
-import { closeCashDrawerSession } from '../../services/pettyCashApi';
+import { closeCashDrawerSession, createIdempotencyKey } from '../../services/pettyCashApi';
 import {
   buildCashDrawerClosePayload,
   canCloseCashDrawerSession,
@@ -34,16 +34,21 @@ export default function CashDrawerCloseModal({
   const [usdAmount, setUsdAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const idempotencyAttemptRef = useRef(null);
 
   const isAllowed = canCloseCashDrawerSession(role);
   const hasTheoreticalUsd = expectedCashUsd !== null && expectedCashUsd !== undefined;
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      idempotencyAttemptRef.current = null;
+      return;
+    }
     setLocalAmount(Number(expectedCashBsS) || 0);
     setUsdAmount('');
     setLoading(false);
     setError('');
+    idempotencyAttemptRef.current = null;
   }, [isOpen, expectedCashBsS]);
 
   async function handleSubmit(event) {
@@ -66,11 +71,19 @@ export default function CashDrawerCloseModal({
 
     setLoading(true);
     try {
-      const result = await closeCashDrawerSession(buildCashDrawerClosePayload({
+      const payload = buildCashDrawerClosePayload({
         actualClosingBalanceLocal: localAmount,
         actualClosingBalanceUsd: usdAmount,
         currentExchangeRate: exchangeRate,
-      }));
+      });
+      const signature = JSON.stringify(payload);
+      if (idempotencyAttemptRef.current?.signature !== signature) {
+        idempotencyAttemptRef.current = { signature, key: createIdempotencyKey() };
+      }
+      const result = await closeCashDrawerSession(payload, {
+        idempotencyKey: idempotencyAttemptRef.current.key,
+      });
+      idempotencyAttemptRef.current = null;
       onSuccess?.(result);
       onClose?.();
     } catch (err) {

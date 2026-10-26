@@ -44,7 +44,7 @@ public class ConnectionManager : IConnectionManager, IDisposable
     private bool _disposed;
 
     public ConnectionStatus Status { get; private set; } = ConnectionStatus.Connecting;
-    public string CurrentServerAddress { get; private set; } = "http://localhost:5000/";
+    public string CurrentServerAddress { get; private set; } = "https://localhost:5001/";
     public string? CurrentMachineName { get; private set; }
 
     public event EventHandler<ConnectionStatusEventArgs>? ConnectionStatusChanged;
@@ -165,12 +165,7 @@ public class ConnectionManager : IConnectionManager, IDisposable
     {
         if (string.IsNullOrWhiteSpace(newAddress)) return false;
 
-        var clean = newAddress.Trim();
-        if (!clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && 
-            !clean.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
-            clean = $"https://{clean}";
-        }
+        var clean = ServerPortResolver.NormalizeHttpsAddress(newAddress);
 
         if (clean.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !IsLoopbackOnly(clean))
         {

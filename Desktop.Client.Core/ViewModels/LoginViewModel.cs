@@ -35,7 +35,7 @@ public partial class LoginViewModel : ObservableObject, IDisposable
     private bool _isScanningServer;
 
     [ObservableProperty]
-    private string _serverAddressText = "localhost:5000";
+    private string _serverAddressText = "localhost:5001";
 
     [RelayCommand]
     private void TogglePasswordVisibility()

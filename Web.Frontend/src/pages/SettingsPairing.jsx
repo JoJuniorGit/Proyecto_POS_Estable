@@ -31,7 +31,7 @@ export function renderPairingQr(container, payload, onError) {
 
 export default function SettingsPairing({ pairingInfo, setPairingInfo }) {
   const [selectedInterface, setSelectedInterface] = useState(null);
-  const [useHttps, setUseHttps] = useState(true);
+  const useHttps = pairingInfo?.isHttpsEnabled === true;
   const [loadingPairing, setLoadingPairing] = useState(false);
   const [copiedIp, setCopiedIp] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -61,12 +61,11 @@ export default function SettingsPairing({ pairingInfo, setPairingInfo }) {
   }, []);
 
   const currentIp = selectedInterface?.ipAddress || pairingInfo?.primaryIpAddress || (typeof window !== 'undefined' ? window.location.hostname : 'localhost') || '127.0.0.1';
-  const currentPort = useHttps ? (pairingInfo?.httpsPort || 5001) : (pairingInfo?.httpPort || 5000);
-  const currentScheme = useHttps ? 'https' : 'http';
-  const fullUrl = `${currentScheme}://${currentIp}:${currentPort}`;
+  const currentPort = pairingInfo?.httpsPort || 5001;
+  const fullUrl = useHttps ? `https://${currentIp}:${currentPort}` : '';
   
-  let activePayload = `${fullUrl}/?paired=true`;
-  if (pairingInfo?.qrPayload) {
+  let activePayload = useHttps ? `${fullUrl}/?paired=true` : '';
+  if (useHttps && pairingInfo?.qrPayload) {
     try {
       const url = new URL(pairingInfo.qrPayload);
       const pairToken = url.searchParams.get('pair');
@@ -148,14 +147,11 @@ export default function SettingsPairing({ pairingInfo, setPairingInfo }) {
                 </select>
               </div>
             )}
-            <label className="cursor-pointer flex-align-center gap-2 text-xs font-medium w-full text-left p-2 rounded bg-background border">
-              <input
-                type="checkbox"
-                checked={useHttps}
-                onChange={(e) => setUseHttps(e.target.checked)}
-              />
-              <span>Usar HTTPS (Puerto {pairingInfo?.httpsPort || 5001} para cámara web en móviles)</span>
-            </label>
+            <div className="text-xs font-medium w-full text-left p-2 rounded bg-background border">
+              {useHttps
+                ? `HTTPS activo (puerto ${pairingInfo?.httpsPort || 5001}); la conexión remota usa canal cifrado.`
+                : 'HTTPS no está disponible; solo se anuncian direcciones HTTP del entorno local.'}
+            </div>
           </div>
 
           <div className="flex-column gap-3 justify-center">
@@ -187,13 +183,14 @@ export default function SettingsPairing({ pairingInfo, setPairingInfo }) {
                   type="button"
                   className="btn btn-sm btn-primary flex-align-center gap-1 text-xs"
                   onClick={() => handleCopy(fullUrl, 'url')}
+                  disabled={!useHttps}
                 >
                   {copiedUrl ? <Check size={14} /> : <Copy size={14} />}
                   <span>{copiedUrl ? 'Copiado' : 'Copiar URL'}</span>
                 </button>
               </div>
               <div className="font-mono text-xs font-semibold break-all p-2 rounded bg-background border">
-                {fullUrl}
+                {useHttps ? fullUrl : 'HTTPS no disponible; emparejamiento remoto deshabilitado.'}
               </div>
             </div>
             <div className="p-3 border rounded-lg text-xs flex-align-start gap-2 set-wifi-alert">

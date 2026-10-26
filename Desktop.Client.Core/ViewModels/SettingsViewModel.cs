@@ -35,7 +35,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private string _currentServerAddress = "http://localhost:5000/";
+    private string _currentServerAddress = "https://localhost:5001/";
 
     [ObservableProperty]
     private string _connectionStatusText = "Conectado";

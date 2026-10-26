@@ -17,7 +17,7 @@ public class ServerConnectionViewModelTests
     public ServerConnectionViewModelTests()
     {
         _mockConnectionManager.SetupGet(c => c.CurrentServerAddress)
-            .Returns("http://localhost:5000/");
+            .Returns("https://localhost:5001/");
     }
 
     [Fact]
@@ -38,38 +38,38 @@ public class ServerConnectionViewModelTests
     public void Constructor_WhenCurrentAddressIsLocalhost_InitializesLocalModeTrue()
     {
         _mockConnectionManager.SetupGet(c => c.CurrentServerAddress)
-            .Returns("http://localhost:5000/");
+            .Returns("https://localhost:5001/");
 
         using var vm = new ServerConnectionViewModel(_mockConnectionManager.Object, _mockScannerService.Object);
 
         Assert.True(vm.IsLocalServerMode);
         Assert.False(vm.IsRemoteServerMode);
-        Assert.Equal("http://localhost:5000/", vm.ServerAddress);
+        Assert.Equal("https://localhost:5001/", vm.ServerAddress);
     }
 
     [Fact]
     public void Constructor_WhenCurrentAddressIsRemote_InitializesRemoteModeTrue()
     {
         _mockConnectionManager.SetupGet(c => c.CurrentServerAddress)
-            .Returns("http://192.168.1.150:5000/");
+            .Returns("https://192.168.1.150:5001/");
 
         using var vm = new ServerConnectionViewModel(_mockConnectionManager.Object, _mockScannerService.Object);
 
         Assert.False(vm.IsLocalServerMode);
         Assert.True(vm.IsRemoteServerMode);
-        Assert.Equal("http://192.168.1.150:5000/", vm.ServerAddress);
+        Assert.Equal("https://192.168.1.150:5001/", vm.ServerAddress);
     }
 
     [Fact]
     public void OnIsLocalServerModeChanged_WhenSetToTrue_SetsLocalhostAddress()
     {
         _mockConnectionManager.SetupGet(c => c.CurrentServerAddress)
-            .Returns("http://192.168.1.150:5000/");
+            .Returns("https://192.168.1.150:5001/");
 
         using var vm = new ServerConnectionViewModel(_mockConnectionManager.Object, _mockScannerService.Object);
         vm.IsLocalServerMode = true;
 
-        Assert.Equal("http://localhost:5000/", vm.ServerAddress);
+        Assert.Equal("https://localhost:5001/", vm.ServerAddress);
         Assert.False(vm.IsRemoteServerMode);
     }
 
@@ -80,7 +80,7 @@ public class ServerConnectionViewModelTests
         {
             IpAddress = "192.168.1.50",
             MachineName = "CAJA-01",
-            BaseUrl = "http://192.168.1.50:5000/",
+            BaseUrl = "https://192.168.1.50:5001/",
             ResponseTimeMs = 8,
             IsHealthy = true
         };
@@ -108,7 +108,7 @@ public class ServerConnectionViewModelTests
         {
             IpAddress = "192.168.1.50",
             MachineName = "CAJA-01",
-            BaseUrl = "http://192.168.1.50:5000/",
+            BaseUrl = "https://192.168.1.50:5001/",
             ResponseTimeMs = 5,
             IsHealthy = true
         };
@@ -116,7 +116,7 @@ public class ServerConnectionViewModelTests
         {
             IpAddress = "192.168.1.60",
             MachineName = "CAJA-02",
-            BaseUrl = "http://192.168.1.60:5000/",
+            BaseUrl = "https://192.168.1.60:5001/",
             ResponseTimeMs = 12,
             IsHealthy = true
         };
@@ -160,13 +160,13 @@ public class ServerConnectionViewModelTests
         {
             IpAddress = "192.168.1.100",
             MachineName = "CAJA-SERVER",
-            BaseUrl = "http://192.168.1.100:5000/",
+            BaseUrl = "https://192.168.1.100:5001/",
             ResponseTimeMs = 6,
             IsHealthy = true
         };
 
         _mockScannerService.Setup(s => s.ProbeSingleHostAsync(
-                "http://192.168.1.100:5000/", 5000, 1500, It.IsAny<CancellationToken>()))
+                "https://192.168.1.100:5001/", 5001, 1500, It.IsAny<CancellationToken>()))
             .ReturnsAsync(probeResult);
 
         using var vm = new ServerConnectionViewModel(_mockConnectionManager.Object, _mockScannerService.Object);
@@ -192,7 +192,7 @@ public class ServerConnectionViewModelTests
         };
 
         _mockScannerService.Setup(s => s.ProbeSingleHostAsync(
-                "https://192.168.1.100/", 5001, 1500, It.IsAny<CancellationToken>()))
+                "https://192.168.1.100:5001/", 5001, 1500, It.IsAny<CancellationToken>()))
             .ReturnsAsync(probeResult);
 
         using var vm = new ServerConnectionViewModel(_mockConnectionManager.Object, _mockScannerService.Object);
@@ -202,7 +202,7 @@ public class ServerConnectionViewModelTests
 
         Assert.True(vm.TestSuccess);
         _mockScannerService.Verify(s => s.ProbeSingleHostAsync(
-            "https://192.168.1.100/", 5001, 1500, It.IsAny<CancellationToken>()), Times.Once);
+            "https://192.168.1.100:5001/", 5001, 1500, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public class ServerConnectionViewModelTests
         {
             IpAddress = "192.168.1.50",
             MachineName = "CAJA-01",
-            BaseUrl = "http://192.168.1.50:5000/",
+            BaseUrl = "https://192.168.1.50:5001/",
             ResponseTimeMs = 8,
             IsHealthy = true
         };

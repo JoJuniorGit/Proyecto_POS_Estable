@@ -26,7 +26,7 @@ public class ConnectionSettingsNavigationTests
         _mockSettingsService.Setup(s => s.GetTimeZoneAsync())
             .ReturnsAsync("America/Caracas");
         _mockConnectionManager.SetupGet(c => c.CurrentServerAddress)
-            .Returns("http://localhost:5000/");
+            .Returns("https://localhost:5001/");
         _mockConnectionManager.SetupGet(c => c.Status)
             .Returns(ConnectionStatus.Connected);
     }
@@ -35,8 +35,8 @@ public class ConnectionSettingsNavigationTests
     public async Task SettingsViewModel_OpenServerConnectionCommand_InvokesDialogService_And_Refreshes_Address()
     {
         // Arrange
-        var initialServer = "http://localhost:5000/";
-        var newServer = "http://192.168.1.100:5000/";
+        var initialServer = "https://localhost:5001/";
+        var newServer = "https://192.168.1.100:5001/";
         var currentAddr = initialServer;
 
         _mockConnectionManager.SetupGet(c => c.CurrentServerAddress)
@@ -96,7 +96,7 @@ public class ConnectionSettingsNavigationTests
             _mockDialogService.Object,
             _mockConnectionManager.Object);
 
-        Assert.Equal("http://localhost:5000/", vm.CurrentServerAddress);
+        Assert.Equal("https://localhost:5001/", vm.CurrentServerAddress);
         Assert.Equal("Conectado", vm.ConnectionStatusText);
         Assert.Equal("#27AE60", vm.ConnectionStatusColor);
 
@@ -104,12 +104,12 @@ public class ConnectionSettingsNavigationTests
         _mockConnectionManager.Raise(m => m.ConnectionStatusChanged += null,
             new ConnectionStatusEventArgs
             {
-                ServerAddress = "http://192.168.1.50:5000/",
+                ServerAddress = "https://192.168.1.50:5001/",
                 Status = ConnectionStatus.Disconnected
             });
 
         // Assert
-        Assert.Equal("http://192.168.1.50:5000/", vm.CurrentServerAddress);
+        Assert.Equal("https://192.168.1.50:5001/", vm.CurrentServerAddress);
         Assert.Equal("Desconectado", vm.ConnectionStatusText);
         Assert.Equal("#E74C3C", vm.ConnectionStatusColor);
 
@@ -117,7 +117,7 @@ public class ConnectionSettingsNavigationTests
         _mockConnectionManager.Raise(m => m.ConnectionStatusChanged += null,
             new ConnectionStatusEventArgs
             {
-                ServerAddress = "http://192.168.1.50:5000/",
+                ServerAddress = "https://192.168.1.50:5001/",
                 Status = ConnectionStatus.Connecting
             });
 
@@ -136,7 +136,7 @@ public class ConnectionSettingsNavigationTests
             _mockDialogService.Object,
             _mockConnectionManager.Object);
 
-        Assert.Equal("http://localhost:5000/", vm.CurrentServerAddress);
+        Assert.Equal("https://localhost:5001/", vm.CurrentServerAddress);
 
         // Act - Dispose the ViewModel
         vm.Dispose();
@@ -145,12 +145,12 @@ public class ConnectionSettingsNavigationTests
         _mockConnectionManager.Raise(m => m.ConnectionStatusChanged += null,
             new ConnectionStatusEventArgs
             {
-                ServerAddress = "http://10.0.0.99:5000/",
+                ServerAddress = "https://10.0.0.99:5001/",
                 Status = ConnectionStatus.Disconnected
             });
 
         // Assert - Address must remain the old one, not updated
-        Assert.Equal("http://localhost:5000/", vm.CurrentServerAddress);
+        Assert.Equal("https://localhost:5001/", vm.CurrentServerAddress);
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public class ConnectionSettingsNavigationTests
     public void LoginViewModel_ConnectionStatus_UpdatesAutomatically_OnStatusEvent()
     {
         // Arrange
-        _mockConnectionManager.SetupGet(c => c.CurrentServerAddress).Returns("http://localhost:5000/");
+        _mockConnectionManager.SetupGet(c => c.CurrentServerAddress).Returns("https://localhost:5001/");
         _mockConnectionManager.SetupGet(c => c.Status).Returns(ConnectionStatus.Connecting);
 
         var loginVm = new LoginViewModel(
@@ -237,18 +237,18 @@ public class ConnectionSettingsNavigationTests
 
         // Act - Simulate server discovered/connected
         _mockConnectionManager.SetupGet(c => c.Status).Returns(ConnectionStatus.Connected);
-        _mockConnectionManager.SetupGet(c => c.CurrentServerAddress).Returns("http://192.168.1.100:5000/");
+        _mockConnectionManager.SetupGet(c => c.CurrentServerAddress).Returns("https://192.168.1.100:5001/");
 
         _mockConnectionManager.Raise(m => m.ConnectionStatusChanged += null,
             new ConnectionStatusEventArgs
             {
-                ServerAddress = "http://192.168.1.100:5000/",
+                ServerAddress = "https://192.168.1.100:5001/",
                 Status = ConnectionStatus.Connected
             });
 
         // Assert
         Assert.True(loginVm.IsServerConnected);
         Assert.Contains("Conectado", loginVm.ServerStatusText);
-        Assert.Equal("192.168.1.100:5000", loginVm.ServerAddressText);
+        Assert.Equal("192.168.1.100:5001", loginVm.ServerAddressText);
     }
 }

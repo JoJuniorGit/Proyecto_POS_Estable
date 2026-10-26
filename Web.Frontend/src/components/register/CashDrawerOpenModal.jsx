@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from '../ui/Modal';
 import AtmAmountInput from '../ui/AtmAmountInput';
 import { Landmark, Loader2, AlertCircle } from 'lucide-react';
 import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
-import { openCashDrawerSession } from '../../services/pettyCashApi';
+import { createIdempotencyKey, openCashDrawerSession } from '../../services/pettyCashApi';
 import {
   buildCashDrawerOpenPayload,
   validateCashDrawerOpenDraft,
@@ -29,13 +29,18 @@ export default function CashDrawerOpenModal({
   const [usdAmount, setUsdAmount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const idempotencyAttemptRef = useRef(null);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      idempotencyAttemptRef.current = null;
+      return;
+    }
     setLocalAmount(0);
     setUsdAmount(0);
     setLoading(false);
     setError('');
+    idempotencyAttemptRef.current = null;
   }, [isOpen]);
 
   const hasRate = Number(exchangeRate) > 0;
@@ -56,11 +61,19 @@ export default function CashDrawerOpenModal({
 
     setLoading(true);
     try {
-      const result = await openCashDrawerSession(buildCashDrawerOpenPayload({
+      const payload = buildCashDrawerOpenPayload({
         openingBalanceLocal: localAmount,
         openingBalanceUsd: usdAmount,
         currentExchangeRate: exchangeRate,
-      }));
+      });
+      const signature = JSON.stringify(payload);
+      if (idempotencyAttemptRef.current?.signature !== signature) {
+        idempotencyAttemptRef.current = { signature, key: createIdempotencyKey() };
+      }
+      const result = await openCashDrawerSession(payload, {
+        idempotencyKey: idempotencyAttemptRef.current.key,
+      });
+      idempotencyAttemptRef.current = null;
       onSuccess?.(result);
       onClose?.();
     } catch (err) {

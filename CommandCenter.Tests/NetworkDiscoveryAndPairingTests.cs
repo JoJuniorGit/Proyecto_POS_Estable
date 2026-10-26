@@ -66,7 +66,7 @@ public class NetworkDiscoveryAndPairingTests
             var loaded = store.LoadSettings();
 
             // Assert
-            Assert.Equal("http://192.168.1.99:5000/", loaded.ServerBaseAddress);
+            Assert.Equal("https://192.168.1.99:5001/", loaded.ServerBaseAddress);
             Assert.Equal("TEST-SERVER", loaded.LastKnownServerMachineName);
             Assert.Equal("192.168.1.99", loaded.LastKnownServerIp);
             Assert.NotNull(loaded.LastUpdatedUtc);
@@ -103,7 +103,7 @@ public class NetworkDiscoveryAndPairingTests
             var manager = new ConnectionManager(store, scanner);
 
             // Assert
-            Assert.Equal("http://192.168.1.200:5000/", manager.CurrentServerAddress);
+            Assert.Equal("https://192.168.1.200:5001/", manager.CurrentServerAddress);
             Assert.Equal("TEST-BOX", manager.CurrentMachineName);
         }
         finally

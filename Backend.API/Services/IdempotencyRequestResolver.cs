@@ -52,6 +52,33 @@ public sealed class IdempotencyRequestResolver
         return ResolveAsync(controller, requestPath, bodyJson, DefaultMissingKeyMessage, parseNumericBodyAsInvoice);
     }
 
+    public Task<IdempotencyResolution> ResolveWithPolicyAsync(
+        ControllerBase controller,
+        string requestPath,
+        string bodyJson,
+        bool requireKey,
+        bool parseNumericBodyAsInvoice = false)
+    {
+        bool hasKey = !string.IsNullOrWhiteSpace(controller.Request?.Headers["Idempotency-Key"].ToString());
+        if (!requireKey && !hasKey)
+        {
+            AppLogger.LogStructured(
+                AppLogger.WarnLogPath,
+                "WARN",
+                "Legacy mutation request without Idempotency-Key during rollout",
+                new
+                {
+                    RequestPath = requestPath,
+                    Method = controller.Request?.Method,
+                    UserId = GetActorUserId()
+                });
+        }
+
+        return requireKey
+            ? ResolveAsync(controller, requestPath, bodyJson, DefaultMissingKeyMessage, parseNumericBodyAsInvoice)
+            : ResolveIfPresentAsync(controller, requestPath, bodyJson, parseNumericBodyAsInvoice);
+    }
+
     public async Task<IdempotencyResolution> ResolveAsync(
         ControllerBase controller,
         string requestPath,
