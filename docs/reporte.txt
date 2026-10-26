@@ -16821,4 +16821,47 @@ C3. El carril PostgreSQL real no se ejercitó por credencial vencida; los locks 
 C4. Los 4 fallos de OcrExtraction son previos a este cambio (DI `ICurrentUserService` en el host de tests).
 ================================================================================
 
+================================================================================
+ANEXO POST-CIERRE (XXXV) - CIERRE DE RESIDUALES FINANCIEROS: APERTURA USD, MONEDA PERSISTIDA Y CARRIL POSTGRES (8.201) - 2026-10-26
+================================================================================
+Pedido del mantenedor: "Corrige los residuales: ... 1. La UI de apertura no expone todavía un campo
+USD ... 2. PaymentMethod.Currency sigue derivándose del nombre ... 3. El carril Postgres real no se
+ejercitó en vivo por la credencial vencida ..."
+
+A. CAMBIOS
+A1. Moneda persistida del método de pago: `PaymentMethod.Currency` (USD/Bs.S) pasa de propiedad
+    calculada a columna `character varying(10)` nullable. Migración idempotente `20261026022722`
+    (`information_schema` guard) + backfill único por la regla histórica del nombre (contiene USD).
+    `PaymentMethodService` la fija al crear (explícita o derivada), la conserva al renombrar y
+    rechaza un cambio explícito de moneda en métodos existentes. Gaveta, cierre Z, caja chica y
+    reembolsos usan la moneda persistida; el nombre queda solo como fallback de filas legadas.
+A2. Apertura dual en clientes: overlay WPF y modal Web con fondo inicial Bs.S y USD, validación de
+    ambos montos, tasa obligatoria y envío de `openingBalanceLocal`/`openingBalanceUsd`/
+    `currentExchangeRate` a `POST /api/cashdrawer/open`. El auto-alta por primer cobro no cambia.
+A3. Carril PostgreSQL reproducible: `scripts/test-postgres-lane.ps1` crea un clúster desechable con
+    `initdb` (trust local, puerto dedicado), exporta `TEST_POSTGRES_CONNECTION`, ejecuta el filtro
+    `~Postgres` y detiene el servidor; no toca la instalación local ni sus credenciales. Documentado
+    en `docs/coding-guidelines-qa.md`.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 errores, 0 advertencias.
+B2. `dotnet ef migrations has-pending-model-changes`: sin cambios; script de migración verificado.
+B3. Focalizados de moneda/gaveta/apertura/migración: 95/95.
+B4. Carril PostgreSQL real: **35/35** (clúster aislado 18.1, puerto 55432; repetido 35/35 vía script
+    en puerto 55433). Incluye el bucket USD 4dp, `nextval`, locks, xmin y migraciones Up/Down.
+B5. Suite sin carril Postgres: **3535 superados**; 14 fallos ambientales/pre-existentes (10 del
+    carril Postgres sin credencial local 28P01 y 4 de OcrExtraction por DI del host de pruebas).
+B6. `Wpf.E2ETests`: **7/7**. Web: `npm test` **628/628**, `npm run lint` limpio y `npm run build` OK
+    (bundle `Backend.API/wwwroot` regenerado).
+
+C. RESIDUALES
+C1. `PaymentMethod.Currency` queda nullable para no romper inserts legados; el backfill cubre filas
+    existentes y el runtime cae al nombre solo cuando el valor falta.
+C2. La apertura manual sigue el gate del endpoint (cualquier rol autenticado); no se agregó un gate
+    de supervisión adicional.
+C3. Los 4 fallos de OcrExtraction persisten por la DI incompleta de su host de pruebas, ajena a 8.201.
+C4. El script del lane requiere los binarios de PostgreSQL instalados localmente (`initdb`, `pg_ctl`,
+    `pg_isready`); no usa contenedores.
+================================================================================
+
 
