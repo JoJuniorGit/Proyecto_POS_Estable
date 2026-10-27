@@ -13,7 +13,8 @@ public static class Iso4217
 {
     private static readonly string[] FallbackCodes =
     {
-        "USD", "EUR", "VES", "COP", "MXN", "PEN", "CLP", "ARS", "BRL", "GBP", "CAD", "JPY", "CNY"
+        "USD", "EUR", "VES", "COP", "MXN", "PEN", "CLP", "ARS", "BRL", "GBP", "CAD", "JPY", "CNY",
+        "CLF", "UYW"
     };
 
     private static readonly HashSet<string> SupportedCodes = BuildSupportedCodes();
