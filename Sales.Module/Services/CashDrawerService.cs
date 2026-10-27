@@ -468,6 +468,8 @@ public class CashDrawerService : ICashDrawerService
                     }
                 }
 
+                string currencyCode = await ResolveTransactionCurrencyCodeAsync(type, source, paymentMethodId, cancellationToken);
+
                 var transaction = new CashTransaction
                 {
                     SessionId = sessionId,
@@ -480,7 +482,8 @@ public class CashDrawerService : ICashDrawerService
                     Description = description,
                     SaleId = referenceId,
                     IsPhysicalCash = isPhysicalCash,
-                    PaymentMethodId = paymentMethodId
+                    PaymentMethodId = paymentMethodId,
+                    CurrencyCode = currencyCode
                 };
 
                 _context.CashTransactions.Add(transaction);
@@ -639,7 +642,9 @@ public class CashDrawerService : ICashDrawerService
             SaleId = saleId,
             PaymentMethodId = cashPaymentMethodId,
             Description = description,
-            TransactionTime = DateTime.UtcNow
+            TransactionTime = DateTime.UtcNow,
+            // 8.211-T3b3 (S6): el vuelto sale siempre de la gaveta local.
+            CurrencyCode = PaymentMethodCurrencyResolver.LocalCurrency
         };
 
         _context.CashTransactions.Add(changeTx);
@@ -675,7 +680,8 @@ public class CashDrawerService : ICashDrawerService
                 SaleId = t.SaleId,
                 InvoiceNumber = t.Sale != null ? t.Sale.InvoiceNumber : null,
                 IsPhysicalCash = t.IsPhysicalCash,
-                PaymentMethodId = t.PaymentMethodId
+                PaymentMethodId = t.PaymentMethodId,
+                CurrencyCode = t.CurrencyCode
             })
             .ToListAsync(cancellationToken);
     }
@@ -711,11 +717,50 @@ public class CashDrawerService : ICashDrawerService
                 SaleId = t.SaleId,
                 InvoiceNumber = t.Sale != null ? t.Sale.InvoiceNumber : null,
                 IsPhysicalCash = t.IsPhysicalCash,
-                PaymentMethodId = t.PaymentMethodId
+                PaymentMethodId = t.PaymentMethodId,
+                CurrencyCode = t.CurrencyCode
             })
             .ToListAsync(cancellationToken);
 
         return new Core.DTOs.PagedResultDto<CashTransactionResponseDto>(items, totalCount, hasMore);
+    }
+
+    /// <summary>
+    /// 8.211-T3b3 (S6): moneda fisica congelada del movimiento al momento de la escritura.
+    /// Apertura, cierre, vuelto, adelanto, ajustes y cash-in/out usan la moneda local; un ingreso
+    /// por venta efectiva, un abono CxC y un reembolso usan la moneda PERSISTIDA del metodo (el
+    /// nombre solo resuelve filas legadas); sin metodo, todo cae a la moneda local. Caja chica y
+    /// su reversa fijan su propia moneda en <see cref="PettyCashService"/>.
+    /// </summary>
+    private async Task<string> ResolveTransactionCurrencyCodeAsync(
+        CashTransactionType type,
+        CashTransactionSource source,
+        int? paymentMethodId,
+        CancellationToken cancellationToken)
+    {
+        if (source == CashTransactionSource.SalePayment && type == CashTransactionType.Expense)
+        {
+            return PaymentMethodCurrencyResolver.LocalCurrency;
+        }
+
+        bool usesMethodCurrency = source is CashTransactionSource.SalePayment
+            or CashTransactionSource.CreditPayment
+            or CashTransactionSource.CreditRefund;
+
+        if (!usesMethodCurrency || paymentMethodId is null)
+        {
+            return PaymentMethodCurrencyResolver.LocalCurrency;
+        }
+
+        var method = await _context.PaymentMethods
+            .AsNoTracking()
+            .Where(candidate => candidate.Id == paymentMethodId.Value)
+            .Select(candidate => new { candidate.Currency, candidate.Name })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return method is null
+            ? PaymentMethodCurrencyResolver.LocalCurrency
+            : PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name);
     }
 
     private static CashDrawerSessionResponseDto MapSession(CashDrawerSession session) => new()
@@ -751,7 +796,8 @@ public class CashDrawerService : ICashDrawerService
         SaleId = transaction.SaleId,
         InvoiceNumber = transaction.Sale?.InvoiceNumber,
         IsPhysicalCash = transaction.IsPhysicalCash,
-        PaymentMethodId = transaction.PaymentMethodId
+        PaymentMethodId = transaction.PaymentMethodId,
+        CurrencyCode = transaction.CurrencyCode
     };
 
 }

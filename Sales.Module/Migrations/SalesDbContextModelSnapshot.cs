@@ -488,6 +488,10 @@ namespace Sales.Module.Migrations
                     b.Property<decimal>("AmountUsd")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<string>("CurrencyCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("text");

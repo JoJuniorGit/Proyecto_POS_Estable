@@ -116,7 +116,9 @@ public partial class SalesService
                             Description = $"Abono Inicial Venta #{sale.Id}",
                             TransactionTime = DateTime.UtcNow,
                             SaleId = sale.Id,
-                            PaymentMethodId = payment.PaymentMethodId
+                            PaymentMethodId = payment.PaymentMethodId,
+                            // 8.211-T3b3 (S6): snapshot de la moneda fisica del abono inicial.
+                            CurrencyCode = ResolvePaymentMethodCurrency(pMethodForValidation)
                         };
                         _context.CashTransactions.Add(initialCashTx);
                     }
@@ -182,7 +184,9 @@ public partial class SalesService
                             Description = prepCashTx.Description,
                             TransactionTime = prepCashTx.TransactionTime,
                             SaleId = sale.Id,
-                            PaymentMethodId = prepCashTx.PaymentMethodId
+                            PaymentMethodId = prepCashTx.PaymentMethodId,
+                            // 8.211-T3b3 (S6): el clon del retry conserva la moneda congelada.
+                            CurrencyCode = prepCashTx.CurrencyCode
                         });
                     }
                 }

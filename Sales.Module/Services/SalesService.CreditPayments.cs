@@ -191,7 +191,9 @@ public partial class SalesService
                         IsPhysicalCash = true,
                         Description = $"Abono CxC {customer.Name} (Cliente #{customer.Id})",
                         TransactionTime = DateTime.UtcNow,
-                        PaymentMethodId = request.PaymentMethodId
+                        PaymentMethodId = request.PaymentMethodId,
+                        // 8.211-T3b3 (S6): moneda persistida del metodo cobrado en la gaveta.
+                        CurrencyCode = ResolvePaymentMethodCurrency(paymentMethod)
                     };
                     _context.CashTransactions.Add(cashTransaction);
                 }

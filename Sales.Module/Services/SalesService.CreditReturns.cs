@@ -422,7 +422,9 @@ public partial class SalesService
                         Description = $"Reembolso devolución venta N° {sale.InvoiceNumber} ({sale.Customer?.Name ?? sale.CustomerName ?? $"Cliente #{receivable.CustomerId}"})",
                         TransactionTime = DateTime.UtcNow,
                         SaleId = sale.Id,
-                        PaymentMethodId = refundMethodId
+                        PaymentMethodId = refundMethodId,
+                        // 8.211-T3b3 (S6): la salida fisica usa la moneda de la gaveta enrutada.
+                        CurrencyCode = refundCurrency == PettyCashCurrency.Usd ? "USD" : "Bs.S"
                     };
                     _context.CashTransactions.Add(refundCashTransaction);
                 }

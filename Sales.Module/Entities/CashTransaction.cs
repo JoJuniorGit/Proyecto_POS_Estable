@@ -72,6 +72,12 @@ public class CashTransaction
     public int? PaymentMethodId { get; set; }
     public PaymentMethod? PaymentMethod { get; set; }
 
+    // 8.211-T3b3 (S6): snapshot aditivo de la moneda FISICA de la gaveta. El libro sigue
+    // calculando saldos con las columnas viejas; este codigo solo describe la divisa del
+    // movimiento (USD / Bs.S) y nunca revaloriza montos historicos.
+    [MaxLength(10)]
+    public string? CurrencyCode { get; set; }
+
     // 8.188-T1 (Paso 13, S6): vinculo del movimiento con el gasto de caja chica. Tanto el
     // Expense original (PettyCashExpense) como su reversa compensatoria (PettyCashReversal)
     // apuntan al mismo gasto. La FK vive aqui para evitar el ciclo con PettyCashExpenses.

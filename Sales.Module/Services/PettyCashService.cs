@@ -242,7 +242,9 @@ public class PettyCashService : IPettyCashService
                     Description = $"Gasto de caja chica {FormatVoucher(voucherNumber)}: {concept}",
                     IsPhysicalCash = true,
                     PaymentMethodId = cashMethodId,
-                    PettyCashExpense = expense
+                    PettyCashExpense = expense,
+                    // 8.211-T3b3 (S6): la gaveta de la que sale el gasto es su moneda.
+                    CurrencyCode = request.Currency == PettyCashCurrency.Usd ? "USD" : "Bs.S"
                 };
 
                 _context.PettyCashExpenses.Add(expense);
@@ -376,7 +378,9 @@ public class PettyCashService : IPettyCashService
                     Description = $"Reversa de gasto de caja chica {FormatVoucher(expense.VoucherNumber)}: {expense.Concept}",
                     IsPhysicalCash = true,
                     PaymentMethodId = paymentMethodId,
-                    PettyCashExpenseId = expense.Id
+                    PettyCashExpenseId = expense.Id,
+                    // 8.211-T3b3 (S6): la reversa regresa a la misma gaveta del gasto.
+                    CurrencyCode = expense.Currency == PettyCashCurrency.Usd ? "USD" : "Bs.S"
                 };
 
                 _context.CashTransactions.Add(reversal);

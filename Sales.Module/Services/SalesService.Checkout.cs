@@ -365,7 +365,9 @@ public partial class SalesService
                             Description = $"Factura N° {sale.InvoiceNumber}",
                             TransactionTime = DateTime.UtcNow,
                             SaleId = sale.Id,
-                            PaymentMethodId = p.PaymentMethodId
+                            PaymentMethodId = p.PaymentMethodId,
+                            // 8.211-T3b3 (S6): la moneda del ingreso fisico acompania al metodo.
+                            CurrencyCode = ResolvePaymentMethodCurrency(paymentMethod)
                         };
                         _context.CashTransactions.Add(cashTx);
                     }

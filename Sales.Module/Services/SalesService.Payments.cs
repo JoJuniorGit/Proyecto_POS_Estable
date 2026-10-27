@@ -112,7 +112,9 @@ public partial class SalesService
                     Description = $"Abono Venta #{saleId}",
                     TransactionTime = DateTime.UtcNow,
                     SaleId = sale.Id,
-                    PaymentMethodId = request.PaymentMethodId
+                    PaymentMethodId = request.PaymentMethodId,
+                    // 8.211-T3b3 (S6): snapshot de la moneda fisica del abono.
+                    CurrencyCode = ResolvePaymentMethodCurrency(input.Method)
                 };
                 _context.CashTransactions.Add(cashTx);
             }
@@ -269,7 +271,9 @@ public partial class SalesService
                             Description = $"Abono Venta #{saleId}",
                             TransactionTime = DateTime.UtcNow,
                             SaleId = sale.Id,
-                            PaymentMethodId = request.PaymentMethodId
+                            PaymentMethodId = request.PaymentMethodId,
+                            // 8.211-T3b3 (S6): snapshot de la moneda fisica del abono.
+                            CurrencyCode = ResolvePaymentMethodCurrency(input.Method)
                         };
                         _context.CashTransactions.Add(cashTx);
                     }

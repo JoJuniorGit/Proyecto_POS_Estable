@@ -313,6 +313,9 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<CashTransaction>().Property(t => t.ExchangeRate).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashTransaction>().Property(t => t.AmountLocal).HasColumnType("decimal(18,2)");
 
+        // 8.211-T3b3 (S6): snapshot de la moneda fisica del movimiento (aditivo, sin indice).
+        modelBuilder.Entity<CashTransaction>().Property(t => t.CurrencyCode).HasMaxLength(10);
+
         // Daily Closure Configurations
         modelBuilder.Entity<DailyClosure>()
             .HasMany(dc => dc.Details)
