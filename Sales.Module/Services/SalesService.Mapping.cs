@@ -104,7 +104,8 @@ public partial class SalesService
                 AmountBsS = p.AmountBsS,
                 ExchangeRate = p.ExchangeRate,
                 ReferenceNumber = p.ReferenceNumber,
-                CreatedAt = p.CreatedAt
+                CreatedAt = p.CreatedAt,
+                CurrencyCode = p.CurrencyCode
             }).ToList()
         };
     }

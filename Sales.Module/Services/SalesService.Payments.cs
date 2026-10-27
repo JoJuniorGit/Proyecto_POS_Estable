@@ -88,7 +88,8 @@ public partial class SalesService
                 AmountBsS = Math.Round(input.AmountBsS, 2, MidpointRounding.AwayFromZero),
                 ExchangeRate = input.Rate,
                 ReferenceNumber = request.ReferenceNumber,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                CurrencyCode = ResolvePaymentMethodCurrency(input.Method)
             };
 
             _context.SalePayments.Add(paymentEntity);
@@ -248,7 +249,8 @@ public partial class SalesService
                         AmountBsS = Math.Round(input.AmountBsS, 2, MidpointRounding.AwayFromZero),
                         ExchangeRate = input.Rate,
                         ReferenceNumber = request.ReferenceNumber,
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = DateTime.UtcNow,
+                        CurrencyCode = ResolvePaymentMethodCurrency(input.Method)
                     };
 
                     _context.SalePayments.Add(paymentEntity);
@@ -420,6 +422,13 @@ public partial class SalesService
 
         return (0m, 0m);
     }
+
+    // 8.211-T3b1 (S6/S8): moneda congelada del abono. La autoridad es la moneda PERSISTIDA del
+    // método; el nombre solo se usa como fallback legacy; un método ausente cae a la moneda local.
+    private static string ResolvePaymentMethodCurrency(PaymentMethod? method)
+        => method is null
+            ? PaymentMethodCurrencyResolver.LocalCurrency
+            : PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name);
 
     private sealed record ComputedPaymentInput(decimal Rate, decimal AmountUsd, decimal AmountBsS, PaymentMethod? Method);
 }

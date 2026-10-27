@@ -346,7 +346,8 @@ public partial class SalesService
                         AmountBsS = Math.Round(amountLocal, 2, MidpointRounding.AwayFromZero),
                         ExchangeRate = exchangeRate,
                         ReferenceNumber = p.Reference,
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = DateTime.UtcNow,
+                        CurrencyCode = ResolvePaymentMethodCurrency(paymentMethod)
                     };
                     sale.Payments.Add(paymentEntity);
 

@@ -121,6 +121,9 @@ public class SalePaymentDto
     public decimal ExchangeRate { get; set; }
     public string? ReferenceNumber { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    // 8.211-T3b1 (S6): moneda snapshot al momento del pago (null solo en filas previas al backfill).
+    public string? CurrencyCode { get; set; }
 }
 
 public class HoldSaleRequestDto

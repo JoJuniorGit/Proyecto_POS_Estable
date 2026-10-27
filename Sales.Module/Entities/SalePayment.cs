@@ -28,4 +28,11 @@ public class SalePayment
 
     [MaxLength(100)]
     public string? ReferenceNumber { get; set; }
+
+    // 8.211-T3b1 (S6/S8): snapshot aditivo de la moneda del método al momento del cobro. Se
+    // congela desde la moneda persistida (el nombre es solo fallback legacy), de modo que un
+    // rename o reconfiguración posterior no reclasifique pagos históricos. No participa de
+    // ningún cálculo de montos, tasas ni totales.
+    [MaxLength(10)]
+    public string? CurrencyCode { get; set; }
 }

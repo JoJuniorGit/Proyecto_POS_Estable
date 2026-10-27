@@ -91,7 +91,8 @@ public partial class SalesService
                     AmountBsS = Math.Round(resolvedAmountBsS, 2, MidpointRounding.AwayFromZero),
                     ExchangeRate = rate,
                     ReferenceNumber = payment.ReferenceNumber,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    CurrencyCode = ResolvePaymentMethodCurrency(pMethodForValidation)
                 };
 
                 sale.Payments.Add(initialPaymentEntity);
@@ -163,7 +164,8 @@ public partial class SalesService
                         AmountBsS = prepPayment.AmountBsS,
                         ExchangeRate = prepPayment.ExchangeRate,
                         ReferenceNumber = prepPayment.ReferenceNumber,
-                        CreatedAt = prepPayment.CreatedAt
+                        CreatedAt = prepPayment.CreatedAt,
+                        CurrencyCode = prepPayment.CurrencyCode
                     };
                     sale.Payments.Add(clonedPayment);
                     if (prepCashTx != null)

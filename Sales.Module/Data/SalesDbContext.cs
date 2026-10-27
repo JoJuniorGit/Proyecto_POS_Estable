@@ -251,6 +251,12 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<SalePayment>().Property(p => p.AmountBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<SalePayment>().Property(p => p.ExchangeRate).HasColumnType("decimal(18,4)");
 
+        // 8.211-T3b1 (S6): snapshot aditivo de la moneda del abono. Sin default ni índice: la
+        // migración backfillea las filas legacy desde el método persistido (nombre solo fallback).
+        modelBuilder.Entity<SalePayment>()
+            .Property(p => p.CurrencyCode)
+            .HasMaxLength(10);
+
         // Cash Drawer Configurations
         modelBuilder.Entity<CashDrawerSession>()
             .HasMany(s => s.Transactions)

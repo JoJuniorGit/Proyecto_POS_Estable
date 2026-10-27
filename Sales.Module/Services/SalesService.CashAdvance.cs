@@ -154,6 +154,15 @@ public partial class SalesService
         _context.SaleItems.Add(saleItem);
 
         // 7. Crear SalePayment a nombre del método electrónico
+        // 8.211-T3b1 (S6/S8): la moneda snapshot sale del método persistido; el nombre recibido
+        // solo resuelve el fallback legacy cuando la fila no está disponible.
+        var paymentMethod = await _context.PaymentMethods
+            .AsNoTracking()
+            .FirstOrDefaultAsync(pm => pm.Id == paymentMethodId, cancellationToken);
+        string currencyCode = paymentMethod is null
+            ? PaymentMethodCurrencyResolver.Resolve(paymentMethodName)
+            : ResolvePaymentMethodCurrency(paymentMethod);
+
         var payment = new SalePayment
         {
             SaleId = sale.Id,
@@ -162,7 +171,8 @@ public partial class SalesService
             AmountBsS = totalChargedLocal,
             ExchangeRate = anchoredRate,
             CreatedAt = DateTime.UtcNow,
-            ReferenceNumber = $"ADELANTO-{DateTime.UtcNow:yyyyMMddHHmmss}"
+            ReferenceNumber = $"ADELANTO-{DateTime.UtcNow:yyyyMMddHHmmss}",
+            CurrencyCode = currencyCode
         };
 
         _context.SalePayments.Add(payment);
