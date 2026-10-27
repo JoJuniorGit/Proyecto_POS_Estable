@@ -66,6 +66,18 @@ public class Sale
     [Column(TypeName = "decimal(18,2)")]
     public decimal FinalPaidAmountBsS { get; set; }
 
+    // 8.211-T3a (S6): snapshot aditivo del perfil monetario vigente al completar la venta.
+    // Instalaciones legacy o sin perfil configurado conservan USD/VES/Dual. Los montos y tasas
+    // históricos siguen siendo la fuente de cálculo: estas columnas solo describen el régimen.
+    [MaxLength(3)]
+    public string PrimaryCurrencyCode { get; set; } = "USD";
+
+    [MaxLength(3)]
+    public string? SecondaryCurrencyCode { get; set; } = "VES";
+
+    [MaxLength(16)]
+    public string MonetaryMode { get; set; } = "Dual";
+
     public int? CashierId { get; set; }
     public User? Cashier { get; set; }
 

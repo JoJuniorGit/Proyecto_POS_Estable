@@ -40,6 +40,9 @@ public partial class SalesService : ISalesService
     // Opcional para preservar la construcción directa histórica de tests (precedente 8.149/8.150);
     // el flujo de crédito falla cerrado si no está configurado.
     private readonly ICreditService? _creditService;
+    // 8.211-T3a (S6): perfil monetario opcional para el snapshot aditivo de la venta. Null
+    // conserva el comportamiento histórico USD/VES/Dual (composiciones directas de tests).
+    private readonly IMonetaryProfileService? _monetaryProfileService;
     // 8.149 (SEC-02): mensaje único para ambos puntos de mutación de ítems de venta
     // (AddItemAsync y UpdateSaleItemsAsync). El adelanto de efectivo solo entra por CreateCashAdvanceSaleAsync.
     private const string CashAdvanceSaleItemRejectionMessage = "Los productos de adelanto de efectivo no pueden agregarse ni modificarse en una venta; use el flujo de adelanto de efectivo.";
@@ -54,7 +57,8 @@ public partial class SalesService : ISalesService
         Microsoft.Extensions.Logging.ILogger<SalesService>? logger = null,
         IMemoryCache? cache = null,
         Sales.Module.Receipts.IReceiptPrintQueue? receiptPrintQueue = null,
-        ICreditService? creditService = null)
+        ICreditService? creditService = null,
+        IMonetaryProfileService? monetaryProfileService = null)
     {
         _context = context;
         _history = new SalesHistoryService(context);
@@ -68,6 +72,7 @@ public partial class SalesService : ISalesService
         _logger = logger;
         _receiptPrintQueue = receiptPrintQueue;
         _creditService = creditService;
+        _monetaryProfileService = monetaryProfileService;
     }
 
     private async Task NotifyHoldOrdersChangedAsync()

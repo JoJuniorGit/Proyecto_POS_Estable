@@ -23,6 +23,12 @@ public class SaleDto
     public decimal SubtotalBsS { get; set; }
     public decimal RoundingAdjustment { get; set; }
     public decimal FinalPaidAmountBsS { get; set; }
+
+    // 8.211-T3a (S6): snapshot monetario aditivo capturado al completar la venta.
+    public string PrimaryCurrencyCode { get; set; } = "USD";
+    public string? SecondaryCurrencyCode { get; set; } = "VES";
+    public string MonetaryMode { get; set; } = "Dual";
+
     public int? CashierId { get; set; }
     public string CashierName { get; set; } = "Usuario Desconocido";
 

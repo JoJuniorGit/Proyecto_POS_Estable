@@ -1122,6 +1122,13 @@ namespace Sales.Module.Migrations
                     b.Property<int?>("InvoiceNumber")
                         .HasColumnType("integer");
 
+                    b.Property<string>("MonetaryMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("Dual");
+
                     b.Property<DateTime?>("PickupDate")
                         .HasColumnType("timestamp with time zone");
 
@@ -1130,8 +1137,21 @@ namespace Sales.Module.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("PrimaryCurrencyCode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasDefaultValue("USD");
+
                     b.Property<decimal>("RoundingAdjustment")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("SecondaryCurrencyCode")
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasDefaultValue("VES");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");

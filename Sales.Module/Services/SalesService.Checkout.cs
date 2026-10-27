@@ -22,6 +22,49 @@ namespace Sales.Module.Services;
 
 public partial class SalesService
 {
+    /// <summary>
+    /// 8.211-T3a (S6): perfil monetario congelado en la venta. Es aditivo: no participa del
+    /// cálculo de montos, tasas ni redondeos, por lo que un fallo de lectura nunca aborta el cobro.
+    /// </summary>
+    private record MonetaryProfileSnapshot(string PrimaryCurrencyCode, string? SecondaryCurrencyCode, string MonetaryMode)
+    {
+        public static readonly MonetaryProfileSnapshot Default = new("USD", "VES", "Dual");
+    }
+
+    private async Task<MonetaryProfileSnapshot> ResolveMonetaryProfileSnapshotAsync(CancellationToken cancellationToken)
+    {
+        if (_monetaryProfileService is null)
+        {
+            return MonetaryProfileSnapshot.Default;
+        }
+
+        try
+        {
+            var profile = await _monetaryProfileService.GetAsync(cancellationToken);
+
+            var primary = string.IsNullOrWhiteSpace(profile.PrimaryCurrencyCode)
+                ? "USD"
+                : profile.PrimaryCurrencyCode;
+
+            // Single mode persists NULL: the secondary currency does not exist in that regime.
+            var secondary = profile.Mode == MonetaryMode.Dual
+                ? profile.SecondaryCurrencyCode ?? "VES"
+                : null;
+
+            return new MonetaryProfileSnapshot(primary, secondary, profile.Mode.ToString());
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // The snapshot describes the regime; it must never fail the sale or change amounts.
+            _logger?.LogWarning(ex, "[SalesService] No se pudo leer el perfil monetario; se usa el snapshot por defecto USD/VES/Dual.");
+            return MonetaryProfileSnapshot.Default;
+        }
+    }
+
     public async Task<int> CompleteSaleAsync(
         int saleId, 
         decimal exchangeRate, 
@@ -98,6 +141,9 @@ public partial class SalesService
             }
 
             EnsureHoldClaimAccess(sale, actingUserId);
+
+            // 8.211-T3a (S6): se resuelve UNA vez por intento, fuera de la transacción SQL.
+            var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
 
             // 8.187-T2 (F2a, S2): la modalidad a crédito exige vincular un cliente registrado
             // ANTES de evaluar solvencia y constituir la obligación: sin cliente no hay CxC.
@@ -210,6 +256,12 @@ public partial class SalesService
                 }
 
                 sale.AppliedRate = roundedAppliedRate;
+
+                // 8.211-T3a (S6): snapshot aditivo del perfil vigente, sin tocar totales ni tasa.
+                sale.PrimaryCurrencyCode = monetaryProfile.PrimaryCurrencyCode;
+                sale.SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode;
+                sale.MonetaryMode = monetaryProfile.MonetaryMode;
+
                 await RecalculateTotalAsync(sale);
 
             decimal existingPaidUsd = sale.Payments.Sum(p => p.Amount);

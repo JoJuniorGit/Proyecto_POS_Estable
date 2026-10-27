@@ -172,6 +172,28 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<Sale>().Property(s => s.TotalBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<Sale>().Property(s => s.SubtotalBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<Sale>().Property(s => s.RoundingAdjustment).HasColumnType("decimal(18,2)");
+
+        // 8.211-T3a (S6): snapshot monetario aditivo. Los defaults de columna backfillean las
+        // filas legacy como USD/VES/Dual sin recalcular montos ni tasas. HasSentinel permite
+        // insertar NULL explícito en la secundaria (modo Single) pese al default de columna:
+        // sin él EF omitiría null en el INSERT y PostgreSQL escribiría "VES".
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.PrimaryCurrencyCode)
+            .IsRequired()
+            .HasMaxLength(3)
+            .HasDefaultValue("USD");
+
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.SecondaryCurrencyCode)
+            .HasMaxLength(3)
+            .HasDefaultValue("VES")
+            .HasSentinel(string.Empty);
+
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.MonetaryMode)
+            .IsRequired()
+            .HasMaxLength(16)
+            .HasDefaultValue("Dual");
         modelBuilder.Entity<SaleItem>().Property(i => i.Quantity).HasColumnType("numeric(18,3)");
         modelBuilder.Entity<SaleItem>().Property(i => i.DeliveredQuantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPrice).HasColumnType("decimal(18,4)");

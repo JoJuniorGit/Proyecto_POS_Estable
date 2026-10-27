@@ -135,6 +135,9 @@ public partial class SalesService
         if (totalPaidUsd > 0 && sale.TotalUSD > 0 && remainingBalanceUsd <= 0.05m && totalPaidUsd >= (sale.TotalUSD - 0.05m))
         {
             // Se cubrió el 100% mediante los pagos iniciales -> Completar y generar factura
+            // 8.211-T3a (S6): este camino completa la venta sin pasar por CompleteSaleCoreAsync,
+            // por lo que captura el snapshot monetario una sola vez antes de la transacción.
+            var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
             // 8.9-B4: caminar TODA la operación bajo execution strategy para que un fallo
             // transitorio reintente el bloque completo (sales + inventory enrollado) y no
             // quede una escritura a medias entre las dos bases.
@@ -198,6 +201,9 @@ public partial class SalesService
                 sale.Status = SaleStatus.Completed;
                 sale.Date = DateTime.UtcNow;
                 sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
+                sale.PrimaryCurrencyCode = monetaryProfile.PrimaryCurrencyCode;
+                sale.SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode;
+                sale.MonetaryMode = monetaryProfile.MonetaryMode;
                 ClearHoldClaim(sale);
 
                 // Synchronous stock deduction

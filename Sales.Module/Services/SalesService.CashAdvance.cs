@@ -108,6 +108,10 @@ public partial class SalesService
         decimal totalChargedLocal = requestedAmountLocal + commissionAmountLocal;
         decimal totalChargedUSD = anchoredRate > 0 ? Math.Round(totalChargedLocal / anchoredRate, 4) : 0m;
 
+        // 8.211-T3a (S6): el adelanto crea una venta completada directa y no pasa por
+        // CompleteSaleCoreAsync, por lo que captura el snapshot monetario aquí.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+
         // 5. Crear Sale completado con el CashierId resuelto
         var sale = new Sale
         {
@@ -124,7 +128,10 @@ public partial class SalesService
             TotalUSD = totalChargedUSD,
             SubtotalBsS = totalChargedLocal,
             TotalBsS = totalChargedLocal,
-            FinalPaidAmountBsS = totalChargedLocal
+            FinalPaidAmountBsS = totalChargedLocal,
+            PrimaryCurrencyCode = monetaryProfile.PrimaryCurrencyCode,
+            SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode,
+            MonetaryMode = monetaryProfile.MonetaryMode
         };
 
         _context.Sales.Add(sale);
