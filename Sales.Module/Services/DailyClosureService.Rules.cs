@@ -9,11 +9,11 @@ public partial class DailyClosureService
     private static ShiftReportDetailResult BuildReportDetail(
         int paymentMethodId,
         string methodName,
+        string currency,
         decimal declaredNative,
         decimal expectedBsS,
         decimal rate)
     {
-        string currency = PaymentMethodCurrencyResolver.Resolve(methodName);
         decimal systemAmount = currency == PaymentMethodCurrencyResolver.Usd
             ? PricingCalculator.ToUSD(expectedBsS, rate)
             : expectedBsS;
@@ -73,7 +73,12 @@ public partial class DailyClosureService
         foreach (var declared in declarations)
         {
             var expected = expectedById[declared.PaymentMethodId];
-            string currency = PaymentMethodCurrencyResolver.Resolve(expected.PaymentMethodName);
+            // 8.211-T3b2 (S8): la moneda persistida del método es la autoridad; el nombre solo se
+            // usa cuando no hay moneda (fila legacy). La misma moneda gobierna la conversión y el
+            // renglón del reporte para que nunca se clasifiquen distinto.
+            string currency = string.IsNullOrWhiteSpace(expected.PaymentMethodCurrency)
+                ? PaymentMethodCurrencyResolver.Resolve(expected.PaymentMethodName)
+                : expected.PaymentMethodCurrency;
 
             decimal actualAmountBsS = currency == PaymentMethodCurrencyResolver.Usd
                 ? declared.Amount * exchangeRate
@@ -92,6 +97,7 @@ public partial class DailyClosureService
             reportDetails.Add(BuildReportDetail(
                 declared.PaymentMethodId,
                 expected.PaymentMethodName,
+                currency,
                 declared.Amount,
                 expectedAmountBsS,
                 exchangeRate));
@@ -139,7 +145,14 @@ public partial class DailyClosureService
                     DifferenceBsS = actualAmount - exp.ExpectedAmountBsS
                 });
 
-                string currency = PaymentMethodCurrencyResolver.Resolve(exp.PaymentMethodName);
+                // 8.211-T3b2 (S8): autoridad en cascada para métodos sin declaración explícita:
+                // moneda persistida del método cargado -> moneda del esperado -> nombre (legacy).
+                string currency = methodEntity is not null
+                    ? PaymentMethodCurrencyResolver.ResolveStoredOrName(methodEntity.Currency, methodEntity.Name)
+                    : (string.IsNullOrWhiteSpace(exp.PaymentMethodCurrency)
+                        ? PaymentMethodCurrencyResolver.Resolve(exp.PaymentMethodName)
+                        : exp.PaymentMethodCurrency);
+
                 decimal declaredNative = currency == PaymentMethodCurrencyResolver.Usd
                     ? PricingCalculator.ToUSD(actualAmount, exchangeRate)
                     : actualAmount;
@@ -147,6 +160,7 @@ public partial class DailyClosureService
                 reportDetails.Add(BuildReportDetail(
                     exp.PaymentMethodId,
                     exp.PaymentMethodName,
+                    currency,
                     declaredNative,
                     exp.ExpectedAmountBsS,
                     exchangeRate));

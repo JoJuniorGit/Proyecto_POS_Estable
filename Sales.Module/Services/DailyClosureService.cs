@@ -185,7 +185,9 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
             {
                 PaymentMethodId = method.Id,
                 PaymentMethodName = method.Name,
-                ExpectedAmountBsS = expectedByMethod.GetValueOrDefault(method.Id)
+                ExpectedAmountBsS = expectedByMethod.GetValueOrDefault(method.Id),
+                // 8.211-T3b2 (S8): la moneda persistida manda; el nombre solo es fallback legacy.
+                PaymentMethodCurrency = PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name)
             })
             .ToList();
     }
@@ -273,6 +275,9 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
             .AsNoTracking()
             .AsSplitQuery()
             .Include(dc => dc.Details)
+            // 8.211-T3b2 (S8/S10): el cierre conserva la moneda persistida de cada método para que
+            // reportes, recibos y PDF no tengan que reinterpretar el nombre.
+            .ThenInclude(detail => detail.PaymentMethod)
             .FirstOrDefaultAsync(dc => dc.Id == id, cancellationToken);
     }
 
@@ -282,6 +287,9 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
             .AsNoTracking()
             .AsSplitQuery()
             .Include(dc => dc.Details)
+            // 8.211-T3b2 (S8/S10): la lectura del último cierre también publica la moneda
+            // persistida; sin este include el DTO caería al fallback por nombre.
+            .ThenInclude(detail => detail.PaymentMethod)
             .OrderByDescending(dc => dc.Id)
             .FirstOrDefaultAsync(cancellationToken);
 

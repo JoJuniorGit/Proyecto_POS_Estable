@@ -70,7 +70,10 @@ public static class ClosurePdfGenerator
                 contentSb.AppendLine($"0.95 0.96 0.97 rg 40 {yPos} 532 20 re f");
             }
 
-            string currency = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
+            // 8.211-T3b2 (S8/S10): misma clasificación que el mapper y el recibo de texto.
+            string currency = string.IsNullOrWhiteSpace(detail.PaymentMethodCurrency)
+                ? PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName)
+                : detail.PaymentMethodCurrency;
             string declaredValStr = MoneyFormat.Number(detail.ActualAmountBsS, format);
             string systemValStr = isBlind ? "-" : MoneyFormat.Number(detail.ExpectedAmountBsS, format);
             

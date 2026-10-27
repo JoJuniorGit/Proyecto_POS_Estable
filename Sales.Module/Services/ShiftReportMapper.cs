@@ -56,6 +56,17 @@ public static class ShiftReportMapper
 
     private static ClosureDetailResponseDto MapDetail(ClosureDetail detail)
     {
+        // 8.211-T3b2 (S8/S10): solo se publica la moneda PERSISTIDA del método cuando la navegación
+        // fue cargada. Sin navegación (fila legada) el campo queda null y los consumidores aplican
+        // la regla histórica por nombre; así el JSON de cierres previos no cambia.
+        string? paymentMethodCurrency = detail.PaymentMethod is null
+            ? null
+            : PaymentMethodCurrencyResolver.ResolveStoredOrName(
+                detail.PaymentMethod.Currency,
+                // Snapshot del cierre, no el nombre actual: un rename posterior no debe
+                // reclasificar un cierre histórico cuando la moneda persistida es null.
+                detail.PaymentMethodName);
+
         return new ClosureDetailResponseDto(
             detail.Id,
             detail.DailyClosureId,
@@ -63,7 +74,8 @@ public static class ShiftReportMapper
             detail.PaymentMethodName,
             detail.ExpectedAmountBsS,
             detail.ActualAmountBsS,
-            detail.DifferenceBsS);
+            detail.DifferenceBsS,
+            paymentMethodCurrency);
     }
 
     public static List<ShiftReportDetailDto> MapDetails(
@@ -72,7 +84,10 @@ public static class ShiftReportMapper
     {
         return details.Select(d =>
         {
-            string currency = PaymentMethodCurrencyResolver.Resolve(d.PaymentMethodName);
+            // 8.211-T3b2 (S8): con moneda persistida publicada NO se vuelve a inferir por nombre.
+            string currency = string.IsNullOrWhiteSpace(d.PaymentMethodCurrency)
+                ? PaymentMethodCurrencyResolver.Resolve(d.PaymentMethodName)
+                : d.PaymentMethodCurrency;
             bool isUsd = currency == PaymentMethodCurrencyResolver.Usd;
             decimal systemAmt = isUsd
                 ? PricingCalculator.ToUSD(d.ExpectedAmountBsS, exchangeRate)

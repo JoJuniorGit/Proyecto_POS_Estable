@@ -11,6 +11,14 @@ public class ExpectedTotalDto
     public int PaymentMethodId { get; set; }
     public string PaymentMethodName { get; set; } = string.Empty;
     public decimal ExpectedAmountBsS { get; set; }
+
+    /// <summary>
+    /// 8.211-T3b2 (S8): moneda persistida del método de pago, ya normalizada por
+    /// <see cref="Sales.Module.PaymentMethodCurrencyResolver"/>. El servicio de cierre siempre la
+    /// informa (persistida o fallback por nombre); vacía solo si un llamador construye el DTO por
+    /// fuera del servicio.
+    /// </summary>
+    public string PaymentMethodCurrency { get; set; } = string.Empty;
 }
 
 public sealed record CloseShiftResult(

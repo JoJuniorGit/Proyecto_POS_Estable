@@ -23,7 +23,10 @@ public partial class DailyClosureService
             sb.AppendLine("------------------------------------------------------------------------------------------");
             foreach (var detail in closure.Details)
             {
-                string curr = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
+                // 8.211-T3b2 (S8/S10): misma clasificación que el mapper; el nombre es solo fallback.
+                string curr = string.IsNullOrWhiteSpace(detail.PaymentMethodCurrency)
+                    ? PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName)
+                    : detail.PaymentMethodCurrency;
                 sb.AppendLine(string.Format(MoneyFormat.CultureFor(format), "{0,-25} {1,-8} {2,22:N2}", detail.PaymentMethodName, curr, detail.ActualAmountBsS));
             }
             sb.AppendLine("------------------------------------------------------------------------------------------");
@@ -47,7 +50,10 @@ public partial class DailyClosureService
             sb.AppendLine("------------------------------------------------------------------------------------------");
             foreach (var detail in closure.Details)
             {
-                string curr = PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName);
+                // 8.211-T3b2 (S8/S10): misma clasificación que el mapper; el nombre es solo fallback.
+                string curr = string.IsNullOrWhiteSpace(detail.PaymentMethodCurrency)
+                    ? PaymentMethodCurrencyResolver.Resolve(detail.PaymentMethodName)
+                    : detail.PaymentMethodCurrency;
                 sb.AppendLine(string.Format(MoneyFormat.CultureFor(format), "{0,-22} {1,-8} {2,22:N2} {3,20:N2} {4,18:N2}",
                     detail.PaymentMethodName,
                     curr,
