@@ -55,6 +55,9 @@ public partial class SalesService
             PrimaryCurrencyCode = sale.PrimaryCurrencyCode,
             SecondaryCurrencyCode = sale.SecondaryCurrencyCode,
             MonetaryMode = sale.MonetaryMode,
+            PrimaryAmount = sale.PrimaryAmount,
+            SecondaryAmount = sale.SecondaryAmount,
+            AppliedRateSource = sale.AppliedRateSource,
             CashierId = sale.CashierId,
             CashierName = sale.Cashier != null ? (string.IsNullOrWhiteSpace(sale.Cashier.Name) ? sale.Cashier.FullName : sale.Cashier.Name) : "Usuario Desconocido",
             CustomerName = sale.CustomerName,
@@ -105,7 +108,8 @@ public partial class SalesService
                 ExchangeRate = p.ExchangeRate,
                 ReferenceNumber = p.ReferenceNumber,
                 CreatedAt = p.CreatedAt,
-                CurrencyCode = p.CurrencyCode
+                CurrencyCode = p.CurrencyCode,
+                OriginalAmount = p.OriginalAmount
             }).ToList()
         };
     }

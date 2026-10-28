@@ -35,4 +35,9 @@ public class SalePayment
     // ningún cálculo de montos, tasas ni totales.
     [MaxLength(10)]
     public string? CurrencyCode { get; set; }
+
+    // 8.211-T3c2 (S6): importe original en la moneda del medio de pago identificada por
+    // CurrencyCode. Es aditivo: Amount (USD) y AmountBsS siguen siendo la fuente de cálculo.
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? OriginalAmount { get; set; }
 }

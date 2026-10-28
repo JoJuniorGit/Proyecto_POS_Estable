@@ -83,6 +83,7 @@ public partial class SalesService
                     throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
                 }
 
+                var currencyCode = ResolvePaymentMethodCurrency(pMethodForValidation);
                 var initialPaymentEntity = new SalePayment
                 {
                     SaleId = sale.Id,
@@ -92,7 +93,8 @@ public partial class SalesService
                     ExchangeRate = rate,
                     ReferenceNumber = payment.ReferenceNumber,
                     CreatedAt = DateTime.UtcNow,
-                    CurrencyCode = ResolvePaymentMethodCurrency(pMethodForValidation)
+                    CurrencyCode = currencyCode,
+                    OriginalAmount = ResolveOriginalAmount(resolvedAmountUsd, resolvedAmountBsS, currencyCode)
                 };
 
                 sale.Payments.Add(initialPaymentEntity);
@@ -118,7 +120,7 @@ public partial class SalesService
                             SaleId = sale.Id,
                             PaymentMethodId = payment.PaymentMethodId,
                             // 8.211-T3b3 (S6): snapshot de la moneda fisica del abono inicial.
-                            CurrencyCode = ResolvePaymentMethodCurrency(pMethodForValidation)
+                            CurrencyCode = currencyCode
                         };
                         _context.CashTransactions.Add(initialCashTx);
                     }
@@ -141,6 +143,9 @@ public partial class SalesService
             // 8.211-T3a (S6): este camino completa la venta sin pasar por CompleteSaleCoreAsync,
             // por lo que captura el snapshot monetario una sola vez antes de la transacción.
             var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+            // 8.211-T3c2 (S6): solo Dual USD/VES está habilitado hasta T3c3; se rechaza antes
+            // de abrir la transacción para no dejar una venta a medio completar.
+            EnsureSupportedCheckoutMonetaryProfile(monetaryProfile);
             // 8.9-B4: caminar TODA la operación bajo execution strategy para que un fallo
             // transitorio reintente el bloque completo (sales + inventory enrollado) y no
             // quede una escritura a medias entre las dos bases.
@@ -167,7 +172,8 @@ public partial class SalesService
                         ExchangeRate = prepPayment.ExchangeRate,
                         ReferenceNumber = prepPayment.ReferenceNumber,
                         CreatedAt = prepPayment.CreatedAt,
-                        CurrencyCode = prepPayment.CurrencyCode
+                        CurrencyCode = prepPayment.CurrencyCode,
+                        OriginalAmount = prepPayment.OriginalAmount
                     };
                     sale.Payments.Add(clonedPayment);
                     if (prepCashTx != null)
@@ -207,6 +213,12 @@ public partial class SalesService
                 sale.Status = SaleStatus.Completed;
                 sale.Date = DateTime.UtcNow;
                 sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
+                // 8.211-T3c2 (S6): snapshots aditivos de importes con los totales ya definitivos.
+                // El bloque corre en el intento inicial y en el retry, por lo que ambos terminan
+                // con los tres campos fijados antes de SaveChanges.
+                sale.PrimaryAmount = sale.TotalUSD;
+                sale.SecondaryAmount = sale.TotalBsS;
+                sale.AppliedRateSource = "Bcv";
                 sale.PrimaryCurrencyCode = monetaryProfile.PrimaryCurrencyCode;
                 sale.SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode;
                 sale.MonetaryMode = monetaryProfile.MonetaryMode;

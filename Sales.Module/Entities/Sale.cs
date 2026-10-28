@@ -78,6 +78,19 @@ public class Sale
     [MaxLength(16)]
     public string MonetaryMode { get; set; } = "Dual";
 
+    // 8.211-T3c2 (S6): snapshots aditivos de los importes del régimen USD-primario vigente.
+    // Duplican los totales canónicos (TotalUSD/TotalBsS) sin recalcularlos ni reinterpretarlos;
+    // las columnas históricas siguen siendo la fuente de cálculo. En esta fase la única ruta
+    // habilitada es Dual USD/VES y la tasa proviene de BCV (AppliedRateSource = "Bcv").
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? PrimaryAmount { get; set; }
+
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? SecondaryAmount { get; set; }
+
+    [MaxLength(16)]
+    public string? AppliedRateSource { get; set; }
+
     public int? CashierId { get; set; }
     public User? Cashier { get; set; }
 

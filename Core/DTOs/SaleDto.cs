@@ -29,6 +29,11 @@ public class SaleDto
     public string? SecondaryCurrencyCode { get; set; } = "VES";
     public string MonetaryMode { get; set; } = "Dual";
 
+    // 8.211-T3c2 (S6): snapshots aditivos de importes y fuente de tasa.
+    public decimal? PrimaryAmount { get; set; }
+    public decimal? SecondaryAmount { get; set; }
+    public string? AppliedRateSource { get; set; }
+
     public int? CashierId { get; set; }
     public string CashierName { get; set; } = "Usuario Desconocido";
 
@@ -124,6 +129,9 @@ public class SalePaymentDto
 
     // 8.211-T3b1 (S6): moneda snapshot al momento del pago (null solo en filas previas al backfill).
     public string? CurrencyCode { get; set; }
+
+    // 8.211-T3c2 (S6): importe original en la moneda del medio de pago.
+    public decimal? OriginalAmount { get; set; }
 }
 
 public class HoldSaleRequestDto

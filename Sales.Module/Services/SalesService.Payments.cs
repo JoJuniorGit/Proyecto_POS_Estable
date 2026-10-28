@@ -80,6 +80,7 @@ public partial class SalesService
 
             var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentToHoldSale");
 
+            var currencyCode = ResolvePaymentMethodCurrency(input.Method);
             var paymentEntity = new SalePayment
             {
                 SaleId = sale!.Id,
@@ -89,7 +90,8 @@ public partial class SalesService
                 ExchangeRate = input.Rate,
                 ReferenceNumber = request.ReferenceNumber,
                 CreatedAt = DateTime.UtcNow,
-                CurrencyCode = ResolvePaymentMethodCurrency(input.Method)
+                CurrencyCode = currencyCode,
+                OriginalAmount = ResolveOriginalAmount(input.AmountUsd, input.AmountBsS, currencyCode)
             };
 
             _context.SalePayments.Add(paymentEntity);
@@ -114,7 +116,7 @@ public partial class SalesService
                     SaleId = sale.Id,
                     PaymentMethodId = request.PaymentMethodId,
                     // 8.211-T3b3 (S6): snapshot de la moneda fisica del abono.
-                    CurrencyCode = ResolvePaymentMethodCurrency(input.Method)
+                    CurrencyCode = currencyCode
                 };
                 _context.CashTransactions.Add(cashTx);
             }
@@ -243,6 +245,7 @@ public partial class SalesService
 
                 foreach (var (request, input) in computedInputs)
                 {
+                    var currencyCode = ResolvePaymentMethodCurrency(input.Method);
                     var paymentEntity = new SalePayment
                     {
                         SaleId = sale!.Id,
@@ -252,7 +255,8 @@ public partial class SalesService
                         ExchangeRate = input.Rate,
                         ReferenceNumber = request.ReferenceNumber,
                         CreatedAt = DateTime.UtcNow,
-                        CurrencyCode = ResolvePaymentMethodCurrency(input.Method)
+                        CurrencyCode = currencyCode,
+                        OriginalAmount = ResolveOriginalAmount(input.AmountUsd, input.AmountBsS, currencyCode)
                     };
 
                     _context.SalePayments.Add(paymentEntity);
@@ -273,7 +277,7 @@ public partial class SalesService
                             SaleId = sale.Id,
                             PaymentMethodId = request.PaymentMethodId,
                             // 8.211-T3b3 (S6): snapshot de la moneda fisica del abono.
-                            CurrencyCode = ResolvePaymentMethodCurrency(input.Method)
+                            CurrencyCode = currencyCode
                         };
                         _context.CashTransactions.Add(cashTx);
                     }
@@ -433,6 +437,16 @@ public partial class SalesService
         => method is null
             ? PaymentMethodCurrencyResolver.LocalCurrency
             : PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name);
+
+    // 8.211-T3c2 (S6): importe original del abono en la moneda del medio de pago. Local usa el
+    // monto Bs.S y USD el monto dólar; una moneda fuera del vocabulario actual conserva el USD,
+    // espejo de la ruta legacy habilitada en esta fase.
+    private static decimal ResolveOriginalAmount(decimal amountUsd, decimal amountLocal, string? currencyCode)
+        => string.Equals(currencyCode, PaymentMethodCurrencyResolver.Usd, StringComparison.Ordinal)
+            ? amountUsd
+            : string.Equals(currencyCode, PaymentMethodCurrencyResolver.LocalCurrency, StringComparison.Ordinal)
+                ? amountLocal
+                : amountUsd;
 
     private sealed record ComputedPaymentInput(decimal Rate, decimal AmountUsd, decimal AmountBsS, PaymentMethod? Method);
 }

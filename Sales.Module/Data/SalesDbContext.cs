@@ -194,6 +194,21 @@ modelBuilder.Entity<User>().HasData(
             .IsRequired()
             .HasMaxLength(16)
             .HasDefaultValue("Dual");
+
+        // 8.211-T3c2 (S6): snapshots aditivos de importes. Sin default ni índice: la migración
+        // backfillea las filas legacy desde TotalUSD/TotalBsS sin recalcular montos ni tasas.
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.PrimaryAmount)
+            .HasColumnType("decimal(18,4)");
+
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.SecondaryAmount)
+            .HasColumnType("decimal(18,4)");
+
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.AppliedRateSource)
+            .HasMaxLength(16);
+
         modelBuilder.Entity<SaleItem>().Property(i => i.Quantity).HasColumnType("numeric(18,3)");
         modelBuilder.Entity<SaleItem>().Property(i => i.DeliveredQuantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPrice).HasColumnType("decimal(18,4)");
@@ -256,6 +271,11 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<SalePayment>()
             .Property(p => p.CurrencyCode)
             .HasMaxLength(10);
+
+        // 8.211-T3c2 (S6): importe original en la moneda del medio de pago (aditivo, sin default).
+        modelBuilder.Entity<SalePayment>()
+            .Property(p => p.OriginalAmount)
+            .HasColumnType("decimal(18,4)");
 
         // Cash Drawer Configurations
         modelBuilder.Entity<CashDrawerSession>()

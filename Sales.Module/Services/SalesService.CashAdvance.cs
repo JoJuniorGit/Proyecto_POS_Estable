@@ -111,6 +111,8 @@ public partial class SalesService
         // 8.211-T3a (S6): el adelanto crea una venta completada directa y no pasa por
         // CompleteSaleCoreAsync, por lo que captura el snapshot monetario aquí.
         var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        // 8.211-T3c2 (S6): solo Dual USD/VES puede completar ventas hasta T3c3.
+        EnsureSupportedCheckoutMonetaryProfile(monetaryProfile);
 
         // 5. Crear Sale completado con el CashierId resuelto
         var sale = new Sale
@@ -129,6 +131,10 @@ public partial class SalesService
             SubtotalBsS = totalChargedLocal,
             TotalBsS = totalChargedLocal,
             FinalPaidAmountBsS = totalChargedLocal,
+            // 8.211-T3c2 (S6): snapshots aditivos de importes del adelanto completado directo.
+            PrimaryAmount = totalChargedUSD,
+            SecondaryAmount = totalChargedLocal,
+            AppliedRateSource = "Bcv",
             PrimaryCurrencyCode = monetaryProfile.PrimaryCurrencyCode,
             SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode,
             MonetaryMode = monetaryProfile.MonetaryMode
@@ -172,7 +178,8 @@ public partial class SalesService
             ExchangeRate = anchoredRate,
             CreatedAt = DateTime.UtcNow,
             ReferenceNumber = $"ADELANTO-{DateTime.UtcNow:yyyyMMddHHmmss}",
-            CurrencyCode = currencyCode
+            CurrencyCode = currencyCode,
+            OriginalAmount = ResolveOriginalAmount(totalChargedUSD, totalChargedLocal, currencyCode)
         };
 
         _context.SalePayments.Add(payment);

@@ -1087,6 +1087,10 @@ namespace Sales.Module.Migrations
                     b.Property<decimal>("AppliedRate")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<string>("AppliedRateSource")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<int?>("CashierId")
                         .HasColumnType("integer");
 
@@ -1141,6 +1145,9 @@ namespace Sales.Module.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<decimal?>("PrimaryAmount")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<string>("PrimaryCurrencyCode")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -1150,6 +1157,9 @@ namespace Sales.Module.Migrations
 
                     b.Property<decimal>("RoundingAdjustment")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("SecondaryAmount")
+                        .HasColumnType("decimal(18,4)");
 
                     b.Property<string>("SecondaryCurrencyCode")
                         .ValueGeneratedOnAdd()
@@ -1353,6 +1363,9 @@ namespace Sales.Module.Migrations
                         .HasColumnType("character varying(10)");
 
                     b.Property<decimal>("ExchangeRate")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal?>("OriginalAmount")
                         .HasColumnType("decimal(18,4)");
 
                     b.Property<int>("PaymentMethodId")

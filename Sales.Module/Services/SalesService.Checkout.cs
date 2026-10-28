@@ -31,6 +31,21 @@ public partial class SalesService
         public static readonly MonetaryProfileSnapshot Default = new("USD", "VES", "Dual");
     }
 
+    // 8.211-T3c2 (S6): hasta T3c3 la única configuración habilitada para completar ventas es
+    // Dual USD/VES. El mensaje es parte del contrato de rechazo y no debe alterarse.
+    private const string SupportedCheckoutProfileMessage =
+        "El perfil monetario actual no está habilitado para ventas: esta fase solo admite Dual USD/VES. La conversión para otras monedas se habilitará en la siguiente fase.";
+
+    private static void EnsureSupportedCheckoutMonetaryProfile(MonetaryProfileSnapshot profile)
+    {
+        if (!string.Equals(profile.PrimaryCurrencyCode, "USD", StringComparison.Ordinal)
+            || !string.Equals(profile.MonetaryMode, "Dual", StringComparison.Ordinal)
+            || !string.Equals(profile.SecondaryCurrencyCode, "VES", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(SupportedCheckoutProfileMessage);
+        }
+    }
+
     private async Task<MonetaryProfileSnapshot> ResolveMonetaryProfileSnapshotAsync(CancellationToken cancellationToken)
     {
         if (_monetaryProfileService is null)
@@ -144,6 +159,8 @@ public partial class SalesService
 
             // 8.211-T3a (S6): se resuelve UNA vez por intento, fuera de la transacción SQL.
             var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+            // 8.211-T3c2 (S6): la guarda de perfil se evalúa antes de tocar totales o pagos.
+            EnsureSupportedCheckoutMonetaryProfile(monetaryProfile);
 
             // 8.187-T2 (F2a, S2): la modalidad a crédito exige vincular un cliente registrado
             // ANTES de evaluar solvencia y constituir la obligación: sin cliente no hay CxC.
@@ -338,6 +355,7 @@ public partial class SalesService
 
                     _logger?.LogDebug("[CURRENCY CONVERSION DEBUG] Método: {Method}, Monto Bs.S: {BsS}, Tasa AppliedRate: {Rate}, Monto USD Calculado: {Usd}", p.PaymentMethodId, amountLocal, exchangeRate, amountUsd);
 
+                    var currencyCode = ResolvePaymentMethodCurrency(paymentMethod);
                     var paymentEntity = new SalePayment
                     {
                         SaleId = sale.Id,
@@ -347,7 +365,8 @@ public partial class SalesService
                         ExchangeRate = exchangeRate,
                         ReferenceNumber = p.Reference,
                         CreatedAt = DateTime.UtcNow,
-                        CurrencyCode = ResolvePaymentMethodCurrency(paymentMethod)
+                        CurrencyCode = currencyCode,
+                        OriginalAmount = ResolveOriginalAmount(amountUsd, amountLocal, currencyCode)
                     };
                     sale.Payments.Add(paymentEntity);
 
@@ -367,7 +386,7 @@ public partial class SalesService
                             SaleId = sale.Id,
                             PaymentMethodId = p.PaymentMethodId,
                             // 8.211-T3b3 (S6): la moneda del ingreso fisico acompania al metodo.
-                            CurrencyCode = ResolvePaymentMethodCurrency(paymentMethod)
+                            CurrencyCode = currencyCode
                         };
                         _context.CashTransactions.Add(cashTx);
                     }
@@ -485,6 +504,11 @@ public partial class SalesService
             sale.Date = DateTime.UtcNow;
             sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
             await RecalculateTotalAsync(sale);
+            // 8.211-T3c2 (S6): snapshots aditivos de importes con los totales ya definitivos.
+            // No recalculan nada: copian los totales canónicos de esta fase USD-primaria.
+            sale.PrimaryAmount = sale.TotalUSD;
+            sale.SecondaryAmount = sale.TotalBsS;
+            sale.AppliedRateSource = "Bcv";
             sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
 
             // 8.149 (SEC-01): `roundingAdjustment` queda en la firma por compatibilidad del contrato (API/WPF),
