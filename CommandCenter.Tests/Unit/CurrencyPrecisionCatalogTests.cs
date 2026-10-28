@@ -10,6 +10,8 @@ public class CurrencyPrecisionCatalogTests
     [InlineData("USD", 2, 2)]
     [InlineData("EUR", 2, 2)]
     [InlineData("VES", 2, 0)]
+    [InlineData("Bs.S", 2, 0)]
+    [InlineData("BsS", 2, 0)]
     [InlineData("JPY", 0, 0)]
     [InlineData("KWD", 3, 3)]
     [InlineData("CLP", 0, 0)]

@@ -78,6 +78,21 @@ public class CurrencyRateServiceTests
     // ---------------------------------------------------------------------------------------------
 
     [Fact]
+    public async Task GetRateAsync_LocalAliases_ReturnIdentityWithoutDatabase()
+    {
+        using var db = CreateInMemoryDb();
+        var service = CreateService(db);
+
+        var quote = await service.GetRateAsync("Bs.S", "VES", RateDate);
+
+        Assert.Equal(1m, quote.Rate);
+        Assert.Equal(CurrencyRateSource.Identity, quote.Source);
+        Assert.Equal("VES", quote.FromCurrencyCode);
+        Assert.Equal("VES", quote.ToCurrencyCode);
+        Assert.Equal(0, await db.ExchangeRateHistory.CountAsync());
+    }
+
+    [Fact]
     public async Task GetRateAsync_UsdToVes_UsesExactDateAndCeilingToTwoDecimals()
     {
         using var db = CreateInMemoryDb();
@@ -119,6 +134,39 @@ public class CurrencyRateServiceTests
         var service = CreateService(db);
 
         var quote = await service.GetRateAsync("VES", "USD", RateDate);
+
+        var expected = Math.Round(1m / 36.13m, 8, MidpointRounding.AwayFromZero);
+        Assert.Equal(expected, quote.Rate);
+        Assert.Equal(CurrencyRateSource.BcvInverse, quote.Source);
+        Assert.Equal("VES", quote.FromCurrencyCode);
+        Assert.Equal("USD", quote.ToCurrencyCode);
+    }
+
+    [Fact]
+    public async Task GetRateAsync_UsdToLocalAlias_UsesBcvAndReturnsCanonicalVesCode()
+    {
+        using var db = CreateInMemoryDb();
+        db.ExchangeRateHistory.Add(new ExchangeRateHistory { Date = RateDate, Rate = 36.123m });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var quote = await service.GetRateAsync("USD", "Bs.S", RateDate);
+
+        Assert.Equal(36.13m, quote.Rate);
+        Assert.Equal(CurrencyRateSource.Bcv, quote.Source);
+        Assert.Equal("USD", quote.FromCurrencyCode);
+        Assert.Equal("VES", quote.ToCurrencyCode);
+    }
+
+    [Fact]
+    public async Task GetRateAsync_LocalAliasToUsd_ReturnsBcvInverseWithCanonicalVesCode()
+    {
+        using var db = CreateInMemoryDb();
+        db.ExchangeRateHistory.Add(new ExchangeRateHistory { Date = RateDate, Rate = 36.123m });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var quote = await service.GetRateAsync("Bs.S", "USD", RateDate);
 
         var expected = Math.Round(1m / 36.13m, 8, MidpointRounding.AwayFromZero);
         Assert.Equal(expected, quote.Rate);
@@ -304,6 +352,30 @@ public class CurrencyRateServiceTests
     }
 
     [Fact]
+    public async Task SetManualRateAsync_LocalAliasToEur_PersistsCanonicalVesPair()
+    {
+        using var db = CreateInMemoryDb();
+        var service = CreateService(db);
+
+        var saved = await service.SetManualRateAsync(
+            CreateRequest("Bs.S", "EUR", 0.85m, RateDate),
+            updatedByUserId: 3);
+
+        Assert.Equal("VES", saved.FromCurrencyCode);
+        Assert.Equal("EUR", saved.ToCurrencyCode);
+        Assert.Equal(0.85m, saved.Rate);
+
+        var row = await db.CurrencyPairRates.AsNoTracking().SingleAsync();
+        Assert.Equal("VES", row.FromCurrencyCode);
+        Assert.Equal("EUR", row.ToCurrencyCode);
+
+        var fetched = await service.GetRateAsync("Bs.S", "EUR", RateDate);
+        Assert.Equal(0.85m, fetched.Rate);
+        Assert.Equal("VES", fetched.FromCurrencyCode);
+        Assert.Equal("EUR", fetched.ToCurrencyCode);
+    }
+
+    [Fact]
     public async Task SetManualRateAsync_WithoutRateDate_UsesVenezuelaToday()
     {
         using var db = CreateInMemoryDb();
@@ -322,6 +394,7 @@ public class CurrencyRateServiceTests
         { "usd", "USD", 1m, "2026-10-20", SameCodeMessage },
         { "USD", "VES", 36m, "2026-10-20", BcvPairMessage },
         { "VES", "USD", 0.03m, "2026-10-20", BcvPairMessage },
+        { "Bs.S", "USD", 36m, "2026-10-20", BcvPairMessage },
         { "EUR", "COP", 0m, "2026-10-20", InvalidRateMessage },
         { "EUR", "COP", -1m, "2026-10-20", InvalidRateMessage },
         { "EUR", "COP", 1_000_000.01m, "2026-10-20", InvalidRateMessage },

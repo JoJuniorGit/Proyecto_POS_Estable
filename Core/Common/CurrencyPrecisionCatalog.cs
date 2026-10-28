@@ -46,21 +46,22 @@ public static class CurrencyPrecisionCatalog
             throw new ArgumentException("El código de moneda es obligatorio.");
         }
 
-        if (!Iso4217.IsSupported(normalized))
+        var isoCode = CurrencyCodeNormalizer.NormalizeToIso(normalized);
+        if (isoCode is null)
         {
             throw new ArgumentException($"El código '{normalized}' no es un código ISO 4217 reconocido.");
         }
 
         int digitalDecimals;
-        if (ZeroDecimalCurrencies.Contains(normalized))
+        if (ZeroDecimalCurrencies.Contains(isoCode))
         {
             digitalDecimals = 0;
         }
-        else if (ThreeDecimalCurrencies.Contains(normalized))
+        else if (ThreeDecimalCurrencies.Contains(isoCode))
         {
             digitalDecimals = 3;
         }
-        else if (FourDecimalCurrencies.Contains(normalized))
+        else if (FourDecimalCurrencies.Contains(isoCode))
         {
             digitalDecimals = 4;
         }
@@ -70,7 +71,7 @@ public static class CurrencyPrecisionCatalog
         }
 
         // Bs.S cash is rounded to whole units by historical policy; digital Bs.S keeps its minor unit.
-        var cashDecimals = normalized == VesCode ? 0 : digitalDecimals;
+        var cashDecimals = isoCode == VesCode ? 0 : digitalDecimals;
 
         return new CurrencyPrecision(digitalDecimals, cashDecimals);
     }

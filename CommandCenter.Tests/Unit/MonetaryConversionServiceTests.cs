@@ -62,6 +62,42 @@ public class MonetaryConversionServiceTests
         VerifyNoRateLookup(rateService);
     }
 
+    [Theory]
+    [InlineData("Bs.S", "VES", MonetaryAmountKind.Digital)]
+    [InlineData("VES", "Bs.S", MonetaryAmountKind.Digital)]
+    [InlineData("BsS", "Bs.S", MonetaryAmountKind.Cash)]
+    public async Task ConvertAsync_LocalCurrencyAliases_ReturnsExactAmountWithoutRateLookup(
+        string from,
+        string to,
+        MonetaryAmountKind kind)
+    {
+        var rateService = CreateRateService();
+        var service = new MonetaryConversionService(rateService.Object);
+        const decimal amount = 1.23456789m;
+
+        var result = await service.ConvertAsync(amount, from, to, kind, RateDate);
+
+        Assert.Equal(amount, result);
+        VerifyNoRateLookup(rateService);
+    }
+
+    [Fact]
+    public async Task ConvertAsync_FromLocalAlias_UsesCanonicalIsoForRateLookup()
+    {
+        var rateService = CreateRateService();
+        rateService
+            .Setup(x => x.GetRateAsync("VES", "USD", RateDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Quote("VES", "USD", 0.025m));
+        var service = new MonetaryConversionService(rateService.Object);
+
+        var result = await service.ConvertAsync(10m, "Bs.S", "USD", rateDate: RateDate);
+
+        Assert.Equal(0.25m, result);
+        rateService.Verify(
+            x => x.GetRateAsync("VES", "USD", RateDate, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
     [Fact]
     public async Task ConvertAsync_SameCurrencyNegative_PreservesExactValueAndScaleWithoutRateLookup()
     {
@@ -92,6 +128,23 @@ public class MonetaryConversionServiceTests
         Assert.Equal(9.71m, result);
         rateService.Verify(
             x => x.GetRateAsync("USD", "EUR", RateDate, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ConvertAsync_ToLocalAlias_CallsRateServiceWithCanonicalVes()
+    {
+        var rateService = CreateRateService();
+        rateService
+            .Setup(x => x.GetRateAsync("USD", "VES", RateDate, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Quote("USD", "VES", 36.50m));
+        var service = new MonetaryConversionService(rateService.Object);
+
+        var result = await service.ConvertAsync(10m, "USD", "Bs.S", rateDate: RateDate);
+
+        Assert.Equal(365m, result);
+        rateService.Verify(
+            x => x.GetRateAsync("USD", "VES", RateDate, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 

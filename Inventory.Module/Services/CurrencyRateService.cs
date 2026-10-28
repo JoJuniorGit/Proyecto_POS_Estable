@@ -270,17 +270,23 @@ public class CurrencyRateService : ICurrencyRateService
     private static string NormalizeAndValidate(string? code, string malformedMessage)
     {
         var normalized = Iso4217.Normalize(code);
-        if (normalized is null || !IsWellFormed(normalized))
+        if (normalized is null)
         {
             throw new ArgumentException(malformedMessage);
         }
 
-        if (!Iso4217.IsSupported(normalized))
+        var isoCode = CurrencyCodeNormalizer.NormalizeToIso(normalized);
+        if (isoCode is not null)
         {
-            throw new ArgumentException($"El código '{normalized}' no es un código ISO 4217 reconocido.");
+            return isoCode;
         }
 
-        return normalized;
+        if (!IsWellFormed(normalized))
+        {
+            throw new ArgumentException(malformedMessage);
+        }
+
+        throw new ArgumentException($"El código '{normalized}' no es un código ISO 4217 reconocido.");
     }
 
     private static bool IsWellFormed(string normalizedCode)
