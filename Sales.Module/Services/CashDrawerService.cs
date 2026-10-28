@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Core.Entities;
 using Core.Helpers;
+using Core.Interfaces;
 using Sales.Module.Data;
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
@@ -19,12 +20,16 @@ public class CashDrawerService : ICashDrawerService
     private readonly SalesDbContext _context;
     private readonly CashDrawerBalanceService _balances;
     private readonly CashDrawerIdempotencyStore _idempotency;
+    // 8.211-T3c3b1 (S4/S6): optional profile so local drawer rows snapshot the Single primary
+    // currency. Null preserves the historical Bs.S local currency.
+    private readonly IMonetaryProfileService? _monetaryProfileService;
 
-    public CashDrawerService(SalesDbContext context)
+    public CashDrawerService(SalesDbContext context, IMonetaryProfileService? monetaryProfileService = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _balances = new CashDrawerBalanceService(_context);
         _idempotency = new CashDrawerIdempotencyStore(_context);
+        _monetaryProfileService = monetaryProfileService;
     }
 
     public async Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync(CancellationToken cancellationToken = default)
@@ -643,8 +648,9 @@ public class CashDrawerService : ICashDrawerService
             PaymentMethodId = cashPaymentMethodId,
             Description = description,
             TransactionTime = DateTime.UtcNow,
-            // 8.211-T3b3 (S6): el vuelto sale siempre de la gaveta local.
-            CurrencyCode = PaymentMethodCurrencyResolver.LocalCurrency
+            // 8.211-T3b3 (S6): el vuelto sale siempre de la gaveta local; T3c3b1 usa la moneda
+            // primaria cuando el perfil es Single.
+            CurrencyCode = await ResolveLocalDrawerCurrencyAsync(cancellationToken)
         };
 
         _context.CashTransactions.Add(changeTx);
@@ -726,11 +732,46 @@ public class CashDrawerService : ICashDrawerService
     }
 
     /// <summary>
+    /// 8.211-T3c3b1 (S4/S6): local drawer rows use the primary currency when the monetary profile
+    /// is Single; Dual or a missing profile keeps the historical Bs.S local currency. Read per
+    /// transaction on purpose: the profile may change between requests and is not cached here.
+    /// </summary>
+    private async Task<string> ResolveLocalDrawerCurrencyAsync(CancellationToken cancellationToken)
+    {
+        if (_monetaryProfileService is null)
+        {
+            return PaymentMethodCurrencyResolver.LocalCurrency;
+        }
+
+        try
+        {
+            var profile = await _monetaryProfileService.GetAsync(cancellationToken);
+            return profile.Mode == Core.DTOs.MonetaryMode.Single
+                ? profile.PrimaryCurrencyCode
+                : PaymentMethodCurrencyResolver.LocalCurrency;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // La caja no debe quedar inoperante por una lectura de settings: se conserva el
+            // comportamiento histórico Bs.S y se audita el fallo.
+            Core.Logging.AppLogger.LogWarn(
+                $"[CashDrawerService] No se pudo leer el modo monetario; se usa la moneda local Bs.S. Error: {ex.Message}",
+                nameof(CashDrawerService));
+            return PaymentMethodCurrencyResolver.LocalCurrency;
+        }
+    }
+
+    /// <summary>
     /// 8.211-T3b3 (S6): moneda fisica congelada del movimiento al momento de la escritura.
-    /// Apertura, cierre, vuelto, adelanto, ajustes y cash-in/out usan la moneda local; un ingreso
-    /// por venta efectiva, un abono CxC y un reembolso usan la moneda PERSISTIDA del metodo (el
-    /// nombre solo resuelve filas legadas); sin metodo, todo cae a la moneda local. Caja chica y
-    /// su reversa fijan su propia moneda en <see cref="PettyCashService"/>.
+    /// Apertura, cierre, vuelto, adelanto, ajustes y cash-in/out usan la moneda local (la primaria
+    /// del perfil en modo Single); un ingreso por venta efectiva, un abono CxC y un reembolso usan
+    /// la moneda PERSISTIDA del metodo (el nombre solo resuelve filas legadas); sin metodo, todo cae
+    /// a la moneda local. Caja chica y su reversa fijan su propia moneda en
+    /// <see cref="PettyCashService"/>.
     /// </summary>
     private async Task<string> ResolveTransactionCurrencyCodeAsync(
         CashTransactionType type,
@@ -740,7 +781,7 @@ public class CashDrawerService : ICashDrawerService
     {
         if (source == CashTransactionSource.SalePayment && type == CashTransactionType.Expense)
         {
-            return PaymentMethodCurrencyResolver.LocalCurrency;
+            return await ResolveLocalDrawerCurrencyAsync(cancellationToken);
         }
 
         bool usesMethodCurrency = source is CashTransactionSource.SalePayment
@@ -749,7 +790,7 @@ public class CashDrawerService : ICashDrawerService
 
         if (!usesMethodCurrency || paymentMethodId is null)
         {
-            return PaymentMethodCurrencyResolver.LocalCurrency;
+            return await ResolveLocalDrawerCurrencyAsync(cancellationToken);
         }
 
         var method = await _context.PaymentMethods
@@ -759,7 +800,7 @@ public class CashDrawerService : ICashDrawerService
             .FirstOrDefaultAsync(cancellationToken);
 
         return method is null
-            ? PaymentMethodCurrencyResolver.LocalCurrency
+            ? await ResolveLocalDrawerCurrencyAsync(cancellationToken)
             : PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name);
     }
 

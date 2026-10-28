@@ -43,7 +43,8 @@ public class CashDrawerController : ControllerBase
         ICurrentUserService currentUserService,
         ITimeZoneProvider timeZoneProvider,
         Sales.Module.Services.CashAdvanceCoordinator cashAdvanceCoordinator,
-        IIdempotencyService? idempotencyService = null)
+        IIdempotencyService? idempotencyService = null,
+        IMonetaryProfileService? monetaryProfileService = null)
     {
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
@@ -53,7 +54,9 @@ public class CashDrawerController : ControllerBase
         _timeZoneProvider = timeZoneProvider;
         _cashAdvanceCoordinator = cashAdvanceCoordinator;
         _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
-        _rateAnchor = new Sales.Module.Services.ExchangeRateAnchorService(inventoryService, settingsService);
+        // 8.211-T3c3b1 (S4): the injected profile lets Single mode resolve an identity rate.
+        _rateAnchor = new Sales.Module.Services.ExchangeRateAnchorService(
+            inventoryService, settingsService, monetaryProfileService: monetaryProfileService);
     }
 
     [HttpGet("active-session")]

@@ -62,7 +62,10 @@ public partial class SalesService : ISalesService
     {
         _context = context;
         _history = new SalesHistoryService(context);
-        _rateAnchor = new ExchangeRateAnchorService(inventoryService, settingsService, logger);
+        // 8.211-T3c3b1 (S4): the profile must be assigned before the anchor is built so Single
+        // mode resolves identity; the optional parameter keeps historical direct compositions working.
+        _monetaryProfileService = monetaryProfileService;
+        _rateAnchor = new ExchangeRateAnchorService(inventoryService, settingsService, logger, monetaryProfileService);
         _customers = new SalesCustomerService(context, cache, logger);
         _inventoryService = inventoryService;
         _mediator = mediator;
@@ -72,7 +75,6 @@ public partial class SalesService : ISalesService
         _logger = logger;
         _receiptPrintQueue = receiptPrintQueue;
         _creditService = creditService;
-        _monetaryProfileService = monetaryProfileService;
     }
 
     private async Task NotifyHoldOrdersChangedAsync()

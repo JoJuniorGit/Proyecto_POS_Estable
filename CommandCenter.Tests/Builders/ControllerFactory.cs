@@ -24,7 +24,8 @@ public static class ControllerFactory
         ICurrentUserService currentUserService,
         InventoryDbContext inventoryContext,
         CashAdvanceCoordinator cashAdvanceCoordinator,
-        IUserService? userService = null)
+        IUserService? userService = null,
+        IMonetaryProfileService? monetaryProfileService = null)
         => new(
             cashDrawerService,
             settingsService,
@@ -32,7 +33,8 @@ public static class ControllerFactory
             userService ?? new UserService(db),
             currentUserService,
             new TimeZoneProvider(settingsService),
-            cashAdvanceCoordinator);
+            cashAdvanceCoordinator,
+            monetaryProfileService: monetaryProfileService);
 
     public static ExchangeRateController CreateExchangeRateController(
         InventoryDbContext context,

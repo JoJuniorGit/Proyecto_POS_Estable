@@ -14,7 +14,9 @@ public enum ExchangeRateAnchorOutcome
     Accepted,
     Anchored,
     NoOfficialRate,
-    Rejected
+    Rejected,
+    // 8.211-T3c3b1 (S4): Single mode short-circuits to an effective rate of 1 before validation.
+    Identity
 }
 
 public sealed record ExchangeRateAnchorResult(
@@ -36,15 +38,20 @@ public sealed class ExchangeRateAnchorService
     private readonly IInventoryService? _inventoryService;
     private readonly ISystemSettingsService? _settingsService;
     private readonly ILogger? _logger;
+    // 8.211-T3c3b1 (S4): optional profile lookup so Single mode can resolve identity before
+    // any validation or BCV query. Null preserves the historical Dual behavior.
+    private readonly IMonetaryProfileService? _monetaryProfileService;
 
     public ExchangeRateAnchorService(
         IInventoryService? inventoryService,
         ISystemSettingsService? settingsService,
-        ILogger? logger = null)
+        ILogger? logger = null,
+        IMonetaryProfileService? monetaryProfileService = null)
     {
         _inventoryService = inventoryService;
         _settingsService = settingsService;
         _logger = logger;
+        _monetaryProfileService = monetaryProfileService;
     }
 
     public async Task<ExchangeRateAnchorResult> ResolveAsync(
@@ -53,6 +60,28 @@ public sealed class ExchangeRateAnchorService
         int referenceId,
         CancellationToken cancellationToken = default)
     {
+        // 8.211-T3c3b1 (S4): Single mode is an identity regime. Resolve it before the client-rate
+        // validation and the BCV anchor so any stored rate (including 0) yields an effective 1.
+        if (_monetaryProfileService is not null)
+        {
+            try
+            {
+                var profile = await _monetaryProfileService.GetAsync(cancellationToken);
+                if (profile.Mode == Core.DTOs.MonetaryMode.Single)
+                {
+                    return new ExchangeRateAnchorResult(1m, clientRate, 0m, 0m, 0m, ExchangeRateAnchorOutcome.Identity);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                LogWarning("[A5-AUDIT] No se pudo leer el modo monetario en {Context} #{Ref}. Fail-open: se continúa con el anclaje BCV. Error: {Error}", contextLabel, referenceId, ex.Message);
+            }
+        }
+
         if (clientRate <= 0m || clientRate > 1000000m)
         {
             throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio AppliedRate inválida o no inicializada (<= 0).");
