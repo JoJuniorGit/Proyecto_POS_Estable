@@ -27,6 +27,10 @@ public partial class SalesService
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden poner en espera ventas pendientes o abiertas.");
 
+        // 8.211-T3c3b2 (S7): Single hold support is deferred; reject before any hold mutation.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+
         var customer = await _context.Customers.FindAsync(new object[] { request.CustomerId }, cancellationToken);
         if (customer == null) throw new KeyNotFoundException($"Cliente con ID {request.CustomerId} no encontrado.");
         if (!customer.IsActive)
@@ -67,6 +71,11 @@ public partial class SalesService
                 if (hasConfiguredPaymentMethods && (pMethodForValidation == null || !pMethodForValidation.IsActive || pMethodForValidation.IsDeleted))
                 {
                     throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={payment.PaymentMethodId}. Verifique la configuración de métodos de pago.");
+                }
+
+                if (pMethodForValidation != null)
+                {
+                    EnsurePaymentMethodCurrencyMatchesProfile(monetaryProfile, pMethodForValidation);
                 }
 
                 decimal rate = payment.ExchangeRate > 0
@@ -142,10 +151,6 @@ public partial class SalesService
             // Se cubrió el 100% mediante los pagos iniciales -> Completar y generar factura
             // 8.211-T3a (S6): este camino completa la venta sin pasar por CompleteSaleCoreAsync,
             // por lo que captura el snapshot monetario una sola vez antes de la transacción.
-            var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
-            // 8.211-T3c2 (S6): solo Dual USD/VES está habilitado hasta T3c3; se rechaza antes
-            // de abrir la transacción para no dejar una venta a medio completar.
-            EnsureSupportedCheckoutMonetaryProfile(monetaryProfile);
             // 8.9-B4: caminar TODA la operación bajo execution strategy para que un fallo
             // transitorio reintente el bloque completo (sales + inventory enrollado) y no
             // quede una escritura a medias entre las dos bases.

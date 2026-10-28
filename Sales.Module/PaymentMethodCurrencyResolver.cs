@@ -1,4 +1,5 @@
 using System;
+using Core.Common;
 
 namespace Sales.Module;
 
@@ -6,6 +7,8 @@ namespace Sales.Module;
 /// 8.9-M16: Única fuente de verdad para la clasificación de moneda de un método de pago
 /// (USD vs Bs.S). Todas las capas (backend, arqueo, PDF y clientes) deben usar este
 /// clasificador en lugar de heurísticas locales por nombre que divergían entre sí.
+/// 8.211-T3c3b2 (S5/S7): el vocabulario se amplía a cualquier código ISO 4217 soportado;
+/// Bs.S/BsS/VES siguen colapsando a la moneda local de presentación.
 /// </summary>
 public static class PaymentMethodCurrencyResolver
 {
@@ -13,30 +16,19 @@ public static class PaymentMethodCurrencyResolver
     public const string LocalCurrency = "Bs.S";
 
     /// <summary>
-    /// Normaliza una moneda persistida al vocabulario canónico. Devuelve null cuando el valor no
-    /// es reconocible (fila legada o payload vacío).
+    /// Normaliza una moneda persistida al vocabulario canónico. Los alias locales resuelven a
+    /// <see cref="LocalCurrency"/>; el resto conserva su código ISO 4217. Devuelve null cuando el
+    /// valor no es reconocible (fila legada o payload vacío).
     /// </summary>
     public static string? Normalize(string? currency)
     {
-        if (string.IsNullOrWhiteSpace(currency))
+        var isoCode = CurrencyCodeNormalizer.NormalizeToIso(currency);
+        if (isoCode is null)
         {
             return null;
         }
 
-        string trimmed = currency.Trim();
-        if (trimmed.Equals(Usd, StringComparison.OrdinalIgnoreCase))
-        {
-            return Usd;
-        }
-
-        if (trimmed.Equals(LocalCurrency, StringComparison.OrdinalIgnoreCase)
-            || trimmed.Equals("BsS", StringComparison.OrdinalIgnoreCase)
-            || trimmed.Equals("VES", StringComparison.OrdinalIgnoreCase))
-        {
-            return LocalCurrency;
-        }
-
-        return null;
+        return string.Equals(isoCode, "VES", StringComparison.Ordinal) ? LocalCurrency : isoCode;
     }
 
     /// <summary>

@@ -238,6 +238,37 @@ public class PaymentMethodCurrencyClassificationTests
         Assert.Equal(expected, PaymentMethodCurrencyResolver.ResolveStoredOrName(storedCurrency, name));
     }
 
+    [Theory]
+    [InlineData("COP", "COP")]
+    [InlineData("eur", "EUR")]
+    [InlineData("MXN", "MXN")]
+    [InlineData("usd", "USD")]
+    [InlineData("VES", "Bs.S")]
+    [InlineData("Bs.S", "Bs.S")]
+    [InlineData("BsS", "Bs.S")]
+    [InlineData("ZZZ", null)]
+    [InlineData("NOTACODE", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void Normalize_ResolvesIsoCodesAndLocalAliases(string? currency, string? expected)
+    {
+        Assert.Equal(expected, PaymentMethodCurrencyResolver.Normalize(currency));
+    }
+
+    [Theory]
+    [InlineData("COP", "Efectivo USD", "COP")]
+    [InlineData("eur", "Punto de Venta", "EUR")]
+    [InlineData("ZZZ", "Efectivo USD", "USD")]
+    [InlineData("ZZZ", "Pago Movil", "Bs.S")]
+    [InlineData(null, "Divisas (USD)", "USD")]
+    public void ResolveStoredOrName_ExpandsToIsoCodesAndKeepsLegacyFallback(
+        string? storedCurrency,
+        string name,
+        string expected)
+    {
+        Assert.Equal(expected, PaymentMethodCurrencyResolver.ResolveStoredOrName(storedCurrency, name));
+    }
+
     [Fact]
     public async Task Rename_DoesNotReclassifyHistoricalDrawerBuckets()
     {

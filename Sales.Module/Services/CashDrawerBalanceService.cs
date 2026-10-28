@@ -1,3 +1,5 @@
+using Core.Common;
+using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Sales.Module.Entities;
@@ -11,16 +13,21 @@ namespace Sales.Module.Services;
 
 /// <summary>
 /// 8.204 (extracción del God object de caja): cálculo de saldos físicos por moneda. La consulta
-/// agrega por (método, tipo) en SQL y solo materializa una fila por combinación; la atribución de
-/// moneda se resuelve con <see cref="PaymentMethodCurrencyResolver"/>.
+/// agrega por (método, tipo, moneda snapshot) en SQL y solo materializa una fila por combinación.
+/// 8.211-T3c3b2: la moneda local es la primaria del perfil en modo Single y Bs.S en Dual; el
+/// snapshot CurrencyCode de cada movimiento manda sobre la moneda actual del método.
 /// </summary>
 internal sealed class CashDrawerBalanceService
 {
     private readonly SalesDbContext _context;
+    private readonly IMonetaryProfileService? _monetaryProfileService;
 
-    public CashDrawerBalanceService(SalesDbContext context)
+    public CashDrawerBalanceService(
+        SalesDbContext context,
+        IMonetaryProfileService? monetaryProfileService = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
+        _monetaryProfileService = monetaryProfileService;
     }
 
     public async Task<decimal> GetCurrentBalanceLocalAsync(int sessionId, CancellationToken cancellationToken = default)
@@ -33,19 +40,20 @@ internal sealed class CashDrawerBalanceService
 
         if (session == null) return 0;
 
-        // 8.202-H1 (S3): agregación server-side por (método, tipo). Solo se materializa una fila
-        // por combinación, nunca el libro completo de la sesión, para acortar la retención del
-        // advisory lock durante los chequeos de liquidez.
+        // 8.202-H1 (S3): agregación server-side por (método, tipo, moneda). Solo se materializa
+        // una fila por combinación, nunca el libro completo de la sesión, para acortar la
+        // retención del advisory lock durante los chequeos de liquidez.
         var groups = await _context.CashTransactions
             .AsNoTracking()
             .Where(t => t.SessionId == sessionId
                      && t.IsPhysicalCash
                      && t.Source != CashTransactionSource.Opening)
-            .GroupBy(t => new { t.PaymentMethodId, t.Type })
+            .GroupBy(t => new { t.PaymentMethodId, t.Type, t.CurrencyCode })
             .Select(group => new
             {
                 group.Key.PaymentMethodId,
                 group.Key.Type,
+                group.Key.CurrencyCode,
                 AmountLocal = group.Sum(t => t.AmountLocal)
             })
             .ToListAsync(cancellationToken);
@@ -55,19 +63,18 @@ internal sealed class CashDrawerBalanceService
             return session.OpeningBalanceLocal;
         }
 
-        // El saldo local es estrictamente Bs.S: los movimientos de métodos USD no pueden
-        // financiar un egreso local ni inflar el carry-over (gaveta física segregada).
+        var localCurrency = await ResolveLocalDrawerCurrencyAsync(cancellationToken);
         var currencyByMethodId = await LoadMethodCurrencyMapAsync(cancellationToken);
 
         decimal net = 0m;
         foreach (var group in groups)
         {
-            string movementCurrency = group.PaymentMethodId.HasValue
-                && currencyByMethodId.TryGetValue(group.PaymentMethodId.Value, out var methodCurrency)
-                    ? methodCurrency
-                    : PaymentMethodCurrencyResolver.LocalCurrency;
+            string movementCurrency = ResolveMovementCurrency(
+                group.CurrencyCode,
+                group.PaymentMethodId,
+                currencyByMethodId);
 
-            if (!string.Equals(movementCurrency, PaymentMethodCurrencyResolver.LocalCurrency, StringComparison.Ordinal))
+            if (!IsSameCurrency(movementCurrency, localCurrency))
             {
                 continue;
             }
@@ -91,42 +98,44 @@ internal sealed class CashDrawerBalanceService
 
         if (session == null) return 0m;
 
-        // 8.202-H1 (S3): una sola proyección agrupada por (método, tipo) devuelve ambos buckets;
-        // el saldo de la moneda pedida se resuelve sobre ese conjunto acotado.
+        // 8.202-H1 (S3): una sola proyección agrupada por (método, tipo, moneda) devuelve ambos
+        // buckets; el saldo de la moneda pedida se resuelve sobre ese conjunto acotado.
         var groups = await _context.CashTransactions
             .AsNoTracking()
             .Where(t => t.SessionId == sessionId
                      && t.IsPhysicalCash
                      && t.Source != CashTransactionSource.Opening)
-            .GroupBy(t => new { t.PaymentMethodId, t.Type })
+            .GroupBy(t => new { t.PaymentMethodId, t.Type, t.CurrencyCode })
             .Select(group => new
             {
                 group.Key.PaymentMethodId,
                 group.Key.Type,
+                group.Key.CurrencyCode,
                 AmountLocal = group.Sum(t => t.AmountLocal),
                 AmountUsd = group.Sum(t => t.AmountUsd)
             })
             .ToListAsync(cancellationToken);
 
         bool isUsd = currency == PettyCashCurrency.Usd;
+        var localCurrency = await ResolveLocalDrawerCurrencyAsync(cancellationToken);
+        string expectedCurrency = isUsd ? PaymentMethodCurrencyResolver.Usd : localCurrency;
+
         if (groups.Count == 0)
         {
             return isUsd ? session.OpeningBalanceUsd : session.OpeningBalanceLocal;
         }
 
         var currencyByMethodId = await LoadMethodCurrencyMapAsync(cancellationToken);
-        string expectedCurrency = isUsd ? PaymentMethodCurrencyResolver.Usd : PaymentMethodCurrencyResolver.LocalCurrency;
 
         decimal net = 0m;
         foreach (var group in groups)
         {
-            // Movimiento sin metodo de pago: bucket Bs.S (contrato de la gaveta local).
-            string movementCurrency = group.PaymentMethodId.HasValue
-                && currencyByMethodId.TryGetValue(group.PaymentMethodId.Value, out var methodCurrency)
-                    ? methodCurrency
-                    : PaymentMethodCurrencyResolver.LocalCurrency;
+            string movementCurrency = ResolveMovementCurrency(
+                group.CurrencyCode,
+                group.PaymentMethodId,
+                currencyByMethodId);
 
-            if (!string.Equals(movementCurrency, expectedCurrency, StringComparison.Ordinal))
+            if (!IsSameCurrency(movementCurrency, expectedCurrency))
             {
                 continue;
             }
@@ -136,6 +145,71 @@ internal sealed class CashDrawerBalanceService
         }
 
         return (isUsd ? session.OpeningBalanceUsd : session.OpeningBalanceLocal) + net;
+    }
+
+    /// <summary>
+    /// Moneda efectiva de un movimiento: el snapshot persistido manda; para filas legacy sin
+    /// snapshot se conserva la atribución histórica por método y, sin método, la moneda local.
+    /// </summary>
+    private static string ResolveMovementCurrency(
+        string? snapshotCurrency,
+        int? paymentMethodId,
+        IReadOnlyDictionary<int, string> currencyByMethodId)
+    {
+        if (!string.IsNullOrWhiteSpace(snapshotCurrency))
+        {
+            return snapshotCurrency;
+        }
+
+        if (paymentMethodId.HasValue
+            && currencyByMethodId.TryGetValue(paymentMethodId.Value, out var methodCurrency))
+        {
+            return methodCurrency;
+        }
+
+        return PaymentMethodCurrencyResolver.LocalCurrency;
+    }
+
+    private static bool IsSameCurrency(string? left, string? right)
+    {
+        var leftIso = CurrencyCodeNormalizer.NormalizeToIso(left);
+        var rightIso = CurrencyCodeNormalizer.NormalizeToIso(right);
+
+        if (leftIso is not null && rightIso is not null)
+        {
+            return string.Equals(leftIso, rightIso, StringComparison.Ordinal);
+        }
+
+        return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<string> ResolveLocalDrawerCurrencyAsync(CancellationToken cancellationToken)
+    {
+        if (_monetaryProfileService is null)
+        {
+            return PaymentMethodCurrencyResolver.LocalCurrency;
+        }
+
+        try
+        {
+            var profile = await _monetaryProfileService.GetAsync(cancellationToken);
+            return profile.Mode == Core.DTOs.MonetaryMode.Single
+                ? profile.PrimaryCurrencyCode
+                : PaymentMethodCurrencyResolver.LocalCurrency;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // La caja no debe quedar inoperante por una lectura de settings: se conserva el
+            // comportamiento histórico Bs.S y se audita el fallo.
+            Core.Logging.AppLogger.LogWarn(
+                $"[CashDrawerBalanceService] No se pudo leer el modo monetario; se usa la moneda local Bs.S. Error: {ex.Message}",
+                nameof(CashDrawerBalanceService));
+            return PaymentMethodCurrencyResolver.LocalCurrency;
+        }
     }
 
     /// <summary>

@@ -27,7 +27,7 @@ public class CashDrawerService : ICashDrawerService
     public CashDrawerService(SalesDbContext context, IMonetaryProfileService? monetaryProfileService = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
-        _balances = new CashDrawerBalanceService(_context);
+        _balances = new CashDrawerBalanceService(_context, monetaryProfileService);
         _idempotency = new CashDrawerIdempotencyStore(_context);
         _monetaryProfileService = monetaryProfileService;
     }
@@ -784,9 +784,14 @@ public class CashDrawerService : ICashDrawerService
             return await ResolveLocalDrawerCurrencyAsync(cancellationToken);
         }
 
+        // 8.211-T3c3b2 (S6/S8): un CashIn/CashOut/ajuste manual con método persistido pertenece a
+        // la gaveta de ESE método (p. ej. fondo USD de caja chica); sin método sigue siendo local.
         bool usesMethodCurrency = source is CashTransactionSource.SalePayment
             or CashTransactionSource.CreditPayment
-            or CashTransactionSource.CreditRefund;
+            or CashTransactionSource.CreditRefund
+            or CashTransactionSource.CashIn
+            or CashTransactionSource.CashOut
+            or CashTransactionSource.ManualAdjustment;
 
         if (!usesMethodCurrency || paymentMethodId is null)
         {

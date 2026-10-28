@@ -32,6 +32,20 @@ public partial class SalesService
             }
         }
 
+        // 8.211-T3a/T3c3b2 (S6/S7/S8): resolver perfil y método ANTES de cualquier efecto
+        // (producto de sistema, nextval de factura, usuario o cliente). Un rechazo de perfil o
+        // moneda no debe consumir un consecutivo ni dejar trabajo parcial.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+
+        var paymentMethod = await _context.PaymentMethods
+            .AsNoTracking()
+            .FirstOrDefaultAsync(pm => pm.Id == paymentMethodId, cancellationToken);
+        if (paymentMethod is not null)
+        {
+            EnsurePaymentMethodCurrencyMatchesProfile(monetaryProfile, paymentMethod);
+        }
+
         // 1. Obtener o auto-garantizar el ID del producto especial IsCashAdvance
         int productId = 1;
         if (_inventoryService != null)
@@ -108,12 +122,6 @@ public partial class SalesService
         decimal totalChargedLocal = requestedAmountLocal + commissionAmountLocal;
         decimal totalChargedUSD = anchoredRate > 0 ? Math.Round(totalChargedLocal / anchoredRate, 4) : 0m;
 
-        // 8.211-T3a (S6): el adelanto crea una venta completada directa y no pasa por
-        // CompleteSaleCoreAsync, por lo que captura el snapshot monetario aquí.
-        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
-        // 8.211-T3c2 (S6): solo Dual USD/VES puede completar ventas hasta T3c3.
-        EnsureSupportedCheckoutMonetaryProfile(monetaryProfile);
-
         // 5. Crear Sale completado con el CashierId resuelto
         var sale = new Sale
         {
@@ -162,9 +170,6 @@ public partial class SalesService
         // 7. Crear SalePayment a nombre del método electrónico
         // 8.211-T3b1 (S6/S8): la moneda snapshot sale del método persistido; el nombre recibido
         // solo resuelve el fallback legacy cuando la fila no está disponible.
-        var paymentMethod = await _context.PaymentMethods
-            .AsNoTracking()
-            .FirstOrDefaultAsync(pm => pm.Id == paymentMethodId, cancellationToken);
         string currencyCode = paymentMethod is null
             ? PaymentMethodCurrencyResolver.Resolve(paymentMethodName)
             : ResolvePaymentMethodCurrency(paymentMethod);

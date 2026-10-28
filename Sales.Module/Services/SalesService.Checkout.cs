@@ -3,6 +3,7 @@ using Core.Entities;
 using Core.Events;
 using Core.Helpers;
 using Core.Interfaces;
+using Core.Common;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -31,18 +32,62 @@ public partial class SalesService
         public static readonly MonetaryProfileSnapshot Default = new("USD", "VES", "Dual");
     }
 
-    // 8.211-T3c2 (S6): hasta T3c3 la única configuración habilitada para completar ventas es
-    // Dual USD/VES. El mensaje es parte del contrato de rechazo y no debe alterarse.
+    // 8.211-T3c3b2 (S4/S5/S7): el cierre regular admite Dual USD/VES y Single con una moneda
+    // primaria de 2 decimales. Hold, abonos y adelantos mantienen allowSingle=false y rechazan
+    // Single antes de cualquier mutación con el mensaje de operación pendiente.
     private const string SupportedCheckoutProfileMessage =
-        "El perfil monetario actual no está habilitado para ventas: esta fase solo admite Dual USD/VES. La conversión para otras monedas se habilitará en la siguiente fase.";
+        "El perfil monetario actual no está habilitado para ventas: esta fase admite Dual USD/VES o Single con una moneda de 2 decimales. La conversión para otras monedas se habilitará en la siguiente fase.";
 
-    private static void EnsureSupportedCheckoutMonetaryProfile(MonetaryProfileSnapshot profile)
+    private const string SingleOperationPendingMessage =
+        "La operación con moneda única se habilitará en la siguiente fase.";
+
+    private static void EnsureSupportedCheckoutMonetaryProfile(MonetaryProfileSnapshot profile, bool allowSingle)
     {
-        if (!string.Equals(profile.PrimaryCurrencyCode, "USD", StringComparison.Ordinal)
-            || !string.Equals(profile.MonetaryMode, "Dual", StringComparison.Ordinal)
-            || !string.Equals(profile.SecondaryCurrencyCode, "VES", StringComparison.Ordinal))
+        if (string.Equals(profile.MonetaryMode, "Dual", StringComparison.Ordinal)
+            && string.Equals(profile.PrimaryCurrencyCode, "USD", StringComparison.Ordinal)
+            && string.Equals(profile.SecondaryCurrencyCode, "VES", StringComparison.Ordinal))
         {
-            throw new InvalidOperationException(SupportedCheckoutProfileMessage);
+            return;
+        }
+
+        if (string.Equals(profile.MonetaryMode, "Single", StringComparison.Ordinal)
+            && profile.SecondaryCurrencyCode is null)
+        {
+            if (!allowSingle)
+            {
+                throw new InvalidOperationException(SingleOperationPendingMessage);
+            }
+
+            // Guard against malformed profiles before the catalog throws its own argument error:
+            // an unsupported primary code must reject with the profile contract message.
+            if (CurrencyCodeNormalizer.NormalizeToIso(profile.PrimaryCurrencyCode) is not null)
+            {
+                var precision = CurrencyPrecisionCatalog.For(profile.PrimaryCurrencyCode);
+                if (precision.DigitalDecimals == 2 && precision.CashDecimals == 2)
+                {
+                    return;
+                }
+            }
+        }
+
+        throw new InvalidOperationException(SupportedCheckoutProfileMessage);
+    }
+
+    /// <summary>
+    /// 8.211-T3c3b2 (S7/S8): every payment method must belong to the active profile. The method
+    /// currency is the persisted one (name is only the legacy fallback) canonicalized to ISO.
+    /// </summary>
+    private static void EnsurePaymentMethodCurrencyMatchesProfile(MonetaryProfileSnapshot profile, PaymentMethod method)
+    {
+        string? methodCurrency = CurrencyCodeNormalizer.NormalizeToIso(ResolvePaymentMethodCurrency(method));
+        bool isDual = string.Equals(profile.MonetaryMode, "Dual", StringComparison.Ordinal);
+        bool isAllowed = string.Equals(methodCurrency, profile.PrimaryCurrencyCode, StringComparison.Ordinal)
+            || (isDual && string.Equals(methodCurrency, profile.SecondaryCurrencyCode, StringComparison.Ordinal));
+
+        if (!isAllowed)
+        {
+            throw new ArgumentException(
+                $"El método de pago '{method.Name}' usa la moneda {methodCurrency}, pero el perfil actual solo admite {profile.PrimaryCurrencyCode}{(isDual ? $" y {profile.SecondaryCurrencyCode}" : string.Empty)}.");
         }
     }
 
@@ -159,8 +204,8 @@ public partial class SalesService
 
             // 8.211-T3a (S6): se resuelve UNA vez por intento, fuera de la transacción SQL.
             var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
-            // 8.211-T3c2 (S6): la guarda de perfil se evalúa antes de tocar totales o pagos.
-            EnsureSupportedCheckoutMonetaryProfile(monetaryProfile);
+            // 8.211-T3c3b2 (S4/S5): el cierre regular (y el de crédito) habilita Single 2dp.
+            EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: true);
 
             // 8.187-T2 (F2a, S2): la modalidad a crédito exige vincular un cliente registrado
             // ANTES de evaluar solvencia y constituir la obligación: sin cliente no hay CxC.
@@ -186,6 +231,7 @@ public partial class SalesService
             // PERF-06: Pre-validación de métodos de pago y carga de catálogo fuera de la transacción
             // y del advisory lock para reducir la ventana de contención sobre tablas de ventas/caja.
             var paymentMethodsDict = new Dictionary<int, PaymentMethod>();
+            bool allowsFractionalCash = monetaryProfile.MonetaryMode == "Single";
             if (payments != null && payments.Any())
             {
                 var paymentMethodIds = payments.Select(p => p.PaymentMethodId).Distinct().ToList();
@@ -216,8 +262,12 @@ public partial class SalesService
                         throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={p.PaymentMethodId}. Verifique la configuración de métodos de pago.");
                     }
 
-                    // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
-                    if (paymentMethod.IsCash && amountLocal % 1 != 0)
+                    // 8.211-T3c3b2 (S7/S8): el método debe pertenecer al perfil monetario activo.
+                    EnsurePaymentMethodCurrencyMatchesProfile(monetaryProfile, paymentMethod);
+
+                    // Validación de integridad: en Dual el efectivo solo acepta montos enteros
+                    // (política histórica Bs.S). Single usa la unidad menor de su moneda primaria.
+                    if (paymentMethod.IsCash && !allowsFractionalCash && amountLocal % 1 != 0)
                     {
                         throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
                     }
@@ -410,8 +460,13 @@ public partial class SalesService
                     throw new ArgumentException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
                 }
 
-                // El vuelto se entrega en Bs.S (changeBsS): se atribuye al método de efectivo de la
-                // moneda local, nunca al primer efectivo del pago original (que puede ser USD).
+                // El vuelto se entrega en la moneda local de la gaveta: en Dual es Bs.S y en Single
+                // es la moneda primaria del perfil. Se atribuye al efectivo de esa moneda, nunca al
+                // primer efectivo del pago original (que puede ser USD).
+                string localDrawerCurrency = monetaryProfile.MonetaryMode == "Single"
+                    ? monetaryProfile.PrimaryCurrencyCode
+                    : PaymentMethodCurrencyResolver.LocalCurrency;
+
                 int? cashMethodId = null;
                 foreach (var paymentMethodId in sale.Payments.Select(p => p.PaymentMethodId).Distinct())
                 {
@@ -419,7 +474,7 @@ public partial class SalesService
                         && cashMethod.IsCash
                         && string.Equals(
                             PaymentMethodCurrencyResolver.ResolveStoredOrName(cashMethod.Currency, cashMethod.Name),
-                            PaymentMethodCurrencyResolver.LocalCurrency,
+                            localDrawerCurrency,
                             StringComparison.Ordinal))
                     {
                         cashMethodId = paymentMethodId;
@@ -429,7 +484,7 @@ public partial class SalesService
 
                 // Ingresos cash de la venta aún en el tracker (persistidos junto con todo el cobro): se informan
                 // al chequeo de saldo para que el vuelto NO se rechace por no verlos aún en la BD.
-                // Solo el efectivo local financia un vuelto en Bs.S.
+                // Solo el efectivo de la moneda local de la gaveta financia un vuelto en esa moneda.
                 decimal pendingCashIncomeBsS = _context.CashTransactions.Local
                     .Where(t => t.SessionId == activeSession.Id
                              && t.Type == CashTransactionType.Income
@@ -440,7 +495,7 @@ public partial class SalesService
                              && localCashMethod.IsCash
                              && string.Equals(
                                  PaymentMethodCurrencyResolver.ResolveStoredOrName(localCashMethod.Currency, localCashMethod.Name),
-                                 PaymentMethodCurrencyResolver.LocalCurrency,
+                                 localDrawerCurrency,
                                  StringComparison.Ordinal))
                     .Sum(t => t.AmountLocal);
 
@@ -505,10 +560,11 @@ public partial class SalesService
             sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
             await RecalculateTotalAsync(sale);
             // 8.211-T3c2 (S6): snapshots aditivos de importes con los totales ya definitivos.
-            // No recalculan nada: copian los totales canónicos de esta fase USD-primaria.
+            // 8.211-T3c3b2 (S4): en Single no hay secundaria y la tasa efectiva es identidad.
+            // No recalculan nada: copian los totales canónicos de esta fase.
             sale.PrimaryAmount = sale.TotalUSD;
-            sale.SecondaryAmount = sale.TotalBsS;
-            sale.AppliedRateSource = "Bcv";
+            sale.SecondaryAmount = monetaryProfile.MonetaryMode == "Dual" ? sale.TotalBsS : null;
+            sale.AppliedRateSource = monetaryProfile.MonetaryMode == "Single" ? "Identity" : "Bcv";
             sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
 
             // 8.149 (SEC-01): `roundingAdjustment` queda en la firma por compatibilidad del contrato (API/WPF),

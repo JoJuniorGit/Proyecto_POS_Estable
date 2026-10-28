@@ -23,6 +23,10 @@ public partial class SalesService
 
     public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
+        // 8.211-T3c3b2 (S7): Single add-payment support is deferred; reject before any mutation.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+
         Sale? sale = null;
         if (!_context.Database.IsRelational())
         {
@@ -78,7 +82,7 @@ public partial class SalesService
             decimal runningPaidUsd = existingPayments.Sum(p => p.Amount);
             decimal runningPaidBsS = existingPayments.Sum(p => p.AmountBsS > 0m ? p.AmountBsS : PricingCalculator.ToBsS(p.Amount, freshSale.AppliedRate));
 
-            var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentToHoldSale");
+            var input = await ComputePaymentInputsAsync(saleId, monetaryProfile, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentToHoldSale");
 
             var currencyCode = ResolvePaymentMethodCurrency(input.Method);
             var paymentEntity = new SalePayment
@@ -161,6 +165,10 @@ public partial class SalesService
         if (payments.Count > 50)
             throw new ArgumentException("El lote de abonos supera el máximo permitido (50).");
 
+        // 8.211-T3c3b2 (S7): Single batch add-payment support is deferred; reject before mutation.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+
         Sale? sale = null;
         if (!_context.Database.IsRelational())
         {
@@ -228,7 +236,7 @@ public partial class SalesService
                 var computedInputs = new List<(AddPaymentRequestDto Request, ComputedPaymentInput Input)>(payments.Count);
                 foreach (var request in payments)
                 {
-                    var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentsBatchToHoldSale", preloadedMethods, hasConfiguredPaymentMethods);
+                    var input = await ComputePaymentInputsAsync(saleId, monetaryProfile, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentsBatchToHoldSale", preloadedMethods, hasConfiguredPaymentMethods);
                     runningPaidUsd += input.AmountUsd;
                     runningPaidBsS += input.AmountBsS;
                     computedInputs.Add((request, input));
@@ -317,6 +325,7 @@ public partial class SalesService
     // abonos del lote en cada dominio.
     private async Task<ComputedPaymentInput> ComputePaymentInputsAsync(
         int saleId,
+        MonetaryProfileSnapshot monetaryProfile,
         decimal saleTotalUsd,
         decimal saleTotalBsS,
         decimal saleAppliedRate,
@@ -375,7 +384,13 @@ public partial class SalesService
             throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={request.PaymentMethodId}. Verifique la configuración de métodos de pago.");
         }
 
+        if (method != null)
+        {
+            EnsurePaymentMethodCurrencyMatchesProfile(monetaryProfile, method);
+        }
+
         // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
+        // Single se rechaza antes de este camino, por lo que la regla histórica Dual se conserva.
         if (method != null && method.IsCash && resolvedAmountBsS % 1 != 0)
         {
             throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");

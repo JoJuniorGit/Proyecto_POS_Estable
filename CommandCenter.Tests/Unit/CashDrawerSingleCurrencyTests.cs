@@ -162,6 +162,67 @@ public class CashDrawerSingleCurrencyTests
     }
 
     [Fact]
+    public async Task SalePaymentMovements_WithCopMethod_AreIncludedInLocalAndPhysicalBalance()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 70,
+            Name = "Efectivo COP",
+            IsCash = true,
+            IsActive = true,
+            Currency = "COP"
+        });
+        await context.SaveChangesAsync();
+
+        var service = new CashDrawerService(context, CreateSingleProfileMock().Object);
+        var session = await service.OpenSessionAsync(1000m, 1m);
+
+        var income = await service.AddTransactionAsync(
+            session.Id, CashTransactionType.Income, CashTransactionSource.SalePayment, 100m, 100m, 1m, "Venta COP", paymentMethodId: 70);
+        var expense = await service.AddTransactionAsync(
+            session.Id, CashTransactionType.Expense, CashTransactionSource.SalePayment, 20m, 20m, 1m, "Vuelto COP", paymentMethodId: 70);
+
+        Assert.Equal("COP", income.CurrencyCode);
+        Assert.Equal("COP", expense.CurrencyCode);
+        Assert.Equal(1080m, await service.GetCurrentBalanceLocalAsync(session.Id));
+        Assert.Equal(1080m, await service.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.BsS));
+        Assert.Equal(0m, await service.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.Usd));
+    }
+
+    [Fact]
+    public async Task DualProfile_CashInWithUsdMethod_SnapshotsAndBalancesUsd()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 80,
+            Name = "Efectivo USD",
+            IsCash = true,
+            IsActive = true,
+            Currency = "USD"
+        });
+        await context.SaveChangesAsync();
+
+        var service = new CashDrawerService(context, CreateDualProfileMock().Object);
+        var session = await service.OpenSessionAsync(100m, 50m);
+
+        var income = await service.AddTransactionAsync(
+            session.Id,
+            CashTransactionType.Income,
+            CashTransactionSource.CashIn,
+            1028.39m,
+            20.5678m,
+            50m,
+            "Fondo USD de caja chica",
+            paymentMethodId: 80);
+
+        Assert.Equal("USD", income.CurrencyCode);
+        Assert.Equal(20.5678m, await service.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.Usd));
+        Assert.Equal(100m, await service.GetCurrentBalanceLocalAsync(session.Id));
+    }
+
+    [Fact]
     public async Task ProfileReadFailure_FallsBackToBsSWithoutAbortingDrawerWrites()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();

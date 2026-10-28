@@ -26,12 +26,14 @@ namespace CommandCenter.Tests.Unit;
 /// 8.211-T3a (S6): snapshot aditivo del perfil monetario vigente al completar una venta.
 /// La captura no puede alterar montos, tasas ni redondeos: los totales históricos siguen
 /// siendo la fuente de cálculo y estas pruebas los fijan contra los valores canónicos.
+/// 8.211-T3c3b2 (S4/S5): Single COP completes as a regular sale with identity rate; Dual
+/// EUR/GBP stays rejected with the supported-profile message.
 /// </summary>
 public class SaleMonetarySnapshotTests
 {
-    // 8.211-T3c2: exact rejection message for every profile other than Dual USD/VES.
+    // 8.211-T3c3b2: exact rejection message for profiles outside Dual USD/VES and Single 2dp.
     private const string UnsupportedCheckoutProfileMessage =
-        "El perfil monetario actual no está habilitado para ventas: esta fase solo admite Dual USD/VES. La conversión para otras monedas se habilitará en la siguiente fase.";
+        "El perfil monetario actual no está habilitado para ventas: esta fase admite Dual USD/VES o Single con una moneda de 2 decimales. La conversión para otras monedas se habilitará en la siguiente fase.";
 
     private static SalesService CreateService(
         SalesDbContext context,
@@ -120,10 +122,10 @@ public class SaleMonetarySnapshotTests
     }
 
     [Fact]
-    public async Task CompletedSale_WithDualProfile_PersistsSnapshotAndExposesItThroughSaleDto()
+    public async Task CompletedSale_WithUnsupportedDualProfile_IsRejectedWithSupportedProfileMessage()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
-        // 8.211-T3c2: EUR/GBP Dual is not enabled for checkout until T3c3.
+        // 8.211-T3c3b2: Dual EUR/GBP is still not enabled for checkout.
         var profile = CreateProfileMock(new MonetaryProfileDto
         {
             Mode = MonetaryMode.Dual,
@@ -156,10 +158,9 @@ public class SaleMonetarySnapshotTests
     }
 
     [Fact]
-    public async Task CompletedSale_WithSingleProfile_PersistsNullSecondaryCurrency()
+    public async Task CompletedSale_WithSingleCopProfile_PersistsNullSecondaryCurrencyAndIdentitySnapshot()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
-        // 8.211-T3c2: Single mode is not enabled for checkout until T3c3.
         var profile = CreateProfileMock(new MonetaryProfileDto
         {
             Mode = MonetaryMode.Single,
@@ -172,26 +173,42 @@ public class SaleMonetarySnapshotTests
 
         var service = CreateService(context, profile.Object);
         var sale = await SeedPendingSaleAsync(context);
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 50,
+            Name = "Punto de Venta COP",
+            IsCash = false,
+            IsActive = true,
+            Currency = "COP"
+        });
+        await context.SaveChangesAsync();
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => service.CompleteSaleAsync(sale.Id, 50m, ExactPayment(100m, 5000m)));
-
-        Assert.Equal(UnsupportedCheckoutProfileMessage, exception.Message);
+        await service.CompleteSaleAsync(
+            sale.Id,
+            50m,
+            new List<PaymentInfo> { new(50, 100m, 100m, null) });
 
         var saved = await context.Sales.AsNoTracking().SingleAsync(s => s.Id == sale.Id);
-        Assert.Equal(SaleStatus.Pending, saved.Status);
-        Assert.Null(saved.PrimaryAmount);
+        Assert.Equal(SaleStatus.Completed, saved.Status);
+        Assert.Equal("COP", saved.PrimaryCurrencyCode);
+        Assert.Null(saved.SecondaryCurrencyCode);
+        Assert.Equal("Single", saved.MonetaryMode);
+        Assert.Equal(1m, saved.AppliedRate);
+        Assert.Equal(100m, saved.TotalUSD);
+        Assert.Equal(100m, saved.TotalBsS);
+        Assert.Equal(100m, saved.PrimaryAmount);
         Assert.Null(saved.SecondaryAmount);
-        Assert.Null(saved.AppliedRateSource);
-        Assert.False(await context.SalePayments.AsNoTracking().AnyAsync(p => p.SaleId == sale.Id));
+        Assert.Equal("Identity", saved.AppliedRateSource);
+
+        var payment = await context.SalePayments.AsNoTracking().SingleAsync(p => p.SaleId == sale.Id);
+        Assert.Equal("COP", payment.CurrencyCode);
+        Assert.Equal(100m, payment.Amount);
+        Assert.Equal(100m, payment.AmountBsS);
     }
 
     [Fact]
     public async Task CompletedSale_WithSingleProfile_OnRelationalProvider_UpdatesSecondaryToNull()
     {
-        // 8.211-T3c2: the Single completion path is rejected before any relational UPDATE. The
-        // explicit-NULL column semantics for a persisted Single row remain covered by
-        // SaleWithExplicitNullSecondaryCurrency_PersistsNullDespiteColumnDefaultOnRelationalProvider.
         var (context, connection) = TestDatabaseFactory.CreateSqliteSalesDbContext();
         using (connection)
         using (context)
@@ -224,29 +241,28 @@ public class SaleMonetarySnapshotTests
                 Name = "Punto de Venta Test",
                 IsCash = false,
                 IsActive = true,
-                Currency = "Bs.S"
+                Currency = "COP"
             });
             await context.SaveChangesAsync();
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => service.CompleteSaleAsync(
-                    sale.Id,
-                    50m,
-                    new List<PaymentInfo> { new(100, 100m, 5000m, null) }));
-
-            Assert.Equal(UnsupportedCheckoutProfileMessage, exception.Message);
+            await service.CompleteSaleAsync(
+                sale.Id,
+                50m,
+                new List<PaymentInfo> { new(100, 100m, 100m, null) });
 
             var saved = await context.Sales.AsNoTracking().SingleAsync(s => s.Id == sale.Id);
-            Assert.Equal(SaleStatus.Pending, saved.Status);
-            Assert.Null(saved.PrimaryAmount);
+            Assert.Equal(SaleStatus.Completed, saved.Status);
+            Assert.Equal(1m, saved.AppliedRate);
+            Assert.Equal("COP", saved.PrimaryCurrencyCode);
+            // Explicit NULL wins over the column default even on the relational provider.
+            Assert.Null(saved.SecondaryCurrencyCode);
+            Assert.Equal("Single", saved.MonetaryMode);
+            Assert.Equal(100m, saved.PrimaryAmount);
             Assert.Null(saved.SecondaryAmount);
-            Assert.Null(saved.AppliedRateSource);
-            Assert.False(await context.SalePayments.AsNoTracking().AnyAsync(p => p.SaleId == sale.Id));
+            Assert.Equal("Identity", saved.AppliedRateSource);
 
-            // The rejected attempt never writes the COP/Single profile over the seeded defaults.
-            Assert.Equal("USD", saved.PrimaryCurrencyCode);
-            Assert.Equal("VES", saved.SecondaryCurrencyCode);
-            Assert.Equal("Dual", saved.MonetaryMode);
+            var payment = await context.SalePayments.AsNoTracking().SingleAsync(p => p.SaleId == sale.Id);
+            Assert.Equal("COP", payment.CurrencyCode);
         }
     }
 

@@ -27,14 +27,14 @@ namespace CommandCenter.Tests.Unit;
 /// <see cref="Sale.PrimaryAmount"/>/<see cref="Sale.SecondaryAmount"/> duplican los totales
 /// existentes sin recalcularlos, <see cref="Sale.AppliedRateSource"/> describe la fuente de la
 /// tasa y <see cref="SalePayment.OriginalAmount"/> conserva el importe en la moneda del método.
-/// La guarda de perfil solo habilita <c>Dual USD/VES</c>: cualquier otro régimen se rechaza
-/// antes de completar la venta, sin convertir moneda ni alterar montos, tasas o redondeos.
+/// 8.211-T3c3b2 (S4/S5): Dual USD/VES y Single con moneda de 2 decimales completan; los demás
+/// perfiles se rechazan antes de completar la venta, sin convertir moneda ni alterar montos.
 /// </summary>
 public class SaleAmountSnapshotTests
 {
     // Exact contract message from SalesService.EnsureSupportedCheckoutMonetaryProfile.
     private const string SupportedCheckoutProfileMessage =
-        "El perfil monetario actual no está habilitado para ventas: esta fase solo admite Dual USD/VES. La conversión para otras monedas se habilitará en la siguiente fase.";
+        "El perfil monetario actual no está habilitado para ventas: esta fase admite Dual USD/VES o Single con una moneda de 2 decimales. La conversión para otras monedas se habilitará en la siguiente fase.";
 
     private static SalesService CreateService(
         SalesDbContext context,
@@ -288,10 +288,38 @@ public class SaleAmountSnapshotTests
         Assert.Equal(5000m, payment.AmountBsS);
     }
 
+    [Fact]
+    public async Task CompletedSale_SingleCopProfile_PersistsIdentityAmountSnapshots()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        AddMethod(context, 3, "Punto de Venta COP", "COP");
+        await context.SaveChangesAsync();
+
+        var profile = CreateProfileMock(UnsupportedProfile(MonetaryMode.Single, "COP", null));
+        var service = CreateService(context, profile.Object);
+        var sale = await SeedPendingSaleAsync(context);
+
+        await service.CompleteSaleAsync(sale.Id, 50m, Payment(3, 100m, 100m));
+
+        var saved = await context.Sales.AsNoTracking().SingleAsync(s => s.Id == sale.Id);
+        Assert.Equal(SaleStatus.Completed, saved.Status);
+        Assert.Equal(1m, saved.AppliedRate);
+        Assert.Equal(100m, saved.PrimaryAmount);
+        Assert.Null(saved.SecondaryAmount);
+        Assert.Equal("Identity", saved.AppliedRateSource);
+        Assert.Equal(100m, saved.TotalUSD);
+        Assert.Equal(100m, saved.TotalBsS);
+
+        var payment = await context.SalePayments.AsNoTracking().SingleAsync(p => p.SaleId == sale.Id);
+        Assert.Equal("COP", payment.CurrencyCode);
+        Assert.Equal(100m, payment.OriginalAmount);
+        Assert.Equal(100m, payment.Amount);
+        Assert.Equal(100m, payment.AmountBsS);
+    }
+
     [Theory]
-    [InlineData(MonetaryMode.Single, "USD", null)]
+    [InlineData(MonetaryMode.Single, "JPY", null)]
     [InlineData(MonetaryMode.Dual, "USD", "EUR")]
-    [InlineData(MonetaryMode.Single, "COP", null)]
     public async Task CompletedSale_UnsupportedMonetaryProfile_IsRejectedAndDoesNotCompleteTheSale(
         MonetaryMode mode,
         string primaryCurrencyCode,
@@ -333,7 +361,7 @@ public class SaleAmountSnapshotTests
         AddMethod(context, 2, "Transferencia", "Bs.S");
         await context.SaveChangesAsync();
 
-        var profile = CreateProfileMock(UnsupportedProfile(MonetaryMode.Single, "USD", null));
+        var profile = CreateProfileMock(UnsupportedProfile(MonetaryMode.Dual, "USD", "EUR"));
         var service = CreateService(context, profile.Object);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
