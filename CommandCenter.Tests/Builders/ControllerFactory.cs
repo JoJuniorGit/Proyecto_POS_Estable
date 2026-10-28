@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.Hubs;
 using Backend.API.Services;
@@ -47,7 +49,8 @@ public static class ControllerFactory
         InventoryDbContext context,
         ICurrentUserService currentUserService,
         ISystemSettingsService settingsService,
-        IHubContext<ExchangeRateHub>? hubContext = null)
+        IHubContext<ExchangeRateHub>? hubContext = null,
+        IMonetaryTransitionGuard? transitionGuard = null)
         => new(
             settingsService,
             currentUserService,
@@ -56,7 +59,25 @@ public static class ControllerFactory
             new TimeZoneProvider(settingsService),
             hubContext,
             monetaryProfileService: new MonetaryProfileService(settingsService),
-            currencyRateService: new CurrencyRateService(context));
+            currencyRateService: new CurrencyRateService(context),
+            monetaryTransitionGuard: transitionGuard ?? EmptyInstallTransitionGuard.Instance);
+
+    /// <summary>
+    /// 8.211-T3c3a: existing settings tests run against empty in-memory installs, where the
+    /// production transition guard reports no financial data. The wiring-failure (null guard)
+    /// branch is covered by a dedicated test that builds the controller directly.
+    /// </summary>
+    private sealed class EmptyInstallTransitionGuard : IMonetaryTransitionGuard
+    {
+        public static readonly EmptyInstallTransitionGuard Instance = new();
+
+        private EmptyInstallTransitionGuard()
+        {
+        }
+
+        public Task<bool> HasFinancialDataAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+    }
 
     public static UsersController CreateUsersController(
         SalesDbContext db,

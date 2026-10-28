@@ -1,3 +1,4 @@
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
@@ -27,6 +28,7 @@ public class SettingsController : ControllerBase
     private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache? _cache;
     private readonly IMonetaryProfileService? _monetaryProfileService;
     private readonly ICurrencyRateService? _currencyRateService;
+    private readonly IMonetaryTransitionGuard? _monetaryTransitionGuard;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public SettingsController(
@@ -38,7 +40,8 @@ public class SettingsController : ControllerBase
         Microsoft.AspNetCore.SignalR.IHubContext<Backend.API.Hubs.ExchangeRateHub>? hubContext = null,
         Microsoft.Extensions.Caching.Memory.IMemoryCache? cache = null,
         IMonetaryProfileService? monetaryProfileService = null,
-        ICurrencyRateService? currencyRateService = null)
+        ICurrencyRateService? currencyRateService = null,
+        IMonetaryTransitionGuard? monetaryTransitionGuard = null)
     {
         _settingsService = settingsService;
         _currentUserService = currentUserService;
@@ -49,6 +52,7 @@ public class SettingsController : ControllerBase
         _cache = cache;
         _monetaryProfileService = monetaryProfileService;
         _currencyRateService = currencyRateService;
+        _monetaryTransitionGuard = monetaryTransitionGuard;
     }
 
     [HttpGet("exchange-rate")]
@@ -234,9 +238,32 @@ public class SettingsController : ControllerBase
         });
     }
 
+    // 8.211-T3c3a (S11): vista de onboarding de instalación nueva. Manager puede leer si el
+    // perfil está configurado y si la moneda base todavía puede elegirse; una guarda ausente o
+    // con datos financieros solo bloquea la base, nunca los símbolos.
+    [HttpGet("monetary-setup-status")]
+    public async Task<ActionResult> GetMonetarySetupStatusAsync(CancellationToken cancellationToken = default)
+    {
+        var service = _monetaryProfileService
+            ?? throw new InvalidOperationException("El servicio de perfil monetario no está configurado.");
+
+        var profile = await service.GetAsync(cancellationToken);
+        var canConfigure = _monetaryTransitionGuard is not null
+            && !await _monetaryTransitionGuard.HasFinancialDataAsync(cancellationToken);
+
+        return Ok(new MonetarySetupStatusDto
+        {
+            IsConfigured = profile.IsConfigured,
+            CanConfigureMonetaryProfile = canConfigure,
+            Profile = profile
+        });
+    }
+
     // 8.211-T1 (S1/S3): perfil monetario configurable. GET queda cubierto por la política de clase
     // (Admin/Manager); PUT exige Admin y el guard CanMutateSettings. F1 no emite SignalR ni toca
     // flujos financieros: solo almacena la configuración para las fases posteriores.
+    // 8.211-T3c3a (S11): antes de persistir se compara la base (modo y códigos) contra el perfil
+    // vigente; con datos financieros solo se permiten cambios de símbolos.
     [HttpGet("monetary-profile")]
     public async Task<ActionResult> GetMonetaryProfileAsync(CancellationToken cancellationToken = default)
     {
@@ -265,6 +292,20 @@ public class SettingsController : ControllerBase
         var service = _monetaryProfileService
             ?? throw new InvalidOperationException("El servicio de perfil monetario no está configurado.");
 
+        var currentProfile = await service.GetAsync(cancellationToken);
+        if (ChangesMonetaryBase(currentProfile, profile))
+        {
+            if (_monetaryTransitionGuard is null)
+            {
+                return this.ApiBadRequest("No se pudo verificar si la instalación tiene datos financieros; el cambio de moneda base está bloqueado.");
+            }
+
+            if (await _monetaryTransitionGuard.HasFinancialDataAsync(cancellationToken))
+            {
+                return this.ApiBadRequest("No se puede cambiar el modo ni la moneda base porque ya existen datos financieros. La moneda base solo puede cambiarse en una instalación nueva o mediante una migración explícita.");
+            }
+        }
+
         try
         {
             return Ok(await service.SaveAsync(profile, cancellationToken));
@@ -273,6 +314,34 @@ public class SettingsController : ControllerBase
         {
             return this.ApiBadRequest(exception.Message);
         }
+    }
+
+    /// <summary>
+    /// 8.211-T3c3a (S11): a base change is any difference in the monetary mode or in a currency
+    /// code. Symbols are presentation-only. Codes compare canonically (Bs.S/BsS resolve to VES);
+    /// an unrecognized requested value is left to the profile service so its domain message wins.
+    /// </summary>
+    private static bool ChangesMonetaryBase(MonetaryProfileDto current, MonetaryProfileDto requested)
+    {
+        if (Enum.IsDefined(requested.Mode) && current.Mode != requested.Mode)
+        {
+            return true;
+        }
+
+        return ChangesCurrencyCode(current.PrimaryCurrencyCode, requested.PrimaryCurrencyCode)
+            || ChangesCurrencyCode(current.SecondaryCurrencyCode, requested.SecondaryCurrencyCode);
+    }
+
+    private static bool ChangesCurrencyCode(string? currentCode, string? requestedCode)
+    {
+        var requestedIso = CurrencyCodeNormalizer.NormalizeToIso(requestedCode);
+        if (requestedIso is null)
+        {
+            return false;
+        }
+
+        var currentIso = CurrencyCodeNormalizer.NormalizeToIso(currentCode);
+        return !string.Equals(currentIso, requestedIso, StringComparison.Ordinal);
     }
 
     // 8.211-T2a (S4): tasas manuales por par/fecha. GET queda cubierto por la política de clase

@@ -72,6 +72,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IMonetaryProfileService, MonetaryProfileService>();
         // 8.211-T2a (S4): tasas manuales por par (USD/VES sigue en ExchangeRateHistory).
         builder.Services.AddScoped<ICurrencyRateService, CurrencyRateService>();
+        // 8.211-T3c3a (S11): guarda de transición del régimen monetario (solo lectura).
+        builder.Services.AddScoped<IMonetaryTransitionGuard, MonetaryTransitionGuard>();
         // 8.211-T2b (S5): conversión central con identidad exacta y precisión por moneda destino.
         builder.Services.AddScoped<IMonetaryConversionService, MonetaryConversionService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
