@@ -30,7 +30,8 @@ public class CashAdvanceCoordinatorTests
 
     private (CashAdvanceCoordinator coordinator, ICashDrawerService drawerService) CreateCoordinator(
         SalesDbContext context,
-        ISystemSettingsService? settingsService = null)
+        ISystemSettingsService? settingsService = null,
+        IMonetaryProfileService? monetaryProfileService = null)
     {
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
@@ -43,11 +44,19 @@ public class CashAdvanceCoordinatorTests
         var mediatorMock = new Mock<IMediator>();
         var settings = settingsService ?? new Mock<ISystemSettingsService>().Object;
 
-        var salesService = new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settings);
+        var salesService = new SalesService(
+            context,
+            inventoryMock.Object,
+            mediatorMock.Object,
+            cashDrawerMock.Object,
+            settings,
+            monetaryProfileService: monetaryProfileService);
 
         var drawerService = new CashDrawerService(context);
 
-        return (new CashAdvanceCoordinator(context, salesService, drawerService, settings), drawerService);
+        return (
+            new CashAdvanceCoordinator(context, salesService, drawerService, settings, monetaryProfileService),
+            drawerService);
     }
 
     [Fact]
@@ -275,5 +284,75 @@ public class CashAdvanceCoordinatorTests
             ));
 
         Assert.Contains("número entero sin decimales", ex.Message);
+    }
+
+    private static Mock<IMonetaryProfileService> CreateProfileMock(
+        MonetaryMode mode,
+        string primaryCode,
+        string? secondaryCode)
+    {
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = mode,
+                PrimaryCurrencyCode = primaryCode,
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = secondaryCode,
+                SecondaryCurrencySymbol = secondaryCode is null ? null : secondaryCode,
+                IsConfigured = true
+            });
+        return profile;
+    }
+
+    [Fact]
+    public async Task ProcessAsync_FractionalAmountWithSingleProfile_SkipsIntegerRuleAndReachesCheckoutGuard()
+    {
+        using var context = GetInMemoryDbContext();
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+
+        var profile = CreateProfileMock(MonetaryMode.Single, "USD", null);
+        var (coordinator, drawerService) = CreateCoordinator(context, settingsMock.Object, profile.Object);
+        var session = await drawerService.OpenSessionAsync(2000m, 50.0m);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            coordinator.ProcessAsync(
+                sessionId: session.Id,
+                requestedAmountLocal: 100.50m,
+                paymentMethodId: 2,
+                paymentMethodName: "Transferencia",
+                isTransfer: true,
+                exchangeRate: 50.0m));
+
+        // The fractional check passed; the Single checkout guard is the next rejection.
+        Assert.Contains("moneda única", ex.Message);
+        Assert.DoesNotContain("número entero sin decimales", ex.Message);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_FractionalAmountWithDualNonVesProfile_SkipsIntegerRuleAndReachesCheckoutGuard()
+    {
+        using var context = GetInMemoryDbContext();
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+
+        var profile = CreateProfileMock(MonetaryMode.Dual, "USD", "COP");
+        var (coordinator, drawerService) = CreateCoordinator(context, settingsMock.Object, profile.Object);
+        var session = await drawerService.OpenSessionAsync(20000m, 4000m);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            coordinator.ProcessAsync(
+                sessionId: session.Id,
+                requestedAmountLocal: 100.50m,
+                paymentMethodId: 2,
+                paymentMethodName: "Transferencia",
+                isTransfer: true,
+                exchangeRate: 4000m));
+
+        Assert.Contains("no está habilitado para ventas", ex.Message);
+        Assert.DoesNotContain("número entero sin decimales", ex.Message);
     }
 }

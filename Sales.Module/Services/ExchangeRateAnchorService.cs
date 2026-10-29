@@ -1,3 +1,4 @@
+using Core.Common;
 using Core.Helpers;
 using Core.Interfaces;
 using Core.Logging;
@@ -25,7 +26,10 @@ public sealed record ExchangeRateAnchorResult(
     decimal OfficialRate,
     decimal DeviationPct,
     decimal TolerancePct,
-    ExchangeRateAnchorOutcome Outcome);
+    ExchangeRateAnchorOutcome Outcome,
+    // 8.211-T3c3c1 (S4): source of the official/effective rate so callers can distinguish BCV
+    // from a manual pair without inferring it. Null when no official source was available.
+    CurrencyRateSource? RateSource = null);
 
 /// <summary>
 /// 8.205 (C-01): política única de anclaje de tasa BCV compartida por SalesService y
@@ -34,6 +38,8 @@ public sealed record ExchangeRateAnchorResult(
 public sealed class ExchangeRateAnchorService
 {
     private const decimal DefaultTolerancePct = 0.10m;
+    private const string UsdCode = "USD";
+    private const string VesCode = "VES";
 
     private readonly IInventoryService? _inventoryService;
     private readonly ISystemSettingsService? _settingsService;
@@ -41,17 +47,22 @@ public sealed class ExchangeRateAnchorService
     // 8.211-T3c3b1 (S4): optional profile lookup so Single mode can resolve identity before
     // any validation or BCV query. Null preserves the historical Dual behavior.
     private readonly IMonetaryProfileService? _monetaryProfileService;
+    // 8.211-T3c3c1 (S4): manual per-pair quotes for Dual USD/{COP,MXN,EUR}. Null keeps the
+    // historical BCV-only behavior and fails closed if a manual pair actually needs a rate.
+    private readonly ICurrencyRateService? _currencyRateService;
 
     public ExchangeRateAnchorService(
         IInventoryService? inventoryService,
         ISystemSettingsService? settingsService,
         ILogger? logger = null,
-        IMonetaryProfileService? monetaryProfileService = null)
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         _inventoryService = inventoryService;
         _settingsService = settingsService;
         _logger = logger;
         _monetaryProfileService = monetaryProfileService;
+        _currencyRateService = currencyRateService;
     }
 
     public async Task<ExchangeRateAnchorResult> ResolveAsync(
@@ -62,6 +73,10 @@ public sealed class ExchangeRateAnchorService
     {
         // 8.211-T3c3b1 (S4): Single mode is an identity regime. Resolve it before the client-rate
         // validation and the BCV anchor so any stored rate (including 0) yields an effective 1.
+        // 8.211-T3c3c1 (S4): keep the Dual pair so non-VES secondaries can resolve a manual quote.
+        string? dualPrimary = null;
+        string? dualSecondary = null;
+        bool hasDualProfile = false;
         if (_monetaryProfileService is not null)
         {
             try
@@ -69,7 +84,14 @@ public sealed class ExchangeRateAnchorService
                 var profile = await _monetaryProfileService.GetAsync(cancellationToken);
                 if (profile.Mode == Core.DTOs.MonetaryMode.Single)
                 {
-                    return new ExchangeRateAnchorResult(1m, clientRate, 0m, 0m, 0m, ExchangeRateAnchorOutcome.Identity);
+                    return Identity(clientRate);
+                }
+
+                hasDualProfile = profile.Mode == Core.DTOs.MonetaryMode.Dual;
+                if (hasDualProfile)
+                {
+                    dualPrimary = CurrencyCodeNormalizer.NormalizeToIso(profile.PrimaryCurrencyCode);
+                    dualSecondary = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode);
                 }
             }
             catch (OperationCanceledException)
@@ -88,6 +110,36 @@ public sealed class ExchangeRateAnchorService
         }
 
         clientRate = PricingCalculator.RoundExchangeRateCeiling(clientRate);
+
+        // 8.211-T3c3c1 (S4): Dual USD + non-VES secondary belongs to the manual daily pair. A
+        // missing quote/service fails closed: this path never degrades to BCV or to client input.
+        if (hasDualProfile
+            && string.Equals(dualPrimary, UsdCode, StringComparison.Ordinal)
+            && dualSecondary is not null
+            && !string.Equals(dualSecondary, VesCode, StringComparison.Ordinal))
+        {
+            if (_currencyRateService == null)
+            {
+                throw new InvalidOperationException(
+                    $"No hay servicio de tasas manuales configurado para el par {UsdCode}/{dualSecondary}.");
+            }
+
+            var quote = await _currencyRateService.GetRateAsync(UsdCode, dualSecondary, null, cancellationToken);
+            decimal manualOfficialRate = PricingCalculator.RoundExchangeRateCeiling(quote.Rate);
+            if (manualOfficialRate <= 0m)
+            {
+                throw new InvalidOperationException(
+                    $"La tasa manual configurada para el par {UsdCode}/{dualSecondary} no es válida.");
+            }
+
+            return await EvaluateAgainstOfficialRateAsync(
+                clientRate,
+                manualOfficialRate,
+                quote.Source,
+                officialLabel: $"manual del par {UsdCode}/{dualSecondary}",
+                contextLabel,
+                referenceId);
+        }
 
         if (_inventoryService == null)
         {
@@ -113,12 +165,34 @@ public sealed class ExchangeRateAnchorService
             return NoOfficialRate(clientRate);
         }
 
+        return await EvaluateAgainstOfficialRateAsync(
+            clientRate,
+            officialRate,
+            CurrencyRateSource.Bcv,
+            officialLabel: "BCV",
+            contextLabel,
+            referenceId);
+    }
+
+    /// <summary>
+    /// 8.211-T3c3c1 (S4): single tolerance/rejection kernel shared by the BCV and manual pair
+    /// paths. Thresholds and observable outcomes are the historical ones: ±100% rejects and a
+    /// deviation above the configured tolerance anchors to the official rate.
+    /// </summary>
+    private async Task<ExchangeRateAnchorResult> EvaluateAgainstOfficialRateAsync(
+        decimal clientRate,
+        decimal officialRate,
+        CurrencyRateSource rateSource,
+        string officialLabel,
+        string contextLabel,
+        int referenceId)
+    {
         decimal deviationPct = Math.Abs(clientRate - officialRate) / officialRate;
 
         if (deviationPct >= 1.0m)
         {
-            LogWarning("[A5-AUDIT] Tasa rechazada por posible manipulación. {Context} #{Ref}, TasaRecibida={Received}, TasaBCV={Official}, Desvío={Deviation:P2}", contextLabel, referenceId, clientRate, officialRate, deviationPct);
-            return new ExchangeRateAnchorResult(clientRate, clientRate, officialRate, deviationPct, DefaultTolerancePct, ExchangeRateAnchorOutcome.Rejected);
+            LogWarning("[A5-AUDIT] Tasa rechazada por posible manipulación. {Context} #{Ref}, TasaRecibida={Received}, TasaOficial={Official}, Desvío={Deviation:P2}", contextLabel, referenceId, clientRate, officialRate, deviationPct);
+            return new ExchangeRateAnchorResult(clientRate, clientRate, officialRate, deviationPct, DefaultTolerancePct, ExchangeRateAnchorOutcome.Rejected, rateSource);
         }
 
         decimal tolerancePct = DefaultTolerancePct;
@@ -141,12 +215,15 @@ public sealed class ExchangeRateAnchorService
 
         if (deviationPct > tolerancePct)
         {
-            LogWarning("[A5-AUDIT] Desvío de tasa significativo ({Deviation:P2} > {Tolerance:P2}) en {Context} #{Ref}. Se ANCLA a la tasa BCV del día: {Received} -> {Official}", deviationPct, tolerancePct, contextLabel, referenceId, clientRate, officialRate);
-            return new ExchangeRateAnchorResult(officialRate, clientRate, officialRate, deviationPct, tolerancePct, ExchangeRateAnchorOutcome.Anchored);
+            LogWarning("[A5-AUDIT] Desvío de tasa significativo ({Deviation:P2} > {Tolerance:P2}) en {Context} #{Ref}. Se ANCLA a la tasa {SourceLabel} del día: {Received} -> {Official}", deviationPct, tolerancePct, contextLabel, referenceId, officialLabel, clientRate, officialRate);
+            return new ExchangeRateAnchorResult(officialRate, clientRate, officialRate, deviationPct, tolerancePct, ExchangeRateAnchorOutcome.Anchored, rateSource);
         }
 
-        return new ExchangeRateAnchorResult(clientRate, clientRate, officialRate, deviationPct, tolerancePct, ExchangeRateAnchorOutcome.Accepted);
+        return new ExchangeRateAnchorResult(clientRate, clientRate, officialRate, deviationPct, tolerancePct, ExchangeRateAnchorOutcome.Accepted, rateSource);
     }
+
+    private static ExchangeRateAnchorResult Identity(decimal clientRate)
+        => new(1m, clientRate, 0m, 0m, 0m, ExchangeRateAnchorOutcome.Identity, CurrencyRateSource.Identity);
 
     private static ExchangeRateAnchorResult NoOfficialRate(decimal clientRate)
         => new(clientRate, clientRate, 0m, 0m, DefaultTolerancePct, ExchangeRateAnchorOutcome.NoOfficialRate);

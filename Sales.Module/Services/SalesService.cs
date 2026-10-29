@@ -43,6 +43,9 @@ public partial class SalesService : ISalesService
     // 8.211-T3a (S6): perfil monetario opcional para el snapshot aditivo de la venta. Null
     // conserva el comportamiento histórico USD/VES/Dual (composiciones directas de tests).
     private readonly IMonetaryProfileService? _monetaryProfileService;
+    // 8.211-T3c3c1 (S4): manual per-pair rates for the anchor and CxC payment rate. Null keeps
+    // the historical BCV behavior and fails closed when a manual pair is actually requested.
+    private readonly ICurrencyRateService? _currencyRateService;
     // 8.149 (SEC-02): mensaje único para ambos puntos de mutación de ítems de venta
     // (AddItemAsync y UpdateSaleItemsAsync). El adelanto de efectivo solo entra por CreateCashAdvanceSaleAsync.
     private const string CashAdvanceSaleItemRejectionMessage = "Los productos de adelanto de efectivo no pueden agregarse ni modificarse en una venta; use el flujo de adelanto de efectivo.";
@@ -58,14 +61,21 @@ public partial class SalesService : ISalesService
         IMemoryCache? cache = null,
         Sales.Module.Receipts.IReceiptPrintQueue? receiptPrintQueue = null,
         ICreditService? creditService = null,
-        IMonetaryProfileService? monetaryProfileService = null)
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         _context = context;
         _history = new SalesHistoryService(context);
         // 8.211-T3c3b1 (S4): the profile must be assigned before the anchor is built so Single
         // mode resolves identity; the optional parameter keeps historical direct compositions working.
         _monetaryProfileService = monetaryProfileService;
-        _rateAnchor = new ExchangeRateAnchorService(inventoryService, settingsService, logger, monetaryProfileService);
+        _currencyRateService = currencyRateService;
+        _rateAnchor = new ExchangeRateAnchorService(
+            inventoryService,
+            settingsService,
+            logger,
+            monetaryProfileService,
+            currencyRateService);
         _customers = new SalesCustomerService(context, cache, logger);
         _inventoryService = inventoryService;
         _mediator = mediator;
@@ -337,7 +347,7 @@ public partial class SalesService : ISalesService
             sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, product, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule, cancellationToken));
         }
 
-        await RecalculateTotalAsync(sale);
+        await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
         ValidateHoldSaleTotal(sale);
         await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
@@ -463,7 +473,7 @@ public partial class SalesService : ISalesService
             }
             else
             {
-                await RecalculateTotalAsync(sale);
+                await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
             }
             ValidateHoldSaleTotal(sale);
             await _context.SaveChangesAsync(cancellationToken);
@@ -497,7 +507,7 @@ public partial class SalesService : ISalesService
                 }
                 else
                 {
-                    await RecalculateTotalAsync(sale);
+                    await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
                 }
             }
             else
@@ -514,7 +524,7 @@ public partial class SalesService : ISalesService
                 }
 
                 item.Quantity = quantity;
-                await RecalculateTotalAsync(sale);
+                await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
             }
             ValidateHoldSaleTotal(sale);
             await _context.SaveChangesAsync(cancellationToken);

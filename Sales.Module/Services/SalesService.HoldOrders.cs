@@ -42,7 +42,7 @@ public partial class SalesService
         // 8.6-B3: La tasa del HOLD se ancla a la tasa BCV del día (misma política que CompleteSale).
         decimal anchoredHoldRate = await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "HoldSale", referenceId: sale.Id);
         sale.AppliedRate = anchoredHoldRate;
-        await RecalculateTotalAsync(sale);
+        await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
 
         var paymentsToProcess = new List<AddPaymentRequestDto>();
         if (request.InitialPayment != null) paymentsToProcess.Add(request.InitialPayment);
@@ -87,7 +87,12 @@ public partial class SalesService
 
                 var (resolvedAmountUsd, resolvedAmountBsS) = ResolveConsistentPaymentAmounts(amountUsd, payment.AmountBsS, rate);
 
-                if (pMethodForValidation != null && pMethodForValidation.IsCash && resolvedAmountBsS % 1 != 0)
+                // 8.211-T3c3c1 (S4/S5): integer cash is VES-specific in Dual; Single and Dual
+                // non-VES secondaries accept the local minor unit (fractional amounts).
+                if (pMethodForValidation != null
+                    && pMethodForValidation.IsCash
+                    && !AllowsFractionalLocalCash(monetaryProfile)
+                    && resolvedAmountBsS % 1 != 0)
                 {
                     throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
                 }
@@ -165,7 +170,7 @@ public partial class SalesService
                 sale.CustomerId = customer.Id;
                 sale.CustomerName = customer.Name;
                 sale.CustomerCedula = customer.CedulaOrRif;
-                await RecalculateTotalAsync(sale);
+                await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
                 foreach (var (prepPayment, prepCashTx) in preparedInitialEntries)
                 {
                     var clonedPayment = new SalePayment
@@ -563,7 +568,7 @@ public partial class SalesService
                 sale.Items.Add(newItem);
             }
 
-            await RecalculateTotalAsync(sale);
+            await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
             ValidateHoldSaleTotal(sale);
             await _context.SaveChangesAsync(cancellationToken);
 

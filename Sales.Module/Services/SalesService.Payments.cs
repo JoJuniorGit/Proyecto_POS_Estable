@@ -389,9 +389,13 @@ public partial class SalesService
             EnsurePaymentMethodCurrencyMatchesProfile(monetaryProfile, method);
         }
 
-        // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
-        // Single se rechaza antes de este camino, por lo que la regla histórica Dual se conserva.
-        if (method != null && method.IsCash && resolvedAmountBsS % 1 != 0)
+        // Validación de integridad: el efectivo VES solo acepta montos enteros (sin centavos).
+        // 8.211-T3c3c1 (S4/S5): Single y Dual con secundaria no-VES aceptan la unidad menor
+        // (montos fraccionarios); el legado Dual USD/VES conserva la regla histórica.
+        if (method != null
+            && method.IsCash
+            && !AllowsFractionalLocalCash(monetaryProfile)
+            && resolvedAmountBsS % 1 != 0)
         {
             throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
         }
@@ -453,15 +457,12 @@ public partial class SalesService
             ? PaymentMethodCurrencyResolver.LocalCurrency
             : PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name);
 
-    // 8.211-T3c2 (S6): importe original del abono en la moneda del medio de pago. Local usa el
-    // monto Bs.S y USD el monto dólar; una moneda fuera del vocabulario actual conserva el USD,
-    // espejo de la ruta legacy habilitada en esta fase.
+    // 8.211-T3c2/T3c3c1 (S6): importe original del abono en la moneda del medio de pago. USD usa
+    // el monto dólar; cualquier moneda local/secundaria (Bs.S, COP, MXN, EUR) usa el monto local.
     private static decimal ResolveOriginalAmount(decimal amountUsd, decimal amountLocal, string? currencyCode)
         => string.Equals(currencyCode, PaymentMethodCurrencyResolver.Usd, StringComparison.Ordinal)
             ? amountUsd
-            : string.Equals(currencyCode, PaymentMethodCurrencyResolver.LocalCurrency, StringComparison.Ordinal)
-                ? amountLocal
-                : amountUsd;
+            : amountLocal;
 
     private sealed record ComputedPaymentInput(decimal Rate, decimal AmountUsd, decimal AmountBsS, PaymentMethod? Method);
 }

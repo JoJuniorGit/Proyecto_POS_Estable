@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
@@ -21,17 +22,22 @@ public class CashAdvanceCoordinator
     private readonly ISalesService _salesService;
     private readonly ICashDrawerService _cashDrawerService;
     private readonly ISystemSettingsService _settingsService;
+    // 8.211-T3c3c1 (S4): local cash precision depends on the profile regime. Null keeps the
+    // historical integer rule (legacy/fail-safe).
+    private readonly IMonetaryProfileService? _monetaryProfileService;
 
     public CashAdvanceCoordinator(
         SalesDbContext context,
         ISalesService salesService,
         ICashDrawerService cashDrawerService,
-        ISystemSettingsService settingsService)
+        ISystemSettingsService settingsService,
+        IMonetaryProfileService? monetaryProfileService = null)
     {
         _context = context;
         _salesService = salesService;
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
+        _monetaryProfileService = monetaryProfileService;
     }
 
     public async Task<CashAdvanceResultDto> ProcessAsync(
@@ -53,7 +59,10 @@ public class CashAdvanceCoordinator
             throw new ArgumentException("El monto del adelanto debe ser mayor a cero.", nameof(requestedAmountLocal));
         }
 
-        if (requestedAmountLocal % 1 != 0)
+        // 8.211-T3c3c1 (S4): integer local cash is VES-specific. Single and Dual non-VES
+        // secondaries accept their minor unit; legacy/fail-safe keeps the historical integer rule.
+        if (!await AllowsFractionalLocalCashAsync(cancellationToken)
+            && requestedAmountLocal % 1 != 0)
         {
             throw new ArgumentException("El monto de efectivo a entregar debe ser un número entero sin decimales.", nameof(requestedAmountLocal));
         }
@@ -346,6 +355,48 @@ public class CashAdvanceCoordinator
 
         return ex.Message.Contains("IdempotentRequests", StringComparison.Ordinal)
             || ex.InnerException?.Message.Contains("IdempotentRequests", StringComparison.Ordinal) == true;
+    }
+
+    /// <summary>
+    /// 8.211-T3c3c1 (S4): Single cash is fractional (2dp primary) and Dual non-VES uses the
+    /// secondary minor unit. Dual USD/VES, a malformed profile, or a failed read keeps the
+    /// historical integer rule (fail-safe).
+    /// </summary>
+    private async Task<bool> AllowsFractionalLocalCashAsync(CancellationToken cancellationToken)
+    {
+        if (_monetaryProfileService is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var profile = await _monetaryProfileService.GetAsync(cancellationToken);
+            if (profile.Mode == MonetaryMode.Single)
+            {
+                return true;
+            }
+
+            if (profile.Mode != MonetaryMode.Dual)
+            {
+                return false;
+            }
+
+            var secondary = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode);
+            return secondary is not null
+                && !string.Equals(secondary, "VES", StringComparison.Ordinal);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn(
+                $"[CashAdvanceCoordinator] No se pudo leer el perfil monetario; se conserva la regla de efectivo entero. Error: {ex.Message}",
+                nameof(CashAdvanceCoordinator));
+            return false;
+        }
     }
 
     public async Task<decimal?> TryGetCommissionPercentageAsync(bool isTransfer, CancellationToken cancellationToken = default)

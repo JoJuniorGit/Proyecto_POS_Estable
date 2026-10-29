@@ -140,9 +140,10 @@ public partial class SalesService
             TotalBsS = totalChargedLocal,
             FinalPaidAmountBsS = totalChargedLocal,
             // 8.211-T3c2 (S6): snapshots aditivos de importes del adelanto completado directo.
+            // 8.211-T3c3c1 (S4): la fuente de tasa sigue el régimen (Bcv/Manual; Identity en Single).
             PrimaryAmount = totalChargedUSD,
             SecondaryAmount = totalChargedLocal,
-            AppliedRateSource = "Bcv",
+            AppliedRateSource = ResolveAppliedRateSource(monetaryProfile),
             PrimaryCurrencyCode = monetaryProfile.PrimaryCurrencyCode,
             SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode,
             MonetaryMode = monetaryProfile.MonetaryMode

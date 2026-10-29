@@ -1,3 +1,4 @@
+using Core.Common;
 using Core.Helpers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -83,6 +84,12 @@ public partial class SalesService
                     return replay;
                 }
 
+                // 8.211-T3c3c1 (S4/S7): CxC follows the same supported checkout regimes as the
+                // regular close (Dual USD/VES or Single 2dp); the profile also owns the rate
+                // source and the method-currency authority.
+                var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+                EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: true);
+
                 var customer = await _context.Customers
                     .AsNoTracking()
                     .FirstOrDefaultAsync(candidate => candidate.Id == request.CustomerId, cancellationToken)
@@ -95,6 +102,8 @@ public partial class SalesService
                 {
                     throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={request.PaymentMethodId}. Verifique la configuración de métodos de pago.");
                 }
+
+                EnsurePaymentMethodCurrencyMatchesProfile(monetaryProfile, paymentMethod);
 
                 var receivables = await LoadCreditPaymentReceivablesAsync(request, cancellationToken);
                 if (receivables.Count == 0)
@@ -112,7 +121,7 @@ public partial class SalesService
                 }
 
                 decimal effectiveAmountUsd = Math.Min(request.AmountUSD, totalOpenUsd);
-                decimal paymentRate = await ResolveCreditPaymentRateAsync(cancellationToken);
+                decimal paymentRate = await ResolveCreditPaymentRateAsync(monetaryProfile, cancellationToken);
 
                 var allocations = new List<CreditPaymentAllocation>();
                 decimal allocatedUsd = 0m;
@@ -322,12 +331,40 @@ public partial class SalesService
     }
 
     /// <summary>
-    /// Tasa del abono server-side: la tasa BCV efectiva del día desde la misma fuente cacheada
-    /// del checkout (nunca un valor del cliente). Sin tasa registrada el cobro falla cerrado y
-    /// la tasa se congela con el techo de 2dp de la convención de caja.
+    /// Tasa del abono server-side según el régimen: Identity (1) en Single; BCV efectiva del día
+    /// para Dual USD/VES; tasa manual exacta del par para Dual USD/{COP,MXN,EUR}. Nunca usa un
+    /// valor del cliente y falla cerrado si la fuente no está disponible. La tasa se congela con
+    /// el techo de 2dp de la convención de caja.
     /// </summary>
-    private async Task<decimal> ResolveCreditPaymentRateAsync(CancellationToken cancellationToken)
+    private async Task<decimal> ResolveCreditPaymentRateAsync(
+        MonetaryProfileSnapshot profile,
+        CancellationToken cancellationToken)
     {
+        if (string.Equals(profile.MonetaryMode, "Single", StringComparison.Ordinal))
+        {
+            return 1m;
+        }
+
+        var secondary = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode);
+        if (secondary is not null && !string.Equals(secondary, "VES", StringComparison.Ordinal))
+        {
+            if (_currencyRateService is null)
+            {
+                throw new InvalidOperationException(
+                    $"No hay servicio de tasas manuales configurado para el par USD/{secondary} para registrar el abono.");
+            }
+
+            var quote = await _currencyRateService.GetRateAsync("USD", secondary, null, cancellationToken);
+            decimal manualRate = PricingCalculator.RoundExchangeRateCeiling(quote.Rate);
+            if (manualRate <= 0m)
+            {
+                throw new InvalidOperationException(
+                    $"La tasa manual del par USD/{secondary} no es válida para registrar el abono.");
+            }
+
+            return manualRate;
+        }
+
         decimal officialRate;
         try
         {

@@ -44,7 +44,8 @@ public class CashDrawerController : ControllerBase
         ITimeZoneProvider timeZoneProvider,
         Sales.Module.Services.CashAdvanceCoordinator cashAdvanceCoordinator,
         IIdempotencyService? idempotencyService = null,
-        IMonetaryProfileService? monetaryProfileService = null)
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
@@ -55,8 +56,12 @@ public class CashDrawerController : ControllerBase
         _cashAdvanceCoordinator = cashAdvanceCoordinator;
         _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
         // 8.211-T3c3b1 (S4): the injected profile lets Single mode resolve an identity rate.
+        // 8.211-T3c3c1 (S4): the pair rate service resolves Dual non-VES manual quotes.
         _rateAnchor = new Sales.Module.Services.ExchangeRateAnchorService(
-            inventoryService, settingsService, monetaryProfileService: monetaryProfileService);
+            inventoryService,
+            settingsService,
+            monetaryProfileService: monetaryProfileService,
+            currencyRateService: currencyRateService);
     }
 
     [HttpGet("active-session")]
@@ -310,7 +315,11 @@ public class CashDrawerController : ControllerBase
         var result = await _rateAnchor.ResolveAsync(clientRate, "CashDrawerController", referenceId, cancellationToken);
         if (result.Outcome == Sales.Module.Services.ExchangeRateAnchorOutcome.Rejected)
         {
-            throw new ArgumentException($"La tasa de cambio {result.ClientRate} fue rechazada: excede ±100% de la tasa BCV oficial ({result.OfficialRate}). Contacte al supervisor.");
+            // 8.211-T3c3c1 (S4): name the official source actually used (manual pair or BCV).
+            string officialLabel = result.RateSource is Core.Interfaces.CurrencyRateSource.Manual or Core.Interfaces.CurrencyRateSource.ManualInverse
+                ? "manual del par"
+                : "BCV oficial";
+            throw new ArgumentException($"La tasa de cambio {result.ClientRate} fue rechazada: excede ±100% de la tasa {officialLabel} ({result.OfficialRate}). Contacte al supervisor.");
         }
 
         return result.EffectiveRate;

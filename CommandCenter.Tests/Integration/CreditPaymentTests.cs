@@ -197,6 +197,40 @@ public class CreditPaymentTests
         Assert.Equal(100.0000m, (await context.Receivables.AsNoTracking().SingleAsync()).BalanceUSD);
     }
 
+    [Fact]
+    public async Task RegisterCreditPayment_SingleProfile_UsesIdentityRateAndSkipsBcv()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context);
+        await SeedReceivableAsync(context, customer.Id, balanceUsd: 100m, historicalRate: 50m, invoiceNumber: 9303);
+        await SeedPaymentMethodsAsync(context);
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Single,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = null,
+                SecondaryCurrencySymbol = null,
+                IsConfigured = true
+            });
+        var (service, inventory, _) = CreateHarness(context, bcvRate: 60m, monetaryProfileService: profile.Object);
+
+        var result = await service.RegisterCreditPaymentAsync(new CreditPaymentRequest
+        {
+            CustomerId = customer.Id,
+            AmountUSD = 100m,
+            PaymentMethodId = 1
+        });
+
+        Assert.Equal(1.0000m, result.PaymentRate);
+        Assert.Equal(100.00m, result.AmountBsS);
+        Assert.Equal(-4900.00m, result.FxDifferenceBsS); // 100 − 100×50
+        inventory.Verify(inventoryService => inventoryService.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     // ---------------------------------------------------------------- polvo decimal / topes
 
     [Fact]
@@ -611,7 +645,9 @@ public class CreditPaymentTests
 
     private static (SalesService Service, Mock<IInventoryService> Inventory, Mock<ICashDrawerService> CashDrawer) CreateHarness(
         SalesDbContext context,
-        decimal bcvRate = 60m)
+        decimal bcvRate = 60m,
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         var inventory = new Mock<IInventoryService>();
         inventory
@@ -631,7 +667,9 @@ public class CreditPaymentTests
             mediator.Object,
             cashDrawer.Object,
             settings.Object,
-            creditService: new CreditService(context));
+            creditService: new CreditService(context),
+            monetaryProfileService: monetaryProfileService,
+            currencyRateService: currencyRateService);
 
         return (service, inventory, cashDrawer);
     }

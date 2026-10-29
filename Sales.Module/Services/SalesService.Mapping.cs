@@ -137,7 +137,11 @@ public partial class SalesService
         var result = await _rateAnchor.ResolveAsync(clientRate, contextLabel, referenceId);
         if (result.Outcome == ExchangeRateAnchorOutcome.Rejected)
         {
-            throw new ArgumentException($"La tasa de cambio {result.ClientRate} fue rechazada: excede ±100% de la tasa BCV oficial ({result.OfficialRate}). Contacte al supervisor.");
+            // 8.211-T3c3c1 (S4): the rejection names the official source that was actually used.
+            string officialLabel = result.RateSource is CurrencyRateSource.Manual or CurrencyRateSource.ManualInverse
+                ? "manual del par"
+                : "BCV oficial";
+            throw new ArgumentException($"La tasa de cambio {result.ClientRate} fue rechazada: excede ±100% de la tasa {officialLabel} ({result.OfficialRate}). Contacte al supervisor.");
         }
 
         return result.EffectiveRate;

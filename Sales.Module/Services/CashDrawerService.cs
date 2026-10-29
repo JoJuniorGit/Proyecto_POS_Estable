@@ -626,13 +626,17 @@ public class CashDrawerService : ICashDrawerService
             }
         }
 
+        // 8.211-T3c3c1 (S4): the change belongs to the same local drawer currency used for the
+        // movement and the operator-facing message (VES still displays as Bs.S).
+        var localDrawerCurrency = await ResolveLocalDrawerCurrencyAsync(cancellationToken);
+
         var currentBalanceDb = await GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
         decimal available = currentBalanceDb + pendingCashIncomeBsS;
         if (available < changeBsS)
         {
             // 8.153 (SEC-06): sin exponer el efectivo disponible (arqueo ciego); el vuelto requerido
             // es dato del propio operador que completa la venta.
-            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para registrar el vuelto de la venta #{saleId}. Vuelto requerido: {MoneyFormat.N2(changeBsS)} Bs.S.");
+            throw new InvalidOperationException($"Saldo de efectivo en caja insuficiente para registrar el vuelto de la venta #{saleId}. Vuelto requerido: {MoneyFormat.N2(changeBsS)} {localDrawerCurrency}.");
         }
 
         var changeTx = new CashTransaction
@@ -648,9 +652,9 @@ public class CashDrawerService : ICashDrawerService
             PaymentMethodId = cashPaymentMethodId,
             Description = description,
             TransactionTime = DateTime.UtcNow,
-            // 8.211-T3b3 (S6): el vuelto sale siempre de la gaveta local; T3c3b1 usa la moneda
-            // primaria cuando el perfil es Single.
-            CurrencyCode = await ResolveLocalDrawerCurrencyAsync(cancellationToken)
+            // 8.211-T3b3 (S6): el vuelto sale siempre de la gaveta local (primaria en Single y
+            // secundaria normalizada en Dual).
+            CurrencyCode = localDrawerCurrency
         };
 
         _context.CashTransactions.Add(changeTx);
@@ -732,9 +736,10 @@ public class CashDrawerService : ICashDrawerService
     }
 
     /// <summary>
-    /// 8.211-T3c3b1 (S4/S6): local drawer rows use the primary currency when the monetary profile
-    /// is Single; Dual or a missing profile keeps the historical Bs.S local currency. Read per
-    /// transaction on purpose: the profile may change between requests and is not cached here.
+    /// 8.211-T3c3b1/T3c3c1 (S4/S6): local drawer rows use the primary currency in Single and the
+    /// normalized secondary in Dual (VES displays as Bs.S, other ISO as-is). A missing profile or
+    /// a read failure keeps the historical Bs.S local currency. Read per transaction on purpose:
+    /// the profile may change between requests and is not cached here.
     /// </summary>
     private async Task<string> ResolveLocalDrawerCurrencyAsync(CancellationToken cancellationToken)
     {
@@ -746,9 +751,7 @@ public class CashDrawerService : ICashDrawerService
         try
         {
             var profile = await _monetaryProfileService.GetAsync(cancellationToken);
-            return profile.Mode == Core.DTOs.MonetaryMode.Single
-                ? profile.PrimaryCurrencyCode
-                : PaymentMethodCurrencyResolver.LocalCurrency;
+            return CashDrawerBalanceService.ResolveLocalCurrency(profile);
         }
         catch (OperationCanceledException)
         {

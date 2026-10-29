@@ -183,6 +183,23 @@ internal sealed class CashDrawerBalanceService
         return string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// 8.211-T3c3c1 (S4): local drawer currency from the active profile. Single uses the primary
+    /// currency; Dual uses the normalized secondary (VES displays as Bs.S, other ISO as-is).
+    /// </summary>
+    internal static string ResolveLocalCurrency(Core.DTOs.MonetaryProfileDto profile)
+    {
+        if (profile.Mode == Core.DTOs.MonetaryMode.Single)
+        {
+            return profile.PrimaryCurrencyCode;
+        }
+
+        var secondary = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode);
+        return secondary is null || string.Equals(secondary, "VES", StringComparison.Ordinal)
+            ? PaymentMethodCurrencyResolver.LocalCurrency
+            : secondary;
+    }
+
     private async Task<string> ResolveLocalDrawerCurrencyAsync(CancellationToken cancellationToken)
     {
         if (_monetaryProfileService is null)
@@ -193,9 +210,7 @@ internal sealed class CashDrawerBalanceService
         try
         {
             var profile = await _monetaryProfileService.GetAsync(cancellationToken);
-            return profile.Mode == Core.DTOs.MonetaryMode.Single
-                ? profile.PrimaryCurrencyCode
-                : PaymentMethodCurrencyResolver.LocalCurrency;
+            return ResolveLocalCurrency(profile);
         }
         catch (OperationCanceledException)
         {

@@ -1,3 +1,4 @@
+using Core.Common;
 using Core.DTOs;
 using Core.Helpers;
 using Core.Interfaces;
@@ -22,12 +23,19 @@ public class CheckoutCalculationService : ICheckoutCalculationService
 {
     private readonly ISalesService _salesService;
     private readonly ISystemSettingsService? _settingsService;
+    // 8.211-T3c3c1 (S5): the preview mirrors the active pricing currency so VES-only cash rules
+    // are not applied to a Dual non-VES secondary or Single profile. Null keeps legacy USD/VES.
+    private readonly IMonetaryProfileService? _monetaryProfileService;
 
-    public CheckoutCalculationService(ISalesService salesService, ISystemSettingsService? settingsService = null)
+    public CheckoutCalculationService(
+        ISalesService salesService,
+        ISystemSettingsService? settingsService = null,
+        IMonetaryProfileService? monetaryProfileService = null)
     {
         ArgumentNullException.ThrowIfNull(salesService);
         _salesService = salesService;
         _settingsService = settingsService;
+        _monetaryProfileService = monetaryProfileService;
     }
 
     public async Task<CheckoutPreviewResponse> CalculatePreviewAsync(int saleId, CheckoutPreviewRequest request, CancellationToken cancellationToken = default)
@@ -50,7 +58,9 @@ public class CheckoutCalculationService : ICheckoutCalculationService
 
         // 8.185-T3 (S5): total Bs.S EFECTIVO — derivación por línea idéntica a la del completar
         // venta (regla snapshot + toggle vigente). Sin líneas rige el total canónico del contrato.
-        decimal totalBsS = await ResolveEffectiveTotalBsSAsync(sale, rate);
+        // 8.211-T3c3c1 (S5): las reglas cash-friendly solo aplican cuando la moneda de precio es VES.
+        bool useVesCashRules = await ResolveUsesVesCashRulesAsync(sale, cancellationToken);
+        decimal totalBsS = await ResolveEffectiveTotalBsSAsync(sale, rate, useVesCashRules, cancellationToken);
 
         decimal totalPaidUsd = 0m;
         decimal totalPaidBsS = 0m;
@@ -121,7 +131,11 @@ public class CheckoutCalculationService : ICheckoutCalculationService
     /// aplica la regla cash snapshot (override resuelto al agregar) con el toggle vigente y cae al
     /// techo canónico 8.104 para reglas no-cash, líneas custom o líneas previas a 8.185.
     /// </summary>
-    private async Task<decimal> ResolveEffectiveTotalBsSAsync(SaleDto sale, decimal rate)
+    private async Task<decimal> ResolveEffectiveTotalBsSAsync(
+        SaleDto sale,
+        decimal rate,
+        bool useVesCashRules,
+        CancellationToken cancellationToken)
     {
         var items = sale.Items;
         if (items == null || items.Count == 0)
@@ -129,10 +143,11 @@ public class CheckoutCalculationService : ICheckoutCalculationService
             return PricingCalculator.RoundToDigital(sale.TotalUSD * rate);
         }
 
-        // El toggle se lee UNA vez y solo si alguna línea no-custom tiene política cash (misma
-        // condición del completar venta); sin líneas cash el valor es irrelevante.
+        // El toggle se lee UNA vez y solo si la moneda de precio es VES y alguna línea no-custom
+        // tiene política cash (misma condición del completar venta); sin reglas VES es irrelevante.
         bool neverRoundDown = true;
-        if (items.Any(i => !i.IsCustomPrice && SalesService.IsCashFriendlyRule(i.RoundingRuleCashBs)))
+        if (useVesCashRules
+            && items.Any(i => !i.IsCustomPrice && SalesService.IsCashFriendlyRule(i.RoundingRuleCashBs)))
         {
             neverRoundDown = await ResolveNeverRoundDownAsync();
         }
@@ -145,12 +160,58 @@ public class CheckoutCalculationService : ICheckoutCalculationService
                 item.IsCustomPrice,
                 item.RoundingRuleCashBs,
                 rate,
-                neverRoundDown);
+                neverRoundDown,
+                useVesCashRules);
 
             total += PricingCalculator.RoundToDigital(item.Quantity * unitPriceBsS);
         }
 
         return PricingCalculator.RoundToDigital(total);
+    }
+
+    /// <summary>
+    /// 8.211-T3c3c1 (S5): pricing currency for the preview. Single ⇒ no VES rules; Dual ⇒
+    /// normalized secondary; a profile read failure falls back to the sale snapshot (null does
+    /// not apply VES rules). Null profile service preserves the legacy USD/VES behavior.
+    /// </summary>
+    private async Task<bool> ResolveUsesVesCashRulesAsync(SaleDto sale, CancellationToken cancellationToken)
+    {
+        if (_monetaryProfileService is null)
+        {
+            // Legacy compositions: Single never applies VES rules; Dual USD/VES keeps them.
+            return ResolveUsesVesCashRulesFromSnapshot(sale);
+        }
+
+        try
+        {
+            var profile = await _monetaryProfileService.GetAsync(cancellationToken);
+            if (profile.Mode != MonetaryMode.Dual)
+            {
+                return false;
+            }
+
+            var secondary = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode) ?? "VES";
+            return string.Equals(secondary, "VES", StringComparison.Ordinal);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return ResolveUsesVesCashRulesFromSnapshot(sale);
+        }
+    }
+
+    private static bool ResolveUsesVesCashRulesFromSnapshot(SaleDto sale)
+    {
+        if (string.Equals(sale.MonetaryMode, "Single", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var snapshot = CurrencyCodeNormalizer.NormalizeToIso(sale.SecondaryCurrencyCode);
+        return string.Equals(snapshot, "VES", StringComparison.Ordinal);
     }
 
     /// <summary>Toggle vigente del nunca-hacia-abajo (default true), mismo contrato del completar venta.</summary>
