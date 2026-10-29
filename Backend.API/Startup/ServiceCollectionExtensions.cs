@@ -101,6 +101,9 @@ public static class ServiceCollectionExtensions
         builder.Services.AddHostedService<Backend.API.Jobs.CreditMoraJob>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
+        // 8.211-T3c3b3 (S7/S11): prepara el catálogo de métodos de pago en la moneda primaria al
+        // configurar un perfil Single en una instalación nueva (idempotente, caché y SignalR).
+        builder.Services.AddScoped<IMonetaryPaymentMethodSeeder, Sales.Module.Services.MonetaryPaymentMethodSeeder>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IHoldOrderNotifier, Backend.API.Services.SignalRHoldOrderNotifier>();
         // 8.150-T4 (design D6): fuente unica de los tiempos de autorizaciones remotas. El mismo
         // TTL se inyecta en el token service, el coordinator y el servicio de estado, de modo que

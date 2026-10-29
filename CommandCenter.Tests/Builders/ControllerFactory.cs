@@ -52,7 +52,8 @@ public static class ControllerFactory
         ICurrentUserService currentUserService,
         ISystemSettingsService settingsService,
         IHubContext<ExchangeRateHub>? hubContext = null,
-        IMonetaryTransitionGuard? transitionGuard = null)
+        IMonetaryTransitionGuard? transitionGuard = null,
+        IMonetaryPaymentMethodSeeder? paymentMethodSeeder = null)
         => new(
             settingsService,
             currentUserService,
@@ -62,7 +63,8 @@ public static class ControllerFactory
             hubContext,
             monetaryProfileService: new MonetaryProfileService(settingsService),
             currencyRateService: new CurrencyRateService(context),
-            monetaryTransitionGuard: transitionGuard ?? EmptyInstallTransitionGuard.Instance);
+            monetaryTransitionGuard: transitionGuard ?? EmptyInstallTransitionGuard.Instance,
+            monetaryPaymentMethodSeeder: paymentMethodSeeder);
 
     /// <summary>
     /// 8.211-T3c3a: existing settings tests run against empty in-memory installs, where the

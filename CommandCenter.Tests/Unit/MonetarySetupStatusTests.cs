@@ -33,7 +33,8 @@ public class MonetarySetupStatusTests
     private static SettingsController CreateController(
         InventoryDbContext db,
         bool canMutateSettings,
-        bool hasFinancialData)
+        bool hasFinancialData,
+        IMonetaryPaymentMethodSeeder? paymentMethodSeeder = null)
     {
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateSettings).Returns(canMutateSettings);
@@ -46,13 +47,15 @@ public class MonetarySetupStatusTests
             db,
             mockUser.Object,
             new SystemSettingsService(db),
-            transitionGuard: guard.Object);
+            transitionGuard: guard.Object,
+            paymentMethodSeeder: paymentMethodSeeder);
     }
 
     // The production guard is always registered by DI; this helper covers the wiring-failure branch.
     private static SettingsController CreateControllerWithoutGuard(
         InventoryDbContext db,
-        bool canMutateSettings)
+        bool canMutateSettings,
+        IMonetaryPaymentMethodSeeder? paymentMethodSeeder = null)
     {
         var mockUser = new Mock<ICurrentUserService>();
         mockUser.Setup(u => u.CanMutateSettings).Returns(canMutateSettings);
@@ -68,7 +71,8 @@ public class MonetarySetupStatusTests
             null,
             new MonetaryProfileService(settingsService),
             new CurrencyRateService(db),
-            null);
+            null,
+            paymentMethodSeeder);
     }
 
     private static MonetaryProfileDto DefaultDualProfile() => new()
@@ -204,6 +208,69 @@ public class MonetarySetupStatusTests
     }
 
     [Fact]
+    public async Task SetMonetaryProfile_FreshSingleCop_CallsSeederWithSavedProfile()
+    {
+        using var db = CreateInMemoryDb();
+        var seeder = new Mock<IMonetaryPaymentMethodSeeder>();
+        MonetaryProfileDto? seededProfile = null;
+        seeder.Setup(s => s.EnsureForProfileAsync(It.IsAny<MonetaryProfileDto>(), It.IsAny<CancellationToken>()))
+            .Callback<MonetaryProfileDto, CancellationToken>((profile, _) => seededProfile = profile)
+            .Returns(Task.CompletedTask);
+
+        var controller = CreateController(db, canMutateSettings: true, hasFinancialData: false, seeder.Object);
+
+        var result = await controller.SetMonetaryProfileAsync(SingleCopProfile());
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.NotNull(seededProfile);
+        Assert.True(seededProfile!.IsConfigured);
+        Assert.Equal(MonetaryMode.Single, seededProfile.Mode);
+        Assert.Equal("COP", seededProfile.PrimaryCurrencyCode);
+        seeder.Verify(
+            s => s.EnsureForProfileAsync(It.IsAny<MonetaryProfileDto>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SetMonetaryProfile_SymbolOnlyChangeWithFinancialData_DoesNotCallSeeder()
+    {
+        using var db = CreateInMemoryDb();
+        var settingsService = new SystemSettingsService(db);
+        await new MonetaryProfileService(settingsService).SaveAsync(DefaultDualProfile());
+
+        var seeder = new Mock<IMonetaryPaymentMethodSeeder>();
+        var controller = CreateController(db, canMutateSettings: true, hasFinancialData: true, seeder.Object);
+        var profile = DefaultDualProfile();
+        profile.PrimaryCurrencySymbol = "US$";
+
+        var result = await controller.SetMonetaryProfileAsync(profile);
+
+        Assert.IsType<OkObjectResult>(result);
+        seeder.Verify(
+            s => s.EnsureForProfileAsync(It.IsAny<MonetaryProfileDto>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task SetMonetaryProfile_SymbolOnlyChangeOnFreshInstall_CallsSeeder()
+    {
+        using var db = CreateInMemoryDb();
+        var seeder = new Mock<IMonetaryPaymentMethodSeeder>();
+        var controller = CreateController(db, canMutateSettings: true, hasFinancialData: false, seeder.Object);
+        var profile = DefaultDualProfile();
+        profile.PrimaryCurrencySymbol = "US$";
+
+        var result = await controller.SetMonetaryProfileAsync(profile);
+
+        Assert.IsType<OkObjectResult>(result);
+        seeder.Verify(
+            s => s.EnsureForProfileAsync(
+                It.Is<MonetaryProfileDto>(p => p.Mode == MonetaryMode.Dual && p.PrimaryCurrencySymbol == "US$"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task SetMonetaryProfile_BaseChangeWithFinancialData_ReturnsBaseLockMessageAndPersistsNothing()
     {
         using var db = CreateInMemoryDb();
@@ -256,6 +323,23 @@ public class MonetarySetupStatusTests
 
         Assert.Equal(VerificationMessage, GetProblemMessage(result));
         Assert.Equal(0, await db.SystemSettings.CountAsync());
+    }
+
+    [Fact]
+    public async Task SetMonetaryProfile_SymbolOnlyChangeWithoutGuard_DoesNotCallSeeder()
+    {
+        using var db = CreateInMemoryDb();
+        var seeder = new Mock<IMonetaryPaymentMethodSeeder>();
+        var controller = CreateControllerWithoutGuard(db, canMutateSettings: true, seeder.Object);
+        var profile = DefaultDualProfile();
+        profile.PrimaryCurrencySymbol = "US$";
+
+        var result = await controller.SetMonetaryProfileAsync(profile);
+
+        Assert.IsType<OkObjectResult>(result);
+        seeder.Verify(
+            s => s.EnsureForProfileAsync(It.IsAny<MonetaryProfileDto>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]

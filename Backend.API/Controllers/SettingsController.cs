@@ -29,6 +29,7 @@ public class SettingsController : ControllerBase
     private readonly IMonetaryProfileService? _monetaryProfileService;
     private readonly ICurrencyRateService? _currencyRateService;
     private readonly IMonetaryTransitionGuard? _monetaryTransitionGuard;
+    private readonly IMonetaryPaymentMethodSeeder? _monetaryPaymentMethodSeeder;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public SettingsController(
@@ -41,7 +42,8 @@ public class SettingsController : ControllerBase
         Microsoft.Extensions.Caching.Memory.IMemoryCache? cache = null,
         IMonetaryProfileService? monetaryProfileService = null,
         ICurrencyRateService? currencyRateService = null,
-        IMonetaryTransitionGuard? monetaryTransitionGuard = null)
+        IMonetaryTransitionGuard? monetaryTransitionGuard = null,
+        IMonetaryPaymentMethodSeeder? monetaryPaymentMethodSeeder = null)
     {
         _settingsService = settingsService;
         _currentUserService = currentUserService;
@@ -53,6 +55,7 @@ public class SettingsController : ControllerBase
         _monetaryProfileService = monetaryProfileService;
         _currencyRateService = currencyRateService;
         _monetaryTransitionGuard = monetaryTransitionGuard;
+        _monetaryPaymentMethodSeeder = monetaryPaymentMethodSeeder;
     }
 
     [HttpGet("exchange-rate")]
@@ -264,6 +267,8 @@ public class SettingsController : ControllerBase
     // flujos financieros: solo almacena la configuración para las fases posteriores.
     // 8.211-T3c3a (S11): antes de persistir se compara la base (modo y códigos) contra el perfil
     // vigente; con datos financieros solo se permiten cambios de símbolos.
+    // 8.211-T3c3b3 (S7/S11): en una instalación sin datos financieros, guardar un perfil Single
+    // prepara el catálogo de métodos de pago en la moneda primaria (paso idempotente aparte).
     [HttpGet("monetary-profile")]
     public async Task<ActionResult> GetMonetaryProfileAsync(CancellationToken cancellationToken = default)
     {
@@ -293,27 +298,45 @@ public class SettingsController : ControllerBase
             ?? throw new InvalidOperationException("El servicio de perfil monetario no está configurado.");
 
         var currentProfile = await service.GetAsync(cancellationToken);
+
+        // 8.211-T3c3b3: the probe feeds both the base-change guard and the catalog seeding gate,
+        // so a single read decides whether this install is still fresh.
+        bool? hasFinancialData = _monetaryTransitionGuard is null
+            ? null
+            : await _monetaryTransitionGuard.HasFinancialDataAsync(cancellationToken);
+
         if (ChangesMonetaryBase(currentProfile, profile))
         {
-            if (_monetaryTransitionGuard is null)
+            if (hasFinancialData is null)
             {
                 return this.ApiBadRequest("No se pudo verificar si la instalación tiene datos financieros; el cambio de moneda base está bloqueado.");
             }
 
-            if (await _monetaryTransitionGuard.HasFinancialDataAsync(cancellationToken))
+            if (hasFinancialData.Value)
             {
                 return this.ApiBadRequest("No se puede cambiar el modo ni la moneda base porque ya existen datos financieros. La moneda base solo puede cambiarse en una instalación nueva o mediante una migración explícita.");
             }
         }
 
+        MonetaryProfileDto saved;
         try
         {
-            return Ok(await service.SaveAsync(profile, cancellationToken));
+            saved = await service.SaveAsync(profile, cancellationToken);
         }
         catch (ArgumentException exception)
         {
             return this.ApiBadRequest(exception.Message);
         }
+
+        // Never seed over financial history: the seeder rewrites catalog rows, so it only runs
+        // when the same probe that authorized a fresh-install base change says the install is
+        // empty. The seeder itself also no-ops for Dual and unsupported Single currencies.
+        if (_monetaryPaymentMethodSeeder is not null && hasFinancialData == false)
+        {
+            await _monetaryPaymentMethodSeeder.EnsureForProfileAsync(saved, cancellationToken);
+        }
+
+        return Ok(saved);
     }
 
     /// <summary>
