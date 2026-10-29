@@ -231,6 +231,123 @@ public class CreditPaymentTests
         inventory.Verify(inventoryService => inventoryService.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task RegisterCreditPayment_DualUsdEur_UsesManualRateForAmountsAndFourDecimalSnapshot()
+    {
+        // 8.211-T3c3d (S4/S5): the abono is calculated with the 8dp manual quote and the persisted
+        // 18,4 PaymentRate keeps the exact 4dp snapshot (0.9245, not the legacy 0.93 ceiling).
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        const decimal rate = 0.9245m;
+        var customer = await SeedCustomerAsync(context);
+        await SeedReceivableAsync(context, customer.Id, balanceUsd: 100m, historicalRate: 50m, invoiceNumber: 9304);
+        await SeedPaymentMethodsAsync(context);
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 5,
+            Name = "Efectivo EUR",
+            IsCash = true,
+            IsActive = true,
+            DisplayOrder = 5,
+            Currency = "EUR"
+        });
+        await context.SaveChangesAsync();
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Dual,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = "EUR",
+                SecondaryCurrencySymbol = "EUR",
+                IsConfigured = true
+            });
+        var manual = new Mock<ICurrencyRateService>();
+        manual.Setup(r => r.GetRateAsync("USD", "EUR", It.IsAny<DateOnly?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CurrencyRateQuote(rate, CurrencyRateSource.Manual, TimeZoneHelper.GetVenezuelaDate(), "USD", "EUR"));
+
+        var (service, inventory, _) = CreateHarness(
+            context,
+            bcvRate: 60m,
+            monetaryProfileService: profile.Object,
+            currencyRateService: manual.Object);
+
+        var result = await service.RegisterCreditPaymentAsync(new CreditPaymentRequest
+        {
+            CustomerId = customer.Id,
+            AmountUSD = 100m,
+            PaymentMethodId = 5
+        });
+
+        Assert.Equal(0.9245m, result.PaymentRate);
+        Assert.Equal(92.45m, result.AmountBsS);
+
+        var persisted = await context.ReceivablePayments.AsNoTracking().SingleAsync();
+        Assert.Equal(0.9245m, persisted.PaymentRate);
+        Assert.Equal(92.45m, persisted.AmountBsS);
+
+        var cash = await context.CashTransactions.AsNoTracking().SingleAsync();
+        Assert.Equal("EUR", cash.CurrencyCode);
+        Assert.Equal(92.45m, cash.AmountLocal);
+        inventory.Verify(inventoryService => inventoryService.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task RegisterCreditPayment_DualUsdEur_CalculatesAmountsAtEightDecimalsAndSnapshotsFour()
+    {
+        // 101 × 0.924049 = 93.328949 → 93.33; the 4dp snapshot (0.9240) would yield 93.32.
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        const decimal rate = 0.924049m;
+        var customer = await SeedCustomerAsync(context);
+        await SeedReceivableAsync(context, customer.Id, balanceUsd: 101m, historicalRate: 50m, invoiceNumber: 9305);
+        await SeedPaymentMethodsAsync(context);
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 6,
+            Name = "Efectivo EUR",
+            IsCash = true,
+            IsActive = true,
+            DisplayOrder = 6,
+            Currency = "EUR"
+        });
+        await context.SaveChangesAsync();
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Dual,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = "EUR",
+                SecondaryCurrencySymbol = "EUR",
+                IsConfigured = true
+            });
+        var manual = new Mock<ICurrencyRateService>();
+        manual.Setup(r => r.GetRateAsync("USD", "EUR", It.IsAny<DateOnly?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CurrencyRateQuote(rate, CurrencyRateSource.Manual, TimeZoneHelper.GetVenezuelaDate(), "USD", "EUR"));
+
+        var (service, _, _) = CreateHarness(
+            context,
+            bcvRate: 60m,
+            monetaryProfileService: profile.Object,
+            currencyRateService: manual.Object);
+
+        var result = await service.RegisterCreditPaymentAsync(new CreditPaymentRequest
+        {
+            CustomerId = customer.Id,
+            AmountUSD = 101m,
+            PaymentMethodId = 6
+        });
+
+        Assert.Equal(0.9240m, result.PaymentRate);
+        Assert.Equal(93.33m, result.AmountBsS);
+
+        var cash = await context.CashTransactions.AsNoTracking().SingleAsync();
+        Assert.Equal(93.33m, cash.AmountLocal);
+    }
+
     // ---------------------------------------------------------------- polvo decimal / topes
 
     [Fact]
@@ -612,6 +729,65 @@ public class CreditPaymentTests
         var controller = CreateReceiptsController(context, "7", "Cashier");
         var missing = await controller.GetCreditPaymentReceiptAsync(999999, rateProvider.Object, CancellationToken.None);
         Assert.IsType<NotFoundObjectResult>(missing);
+    }
+
+    [Fact]
+    public async Task GetCreditPaymentReceipt_DualUsdCop_ControllerUsesManualRateWithoutBcv()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context);
+        await SeedReceivableAsync(context, customer.Id, balanceUsd: 50m, invoiceNumber: 9980);
+        await SeedPaymentMethodsAsync(context);
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 3,
+            Name = "Efectivo COP",
+            IsCash = true,
+            IsActive = true,
+            Currency = "COP",
+            DisplayOrder = 3
+        });
+        await context.SaveChangesAsync();
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Dual,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = "COP",
+                SecondaryCurrencySymbol = "COP",
+                IsConfigured = true
+            });
+        var rates = new Mock<ICurrencyRateService>();
+        rates.Setup(r => r.GetRateAsync("USD", "COP", It.IsAny<DateOnly?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CurrencyRateQuote(4000m, CurrencyRateSource.Manual, Core.Helpers.TimeZoneHelper.GetVenezuelaDate(), "USD", "COP"));
+
+        var (service, _, _) = CreateHarness(
+            context,
+            bcvRate: 60m,
+            monetaryProfileService: profile.Object,
+            currencyRateService: rates.Object);
+        var payment = await service.RegisterCreditPaymentAsync(
+            new CreditPaymentRequest { CustomerId = customer.Id, AmountUSD = 20m, PaymentMethodId = 3 },
+            actingUserId: 7);
+
+        var rateProvider = new Mock<ITodayExchangeRateProvider>();
+        rateProvider.Setup(provider => provider.GetEffectiveTodayRateAsync(It.IsAny<CancellationToken>())).ReturnsAsync(50m);
+
+        var controller = CreateReceiptsController(context, "7", "Cashier");
+        var result = await controller.GetCreditPaymentReceiptAsync(
+            payment.PaymentId,
+            rateProvider.Object,
+            CancellationToken.None,
+            profile.Object,
+            rates.Object);
+
+        var file = Assert.IsType<FileContentResult>(result);
+        var content = Encoding.ASCII.GetString(file.FileContents!);
+        Assert.Contains("120.000,00", content); // remaining 30 USD × 4000 COP
+        rateProvider.Verify(provider => provider.GetEffectiveTodayRateAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // ---------------------------------------------------------------- endpoint: receptor efectivo

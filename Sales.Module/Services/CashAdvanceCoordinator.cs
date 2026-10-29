@@ -9,6 +9,7 @@ using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
 using System;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading;
@@ -188,7 +189,17 @@ public class CashAdvanceCoordinator
                 cancellationToken: cancellationToken
             );
 
-            if (createdSale != null && createdSale.AppliedRate > 0m)
+            // 8.211-T3c3d (S4/S5): the sale snapshot is 4dp, but the drawer movements must use
+            // the 8dp calculation rate that produced the sale amounts. The payment carries that
+            // calculation rate; AppliedRate is only the schema snapshot fallback.
+            decimal calculationRate = createdSale?.Payments
+                .Select(payment => payment.ExchangeRate)
+                .FirstOrDefault(rate => rate > 0m) ?? 0m;
+            if (calculationRate > 0m)
+            {
+                anchoredRate = calculationRate;
+            }
+            else if (createdSale != null && createdSale.AppliedRate > 0m)
             {
                 anchoredRate = createdSale.AppliedRate;
             }

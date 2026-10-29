@@ -63,16 +63,17 @@ public class ExchangeRateAnchorServiceDualTests
 
     private static Mock<ICurrencyRateService> CreateManualRateMock(
         decimal rate,
-        CurrencyRateSource source = CurrencyRateSource.Manual)
+        CurrencyRateSource source = CurrencyRateSource.Manual,
+        string secondaryCode = CopCode)
     {
         var mock = new Mock<ICurrencyRateService>();
-        mock.Setup(r => r.GetRateAsync("USD", CopCode, It.IsAny<DateOnly?>(), It.IsAny<CancellationToken>()))
+        mock.Setup(r => r.GetRateAsync("USD", secondaryCode, It.IsAny<DateOnly?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CurrencyRateQuote(
                 rate,
                 source,
                 DateOnly.FromDateTime(DateTime.UtcNow),
                 "USD",
-                CopCode));
+                secondaryCode));
         return mock;
     }
 
@@ -196,6 +197,58 @@ public class ExchangeRateAnchorServiceDualTests
 
         Assert.Contains("No hay servicio de tasas manuales configurado para el par USD/COP", exception.Message);
         inventory.Verify(i => i.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_DualUsdEur_AcceptsManualRateAtFourDecimalsWithoutCeiling()
+    {
+        // 8.211-T3c3d (S4/S5): the manual quote is never ceilinged to 2dp. The legacy ceiling
+        // would turn 0.9245 into 0.93 and distort the EUR tender by ~0.5%.
+        var inventory = CreateInventoryMock(4000m);
+        var service = CreateService(
+            CreateProfileMock(CreateProfile(MonetaryMode.Dual, "USD", "EUR")),
+            inventory,
+            rateService: CreateManualRateMock(0.9245m, secondaryCode: "EUR"));
+
+        var result = await service.ResolveAsync(0.9245m, ContextLabel, ReferenceId);
+
+        Assert.Equal(ExchangeRateAnchorOutcome.Accepted, result.Outcome);
+        Assert.Equal(0.9245m, result.EffectiveRate);
+        Assert.Equal(0.9245m, result.OfficialRate);
+        Assert.Equal(CurrencyRateSource.Manual, result.RateSource);
+        inventory.Verify(i => i.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_DualUsdEur_PreservesEightDecimalManualQuote()
+    {
+        const decimal rate = 0.92456789m;
+        var service = CreateService(
+            CreateProfileMock(CreateProfile(MonetaryMode.Dual, "USD", "EUR")),
+            CreateInventoryMock(4000m),
+            rateService: CreateManualRateMock(rate, secondaryCode: "EUR"));
+
+        var result = await service.ResolveAsync(rate, ContextLabel, ReferenceId);
+
+        Assert.Equal(ExchangeRateAnchorOutcome.Accepted, result.Outcome);
+        Assert.Equal(rate, result.EffectiveRate);
+        Assert.Equal(rate, result.OfficialRate);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_DualUsdVes_StillCeilingsClientRateToTwoDecimals()
+    {
+        // BCV keeps the legacy 2dp ceiling for the client rate; only the manual pair changes.
+        var service = CreateService(
+            CreateProfileMock(CreateProfile(MonetaryMode.Dual, "USD", "VES")),
+            CreateInventoryMock(50m));
+
+        var result = await service.ResolveAsync(52.1234m, ContextLabel, ReferenceId);
+
+        Assert.Equal(ExchangeRateAnchorOutcome.Accepted, result.Outcome);
+        Assert.Equal(52.13m, result.EffectiveRate);
+        Assert.Equal(52.13m, result.ClientRate);
+        Assert.Equal(50m, result.OfficialRate);
     }
 
     [Fact]

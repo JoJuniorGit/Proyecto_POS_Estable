@@ -109,10 +109,10 @@ public sealed class ExchangeRateAnchorService
             throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio AppliedRate inválida o no inicializada (<= 0).");
         }
 
-        clientRate = PricingCalculator.RoundExchangeRateCeiling(clientRate);
-
         // 8.211-T3c3c1 (S4): Dual USD + non-VES secondary belongs to the manual daily pair. A
         // missing quote/service fails closed: this path never degrades to BCV or to client input.
+        // 8.211-T3c3d (S4/S5): the manual quote and the client rate keep 8dp; the legacy 2dp
+        // ceiling stays BCV-only because it distorts EUR/MXN/COP tenders (~0.5% on 0.9245).
         if (hasDualProfile
             && string.Equals(dualPrimary, UsdCode, StringComparison.Ordinal)
             && dualSecondary is not null
@@ -124,8 +124,9 @@ public sealed class ExchangeRateAnchorService
                     $"No hay servicio de tasas manuales configurado para el par {UsdCode}/{dualSecondary}.");
             }
 
+            decimal manualClientRate = PricingCalculator.RoundExchangeRate(clientRate, PricingCalculator.ManualRateDecimals);
             var quote = await _currencyRateService.GetRateAsync(UsdCode, dualSecondary, null, cancellationToken);
-            decimal manualOfficialRate = PricingCalculator.RoundExchangeRateCeiling(quote.Rate);
+            decimal manualOfficialRate = PricingCalculator.RoundExchangeRate(quote.Rate, PricingCalculator.ManualRateDecimals);
             if (manualOfficialRate <= 0m)
             {
                 throw new InvalidOperationException(
@@ -133,13 +134,16 @@ public sealed class ExchangeRateAnchorService
             }
 
             return await EvaluateAgainstOfficialRateAsync(
-                clientRate,
+                manualClientRate,
                 manualOfficialRate,
                 quote.Source,
                 officialLabel: $"manual del par {UsdCode}/{dualSecondary}",
                 contextLabel,
                 referenceId);
         }
+
+        // USD/VES keeps the historical client-rate ceiling before the BCV kernel.
+        clientRate = PricingCalculator.RoundExchangeRateCeiling(clientRate);
 
         if (_inventoryService == null)
         {

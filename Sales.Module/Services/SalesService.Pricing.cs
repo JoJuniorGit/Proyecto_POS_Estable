@@ -22,8 +22,14 @@ public partial class SalesService
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        sale.AppliedRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "UpdateExchangeRate", referenceId: sale.Id);
-        await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
+        // 8.211-T3c3d (S4/S5): manual pair snapshots at 4dp but calculates with the 8dp rate.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        decimal anchoredRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "UpdateExchangeRate", referenceId: sale.Id);
+        sale.AppliedRate = RoundSnapshotRate(anchoredRate, monetaryProfile);
+        await RecalculateTotalAsync(
+            sale,
+            cancellationToken: cancellationToken,
+            calculationRate: ResolveCalculationRate(anchoredRate, monetaryProfile));
         await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
     }
@@ -43,6 +49,11 @@ public partial class SalesService
         const int batchSize = 200;
         int totalUpdated = 0;
         int lastId = 0;
+        // 8.211-T3c3d (S4/S5): the bulk rate update freezes the schema snapshot (4dp manual /
+        // 2dp BCV) but keeps the 8dp manual input as the calculation rate for every page.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        decimal snapshotRate = RoundSnapshotRate(newExchangeRate, monetaryProfile);
+        decimal? calculationRate = ResolveCalculationRate(newExchangeRate, monetaryProfile);
 
         while (true)
         {
@@ -81,11 +92,10 @@ public partial class SalesService
                     }
                 }
 
-                var roundedRate = PricingCalculator.RoundExchangeRateCeiling(newExchangeRate);
                 foreach (var sale in batch)
                 {
-                    sale.AppliedRate = roundedRate;
-                    await RecalculateTotalAsync(sale, batchProducts, cancellationToken);
+                    sale.AppliedRate = snapshotRate;
+                    await RecalculateTotalAsync(sale, batchProducts, cancellationToken, calculationRate);
                 }
 
                 batchCount = batch.Count;
@@ -153,11 +163,19 @@ public partial class SalesService
         return MapToDto(sale);
     }
 
+    /// <summary>
+    /// 8.211-T3c3d (S4/S5): recomputes the sale totals. <paramref name="calculationRate"/> is the
+    /// explicit calculation rate (8dp for a manual pair); when null the persisted
+    /// <see cref="Sale.AppliedRate"/> snapshot is used, preserving legacy BCV behavior.
+    /// </summary>
     private async Task RecalculateTotalAsync(
         Sale sale,
         Dictionary<int, SaleProductInfoDto>? preloadedProducts = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        decimal? calculationRate = null)
     {
+        decimal effectiveRate = calculationRate ?? sale.AppliedRate;
+
         if (sale.Items != null && sale.Items.Any())
         {
             var products = preloadedProducts ?? new Dictionary<int, SaleProductInfoDto>();
@@ -228,7 +246,7 @@ public partial class SalesService
                     throw new KeyNotFoundException($"Producto #{item.ProductId} no encontrado en la base de datos.");
                 }
 
-                item.UnitPriceBsS = ApplyCashRoundingPolicy(item, sale.AppliedRate, neverRoundDown, useVesCashRules);
+                item.UnitPriceBsS = ApplyCashRoundingPolicy(item, effectiveRate, neverRoundDown, useVesCashRules);
                 item.Subtotal = Math.Round(item.Quantity * item.UnitPrice, 4, MidpointRounding.AwayFromZero);
                 item.SubtotalBsS = PricingCalculator.RoundToDigital(item.Quantity * item.UnitPriceBsS);
             }
@@ -239,9 +257,9 @@ public partial class SalesService
             sale.TotalUSD = Math.Round(sale.Subtotal, 2, MidpointRounding.AwayFromZero);
             sale.TotalBsS = PricingCalculator.RoundToDigital(sale.SubtotalBsS);
         }
-        else if (sale.AppliedRate > 0)
+        else if (effectiveRate > 0)
         {
-            sale.TotalBsS = PricingCalculator.RoundToDigital(sale.TotalUSD * sale.AppliedRate);
+            sale.TotalBsS = PricingCalculator.RoundToDigital(sale.TotalUSD * effectiveRate);
             sale.SubtotalBsS = sale.TotalBsS;
         }
     }

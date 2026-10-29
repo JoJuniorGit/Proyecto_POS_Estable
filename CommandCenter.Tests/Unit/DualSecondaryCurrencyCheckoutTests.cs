@@ -359,6 +359,64 @@ public class DualSecondaryCurrencyCheckoutTests
         Assert.False(await context.SalePayments.AsNoTracking().AnyAsync(p => p.SaleId == sale.Id));
     }
 
+    [Fact]
+    public async Task CompletedSale_DualUsdEur_PreservesManualRatePrecisionInSnapshotsAndTotals()
+    {
+        // 8.211-T3c3d (S4/S5): 0.9245 must survive the sale snapshot and the EUR tender. The old
+        // 2dp ceiling produced 0.93 and a 0.5% FX distortion on every sale.
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        const decimal rate = 0.9245m;
+        AddMethod(context, 38, "Punto de Venta EUR", "EUR");
+        await context.SaveChangesAsync();
+
+        var service = CreateService(
+            context,
+            CreateDualProfileMock("EUR").Object,
+            currencyRateService: CreateManualRateMock("EUR", rate).Object);
+
+        var sale = await SeedPendingSaleAsync(context, totalUsd: 100m, rate: rate);
+
+        await service.CompleteSaleAsync(sale.Id, rate, Payment(38, 100m, 92.45m));
+
+        var saved = await context.Sales.AsNoTracking().SingleAsync(s => s.Id == sale.Id);
+        Assert.Equal(SaleStatus.Completed, saved.Status);
+        Assert.Equal(0.9245m, saved.AppliedRate);
+        Assert.Equal(92.45m, saved.TotalBsS);
+        Assert.Equal(92.45m, saved.SecondaryAmount);
+        Assert.Equal("Manual", saved.AppliedRateSource);
+
+        var payment = await context.SalePayments.AsNoTracking().SingleAsync(p => p.SaleId == sale.Id);
+        Assert.Equal(0.9245m, payment.ExchangeRate);
+        Assert.Equal(92.45m, payment.AmountBsS);
+        Assert.Equal(92.45m, payment.OriginalAmount);
+    }
+
+    [Fact]
+    public async Task CompletedSale_DualUsdEur_UsesEightDecimalCalculationRateForTheTotal()
+    {
+        // 8.211-T3c3d (S4/S5): the sale total must use the 8dp calculation rate, not the 4dp
+        // snapshot. 110 × 0.924049 = 101.64539 → 101.65; the 4dp snapshot (0.9240) yields 101.64.
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        const decimal rate = 0.924049m;
+        AddMethod(context, 39, "Punto de Venta EUR", "EUR");
+        await context.SaveChangesAsync();
+
+        var service = CreateService(
+            context,
+            CreateDualProfileMock("EUR").Object,
+            currencyRateService: CreateManualRateMock("EUR", rate).Object);
+
+        var sale = await SeedPendingSaleAsync(context, totalUsd: 110m, rate: rate);
+
+        await service.CompleteSaleAsync(sale.Id, rate, Payment(39, 110m, 101.65m));
+
+        var saved = await context.Sales.AsNoTracking().SingleAsync(s => s.Id == sale.Id);
+        Assert.Equal(SaleStatus.Completed, saved.Status);
+        Assert.Equal(0.9240m, saved.AppliedRate);
+        Assert.Equal(101.65m, saved.TotalBsS);
+        Assert.Equal(101.65m, saved.SecondaryAmount);
+    }
+
     [Theory]
     [InlineData("EUR", 0.92, 100, 92, 36)]
     [InlineData("MXN", 18, 100, 1800, 37)]

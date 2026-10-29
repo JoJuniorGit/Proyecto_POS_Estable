@@ -91,6 +91,67 @@ public class CashAdvanceCoordinatorTests
     }
 
     [Fact]
+    public async Task ProcessAsync_DualUsdEur_UsesSalePayment8dpRateForDrawerMovements()
+    {
+        using var context = GetInMemoryDbContext();
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 1,
+            Name = "Transferencia EUR",
+            IsCash = false,
+            IsActive = true,
+            Currency = "EUR"
+        });
+        await context.SaveChangesAsync();
+
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("0.01");
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Dual,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = "EUR",
+                SecondaryCurrencySymbol = "EUR",
+                IsConfigured = true
+            });
+
+        var rates = new Mock<ICurrencyRateService>();
+        rates.Setup(r => r.GetRateAsync("USD", "EUR", It.IsAny<DateOnly?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CurrencyRateQuote(0.924049m, CurrencyRateSource.Manual, Core.Helpers.TimeZoneHelper.GetVenezuelaDate(), "USD", "EUR"));
+
+        var (coordinator, drawerService) = CreateCoordinator(
+            context,
+            settingsMock.Object,
+            profile.Object,
+            rates.Object);
+        var session = await drawerService.OpenSessionAsync(1000m, 0.924049m);
+
+        var result = await coordinator.ProcessAsync(
+            sessionId: session.Id,
+            requestedAmountLocal: 100m,
+            paymentMethodId: 1,
+            paymentMethodName: "Transferencia EUR",
+            isTransfer: true,
+            exchangeRate: 0.924049m
+        );
+
+        Assert.Equal(0.924049m, result.ExpenseTransaction.ExchangeRate);
+        Assert.Equal(0.924049m, result.IncomeTransaction.ExchangeRate);
+
+        var movement = await context.CashTransactions.AsNoTracking()
+            .SingleAsync(t => t.Source == CashTransactionSource.CashAdvance && t.Type == CashTransactionType.Expense);
+        Assert.Equal(0.924049m, movement.ExchangeRate);
+
+        var sale = await context.Sales.AsNoTracking().SingleAsync();
+        Assert.Equal(0.9240m, sale.AppliedRate);
+    }
+
+    [Fact]
     public async Task ProcessAsync_MissingCommissionRejectsWithoutPayoutOrSale()
     {
         using var context = GetInMemoryDbContext();

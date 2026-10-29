@@ -121,7 +121,10 @@ public partial class SalesService
                 }
 
                 decimal effectiveAmountUsd = Math.Min(request.AmountUSD, totalOpenUsd);
+                // 8.211-T3c3d (S4/S5): amounts and cash use the 8dp calculation rate; the
+                // persisted 18,4 PaymentRate freezes the exact 4dp snapshot.
                 decimal paymentRate = await ResolveCreditPaymentRateAsync(monetaryProfile, cancellationToken);
+                decimal snapshotPaymentRate = PricingCalculator.RoundExchangeRate(paymentRate, PricingCalculator.RateSnapshotDecimals);
 
                 var allocations = new List<CreditPaymentAllocation>();
                 decimal allocatedUsd = 0m;
@@ -212,7 +215,7 @@ public partial class SalesService
                     CustomerId = customer.Id,
                     AmountUSD = allocatedUsd,
                     AmountBsS = allocatedBsS,
-                    PaymentRate = paymentRate,
+                    PaymentRate = snapshotPaymentRate,
                     FxDifferenceBsS = realizedFxBsS,
                     PaymentMethodId = request.PaymentMethodId,
                     ReferenceNumber = string.IsNullOrWhiteSpace(request.ReferenceNumber) ? null : request.ReferenceNumber.Trim(),
@@ -332,9 +335,9 @@ public partial class SalesService
 
     /// <summary>
     /// Tasa del abono server-side según el régimen: Identity (1) en Single; BCV efectiva del día
-    /// para Dual USD/VES; tasa manual exacta del par para Dual USD/{COP,MXN,EUR}. Nunca usa un
-    /// valor del cliente y falla cerrado si la fuente no está disponible. La tasa se congela con
-    /// el techo de 2dp de la convención de caja.
+    /// (techo 2dp) para Dual USD/VES; cotización manual 8dp para Dual USD/{COP,MXN,EUR}. Nunca
+    /// usa un valor del cliente y falla cerrado si la fuente no está disponible. El llamador
+    /// calcula montos con esta tasa y persiste el snapshot de 4dp en PaymentRate.
     /// </summary>
     private async Task<decimal> ResolveCreditPaymentRateAsync(
         MonetaryProfileSnapshot profile,
@@ -355,7 +358,7 @@ public partial class SalesService
             }
 
             var quote = await _currencyRateService.GetRateAsync("USD", secondary, null, cancellationToken);
-            decimal manualRate = PricingCalculator.RoundExchangeRateCeiling(quote.Rate);
+            decimal manualRate = PricingCalculator.RoundExchangeRate(quote.Rate, PricingCalculator.ManualRateDecimals);
             if (manualRate <= 0m)
             {
                 throw new InvalidOperationException(

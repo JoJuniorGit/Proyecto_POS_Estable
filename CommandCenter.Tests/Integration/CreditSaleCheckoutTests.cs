@@ -77,6 +77,48 @@ public class CreditSaleCheckoutTests
     }
 
     [Fact]
+    public async Task CompleteCreditSale_DualUsdEur_ManualRate_DerivesPrincipalFrom8dpCalculation()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context);
+        var sale = await SeedPendingSaleAsync(context, customer.Id, unitPriceUsd: 101m);
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Dual,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = "EUR",
+                SecondaryCurrencySymbol = "EUR",
+                IsConfigured = true
+            });
+        var rates = new Mock<ICurrencyRateService>();
+        rates.Setup(r => r.GetRateAsync("USD", "EUR", It.IsAny<DateOnly?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CurrencyRateQuote(0.924049m, CurrencyRateSource.Manual, Core.Helpers.TimeZoneHelper.GetVenezuelaDate(), "USD", "EUR"));
+
+        var (service, _, _) = CreateHarness(context, profile.Object, rates.Object);
+
+        var invoiceNumber = await service.CompleteCreditSaleAsync(
+            sale.Id,
+            new CreditSaleRequest { ExchangeRate = 0.924049m, Payments = new List<SalePaymentDto>() });
+
+        Assert.True(invoiceNumber > 0);
+
+        var persisted = await context.Sales.AsNoTracking().SingleAsync(candidate => candidate.Id == sale.Id);
+        Assert.Equal(93.33m, persisted.TotalBsS);
+        Assert.Equal(0.9240m, persisted.AppliedRate);
+
+        var receivable = await context.Receivables.AsNoTracking().SingleAsync(candidate => candidate.SaleId == sale.Id);
+        // 93.33 / 0.924049 = 101.0011 (8dp calculation); the 4dp snapshot would yield 101.0087.
+        Assert.Equal(101.0011m, receivable.OriginalUSD);
+        Assert.Equal(101.0011m, receivable.BalanceUSD);
+        Assert.Equal(93.33m, receivable.OriginalBsS);
+        Assert.Equal(0.9240m, receivable.HistoricalRate);
+    }
+
+    [Fact]
     public async Task CompleteCreditSale_MixedPayment_ReceivableIsRemainderAndOnlyPaidAmountHitsDrawer()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
@@ -353,7 +395,10 @@ public class CreditSaleCheckoutTests
         Assert.Equal(0, await context.Receivables.AsNoTracking().CountAsync());
     }
 
-    private static (SalesService Service, Mock<IInventoryService> Inventory, Mock<ICashDrawerService> CashDrawer) CreateHarness(SalesDbContext context)
+    private static (SalesService Service, Mock<IInventoryService> Inventory, Mock<ICashDrawerService> CashDrawer) CreateHarness(
+        SalesDbContext context,
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         var inventory = new Mock<IInventoryService>();
         var mediator = new Mock<IMediator>();
@@ -370,7 +415,9 @@ public class CreditSaleCheckoutTests
             mediator.Object,
             cashDrawer.Object,
             settings.Object,
-            creditService: new CreditService(context));
+            creditService: new CreditService(context),
+            monetaryProfileService: monetaryProfileService,
+            currencyRateService: currencyRateService);
 
         return (service, inventory, cashDrawer);
     }

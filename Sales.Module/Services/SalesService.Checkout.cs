@@ -145,6 +145,51 @@ public partial class SalesService
     }
 
     /// <summary>
+    /// 8.211-T3c3d (S4/S5): true only for the Dual USD + non-VES pair, the only regime whose
+    /// rate is a manually loaded 8dp quote. BCV (USD/VES), Single and malformed profiles are not
+    /// manual pairs.
+    /// </summary>
+    private static bool UsesManualPairRate(MonetaryProfileSnapshot profile)
+    {
+        if (!string.Equals(profile.MonetaryMode, "Dual", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var primary = CurrencyCodeNormalizer.NormalizeToIso(profile.PrimaryCurrencyCode);
+        var secondary = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode);
+        return string.Equals(primary, "USD", StringComparison.Ordinal)
+            && secondary is not null
+            && !string.Equals(secondary, "VES", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 8.211-T3c3d (S4/S5): rate frozen in the persisted columns (18,4). A manual pair keeps the
+    /// exact 4dp snapshot; BCV keeps its legacy 2dp ceiling; Single is identity. The calculation
+    /// rate (8dp for a manual pair) is passed separately to <see cref="RecalculateTotalAsync"/>.
+    /// </summary>
+    private static decimal RoundSnapshotRate(decimal rate, MonetaryProfileSnapshot profile)
+    {
+        if (string.Equals(profile.MonetaryMode, "Single", StringComparison.Ordinal))
+        {
+            return 1m;
+        }
+
+        return UsesManualPairRate(profile)
+            ? PricingCalculator.RoundExchangeRate(rate, PricingCalculator.RateSnapshotDecimals)
+            : PricingCalculator.RoundExchangeRateCeiling(rate);
+    }
+
+    /// <summary>
+    /// 8.211-T3c3d (S4/S5): calculation rate paired with <see cref="RoundSnapshotRate"/>: the
+    /// manual pair keeps its 8dp quote; BCV/Single keep using the persisted snapshot (null).
+    /// </summary>
+    private static decimal? ResolveCalculationRate(decimal rate, MonetaryProfileSnapshot profile)
+        => UsesManualPairRate(profile)
+            ? PricingCalculator.RoundExchangeRate(rate, PricingCalculator.ManualRateDecimals)
+            : null;
+
+    /// <summary>
     /// 8.211-T3c3c1 (S4): frozen sale rate provenance. Identity in Single, BCV for USD/VES and
     /// the manual daily pair for any other Dual secondary.
     /// </summary>
@@ -155,16 +200,7 @@ public partial class SalesService
             return "Identity";
         }
 
-        if (!string.Equals(profile.MonetaryMode, "Dual", StringComparison.Ordinal))
-        {
-            return "Bcv";
-        }
-
-        var secondary = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode);
-        return secondary is not null
-            && !string.Equals(secondary, "VES", StringComparison.Ordinal)
-                ? "Manual"
-                : "Bcv";
+        return UsesManualPairRate(profile) ? "Manual" : "Bcv";
     }
 
     private async Task<MonetaryProfileSnapshot> ResolveMonetaryProfileSnapshotAsync(CancellationToken cancellationToken)
@@ -302,7 +338,9 @@ public partial class SalesService
                 contextLabel: "CompleteSale",
                 referenceId: saleId);
 
-            decimal roundedAppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
+            // 8.211-T3c3d (S4/S5): persisted snapshot (4dp manual / 2dp BCV); the totals are
+            // recalculated with the calculation rate below, never with this snapshot.
+            decimal roundedAppliedRate = RoundSnapshotRate(exchangeRate, monetaryProfile);
 
             // PERF-06: Pre-validación de métodos de pago y carga de catálogo fuera de la transacción
             // y del advisory lock para reducir la ventana de contención sobre tablas de ventas/caja.
@@ -405,7 +443,7 @@ public partial class SalesService
                 sale.SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode;
                 sale.MonetaryMode = monetaryProfile.MonetaryMode;
 
-                await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
+                await RecalculateTotalAsync(sale, cancellationToken: cancellationToken, calculationRate: exchangeRate);
 
             decimal existingPaidUsd = sale.Payments.Sum(p => p.Amount);
             decimal newPaymentsPaidUsd = payments != null 
@@ -596,8 +634,10 @@ public partial class SalesService
             if (allowFinancedRemainder)
             {
                 financedBsS = PricingCalculator.RoundToDigital(sale.TotalBsS - totalPaidBsSDomain);
+                // 8.211-T3c3d (S4/S5): the principal is derived from the calculation rate (8dp
+                // manual), never from the 4dp AppliedRate snapshot; the snapshot stays historical.
                 financedUsd = financedBsS > 0m
-                    ? Math.Round(financedBsS / sale.AppliedRate, 4, MidpointRounding.AwayFromZero)
+                    ? Math.Round(financedBsS / exchangeRate, 4, MidpointRounding.AwayFromZero)
                     : 0m;
                 // Polvo decimal (S7): ≤ 0.005 USD delega al cierre regular (sin Cuenta por Cobrar).
                 hasFinancedRemainder = financedUsd > 0.005m;
@@ -631,8 +671,8 @@ public partial class SalesService
             ClearHoldClaim(sale);
             sale.DeliveryStatus = isPendingPickup ? SaleDeliveryStatus.PendingPickup : SaleDeliveryStatus.Delivered;
             sale.Date = DateTime.UtcNow;
-            sale.AppliedRate = PricingCalculator.RoundExchangeRateCeiling(exchangeRate);
-            await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
+            sale.AppliedRate = RoundSnapshotRate(exchangeRate, monetaryProfile);
+            await RecalculateTotalAsync(sale, cancellationToken: cancellationToken, calculationRate: exchangeRate);
             // 8.211-T3c2 (S6): snapshots aditivos de importes con los totales ya definitivos.
             // 8.211-T3c3b2 (S4): en Single no hay secundaria y la tasa efectiva es identidad.
             // 8.211-T3c3c1 (S4): la fuente es Bcv para USD/VES y Manual para el resto de Dual.

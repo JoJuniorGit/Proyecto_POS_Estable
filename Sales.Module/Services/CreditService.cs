@@ -49,14 +49,24 @@ public partial class CreditService : ICreditService
     // romper la construcción directa histórica de tests.
     private readonly ILogger<CreditService>? _logger;
 
+    // 8.211-T3c3e (S7): the projection rate follows the active monetary regime. Optional so the
+    // historical direct test compositions keep compiling; without a profile service the legacy
+    // rate-provider behavior is preserved verbatim.
+    private readonly IMonetaryProfileService? _monetaryProfileService;
+    private readonly ICurrencyRateService? _currencyRateService;
+
     public CreditService(
         SalesDbContext context,
         ITodayExchangeRateProvider? rateProvider = null,
-        ILogger<CreditService>? logger = null)
+        ILogger<CreditService>? logger = null,
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _rateProvider = rateProvider;
         _logger = logger;
+        _monetaryProfileService = monetaryProfileService;
+        _currencyRateService = currencyRateService;
     }
 
     /// <inheritdoc />
@@ -159,9 +169,7 @@ public partial class CreditService : ICreditService
     public async Task<CreditStatementDto> GetCreditStatementAsync(int customerId, CancellationToken cancellationToken = default)
     {
         var profile = await GetCreditProfileAsync(customerId, cancellationToken);
-        decimal todayRate = _rateProvider != null
-            ? await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken)
-            : 0m;
+        decimal todayRate = await ResolveTodayRateAsync(cancellationToken);
         var venezuelaToday = TimeZoneHelper.GetVenezuelaDate();
 
         // Cartera completa (abierta y cerrada) en orden de vencimiento: el Bs.S del saldo es una
@@ -281,9 +289,7 @@ public partial class CreditService : ICreditService
         int? page = filter.Page.HasValue ? Math.Max(1, filter.Page.Value) : null;
         int? pageSize = filter.PageSize.HasValue ? Math.Clamp(filter.PageSize.Value, 1, 500) : null;
         var venezuelaToday = TimeZoneHelper.GetVenezuelaDate();
-        decimal todayRate = _rateProvider != null
-            ? await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken)
-            : 0m;
+        decimal todayRate = await ResolveTodayRateAsync(cancellationToken);
 
         // 8.202-H4 (S7): PostgreSQL resuelve filtros, mora, totales y página en SQL. Los
         // proveedores de test (SQLite/InMemory) conservan el camino en memoria para no depender
@@ -294,6 +300,17 @@ public partial class CreditService : ICreditService
             : await GetCreditReceivablesFromMemoryAsync(
                 filter, statusFilter, search, page, pageSize, venezuelaToday, todayRate, cancellationToken);
     }
+
+    /// <summary>
+    /// 8.211-T3c3e (S7): projection rate delegated to the shared profile-aware resolver.
+    /// </summary>
+    private Task<decimal> ResolveTodayRateAsync(CancellationToken cancellationToken)
+        => MonetaryRateResolver.ResolveTodayProjectionRateAsync(
+            _monetaryProfileService,
+            _currencyRateService,
+            _rateProvider,
+            "la cartera CxC",
+            cancellationToken);
 
     private async Task<CreditReceivablesListDto> GetCreditReceivablesFromPostgresAsync(
         CreditReceivablesFilterDto filter,

@@ -119,6 +119,9 @@ public partial class SalesService
         // política que CompleteSale/HoldSale (desvío > tolerancia => ancla; >= ±100% => rechazo).
         decimal anchoredRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "CashAdvance", referenceId: nextInvoice);
 
+        // 8.211-T3c3d (S4/S5): the advance amounts use the anchored calculation rate (8dp for a
+        // manual pair); AppliedRate freezes the schema snapshot (4dp manual / 2dp BCV).
+        decimal snapshotRate = RoundSnapshotRate(anchoredRate, monetaryProfile);
         decimal totalChargedLocal = requestedAmountLocal + commissionAmountLocal;
         decimal totalChargedUSD = anchoredRate > 0 ? Math.Round(totalChargedLocal / anchoredRate, 4) : 0m;
 
@@ -133,7 +136,7 @@ public partial class SalesService
             CustomerId = customerId,
             CustomerName = customerName,
             CustomerCedula = customerCedula,
-            AppliedRate = anchoredRate,
+            AppliedRate = snapshotRate,
             Subtotal = totalChargedUSD,
             TotalUSD = totalChargedUSD,
             SubtotalBsS = totalChargedLocal,

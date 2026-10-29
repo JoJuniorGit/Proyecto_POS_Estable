@@ -151,7 +151,9 @@ public class CashDrawerService : ICashDrawerService
             throw new ArgumentException("La tasa de cambio para apertura de caja debe ser mayor a cero.", nameof(currentExchangeRate));
         }
 
-        currentExchangeRate = PricingCalculator.RoundExchangeRateCeiling(currentExchangeRate);
+        // 8.211-T3c3d (S4/S5): the session rate is a persisted snapshot (18,4). BCV 2dp inputs
+        // keep their value; a manual 8dp pair is frozen at 4dp.
+        currentExchangeRate = PricingCalculator.RoundExchangeRate(currentExchangeRate, PricingCalculator.RateSnapshotDecimals);
 
         if (await GetActiveSessionAsync(cancellationToken) != null)
         {
@@ -261,7 +263,8 @@ public class CashDrawerService : ICashDrawerService
             throw new ArgumentException("La tasa de cambio para cierre de caja debe ser mayor a cero.", nameof(currentExchangeRate));
         }
 
-        currentExchangeRate = PricingCalculator.RoundExchangeRateCeiling(currentExchangeRate);
+        // 8.211-T3c3d (S4/S5): closing mirrors the opening snapshot scale (18,4).
+        currentExchangeRate = PricingCalculator.RoundExchangeRate(currentExchangeRate, PricingCalculator.RateSnapshotDecimals);
 
         bool isInMemory = _context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
         var ambientTransaction = _context.Database.CurrentTransaction;

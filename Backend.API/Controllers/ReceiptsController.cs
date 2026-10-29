@@ -85,17 +85,34 @@ public class ReceiptsController : ControllerBase
     public async Task<IActionResult> GetCreditPaymentReceiptAsync(
         int paymentId,
         [FromServices] Core.Interfaces.ITodayExchangeRateProvider rateProvider,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        [FromServices] Core.Interfaces.IMonetaryProfileService? monetaryProfileService = null,
+        [FromServices] Core.Interfaces.ICurrencyRateService? currencyRateService = null)
     {
-        // Best-effort: sin tasa del día el contexto conserva la tasa del abono para la proyección Bs.S.
-        decimal todayRate = 0m;
+        // 8.211-T3c3e (S7): the receipt projection follows the active profile. Non-VES pairs use
+        // the exact manual quote and fail closed; BCV remains the legacy USD/VES source.
+        decimal todayRate;
         try
         {
-            todayRate = await rateProvider.GetEffectiveTodayRateAsync(cancellationToken);
+            todayRate = await Sales.Module.Services.MonetaryRateResolver.ResolveTodayProjectionRateAsync(
+                monetaryProfileService,
+                currencyRateService,
+                rateProvider,
+                $"el comprobante de abono CxC #{paymentId}",
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
         }
         catch (Exception ex)
         {
             Core.Logging.AppLogger.LogWarn($"No se pudo leer la tasa efectiva del día al generar el comprobante de abono #{paymentId}: {ex.Message}", nameof(ReceiptsController));
+            todayRate = 0m;
         }
 
         var data = await _receiptService.GetCreditPaymentReceiptDataAsync(paymentId, todayRate, cancellationToken);

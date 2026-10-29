@@ -13,6 +13,18 @@ public static class PricingCalculator
     public const int CashDecimals = 0;
 
     /// <summary>
+    /// 8.211-T3c3d (S4/S5): maximum scale of the persisted rate snapshots (columns 18,4).
+    /// A manual pair rate is frozen at this scale; the calculation keeps the 8dp quote.
+    /// </summary>
+    public const int RateSnapshotDecimals = 4;
+
+    /// <summary>
+    /// 8.211-T3c3d (S4/S5): scale of a manually loaded pair quote (CurrencyPairRate is 18,8).
+    /// The sale/abono calculation uses this value so a 4dp snapshot never distorts the totals.
+    /// </summary>
+    public const int ManualRateDecimals = 8;
+
+    /// <summary>
     /// Rounds an amount to digital precision (2 decimal places) using MidpointRounding.AwayFromZero.
     /// Used for electronic payments, bank transfers, credit cards, and ledger totals.
     /// </summary>
@@ -24,10 +36,21 @@ public static class PricingCalculator
     /// <summary>
     /// Rounds an exchange rate up to 2 decimal places (ceiling rounding), alineado a la guia §2.4.
     /// Example: 804.63001 -> 804.64, 804.64 -> 804.64 (identidad al tope de precision).
+    /// BCV keeps this policy; manual pair rates use <see cref="RoundExchangeRate"/> instead.
     /// </summary>
     public static decimal RoundExchangeRateCeiling(decimal rate)
     {
         return Math.Ceiling(rate * 100m) / 100m;
+    }
+
+    /// <summary>
+    /// 8.211-T3c3d (S4/S5): rounds an exchange rate to an explicit scale using
+    /// MidpointRounding.AwayFromZero. Defaults to the 4dp snapshot scale; pass
+    /// <see cref="ManualRateDecimals"/> for the manual calculation rate.
+    /// </summary>
+    public static decimal RoundExchangeRate(decimal rate, int decimals = RateSnapshotDecimals)
+    {
+        return Math.Round(rate, decimals, MidpointRounding.AwayFromZero);
     }
 
     /// <summary>

@@ -7,6 +7,7 @@ using CommandCenter.Tests.Builders;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
+using Moq;
 using Sales.Module.Data;
 using Sales.Module.Entities;
 using Sales.Module.Services;
@@ -170,8 +171,169 @@ public class CreditReceivablesListTests
         Assert.Equal(0m, item.BalanceTodayBsS);
     }
 
+    [Fact]
+    public async Task GetCreditReceivablesAsync_DualUsdCop_ProjectsWithManualRateAndNeverReadsBcv()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context, "Cliente Dual COP");
+        await SeedReceivableAsync(context, customer, 1001, 100m, ReceivableStatus.Vigente, dueInDays: 10);
+
+        var bcv = CreateRateProviderMock(50m);
+        var service = new CreditService(
+            context,
+            bcv.Object,
+            logger: null,
+            CreateProfileMock(MonetaryMode.Dual, "USD", "COP").Object,
+            CreateManualRateMock("COP", 4000m).Object);
+
+        var list = await service.GetCreditReceivablesAsync(new CreditReceivablesFilterDto());
+
+        var item = Assert.Single(list.Items);
+        Assert.Equal(4000m, list.TodayRate);
+        Assert.Equal(400000m, item.BalanceTodayBsS);
+        bcv.Verify(provider => provider.GetEffectiveTodayRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetCreditReceivablesAsync_SingleProfile_ProjectsIdentityWithoutRateServices()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context, "Cliente Single");
+        await SeedReceivableAsync(context, customer, 1001, 100m, ReceivableStatus.Vigente, dueInDays: 10);
+
+        var bcv = CreateRateProviderMock(50m);
+        var manual = CreateManualRateMock("COP", 4000m);
+        var service = new CreditService(
+            context,
+            bcv.Object,
+            logger: null,
+            CreateProfileMock(MonetaryMode.Single, "USD", null).Object,
+            manual.Object);
+
+        var list = await service.GetCreditReceivablesAsync(new CreditReceivablesFilterDto());
+
+        var item = Assert.Single(list.Items);
+        Assert.Equal(1m, list.TodayRate);
+        Assert.Equal(100m, item.BalanceTodayBsS);
+        bcv.Verify(provider => provider.GetEffectiveTodayRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+        manual.Verify(
+            rateService => rateService.GetRateAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<DateOnly?>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task GetCreditReceivablesAsync_DualUsdCopWithoutManualService_FailsClosedWithoutBcvFallback()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context, "Cliente Dual COP");
+        await SeedReceivableAsync(context, customer, 1001, 100m, ReceivableStatus.Vigente, dueInDays: 10);
+
+        var bcv = CreateRateProviderMock(50m);
+        var service = new CreditService(
+            context,
+            bcv.Object,
+            logger: null,
+            CreateProfileMock(MonetaryMode.Dual, "USD", "COP").Object,
+            currencyRateService: null);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.GetCreditReceivablesAsync(new CreditReceivablesFilterDto()));
+
+        Assert.Contains("USD/COP", exception.Message);
+        bcv.Verify(provider => provider.GetEffectiveTodayRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetCreditReceivablesAsync_UnsupportedDualSecondary_FailsClosedWithoutBcvFallback()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context, "Cliente Dual GBP");
+        await SeedReceivableAsync(context, customer, 1001, 100m, ReceivableStatus.Vigente, dueInDays: 10);
+
+        var bcv = CreateRateProviderMock(50m);
+        var service = new CreditService(
+            context,
+            bcv.Object,
+            logger: null,
+            CreateProfileMock(MonetaryMode.Dual, "USD", "GBP").Object,
+            CreateManualRateMock("GBP", 0.8m).Object);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.GetCreditReceivablesAsync(new CreditReceivablesFilterDto()));
+
+        Assert.Contains("USD/GBP", exception.Message);
+        bcv.Verify(provider => provider.GetEffectiveTodayRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetCreditStatementAsync_DualUsdCop_ProjectsTodayRateFromManualPair()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context, "Cliente Dual COP");
+        await SeedReceivableAsync(context, customer, 1001, 100m, ReceivableStatus.Vigente, dueInDays: 10);
+
+        var bcv = CreateRateProviderMock(50m);
+        var service = new CreditService(
+            context,
+            bcv.Object,
+            logger: null,
+            CreateProfileMock(MonetaryMode.Dual, "USD", "COP").Object,
+            CreateManualRateMock("COP", 4000m).Object);
+
+        var statement = await service.GetCreditStatementAsync(customer.Id);
+
+        Assert.Equal(4000m, statement.TodayRate);
+        Assert.Equal(400000m, statement.CurrentDebtTodayBsS);
+        Assert.Equal(400000m, Assert.Single(statement.Receivables).BalanceTodayBsS);
+        bcv.Verify(provider => provider.GetEffectiveTodayRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static CreditService CreateService(SalesDbContext context, decimal rate = 50m) =>
         new(context, new FixedRateProvider(rate));
+
+    private static Mock<ITodayExchangeRateProvider> CreateRateProviderMock(decimal rate)
+    {
+        var mock = new Mock<ITodayExchangeRateProvider>();
+        mock.Setup(provider => provider.GetEffectiveTodayRateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(rate);
+        return mock;
+    }
+
+    private static Mock<IMonetaryProfileService> CreateProfileMock(
+        MonetaryMode mode,
+        string primaryCode = "USD",
+        string? secondaryCode = "VES")
+    {
+        var mock = new Mock<IMonetaryProfileService>();
+        mock.Setup(service => service.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = mode,
+                PrimaryCurrencyCode = primaryCode,
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = secondaryCode,
+                SecondaryCurrencySymbol = secondaryCode,
+                IsConfigured = true
+            });
+        return mock;
+    }
+
+    private static Mock<ICurrencyRateService> CreateManualRateMock(string secondaryCode, decimal rate)
+    {
+        var mock = new Mock<ICurrencyRateService>();
+        mock.Setup(service => service.GetRateAsync("USD", secondaryCode, It.IsAny<DateOnly?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CurrencyRateQuote(
+                rate,
+                CurrencyRateSource.Manual,
+                DateOnly.FromDateTime(DateTime.UtcNow),
+                "USD",
+                secondaryCode));
+        return mock;
+    }
 
     private static async Task<Customer> SeedCustomerAsync(
         SalesDbContext context,
