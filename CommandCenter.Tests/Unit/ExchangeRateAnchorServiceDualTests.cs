@@ -1,8 +1,13 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using CommandCenter.Tests.Builders;
+using Core.Helpers;
 using Core.DTOs;
+using Core.Entities;
 using Core.Interfaces;
+using Inventory.Module.Data;
+using Inventory.Module.Services;
 using Moq;
 using Sales.Module.Services;
 using Xunit;
@@ -228,6 +233,68 @@ public class ExchangeRateAnchorServiceDualTests
         Assert.Equal(ExchangeRateAnchorOutcome.Identity, result.Outcome);
         Assert.Equal(1m, result.EffectiveRate);
         Assert.Equal(CurrencyRateSource.Identity, result.RateSource);
+        inventory.Verify(i => i.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_DualUsdCop_WithRealCurrencyRateService_ResolvesTodaysManualPair()
+    {
+        // Proves the manual pair resolution is not mock-only: a real CurrencyPairRate row for the
+        // current Venezuela date is resolved through the production CurrencyRateService.
+        using InventoryDbContext inventoryDb = TestDatabaseFactory.CreateInventoryDbContext();
+        inventoryDb.CurrencyPairRates.Add(new CurrencyPairRate
+        {
+            RateDate = TimeZoneHelper.GetVenezuelaDate(),
+            FromCurrencyCode = "USD",
+            ToCurrencyCode = CopCode,
+            Rate = 4000m,
+            UpdatedAtUtc = DateTime.UtcNow
+        });
+        await inventoryDb.SaveChangesAsync();
+
+        var inventory = CreateInventoryMock(50m);
+        var service = new ExchangeRateAnchorService(
+            inventory.Object,
+            CreateSettingsMock().Object,
+            logger: null,
+            CreateProfileMock(CreateProfile(MonetaryMode.Dual, "USD", CopCode)).Object,
+            new CurrencyRateService(inventoryDb));
+
+        var result = await service.ResolveAsync(4000m, ContextLabel, ReferenceId);
+
+        Assert.Equal(ExchangeRateAnchorOutcome.Accepted, result.Outcome);
+        Assert.Equal(4000m, result.EffectiveRate);
+        Assert.Equal(4000m, result.OfficialRate);
+        Assert.Equal(CurrencyRateSource.Manual, result.RateSource);
+        inventory.Verify(i => i.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_DualUsdCop_WithRealCurrencyRateServiceAndNoRowForToday_FailsClosed()
+    {
+        using InventoryDbContext inventoryDb = TestDatabaseFactory.CreateInventoryDbContext();
+        inventoryDb.CurrencyPairRates.Add(new CurrencyPairRate
+        {
+            RateDate = TimeZoneHelper.GetVenezuelaDate().AddDays(-1),
+            FromCurrencyCode = "USD",
+            ToCurrencyCode = CopCode,
+            Rate = 4000m,
+            UpdatedAtUtc = DateTime.UtcNow
+        });
+        await inventoryDb.SaveChangesAsync();
+
+        var inventory = CreateInventoryMock(50m);
+        var service = new ExchangeRateAnchorService(
+            inventory.Object,
+            CreateSettingsMock().Object,
+            logger: null,
+            CreateProfileMock(CreateProfile(MonetaryMode.Dual, "USD", CopCode)).Object,
+            new CurrencyRateService(inventoryDb));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.ResolveAsync(4000m, ContextLabel, ReferenceId));
+
+        Assert.Contains("No hay tasa manual configurada para USD->COP", exception.Message);
         inventory.Verify(i => i.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 }

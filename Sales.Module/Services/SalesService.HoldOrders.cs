@@ -228,7 +228,9 @@ public partial class SalesService
                 // con los tres campos fijados antes de SaveChanges.
                 sale.PrimaryAmount = sale.TotalUSD;
                 sale.SecondaryAmount = sale.TotalBsS;
-                sale.AppliedRateSource = "Bcv";
+                // 8.211-T3c3c2 (S4): la fuente de tasa sigue el régimen (Bcv en USD/VES, Manual en
+                // el resto de Dual, Identity en Single — hoy inalcanzable por el guard de hold).
+                sale.AppliedRateSource = ResolveAppliedRateSource(monetaryProfile);
                 sale.PrimaryCurrencyCode = monetaryProfile.PrimaryCurrencyCode;
                 sale.SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode;
                 sale.MonetaryMode = monetaryProfile.MonetaryMode;

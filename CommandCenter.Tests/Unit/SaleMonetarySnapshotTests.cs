@@ -31,9 +31,10 @@ namespace CommandCenter.Tests.Unit;
 /// </summary>
 public class SaleMonetarySnapshotTests
 {
-    // 8.211-T3c3b2: exact rejection message for profiles outside Dual USD/VES and Single 2dp.
+    // 8.211-T3c3c2: exact rejection message for profiles outside Dual USD/{VES,COP,MXN,EUR}
+    // and Single 2dp.
     private const string UnsupportedCheckoutProfileMessage =
-        "El perfil monetario actual no está habilitado para ventas: esta fase admite Dual USD/VES o Single con una moneda de 2 decimales. La conversión para otras monedas se habilitará en la siguiente fase.";
+        "El perfil monetario actual no está habilitado para ventas: esta fase admite Dual USD/VES, USD/COP, USD/MXN o USD/EUR, o Single con una moneda de 2 decimales.";
 
     private static SalesService CreateService(
         SalesDbContext context,

@@ -31,7 +31,7 @@ namespace CommandCenter.Tests.Unit;
 public class SingleCurrencyCheckoutTests
 {
     private const string SupportedCheckoutProfileMessage =
-        "El perfil monetario actual no está habilitado para ventas: esta fase admite Dual USD/VES o Single con una moneda de 2 decimales. La conversión para otras monedas se habilitará en la siguiente fase.";
+        "El perfil monetario actual no está habilitado para ventas: esta fase admite Dual USD/VES, USD/COP, USD/MXN o USD/EUR, o Single con una moneda de 2 decimales.";
 
     private const string SingleOperationPendingMessage =
         "La operación con moneda única se habilitará en la siguiente fase.";

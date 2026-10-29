@@ -32,22 +32,36 @@ public partial class SalesService
         public static readonly MonetaryProfileSnapshot Default = new("USD", "VES", "Dual");
     }
 
-    // 8.211-T3c3b2 (S4/S5/S7): el cierre regular admite Dual USD/VES y Single con una moneda
-    // primaria de 2 decimales. Hold, abonos y adelantos mantienen allowSingle=false y rechazan
-    // Single antes de cualquier mutación con el mensaje de operación pendiente.
+    // 8.211-T3c3c2 (S7): el cierre regular admite Dual USD/{VES,COP,MXN,EUR} (secundaria 2dp)
+    // y Single con una moneda primaria de 2 decimales. Hold, abonos y adelantos mantienen
+    // allowSingle=false y rechazan Single antes de cualquier mutación con el mensaje de
+    // operación pendiente.
     private const string SupportedCheckoutProfileMessage =
-        "El perfil monetario actual no está habilitado para ventas: esta fase admite Dual USD/VES o Single con una moneda de 2 decimales. La conversión para otras monedas se habilitará en la siguiente fase.";
+        "El perfil monetario actual no está habilitado para ventas: esta fase admite Dual USD/VES, USD/COP, USD/MXN o USD/EUR, o Single con una moneda de 2 decimales.";
 
     private const string SingleOperationPendingMessage =
         "La operación con moneda única se habilitará en la siguiente fase.";
 
+    // 8.211-T3c3c2 (S7): secundarias 2dp habilitadas para el checkout bimonetario. VES conserva
+    // la regla cash 2A; COP/MXN/EUR usan su unidad menor (2 decimales).
+    private static readonly HashSet<string> SupportedDualSecondaryCurrencies = new(StringComparer.Ordinal)
+    {
+        "VES",
+        "COP",
+        "MXN",
+        "EUR"
+    };
+
     private static void EnsureSupportedCheckoutMonetaryProfile(MonetaryProfileSnapshot profile, bool allowSingle)
     {
         if (string.Equals(profile.MonetaryMode, "Dual", StringComparison.Ordinal)
-            && string.Equals(profile.PrimaryCurrencyCode, "USD", StringComparison.Ordinal)
-            && string.Equals(profile.SecondaryCurrencyCode, "VES", StringComparison.Ordinal))
+            && string.Equals(CurrencyCodeNormalizer.NormalizeToIso(profile.PrimaryCurrencyCode), "USD", StringComparison.Ordinal))
         {
-            return;
+            var secondary = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode);
+            if (secondary is not null && SupportedDualSecondaryCurrencies.Contains(secondary))
+            {
+                return;
+            }
         }
 
         if (string.Equals(profile.MonetaryMode, "Single", StringComparison.Ordinal)
