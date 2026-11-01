@@ -77,20 +77,39 @@ public class PettyCashService : IPettyCashService
     private readonly IInventoryService _inventoryService;
     private readonly ISystemSettingsService? _settingsService;
     private readonly ILogger<PettyCashService>? _logger;
+    // 8.211-T3c4 (S7): optional profile services appended so historical direct compositions keep
+    // working. Null preserves the legacy Dual USD/VES behavior (Bs.S drawer, BCV rate).
+    private readonly IMonetaryProfileService? _monetaryProfileService;
+    private readonly ICurrencyRateService? _currencyRateService;
 
     public PettyCashService(
         SalesDbContext context,
         ICashDrawerService cashDrawerService,
         IInventoryService inventoryService,
         ISystemSettingsService? settingsService = null,
-        ILogger<PettyCashService>? logger = null)
+        ILogger<PettyCashService>? logger = null,
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         _context = context;
         _cashDrawerService = cashDrawerService;
         _inventoryService = inventoryService;
         _settingsService = settingsService;
         _logger = logger;
+        _monetaryProfileService = monetaryProfileService;
+        _currencyRateService = currencyRateService;
     }
+
+    /// <summary>
+    /// Moneda local de la gaveta y banderas del perfil activo. <c>PettyCashCurrency.BsS</c> es el
+    /// efectivo local del régimen (COP en Dual USD/COP, Bs.S en Dual USD/VES o Single VES) y
+    /// <c>Usd</c> solo es válido cuando USD pertenece al perfil.
+    /// </summary>
+    private sealed record PettyCashDrawerContext(
+        MonetaryProfileDto? Profile,
+        string LocalCurrency,
+        bool IncludesUsd,
+        string ProfileLabel);
 
     /// <inheritdoc />
     public async Task<PettyCashExpenseResultDto> RegisterAsync(
@@ -156,12 +175,21 @@ public class PettyCashService : IPettyCashService
                     return replay;
                 }
 
-                decimal exchangeRate = await ResolveTodayRateAsync(cancellationToken);
-                (decimal amountBsS, decimal amountUsd) = ComputeDualValuation(request.Currency, request.Amount, exchangeRate);
+                var drawerContext = await ResolveProfileContextAsync("registrar el gasto de caja chica", cancellationToken);
+                if (request.Currency == PettyCashCurrency.Usd && !drawerContext.IncludesUsd)
+                {
+                    throw new InvalidOperationException(
+                        $"USD no forma parte del perfil monetario actual ({drawerContext.ProfileLabel}); registre el gasto de caja chica en efectivo en {drawerContext.LocalCurrency}.");
+                }
+
+                var resolvedRate = await ResolveTodayRateAsync(drawerContext, cancellationToken);
+                // 8.211-T3c4 (S7/F3c3d): la valuacion usa la tasa de calculo (8dp en par manual) y
+                // los snapshots persistidos usan el tope de las columnas 18,4 (4dp).
+                (decimal amountBsS, decimal amountUsd) = ComputeDualValuation(request.Currency, request.Amount, resolvedRate.CalculationRate);
                 decimal thresholdUsd = await ResolveThresholdAsync(cancellationToken);
                 bool requiresAuthorization = PettyCashAuthorizationPolicy.RequiresAuthorization(amountUsd, actingRole, thresholdUsd);
 
-                var session = await _cashDrawerService.GetOrCreateActiveSessionAsync(exchangeRate, cancellationToken);
+                var session = await _cashDrawerService.GetOrCreateActiveSessionAsync(resolvedRate.SnapshotRate, cancellationToken);
 
                 // Advisory lock de gaveta: serializa registros y anulaciones concurrentes del
                 // mismo turno para que liquidez, autorización y correlativo se resuelvan sobre
@@ -174,7 +202,8 @@ public class PettyCashService : IPettyCashService
                         cancellationToken);
                 }
 
-                int cashMethodId = await ResolveCashPaymentMethodIdAsync(request.Currency, cancellationToken);
+                int cashMethodId = await ResolveCashPaymentMethodIdAsync(request.Currency, drawerContext, cancellationToken);
+                string drawerCurrencyCode = ResolveDrawerCurrencyCode(request.Currency, drawerContext);
 
                 decimal physicalBalance = await _cashDrawerService.GetPhysicalBalanceAsync(session.Id, request.Currency, cancellationToken);
                 decimal requiredAmount = request.Currency == PettyCashCurrency.Usd ? amountUsd : amountBsS;
@@ -182,9 +211,8 @@ public class PettyCashService : IPettyCashService
                 {
                     // 8.153 (SEC-06): sin exponer el efectivo disponible (arqueo ciego); el monto
                     // requerido es dato del propio operador que asienta el gasto.
-                    string currencyName = request.Currency == PettyCashCurrency.Usd ? "USD" : "Bs.S";
                     throw new InvalidOperationException(
-                        $"Saldo de efectivo físico en {currencyName} insuficiente en la gaveta para registrar el gasto de caja chica. Monto requerido: {MoneyFormat.N2(requiredAmount)} {currencyName}.");
+                        $"Saldo de efectivo físico en {drawerCurrencyCode} insuficiente en la gaveta para registrar el gasto de caja chica. Monto requerido: {MoneyFormat.N2(requiredAmount)} {drawerCurrencyCode}.");
                 }
 
                 int? authorizerUserId;
@@ -218,7 +246,7 @@ public class PettyCashService : IPettyCashService
                     Currency = request.Currency,
                     AmountBsS = amountBsS,
                     AmountUsd = amountUsd,
-                    HistoricalRate = exchangeRate,
+                    HistoricalRate = resolvedRate.SnapshotRate,
                     Concept = concept,
                     Beneficiary = beneficiary,
                     ReferenceNumber = referenceNumber,
@@ -237,14 +265,15 @@ public class PettyCashService : IPettyCashService
                     Type = CashTransactionType.Expense,
                     Source = CashTransactionSource.PettyCashExpense,
                     AmountUsd = amountUsd,
-                    ExchangeRate = exchangeRate,
+                    ExchangeRate = resolvedRate.SnapshotRate,
                     AmountLocal = amountBsS,
                     Description = $"Gasto de caja chica {FormatVoucher(voucherNumber)}: {concept}",
                     IsPhysicalCash = true,
                     PaymentMethodId = cashMethodId,
                     PettyCashExpense = expense,
-                    // 8.211-T3b3 (S6): la gaveta de la que sale el gasto es su moneda.
-                    CurrencyCode = request.Currency == PettyCashCurrency.Usd ? "USD" : "Bs.S"
+                    // 8.211-T3c4 (S6/S7): la gaveta fisica del gasto es la moneda local real del
+                    // perfil (COP en Dual USD/COP, Bs.S en Dual USD/VES), nunca un hardcode Bs.S.
+                    CurrencyCode = drawerCurrencyCode
                 };
 
                 _context.PettyCashExpenses.Add(expense);
@@ -261,7 +290,7 @@ public class PettyCashService : IPettyCashService
                     : "sin supervisor distinto";
                 _logger?.LogInformation(
                     "[PettyCashService] Gasto de caja chica #{ExpenseId} (vale {Voucher}): {Amount} {Currency} / {AmountUsd} USD a tasa {Rate}; sesión #{SessionId}, {Authorizer}.",
-                    expense.Id, FormatVoucher(voucherNumber), request.Amount, request.Currency, amountUsd, exchangeRate, session.Id, authorizerLog);
+                    expense.Id, FormatVoucher(voucherNumber), request.Amount, drawerCurrencyCode, amountUsd, resolvedRate.SnapshotRate, session.Id, authorizerLog);
 
                 return MapExpense(expense, movement.Id, isReplay: false);
             }
@@ -348,9 +377,10 @@ public class PettyCashService : IPettyCashService
                 }
 
                 // La reversa copia EXACTAMENTE los snapshots del gasto (S5): jamás se relee la
-                // tasa BCV vigente al momento de anular. El método de pago acompaña al movimiento
-                // original para regresar el efectivo a la misma gaveta.
-                int? paymentMethodId = await ResolveReversalPaymentMethodIdAsync(expense, cancellationToken);
+                // tasa vigente al momento de anular. El método y el código de moneda acompañan al
+                // movimiento original para regresar el efectivo a la misma gaveta.
+                (int? paymentMethodId, string reversalCurrencyCode) =
+                    await ResolveReversalRouteAsync(expense, cancellationToken);
 
                 expense.Status = PettyCashStatus.Cancelled;
                 expense.CancelledAtUtc = DateTime.UtcNow;
@@ -379,8 +409,9 @@ public class PettyCashService : IPettyCashService
                     IsPhysicalCash = true,
                     PaymentMethodId = paymentMethodId,
                     PettyCashExpenseId = expense.Id,
-                    // 8.211-T3b3 (S6): la reversa regresa a la misma gaveta del gasto.
-                    CurrencyCode = expense.Currency == PettyCashCurrency.Usd ? "USD" : "Bs.S"
+                    // 8.211-T3c4 (S6/S7): la reversa regresa a la gaveta original con su codigo
+                    // real (COP/EUR/Bs.S), tomado del snapshot del egreso.
+                    CurrencyCode = reversalCurrencyCode
                 };
 
                 _context.CashTransactions.Add(reversal);
@@ -473,8 +504,9 @@ public class PettyCashService : IPettyCashService
     }
 
     /// <summary>
-    /// Valoración bimonetaria (S1): el nominal es la divisa física; el contravalor usa la
-    /// convención fiscal del POS (Bs.S 2dp, USD/tasa 4dp, AwayFromZero).
+    /// Valoración bimonetaria (S1/S7): el nominal es la divisa física; el contravalor usa la
+    /// convención fiscal del POS (moneda local 2dp, USD/tasa 4dp, AwayFromZero) y la tasa de
+    /// cálculo del perfil (8dp en par manual).
     /// </summary>
     private static (decimal AmountBsS, decimal AmountUsd) ComputeDualValuation(PettyCashCurrency currency, decimal nominalAmount, decimal exchangeRate)
     {
@@ -491,28 +523,108 @@ public class PettyCashService : IPettyCashService
     }
 
     /// <summary>
-    /// Tasa BCV server-side del día desde la fuente cacheada (nunca un valor del cliente), con el
-    /// techo de 2dp de la convención de caja. Sin tasa registrada el registro falla cerrado.
+    /// Perfil activo resuelto UNA vez por operación. La lectura falla cerrado: nunca se degrada en
+    /// silencio a Bs.S un perfil no-VES al escribir caja chica.
     /// </summary>
-    private async Task<decimal> ResolveTodayRateAsync(CancellationToken cancellationToken)
+    private async Task<PettyCashDrawerContext> ResolveProfileContextAsync(
+        string contextLabel,
+        CancellationToken cancellationToken)
     {
-        decimal officialRate;
+        if (_monetaryProfileService is null)
+        {
+            return new PettyCashDrawerContext(
+                Profile: null,
+                LocalCurrency: PaymentMethodCurrencyResolver.LocalCurrency,
+                IncludesUsd: true,
+                ProfileLabel: "Dual USD/VES");
+        }
+
+        MonetaryProfileDto profile;
         try
         {
-            officialRate = await _inventoryService.GetTodayExchangeRateAsync(cancellationToken);
+            profile = await _monetaryProfileService.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "[PettyCashService] Error obteniendo la tasa BCV del día para el gasto de caja chica.");
-            throw new InvalidOperationException("No se pudo obtener la tasa BCV del día para registrar el gasto de caja chica. Verifique la tasa del día e intente nuevamente.");
+            throw new InvalidOperationException(
+                $"No se pudo leer el perfil monetario para {contextLabel}. Verifique la configuración monetaria.",
+                ex);
         }
 
-        if (officialRate <= 0m)
+        return new PettyCashDrawerContext(
+            profile,
+            MonetaryRateResolver.ResolveLocalCurrency(profile),
+            ProfileIncludesUsd(profile),
+            DescribeProfile(profile));
+    }
+
+    private static bool ProfileIncludesUsd(MonetaryProfileDto profile)
+    {
+        if (MonetaryRateResolver.IsSameCurrency(profile.PrimaryCurrencyCode, PaymentMethodCurrencyResolver.Usd))
         {
-            throw new InvalidOperationException("No se puede registrar el gasto de caja chica: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de asentar el egreso.");
+            return true;
         }
 
-        return PricingCalculator.RoundExchangeRateCeiling(officialRate);
+        return profile.Mode == MonetaryMode.Dual
+            && MonetaryRateResolver.IsSameCurrency(profile.SecondaryCurrencyCode, PaymentMethodCurrencyResolver.Usd);
+    }
+
+    private static string DescribeProfile(MonetaryProfileDto profile)
+        => profile.Mode == MonetaryMode.Single
+            ? $"Single {profile.PrimaryCurrencyCode}"
+            : $"Dual {profile.PrimaryCurrencyCode}/{profile.SecondaryCurrencyCode}";
+
+    private static string ResolveDrawerCurrencyCode(PettyCashCurrency currency, PettyCashDrawerContext context)
+        => currency == PettyCashCurrency.Usd
+            ? PaymentMethodCurrencyResolver.Usd
+            : context.LocalCurrency;
+
+    /// <summary>
+    /// Tasa del gasto resuelta por el perfil activo (Single 1; Dual USD/VES BCV; Dual USD/{COP,
+    /// MXN,EUR} manual 8dp) y separada en cálculo 8dp / snapshot 4dp. Sin tasa válida el registro
+    /// falla cerrado (nunca un nominal del cliente).
+    /// </summary>
+    private async Task<MonetaryRateResolver.ResolvedMonetaryRate> ResolveTodayRateAsync(
+        PettyCashDrawerContext context,
+        CancellationToken cancellationToken)
+    {
+        var resolved = await MonetaryRateResolver.ResolveTodayRateForProfileAsync(
+            context.Profile,
+            _currencyRateService,
+            async ct =>
+            {
+                try
+                {
+                    return await _inventoryService.GetTodayExchangeRateAsync(ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "[PettyCashService] Error obteniendo la tasa BCV del día para el gasto de caja chica.");
+                    throw new InvalidOperationException(
+                        "No se pudo obtener la tasa BCV del día para registrar el gasto de caja chica. Verifique la tasa del día e intente nuevamente.",
+                        ex);
+                }
+            },
+            "el gasto de caja chica",
+            cancellationToken);
+
+        if (resolved.CalculationRate <= 0m)
+        {
+            string message = string.Equals(resolved.Source, MonetaryRateResolver.BcvSource, StringComparison.Ordinal)
+                ? "No se puede registrar el gasto de caja chica: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de asentar el egreso."
+                : "No se puede registrar el gasto de caja chica: no existe una tasa de cambio válida para el perfil monetario actual. Verifique la configuración antes de asentar el egreso.";
+            throw new InvalidOperationException(message);
+        }
+
+        return resolved;
     }
 
     /// <summary>
@@ -612,11 +724,22 @@ public class PettyCashService : IPettyCashService
     }
 
     /// <summary>
-    /// Método de pago de efectivo de la gaveta de la moneda (S2): la atribución es explícita por
-    /// moneda canónica del método; sin método configurado el egreso no puede asentarse.
+    /// Método de pago de efectivo de la gaveta real (S2/S7): <c>BsS</c> resuelve la moneda local
+    /// del perfil (COP en Dual USD/COP, Bs.S en Dual USD/VES) y <c>Usd</c> solo se admite cuando
+    /// USD pertenece al perfil. La comparación usa ISO canónico para tolerar VES/Bs.S persistidos.
     /// </summary>
-    private async Task<int> ResolveCashPaymentMethodIdAsync(PettyCashCurrency currency, CancellationToken cancellationToken)
+    private async Task<int> ResolveCashPaymentMethodIdAsync(
+        PettyCashCurrency currency,
+        PettyCashDrawerContext context,
+        CancellationToken cancellationToken)
     {
+        bool isUsd = currency == PettyCashCurrency.Usd;
+        if (isUsd && !context.IncludesUsd)
+        {
+            throw new InvalidOperationException(
+                $"USD no forma parte del perfil monetario actual ({context.ProfileLabel}); el efectivo en dólares no está disponible en esta gaveta.");
+        }
+
         var cashMethods = await _context.PaymentMethods
             .AsNoTracking()
             .Where(method => method.IsCash && method.IsActive && !method.IsDeleted)
@@ -624,20 +747,19 @@ public class PettyCashService : IPettyCashService
             .Select(method => new { method.Id, method.Name, method.Currency })
             .ToListAsync(cancellationToken);
 
-        string expectedCurrency = currency == PettyCashCurrency.Usd
+        string expectedCurrency = isUsd
             ? PaymentMethodCurrencyResolver.Usd
-            : PaymentMethodCurrencyResolver.LocalCurrency;
+            : context.LocalCurrency;
 
-        var match = cashMethods.FirstOrDefault(method => string.Equals(
+        var match = cashMethods.FirstOrDefault(method => MonetaryRateResolver.IsSameCurrency(
             PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name),
-            expectedCurrency,
-            StringComparison.Ordinal));
+            expectedCurrency));
 
         if (match is null)
         {
-            throw new InvalidOperationException(currency == PettyCashCurrency.Usd
+            throw new InvalidOperationException(isUsd
                 ? "No existe un método de pago de efectivo en USD configurado; registre el método antes de egresar dólares de la gaveta."
-                : "No existe un método de pago de efectivo en Bs.S configurado; registre el método antes de egresar efectivo de la gaveta.");
+                : $"No existe un método de pago de efectivo en {expectedCurrency} configurado; registre el método antes de egresar efectivo de la gaveta.");
         }
 
         return match.Id;
@@ -664,24 +786,37 @@ public class PettyCashService : IPettyCashService
     }
 
     /// <summary>
-    /// Método de pago de la reversa: acompaña al movimiento Expense original para devolver el
-    /// efectivo a la misma gaveta; sin movimiento original (dato anómalo) se re-resuelve por moneda.
+    /// Ruta de la reversa: método y código de moneda del movimiento Expense original para devolver
+    /// el efectivo a la MISMA gaveta con su snapshot real. Sin movimiento original (dato anómalo) se
+    /// re-resuelve por moneda local del perfil; una fila legacy sin CurrencyCode se completa con la
+    /// moneda actual del gasto.
     /// </summary>
-    private async Task<int?> ResolveReversalPaymentMethodIdAsync(PettyCashExpense expense, CancellationToken cancellationToken)
+    private async Task<(int? MethodId, string CurrencyCode)> ResolveReversalRouteAsync(
+        PettyCashExpense expense,
+        CancellationToken cancellationToken)
     {
-        int? originalMethodId = await _context.CashTransactions
+        var original = await _context.CashTransactions
             .AsNoTracking()
             .Where(movement => movement.PettyCashExpenseId == expense.Id && movement.Source == CashTransactionSource.PettyCashExpense)
             .OrderBy(movement => movement.Id)
-            .Select(movement => movement.PaymentMethodId)
+            .Select(movement => new { movement.PaymentMethodId, movement.CurrencyCode })
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (originalMethodId.HasValue)
+        if (original is not null && !string.IsNullOrWhiteSpace(original.CurrencyCode))
         {
-            return originalMethodId;
+            return (original.PaymentMethodId, original.CurrencyCode);
         }
 
-        return await ResolveCashPaymentMethodIdAsync(expense.Currency, cancellationToken);
+        var context = await ResolveProfileContextAsync("anular el gasto de caja chica", cancellationToken);
+        string currencyCode = ResolveDrawerCurrencyCode(expense.Currency, context);
+
+        if (original is not null)
+        {
+            return (original.PaymentMethodId, currencyCode);
+        }
+
+        int methodId = await ResolveCashPaymentMethodIdAsync(expense.Currency, context, cancellationToken);
+        return (methodId, currencyCode);
     }
 
     private static PettyCashAuthorizationRequiredException BuildAuthorizationRequired(

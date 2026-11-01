@@ -387,10 +387,10 @@ public partial class SalesService
                     await _cashDrawerService.LockOpenSessionForWriteAsync(activeSession.Id, cancellationToken);
 
                     // La salida es física. Si el último pago fue efectivo se devuelve por la MISMA
-                    // gaveta (USD o Bs.S) y se valida su liquidez; si fue no-cash, se enruta a la
-                    // gaveta local en Bs.S. Nunca se asienta un egreso físico sobre un método
-                    // electrónico.
-                    (int refundMethodId, PettyCashCurrency refundCurrency) =
+                    // gaveta (USD o la moneda local del perfil) y se valida su liquidez; si fue
+                    // no-cash, se enruta a la primera gaveta local del perfil. Nunca se asienta un
+                    // egreso físico sobre un método electrónico.
+                    (int refundMethodId, PettyCashCurrency refundCurrency, string refundCurrencyCode) =
                         await ResolveRefundCashRouteAsync(resolvedRefundMethodId, cancellationToken);
 
                     decimal refundRequiredAmount = refundCurrency == PettyCashCurrency.Usd
@@ -403,9 +403,8 @@ public partial class SalesService
                         cancellationToken);
                     if (availableInDrawer < refundRequiredAmount)
                     {
-                        string currencyName = refundCurrency == PettyCashCurrency.Usd ? "USD" : "Bs.S";
                         throw new InvalidOperationException(
-                            $"Saldo de efectivo en {currencyName} insuficiente en la gaveta para reembolsar la devolución de la venta #{sale.Id}. Reembolso requerido: {MoneyFormat.N2(refundRequiredAmount)} {currencyName}.");
+                            $"Saldo de efectivo en {refundCurrencyCode} insuficiente en la gaveta para reembolsar la devolución de la venta #{sale.Id}. Reembolso requerido: {MoneyFormat.N2(refundRequiredAmount)} {refundCurrencyCode}.");
                     }
 
                     // Salida de caja por el excedente efectivamente pagado: mismo alta automática de
@@ -423,8 +422,9 @@ public partial class SalesService
                         TransactionTime = DateTime.UtcNow,
                         SaleId = sale.Id,
                         PaymentMethodId = refundMethodId,
-                        // 8.211-T3b3 (S6): la salida fisica usa la moneda de la gaveta enrutada.
-                        CurrencyCode = refundCurrency == PettyCashCurrency.Usd ? "USD" : "Bs.S"
+                        // 8.211-T3c4 (S6/S7): la salida fisica snapshot el codigo real de la
+                        // gaveta enrutada (COP/EUR/Bs.S), nunca un hardcode Bs.S.
+                        CurrencyCode = refundCurrencyCode
                     };
                     _context.CashTransactions.Add(refundCashTransaction);
                 }
@@ -490,7 +490,7 @@ public partial class SalesService
                 }
 
                 _logger?.LogInformation(
-                    "[SalesService] Devolución CxC venta #{SaleId}: ${ReturnedUsd} devueltos, saldo ${Balance} ({Status}) y reembolso ${RefundedUsd} (Bs.S {RefundedBsS} a tasa {RefundRate}).",
+                    "[SalesService] Devolución CxC venta #{SaleId}: ${ReturnedUsd} devueltos, saldo ${Balance} ({Status}) y reembolso ${RefundedUsd} ({RefundedLocal} local a tasa {RefundRate}).",
                     sale.Id, returnedUsd, newBalance, receivable.Status, refundedUsd, refundedBsS, refundRate);
 
                 return MapCreditReturnResult(creditReturn, sale, receivable, isReplay: false);
@@ -548,14 +548,22 @@ public partial class SalesService
     }
 
     /// <summary>
-    /// Gaveta física del reembolso. Si el último pago fue efectivo se conserva su método y su
-    /// moneda (la devolución sale por la misma gaveta); si fue no-cash o no existe, se enruta al
-    /// primer método cash activo de Bs.S y la salida se valida contra esa gaveta.
+    /// Gaveta física del reembolso según el perfil activo. Si el último pago fue efectivo se
+    /// conserva su método y su moneda cuando esa moneda pertenece al perfil (USD cash solo si USD
+    /// está en el perfil); una gaveta de una moneda ajena al perfil se ignora. Si fue no-cash o no
+    /// existe, se enruta al primer método cash activo de la moneda local del perfil (COP en Dual
+    /// USD/COP) y la salida se valida contra esa gaveta. El código devuelto es el real de la
+    /// gaveta y gobierna el snapshot, el mensaje de liquidez y la etiqueta del monto.
     /// </summary>
-    private async Task<(int MethodId, PettyCashCurrency Currency)> ResolveRefundCashRouteAsync(
+    private async Task<(int MethodId, PettyCashCurrency Currency, string CurrencyCode)> ResolveRefundCashRouteAsync(
         int? lastPaymentMethodId,
         CancellationToken cancellationToken)
     {
+        // 8.211-T3c4 (S7): physical refund routing must not degrade a non-VES profile to Bs.S.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken, failClosed: true);
+        string localCurrency = ResolveLocalDrawerCurrency(monetaryProfile);
+        bool includesUsd = IsCurrencyInProfile(monetaryProfile, PaymentMethodCurrencyResolver.Usd);
+
         var cashMethods = await _context.PaymentMethods
             .AsNoTracking()
             .Where(method => method.IsCash && method.IsActive && !method.IsDeleted)
@@ -568,27 +576,45 @@ public partial class SalesService
             var lastPaymentMethod = cashMethods.FirstOrDefault(method => method.Id == lastMethodId);
             if (lastPaymentMethod is not null)
             {
-                return string.Equals(
-                    PaymentMethodCurrencyResolver.ResolveStoredOrName(lastPaymentMethod.Currency, lastPaymentMethod.Name),
-                    PaymentMethodCurrencyResolver.Usd,
-                    StringComparison.Ordinal)
-                    ? (lastPaymentMethod.Id, PettyCashCurrency.Usd)
-                    : (lastPaymentMethod.Id, PettyCashCurrency.BsS);
+                string methodCurrency = PaymentMethodCurrencyResolver.ResolveStoredOrName(
+                    lastPaymentMethod.Currency,
+                    lastPaymentMethod.Name);
+
+                if (MonetaryRateResolver.IsSameCurrency(methodCurrency, PaymentMethodCurrencyResolver.Usd))
+                {
+                    if (includesUsd)
+                    {
+                        return (lastPaymentMethod.Id, PettyCashCurrency.Usd, PaymentMethodCurrencyResolver.Usd);
+                    }
+                }
+                else if (IsCurrencyInProfile(monetaryProfile, methodCurrency))
+                {
+                    return (lastPaymentMethod.Id, PettyCashCurrency.BsS, methodCurrency);
+                }
             }
         }
 
-        var localCashMethod = cashMethods.FirstOrDefault(method => string.Equals(
+        var localCashMethod = cashMethods.FirstOrDefault(method => MonetaryRateResolver.IsSameCurrency(
             PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name),
-            PaymentMethodCurrencyResolver.LocalCurrency,
-            StringComparison.Ordinal));
+            localCurrency));
 
         if (localCashMethod is null)
         {
-            throw new InvalidOperationException("No existe un método de pago de efectivo en Bs.S configurado para asentar el reembolso de la devolución.");
+            throw new InvalidOperationException(
+                $"No existe un método de pago de efectivo en {localCurrency} configurado para asentar el reembolso de la devolución.");
         }
 
-        return (localCashMethod.Id, PettyCashCurrency.BsS);
+        return (localCashMethod.Id, PettyCashCurrency.BsS, localCurrency);
     }
+
+    /// <summary>
+    /// Indica si el código pertenece al perfil (primaria o secundaria). En Single la secundaria es
+    /// NULL, de modo que solo la primaria habilita una gaveta.
+    /// </summary>
+    private static bool IsCurrencyInProfile(MonetaryProfileSnapshot profile, string currencyCode)
+        => MonetaryRateResolver.IsSameCurrency(currencyCode, profile.PrimaryCurrencyCode)
+            || (profile.SecondaryCurrencyCode is not null
+                && MonetaryRateResolver.IsSameCurrency(currencyCode, profile.SecondaryCurrencyCode));
 
     private static CreditReturnResultDto MapCreditReturnResult(
         CreditReturn creditReturn,

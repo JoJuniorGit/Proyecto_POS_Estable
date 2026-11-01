@@ -110,7 +110,8 @@ public partial class DailyClosureService
         List<ExpectedTotalDto> expectedTotals,
         HashSet<int> existingMethodIds,
         Dictionary<int, PaymentMethod> methodEntities,
-        decimal exchangeRate)
+        decimal exchangeRate,
+        string localCurrency)
     {
         foreach (var exp in expectedTotals)
         {
@@ -130,7 +131,7 @@ public partial class DailyClosureService
                 if (requiresExplicitCount)
                 {
                     throw new ArgumentException(
-                        $"Debe declarar el monto del método electrónico '{exp.PaymentMethodName}' (esperado {exp.ExpectedAmountBsS:0.00} Bs.S) antes de cerrar.",
+                        $"Debe declarar el monto del método electrónico '{exp.PaymentMethodName}' (esperado {exp.ExpectedAmountBsS:0.00} {exp.PaymentMethodCurrency ?? localCurrency}) antes de cerrar.",
                         nameof(expectedTotals));
                 }
 

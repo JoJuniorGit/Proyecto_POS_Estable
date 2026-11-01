@@ -203,7 +203,9 @@ public partial class SalesService
         return UsesManualPairRate(profile) ? "Manual" : "Bcv";
     }
 
-    private async Task<MonetaryProfileSnapshot> ResolveMonetaryProfileSnapshotAsync(CancellationToken cancellationToken)
+    private async Task<MonetaryProfileSnapshot> ResolveMonetaryProfileSnapshotAsync(
+        CancellationToken cancellationToken,
+        bool failClosed = false)
     {
         if (_monetaryProfileService is null)
         {
@@ -232,6 +234,15 @@ public partial class SalesService
         catch (Exception ex)
         {
             // The snapshot describes the regime; it must never fail the sale or change amounts.
+            // Financial mutations that route physical cash can opt into fail-closed instead, so a
+            // non-VES profile is never silently treated as Dual USD/VES.
+            if (failClosed)
+            {
+                throw new InvalidOperationException(
+                    "No se pudo leer el perfil monetario para enrutar el efectivo. Verifique la configuración monetaria.",
+                    ex);
+            }
+
             _logger?.LogWarning(ex, "[SalesService] No se pudo leer el perfil monetario; se usa el snapshot por defecto USD/VES/Dual.");
             return MonetaryProfileSnapshot.Default;
         }

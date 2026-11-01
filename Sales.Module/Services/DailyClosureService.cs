@@ -1,3 +1,4 @@
+using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -35,29 +36,67 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
     private readonly ITodayExchangeRateProvider _rateProvider;
     private readonly ICashDrawerService _cashDrawerService;
     private readonly ISystemSettingsService? _systemSettingsService;
+    // 8.211-T3c4 (S7): optional profile services appended so direct test constructions keep
+    // compiling. Null preserves the legacy BCV/Bs.S closure behavior.
+    private readonly IMonetaryProfileService? _monetaryProfileService;
+    private readonly ICurrencyRateService? _currencyRateService;
 
     // 8.143: settings opcional para que los comprobantes de cierre honren CurrencyFormat; DI lo resuelve solo.
     public DailyClosureService(
         SalesDbContext context,
         ITodayExchangeRateProvider rateProvider,
         ICashDrawerService cashDrawerService,
-        ISystemSettingsService? systemSettingsService = null)
+        ISystemSettingsService? systemSettingsService = null,
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         _context = context;
         _rateProvider = rateProvider;
         _cashDrawerService = cashDrawerService;
         _systemSettingsService = systemSettingsService;
+        _monetaryProfileService = monetaryProfileService;
+        _currencyRateService = currencyRateService;
+    }
+
+    /// <summary>
+    /// Perfil activo para el cierre. La lectura falla cerrado: un cierre no puede atribuir caja
+    /// chica o convertir montos con un régimen distinto al configurado.
+    /// </summary>
+    private async Task<MonetaryProfileDto?> GetMonetaryProfileAsync(CancellationToken cancellationToken)
+    {
+        if (_monetaryProfileService is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _monetaryProfileService.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                "No se pudo leer el perfil monetario para calcular el cierre de caja. Verifique la configuración monetaria.",
+                ex);
+        }
     }
 
     public async Task<List<ExpectedTotalDto>> GetExpectedTotalsByPaymentMethodAsync(DateTime dateUtc, CancellationToken cancellationToken = default)
     {
+        MonetaryProfileDto? monetaryProfile = await GetMonetaryProfileAsync(cancellationToken);
+        string localCurrency = MonetaryRateResolver.ResolveLocalCurrency(monetaryProfile);
         var (startUtc, endUtc, _) = await ResolveClosureWindowAsync(dateUtc, cancellationToken);
-        return await GetExpectedTotalsForWindowAsync(startUtc, endUtc, cancellationToken);
+        return await GetExpectedTotalsForWindowAsync(startUtc, endUtc, localCurrency, cancellationToken);
     }
 
     private async Task<List<ExpectedTotalDto>> GetExpectedTotalsForWindowAsync(
         DateTime startUtc,
         DateTime endUtc,
+        string localCurrency,
         CancellationToken cancellationToken)
     {
         // Cobros de venta por la FECHA REAL del pago: incluye apartados (OnHold) y ventas
@@ -168,7 +207,7 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
             .Select(expense => new PettyCashExpenseAmount(expense.Currency, expense.AmountBsS))
             .ToListAsync(cancellationToken);
 
-        foreach (var pettyCashDeduction in ResolvePettyCashDeductions(pettyCashExpenses, allMethods))
+        foreach (var pettyCashDeduction in ResolvePettyCashDeductions(pettyCashExpenses, allMethods, localCurrency))
         {
             expectedByMethod[pettyCashDeduction.Key] =
                 expectedByMethod.GetValueOrDefault(pettyCashDeduction.Key) - pettyCashDeduction.Value;
@@ -193,13 +232,16 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
     }
 
     /// <summary>
-    /// Atribución explícita de la caja chica por moneda. Si no existe un método de efectivo de la
-    /// moneda del gasto se omite solo esa deducción (fail-safe) y se registra el aviso; entre
-    /// métodos de la misma moneda se usa el de menor Id, el mismo criterio de PettyCashService.
+    /// Atribución explícita de la caja chica por moneda. <see cref="PettyCashCurrency.BsS"/> es el
+    /// efectivo local del perfil (COP en Dual USD/COP) y <see cref="PettyCashCurrency.Usd"/> la
+    /// gaveta dólar. Si no existe un método de efectivo de la moneda del gasto se omite solo esa
+    /// deducción (fail-safe) y se registra el aviso; entre métodos de la misma moneda se usa el de
+    /// menor Id, el mismo criterio de PettyCashService.
     /// </summary>
     private static Dictionary<int, decimal> ResolvePettyCashDeductions(
         IReadOnlyList<PettyCashExpenseAmount> expenses,
-        IReadOnlyList<PaymentMethod> methods)
+        IReadOnlyList<PaymentMethod> methods,
+        string localCurrency)
     {
         var deductions = new Dictionary<int, decimal>();
 
@@ -207,21 +249,20 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
         {
             string expectedCurrency = currencyGroup.Key == PettyCashCurrency.Usd
                 ? PaymentMethodCurrencyResolver.Usd
-                : PaymentMethodCurrencyResolver.LocalCurrency;
+                : localCurrency;
 
             PaymentMethod? target = methods
                 .Where(method => method.IsCash
-                    && string.Equals(
+                    && MonetaryRateResolver.IsSameCurrency(
                         PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name),
-                        expectedCurrency,
-                        StringComparison.Ordinal))
+                        expectedCurrency))
                 .OrderBy(method => method.Id)
                 .FirstOrDefault();
 
             if (target is null)
             {
                 Core.Logging.AppLogger.LogWarn(
-                    $"[DailyClosureService] No existe un método de pago de efectivo {(currencyGroup.Key == PettyCashCurrency.Usd ? "USD" : "Bs.S")} para atribuir la caja chica del cierre; se omite la deducción de {currencyGroup.Sum(expense => expense.AmountBsS):0.00} Bs.S.",
+                    $"[DailyClosureService] No existe un método de pago de efectivo {expectedCurrency} para atribuir la caja chica del cierre; se omite la deducción de {currencyGroup.Sum(expense => expense.AmountBsS):0.00} {localCurrency}.",
                     "DailyClosure");
                 continue;
             }
@@ -384,23 +425,34 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
         Func<CloseShiftResult, string>? responseBodyFactory,
         CancellationToken cancellationToken)
     {
-        decimal exchangeRate = await _rateProvider.GetEffectiveTodayRateAsync(cancellationToken);
-        if (exchangeRate <= 0)
+        MonetaryProfileDto? monetaryProfile = await GetMonetaryProfileAsync(cancellationToken);
+        var resolvedRate = await MonetaryRateResolver.ResolveTodayRateForProfileAsync(
+            monetaryProfile,
+            _currencyRateService,
+            _rateProvider.GetEffectiveTodayRateAsync,
+            "el cierre de caja",
+            cancellationToken);
+
+        if (resolvedRate.CalculationRate <= 0m)
         {
-            throw new InvalidOperationException(
-                "No se puede cerrar el turno: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja.");
+            string message = string.Equals(resolvedRate.Source, MonetaryRateResolver.BcvSource, StringComparison.Ordinal)
+                ? "No se puede cerrar el turno: no existe una tasa BCV registrada para hoy. Registre la tasa del día antes de cerrar la caja."
+                : "No se puede cerrar el turno: no existe una tasa de cambio válida para el perfil monetario actual. Verifique la configuración monetaria antes de cerrar la caja.";
+            throw new InvalidOperationException(message);
         }
+
+        string localCurrency = MonetaryRateResolver.ResolveLocalCurrency(monetaryProfile);
 
         if (_context.Database.CurrentTransaction is not null)
         {
-            return await ExecuteClosureCommandAsync(command, exchangeRate, idempotencyKey, payloadHash, requestPath, responseBodyFactory, cancellationToken);
+            return await ExecuteClosureCommandAsync(command, resolvedRate, localCurrency, idempotencyKey, payloadHash, requestPath, responseBodyFactory, cancellationToken);
         }
 
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(() =>
         {
             _context.ChangeTracker.Clear();
-            return ExecuteClosureCommandAsync(command, exchangeRate, idempotencyKey, payloadHash, requestPath, responseBodyFactory, cancellationToken);
+            return ExecuteClosureCommandAsync(command, resolvedRate, localCurrency, idempotencyKey, payloadHash, requestPath, responseBodyFactory, cancellationToken);
         });
     }
 
@@ -421,7 +473,8 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
 
     private async Task<CloseShiftResult> ExecuteClosureCommandAsync(
         CreateClosureCommand command,
-        decimal exchangeRate,
+        MonetaryRateResolver.ResolvedMonetaryRate resolvedRate,
+        string localCurrency,
         string? idempotencyKey,
         byte[]? payloadHash,
         string? requestPath,
@@ -498,6 +551,7 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
             var expectedTotals = await GetExpectedTotalsForWindowAsync(
                 pettyCashWindowStartUtc,
                 pettyCashWindowEndUtc,
+                localCurrency,
                 cancellationToken);
             var expectedById = expectedTotals.ToDictionary(e => e.PaymentMethodId);
 
@@ -505,7 +559,9 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
 
             var details = new List<ClosureDetail>();
             var reportDetails = new List<ShiftReportDetailResult>();
-            BuildDeclaredDetails(command.Declarations, expectedById, exchangeRate, details, reportDetails);
+            // 8.211-T3c4 (S7/F3c3d): las conversiones esperado/declarado usan la tasa de calculo
+            // (8dp en par manual); el snapshot 4dp solo se persiste.
+            BuildDeclaredDetails(command.Declarations, expectedById, resolvedRate.CalculationRate, details, reportDetails);
 
             var existingMethodIds = details.Select(d => d.PaymentMethodId).ToHashSet();
             var methodEntities = await _context.PaymentMethods
@@ -513,7 +569,14 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
                 .Where(p => !p.IsDeleted)
                 .ToDictionaryAsync(p => p.Id, cancellationToken);
 
-            MergeMissingMethodsWithReport(details, reportDetails, expectedTotals, existingMethodIds, methodEntities, exchangeRate);
+            MergeMissingMethodsWithReport(
+                details,
+                reportDetails,
+                expectedTotals,
+                existingMethodIds,
+                methodEntities,
+                resolvedRate.CalculationRate,
+                localCurrency);
 
             var resolvedUser = await ResolveUserDetailsAsync(command.UserId, cancellationToken);
 
@@ -522,7 +585,9 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
                 ClosureDate = command.ClosureDateUtc,
                 UserId = resolvedUser.UserId,
                 Observation = resolvedUser.Observation,
-                ExchangeRate = exchangeRate,
+                // 8.211-T3c4 (S7/F3c3d): la columna 18,4 guarda el snapshot de 4dp, no la tasa de
+                // calculo de 8dp del par manual.
+                ExchangeRate = resolvedRate.SnapshotRate,
                 SessionId = pettyCashSessionId,
                 ExpectedClosingBalanceUsd = expectedClosingBalanceUsd,
                 ActualClosingBalanceUsd = actualClosingBalanceUsd,
@@ -537,14 +602,14 @@ public partial class DailyClosureService : IDailyClosureService, IAtomicIdempote
                 pettyCashWindowStartUtc,
                 pettyCashWindowEndUtc,
                 cancellationToken);
-            await _cashDrawerService.RolloverSessionAfterClosureAsync(exchangeRate, cancellationToken);
+            await _cashDrawerService.RolloverSessionAfterClosureAsync(resolvedRate.SnapshotRate, cancellationToken);
 
             var result = new CloseShiftResult(
                 savedClosure.Id,
                 resolvedUser.CashierName,
                 resolvedUser.CashierCedula,
                 savedClosure.ClosureDate,
-                exchangeRate,
+                resolvedRate.SnapshotRate,
                 reportDetails,
                 expectedClosingBalanceUsd,
                 actualClosingBalanceUsd,

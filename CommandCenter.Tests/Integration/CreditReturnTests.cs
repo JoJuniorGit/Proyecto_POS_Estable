@@ -802,12 +802,164 @@ public class CreditReturnTests
             Times.Once);
     }
 
+    // ---------------------------------------------------------------- perfil Dual USD/COP
+
+    [Fact]
+    public async Task RegisterCreditReturn_DualUsdCop_NonCashPayment_RefundsCopMethodWithCopCurrencyCode()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context);
+        await SeedPaymentMethodsAsync(context);
+        await SeedCopCashMethodAsync(context);
+        var (sale, receivable) = await SeedCreditSaleAsync(context, customer.Id, rate: 50m, (101, "Cemento", 1m, 100m, 5000m));
+        await SeedMixedCreditSaleAsync(context, sale, receivable, rate: 50m, initialPaymentUsd: 40m, initialPaymentMethodId: 2);
+
+        var (service, _, _) = CreateHarness(context, monetaryProfileService: CreateDualProfileMock("COP").Object);
+
+        var result = await service.RegisterCreditReturnAsync(
+            sale.Id,
+            new CreditReturnRequest
+            {
+                Items = new List<CreditReturnItemRequest> { new() { SaleItemId = sale.Items.Single().Id, Quantity = 1m } }
+            },
+            actingUserId: 7);
+
+        Assert.Equal(40.0000m, result.RefundedUSD);
+        Assert.Equal(2000.00m, result.RefundedBsS);
+
+        var cash = await context.CashTransactions.AsNoTracking().SingleAsync();
+        Assert.Equal(CashTransactionType.Expense, cash.Type);
+        Assert.Equal(CashTransactionSource.CreditRefund, cash.Source);
+        Assert.Equal(4, cash.PaymentMethodId);
+        Assert.Equal("COP", cash.CurrencyCode);
+        Assert.Equal(2000.00m, cash.AmountLocal);
+        Assert.Equal(40m, cash.AmountUsd);
+    }
+
+    [Fact]
+    public async Task RegisterCreditReturn_DualUsdCop_UsdCashPayment_RefundsUsdWithUsdCurrencyCode()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context);
+        await SeedPaymentMethodsAsync(context);
+        await SeedCopCashMethodAsync(context);
+        var (sale, receivable) = await SeedCreditSaleAsync(context, customer.Id, rate: 50m, (101, "Cemento", 1m, 100m, 5000m));
+        await SeedMixedCreditSaleAsync(context, sale, receivable, rate: 50m, initialPaymentUsd: 40m, initialPaymentMethodId: 1);
+
+        var (service, _, _) = CreateHarness(context, monetaryProfileService: CreateDualProfileMock("COP").Object);
+
+        var result = await service.RegisterCreditReturnAsync(
+            sale.Id,
+            new CreditReturnRequest
+            {
+                Items = new List<CreditReturnItemRequest> { new() { SaleItemId = sale.Items.Single().Id, Quantity = 1m } }
+            },
+            actingUserId: 7);
+
+        Assert.Equal(40.0000m, result.RefundedUSD);
+        Assert.Equal(2000.00m, result.RefundedBsS);
+
+        var cash = await context.CashTransactions.AsNoTracking().SingleAsync();
+        Assert.Equal(CashTransactionSource.CreditRefund, cash.Source);
+        Assert.Equal(1, cash.PaymentMethodId);
+        Assert.Equal("USD", cash.CurrencyCode);
+        Assert.Equal(40m, cash.AmountUsd);
+    }
+
+    [Fact]
+    public async Task RegisterCreditReturn_DualUsdCop_WithoutCopCashMethod_FailsClosedNamingCop()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context);
+        // Solo existen efectivo USD (1) y efectivo Bs.S (3): la gaveta legacy no puede absorber
+        // un reembolso de un perfil COP.
+        await SeedPaymentMethodsAsync(context);
+        var (sale, receivable) = await SeedCreditSaleAsync(context, customer.Id, rate: 50m, (101, "Cemento", 1m, 100m, 5000m));
+        await SeedMixedCreditSaleAsync(context, sale, receivable, rate: 50m, initialPaymentUsd: 40m, initialPaymentMethodId: 2);
+
+        var (service, _, _) = CreateHarness(context, monetaryProfileService: CreateDualProfileMock("COP").Object);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RegisterCreditReturnAsync(
+            sale.Id,
+            new CreditReturnRequest
+            {
+                Items = new List<CreditReturnItemRequest> { new() { SaleItemId = sale.Items.Single().Id, Quantity = 1m } }
+            },
+            actingUserId: 7));
+
+        Assert.Contains("COP", exception.Message);
+        Assert.DoesNotContain("Bs.S", exception.Message);
+        Assert.Empty(await context.CashTransactions.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task RegisterCreditReturn_DualUsdCop_WhenCopDrawerCannotCoverRefund_MessageNamesCop()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context);
+        await SeedPaymentMethodsAsync(context);
+        await SeedCopCashMethodAsync(context);
+        var (sale, receivable) = await SeedCreditSaleAsync(context, customer.Id, rate: 50m, (101, "Cemento", 1m, 100m, 5000m));
+        await SeedMixedCreditSaleAsync(context, sale, receivable, rate: 50m, initialPaymentUsd: 40m, initialPaymentMethodId: 2);
+
+        var (service, _, _) = CreateHarness(
+            context,
+            drawerBalance: 10m,
+            monetaryProfileService: CreateDualProfileMock("COP").Object);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RegisterCreditReturnAsync(
+            sale.Id,
+            new CreditReturnRequest
+            {
+                Items = new List<CreditReturnItemRequest> { new() { SaleItemId = sale.Items.Single().Id, Quantity = 1m } }
+            },
+            actingUserId: 7));
+
+        Assert.Contains("COP", exception.Message);
+        Assert.DoesNotContain("Bs.S", exception.Message);
+        Assert.Empty(await context.CashTransactions.AsNoTracking().ToListAsync());
+    }
+
     // ---------------------------------------------------------------- harness
+
+    private static Mock<IMonetaryProfileService> CreateDualProfileMock(string secondaryCode)
+    {
+        var profile = new Mock<IMonetaryProfileService>();
+        profile
+            .Setup(service => service.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Dual,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = secondaryCode,
+                SecondaryCurrencySymbol = secondaryCode,
+                IsConfigured = true
+            });
+        return profile;
+    }
+
+    private static async Task SeedCopCashMethodAsync(SalesDbContext context)
+    {
+        // El seed historico ya deja un efectivo Bs.S (Id 3): el COP se agrega aparte para probar
+        // que la devolucion de un perfil Dual USD/COP nunca cae en la gaveta legacy.
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 4,
+            Name = "Efectivo COP",
+            IsCash = true,
+            IsActive = true,
+            DisplayOrder = 4,
+            Currency = "COP"
+        });
+        await context.SaveChangesAsync();
+    }
 
     private static (SalesService Service, Mock<IInventoryService> Inventory, Mock<ICashDrawerService> CashDrawer) CreateHarness(
         SalesDbContext context,
         decimal bcvRate = 60m,
-        decimal drawerBalance = 1_000_000m)
+        decimal drawerBalance = 1_000_000m,
+        IMonetaryProfileService? monetaryProfileService = null)
     {
         var inventory = new Mock<IInventoryService>();
         inventory
@@ -838,7 +990,8 @@ public class CreditReturnTests
             mediator.Object,
             cashDrawer.Object,
             settings.Object,
-            creditService: new CreditService(context));
+            creditService: new CreditService(context),
+            monetaryProfileService: monetaryProfileService);
 
         return (service, inventory, cashDrawer);
     }
