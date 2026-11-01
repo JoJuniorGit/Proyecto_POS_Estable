@@ -18,7 +18,7 @@ public partial class SupplierInvoiceService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        var (currency, appliedRate) = ResolveCurrencySnapshot(request);
+        var (currency, appliedRate) = await ResolveCurrencySnapshotAsync(request, cancellationToken);
         var lines = ValidateAndNormalizeLines(request.Lines);
         var supplier = await ResolveSupplierAsync(request, cancellationToken);
         // 8.147-S6/D11: las filas OCR ya vienen estructuradas; sin mapping en la request no hay
@@ -347,18 +347,72 @@ public partial class SupplierInvoiceService
         throw new KeyNotFoundException("No supplier matches the supplied RIF/NIT or commercial name. Select or create a supplier before staging.");
     }
 
-    private static (string Currency, decimal AppliedRate) ResolveCurrencySnapshot(
-        StageSupplierInvoiceRequestDto request)
+    /// <summary>
+    /// 8.211-T3d (F3d): resolves the document currency/tasa snapshot from the active monetary
+    /// profile. Single accepts only the normalized primary (rate 1); Dual accepts the primary (rate 1)
+    /// or the normalized secondary (positive rate, 4dp snapshot); no configured profile keeps the
+    /// historical USD/Bs.S behavior. The stored code is the presentation form (VES -> Bs.S).
+    /// </summary>
+    private async Task<(string Currency, decimal AppliedRate)> ResolveCurrencySnapshotAsync(
+        StageSupplierInvoiceRequestDto request,
+        CancellationToken cancellationToken)
     {
-        if (!string.Equals(request.Currency, CurrencyCodes.Usd, StringComparison.Ordinal) &&
-            !string.Equals(request.Currency, CurrencyCodes.BsS, StringComparison.Ordinal))
+        var requestedIso = CurrencyCodeNormalizer.NormalizeToIso(request.Currency);
+        var profile = await ReadMonetaryProfileAsync(cancellationToken);
+        if (profile is null)
         {
-            throw new ArgumentException("The supplier invoice currency must be USD or Bs.S.");
+            return ResolveLegacyCurrencySnapshot(request, requestedIso);
         }
 
-        if (string.Equals(request.Currency, CurrencyCodes.Usd, StringComparison.Ordinal))
+        var primaryIso = CurrencyCodeNormalizer.NormalizeToIso(profile.PrimaryCurrencyCode)
+            ?? throw new InvalidOperationException("The active monetary profile has an invalid primary currency.");
+
+        if (profile.Mode == MonetaryMode.Single)
+        {
+            if (!string.Equals(requestedIso, primaryIso, StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"The supplier invoice currency must be {ToPresentationCurrency(primaryIso)} for the active monetary profile.");
+            }
+
+            // Single is an identity regime: the primary cost is stored unchanged.
+            return (ToPresentationCurrency(primaryIso), 1m);
+        }
+
+        var secondaryIso = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode)
+            ?? throw new InvalidOperationException("The active monetary profile has no valid secondary currency.");
+
+        if (string.Equals(requestedIso, primaryIso, StringComparison.Ordinal))
+        {
+            return (ToPresentationCurrency(primaryIso), 1m);
+        }
+
+        if (!string.Equals(requestedIso, secondaryIso, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"The supplier invoice currency must be {ToPresentationCurrency(primaryIso)} or {ToPresentationCurrency(secondaryIso)} for the active monetary profile.");
+        }
+
+        return (ToPresentationCurrency(secondaryIso), ResolveSecondarySnapshotRate(request.AppliedRate, secondaryIso));
+    }
+
+    /// <summary>
+    /// 8.211-T3d (F3d): legacy/compatibility composition (no profile service or unconfigured
+    /// installation). USD keeps rate 1; Bs.S/VES aliases require a positive rate and keep the
+    /// historical BCV ceiling rounding. Historical rows are never reinterpreted.
+    /// </summary>
+    private static (string Currency, decimal AppliedRate) ResolveLegacyCurrencySnapshot(
+        StageSupplierInvoiceRequestDto request,
+        string? requestedIso)
+    {
+        if (string.Equals(requestedIso, CurrencyCodes.Usd, StringComparison.Ordinal))
         {
             return (CurrencyCodes.Usd, 1m);
+        }
+
+        if (!string.Equals(requestedIso, "VES", StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The supplier invoice currency must be USD or Bs.S.");
         }
 
         if (request.AppliedRate <= 0m)
@@ -375,6 +429,72 @@ public partial class SupplierInvoiceService
 
         return (CurrencyCodes.BsS, Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(request.AppliedRate));
     }
+
+    /// <summary>
+    /// 8.211-T3d (F3d/F3c3d): a Dual secondary snapshots its rate at the existing numeric(18,4)
+    /// scale. The manual quote keeps its 8dp calculation precision; the invoice freezes 4dp.
+    /// </summary>
+    private static decimal ResolveSecondarySnapshotRate(decimal requestedRate, string secondaryIso)
+    {
+        if (requestedRate <= 0m)
+        {
+            throw new ArgumentException(
+                $"An applied exchange rate greater than zero is required for supplier invoices in {ToPresentationCurrency(secondaryIso)}.");
+        }
+
+        if (requestedRate > MaxInvoiceNumericValue)
+        {
+            throw new ArgumentException(
+                "The applied exchange rate exceeds the maximum supported value.");
+        }
+
+        var snapshot = Core.Helpers.PricingCalculator.RoundExchangeRate(
+            requestedRate,
+            Core.Helpers.PricingCalculator.RateSnapshotDecimals);
+        if (snapshot <= 0m)
+        {
+            throw new ArgumentException(
+                $"An applied exchange rate greater than zero is required for supplier invoices in {ToPresentationCurrency(secondaryIso)}.");
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>
+    /// 8.211-T3d (S1/S2): reads the active profile once. A missing service or an unconfigured
+    /// profile degrades to the legacy USD/Bs.S path; a read failure fails closed (a staging write
+    /// must never guess the document currency).
+    /// </summary>
+    private async Task<MonetaryProfileDto?> ReadMonetaryProfileAsync(CancellationToken cancellationToken)
+    {
+        if (_monetaryProfileService is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var profile = await _monetaryProfileService.GetAsync(cancellationToken);
+            return profile.IsConfigured ? profile : null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "[SupplierInvoice] No se pudo leer el perfil monetario para resolver la moneda de la factura.");
+            throw new InvalidOperationException(
+                "No se pudo leer el perfil monetario para resolver la moneda de la factura de proveedor. Verifique la configuración monetaria.",
+                ex);
+        }
+    }
+
+    /// <summary>8.211-T3c1/F3d: VES is presented with the legacy Bs.S label; other codes stay ISO.</summary>
+    private static string ToPresentationCurrency(string isoCode) =>
+        string.Equals(isoCode, "VES", StringComparison.Ordinal) ? CurrencyCodes.BsS : isoCode;
 
     private static List<StageLineDto> ValidateAndNormalizeLines(IReadOnlyList<StageLineDto>? sourceLines)
     {

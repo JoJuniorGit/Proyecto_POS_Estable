@@ -25,6 +25,10 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
     private readonly IMemoryCache? _memoryCache;
     private readonly ILogger<SupplierInvoiceService> _logger;
     private readonly ITodayExchangeRateProvider? _rateProvider;
+    // 8.211-T3d (F3d): active monetary profile and manual pair quotes. Null keeps the historical
+    // USD/Bs.S behavior for direct legacy compositions and unit tests.
+    private readonly IMonetaryProfileService? _monetaryProfileService;
+    private readonly ICurrencyRateService? _currencyRateService;
 
     public SupplierInvoiceService(
         InventoryDbContext context,
@@ -34,7 +38,9 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         IProductManagementService productManagementService,
         IMemoryCache? memoryCache = null,
         ILogger<SupplierInvoiceService>? logger = null,
-        ITodayExchangeRateProvider? rateProvider = null)
+        ITodayExchangeRateProvider? rateProvider = null,
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(systemSettingsService);
@@ -50,6 +56,8 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         _memoryCache = memoryCache;
         _logger = logger ?? NullLogger<SupplierInvoiceService>.Instance;
         _rateProvider = rateProvider;
+        _monetaryProfileService = monetaryProfileService;
+        _currencyRateService = currencyRateService;
     }
 
     private void InvalidateProductCache(IEnumerable<Product> products)

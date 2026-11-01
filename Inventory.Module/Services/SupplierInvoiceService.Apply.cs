@@ -40,11 +40,14 @@ public partial class SupplierInvoiceService
         }
 
         // 8.176: la moneda viva de la cabecera en revisión viaja opcional; si viene, debe ser canónica.
+        // 8.211-T3d: the live header currency travels optionally; only a non-ISO code is rejected
+        // here. Profile-specific validity is checked inside the transaction after loading the invoice.
         if (request.Currency is not null
-            && !string.Equals(request.Currency, CurrencyCodes.Usd, StringComparison.Ordinal)
-            && !string.Equals(request.Currency, CurrencyCodes.BsS, StringComparison.Ordinal))
+            && CurrencyCodeNormalizer.NormalizeToIso(request.Currency) is null)
         {
-            throw new ArgumentException("The supplier invoice currency must be USD or Bs.S.", nameof(request));
+            throw new ArgumentException(
+                "The supplier invoice currency must be a supported ISO 4217 code.",
+                nameof(request));
         }
 
         if (request.AppliedRate is decimal requestedRate &&
@@ -53,14 +56,14 @@ public partial class SupplierInvoiceService
             throw new ArgumentException("The applied exchange rate must be positive and within the supported range.", nameof(request));
         }
 
-        // 8.203 (auditoría H-01): la tasa de una corrección no es autoridad del cliente. Se
-        // contrasta contra la tasa oficial del día antes de abrir la transacción; si el proveedor
-        // no está disponible se falla cerrado (no se confirma con una tasa sin validar).
-        if (request.AppliedRate is decimal requestedRateForValidation)
-        {
-            await ValidateRequestedRateAgainstOfficialAsync(requestedRateForValidation, cancellationToken);
-        }
+        // 8.211-T3d (F3d): the profile is read once per confirm. A read failure fails closed before
+        // any mutation; an unconfigured profile keeps the legacy USD/Bs.S/BCV behavior.
+        var monetaryProfile = await ReadMonetaryProfileAsync(cancellationToken);
 
+        // 8.203 (auditoría H-01): la tasa de una corrección no es autoridad del cliente. Se
+        // contrasta contra la fuente del perfil dentro de la transacción, después de resolver la
+        // moneda objetivo; si la fuente no está disponible se falla cerrado (no se confirma con
+        // una tasa sin validar).
         // 8.182-T3 (S7): validación de la regla de redondeo del confirm. ExactMath (default) y
         // UsdPsychological operan sobre el USD recalculado; las reglas VES operan sobre el Bs.S del
         // canal y este flujo no tiene conversión viva aplicable (las facturas Bs.S renormalizan con
@@ -137,42 +140,29 @@ public partial class SupplierInvoiceService
                     // 8.172/8.176: el revisor puede ajustar la tasa y la moneda del documento durante
                     // la revisión; el confirm conmuta el snapshot del draft (moneda y/o tasa) y fuerza
                     // la renormalización de los costos aprobados con la interpretación final.
-                    var appliedRateChanged = false;
-                    var targetCurrency = request.Currency ?? invoice.Currency;
-                    var currencyChanged = !string.Equals(targetCurrency, invoice.Currency, StringComparison.Ordinal);
-                    if (string.Equals(targetCurrency, CurrencyCodes.BsS, StringComparison.Ordinal))
+                    // 8.211-T3d (F3d): resolve the target currency and its effective snapshot rate
+                    // against the profile (or the legacy USD/Bs.S contract) BEFORE mutating the
+                    // invoice. A secondary validates its effective rate against the profile source.
+                    var currencyResolution = await ResolveConfirmCurrencyAsync(
+                        invoice,
+                        request,
+                        monetaryProfile,
+                        cancellationToken);
+                    var targetCurrency = currencyResolution.Currency;
+                    var targetAppliedRate = currencyResolution.AppliedRate;
+                    var interpretationChanged = !string.Equals(
+                        CurrencyCodeNormalizer.NormalizeToIso(invoice.Currency),
+                        CurrencyCodeNormalizer.NormalizeToIso(targetCurrency),
+                        StringComparison.Ordinal);
+                    var appliedRateChanged = interpretationChanged || invoice.AppliedRate != targetAppliedRate;
+                    if (appliedRateChanged)
                     {
-                        if (request.AppliedRate is not decimal overrideRate)
-                        {
-                            // Cambiar la moneda del documento a Bs.S exige una tasa explícita; la tasa
-                            // de un snapshot previo pertenece a otra interpretación y no se reutiliza.
-                            if (currencyChanged)
-                            {
-                                throw new ArgumentException(
-                                    "An applied exchange rate greater than zero is required for supplier invoices in Bs.S.",
-                                    nameof(request));
-                            }
-                        }
-                        else
-                        {
-                            var normalizedOverrideRate = Math.Round(overrideRate, 4, MidpointRounding.AwayFromZero);
-                            if (invoice.AppliedRate != normalizedOverrideRate)
-                            {
-                                invoice.AppliedRate = normalizedOverrideRate;
-                                appliedRateChanged = true;
-                            }
-                        }
-                    }
-                    else if (invoice.AppliedRate != 1m)
-                    {
-                        invoice.AppliedRate = 1m;
-                        appliedRateChanged = true;
+                        invoice.AppliedRate = targetAppliedRate;
                     }
 
-                    if (currencyChanged)
+                    if (!string.Equals(invoice.Currency, targetCurrency, StringComparison.Ordinal))
                     {
                         invoice.Currency = targetCurrency;
-                        appliedRateChanged = true;
                     }
 
                     var confirmationsByLineId = request.Lines.ToDictionary(confirmation => confirmation.LineId);
@@ -575,6 +565,199 @@ public partial class SupplierInvoiceService
             ? (lowered.Value, true, true)
             : (wholesalePrice, false, false);
     }
+
+    /// <summary>
+    /// 8.211-T3d (F3d): resolves the final document currency and snapshot rate for the confirm.
+    /// Single accepts only its primary (identity rate); Dual accepts the primary (identity) or the
+    /// secondary (positive rate validated against the profile source); no configured profile keeps
+    /// the historical USD/Bs.S contract. A target primary/USD always forces rate 1.
+    /// </summary>
+    private async Task<(string Currency, decimal AppliedRate)> ResolveConfirmCurrencyAsync(
+        SupplierInvoice invoice,
+        ConfirmSupplierInvoiceRequestDto request,
+        MonetaryProfileDto? profile,
+        CancellationToken cancellationToken)
+    {
+        var targetIso = CurrencyCodeNormalizer.NormalizeToIso(request.Currency ?? invoice.Currency)
+            ?? throw new ArgumentException(
+                "The supplier invoice currency is not a supported ISO 4217 code.",
+                nameof(request));
+
+        if (profile is null)
+        {
+            return await ResolveLegacyConfirmCurrencyAsync(invoice, request, targetIso, cancellationToken);
+        }
+
+        var primaryIso = CurrencyCodeNormalizer.NormalizeToIso(profile.PrimaryCurrencyCode)
+            ?? throw new InvalidOperationException("The active monetary profile has an invalid primary currency.");
+
+        if (profile.Mode == MonetaryMode.Single)
+        {
+            if (!string.Equals(targetIso, primaryIso, StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"The supplier invoice currency must be {ToPresentationCurrency(primaryIso)} for the active monetary profile.",
+                    nameof(request));
+            }
+
+            // Single is an identity regime: any request rate is ignored and the snapshot stays 1.
+            return (ToPresentationCurrency(primaryIso), 1m);
+        }
+
+        var secondaryIso = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode)
+            ?? throw new InvalidOperationException("The active monetary profile has no valid secondary currency.");
+
+        if (string.Equals(targetIso, primaryIso, StringComparison.Ordinal))
+        {
+            return (ToPresentationCurrency(primaryIso), 1m);
+        }
+
+        if (!string.Equals(targetIso, secondaryIso, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"The supplier invoice currency must be {ToPresentationCurrency(primaryIso)} or {ToPresentationCurrency(secondaryIso)} for the active monetary profile.",
+                nameof(request));
+        }
+
+        var presentation = ToPresentationCurrency(secondaryIso);
+        var currencyChanged = !string.Equals(
+            CurrencyCodeNormalizer.NormalizeToIso(invoice.Currency),
+            targetIso,
+            StringComparison.Ordinal);
+        var appliedRate = request.AppliedRate is decimal overrideRate
+            ? PricingCalculator.RoundExchangeRate(overrideRate, PricingCalculator.RateSnapshotDecimals)
+            : currencyChanged
+                ? throw new ArgumentException(GetSecondaryRateRequiredMessage(presentation), nameof(request))
+                : PricingCalculator.RoundExchangeRate(invoice.AppliedRate, PricingCalculator.RateSnapshotDecimals);
+
+        if (appliedRate <= 0m)
+        {
+            throw new ArgumentException(GetSecondaryRateRequiredMessage(presentation), nameof(request));
+        }
+
+        // 8.211-T3d: a Dual secondary validates its effective rate against the profile source:
+        // VES stays on BCV, the other secondaries use the exact daily manual pair (fail-closed).
+        await ValidateSecondaryRateAgainstProfileAsync(
+            appliedRate,
+            primaryIso,
+            secondaryIso,
+            cancellationToken);
+
+        return (presentation, appliedRate);
+    }
+
+    /// <summary>
+    /// 8.211-T3d (F3d): legacy/no-profile confirm. USD keeps rate 1; Bs.S (VES aliases included)
+    /// requires a positive rate and keeps the historical BCV ±10% validation only when the client
+    /// sends a correction (the staged snapshot was already accepted at creation time).
+    /// </summary>
+    private async Task<(string Currency, decimal AppliedRate)> ResolveLegacyConfirmCurrencyAsync(
+        SupplierInvoice invoice,
+        ConfirmSupplierInvoiceRequestDto request,
+        string targetIso,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(targetIso, CurrencyCodes.Usd, StringComparison.Ordinal))
+        {
+            return (CurrencyCodes.Usd, 1m);
+        }
+
+        if (!string.Equals(targetIso, "VES", StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The supplier invoice currency must be USD or Bs.S.", nameof(request));
+        }
+
+        var currencyChanged = !string.Equals(
+            CurrencyCodeNormalizer.NormalizeToIso(invoice.Currency),
+            targetIso,
+            StringComparison.Ordinal);
+        var appliedRate = request.AppliedRate is decimal overrideRate
+            ? PricingCalculator.RoundExchangeRate(overrideRate, PricingCalculator.RateSnapshotDecimals)
+            : currencyChanged
+                ? throw new ArgumentException(GetSecondaryRateRequiredMessage(CurrencyCodes.BsS), nameof(request))
+                : PricingCalculator.RoundExchangeRate(invoice.AppliedRate, PricingCalculator.RateSnapshotDecimals);
+
+        if (appliedRate <= 0m)
+        {
+            throw new ArgumentException(GetSecondaryRateRequiredMessage(CurrencyCodes.BsS), nameof(request));
+        }
+
+        if (request.AppliedRate is not null)
+        {
+            await ValidateRequestedRateAgainstOfficialAsync(appliedRate, cancellationToken);
+        }
+
+        return (CurrencyCodes.BsS, appliedRate);
+    }
+
+    /// <summary>
+    /// 8.211-T3d (F3d): Dual VES keeps BCV; COP/MXN/EUR resolve the exact daily manual pair.
+    /// A missing service or quote fails closed, and the 18,4 invoice rate is compared with the
+    /// same ±10% tolerance as BCV.
+    /// </summary>
+    private async Task ValidateSecondaryRateAgainstProfileAsync(
+        decimal effectiveRate,
+        string primaryIso,
+        string secondaryIso,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(secondaryIso, "VES", StringComparison.Ordinal))
+        {
+            await ValidateRequestedRateAgainstOfficialAsync(effectiveRate, cancellationToken);
+            return;
+        }
+
+        if (_currencyRateService is null)
+        {
+            throw new InvalidOperationException(
+                $"No hay servicio de tasas manuales configurado para el par {primaryIso}/{secondaryIso}.");
+        }
+
+        CurrencyRateQuote quote;
+        try
+        {
+            quote = await _currencyRateService.GetRateAsync(
+                primaryIso,
+                secondaryIso,
+                null,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "[SupplierInvoice] No se pudo obtener la tasa manual del par {Pair} para validar el confirm.",
+                $"{primaryIso}/{secondaryIso}");
+            throw new InvalidOperationException(
+                $"No se pudo validar la tasa de la factura contra la tasa manual del par {primaryIso}/{secondaryIso}. Verifique la cotización manual del día.",
+                ex);
+        }
+
+        var officialRate = PricingCalculator.RoundExchangeRate(
+            quote.Rate,
+            PricingCalculator.RateSnapshotDecimals);
+        if (officialRate <= 0m)
+        {
+            throw new InvalidOperationException(
+                $"No hay una tasa manual del día registrada para validar la tasa de la factura (par {primaryIso}/{secondaryIso}).");
+        }
+
+        decimal deviation = Math.Abs(effectiveRate - officialRate) / officialRate;
+        if (deviation > MaxConfirmRateDeviation)
+        {
+            throw new ArgumentException(
+                $"La tasa {effectiveRate:0.####} excede ±{MaxConfirmRateDeviation:P0} de la tasa manual del par {primaryIso}/{secondaryIso} ({officialRate:0.####}). " +
+                "Corrija la tasa o solicite autorización antes de confirmar la factura.",
+                nameof(effectiveRate));
+        }
+    }
+
+    private static string GetSecondaryRateRequiredMessage(string presentationCurrency) =>
+        $"An applied exchange rate greater than zero is required for supplier invoices in {presentationCurrency}.";
 
     /// <summary>
     /// 8.203: una corrección de tasa solo se admite dentro de ±10% de la tasa oficial del día.

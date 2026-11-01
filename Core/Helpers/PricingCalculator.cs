@@ -120,9 +120,13 @@ public static class PricingCalculator
     }
 
     /// <summary>
-    /// 8.169 [CLEAN-01]: canonical calculation of a supplier invoice line unit cost in USD,
-    /// dividing the document unit cost by the effective box-to-unit conversion factor (rounded to
-    /// 4 decimals when factor != 1) and converting from Bs.S using the invoice snapshot rate.
+    /// 8.169 [CLEAN-01]: canonical calculation of a supplier invoice line unit cost, dividing the
+    /// document unit cost by the effective box-to-unit conversion factor (rounded to 4 decimals when
+    /// factor != 1).
+    /// 8.211-T3d (F3d): <see cref="Core.Entities.SupplierInvoiceLine.UnitCostUSD"/> keeps its legacy
+    /// name but stores the cost in the active profile PRIMARY currency. USD and any rate-1 document
+    /// (Single primary) need no conversion; a Dual secondary divides by the invoice AppliedRate
+    /// snapshot. The historical Bs.S branch keeps the same divide-by-rate result.
     /// </summary>
     public static decimal CalculateInvoiceUnitCostUsd(
         decimal unitCostDocument,
@@ -135,12 +139,13 @@ public static class PricingCalculator
             ? unitCostDocument
             : Math.Round(unitCostDocument / effectiveFactor, 4, MidpointRounding.AwayFromZero);
 
-        if (string.Equals(currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase))
+        if (appliedRate == 1m
+            || string.Equals(currency, CurrencyCodes.Usd, StringComparison.OrdinalIgnoreCase))
         {
-            return ToUSD(unitDocumentCost, appliedRate);
+            return unitDocumentCost;
         }
 
-        return unitDocumentCost;
+        return ToUSD(unitDocumentCost, appliedRate);
     }
 
     /// <summary>
