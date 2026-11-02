@@ -21,6 +21,19 @@ if (typeof window !== 'undefined' && window.localStorage) {
   }
 }
 
+// 8.211-T4b2 (S9): el formato numérico sigue siendo independiente del régimen monetario; solo
+// el símbolo de presentación viaja desde el perfil. Las pantallas que importan formatBsS/formatUSD
+// directamente se actualizan sin duplicar aritmética ni reescribir cada componente.
+let cachedMonetaryProfile = null;
+
+export function setCachedMonetaryProfile(profile) {
+  cachedMonetaryProfile = profile && typeof profile === 'object' ? profile : null;
+}
+
+export function getCachedMonetaryProfile() {
+  return cachedMonetaryProfile;
+}
+
 /**
  * Retorna la preferencia actual de formato de moneda ('Venezuelan' | 'International').
  * @returns {'Venezuelan' | 'International'}
@@ -107,8 +120,13 @@ export function formatNumberEs(amount, decimals = 2, format = getCurrencyFormat(
  * @param {'Venezuelan'|'International'} [format]
  * @returns {string}
  */
-export function formatBsS(amount, decimals = 2, format = getCurrencyFormat()) {
-  return `Bs.S ${formatAmount(amount, format, decimals)}`;
+export function formatBsS(amount, decimals = 2, format = getCurrencyFormat(), profile = cachedMonetaryProfile) {
+  const symbol = profile
+    ? (profile.mode === 'Single' || !profile.secondaryCurrencyCode
+      ? profile.primaryCurrencySymbol
+      : profile.secondaryCurrencySymbol)
+    : 'Bs.S';
+  return `${symbol} ${formatAmount(amount, format, decimals)}`;
 }
 
 /**
@@ -118,8 +136,9 @@ export function formatBsS(amount, decimals = 2, format = getCurrencyFormat()) {
  * @param {'Venezuelan'|'International'} [format]
  * @returns {string}
  */
-export function formatUSD(amount, decimals = 2, format = getCurrencyFormat()) {
-  return `$ ${formatAmount(amount, format, decimals)}`;
+export function formatUSD(amount, decimals = 2, format = getCurrencyFormat(), profile = cachedMonetaryProfile) {
+  const symbol = profile ? profile.primaryCurrencySymbol : '$';
+  return `${symbol} ${formatAmount(amount, format, decimals)}`;
 }
 
 /**

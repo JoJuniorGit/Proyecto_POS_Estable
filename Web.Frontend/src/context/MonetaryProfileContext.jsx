@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { getMonetaryProfile } from '../services/monetaryProfileApi';
-import { getCurrencyFormat } from '../utils/formatters';
+import { getCurrencyFormat, setCachedMonetaryProfile } from '../utils/formatters';
 import {
   DEFAULT_MONETARY_PROFILE,
   MONETARY_MODE_DUAL,
@@ -55,13 +55,18 @@ function writeCachedMonetaryProfile(profile) {
 
 export function MonetaryProfileProvider({ children }) {
   const { isAuthenticated } = useAuth();
-  const [profile, setProfile] = useState(() => readCachedMonetaryProfile() ?? DEFAULT_MONETARY_PROFILE);
+  const [profile, setProfile] = useState(() => {
+    const initial = readCachedMonetaryProfile() ?? DEFAULT_MONETARY_PROFILE;
+    setCachedMonetaryProfile(initial);
+    return initial;
+  });
   const [isLoaded, setIsLoaded] = useState(false);
   const isMountedRef = useRef(true);
   const abortRef = useRef(null);
 
   const applyProfile = useCallback((nextProfile) => {
     const normalized = normalizeMonetaryProfile(nextProfile);
+    setCachedMonetaryProfile(normalized);
     setProfile(normalized);
     writeCachedMonetaryProfile(normalized);
     return normalized;

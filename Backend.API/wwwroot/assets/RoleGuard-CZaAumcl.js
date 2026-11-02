@@ -1,0 +1,1 @@
+import{M as e,T as t,n,t as r}from"./AccessDenied-DZSNnDSI.js";var i=e();function a({view:e,message:a,children:o}){let{user:s}=t();return n(s?.role,e)?o:(0,i.jsx)(r,{message:a})}export{a as t};
