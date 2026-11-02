@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense, useCallback } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ExchangeRateProvider, useExchangeRate } from './context/ExchangeRateContext';
 import { CurrencyFormatProvider } from './context/CurrencyFormatContext';
+import { MonetaryProfileProvider } from './context/MonetaryProfileContext';
 import { CartProvider, useCart } from './context/CartContext';
 import { AuthorizationProvider, useAuthorization } from './components/authorization/AuthorizationProvider';
 import AuthorizationNotifications from './components/authorization/AuthorizationNotifications';
@@ -291,11 +292,13 @@ export default function App() {
     <AuthProvider>
       <ExchangeRateProvider>
         <CurrencyFormatProvider>
-          <CartProvider>
-            <AuthorizationProvider>
-              <MainApp />
-            </AuthorizationProvider>
-          </CartProvider>
+          <MonetaryProfileProvider>
+            <CartProvider>
+              <AuthorizationProvider>
+                <MainApp />
+              </AuthorizationProvider>
+            </CartProvider>
+          </MonetaryProfileProvider>
         </CurrencyFormatProvider>
       </ExchangeRateProvider>
     </AuthProvider>
