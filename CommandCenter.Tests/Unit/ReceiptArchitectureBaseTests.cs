@@ -69,6 +69,30 @@ public class ReceiptArchitectureBaseTests
         var payment = Assert.Single(context.Payments);
         Assert.Equal("Efectivo", payment.MethodName);
     }
+    [Fact]
+    public void SaleReceiptContext_WithoutProfile_KeepsLegacyCurrencyDefaults()
+    {
+        var sale = new Sale
+        {
+            Id = 11,
+            InvoiceNumber = 90220,
+            Date = new DateTime(2026, 11, 1, 12, 0, 0, DateTimeKind.Utc),
+            Subtotal = 10m,
+            TotalUSD = 10m,
+            TotalBsS = 730m,
+            AppliedRate = 73m,
+            FinalPaidAmountBsS = 730m
+        };
+
+        var context = SaleReceiptContext.CreateFrom(sale);
+
+        Assert.Equal("USD", context.PrimaryCurrencyCode);
+        Assert.Equal("$", context.PrimaryCurrencySymbol);
+        Assert.Equal("VES", context.SecondaryCurrencyCode);
+        Assert.Equal("Bs.S", context.SecondaryCurrencySymbol);
+        Assert.Equal("Dual", context.MonetaryMode);
+        Assert.False(context.IsSingleCurrency);
+    }
 
     [Fact]
     public void NullReceiptPrintQueue_Enqueue_DoesNotThrow()

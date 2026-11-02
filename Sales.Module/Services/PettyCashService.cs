@@ -471,6 +471,7 @@ public class PettyCashService : IPettyCashService
             .AsNoTracking()
             .AsSplitQuery()
             .Include(candidate => candidate.Session)
+            .Include(candidate => candidate.CashTransactions)
             .FirstOrDefaultAsync(candidate => candidate.Id == expenseId, cancellationToken);
 
         if (expense is null)
@@ -493,12 +494,41 @@ public class PettyCashService : IPettyCashService
             .Select(user => new { user.Id, user.Name })
             .ToDictionaryAsync(user => user.Id, user => user.Name, cancellationToken);
 
+        // 8.211-T4a (S10/F4a): la moneda real del vale es la del movimiento Expense persistido
+        // (mejor que inferirla); el perfil aporta los símbolos y la moneda local de la gaveta.
+        string? persistedCurrencyCode = expense.CashTransactions
+            .Where(movement => movement.Source == CashTransactionSource.PettyCashExpense)
+            .OrderByDescending(movement => movement.Id)
+            .Select(movement => movement.CurrencyCode)
+            .FirstOrDefault(code => !string.IsNullOrWhiteSpace(code));
+
+        MonetaryProfileDto? profile = null;
+        if (_monetaryProfileService is not null)
+        {
+            try
+            {
+                profile = await _monetaryProfileService.GetAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // El vale es un documento de consulta: una lectura fallida de settings no debe
+                // impedir su descarga. Sin perfil rigen los defaults por código.
+                _logger?.LogWarning(ex, "[PettyCashService] No se pudo leer el perfil monetario para el vale #{ExpenseId}; se usan las etiquetas por código.", expenseId);
+            }
+        }
+
         var context = PettyCashVoucherContext.CreateFrom(
             expense,
             userNames.GetValueOrDefault(expense.CreatedByUserId),
             expense.AuthorizedByUserId.HasValue ? userNames.GetValueOrDefault(expense.AuthorizedByUserId.Value) : null,
             expense.CancelledByUserId.HasValue ? userNames.GetValueOrDefault(expense.CancelledByUserId.Value) : null,
-            expense.CancellationAuthorizedByUserId.HasValue ? userNames.GetValueOrDefault(expense.CancellationAuthorizedByUserId.Value) : null);
+            expense.CancellationAuthorizedByUserId.HasValue ? userNames.GetValueOrDefault(expense.CancellationAuthorizedByUserId.Value) : null,
+            profile,
+            persistedCurrencyCode);
 
         return new PettyCashVoucherData(context, expense.CreatedByUserId);
     }

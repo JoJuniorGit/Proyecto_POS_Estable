@@ -141,4 +141,22 @@ public class SaleReceiptRendererTests
         Assert.Contains("Total USD: 1,20", content);
         Assert.DoesNotContain("Total USD: 1,15", content);
     }
+
+    [Fact]
+    public void SaleReceiptRenderer_Render_LegacyDual_UsesAsciiProfileDefaultLabels()
+    {
+        var renderer = new SaleReceiptRenderer();
+        var context = BuildContext();
+
+        var document = renderer.Render(context, MoneyDisplayFormat.Venezuelan);
+        var content = Encoding.ASCII.GetString(document.Bytes!);
+
+        Assert.Equal("USD", context.PrimaryCurrencyCode);
+        Assert.Equal("$", context.PrimaryCurrencySymbol);
+        Assert.Equal("VES", context.SecondaryCurrencyCode);
+        Assert.Equal("Bs.S", context.SecondaryCurrencySymbol);
+        Assert.Contains(@"PRECIO \($\)", content);
+        Assert.Contains("Bs.S", content);
+        Assert.DoesNotContain("?", content);
+    }
 }

@@ -472,4 +472,66 @@ public class ClosureCurrencyAuthorityTests
         Assert.Equal(0m, saved.TotalActualBsS);
         Assert.Equal(-1000m, saved.TotalDifferenceBsS);
     }
+
+    [Fact]
+    public void GenerateReceiptContent_WithCopLocalLabel_UsesCopHeadersWithoutBsS()
+    {
+        var closure = CreateClosureWithPersistedMethod(
+            "Pago COP",
+            "COP",
+            expectedBsS: 40000m,
+            actualBsS: 40000m,
+            differenceBsS: 0m);
+
+        string receipt = DailyClosureService.GenerateReceiptContent(
+            ShiftReportMapper.MapClosure(closure),
+            isBlind: false,
+            localCurrencyLabel: "COP");
+
+        Assert.Contains("MONTO DECLARADO (COP)", receipt, StringComparison.Ordinal);
+        Assert.Contains("MONTO SISTEMA (COP)", receipt, StringComparison.Ordinal);
+        Assert.Contains("DIFERENCIA (COP)", receipt, StringComparison.Ordinal);
+        Assert.Contains("TOTAL DECLARADO:  COP", receipt, StringComparison.Ordinal);
+        Assert.DoesNotContain("(Bs.S)", receipt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GeneratePdf_WithCopLocalLabel_RemovesBsSFromHeaders()
+    {
+        var closure = CreateClosureWithPersistedMethod(
+            "Pago COP",
+            "COP",
+            expectedBsS: 40000m,
+            actualBsS: 40000m,
+            differenceBsS: 0m);
+
+        byte[] pdf = ClosurePdfGenerator.GeneratePdf(
+            ShiftReportMapper.MapClosure(closure),
+            isBlind: false,
+            localCurrencyLabel: "COP");
+
+        string ascii = Encoding.ASCII.GetString(pdf);
+        Assert.Contains(@"MONTO DECLARADO \(COP\)", ascii, StringComparison.Ordinal);
+        Assert.Contains(@"MONTO SISTEMA \(COP\)", ascii, StringComparison.Ordinal);
+        Assert.DoesNotContain("Bs.S", ascii, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GeneratePdf_WithVesPresentationLabel_KeepsBsS()
+    {
+        var closure = CreateClosureWithPersistedMethod(
+            "Divisas (USD)",
+            PaymentMethodCurrencyResolver.LocalCurrency,
+            expectedBsS: 10800m,
+            actualBsS: 10800m,
+            differenceBsS: 0m);
+
+        byte[] pdf = ClosurePdfGenerator.GeneratePdf(
+            ShiftReportMapper.MapClosure(closure),
+            isBlind: false,
+            localCurrencyLabel: "VES");
+
+        string ascii = Encoding.ASCII.GetString(pdf);
+        Assert.Contains(@"MONTO DECLARADO \(Bs.S\)", ascii, StringComparison.Ordinal);
+    }
 }

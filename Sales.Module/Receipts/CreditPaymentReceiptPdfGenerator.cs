@@ -94,8 +94,11 @@ public static class CreditPaymentReceiptPdfGenerator
         sb.AppendLine($"40 {y} 532 22 re f");
         WriteLeft(sb, "FACTURA", 48, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
         WriteRight(sb, "SALDO ANTERIOR", 250, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
-        WriteRight(sb, "ABONO USD", 350, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
-        WriteRight(sb, "ABONO Bs.S", 460, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
+        WriteRight(sb, $"ABONO {context.PrimaryCurrencyCode}", 350, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
+        if (!context.IsSingleCurrency)
+        {
+            WriteRight(sb, $"ABONO {context.SecondaryCurrencyCode}", 460, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
+        }
         WriteRight(sb, "NUEVO SALDO", 565, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
 
         y -= 22;
@@ -107,7 +110,10 @@ public static class CreditPaymentReceiptPdfGenerator
             WriteLeft(sb, invoice, 48, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
             WriteRight(sb, MoneyFormat.Number(line.BalanceBeforeUSD, format), 250, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
             WriteRight(sb, MoneyFormat.Number(line.AmountUSD, format), 350, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
-            WriteRight(sb, MoneyFormat.Number(line.AmountBsS, format), 460, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
+            if (!context.IsSingleCurrency)
+            {
+                WriteRight(sb, MoneyFormat.Number(line.AmountBsS, format), 460, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
+            }
             WriteRight(sb, MoneyFormat.Number(line.BalanceAfterUSD, format), 565, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
             y -= 20;
         }
@@ -116,17 +122,30 @@ public static class CreditPaymentReceiptPdfGenerator
         sb.AppendLine($"0.86 0.9 0.94 rg 40 {y - 2} 532 22 re f");
         sb.AppendLine($"0.7 0.75 0.8 RG 1 w 40 {y - 2} 532 22 re S");
         WriteLeft(sb, "TOTAL ABONADO", 48, y + 4, "/F2 9 Tf", "0.1 0.15 0.25 rg");
-        WriteRight(sb, $"$ {MoneyFormat.Number(context.TotalAmountUSD, format)} / Bs.S {MoneyFormat.Number(context.TotalAmountBsS, format)}", 565, y + 4, "/F2 9 Tf", "0.15 0.2 0.3 rg", true);
+        WriteRight(sb, context.IsSingleCurrency
+            ? $"{context.PrimaryCurrencySymbol} {MoneyFormat.Number(context.TotalAmountUSD, format)}"
+            : $"{context.PrimaryCurrencySymbol} {MoneyFormat.Number(context.TotalAmountUSD, format)} / {context.SecondaryCurrencySymbol} {MoneyFormat.Number(context.TotalAmountBsS, format)}",
+            565, y + 4, "/F2 9 Tf", "0.15 0.2 0.3 rg", true);
 
-        y -= 20;
-        WriteRight(sb, $"Diferencial cambiario realizado: Bs.S {MoneyFormat.Number(context.FxDifferenceBsS, format)}", 565, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
-        y -= 14;
+        if (!context.IsSingleCurrency)
+        {
+            y -= 20;
+            WriteRight(sb, $"Diferencial cambiario realizado: {context.SecondaryCurrencySymbol} {MoneyFormat.Number(context.FxDifferenceBsS, format)}", 565, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+            y -= 14;
+        }
+        else
+        {
+            y -= 14;
+        }
         WriteRight(sb, $"Tasa del abono: {MoneyFormat.Number(context.PaymentRate, format, 4)}", 565, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
 
         y -= 22;
-        WriteRight(sb, $"Saldo pendiente del cliente: $ {MoneyFormat.Number(context.CurrentDebtUSD, format)}", 565, y, "/F2 9 Tf", "0.1 0.15 0.25 rg", true);
-        y -= 14;
-        WriteRight(sb, $"Equivalente Bs.S (tasa del dia {MoneyFormat.Number(context.TodayRate, format, 4)}): Bs.S {MoneyFormat.Number(context.CurrentDebtTodayBsS, format)}", 565, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+        WriteRight(sb, $"Saldo pendiente del cliente: {context.PrimaryCurrencySymbol} {MoneyFormat.Number(context.CurrentDebtUSD, format)}", 565, y, "/F2 9 Tf", "0.1 0.15 0.25 rg", true);
+        if (!context.IsSingleCurrency)
+        {
+            y -= 14;
+            WriteRight(sb, $"Equivalente {context.SecondaryCurrencyCode} (tasa del dia {MoneyFormat.Number(context.TodayRate, format, 4)}): {context.SecondaryCurrencySymbol} {MoneyFormat.Number(context.CurrentDebtTodayBsS, format)}", 565, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+        }
 
         WriteLeft(sb, "Sistema de Administracion y Punto de Venta - Comprobante no fiscal", 40, 35, "/F1 8 Tf", "0.5 0.5 0.5 rg");
         return sb.ToString();

@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Backend.API.Controllers;
 using CommandCenter.Tests.Builders;
+using Core.DTOs;
 using Core.Entities;
 using Core.Helpers;
 using Core.Interfaces;
@@ -38,6 +39,16 @@ public class PettyCashVoucherTests
     private const int CashierUserId = 70;
     private const int ManagerUserId = 2;
 
+    private static MonetaryProfileDto DualUsdCopProfile() => new()
+    {
+        Mode = MonetaryMode.Dual,
+        PrimaryCurrencyCode = "USD",
+        PrimaryCurrencySymbol = "$",
+        SecondaryCurrencyCode = "COP",
+        SecondaryCurrencySymbol = "COL$",
+        IsConfigured = true
+    };
+
     private sealed class VoucherStack : IDisposable
     {
         private readonly SqliteConnection _connection;
@@ -45,7 +56,7 @@ public class PettyCashVoucherTests
         public SalesDbContext Context { get; }
         public PettyCashService Service { get; }
 
-        public VoucherStack()
+        public VoucherStack(IMonetaryProfileService? profileService = null)
         {
             (Context, _connection) = TestDatabaseFactory.CreateSqliteSalesDbContext();
 
@@ -54,7 +65,13 @@ public class PettyCashVoucherTests
             var settings = new Mock<ISystemSettingsService>();
             settings.Setup(s => s.GetSettingAsync(It.IsAny<string>())).ReturnsAsync((string?)null);
 
-            Service = new PettyCashService(Context, new CashDrawerService(Context), inventory.Object, settings.Object);
+            Service = new PettyCashService(
+                Context,
+                new CashDrawerService(Context),
+                inventory.Object,
+                settings.Object,
+                logger: null,
+                monetaryProfileService: profileService);
         }
 
         public void Dispose()
@@ -238,6 +255,62 @@ public class PettyCashVoucherTests
         Assert.Equal(20.0000m, context.NominalAmount);
         Assert.Equal(731.00m, context.AmountBsS);
         Assert.Equal(20.0000m, context.AmountUsd);
+    }
+
+    [Fact]
+    public void CreateFrom_LegacyBsSExpense_UsesVesCodeAndBsSSymbol()
+    {
+        var context = PettyCashVoucherContext.CreateFrom(BuildExpense(), "Cajero 70", "Gerente Dos");
+
+        Assert.Equal("VES", context.CurrencyCode);
+        Assert.Equal("Bs.S", context.CurrencySymbol);
+        Assert.Equal("VES", context.LocalCurrencyCode);
+        Assert.Equal("Bs.S", context.LocalCurrencySymbol);
+        Assert.Equal("$", context.UsdCurrencySymbol);
+    }
+
+    [Fact]
+    public void CreateFrom_DualCopProfile_UsesPersistedMovementCurrencyAndConfiguredSymbol()
+    {
+        var context = PettyCashVoucherContext.CreateFrom(
+            BuildExpense(currency: PettyCashCurrency.BsS, amountBsS: 365.50m, amountUsd: 0.0914m),
+            "Cajero 70",
+            "Gerente Dos",
+            profile: DualUsdCopProfile(),
+            persistedCurrencyCode: "COP");
+
+        Assert.Equal("COP", context.CurrencyCode);
+        Assert.Equal("COL$", context.CurrencySymbol);
+        Assert.Equal("COP", context.LocalCurrencyCode);
+        Assert.Equal("COL$", context.LocalCurrencySymbol);
+        Assert.Equal("$", context.UsdCurrencySymbol);
+
+        var content = Encoding.ASCII.GetString(
+            PettyCashVoucherPdfGenerator.BuildPdf(context, MoneyDisplayFormat.Venezuelan));
+        Assert.Contains("COP", content);
+        Assert.Contains("COL$", content);
+        Assert.DoesNotContain("Bs.S", content);
+    }
+
+    [Fact]
+    public void CreateFrom_UsdExpenseInDualCopProfile_KeepsUsdNominalAndCopLocal()
+    {
+        var context = PettyCashVoucherContext.CreateFrom(
+            BuildExpense(currency: PettyCashCurrency.Usd, amountBsS: 73000m, amountUsd: 20.0000m),
+            "Cajero 70",
+            "Gerente Dos",
+            profile: DualUsdCopProfile());
+
+        Assert.Equal("USD", context.CurrencyCode);
+        Assert.Equal("$", context.CurrencySymbol);
+        Assert.Equal("COP", context.LocalCurrencyCode);
+        Assert.Equal("COL$", context.LocalCurrencySymbol);
+
+        var content = Encoding.ASCII.GetString(
+            PettyCashVoucherPdfGenerator.BuildPdf(context, MoneyDisplayFormat.Venezuelan));
+        Assert.Contains(@"MONTO ENTREGADO \($\)", content);
+        Assert.Contains("COL$ 73.000,00 / $ 20,0000", content);
+        Assert.DoesNotContain("Bs.S", content);
     }
 
     [Fact]
@@ -437,6 +510,39 @@ public class PettyCashVoucherTests
         Assert.Equal(10.0000m, data.Context.AmountUsd);
         Assert.Equal(Rate, data.Context.HistoricalRate);
         Assert.False(data.Context.IsCancelled);
+    }
+
+    [Fact]
+    public async Task GetVoucherDataAsync_WithDualCopProfileAndPersistedMovement_UsesCopLabels()
+    {
+        var profile = new Mock<IMonetaryProfileService>();
+        profile
+            .Setup(service => service.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(DualUsdCopProfile());
+        using var stack = new VoucherStack(profile.Object);
+        var expense = await SeedExpenseAsync(stack.Context);
+
+        stack.Context.CashTransactions.Add(new CashTransaction
+        {
+            SessionId = expense.SessionId,
+            TransactionTime = CreatedAtUtc,
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.PettyCashExpense,
+            AmountLocal = expense.AmountBsS,
+            AmountUsd = expense.AmountUsd,
+            ExchangeRate = Rate,
+            PettyCashExpenseId = expense.Id,
+            CurrencyCode = "COP"
+        });
+        await stack.Context.SaveChangesAsync();
+
+        var data = await stack.Service.GetVoucherDataAsync(expense.Id);
+
+        Assert.NotNull(data);
+        Assert.Equal("COP", data!.Context.CurrencyCode);
+        Assert.Equal("COL$", data.Context.CurrencySymbol);
+        Assert.Equal("COP", data.Context.LocalCurrencyCode);
+        Assert.Equal("COL$", data.Context.LocalCurrencySymbol);
     }
 
     [Fact]

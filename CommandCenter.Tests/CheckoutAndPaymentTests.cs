@@ -631,4 +631,49 @@ public class CheckoutAndPaymentTests
         // 8.143: la diff balanceada también sigue el ajuste (sin literales "0,00" fijos).
         Assert.DoesNotContain("0,00", raw);
     }
+
+    [Fact]
+    public void GeneratePdf_WithCopLocalLabel_UsesCopHeadersInsteadOfBsS()
+    {
+        var closure = new DailyClosure
+        {
+            Id = 45,
+            ClosureDate = DateTime.UtcNow,
+            UserId = "Admin Test",
+            Observation = "V-12345678",
+            TotalActualBsS = 40000m,
+            TotalExpectedBsS = 40000m,
+            TotalDifferenceBsS = 0m,
+            Details = new List<ClosureDetail>
+            {
+                new()
+                {
+                    PaymentMethodId = 1,
+                    PaymentMethodName = "Pago COP",
+                    PaymentMethod = new PaymentMethod
+                    {
+                        Id = 1,
+                        Name = "Pago COP",
+                        Currency = "COP",
+                        IsCash = false,
+                        IsActive = true
+                    },
+                    ActualAmountBsS = 40000m,
+                    ExpectedAmountBsS = 40000m,
+                    DifferenceBsS = 0m
+                }
+            }
+        };
+
+        byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(
+            ShiftReportMapper.MapClosure(closure),
+            isBlind: false,
+            format: MoneyDisplayFormat.Venezuelan,
+            localCurrencyLabel: "COP");
+
+        string raw = System.Text.Encoding.ASCII.GetString(pdfBytes);
+        Assert.Contains(@"MONTO DECLARADO \(COP\)", raw);
+        Assert.Contains(@"TOTAL DECLARADO:   COP", raw);
+        Assert.DoesNotContain("Bs.S", raw);
+    }
 }

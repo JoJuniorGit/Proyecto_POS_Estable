@@ -1,6 +1,8 @@
 using System;
+using Core.DTOs;
 using Core.Helpers;
 using Sales.Module.Entities;
+using Sales.Module.Services;
 
 namespace Sales.Module.Receipts;
 
@@ -55,6 +57,15 @@ public sealed class PettyCashVoucherContext
     /// <summary>Divisa fisica que salio de la gaveta (Bs.S o USD).</summary>
     public PettyCashCurrency Currency { get; init; }
 
+    // 8.211-T4a (S10/F4a): moneda real del movimiento. El código persistido de la caja manda;
+    // la local del perfil (COP en Dual USD/COP) es el fallback y el símbolo sale del perfil.
+    public string CurrencyCode { get; init; } = ReceiptCurrencyFormatter.VesCode;
+    public string CurrencySymbol { get; init; } = ReceiptCurrencyFormatter.VesPresentationCode;
+    public string LocalCurrencyCode { get; init; } = ReceiptCurrencyFormatter.VesCode;
+    public string LocalCurrencySymbol { get; init; } = ReceiptCurrencyFormatter.VesPresentationCode;
+    public string UsdCurrencySymbol { get; init; } = "$";
+    public bool IncludesUsd { get; init; } = true;
+
     /// <summary>Monto nominal de la divisa original (AmountBsS si Bs.S, AmountUsd si USD).</summary>
     public decimal NominalAmount { get; init; }
 
@@ -104,12 +115,33 @@ public sealed class PettyCashVoucherContext
         string? cashierName,
         string? authorizerName,
         string? cancellerName = null,
-        string? cancellationAuthorizerName = null)
+        string? cancellationAuthorizerName = null,
+        MonetaryProfileDto? profile = null,
+        string? persistedCurrencyCode = null)
     {
         ArgumentNullException.ThrowIfNull(expense);
 
+        var local = ReceiptCurrencyFormatter.ResolveCurrency(
+            MonetaryRateResolver.ResolveLocalCurrency(profile),
+            ReceiptCurrencyFormatter.VesCode,
+            profile);
+        var usd = ReceiptCurrencyFormatter.ResolveCurrency(
+            ReceiptCurrencyFormatter.UsdCode,
+            ReceiptCurrencyFormatter.UsdCode,
+            profile);
+        string nominalCode = expense.Currency == PettyCashCurrency.Usd
+            ? usd.Code
+            : ReceiptCurrencyFormatter.NormalizeCode(persistedCurrencyCode) ?? local.Code;
+        var nominal = ReceiptCurrencyFormatter.ResolveCurrency(nominalCode, local.Code, profile);
+
         return new PettyCashVoucherContext
         {
+            CurrencyCode = nominal.Code,
+            CurrencySymbol = nominal.Symbol,
+            LocalCurrencyCode = local.Code,
+            LocalCurrencySymbol = local.Symbol,
+            UsdCurrencySymbol = usd.Symbol,
+            IncludesUsd = ReceiptCurrencyFormatter.ProfileIncludesUsd(profile),
             ExpenseId = expense.Id,
             VoucherNumber = expense.VoucherNumber,
             SessionId = expense.SessionId,

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Core.DTOs;
 using Sales.Module.Entities;
 
 namespace Sales.Module.Receipts;
@@ -27,6 +28,17 @@ public sealed class CreditSaleReceiptContext
 
     public decimal TotalBsS { get; init; }
     public decimal AppliedRate { get; init; }
+
+    // 8.211-T4a (S10/F4a): mismas etiquetas persistidas del recibo de venta.
+    public string PrimaryCurrencyCode { get; init; } = ReceiptCurrencyFormatter.UsdCode;
+    public string PrimaryCurrencySymbol { get; init; } = "$";
+    public string? SecondaryCurrencyCode { get; init; } = ReceiptCurrencyFormatter.VesCode;
+    public string? SecondaryCurrencySymbol { get; init; } = ReceiptCurrencyFormatter.VesPresentationCode;
+    public string MonetaryMode { get; init; } = ReceiptCurrencyFormatter.DualMode;
+
+    public bool IsSingleCurrency => string.Equals(MonetaryMode, ReceiptCurrencyFormatter.SingleMode, StringComparison.OrdinalIgnoreCase)
+        || string.IsNullOrWhiteSpace(SecondaryCurrencyCode);
+
     public IReadOnlyList<ReceiptLine> Lines { get; init; } = Array.Empty<ReceiptLine>();
 
     /// <summary>Abono inicial efectivamente cobrado (vacío en crédito total).</summary>
@@ -40,13 +52,30 @@ public sealed class CreditSaleReceiptContext
     public DateTime IssuedAtUtc { get; init; }
     public DateTime DueDateUtc { get; init; }
 
-    public static CreditSaleReceiptContext CreateFrom(Sale sale, Receivable receivable)
+    public static CreditSaleReceiptContext CreateFrom(Sale sale, Receivable receivable, MonetaryProfileDto? profile = null)
     {
         ArgumentNullException.ThrowIfNull(sale);
         ArgumentNullException.ThrowIfNull(receivable);
 
+        string mode = ReceiptCurrencyFormatter.NormalizeMode(sale.MonetaryMode, profile: null);
+        var primary = ReceiptCurrencyFormatter.ResolveCurrency(
+            sale.PrimaryCurrencyCode,
+            ReceiptCurrencyFormatter.UsdCode,
+            profile);
+        var secondary = string.Equals(mode, ReceiptCurrencyFormatter.SingleMode, StringComparison.Ordinal)
+            ? null
+            : ReceiptCurrencyFormatter.ResolveCurrency(
+                sale.SecondaryCurrencyCode,
+                ReceiptCurrencyFormatter.VesCode,
+                profile);
+
         return new CreditSaleReceiptContext
         {
+            PrimaryCurrencyCode = primary.Code,
+            PrimaryCurrencySymbol = primary.Symbol,
+            SecondaryCurrencyCode = secondary?.Code,
+            SecondaryCurrencySymbol = secondary?.Symbol,
+            MonetaryMode = mode,
             SaleId = sale.Id,
             InvoiceNumber = sale.InvoiceNumber,
             Date = sale.Date,

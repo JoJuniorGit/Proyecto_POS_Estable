@@ -1,12 +1,25 @@
 using Core.Helpers;
 using Sales.Module.DTOs;
+using Sales.Module.Receipts;
 
 namespace Sales.Module.Services;
 
 public partial class DailyClosureService
 {
-    public static string GenerateReceiptContent(DailyClosureResponseDto closure, bool isBlind = false, MoneyDisplayFormat format = MoneyDisplayFormat.Venezuelan)
+    public static string GenerateReceiptContent(
+        DailyClosureResponseDto closure,
+        bool isBlind = false,
+        MoneyDisplayFormat format = MoneyDisplayFormat.Venezuelan,
+        string localCurrencyLabel = ReceiptCurrencyFormatter.LegacyLocalCode)
     {
+        // 8.211-T4a (S10/F4a): rótulos con la moneda local del perfil (COP en Dual USD/COP);
+        // el default conserva Bs.S para composiciones legacy sin perfil.
+        string currencyLabel = ReceiptCurrencyFormatter.PresentationCode(localCurrencyLabel);
+        if (string.IsNullOrEmpty(currencyLabel))
+        {
+            currencyLabel = ReceiptCurrencyFormatter.LegacyLocalCode;
+        }
+
         var dateStr = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
         var userName = string.IsNullOrWhiteSpace(closure.UserId) ? "Usuario" : closure.UserId;
         var sb = new System.Text.StringBuilder();
@@ -19,7 +32,7 @@ public partial class DailyClosureService
             sb.AppendLine($"Fecha/Hora: {dateStr}");
             sb.AppendLine($"Cajero:     {userName}");
             sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format("{0,-25} {1,-8} {2,22}", "MÉTODO DE PAGO", "MONEDA", "MONTO DECLARADO (Bs.S)"));
+            sb.AppendLine(string.Format("{0,-25} {1,-8} {2,22}", "MÉTODO DE PAGO", "MONEDA", $"MONTO DECLARADO ({currencyLabel})"));
             sb.AppendLine("------------------------------------------------------------------------------------------");
             foreach (var detail in closure.Details)
             {
@@ -46,7 +59,7 @@ public partial class DailyClosureService
             sb.AppendLine($"Fecha/Hora:    {dateStr}");
             sb.AppendLine($"Administrador: {userName}");
             sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22} {3,20} {4,18}", "MÉTODO DE PAGO", "MONEDA", "MONTO DECLARADO (Bs.S)", "MONTO SISTEMA (Bs.S)", "DIFERENCIA (Bs.S)"));
+            sb.AppendLine(string.Format("{0,-22} {1,-8} {2,22} {3,20} {4,18}", "MÉTODO DE PAGO", "MONEDA", $"MONTO DECLARADO ({currencyLabel})", $"MONTO SISTEMA ({currencyLabel})", $"DIFERENCIA ({currencyLabel})"));
             sb.AppendLine("------------------------------------------------------------------------------------------");
             foreach (var detail in closure.Details)
             {
@@ -69,9 +82,9 @@ public partial class DailyClosureService
                 closure.TotalExpectedBsS,
                 closure.TotalDifferenceBsS));
             sb.AppendLine("------------------------------------------------------------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {MoneyFormat.Number(closure.TotalActualBsS, format),10}");
-            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {MoneyFormat.Number(closure.TotalExpectedBsS, format),10}");
-            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {MoneyFormat.Number(closure.TotalDifferenceBsS, format),10}");
+            sb.AppendLine($"TOTAL DECLARADO:  {currencyLabel} {MoneyFormat.Number(closure.TotalActualBsS, format),10}");
+            sb.AppendLine($"TOTAL ESPERADO:   {currencyLabel} {MoneyFormat.Number(closure.TotalExpectedBsS, format),10}");
+            sb.AppendLine($"DIFERENCIA TOTAL: {currencyLabel} {MoneyFormat.Number(closure.TotalDifferenceBsS, format),10}");
             sb.AppendLine($"ESTADO DE CAJA:   {diffStatus}");
             if (!string.IsNullOrWhiteSpace(closure.Observation))
             {
@@ -103,8 +116,9 @@ public partial class DailyClosureService
                 }
             }
 
-            string txtContent = GenerateReceiptContent(closure, isBlind, format);
-            byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(closure, isBlind, format);
+            string localCurrencyLabel = await ResolveClosureCurrencyLabelAsync(cancellationToken);
+            string txtContent = GenerateReceiptContent(closure, isBlind, format, localCurrencyLabel);
+            byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(closure, isBlind, format, localCurrencyLabel);
 
             string dateStamp = DateTime.UtcNow.ToString("yyyy-MM-dd_HH-mm-ss");
             string uniqueSuffix = Guid.NewGuid().ToString("N")[..8];
@@ -145,6 +159,35 @@ public partial class DailyClosureService
         catch (Exception ex)
         {
             Core.Logging.AppLogger.LogWarn($"[DailyClosureService] Advertencia general al auto-guardar comprobantes de cierre #{closure.Id}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 8.211-T4a (S10/F4a): moneda local presentada en los rótulos del cierre. Best-effort: el
+    /// cierre ya está persistido y sus comprobantes no deben dejar de escribirse por un fallo de
+    /// lectura de settings; sin perfil se conserva la presentación histórica Bs.S.
+    /// </summary>
+    private async Task<string> ResolveClosureCurrencyLabelAsync(CancellationToken cancellationToken)
+    {
+        if (_monetaryProfileService is null)
+        {
+            return ReceiptCurrencyFormatter.LegacyLocalCode;
+        }
+
+        try
+        {
+            var profile = await _monetaryProfileService.GetAsync(cancellationToken);
+            string label = ReceiptCurrencyFormatter.PresentationCode(MonetaryRateResolver.ResolveLocalCurrency(profile));
+            return string.IsNullOrEmpty(label) ? ReceiptCurrencyFormatter.LegacyLocalCode : label;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[DailyClosureReceipts] No se pudo leer el perfil monetario ({ex.Message}); se usa Bs.S en los rótulos del cierre.");
+            return ReceiptCurrencyFormatter.LegacyLocalCode;
         }
     }
 

@@ -1,6 +1,9 @@
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Core.DTOs;
+using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.Data;
 using Sales.Module.Entities;
@@ -44,10 +47,41 @@ public interface ISalesReceiptService
 public class SalesReceiptService : ISalesReceiptService
 {
     private readonly SalesDbContext _db;
+    // 8.211-T4a (S10/F4a): el perfil aporta el símbolo configurado de la moneda persistida. Es
+    // opcional para que las composiciones directas de tests sigan compilando; sin él rigen los
+    // defaults ASCII (USD/$, VES/Bs.S, otros su código ISO).
+    private readonly IMonetaryProfileService? _monetaryProfileService;
 
-    public SalesReceiptService(SalesDbContext db)
+    public SalesReceiptService(SalesDbContext db, IMonetaryProfileService? monetaryProfileService = null)
     {
         _db = db;
+        _monetaryProfileService = monetaryProfileService;
+    }
+
+    private async Task<MonetaryProfileDto?> GetProfileAsync(CancellationToken cancellationToken)
+    {
+        if (_monetaryProfileService is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _monetaryProfileService.GetAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Un comprobante histórico no debe quedar sin imprimir por una lectura de settings;
+            // los códigos persistidos siguen siendo la autoridad y las etiquetas caen a sus defaults.
+            Core.Logging.AppLogger.LogWarn(
+                $"[SalesReceiptService] No se pudo leer el perfil monetario ({ex.Message}); se usan las etiquetas por código.",
+                nameof(SalesReceiptService));
+            return null;
+        }
     }
 
     public async Task<SaleReceiptData?> GetReceiptDataAsync(int saleId, CancellationToken cancellationToken = default)
@@ -60,7 +94,8 @@ public class SalesReceiptService : ISalesReceiptService
             .FirstOrDefaultAsync(s => s.Id == saleId, cancellationToken);
 
         if (sale == null) return null;
-        return new SaleReceiptData(SaleReceiptContext.CreateFrom(sale), sale.CashierId, sale.InvoiceNumber.HasValue);
+        var profile = await GetProfileAsync(cancellationToken);
+        return new SaleReceiptData(SaleReceiptContext.CreateFrom(sale, profile), sale.CashierId, sale.InvoiceNumber.HasValue);
     }
 
     public async Task<CreditPaymentReceiptData?> GetCreditPaymentReceiptDataAsync(int paymentId, decimal todayRate, CancellationToken cancellationToken = default)
@@ -97,7 +132,8 @@ public class SalesReceiptService : ISalesReceiptService
                 && receivable.BalanceUSD > CreditService.BalanceToleranceUsd)
             .SumAsync(receivable => receivable.BalanceUSD, cancellationToken);
 
-        var context = CreditPaymentReceiptContext.CreateFrom(payment, currentDebtUsd, todayRate, laterAllocations);
+        var profile = await GetProfileAsync(cancellationToken);
+        var context = CreditPaymentReceiptContext.CreateFrom(payment, currentDebtUsd, todayRate, laterAllocations, profile);
         return new CreditPaymentReceiptData(context, payment.ReceivedByUserId);
     }
 
@@ -118,9 +154,15 @@ public class SalesReceiptService : ISalesReceiptService
             .AsNoTracking()
             .FirstOrDefaultAsync(r => r.SaleId == saleId, cancellationToken);
 
+        if (receivable == null)
+        {
+            return new CreditSaleReceiptData(null, sale.CashierId, HasReceivable: false);
+        }
+
+        var profile = await GetProfileAsync(cancellationToken);
         return new CreditSaleReceiptData(
-            receivable == null ? null : CreditSaleReceiptContext.CreateFrom(sale, receivable),
+            CreditSaleReceiptContext.CreateFrom(sale, receivable, profile),
             sale.CashierId,
-            receivable != null);
+            HasReceivable: true);
     }
 }

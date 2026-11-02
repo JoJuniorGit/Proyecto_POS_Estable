@@ -691,6 +691,63 @@ public class CreditPaymentTests
     }
 
     [Fact]
+    public async Task CreditPaymentReceipt_ServicePassesProfileSymbolsForAllocationSaleSnapshot()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context);
+        await SeedPaymentMethodsAsync(context);
+        var receivable = await SeedReceivableAsync(
+            context,
+            customer.Id,
+            balanceUsd: 100m,
+            historicalRate: 50m,
+            invoiceNumber: 9962,
+            dueInDays: 10);
+
+        var sale = await context.Sales.SingleAsync(candidate => candidate.Id == receivable.SaleId);
+        sale.PrimaryCurrencyCode = "USD";
+        sale.SecondaryCurrencyCode = "COP";
+        sale.MonetaryMode = "Dual";
+        await context.SaveChangesAsync();
+
+        var (service, _, _) = CreateHarness(context, bcvRate: 60m);
+        var payment = await service.RegisterCreditPaymentAsync(new CreditPaymentRequest
+        {
+            CustomerId = customer.Id,
+            AmountUSD = 40m,
+            PaymentMethodId = 1,
+            ReceivableIds = new List<int> { receivable.Id },
+            ReferenceNumber = "TRF-COP"
+        });
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile
+            .Setup(profileService => profileService.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Dual,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "US$",
+                SecondaryCurrencyCode = "COP",
+                SecondaryCurrencySymbol = "COL$",
+                IsConfigured = true
+            });
+
+        var data = await new SalesReceiptService(context, profile.Object)
+            .GetCreditPaymentReceiptDataAsync(payment.PaymentId, todayRate: 50m);
+
+        Assert.NotNull(data);
+        Assert.Equal("US$", data!.Context.PrimaryCurrencySymbol);
+        Assert.Equal("COP", data.Context.SecondaryCurrencyCode);
+        Assert.Equal("COL$", data.Context.SecondaryCurrencySymbol);
+
+        var content = Encoding.ASCII.GetString(
+            CreditPaymentReceiptPdfGenerator.BuildPdf(data.Context, MoneyDisplayFormat.Venezuelan));
+        Assert.Contains("COP", content);
+        Assert.DoesNotContain("Bs.S", content);
+    }
+
+    [Fact]
     public async Task GetCreditPaymentReceipt_Controller_OwnCashierSeesPdf_OtherCashierForbidden_ElevatedBypass()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();

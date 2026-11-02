@@ -87,11 +87,11 @@ public static class PettyCashVoucherPdfGenerator
         WriteLeft(sb, $"Vale Nro: {context.VoucherCode}", 52, 674, "/F2 9 Tf", "0.2 0.25 0.33 rg");
         WriteLeft(sb, $"Fecha: {context.CreatedAtVenezuela.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)}", 52, 660, "/F1 9 Tf", "0.2 0.25 0.33 rg");
         WriteLeft(sb, $"Turno/Sesion: {BuildSessionLabel(context)}", 52, 646, "/F1 9 Tf", "0.2 0.25 0.33 rg");
-        WriteLeft(sb, $"Moneda: {CurrencyLabel(context.Currency)}", 52, 632, "/F1 9 Tf", "0.2 0.25 0.33 rg");
+        WriteLeft(sb, $"Moneda: {context.CurrencyCode}", 52, 632, "/F1 9 Tf", "0.2 0.25 0.33 rg");
         WriteLeft(sb, $"Categoria: {context.CategoryLabel}", 360, 674, "/F2 9 Tf", "0.2 0.25 0.33 rg");
         WriteLeft(sb, $"Beneficiario: {Truncate(context.Beneficiary, 28)}", 360, 660, "/F1 9 Tf", "0.2 0.25 0.33 rg");
         WriteLeft(sb, $"Referencia: {Truncate(context.ReferenceNumber, 28)}", 360, 646, "/F1 9 Tf", "0.2 0.25 0.33 rg");
-        WriteLeft(sb, $"Tasa BCV: {MoneyFormat.Number(context.HistoricalRate, format, 4)}", 360, 632, "/F1 9 Tf", "0.2 0.25 0.33 rg");
+        WriteLeft(sb, $"Tasa aplicada: {MoneyFormat.Number(context.HistoricalRate, format, 4)}", 360, 632, "/F1 9 Tf", "0.2 0.25 0.33 rg");
 
         sb.AppendLine("0.2 0.25 0.33 rg");
         sb.AppendLine("40 578 532 22 re f");
@@ -108,11 +108,14 @@ public static class PettyCashVoucherPdfGenerator
         // Monto entregado: nominal de la divisa fisica extraida con el peso del documento.
         sb.AppendLine("0.12 0.11 0.29 rg");
         sb.AppendLine("40 470 532 26 re f");
-        WriteLeft(sb, $"MONTO ENTREGADO ({CurrencyLabel(context.Currency)})", 48, 479, "/F2 10 Tf", "1 1 1 rg");
+        WriteLeft(sb, $"MONTO ENTREGADO ({context.CurrencySymbol})", 48, 479, "/F2 10 Tf", "1 1 1 rg");
         WriteRight(sb, FormatNominal(context, format), 565, 478, "/F2 12 Tf", "1 1 1 rg", true);
 
-        WriteRight(sb, $"Equivalente bimonetario: Bs.S {MoneyFormat.Number(context.AmountBsS, format, 2)} / $ {MoneyFormat.Number(context.AmountUsd, format, 4)}", 565, 450, "/F1 9 Tf", "0.15 0.2 0.3 rg", true);
-        WriteRight(sb, $"Tasa BCV aplicada: {MoneyFormat.Number(context.HistoricalRate, format, 4)}", 565, 436, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+        string equivalent = context.IncludesUsd
+            ? $"Equivalente: {context.LocalCurrencySymbol} {MoneyFormat.Number(context.AmountBsS, format, 2)} / {context.UsdCurrencySymbol} {MoneyFormat.Number(context.AmountUsd, format, 4)}"
+            : $"Equivalente: {context.LocalCurrencySymbol} {MoneyFormat.Number(context.AmountBsS, format, 2)}";
+        WriteRight(sb, equivalent, 565, 450, "/F1 9 Tf", "0.15 0.2 0.3 rg", true);
+        WriteRight(sb, $"Tasa aplicada: {MoneyFormat.Number(context.HistoricalRate, format, 4)}", 565, 436, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
 
         WriteLeft(sb, $"Cajero: {Truncate(context.CashierName, 60)}", 52, 410, "/F2 9 Tf", "0.2 0.25 0.33 rg");
         WriteLeft(sb, $"Autorizado por: {Truncate(context.AuthorizerName, 60)}", 52, 396, "/F1 9 Tf", "0.2 0.25 0.33 rg");
@@ -158,13 +161,10 @@ public static class PettyCashVoucherPdfGenerator
         return $"#{context.SessionId} - Apertura {context.SessionOpenedAtVenezuela.Value.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture)}";
     }
 
-    private static string CurrencyLabel(PettyCashCurrency currency)
-        => currency == PettyCashCurrency.Usd ? "USD" : "Bs.S";
-
     private static string FormatNominal(PettyCashVoucherContext context, MoneyDisplayFormat format)
         => context.Currency == PettyCashCurrency.Usd
-            ? $"$ {MoneyFormat.Number(context.NominalAmount, format, 4)}"
-            : $"Bs.S {MoneyFormat.Number(context.NominalAmount, format, 2)}";
+            ? $"{context.CurrencySymbol} {MoneyFormat.Number(context.NominalAmount, format, 4)}"
+            : $"{context.CurrencySymbol} {MoneyFormat.Number(context.NominalAmount, format, 2)}";
 
     /// <summary>
     /// Envuelve el texto en lineas de ancho fijo respetando palabras (hasta <paramref name="maxLines"/>;

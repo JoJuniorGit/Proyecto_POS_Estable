@@ -203,6 +203,31 @@ public partial class SalesService
         return UsesManualPairRate(profile) ? "Manual" : "Bcv";
     }
 
+    /// <summary>
+    /// 8.211-T4a (S10/F4a): perfil para etiquetar el recibo impreso tras el commit. Cualquier
+    /// fallo degrada al default del contexto (códigos snapshot + símbolos ASCII por código) sin
+    /// afectar la venta; por eso se lee con un token no cancelable después de confirmar.
+    /// </summary>
+    private async Task<Core.DTOs.MonetaryProfileDto?> TryReadReceiptMonetaryProfileAsync()
+    {
+        if (_monetaryProfileService is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _monetaryProfileService.GetAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            // La venta ya está confirmada; el recibo cae a las etiquetas por código persistido.
+            // Se registra en Debug para no duplicar la alerta operativa del snapshot de la venta.
+            _logger?.LogDebug(ex, "[SalesService] No se pudo leer el perfil monetario para el recibo impreso; se usan las etiquetas por código.");
+            return null;
+        }
+    }
+
     private async Task<MonetaryProfileSnapshot> ResolveMonetaryProfileSnapshotAsync(
         CancellationToken cancellationToken,
         bool failClosed = false)
@@ -803,7 +828,14 @@ public partial class SalesService
 
             await NotifyHoldOrdersChangedAsync();
 
-            _receiptPrintQueue?.Enqueue(Sales.Module.Receipts.SaleReceiptContext.CreateFrom(sale));
+            // 8.211-T4a (S10/F4a): el comprobante impreso usa los códigos snapshot de la venta y
+            // el símbolo configurado del perfil. La lectura es best-effort: jamás falla una venta
+            // ya confirmada por no poder leer settings.
+            if (_receiptPrintQueue is not null)
+            {
+                var receiptProfile = await TryReadReceiptMonetaryProfileAsync();
+                _receiptPrintQueue.Enqueue(Sales.Module.Receipts.SaleReceiptContext.CreateFrom(sale, receiptProfile));
+            }
 
             _logger?.LogInformation("[TX_COMMIT] CorrelationId={CorrelationId}, SaleId={SaleId}, InvoiceNumber={InvoiceNumber}", correlationId, saleId, sale.InvoiceNumber.Value);
 

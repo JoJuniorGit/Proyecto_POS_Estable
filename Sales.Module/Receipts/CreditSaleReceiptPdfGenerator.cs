@@ -96,8 +96,8 @@ public static class CreditSaleReceiptPdfGenerator
         sb.AppendLine($"40 {y} 532 22 re f");
         WriteLeft(sb, "PRODUCTO", 48, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
         WriteRight(sb, "CANT", 260, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
-        WriteRight(sb, "P. UNIT $", 380, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
-        WriteRight(sb, "SUBTOTAL $", 565, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
+        WriteRight(sb, $"P. UNIT {context.PrimaryCurrencyCode}", 380, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
+        WriteRight(sb, $"SUBTOTAL {context.PrimaryCurrencyCode}", 565, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
 
         y -= 22;
         foreach (var line in context.Lines)
@@ -116,7 +116,10 @@ public static class CreditSaleReceiptPdfGenerator
         sb.AppendLine($"0.86 0.9 0.94 rg 40 {y - 2} 532 22 re f");
         sb.AppendLine($"0.7 0.75 0.8 RG 1 w 40 {y - 2} 532 22 re S");
         WriteLeft(sb, "TOTAL VENTA", 48, y + 4, "/F2 9 Tf", "0.1 0.15 0.25 rg");
-        WriteRight(sb, $"$ {MoneyFormat.Number(context.EffectiveTotalUSD, format)} / Bs.S {MoneyFormat.Number(context.TotalBsS, format)}", 565, y + 4, "/F2 9 Tf", "0.15 0.2 0.3 rg", true);
+        WriteRight(sb, context.IsSingleCurrency
+            ? $"{context.PrimaryCurrencySymbol} {MoneyFormat.Number(context.EffectiveTotalUSD, format)}"
+            : $"{context.PrimaryCurrencySymbol} {MoneyFormat.Number(context.EffectiveTotalUSD, format)} / {context.SecondaryCurrencySymbol} {MoneyFormat.Number(context.TotalBsS, format)}",
+            565, y + 4, "/F2 9 Tf", "0.15 0.2 0.3 rg", true);
 
         if (context.Payments.Count > 0)
         {
@@ -130,13 +133,19 @@ public static class CreditSaleReceiptPdfGenerator
                 paidUsd += payment.Amount;
             }
 
-            WriteRight(sb, $"$ {MoneyFormat.Number(paidUsd, format)} / Bs.S {MoneyFormat.Number(paidBsS, format)}", 565, y, "/F2 9 Tf", "0.15 0.2 0.3 rg", true);
+            WriteRight(sb, context.IsSingleCurrency
+                ? $"{context.PrimaryCurrencySymbol} {MoneyFormat.Number(paidUsd, format)}"
+                : $"{context.PrimaryCurrencySymbol} {MoneyFormat.Number(paidUsd, format)} / {context.SecondaryCurrencySymbol} {MoneyFormat.Number(paidBsS, format)}",
+                565, y, "/F2 9 Tf", "0.15 0.2 0.3 rg", true);
         }
 
         y -= 24;
         sb.AppendLine($"0.12 0.11 0.29 rg 40 {y - 4} 532 26 re f");
         WriteLeft(sb, "SALDO FINANCIADO A CREDITO", 48, y + 3, "/F2 10 Tf", "1 1 1 rg");
-        WriteRight(sb, $"$ {MoneyFormat.Number(context.FinancedUSD, format)} / Bs.S {MoneyFormat.Number(context.FinancedBsS, format)}", 565, y + 3, "/F2 10 Tf", "1 1 1 rg", true);
+        WriteRight(sb, context.IsSingleCurrency
+            ? $"{context.PrimaryCurrencySymbol} {MoneyFormat.Number(context.FinancedUSD, format)}"
+            : $"{context.PrimaryCurrencySymbol} {MoneyFormat.Number(context.FinancedUSD, format)} / {context.SecondaryCurrencySymbol} {MoneyFormat.Number(context.FinancedBsS, format)}",
+            565, y + 3, "/F2 10 Tf", "1 1 1 rg", true);
 
         y -= 20;
         WriteRight(sb, $"Tasa de emision: {MoneyFormat.Number(context.HistoricalRate, format, 4)}", 565, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);

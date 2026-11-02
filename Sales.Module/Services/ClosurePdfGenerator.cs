@@ -1,5 +1,6 @@
 using Core.Helpers;
 using Sales.Module.DTOs;
+using Sales.Module.Receipts;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,8 +10,19 @@ namespace Sales.Module.Services;
 
 public static class ClosurePdfGenerator
 {
-    public static byte[] GeneratePdf(DailyClosureResponseDto closure, bool isBlind = false, MoneyDisplayFormat format = MoneyDisplayFormat.Venezuelan)
+    public static byte[] GeneratePdf(
+        DailyClosureResponseDto closure,
+        bool isBlind = false,
+        MoneyDisplayFormat format = MoneyDisplayFormat.Venezuelan,
+        string localCurrencyLabel = ReceiptCurrencyFormatter.LegacyLocalCode)
     {
+        // 8.211-T4a (S10/F4a): el cierre rotula con la moneda local del perfil, no con Bs.S fijo.
+        // El default conserva la presentación histórica para composiciones sin perfil.
+        string currencyLabel = ReceiptCurrencyFormatter.PresentationCode(localCurrencyLabel);
+        if (string.IsNullOrEmpty(currencyLabel))
+        {
+            currencyLabel = ReceiptCurrencyFormatter.LegacyLocalCode;
+        }
         using var ms = new MemoryStream();
         using var writer = new StreamWriter(ms, Encoding.ASCII, leaveOpen: true);
 
@@ -50,12 +62,12 @@ public static class ClosurePdfGenerator
 
         WriteTextLeft(contentSb, "MÉTODO DE PAGO", 48, yPos + 7, "/F2 8.5 Tf", "1 1 1 rg");
         WriteTextCenter(contentSb, "MONEDA", 185, yPos + 7, "/F2 8.5 Tf", "1 1 1 rg");
-        WriteTextRight(contentSb, "MONTO DECLARADO (Bs.S)", 315, yPos + 7, "/F2 8.5 Tf", "1 1 1 rg", true);
+        WriteTextRight(contentSb, $"MONTO DECLARADO ({currencyLabel})", 315, yPos + 7, "/F2 8.5 Tf", "1 1 1 rg", true);
 
         if (!isBlind)
         {
-            WriteTextRight(contentSb, "MONTO SISTEMA (Bs.S)", 440, yPos + 7, "/F2 8.5 Tf", "1 1 1 rg", true);
-            WriteTextRight(contentSb, "DIFERENCIA (Bs.S)", 565, yPos + 7, "/F2 8.5 Tf", "1 1 1 rg", true);
+            WriteTextRight(contentSb, $"MONTO SISTEMA ({currencyLabel})", 440, yPos + 7, "/F2 8.5 Tf", "1 1 1 rg", true);
+            WriteTextRight(contentSb, $"DIFERENCIA ({currencyLabel})", 565, yPos + 7, "/F2 8.5 Tf", "1 1 1 rg", true);
         }
 
         // 4. Table Rows
@@ -171,11 +183,11 @@ public static class ClosurePdfGenerator
         contentSb.AppendLine($"0.96 0.97 0.98 rg 40 {yPos - 60} 532 60 re f");
         contentSb.AppendLine($"0.8 0.84 0.88 RG 1 w 40 {yPos - 60} 532 60 re S");
 
-        WriteTextRight(contentSb, $"TOTAL DECLARADO:   Bs.S {MoneyFormat.Number(closure.TotalActualBsS, format)}", 555, yPos - 18, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
+        WriteTextRight(contentSb, $"TOTAL DECLARADO:   {currencyLabel} {MoneyFormat.Number(closure.TotalActualBsS, format)}", 555, yPos - 18, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
         if (!isBlind)
         {
-            WriteTextRight(contentSb, $"TOTAL ESPERADO:    Bs.S {MoneyFormat.Number(closure.TotalExpectedBsS, format)}", 555, yPos - 32, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
-            WriteTextRight(contentSb, $"DIFERENCIA TOTAL:  Bs.S {totalDiffStr}", 555, yPos - 46, "/F2 9.5 Tf", totalDiffColor, true);
+            WriteTextRight(contentSb, $"TOTAL ESPERADO:    {currencyLabel} {MoneyFormat.Number(closure.TotalExpectedBsS, format)}", 555, yPos - 32, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
+            WriteTextRight(contentSb, $"DIFERENCIA TOTAL:  {currencyLabel} {totalDiffStr}", 555, yPos - 46, "/F2 9.5 Tf", totalDiffColor, true);
         }
 
         // 7. Footer Signature Box

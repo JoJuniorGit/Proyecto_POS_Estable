@@ -620,6 +620,43 @@ public class CreditOverLimitAuthorizationTests
     }
 
     [Fact]
+    public async Task CreditSaleReceipt_ServicePassesProfileSymbolsForPersistedSaleSnapshot()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var (sale, _) = await SeedCompletedCreditSaleAsync(context);
+        sale.PrimaryCurrencyCode = "USD";
+        sale.SecondaryCurrencyCode = "COP";
+        sale.MonetaryMode = "Dual";
+        await context.SaveChangesAsync();
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile
+            .Setup(service => service.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Dual,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "US$",
+                SecondaryCurrencyCode = "COP",
+                SecondaryCurrencySymbol = "COL$",
+                IsConfigured = true
+            });
+
+        var data = await new SalesReceiptService(context, profile.Object).GetCreditSaleReceiptDataAsync(sale.Id);
+
+        Assert.NotNull(data);
+        Assert.NotNull(data!.Context);
+        Assert.Equal("US$", data.Context!.PrimaryCurrencySymbol);
+        Assert.Equal("COP", data.Context.SecondaryCurrencyCode);
+        Assert.Equal("COL$", data.Context.SecondaryCurrencySymbol);
+
+        var content = Encoding.ASCII.GetString(
+            CreditSaleReceiptPdfGenerator.BuildPdf(data.Context, MoneyDisplayFormat.Venezuelan));
+        Assert.Contains("COL$", content);
+        Assert.DoesNotContain("Bs.S", content);
+    }
+
+    [Fact]
     public async Task CreditSaleReceipt_ServiceWithoutReceivable_ReturnsEmptyContextFlag()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
