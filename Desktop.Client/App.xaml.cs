@@ -327,6 +327,13 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }));
 
+        // 8.211-T4c1 (S9): perfil monetario read-only para la presentación WPF. Comparte el
+        // pipeline HTTP configurado (base address, pinning, sesión y resiliencia).
+        ConfigureClient(builder.Services.AddHttpClient<IClientMonetaryProfileService, ClientMonetaryProfileService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
         ConfigureClient(builder.Services.AddHttpClient<IDailyClosureClientService, DailyClosureClientService>(client =>
         {
             client.BaseAddress = baseAddressUri;
@@ -437,6 +444,29 @@ public partial class App : Application
             {
                 Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadCurrencyFormat");
                 CurrencyDisplay.SetFromSetting(null);
+            }
+
+            // 8.211-T4c1 (S9): perfil monetario activo (modo/códigos/símbolos) para la presentación.
+            // Lectura read-only best-effort con timeout duro de 2s: si falla o expira, CurrencyDisplay
+            // conserva los defaults Dual USD/VES y MainWindow.Show() no se retrasa.
+            try
+            {
+                var monetaryProfileService = _host.Services.GetRequiredService<IClientMonetaryProfileService>();
+                using var monetaryProfileCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
+                var monetaryProfile = await monetaryProfileService.GetAsync(monetaryProfileCts.Token);
+                if (monetaryProfile is null)
+                {
+                    Core.Logging.AppLogger.LogWarn(
+                        "No se pudo cargar el perfil monetario; se usan los defaults Dual USD/VES.",
+                        "App.OnStartup.LoadMonetaryProfile");
+                }
+
+                CurrencyDisplay.SetMonetaryProfile(monetaryProfile);
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadMonetaryProfile");
+                CurrencyDisplay.SetMonetaryProfile(null);
             }
 
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
