@@ -26,7 +26,9 @@ import { creditSaleReceiptFileName, saveReceiptBlob } from '../credit/receipts';
 import { useCart } from '../../context/CartContext';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { useAuth } from '../../context/AuthContext';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
 import { formatBsS, formatUSD } from '../../utils/formatters';
+import { MONETARY_MODE_DUAL } from '../../utils/monetaryProfile';
 import CustomerSelectorCard from './CustomerSelectorCard';
 import { AlertTriangle, Check, Download, Loader2, PackageCheck, Wallet } from 'lucide-react';
 import './CheckoutModal.css';
@@ -164,6 +166,10 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
   const { currentSale, totalBsS: cartTotalBsS, totalUSD: cartTotalUSD, effectiveTotalUSD: cartEffectiveTotalUSD, resetCart, updateCustomer } = useCart();
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
+  // 8.211-T4b2b1 (S9): los totales grandes usan la moneda local del perfil; la referencia
+  // primaria (USD en Dual) solo se muestra cuando el régimen es bimonetario.
+  const { mode, primaryCurrencyCode, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const isDual = mode === MONETARY_MODE_DUAL;
 
   const [methods, setMethods] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -713,24 +719,30 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
         <div className="checkout-summary-row">
           <span>{overrideSale ? "Saldo Pendiente:" : "Total Venta:"}</span>
           <div className="text-right">
-            <div className="font-bold color-primary chk-font-total">{formatBsS(targetTotalBsS || 0)}</div>
-            <div className="text-xs text-muted font-medium">Ref: ${effectiveTotalUsd.toFixed(2)} USD</div>
+            <div className="font-bold color-primary chk-font-total">{formatSecondary(targetTotalBsS || 0)}</div>
+            {isDual && (
+              <div className="text-xs text-muted font-medium">Ref: {formatPrimary(effectiveTotalUsd)} {primaryCurrencyCode}</div>
+            )}
           </div>
         </div>
 
         <div className="checkout-summary-row text-success">
           <span>Total Pagado Ahora:</span>
           <div className="text-right">
-            <div className="font-bold chk-font-paid">{formatBsS(paidBsS)}</div>
-            <div className="text-xs text-muted font-medium">Ref: ${paidUsd.toFixed(2)} USD</div>
+            <div className="font-bold chk-font-paid">{formatSecondary(paidBsS)}</div>
+            {isDual && (
+              <div className="text-xs text-muted font-medium">Ref: {formatPrimary(paidUsd)} {primaryCurrencyCode}</div>
+            )}
           </div>
         </div>
 
         <div className="checkout-summary-row text-danger highlight">
           <span>Restante Tras Cobro:</span>
           <div className="text-right">
-            <div className="font-bold chk-font-remaining">{formatBsS(remainingBsS)}</div>
-            <div className="text-xs text-muted font-medium">Ref: ${effectiveRemainingUsd.toFixed(2)} USD</div>
+            <div className="font-bold chk-font-remaining">{formatSecondary(remainingBsS)}</div>
+            {isDual && (
+              <div className="text-xs text-muted font-medium">Ref: {formatPrimary(effectiveRemainingUsd)} {primaryCurrencyCode}</div>
+            )}
           </div>
         </div>
       </div>
@@ -896,7 +908,9 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
         onClose?.();
       }}
       title="¿Cancelar cobro en curso?"
-      message={`Tiene ${payments.length} pago(s) registrado(s) por un monto de $${paidUsd.toFixed(2)} USD (${formatBsS(paidBsS)}). Si sale ahora, se descartarán los pagos ingresados.`}
+      message={isDual
+        ? `Tiene ${payments.length} pago(s) registrado(s) por un monto de ${formatPrimary(paidUsd)} ${primaryCurrencyCode} (${formatSecondary(paidBsS)}). Si sale ahora, se descartarán los pagos ingresados.`
+        : `Tiene ${payments.length} pago(s) registrado(s) por un monto de ${formatSecondary(paidBsS)}. Si sale ahora, se descartarán los pagos ingresados.`}
       cancelText="Continuar Cobro"
       confirmText="Descartar y Salir"
       variant="danger"

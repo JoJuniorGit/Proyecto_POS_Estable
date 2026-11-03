@@ -2,12 +2,17 @@ import { Plus, Minus, Trash2 } from 'lucide-react';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import QuantityInput from './QuantityInput';
 import { useCart, selectEffectiveRate } from '../../context/CartContext';
-import { formatBsS, getLineAmounts } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { getLineAmounts } from '../../utils/formatters';
+import { MONETARY_MODE_DUAL } from '../../utils/monetaryProfile';
 import './CartTable.css';
 
 export default function CartTable({ items, selectedItemId, onSelectItem, onUpdateQty, onRemoveItem }) {
   const { exchangeRate } = useExchangeRate();
   const { currentSale } = useCart();
+  const { mode, primaryCurrencySymbol, secondaryCurrencySymbol, formatSecondary } = useMonetaryProfile();
+  const localCurrencySymbol = (mode === MONETARY_MODE_DUAL && secondaryCurrencySymbol)
+    || primaryCurrencySymbol;
   const isWholesaleMode = (currentSale?.priceListType || '').toLowerCase() === 'wholesale';
   const updateQty = onUpdateQty;
 
@@ -18,8 +23,8 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
           <tr>
             <th>Producto</th>
             <th className="text-center ct-qty-col">Cant.</th>
-            <th className="text-right ct-price-col">Precio Bs.S</th>
-            <th className="text-right ct-price-col">Subtotal Bs.S</th>
+            <th className="text-right ct-price-col">Precio {localCurrencySymbol}</th>
+            <th className="text-right ct-price-col">Subtotal {localCurrencySymbol}</th>
             <th className="text-center ct-action-col">Acción</th>
           </tr>
         </thead>
@@ -90,11 +95,11 @@ export default function CartTable({ items, selectedItemId, onSelectItem, onUpdat
                 </td>
 
                 <td className="text-right font-medium text-nowrap ct-price-col">
-                  {formatBsS(unitBsS)}
+                  {formatSecondary(unitBsS)}
                 </td>
 
                 <td className="text-right font-bold color-primary text-nowrap ct-price-col">
-                  {formatBsS(subtotalBsS)}
+                  {formatSecondary(subtotalBsS)}
                 </td>
 
                 <td className="text-center ct-valign-middle" onClick={(e) => e.stopPropagation()}>

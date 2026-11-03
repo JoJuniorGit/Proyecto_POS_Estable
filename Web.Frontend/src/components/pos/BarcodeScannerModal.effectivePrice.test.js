@@ -37,9 +37,54 @@ describe('BarcodeScannerModal — preview con el efectivo del servidor (8.186-T2
 
   it('5. La fuente prioriza el campo del servidor y no implementa política de redondeo (S3)', () => {
     assert.ok(
-      normalizedSource.includes('resolveScannedPreviewPrice(info, exchangeRateRef.current)'),
-      'handleDecodedCode debe usar el resolvedor de preview'
+      normalizedSource.includes('resolveScannedPreviewPrice(info, exchangeRateRef.current, monetaryProfileRef.current)'),
+      'handleDecodedCode debe usar el resolvedor de preview con el perfil activo'
     );
     assert.ok(!source.includes('Math.ceil'), 'sin matemática de política en JS (S3)');
+  });
+
+  it('6. Dual USD/COP presenta el precio con la etiqueta secundaria COP', () => {
+    const price = resolveScannedPreviewPrice(
+      { priceUSD: 10, priceBsS: 100, effectivePriceBsS: 874.5 },
+      50,
+      {
+        mode: 'Dual',
+        primaryCurrencyCode: 'USD',
+        primaryCurrencySymbol: '$',
+        secondaryCurrencyCode: 'COP',
+        secondaryCurrencySymbol: 'COP',
+      }
+    );
+    assert.strictEqual(price, 'COP 874,50');
+  });
+
+  it('7. Single COP colapsa a la moneda primaria sin Bs.S', () => {
+    const price = resolveScannedPreviewPrice(
+      { priceUSD: 10, priceBsS: 100, effectivePriceBsS: 874.5 },
+      50,
+      {
+        mode: 'Single',
+        primaryCurrencyCode: 'COP',
+        primaryCurrencySymbol: 'COP',
+        secondaryCurrencyCode: null,
+        secondaryCurrencySymbol: null,
+      }
+    );
+    assert.strictEqual(price, 'COP 874,50');
+  });
+
+  it('8. Dual USD/VES conserva la etiqueta Bs.S', () => {
+    const price = resolveScannedPreviewPrice(
+      { priceUSD: 10, priceBsS: 100, effectivePriceBsS: 874.5 },
+      50,
+      {
+        mode: 'Dual',
+        primaryCurrencyCode: 'USD',
+        primaryCurrencySymbol: '$',
+        secondaryCurrencyCode: 'VES',
+        secondaryCurrencySymbol: 'Bs.S',
+      }
+    );
+    assert.strictEqual(price, 'Bs.S 874,50');
   });
 });

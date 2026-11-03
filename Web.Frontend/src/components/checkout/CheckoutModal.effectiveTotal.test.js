@@ -114,7 +114,7 @@ describe('CheckoutModal total Ref USD efectivo [8.186-T4]', () => {
 
     assert.match(
       html,
-      /chk-font-total">Bs\.S 315,35<\/div><div class="text-xs text-muted font-medium">Ref: \$7\.50 USD<\/div>/
+      /chk-font-total">Bs\.S 315,35<\/div><div class="text-xs text-muted font-medium">Ref: \$ 7,50 USD<\/div>/
     );
   });
 });

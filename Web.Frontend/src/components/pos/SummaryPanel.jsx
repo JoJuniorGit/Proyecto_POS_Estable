@@ -1,9 +1,14 @@
 import { Trash2, CreditCard, Loader2, Clock } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
-import { formatBsS, formatUSD } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { MONETARY_MODE_DUAL } from '../../utils/monetaryProfile';
 import './SummaryPanel.css';
 
 export default function SummaryPanel({ onCheckout, onHold }) {
+  // 8.211-T4b2b1 (S9): el total grande es la moneda local (secundaria en Dual, primaria en
+  // Single). La referencia USD solo existe cuando el perfil es bimonetario.
+  const { mode, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const isDual = mode === MONETARY_MODE_DUAL;
   const {
     currentSale,
     items,
@@ -70,7 +75,7 @@ export default function SummaryPanel({ onCheckout, onHold }) {
 
         <div className="summary-row">
           <span className="summary-label">Subtotal</span>
-          <span className="summary-val">{formatBsS(subtotalBsS || 0)}</span>
+          <span className="summary-val">{formatSecondary(subtotalBsS || 0)}</span>
         </div>
 
         <div className="summary-divider" />
@@ -78,11 +83,13 @@ export default function SummaryPanel({ onCheckout, onHold }) {
         <div className="summary-total-container">
           <div className="summary-total-label">TOTAL</div>
           <div className="summary-total-primary">
-            {formatBsS(totalBsS || 0)}
+            {formatSecondary(totalBsS || 0)}
           </div>
-          <div className="summary-total-secondary">
-            {formatUSD(effectiveTotalUSD || 0)}
-          </div>
+          {isDual && (
+            <div className="summary-total-secondary">
+              {formatPrimary(effectiveTotalUSD || 0)}
+            </div>
+          )}
         </div>
       </div>
 

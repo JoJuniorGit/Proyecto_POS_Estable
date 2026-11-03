@@ -29,6 +29,7 @@ import {
 } from '../../utils/laptopVisionEnhancer';
 import { formatBsS, formatUSD, resolveBsSPrice, resolveEffectiveBsS } from '../../utils/formatters';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
 import { resolveCameraGuidance, shouldFallbackWithoutDeviceId } from '../../utils/scannerCameraErrors';
 import './BarcodeScannerModal.css';
 
@@ -45,12 +46,16 @@ const ATTEMPT_PACING_MS = 50;
  * servidor (quick-check `effectivePriceBsS`, motor único + tasa vigente); el canónico USD × tasa
  * (8.143) queda solo como fallback documentado si el campo falta o viene <= 0.
  */
-export function resolveScannedPreviewPrice(info, exchangeRate) {
+export function resolveScannedPreviewPrice(info, exchangeRate, profile = null) {
   const bs = resolveEffectiveBsS(
     info.effectivePriceBsS,
     resolveBsSPrice(info.priceUSD, info.priceBsS, exchangeRate)
   );
-  return bs > 0 ? formatBsS(bs) : formatUSD(Number(info.priceUSD));
+  // 8.211-T4b2b1 (S9): el perfil activo decide el símbolo; en Single ambos helpers colapsan a
+  // la primaria. Sin perfil se conserva el contrato legacy Bs.S/$ de los llamadores antiguos.
+  return bs > 0
+    ? formatBsS(bs, 2, undefined, profile)
+    : formatUSD(Number(info.priceUSD), 2, undefined, profile);
 }
 
 export default function BarcodeScannerModal({ 
@@ -87,6 +92,14 @@ export default function BarcodeScannerModal({
   useEffect(() => {
     exchangeRateRef.current = exchangeRate;
   }, [exchangeRate]);
+
+  // Los loops de cámara capturan el callback una sola vez; el ref mantiene el perfil vigente
+  // sin reiniciar la sesión de escaneo cuando el usuario cambia el régimen monetario.
+  const { profile, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const monetaryProfileRef = useRef(profile);
+  useEffect(() => {
+    monetaryProfileRef.current = profile;
+  }, [profile]);
 
   // Detección de entorno: Laptop/PC vs Mobile
   const isLaptop = useMemo(() => isLaptopOrDesktopEnvironment(), []);
@@ -273,7 +286,7 @@ export default function BarcodeScannerModal({
       playScanSuccess();
       // 8.186-T2 (S1/S3): el precio del preview es el Bs.S efectivo proyectado server-side
       // (quick-check); el canónico queda solo como fallback documentado dentro del resolvedor.
-      const price = resolveScannedPreviewPrice(info, exchangeRateRef.current);
+      const price = resolveScannedPreviewPrice(info, exchangeRateRef.current, monetaryProfileRef.current);
       
       // Actualizar la lista de los últimos 3 productos distintos escaneados
       setRecentScannedProductIds((prev) => [info.id, ...prev.filter((id) => id !== info.id)].slice(0, 3));
@@ -681,7 +694,9 @@ export default function BarcodeScannerModal({
                   <div className="scanner-recent-info">
                     <span className="scanner-recent-name">{item.productName}</span>
                     <span className="scanner-recent-price">
-                      {Number(item.unitPriceBsS) > 0 ? formatBsS(Number(item.unitPriceBsS)) : formatUSD(Number(item.unitPrice))}
+                      {Number(item.unitPriceBsS) > 0
+                        ? formatSecondary(Number(item.unitPriceBsS))
+                        : formatPrimary(Number(item.unitPrice))}
                     </span>
                   </div>
                   <div className="scanner-qty-stepper">
