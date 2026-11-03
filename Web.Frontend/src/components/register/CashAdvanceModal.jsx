@@ -3,7 +3,9 @@ import Modal from '../ui/Modal';
 import { FastForward, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { api } from '../../services/api';
 import { getActivePaymentMethods } from '../../services/paymentApi';
-import { formatBsS, formatUSD } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { resolveLocalCurrencyProfile } from './registerFormLogic';
+import { resolveCashAmountRules } from '../checkout/PaymentForm';
 import './RegisterModals.css';
 
 const COMMISSION_UNAVAILABLE_MESSAGE = 'No se pudo obtener la comisión configurada del servidor. No se puede procesar el adelanto.';
@@ -29,6 +31,16 @@ export function computeAdvanceSummary({ amountBsS, percentage, exchangeRate }) {
 }
 
 export default function CashAdvanceModal({ isOpen, onClose, sessionId, availableCashBsS, exchangeRate, user, onSuccess }) {
+  const {
+    profile,
+    mode,
+    secondaryCurrencyCode,
+    formatPrimary,
+    formatSecondary,
+  } = useMonetaryProfile();
+  const { isDual, label: localCurrencyLabel } = resolveLocalCurrencyProfile(profile);
+  const { requiresIntegerCash } = resolveCashAmountRules({ mode, secondaryCurrencyCode });
+
   const [amountBsS, setAmountBsS] = useState('');
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [selectedMethodId, setSelectedMethodId] = useState('');
@@ -98,7 +110,8 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
   });
 
   const handleKeyDown = (e) => {
-    if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') {
+    const blocked = requiresIntegerCash ? ['.', ',', 'e', 'E', '+', '-'] : ['e', 'E', '+', '-'];
+    if (blocked.includes(e.key)) {
       e.preventDefault();
     }
   };
@@ -118,13 +131,13 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
       return;
     }
 
-    if (!Number.isInteger(numRequested) || numRequested % 1 !== 0) {
-      setError('El monto de efectivo a entregar debe ser un número entero estrictamente sin decimales.');
+    if (requiresIntegerCash && (!Number.isInteger(numRequested) || numRequested % 1 !== 0)) {
+      setError(`El monto de efectivo a entregar en ${localCurrencyLabel} debe ser un número entero estrictamente sin decimales.`);
       return;
     }
 
     if (numRequested > availableCashBsS) {
-      setError(`El monto solicitado (${formatBsS(numRequested)}) supera el efectivo disponible en caja (${formatBsS(availableCashBsS)}).`);
+      setError(`El monto solicitado (${formatSecondary(numRequested)}) supera el efectivo disponible en caja (${formatSecondary(availableCashBsS)}).`);
       return;
     }
 
@@ -152,7 +165,7 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
       });
 
       const invoiceMsg = res?.invoiceNumber ? ` (Factura N° ${res.invoiceNumber})` : '';
-      setSuccessInfo(`Adelanto de ${formatBsS(numRequested)} procesado con éxito${invoiceMsg}. Registrado en Historial de Ventas.`);
+      setSuccessInfo(`Adelanto de ${formatSecondary(numRequested)} procesado con éxito${invoiceMsg}. Registrado en Historial de Ventas.`);
       
       setTimeout(() => {
         handleClose();
@@ -178,7 +191,7 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
         <form onSubmit={handleSubmit} className="cash-advance-form">
           <div className="card p-3 mb-3 bg-light border flex-between">
             <span className="text-xs font-bold text-muted uppercase">Efectivo Disponible en Caja:</span>
-            <span className="font-bold text-lg color-primary">{formatBsS(availableCashBsS)}</span>
+            <span className="font-bold text-lg color-primary">{formatSecondary(availableCashBsS)}</span>
           </div>
 
           {error && (
@@ -195,11 +208,14 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
           )}
 
           <div className="form-group mb-3">
-            <label className="form-label font-medium">1. Monto Entregado al Cliente (Efectivo en Bs.S - Solo Enteros) *</label>
+            <label className="form-label font-medium">
+              1. Monto Entregado al Cliente (Efectivo en {localCurrencyLabel}{requiresIntegerCash ? ' - Solo Enteros' : ''}) *
+            </label>
             <input
               type="number"
-              step="1"
-              min="1"
+              step={requiresIntegerCash ? '1' : '0.01'}
+              inputMode={requiresIntegerCash ? 'numeric' : 'decimal'}
+              min={requiresIntegerCash ? '1' : '0.01'}
               className="form-control form-control-lg font-bold"
               placeholder="0"
               value={amountBsS}
@@ -209,7 +225,9 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
               autoFocus
             />
             <small className="text-muted text-xs mt-1 block">
-              Solo números enteros sin decimales (ej. 10, 50, 100).
+              {requiresIntegerCash
+                ? 'Solo números enteros sin decimales (ej. 10, 50, 100).'
+                : 'Puede incluir centavos cuando la moneda local los admite (ej. 10,50).'}
             </small>
           </div>
 
@@ -235,12 +253,12 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
             
             <div className="flex-between text-sm mb-1">
               <span className="text-muted">Salida de Efectivo de Caja:</span>
-              <span className="font-bold color-danger">-{formatBsS(numRequested)}</span>
+              <span className="font-bold color-danger">-{formatSecondary(numRequested)}</span>
             </div>
 
             <div className="flex-between text-sm mb-2">
               <span className="text-muted">Comisión de Ganancia {hasResolvedCommission ? `(${commissionPercentage}%)` : ''}:</span>
-              <span className="font-bold color-success">{hasResolvedCommission ? `+${formatBsS(commissionBsS)}` : '—'}</span>
+              <span className="font-bold color-success">{hasResolvedCommission ? `+${formatSecondary(commissionBsS)}` : '—'}</span>
             </div>
 
             <div className="divider my-2"></div>
@@ -248,8 +266,10 @@ export default function CashAdvanceModal({ isOpen, onClose, sessionId, available
             <div className="flex-between flex-align-center">
               <span className="font-bold text-sm">TOTAL A COBRAR AL CLIENTE:</span>
               <div className="text-right">
-                <div className="font-bold text-lg color-primary">{hasResolvedCommission ? formatBsS(totalChargedBsS) : '—'}</div>
-                <div className="text-xs text-muted">{hasResolvedCommission ? `(${formatUSD(totalChargedUsd)})` : ''}</div>
+                <div className="font-bold text-lg color-primary">{hasResolvedCommission ? formatSecondary(totalChargedBsS) : '—'}</div>
+                {isDual && (
+                  <div className="text-xs text-muted">{hasResolvedCommission ? `(${formatPrimary(totalChargedUsd)})` : ''}</div>
+                )}
               </div>
             </div>
           </div>

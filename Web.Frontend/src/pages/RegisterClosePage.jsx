@@ -9,6 +9,12 @@ import {
 } from '../services/shiftApi';
 import { useAuth } from '../context/AuthContext';
 import { useCurrencyFormat } from '../context/CurrencyFormatContext';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import { displayCurrencyCode, normalizeCurrencyCode } from '../utils/monetaryProfile';
+import {
+  profileIncludesCurrency,
+  resolveLocalCurrencyProfile,
+} from '../components/register/registerFormLogic';
 import { shouldRecoverClosedShift } from '../utils/shiftRecovery';
 import './RegisterClosePage.css';
 import AtmAmountInput from '../components/ui/AtmAmountInput';
@@ -38,7 +44,23 @@ export default function RegisterClosePage() {
 
 function RegisterClosePageContent() {
   const { user, logout } = useAuth();
-  const { currencyFormat, formatAmount, formatBsS, formatUSD } = useCurrencyFormat();
+  const { currencyFormat, formatAmount } = useCurrencyFormat();
+  const {
+    profile,
+    primaryCurrencyCode,
+    formatSecondary,
+    symbolFor,
+  } = useMonetaryProfile();
+  const { isDual, code: localCurrencyCode } = resolveLocalCurrencyProfile(profile);
+  const primaryCurrencyLabel = displayCurrencyCode(primaryCurrencyCode);
+  const usdCurrencyLabel = displayCurrencyCode('USD');
+  const showUsdCount = isDual && profileIncludesCurrency(profile, 'USD');
+
+  const formatCurrencyAmount = (amount, code) => {
+    const canonical = normalizeCurrencyCode(code) ?? localCurrencyCode;
+    const symbol = symbolFor(canonical) || displayCurrencyCode(canonical);
+    return `${symbol} ${formatAmount(amount, 2)}`;
+  };
 
   const [methods, setMethods] = useState([]);
   const [exchangeRate, setExchangeRate] = useState(0);
@@ -59,10 +81,11 @@ function RegisterClosePageContent() {
 
   // Utility to determine currency for a payment method
   const getMethodCurrency = useCallback((method) => {
-    // 8.9-M16 + AD-2: the source of truth is the server-provided method.currency
-    // from /api/paymentmethods/active. No name/substring heuristic.
-    return method?.currency === 'USD' ? 'USD' : 'Bs.S';
-  }, []);
+    // 8.9-M16 + AD-2 / 8.211-T4b2b2a: the source of truth is the server-provided
+    // method.currency from /api/paymentmethods/active. No name/substring heuristic; the
+    // profile's local currency is the only fallback for legacy rows without a code.
+    return normalizeCurrencyCode(method?.currency) ?? localCurrencyCode;
+  }, [localCurrencyCode]);
 
   // 1. Initial Fetch (Parallel API calls)
   const loadInitialData = useCallback(async () => {
@@ -230,34 +253,42 @@ function RegisterClosePageContent() {
             </div>
             <div className="zreport-meta-group sm:text-right">
               <div><strong>Fecha:</strong> {zReport.closedAt ? new Date(zReport.closedAt).toLocaleString('es-VE') : new Date().toLocaleString('es-VE')}</div>
-              <div><strong>Tasa del Día:</strong> <span className="font-mono font-bold">{formatAmount(zReport.exchangeRate || exchangeRate, 2)} Bs/$</span></div>
+              {isDual && (
+                <div>
+                  <strong>Tasa del Día:</strong>{' '}
+                  <span className="font-mono font-bold">
+                    {`${formatSecondary(zReport.exchangeRate || exchangeRate)} / ${primaryCurrencyLabel}`}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Residual 8.187-8.188: arqueo físico USD del cierre. Esperado y diferencia solo se
-              muestran a supervisores (blind 8.153); el contado se conserva para el cajero. */}
-          {(zReport.actualClosingBalanceUsd !== null && zReport.actualClosingBalanceUsd !== undefined) && (
+              muestran a supervisores (blind 8.153); el contado se conserva para el cajero.
+              Efectivo USD contado (opcional): la etiqueta real usa el rótulo del perfil. */}
+          {showUsdCount && (zReport.actualClosingBalanceUsd !== null && zReport.actualClosingBalanceUsd !== undefined) && (
             <div className="border rounded p-3 mb-4">
-              <div className="font-bold text-sm mb-2">Arqueo físico USD</div>
+              <div className="font-bold text-sm mb-2">Arqueo físico {usdCurrencyLabel}</div>
               <div className="flex-between flex-align-center text-sm mb-1">
-                <span className="text-muted">Efectivo USD contado:</span>
-                <span className="font-mono font-bold">{formatUSD(zReport.actualClosingBalanceUsd)}</span>
+                <span className="text-muted">Efectivo {usdCurrencyLabel} contado:</span>
+                <span className="font-mono font-bold">{formatCurrencyAmount(zReport.actualClosingBalanceUsd, 'USD')}</span>
               </div>
               {canViewUsd && zReport.expectedClosingBalanceUsd !== null
                 && zReport.expectedClosingBalanceUsd !== undefined && (
                 <div className="flex-between flex-align-center text-sm mb-1">
-                  <span className="text-muted">Efectivo USD esperado:</span>
-                  <span className="font-mono">{formatUSD(zReport.expectedClosingBalanceUsd)}</span>
+                  <span className="text-muted">Efectivo {usdCurrencyLabel} esperado:</span>
+                  <span className="font-mono">{formatCurrencyAmount(zReport.expectedClosingBalanceUsd, 'USD')}</span>
                 </div>
               )}
               {canViewUsd && zReport.differenceUsd !== null && zReport.differenceUsd !== undefined && (
                 <div className="flex-between flex-align-center text-sm">
-                  <span className="text-muted">Diferencia USD:</span>
+                  <span className="text-muted">Diferencia {usdCurrencyLabel}:</span>
                   <span
                     className="font-mono font-bold"
                     style={{ color: zReport.differenceUsd < 0 ? 'var(--danger)' : 'var(--success)' }}
                   >
-                    {zReport.differenceUsd > 0 ? '+' : ''}{formatUSD(zReport.differenceUsd)}
+                    {zReport.differenceUsd > 0 ? '+' : ''}{formatCurrencyAmount(zReport.differenceUsd, 'USD')}
                   </span>
                 </div>
               )}
@@ -272,7 +303,8 @@ function RegisterClosePageContent() {
               const statusText = isSurplus ? 'Sobrante' : isShortage ? 'Faltante' : 'Cuadrado';
               const statusBadgeClass = isSurplus ? 'badge-success' : isShortage ? 'badge-danger' : 'badge-outline';
               const diffColor = isSurplus ? 'var(--success)' : isShortage ? 'var(--danger)' : 'var(--success)';
-              const formatVal = (val, curr) => (curr === 'USD' ? formatUSD(val) : formatBsS(val));
+              const currency = normalizeCurrencyCode(d.currency) ?? localCurrencyCode;
+              const formatVal = (val) => formatCurrencyAmount(val, currency);
 
               return (
                 <div key={idx} className="zreport-mobile-card p-3.5 mb-3 border rounded-lg bg-surface shadow-xs rcl-zmobile-card">
@@ -281,8 +313,8 @@ function RegisterClosePageContent() {
                   <div className="flex-between flex-align-center mb-3 pb-2 border-bottom">
                     <div className="flex-align-center gap-2">
                       <span className="font-bold text-base color-primary">{d.paymentMethodName}</span>
-                      <span className={`register-currency-badge ${d.currency === 'USD' ? 'currency-badge-usd' : 'currency-badge-bss'}`}>
-                        {d.currency}
+                      <span className={`register-currency-badge ${currency === 'USD' ? 'currency-badge-usd' : 'currency-badge-bss'}`}>
+                        {displayCurrencyCode(currency)}
                       </span>
                     </div>
                     <span className={`badge ${statusBadgeClass} text-xs font-bold px-2.5 py-1`}>
@@ -294,18 +326,18 @@ function RegisterClosePageContent() {
                   <div className="zreport-mobile-card-amounts flex flex-column gap-2 text-xs">
                     <div className="flex-between flex-align-center">
                       <span className="text-muted text-xs">Declarado:</span>
-                      <span className="font-mono font-bold text-sm">{formatVal(d.declaredAmount, d.currency)}</span>
+                      <span className="font-mono font-bold text-sm">{formatVal(d.declaredAmount)}</span>
                     </div>
 
                     <div className="flex-between flex-align-center">
                       <span className="text-muted text-xs">Sistema:</span>
-                      <span className="font-mono text-muted text-sm">{formatVal(d.systemAmount, d.currency)}</span>
+                      <span className="font-mono text-muted text-sm">{formatVal(d.systemAmount)}</span>
                     </div>
 
                     <div className="flex-between flex-align-center pt-2 border-top mt-1">
                       <span className="text-muted font-medium text-xs">Diferencia:</span>
                       <span className="font-mono font-bold text-sm" style={{ color: diffColor }}>
-                        {formatVal(d.difference, d.currency)}
+                        {formatVal(d.difference)}
                       </span>
                     </div>
                   </div>
@@ -338,20 +370,21 @@ function RegisterClosePageContent() {
                     ? 'var(--danger)'
                     : 'var(--success)';
 
-                  const formatVal = (val, curr) => (curr === 'USD' ? formatUSD(val) : formatBsS(val));
+                  const currency = normalizeCurrencyCode(d.currency) ?? localCurrencyCode;
+                  const formatVal = (val) => formatCurrencyAmount(val, currency);
 
                   return (
                     <tr key={idx}>
                       <td className="font-bold text-nowrap">{d.paymentMethodName}</td>
                       <td className="text-center font-mono text-nowrap">
-                        <span className={`register-currency-badge ${d.currency === 'USD' ? 'currency-badge-usd' : 'currency-badge-bss'}`}>
-                          {d.currency}
+                        <span className={`register-currency-badge ${currency === 'USD' ? 'currency-badge-usd' : 'currency-badge-bss'}`}>
+                          {displayCurrencyCode(currency)}
                         </span>
                       </td>
-                      <td className="text-right font-mono text-nowrap rcl-th-pad-right">{formatVal(d.declaredAmount, d.currency)}</td>
-                      <td className="text-right font-mono text-muted text-nowrap rcl-th-pad-right">{formatVal(d.systemAmount, d.currency)}</td>
+                      <td className="text-right font-mono text-nowrap rcl-th-pad-right">{formatVal(d.declaredAmount)}</td>
+                      <td className="text-right font-mono text-muted text-nowrap rcl-th-pad-right">{formatVal(d.systemAmount)}</td>
                       <td className="text-right font-mono font-bold text-nowrap rcl-th-pad-right" style={{ color: diffColor }}>
-                        {formatVal(d.difference, d.currency)}
+                        {formatVal(d.difference)}
                       </td>
                     </tr>
                   );
@@ -412,12 +445,16 @@ function RegisterClosePageContent() {
               </span>
             </div>
 
-            <div className="flex-align-center gap-2">
-              <DollarSign size={18} className="color-primary flex-shrink-0" />
-              <span className="text-sm">
-                <strong>Tasa del Día (Informativa):</strong> <span className="font-mono font-bold color-primary">Bs.S {formatAmount(exchangeRate, 2)}</span> / USD
-              </span>
-            </div>
+            {isDual && (
+              <div className="flex-align-center gap-2">
+                <DollarSign size={18} className="color-primary flex-shrink-0" />
+                <span className="text-sm">
+                  <strong>Tasa del Día (Informativa):</strong>{' '}
+                  <span className="font-mono font-bold color-primary">{formatSecondary(exchangeRate)}</span>{' '}
+                  / {primaryCurrencyLabel}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="flex-align-center gap-2 justify-content-start sm:justify-content-end">
@@ -453,17 +490,18 @@ function RegisterClosePageContent() {
             <div className="mb-4 flex-col gap-3">
               {methods.map((method) => {
                 const currency = getMethodCurrency(method);
-                const isUsd = currency === 'USD';
+                const currencyLabel = displayCurrencyCode(currency);
+                const currencyPrefix = symbolFor(currency) || currencyLabel;
 
                 return (
                   <div key={method.id} className="register-close-method-card">
                     
-                    {/* Requisito 2 & 3: Título limpio sin subtítulo redundante + Badge simplificado USD / Bs.S */}
+                    {/* Requisito 2 & 3: Título limpio sin subtítulo redundante + badge del perfil */}
                     <div className="register-close-method-info">
                       <div className="font-bold flex-align-center gap-2 text-sm sm:text-base">
                         <span>{method.name}</span>
-                        <span className={`register-currency-badge ${isUsd ? 'currency-badge-usd' : 'currency-badge-bss'}`}>
-                          {isUsd ? 'USD' : 'Bs.S'}
+                        <span className={`register-currency-badge ${currency === 'USD' ? 'currency-badge-usd' : 'currency-badge-bss'}`}>
+                          {currencyLabel}
                         </span>
                       </div>
                     </div>
@@ -474,7 +512,7 @@ function RegisterClosePageContent() {
                         value={declaredAmounts[method.id] !== undefined ? declaredAmounts[method.id] : ''}
                         onChange={(numericVal) => handleAmountChange(method.id, numericVal)}
                         placeholder={currencyFormat === 'Venezuelan' ? '0,00' : '0.00'}
-                        prefix={isUsd ? '$' : 'Bs.S'}
+                        prefix={currencyPrefix}
                       />
                     </div>
 
@@ -483,26 +521,29 @@ function RegisterClosePageContent() {
               })}
             </div>
 
-            {/* Residual 8.187-8.188: conteo USD opcional, independiente del desglose por método. */}
-            <div className="register-close-method-card mb-4">
-              <div className="register-close-method-info">
-                <div className="font-bold flex-align-center gap-2 text-sm sm:text-base">
-                  <span>Efectivo USD contado (opcional)</span>
-                  <span className="register-currency-badge currency-badge-usd">USD</span>
+            {/* Residual 8.187-8.188: conteo USD opcional, independiente del desglose por método.
+                Efectivo USD contado (opcional): en Single no existe una segunda gaveta. */}
+            {showUsdCount && (
+              <div className="register-close-method-card mb-4">
+                <div className="register-close-method-info">
+                  <div className="font-bold flex-align-center gap-2 text-sm sm:text-base">
+                    <span>Efectivo {usdCurrencyLabel} contado (opcional)</span>
+                    <span className="register-currency-badge currency-badge-usd">{usdCurrencyLabel}</span>
+                  </div>
+                  <p className="text-muted text-xs mt-1 mb-0">
+                    Si se deja vacío se conserva el cierre sin arqueo {usdCurrencyLabel}.
+                  </p>
                 </div>
-                <p className="text-muted text-xs mt-1 mb-0">
-                  Si se deja vacío se conserva el cierre sin arqueo USD.
-                </p>
+                <div className="register-close-method-input-wrapper">
+                  <AtmAmountInput
+                    value={actualClosingBalanceUsd}
+                    onChange={(numericVal) => setActualClosingBalanceUsd(numericVal)}
+                    placeholder={currencyFormat === 'Venezuelan' ? '0,00' : '0.00'}
+                    prefix={symbolFor('USD') || usdCurrencyLabel}
+                  />
+                </div>
               </div>
-              <div className="register-close-method-input-wrapper">
-                <AtmAmountInput
-                  value={actualClosingBalanceUsd}
-                  onChange={(numericVal) => setActualClosingBalanceUsd(numericVal)}
-                  placeholder={currencyFormat === 'Venezuelan' ? '0,00' : '0.00'}
-                  prefix="$"
-                />
-              </div>
-            </div>
+            )}
 
             <button
               type="submit"
@@ -577,11 +618,11 @@ function RegisterClosePageContent() {
                       <td className="font-bold text-nowrap">{m.name}</td>
                       <td className="text-center font-mono text-nowrap">
                         <span className={`register-currency-badge ${curr === 'USD' ? 'currency-badge-usd' : 'currency-badge-bss'}`}>
-                          {curr}
+                          {displayCurrencyCode(curr)}
                         </span>
                       </td>
                       <td className="text-right font-mono font-bold text-nowrap rcl-th-pad-right">
-                        {curr === 'USD' ? formatUSD(amt) : formatBsS(amt)}
+                        {formatCurrencyAmount(amt, curr)}
                       </td>
                     </tr>
                   );
@@ -590,10 +631,10 @@ function RegisterClosePageContent() {
             </table>
           </div>
 
-          {hasUsdCount && (
+          {showUsdCount && hasUsdCount && (
             <div className="flex-between flex-align-center text-sm mb-3 p-2 rounded border">
-              <span className="text-muted">Efectivo USD contado (opcional):</span>
-              <span className="font-mono font-bold">{formatUSD(Number(actualClosingBalanceUsd) || 0)}</span>
+              <span className="text-muted">Efectivo {usdCurrencyLabel} contado (opcional):</span>
+              <span className="font-mono font-bold">{formatCurrencyAmount(Number(actualClosingBalanceUsd) || 0, 'USD')}</span>
             </div>
           )}
 

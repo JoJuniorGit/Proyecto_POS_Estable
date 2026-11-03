@@ -13,8 +13,13 @@ import CashDrawerCloseModal, { CASH_DRAWER_CLOSE_TITLE } from './CashDrawerClose
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.resolve(__dirname, 'CashDrawerCloseModal.jsx'), 'utf-8');
 
+// React intercala marcadores de comentario entre nodos de texto en SSR.
+function visibleText(html) {
+  return html.replace(/<!--[\s\S]*?-->/g, '');
+}
+
 function render(props = {}) {
-  return renderToString(
+  return visibleText(renderToString(
     React.createElement(CashDrawerCloseModal, {
       isOpen: true,
       onClose: () => {},
@@ -26,7 +31,7 @@ function render(props = {}) {
       onSuccess: () => {},
       ...props,
     })
-  );
+  ));
 }
 
 describe('CashDrawerCloseModal [T5]', () => {

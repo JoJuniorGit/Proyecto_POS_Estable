@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import Modal from '../ui/Modal';
 import AtmAmountInput from '../ui/AtmAmountInput';
 import { HandCoins, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
-import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../../utils/monetaryProfile';
 import { useAuthorization } from '../authorization/AuthorizationProvider';
 import { createCheckoutKeyHolder } from '../../utils/idempotency';
 import {
   PETTY_CASH_CATEGORY_OPTIONS,
-  PETTY_CASH_CURRENCY_OPTIONS,
   PettyCashCurrency,
   registerPettyCashExpense,
 } from '../../services/pettyCashApi';
@@ -17,6 +17,8 @@ import {
 } from '../../services/pettyCashAuthorization';
 import {
   computePettyCashEquivalent,
+  profileIncludesCurrency,
+  resolveLocalCurrencyProfile,
   validatePettyCashDraft,
 } from './registerFormLogic';
 import './RegisterModals.css';
@@ -37,7 +39,26 @@ export default function PettyCashExpenseModal({
   role,
   onSuccess,
 }) {
-  const { formatBsS, formatUSD } = useCurrencyFormat();
+  const {
+    profile,
+    primaryCurrencyCode,
+    formatPrimary,
+    formatSecondary,
+    symbolFor,
+  } = useMonetaryProfile();
+  const { isDual, code: localCurrencyCode, label: localCurrencyLabel } = resolveLocalCurrencyProfile(profile);
+  const localCurrencySymbol = symbolFor(localCurrencyCode) || localCurrencyLabel;
+  const primaryCurrencyLabel = displayCurrencyCode(primaryCurrencyCode);
+  const usdCurrencyLabel = displayCurrencyCode('USD');
+  const usdCurrencySymbol = symbolFor('USD') || usdCurrencyLabel;
+  const showUsdOption = isDual && profileIncludesCurrency(profile, 'USD');
+  const currencyOptions = [
+    { value: PettyCashCurrency.BsS, label: `${localCurrencySymbol} (moneda local)` },
+    ...(showUsdOption
+      ? [{ value: PettyCashCurrency.Usd, label: `${usdCurrencySymbol} (${usdCurrencyLabel})` }]
+      : []),
+  ];
+
   const { startWait } = useAuthorization();
   const [currency, setCurrency] = useState(PettyCashCurrency.BsS);
   const [amount, setAmount] = useState(0);
@@ -71,13 +92,21 @@ export default function PettyCashExpenseModal({
     setAuthorizationMessage('');
   }, [isOpen]);
 
+  // Un cambio de perfil a Single mientras el modal está abierto no puede dejar seleccionada una
+  // divisa que ya no pertenece al régimen activo.
+  useEffect(() => {
+    if (!showUsdOption && currency === PettyCashCurrency.Usd) {
+      setCurrency(PettyCashCurrency.BsS);
+    }
+  }, [showUsdOption, currency]);
+
   const isUsd = currency === PettyCashCurrency.Usd;
   const hasRate = Number(exchangeRate) > 0;
   const equivalent = computePettyCashEquivalent({ currency, amount, exchangeRate });
 
   const equivalentDisplay = !hasRate
     ? 'Configure la tasa de cambio vigente.'
-    : (isUsd ? `≈ ${formatBsS(equivalent.bsS)}` : `≈ ${formatUSD(equivalent.usd)}`);
+    : (isUsd ? `≈ ${formatSecondary(equivalent.bsS)}` : `≈ ${formatPrimary(equivalent.usd)}`);
 
   function handleClose() {
     cashKeyHolderRef.current.reset();
@@ -123,8 +152,8 @@ export default function PettyCashExpenseModal({
         startWait,
         getIdempotencyKey: () => cashKeyHolderRef.current.getOrCreateKey(),
         terminal: getWebTerminalLabel(),
-        formatBsS,
-        formatUSD,
+        formatBsS: formatSecondary,
+        formatUSD: formatPrimary,
       });
 
       if (!outcome.ok) {
@@ -181,7 +210,7 @@ export default function PettyCashExpenseModal({
               onChange={(e) => setCurrency(Number(e.target.value))}
               disabled={loading}
             >
-              {PETTY_CASH_CURRENCY_OPTIONS.map((option) => (
+              {currencyOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
@@ -189,12 +218,12 @@ export default function PettyCashExpenseModal({
 
           <div className="form-group">
             <label className="form-label font-medium" htmlFor="petty-cash-amount">
-              {isUsd ? 'Monto (USD)' : 'Monto (Bs.S)'} *
+              Monto ({isUsd ? usdCurrencyLabel : localCurrencyLabel}) *
             </label>
             <AtmAmountInput
               value={amount}
               onChange={(numeric) => setAmount(numeric)}
-              prefix={isUsd ? '$' : 'Bs.S'}
+              prefix={isUsd ? usdCurrencySymbol : localCurrencySymbol}
               disabled={loading}
               autoFocus
             />
@@ -264,16 +293,19 @@ export default function PettyCashExpenseModal({
           </div>
         </div>
 
-        <div className="pcm-equivalence flex-between flex-align-center p-2 mb-3">
-          <span className="text-xs text-muted">
-            Tasa vigente: {formatBsS(exchangeRate || 0)} / USD
-          </span>
-          <span className="pcm-equivalence-value font-bold">{equivalentDisplay}</span>
-        </div>
+        {isDual && (
+          <div className="pcm-equivalence flex-between flex-align-center p-2 mb-3">
+            <span className="text-xs text-muted">
+              Tasa vigente: {formatSecondary(exchangeRate || 0)} / {primaryCurrencyLabel}
+            </span>
+            <span className="pcm-equivalence-value font-bold">{equivalentDisplay}</span>
+          </div>
+        )}
 
         <p className="text-muted text-xs mb-3">
-          La equivalencia es informativa a la tasa vigente; el servidor fija el snapshot bimonetario
-          definitivo y valida la liquidez de la gaveta al confirmar.
+          {isDual
+            ? 'La equivalencia es informativa a la tasa vigente; el servidor fija el snapshot bimonetario definitivo y valida la liquidez de la gaveta al confirmar.'
+            : `El servidor fija el snapshot monetario definitivo y valida la liquidez de la gaveta ${localCurrencyLabel} al confirmar.`}
         </p>
 
         <div className="modal-actions flex-center gap-3 pt-2 regmod-actions">

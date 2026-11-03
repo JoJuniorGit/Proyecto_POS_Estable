@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import Modal from '../ui/Modal';
 import AtmAmountInput from '../ui/AtmAmountInput';
 import { Landmark, Loader2, AlertCircle } from 'lucide-react';
-import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../../utils/monetaryProfile';
 import { createIdempotencyKey, openCashDrawerSession } from '../../services/pettyCashApi';
 import {
   buildCashDrawerOpenPayload,
+  resolveLocalCurrencyProfile,
   validateCashDrawerOpenDraft,
 } from './registerFormLogic';
 import './RegisterModals.css';
@@ -24,7 +26,19 @@ export default function CashDrawerOpenModal({
   exchangeRate,
   onSuccess,
 }) {
-  const { formatBsS, formatUSD } = useCurrencyFormat();
+  const {
+    profile,
+    primaryCurrencyCode,
+    formatPrimary,
+    formatSecondary,
+    symbolFor,
+  } = useMonetaryProfile();
+  const { isDual, code: localCurrencyCode, label: localCurrencyLabel } = resolveLocalCurrencyProfile(profile);
+  const localCurrencySymbol = symbolFor(localCurrencyCode) || localCurrencyLabel;
+  const primaryCurrencyLabel = displayCurrencyCode(primaryCurrencyCode);
+  const usdCurrencyLabel = displayCurrencyCode('USD');
+  const usdCurrencySymbol = symbolFor('USD') || usdCurrencyLabel;
+
   const [localAmount, setLocalAmount] = useState(0);
   const [usdAmount, setUsdAmount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -53,6 +67,8 @@ export default function CashDrawerOpenModal({
       openingBalanceLocal: localAmount,
       openingBalanceUsd: usdAmount,
       currentExchangeRate: exchangeRate,
+      localCurrencyLabel,
+      usdCurrencyLabel,
     });
     if (validation) {
       setError(validation);
@@ -97,44 +113,49 @@ export default function CashDrawerOpenModal({
         <div className="alert alert-info mb-3 flex-align-center gap-2 text-sm">
           <Landmark size={18} className="flex-shrink-0" />
           <span>
-            Declare el fondo físico de cada gaveta. El fondo USD queda segregado y se transfiere
-            automáticamente al siguiente turno.
+            {isDual
+              ? `Declare el fondo físico de la gaveta ${localCurrencyLabel} y de la gaveta ${usdCurrencyLabel}. El fondo ${usdCurrencyLabel} queda segregado y se transfiere automáticamente al siguiente turno.`
+              : 'Declare el fondo físico de la gaveta local. El fondo se transfiere automáticamente al siguiente turno.'}
           </span>
         </div>
 
-        <div className="grid grid-2 gap-3 mb-3">
+        <div className={`grid ${isDual ? 'grid-2' : 'grid-1'} gap-3 mb-3`}>
           <div className="form-group">
             <label className="form-label font-medium" htmlFor="cash-drawer-open-local">
-              Fondo inicial Bs.S *
+              Fondo inicial {localCurrencyLabel} *
             </label>
             <AtmAmountInput
               id="cash-drawer-open-local"
               value={localAmount}
               onChange={(numeric) => setLocalAmount(numeric)}
-              prefix="Bs.S"
+              prefix={localCurrencySymbol}
               disabled={loading}
               autoFocus
             />
           </div>
 
-          <div className="form-group">
-            <label className="form-label font-medium" htmlFor="cash-drawer-open-usd">
-              Fondo inicial USD
-            </label>
-            <AtmAmountInput
-              id="cash-drawer-open-usd"
-              value={usdAmount}
-              onChange={(numeric) => setUsdAmount(numeric)}
-              prefix="$"
-              disabled={loading}
-            />
-          </div>
+          {isDual && (
+            <div className="form-group">
+              <label className="form-label font-medium" htmlFor="cash-drawer-open-usd">
+                Fondo inicial {usdCurrencyLabel}
+              </label>
+              <AtmAmountInput
+                id="cash-drawer-open-usd"
+                value={usdAmount}
+                onChange={(numeric) => setUsdAmount(numeric)}
+                prefix={usdCurrencySymbol}
+                disabled={loading}
+              />
+            </div>
+          )}
         </div>
 
-        <p className="text-xs text-muted mb-3">
-          Tasa aplicada: {hasRate ? `${formatBsS(exchangeRate)} / USD` : 'sin tasa configurada'}.
-          {hasRate && ` Equivalente USD del fondo local: ${formatUSD(Number(localAmount) / Number(exchangeRate))}.`}
-        </p>
+        {isDual && (
+          <p className="text-xs text-muted mb-3">
+            Tasa aplicada: {hasRate ? `${formatSecondary(exchangeRate)} / ${primaryCurrencyLabel}` : 'sin tasa configurada'}.
+            {hasRate && ` Equivalente ${primaryCurrencyLabel} del fondo local: ${formatPrimary(Number(localAmount) / Number(exchangeRate))}.`}
+          </p>
+        )}
 
         <div className="flex-align-center justify-content-end gap-2">
           <button type="button" className="btn btn-outline" onClick={onClose} disabled={loading}>

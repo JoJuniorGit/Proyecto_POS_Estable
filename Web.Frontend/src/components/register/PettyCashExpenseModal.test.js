@@ -15,8 +15,13 @@ import PettyCashExpenseModal from './PettyCashExpenseModal.jsx';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.resolve(__dirname, 'PettyCashExpenseModal.jsx'), 'utf-8');
 
+// React intercala marcadores de comentario entre nodos de texto en SSR.
+function visibleText(html) {
+  return html.replace(/<!--[\s\S]*?-->/g, '');
+}
+
 function render(props = {}) {
-  return renderToString(
+  return visibleText(renderToString(
     React.createElement(
       AuthorizationProvider,
       null,
@@ -30,7 +35,7 @@ function render(props = {}) {
         ...props,
       })
     )
-  );
+  ));
 }
 
 describe('PettyCashExpenseModal [T5]', () => {
@@ -38,8 +43,8 @@ describe('PettyCashExpenseModal [T5]', () => {
     const html = render();
 
     assert.match(html, /Registrar Gasto de Caja Chica/);
-    assert.match(html, /Bs\.S \(bolívares\)/);
-    assert.match(html, /USD \(divisas\)/);
+    assert.match(html, /Bs\.S \(moneda local\)/);
+    assert.match(html, /\$ \(USD\)/);
     assert.match(html, /Insumos y Limpieza/);
     assert.match(html, /Servicios Públicos\/Eventuales/);
     assert.match(html, /Monto \(Bs\.S\)/);

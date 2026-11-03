@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import Modal from '../ui/Modal';
 import AtmAmountInput from '../ui/AtmAmountInput';
 import { Lock, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
-import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../../utils/monetaryProfile';
 import { closeCashDrawerSession, createIdempotencyKey } from '../../services/pettyCashApi';
 import {
   buildCashDrawerClosePayload,
   canCloseCashDrawerSession,
+  resolveLocalCurrencyProfile,
   validateCashDrawerCloseDraft,
 } from './registerFormLogic';
 import './RegisterModals.css';
@@ -29,7 +31,19 @@ export default function CashDrawerCloseModal({
   role,
   onSuccess,
 }) {
-  const { formatBsS, formatUSD } = useCurrencyFormat();
+  const {
+    profile,
+    primaryCurrencyCode,
+    formatPrimary,
+    formatSecondary,
+    symbolFor,
+  } = useMonetaryProfile();
+  const { isDual, code: localCurrencyCode, label: localCurrencyLabel } = resolveLocalCurrencyProfile(profile);
+  const localCurrencySymbol = symbolFor(localCurrencyCode) || localCurrencyLabel;
+  const primaryCurrencyLabel = displayCurrencyCode(primaryCurrencyCode);
+  const usdCurrencyLabel = displayCurrencyCode('USD');
+  const usdCurrencySymbol = symbolFor('USD') || usdCurrencyLabel;
+
   const [localAmount, setLocalAmount] = useState(0);
   const [usdAmount, setUsdAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -63,6 +77,8 @@ export default function CashDrawerCloseModal({
     const validation = validateCashDrawerCloseDraft({
       actualClosingBalanceLocal: localAmount,
       actualClosingBalanceUsd: usdAmount,
+      localCurrencyLabel,
+      usdCurrencyLabel,
     });
     if (validation) {
       setError(validation);
@@ -113,40 +129,50 @@ export default function CashDrawerCloseModal({
           <>
             <div className="pcm-close-summary p-3 mb-3">
               <span className="pcm-close-summary-line">
-                Efectivo esperado Bs.S: {formatBsS(expectedCashBsS || 0)}
+                Efectivo esperado {localCurrencyLabel}: {formatSecondary(expectedCashBsS || 0)}
               </span>
-              <span className="pcm-close-summary-line">
-                {hasTheoreticalUsd
-                  ? `Efectivo esperado USD: ${formatUSD(expectedCashUsd)}`
-                  : 'Efectivo esperado USD: no disponible'}
-              </span>
-              <span className="pcm-close-hint">Tasa vigente: {formatBsS(exchangeRate || 0)} / USD</span>
+              {isDual && (
+                <span className="pcm-close-summary-line">
+                  {hasTheoreticalUsd
+                    ? `Efectivo esperado ${usdCurrencyLabel}: ${formatPrimary(expectedCashUsd)}`
+                    : `Efectivo esperado ${usdCurrencyLabel}: no disponible`}
+                </span>
+              )}
+              {isDual && (
+                <span className="pcm-close-hint">
+                  Tasa vigente: {formatSecondary(exchangeRate || 0)} / {primaryCurrencyLabel}
+                </span>
+              )}
             </div>
 
             <div className="form-group mb-3">
-              <label className="form-label font-medium">Efectivo Bs.S contado *</label>
+              <label className="form-label font-medium">Efectivo {localCurrencyLabel} contado *</label>
               <AtmAmountInput
                 value={localAmount}
                 onChange={(numeric) => setLocalAmount(numeric)}
-                prefix="Bs.S"
+                prefix={localCurrencySymbol}
                 disabled={loading}
                 autoFocus
               />
             </div>
 
-            <div className="form-group mb-2">
-              <label className="form-label font-medium">Efectivo USD contado (opcional)</label>
-              <AtmAmountInput
-                value={usdAmount}
-                onChange={(numeric) => setUsdAmount(numeric)}
-                prefix="$"
-                disabled={loading}
-              />
-            </div>
+            {isDual && (
+              <div className="form-group mb-2">
+                <label className="form-label font-medium">Efectivo {usdCurrencyLabel} contado (opcional)</label>
+                <AtmAmountInput
+                  value={usdAmount}
+                  onChange={(numeric) => setUsdAmount(numeric)}
+                  prefix={usdCurrencySymbol}
+                  disabled={loading}
+                />
+              </div>
+            )}
 
             <p className="text-muted text-xs mb-3">
-              El conteo USD es opcional; si se deja vacío se conserva el comportamiento previo del cierre.
-              El cierre diario (Reporte Z) se procesa desde la vista Cierre Diario.
+              {isDual
+                ? `El conteo ${usdCurrencyLabel} es opcional; si se deja vacío se conserva el comportamiento previo del cierre.`
+                : `El conteo físico se registra únicamente en ${localCurrencyLabel}.`}
+              {' '}El cierre diario (Reporte Z) se procesa desde la vista Cierre Diario.
             </p>
 
             <div className="modal-actions flex-center gap-3 pt-2 regmod-actions">

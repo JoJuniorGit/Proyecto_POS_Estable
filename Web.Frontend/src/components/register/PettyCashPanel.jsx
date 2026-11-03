@@ -8,11 +8,12 @@ import {
   CircleX,
   Loader2,
 } from 'lucide-react';
-import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../../utils/monetaryProfile';
 import {
+  PettyCashCurrency,
   PettyCashStatus,
   getPettyCashCategoryLabel,
-  getPettyCashCurrencyLabel,
   getPettyCashStatusLabel,
   getPettyCashVoucher,
 } from '../../services/pettyCashApi';
@@ -21,6 +22,8 @@ import {
   getPettyCashCreatedAtDisplay,
   getPettyCashVoucherCode,
   getPettyCashVoucherFileName,
+  profileIncludesCurrency,
+  resolveLocalCurrencyProfile,
   summarizePettyCashExpenses,
 } from './registerFormLogic';
 import './PettyCashPanel.css';
@@ -42,13 +45,23 @@ export default function PettyCashPanel({
   onClose,
   onDownloadVoucher,
 }) {
-  const { formatBsS, formatUSD } = useCurrencyFormat();
+  const {
+    profile,
+    formatPrimary,
+    formatSecondary,
+  } = useMonetaryProfile();
+  const { isDual, label: localCurrencyLabel } = resolveLocalCurrencyProfile(profile);
+  const usdCurrencyLabel = displayCurrencyCode('USD');
+  const showUsd = isDual && profileIncludesCurrency(profile, 'USD');
   const [voucherError, setVoucherError] = useState('');
   const [downloadingId, setDownloadingId] = useState(null);
 
   const summary = summarizePettyCashExpenses(expenses);
-  const balanceBsSDisplay = canViewBalances && balances ? formatBsS(balances.bsS) : '—';
-  const balanceUsdDisplay = canViewBalances && balances ? formatUSD(balances.usd) : '—';
+  const balanceBsSDisplay = canViewBalances && balances ? formatSecondary(balances.bsS) : '—';
+  const balanceUsdDisplay = canViewBalances && balances ? formatPrimary(balances.usd) : '—';
+  const expenseCurrencyLabel = (currency) => (
+    Number(currency) === PettyCashCurrency.Usd ? usdCurrencyLabel : localCurrencyLabel
+  );
 
   async function handleDownloadVoucher(expense) {
     setVoucherError('');
@@ -88,7 +101,7 @@ export default function PettyCashPanel({
             <span>CAJA CHICA DEL TURNO</span>
           </h3>
           <span className="pc-summary text-xs text-muted">
-            {`${summary.activeCount} activo(s) · ${formatBsS(summary.totalBsS)} · ${formatUSD(summary.totalUsd)}`}
+            {`${summary.activeCount} activo(s) · ${formatSecondary(summary.totalBsS)}${showUsd ? ` · ${formatPrimary(summary.totalUsd)}` : ''}`}
           </span>
         </div>
 
@@ -118,13 +131,15 @@ export default function PettyCashPanel({
 
       <div className="pc-balances">
         <span className="pc-balance-item">
-          <span className="text-muted text-xs font-semibold">Efectivo físico Bs.S:</span>
+          <span className="text-muted text-xs font-semibold">Efectivo físico {localCurrencyLabel}:</span>
           <span className="pc-balance-value">{balanceBsSDisplay}</span>
         </span>
-        <span className="pc-balance-item">
-          <span className="text-muted text-xs font-semibold">Efectivo físico USD:</span>
-          <span className="pc-balance-value">{balanceUsdDisplay}</span>
-        </span>
+        {showUsd && (
+          <span className="pc-balance-item">
+            <span className="text-muted text-xs font-semibold">Efectivo físico {usdCurrencyLabel}:</span>
+            <span className="pc-balance-value">{balanceUsdDisplay}</span>
+          </span>
+        )}
         {loading && (
           <span className="pc-loading text-xs text-muted flex-align-center gap-1">
             <Loader2 size={14} className="animate-spin" /> Cargando...
@@ -149,8 +164,8 @@ export default function PettyCashPanel({
                 <th>FECHA / HORA</th>
                 <th>CATEGORÍA</th>
                 <th className="pc-th-concept">CONCEPTO / BENEFICIARIO</th>
-                <th className="text-right">MONTO BS.S</th>
-                <th className="text-right">MONTO USD</th>
+                <th className="text-right">MONTO {localCurrencyLabel.toUpperCase()}</th>
+                {showUsd && <th className="text-right">MONTO {usdCurrencyLabel}</th>}
                 <th>ESTADO</th>
                 <th>AUTORIZADOR</th>
                 <th className="text-center">ACCIONES</th>
@@ -173,7 +188,7 @@ export default function PettyCashPanel({
                       <span className="pc-concept font-semibold text-sm">{expense.concept}</span>
                       <span className="pc-concept-beneficiary">{expense.beneficiary}</span>
                       <span className="pc-concept-reference text-muted">
-                        {getPettyCashCurrencyLabel(expense.currency)} · Ref: {expense.referenceNumber || '—'}
+                        {expenseCurrencyLabel(expense.currency)} · Ref: {expense.referenceNumber || '—'}
                       </span>
                       {isCancelled && expense.cancellationReason && (
                         <span className="pc-concept-reference pc-cancellation-reason">
@@ -181,8 +196,8 @@ export default function PettyCashPanel({
                         </span>
                       )}
                     </td>
-                    <td className="text-right font-mono font-bold text-sm">{formatBsS(expense.amountBsS)}</td>
-                    <td className="text-right font-mono text-sm text-muted">{formatUSD(expense.amountUsd)}</td>
+                    <td className="text-right font-mono font-bold text-sm">{formatSecondary(expense.amountBsS)}</td>
+                    {showUsd && <td className="text-right font-mono text-sm text-muted">{formatPrimary(expense.amountUsd)}</td>}
                     <td>
                       <span className={isCancelled ? 'pc-status-cancelled' : 'pc-status-active'}>
                         {getPettyCashStatusLabel(expense.status)}

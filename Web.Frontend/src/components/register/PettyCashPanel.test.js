@@ -47,8 +47,13 @@ const expenses = [
   },
 ];
 
+// React intercala marcadores de comentario entre nodos de texto en SSR.
+function visibleText(html) {
+  return html.replace(/<!--[\s\S]*?-->/g, '');
+}
+
 function render(overrides = {}) {
-  return renderToString(
+  return visibleText(renderToString(
     React.createElement(PettyCashPanel, {
       expenses,
       balances: { bsS: 1500.25, usd: 30 },
@@ -61,7 +66,7 @@ function render(overrides = {}) {
       onDownloadVoucher: () => {},
       ...overrides,
     })
-  );
+  ));
 }
 
 describe('PettyCashPanel [T5]', () => {

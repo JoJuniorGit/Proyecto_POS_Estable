@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Modal from '../ui/Modal';
 import { CircleX, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
-import { useCurrencyFormat } from '../../context/CurrencyFormatContext';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
 import { useAuthorization } from '../authorization/AuthorizationProvider';
 import {
   cancelPettyCashExpense,
@@ -14,6 +14,7 @@ import {
 import {
   getPettyCashVoucherCode,
   requiresPettyCashCancellationAuthorization,
+  resolveLocalCurrencyProfile,
   validatePettyCashCancelReason,
 } from './registerFormLogic';
 import './RegisterModals.css';
@@ -33,7 +34,8 @@ export default function PettyCashCancelModal({
   role,
   onSuccess,
 }) {
-  const { formatBsS, formatUSD } = useCurrencyFormat();
+  const { profile, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const { isDual } = resolveLocalCurrencyProfile(profile);
   const { startWait } = useAuthorization();
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -52,7 +54,7 @@ export default function PettyCashCancelModal({
 
   const voucherCode = getPettyCashVoucherCode(expense || {});
   const expenseSummary = expense
-    ? `${getPettyCashCategoryLabel(expense.category)} · ${formatBsS(expense.amountBsS)} / ${formatUSD(expense.amountUsd)}`
+    ? `${getPettyCashCategoryLabel(expense.category)} · ${formatSecondary(expense.amountBsS)}${isDual ? ` / ${formatPrimary(expense.amountUsd)}` : ''}`
     : '';
 
   async function handleSubmit(event) {
@@ -77,8 +79,8 @@ export default function PettyCashCancelModal({
         submit: (options) => cancelPettyCashExpense(expense.id, reason, options),
         startWait,
         terminal: getWebTerminalLabel(),
-        formatBsS,
-        formatUSD,
+        formatBsS: formatSecondary,
+        formatUSD: formatPrimary,
       });
 
       if (!outcome.ok) {

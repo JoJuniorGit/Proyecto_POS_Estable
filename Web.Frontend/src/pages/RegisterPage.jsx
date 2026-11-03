@@ -18,7 +18,9 @@ import {
 } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { useAuth } from '../context/AuthContext';
-import { formatBsS, formatUSD, formatNumberEs, formatDate } from '../utils/formatters';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../utils/monetaryProfile';
+import { formatNumberEs, formatDate } from '../utils/formatters';
 import './RegisterPage.css';
 
 import CashInModal from '../components/register/CashInModal';
@@ -30,7 +32,7 @@ import PettyCashCancelModal from '../components/register/PettyCashCancelModal';
 import CashDrawerCloseModal from '../components/register/CashDrawerCloseModal';
 import CashDrawerOpenModal from '../components/register/CashDrawerOpenModal';
 import { getPettyCashExpenses, getPettyCashPhysicalBalances } from '../services/pettyCashApi';
-import { canCloseCashDrawerSession, canUsePettyCash } from '../components/register/registerFormLogic';
+import { canCloseCashDrawerSession, canUsePettyCash, resolveLocalCurrencyProfile } from '../components/register/registerFormLogic';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
 import { normalizeRole } from '../navigation/roleViews';
@@ -47,7 +49,15 @@ export default function RegisterPage() {
 function RegisterPageContent() {
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
-  
+  const {
+    profile,
+    primaryCurrencyCode,
+    formatPrimary,
+    formatSecondary,
+  } = useMonetaryProfile();
+  const { isDual, label: localCurrencyLabel } = resolveLocalCurrencyProfile(profile);
+  const primaryCurrencyLabel = displayCurrencyCode(primaryCurrencyCode);
+
   const isAdmin = normalizeRole(user?.role) === 'Admin';
   // T5 (Paso 13 / 8.188): roles de la caja chica (Admin/Manager/Cashier) y del cierre de la
   // sesión (solo supervisión). El gate del servidor sigue siendo la autoridad final.
@@ -229,7 +239,11 @@ function RegisterPageContent() {
             ) : (
               <span className="badge badge-secondary">SIN SESIÓN ABIERTA</span>
             )}
-            <span className="text-xs text-muted">Tasa Actual: {formatBsS(exchangeRate || 0)} / USD</span>
+            {isDual && (
+              <span className="text-xs text-muted">
+                Tasa Actual: {formatSecondary(exchangeRate || 0)} / {primaryCurrencyLabel}
+              </span>
+            )}
           </div>
         </div>
 
@@ -250,7 +264,7 @@ function RegisterPageContent() {
               className="btn btn-primary flex-align-center justify-content-center gap-2 register-action-btn"
               onClick={() => setIsOpenCashDrawerOpen(true)}
               disabled={loading || !(Number(exchangeRate) > 0)}
-              title="Declarar el fondo inicial en Bs.S y USD y abrir la sesión"
+              title={`Declarar el fondo inicial en ${localCurrencyLabel}${isDual ? ` y ${primaryCurrencyLabel}` : ''} y abrir la sesión`}
             >
               <Landmark size={18} /> ABRIR CAJA
             </button>
@@ -303,7 +317,9 @@ function RegisterPageContent() {
               className="btn btn-outline flex-align-center justify-content-center gap-2 register-action-btn"
               onClick={() => setIsCloseCashDrawerOpen(true)}
               disabled={!session}
-              title="Arqueo y cierre de la sesión de caja (conteo USD opcional)"
+              title={isDual
+                ? `Arqueo y cierre de la sesión de caja (conteo ${primaryCurrencyLabel} opcional)`
+                : 'Arqueo y cierre de la sesión de caja'}
             >
               <Lock size={18} /> CERRAR CAJA
             </button>
@@ -365,13 +381,15 @@ function RegisterPageContent() {
                     {formatNumberEs(expectedCashBsS, 2)}
                   </span>
                   <span className="text-base font-bold color-primary reg-currency-gap">
-                    Bs.S
+                    {localCurrencyLabel}
                   </span>
                 </div>
 
-                <div className="text-xs font-semibold text-muted">
-                  $ {formatNumberEs(expectedCashUsd, 2)} USD
-                </div>
+                {isDual && (
+                  <div className="text-xs font-semibold text-muted">
+                    {formatPrimary(expectedCashUsd)}
+                  </div>
+                )}
               </div>
 
               <div className="flex-align-center justify-content-center p-2 rounded-lg flex-shrink-0 reg-card-icon-circle">
@@ -394,7 +412,7 @@ function RegisterPageContent() {
                   {formatNumberEs(totalIncomeBsS, 2)}
                 </span>
                 <span className="text-sm font-bold color-success reg-currency-gap">
-                  Bs.S
+                  {localCurrencyLabel}
                 </span>
               </div>
 
@@ -418,7 +436,7 @@ function RegisterPageContent() {
                   {formatNumberEs(totalExpenseBsS, 2)}
                 </span>
                 <span className="text-sm font-bold color-danger reg-currency-gap">
-                  Bs.S
+                  {localCurrencyLabel}
                 </span>
               </div>
 
@@ -478,11 +496,13 @@ function RegisterPageContent() {
 
                         <div className="flex-align-baseline gap-2 pt-2 border-top w-100 flex-wrap text-left">
                           <span className="font-extrabold text-sm color-success text-nowrap">
-                            {formatBsS(tx.amountLocal)}
+                            {formatSecondary(tx.amountLocal)}
                           </span>
-                          <span className="text-xs text-muted font-medium text-nowrap">
-                            &nbsp;({formatUSD(amountUsd)})
-                          </span>
+                          {isDual && (
+                            <span className="text-xs text-muted font-medium text-nowrap">
+                              &nbsp;({formatPrimary(amountUsd)})
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -566,11 +586,13 @@ function RegisterPageContent() {
                           <th className="reg-th-origin">Origen</th>
                           <th className="reg-th-concept">Concepto / Detalle</th>
                           <th className="text-right reg-th-amount">
-                            MONTO (BS.S)
+                            MONTO ({localCurrencyLabel.toUpperCase()})
                           </th>
-                          <th className="text-right reg-th-usd">
-                            EQUIV. (USD)
-                          </th>
+                          {isDual && (
+                            <th className="text-right reg-th-usd">
+                              EQUIV. ({primaryCurrencyLabel})
+                            </th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -617,15 +639,17 @@ function RegisterPageContent() {
                                 {conceptStr}
                               </td>
 
-                              {/* Monto Bs.S (Alineado a la derecha) */}
+                              {/* Monto local (Alineado a la derecha) */}
                               <td className={`text-right font-extrabold text-sm ${isIncome ? 'color-success' : 'color-danger'} reg-amount-cell`}>
-                                {isIncome ? '+' : '-'}{formatBsS(tx.amountLocal)}
+                                {isIncome ? '+' : '-'}{formatSecondary(tx.amountLocal)}
                               </td>
 
-                              {/* Equiv USD (Alineado a la derecha) */}
-                              <td className="text-right text-xs text-muted font-medium reg-amount-cell">
-                                {formatUSD(amountUsd)}
-                              </td>
+                              {/* Equivalencia primaria (Alineado a la derecha) */}
+                              {isDual && (
+                                <td className="text-right text-xs text-muted font-medium reg-amount-cell">
+                                  {formatPrimary(amountUsd)}
+                                </td>
+                              )}
                             </tr>
                           );
                         })}

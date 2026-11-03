@@ -3,6 +3,12 @@ import {
   PettyCashCurrency,
   PettyCashStatus,
 } from '../../services/pettyCashApi';
+import {
+  MONETARY_MODE_DUAL,
+  displayCurrencyCode,
+  normalizeCurrencyCode,
+  symbolForCode,
+} from '../../utils/monetaryProfile';
 
 /**
  * T5 (Paso 13 / 8.188): lógica pura de presentación de los formularios de caja en el POS web.
@@ -20,6 +26,37 @@ export function canUsePettyCash(role) {
 
 export function canCloseCashDrawerSession(role) {
   return CLOSE_SESSION_ROLES.includes(role);
+}
+
+/**
+ * 8.211-T4b2b2a (S9): moneda física local de la gaveta. En `Dual` es la secundaria; en `Single`
+ * la primaria. `label` es el código de presentación (VES se mantiene como `Bs.S`) y `symbol` el
+ * símbolo configurado por el perfil. Solo presentación: no interpreta ni recalcula montos.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ * @returns {{ isDual: boolean, code: string | null, label: string, symbol: string }}
+ */
+export function resolveLocalCurrencyProfile(profile = {}) {
+  const isDual = profile?.mode === MONETARY_MODE_DUAL;
+  const code = normalizeCurrencyCode(
+    isDual ? profile?.secondaryCurrencyCode : profile?.primaryCurrencyCode
+  );
+  const label = displayCurrencyCode(code);
+  const symbol = code ? symbolForCode(profile, code) : '';
+  return { isDual, code, label, symbol: symbol || label };
+}
+
+/**
+ * Indica si una moneda pertenece al perfil activo (primaria o secundaria en `Dual`).
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ * @param {unknown} code
+ * @returns {boolean}
+ */
+export function profileIncludesCurrency(profile = {}, code) {
+  const canonical = normalizeCurrencyCode(code);
+  if (!canonical) return false;
+  if (normalizeCurrencyCode(profile?.primaryCurrencyCode) === canonical) return true;
+  return profile?.mode === MONETARY_MODE_DUAL
+    && normalizeCurrencyCode(profile?.secondaryCurrencyCode) === canonical;
 }
 
 /**
@@ -114,15 +151,17 @@ export function validateCashDrawerOpenDraft({
   openingBalanceLocal,
   openingBalanceUsd,
   currentExchangeRate,
+  localCurrencyLabel = 'Bs.S',
+  usdCurrencyLabel = 'USD',
 } = {}) {
   const local = Number(openingBalanceLocal ?? 0);
   if (!Number.isFinite(local) || local < 0) {
-    return 'Ingrese un fondo inicial válido en Bs.S (mayor o igual a cero).';
+    return `Ingrese un fondo inicial válido en ${localCurrencyLabel} (mayor o igual a cero).`;
   }
 
   const usd = Number(openingBalanceUsd ?? 0);
   if (!Number.isFinite(usd) || usd < 0) {
-    return 'Ingrese un fondo inicial válido en USD (mayor o igual a cero).';
+    return `Ingrese un fondo inicial válido en ${usdCurrencyLabel} (mayor o igual a cero).`;
   }
 
   const rate = Number(currentExchangeRate);
@@ -150,20 +189,25 @@ export function buildCashDrawerOpenPayload({
  * Validación del cierre de sesión (S2): el conteo Bs.S es obligatorio (>= 0) y el USD, cuando se
  * informa, también debe ser >= 0. Vacío es válido (el contrato conserva el comportamiento previo).
  */
-export function validateCashDrawerCloseDraft({ actualClosingBalanceLocal, actualClosingBalanceUsd } = {}) {
+export function validateCashDrawerCloseDraft({
+  actualClosingBalanceLocal,
+  actualClosingBalanceUsd,
+  localCurrencyLabel = 'Bs.S',
+  usdCurrencyLabel = 'USD',
+} = {}) {
   if (isBlank(actualClosingBalanceLocal)) {
-    return 'Ingrese un conteo válido de efectivo Bs.S (mayor o igual a cero).';
+    return `Ingrese un conteo válido de efectivo ${localCurrencyLabel} (mayor o igual a cero).`;
   }
 
   const local = Number(actualClosingBalanceLocal);
   if (!Number.isFinite(local) || local < 0) {
-    return 'Ingrese un conteo válido de efectivo Bs.S (mayor o igual a cero).';
+    return `Ingrese un conteo válido de efectivo ${localCurrencyLabel} (mayor o igual a cero).`;
   }
 
   if (!isBlank(actualClosingBalanceUsd)) {
     const usd = Number(actualClosingBalanceUsd);
     if (!Number.isFinite(usd) || usd < 0) {
-      return 'Ingrese un conteo válido de efectivo USD (mayor o igual a cero) o déjelo vacío.';
+      return `Ingrese un conteo válido de efectivo ${usdCurrencyLabel} (mayor o igual a cero) o déjelo vacío.`;
     }
   }
 
