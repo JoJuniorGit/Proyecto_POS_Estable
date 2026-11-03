@@ -26,9 +26,26 @@ import {
   creditSaleReceiptFileName,
   saveReceiptBlob,
 } from '../components/credit/receipts';
-import { formatNumberEs, formatUSD } from '../utils/formatters';
+import { formatNumberEs } from '../utils/formatters';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../components/register/registerFormLogic';
 import { AlertTriangle, CheckCircle2, Download, HandCoins, Loader2, RefreshCw, Search, Trash2, Undo2, Wallet } from 'lucide-react';
 import '../components/credit/credit.css';
+
+/**
+ * 8.211-T4b2b2b (S9): etiquetas del perfil monetario activo para cartera CxC. La deuda se
+ * denomina en la primaria; las columnas locales y la tasa sólo se muestran en `Dual`.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ */
+export function resolveCreditReceivablesCurrencyLabels(profile) {
+  const local = resolveLocalCurrencyProfile(profile);
+  return {
+    isDual: local.isDual,
+    primaryLabel: displayCurrencyCode(profile?.primaryCurrencyCode) || 'USD',
+    localLabel: local.label || 'Bs.S',
+  };
+}
 
 /**
  * 8.187-T5 (Paso 11/12, F4, S3/S5/S7): página de Cuentas por Cobrar del POS web (molde
@@ -46,6 +63,8 @@ export default function CreditReceivablesPage() {
 
 function CreditReceivablesPageContent() {
   const { user } = useAuth();
+  const { profile: monetaryProfile, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const { isDual, primaryLabel, localLabel } = resolveCreditReceivablesCurrencyLabels(monetaryProfile);
   const normalizedRole = normalizeRole(user?.role);
   const isElevated = normalizedRole === 'Admin' || normalizedRole === 'Manager';
 
@@ -112,8 +131,10 @@ function CreditReceivablesPageContent() {
     await loadList();
     setActionError(null);
     setSuccessMessage({
-      text: `Abono registrado (comprobante N° ${result?.paymentId ?? '—'}): ${formatUSD(result?.amountUSD || 0)} `
-        + `(Bs.S ${formatNumberEs(result?.amountBsS || 0)} a la tasa ${formatNumberEs(result?.paymentRate || 0)})`
+      text: `Abono registrado (comprobante N° ${result?.paymentId ?? '—'}): ${formatPrimary(result?.amountUSD || 0)} `
+        + (isDual
+          ? `(${formatSecondary(result?.amountBsS || 0)} a la tasa ${formatNumberEs(result?.paymentRate || 0)}) `
+          : '')
         + (result?.isReplay ? ' — replay idempotente sin nuevos movimientos.' : '.'),
       paymentId: result?.paymentId ?? null,
     });
@@ -125,8 +146,10 @@ function CreditReceivablesPageContent() {
     setActionError(null);
     setSuccessMessage({
       text: Number(result?.refundedUSD) > 0
-        ? `Devolución registrada. La caja reembolsó ${formatUSD(result.refundedUSD)} (Bs.S ${formatNumberEs(result.refundedBsS || 0)}). Saldo pendiente: ${formatUSD(result.balanceAfterUSD || 0)}.`
-        : `Devolución registrada. Saldo pendiente actualizado: ${formatUSD(result?.balanceAfterUSD || 0)}.`,
+        ? `Devolución registrada. La caja reembolsó ${formatPrimary(result.refundedUSD)}`
+          + (isDual ? ` (${formatSecondary(result.refundedBsS || 0)})` : '')
+          + `. Saldo pendiente: ${formatPrimary(result.balanceAfterUSD || 0)}.`
+        : `Devolución registrada. Saldo pendiente actualizado: ${formatPrimary(result?.balanceAfterUSD || 0)}.`,
       paymentId: null,
     });
   };
@@ -200,7 +223,7 @@ function CreditReceivablesPageContent() {
             <HandCoins className="color-primary" size={26} /> Cuentas por Cobrar (CxC)
           </h1>
           <p className="pending-orders-desc">
-            Cartera de ventas a crédito con deuda indexada en USD: abonos FIFO o por factura, anulación sin pagos, devoluciones con reembolso y comprobantes.
+            Cartera de ventas a crédito con deuda denominada en {primaryLabel}: abonos FIFO o por factura, anulación sin pagos, devoluciones con reembolso y comprobantes.
           </p>
         </div>
 
@@ -213,21 +236,23 @@ function CreditReceivablesPageContent() {
       <div className="credit-metrics">
         <div className="credit-metric-card">
           <span className="credit-metric-label">Cartera abierta</span>
-          <span className="credit-metric-value">{formatUSD(totals.totalOpenUSD)}</span>
+          <span className="credit-metric-value">{formatPrimary(totals.totalOpenUSD)}</span>
           <span className="credit-metric-sub">{totals.openCount} {totals.openCount === 1 ? 'obligación' : 'obligaciones'} abiertas</span>
         </div>
         <div className={`credit-metric-card${overdueAlert ? ' credit-metric-card--danger' : ''}`}>
           <span className="credit-metric-label">En mora (fuera de gracia)</span>
-          <span className="credit-metric-value">{formatUSD(totals.totalOverdueUSD)}</span>
+          <span className="credit-metric-value">{formatPrimary(totals.totalOverdueUSD)}</span>
           <span className="credit-metric-sub">
             {overdueAlert ? 'Alerta de mora en la cartera filtrada' : 'Sin obligaciones vencidas'}
           </span>
         </div>
-        <div className="credit-metric-card">
-          <span className="credit-metric-label">Tasa del día</span>
-          <span className="credit-metric-value">{formatNumberEs(totals.todayRate)}</span>
-          <span className="credit-metric-sub">Bs.S por USD (proyección de saldos)</span>
-        </div>
+        {isDual && (
+          <div className="credit-metric-card">
+            <span className="credit-metric-label">Tasa del día</span>
+            <span className="credit-metric-value">{formatSecondary(totals.todayRate)}</span>
+            <span className="credit-metric-sub">{localLabel} por {primaryLabel} (proyección de saldos)</span>
+          </div>
+        )}
       </div>
 
       {/* ── 3. Filtros server-side ── */}
@@ -323,8 +348,8 @@ function CreditReceivablesPageContent() {
                   <th>Factura</th>
                   <th>Emisión</th>
                   <th>Vencimiento</th>
-                  <th className="text-right">Saldo USD</th>
-                  <th className="text-right">Saldo hoy Bs.S</th>
+                  <th className="text-right">Saldo {primaryLabel}</th>
+                  {isDual && <th className="text-right">Saldo hoy {localLabel}</th>}
                   <th>Estado</th>
                   <th className="text-right">Acciones</th>
                 </tr>
@@ -342,8 +367,10 @@ function CreditReceivablesPageContent() {
                       {formatDateVe(row.dueDateUtc)}
                       {row.isOverdue && <span className="credit-overdue-badge">En mora</span>}
                     </td>
-                    <td className="text-right credit-amount">{formatUSD(row.balanceUSD)}</td>
-                    <td className="text-right credit-amount">{formatNumberEs(row.balanceTodayBsS || 0)}</td>
+                    <td className="text-right credit-amount">{formatPrimary(row.balanceUSD)}</td>
+                    {isDual && (
+                      <td className="text-right credit-amount">{formatSecondary(row.balanceTodayBsS || 0)}</td>
+                    )}
                     <td><span className={statusBadgeClass(row)}>{row.status}</span></td>
                     <td>
                       <div className="credit-row-actions">
@@ -360,7 +387,7 @@ function CreditReceivablesPageContent() {
                           type="button"
                           className="btn btn-outline"
                           onClick={() => setStatementRow(row)}
-                          title="Ver estado de cuenta dual del cliente"
+                          title="Ver estado de cuenta del cliente"
                         >
                           Estado de cuenta
                         </button>
@@ -416,13 +443,15 @@ function CreditReceivablesPageContent() {
                 </div>
                 <div className="credit-mobile-card-grid">
                   <div className="d-flex justify-between">
-                    <span className="text-muted">Saldo USD</span>
-                    <strong>{formatUSD(row.balanceUSD)}</strong>
+                    <span className="text-muted">Saldo {primaryLabel}</span>
+                    <strong>{formatPrimary(row.balanceUSD)}</strong>
                   </div>
-                  <div className="d-flex justify-between">
-                    <span className="text-muted">Saldo hoy Bs.S</span>
-                    <strong>{formatNumberEs(row.balanceTodayBsS || 0)}</strong>
-                  </div>
+                  {isDual && (
+                    <div className="d-flex justify-between">
+                      <span className="text-muted">Saldo hoy {localLabel}</span>
+                      <strong>{formatSecondary(row.balanceTodayBsS || 0)}</strong>
+                    </div>
+                  )}
                   <div className="d-flex justify-between">
                     <span className="text-muted">Vencimiento</span>
                     <span>{formatDateVe(row.dueDateUtc)}{row.isOverdue ? ' ⚠️' : ''}</span>

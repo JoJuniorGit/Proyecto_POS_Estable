@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Check, ShieldAlert, Timer, X } from 'lucide-react';
 import { registerOpenModal } from '../../utils/modalRegistry';
+import { getCachedMonetaryProfile } from '../../utils/formatters';
+import {
+  DEFAULT_MONETARY_PROFILE,
+  displayCurrencyCode,
+  normalizeMonetaryProfile,
+  symbolForCode,
+} from '../../utils/monetaryProfile';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { resolveLocalCurrencyProfile } from '../register/registerFormLogic';
 import { AUTHORIZATION_EVENT_NAMES, authorizationHub } from '../../services/authorizationHub.js';
 import { getRemainingSeconds } from '../../services/authorizationFlow.js';
 import { getPettyCashCategoryLabel } from '../../services/pettyCashApi.js';
@@ -54,20 +63,43 @@ function buildAuthorizationActionLabel(actionType) {
   return AUTHORIZATION_ACTION_LABELS[actionType] ?? actionType;
 }
 
-export function buildAuthorizationDetail(context) {
+/**
+ * 8.211-T4b2b2b (S9): etiquetas/códigos del perfil activo para el contexto de autorización.
+ * Los valores del contexto (`customUnitPriceUsd`, `amountBsS`, etc.) no se reinterpretan: sólo
+ * cambia su presentación. Sin perfil se conserva el default Dual USD/VES.
+ * @param {object} [profile]
+ */
+export function resolveAuthorizationCurrencyLabels(profile) {
+  const normalized = normalizeMonetaryProfile(
+    profile ?? getCachedMonetaryProfile() ?? DEFAULT_MONETARY_PROFILE
+  );
+  const local = resolveLocalCurrencyProfile(normalized);
+  const primaryLabel = displayCurrencyCode(normalized.primaryCurrencyCode) || 'USD';
+
+  return {
+    isDual: local.isDual,
+    primaryLabel,
+    primarySymbol: symbolForCode(normalized, normalized.primaryCurrencyCode) || '$',
+    localLabel: local.label || 'Bs.S',
+    localSymbol: local.symbol || local.label || 'Bs.S',
+  };
+}
+
+export function buildAuthorizationDetail(context, profile) {
   if (!context || typeof context !== 'object') return '';
 
-  const parts = [];
-  if (context.productName) {
+  const labels = resolveAuthorizationCurrencyLabels(profile);
+  const parts = [];  if (context.productName) {
     parts.push(context.quantity != null
       ? `Producto: ${context.productName} × ${context.quantity}`
       : `Producto: ${context.productName}`);
   }
+  // En `Single` la primaria es la única moneda: la línea local duplicada no se muestra.
   if (context.customUnitPriceUsd != null) {
-    parts.push(`Precio USD: $ ${Number(context.customUnitPriceUsd).toFixed(2)}`);
+    parts.push(`Precio ${labels.primaryLabel}: ${labels.primarySymbol} ${Number(context.customUnitPriceUsd).toFixed(2)}`);
   }
-  if (context.customUnitPriceLocal != null) {
-    parts.push(`Precio Bs.S: ${Number(context.customUnitPriceLocal).toFixed(2)}`);
+  if (labels.isDual && context.customUnitPriceLocal != null) {
+    parts.push(`Precio ${labels.localLabel}: ${labels.localSymbol} ${Number(context.customUnitPriceLocal).toFixed(2)}`);
   }
 
   // Residual 3 (8.188): el contexto de caja chica del push lleva sesión, categoría y montos
@@ -78,21 +110,32 @@ export function buildAuthorizationDetail(context) {
       parts.push(getPettyCashCategoryLabel(context.category));
     }
     const amounts = [];
-    if (context.amountBsS != null) amounts.push(`Bs.S ${Number(context.amountBsS).toFixed(2)}`);
-    if (context.amountUsd != null) amounts.push(`$ ${Number(context.amountUsd).toFixed(2)}`);
+    if (labels.isDual) {
+      if (context.amountBsS != null) amounts.push(`${labels.localSymbol} ${Number(context.amountBsS).toFixed(2)}`);
+      if (context.amountUsd != null) amounts.push(`${labels.primarySymbol} ${Number(context.amountUsd).toFixed(2)}`);
+    } else {
+      // Single: ambos campos representan el mismo monto local/primario; se muestra una sola
+      // línea, prefiriendo el valor no nulo/no cero por si el payload legacy trae solo uno.
+      const candidates = [context.amountBsS, context.amountUsd];
+      const primaryAmount = candidates.find((value) => value != null && Number(value) !== 0)
+        ?? candidates.find((value) => value != null);
+      if (primaryAmount != null) {
+        amounts.push(`${labels.primarySymbol} ${Number(primaryAmount).toFixed(2)}`);
+      }
+    }
     if (amounts.length > 0) parts.push(amounts.join(' / '));
   }
 
   return parts.join('. ');
 }
 
-export function buildAuthorizationNotificationMessage(request) {
+export function buildAuthorizationNotificationMessage(request, profile) {
   const cashier = request?.requestedByName;
   const subject = cashier ? `El cajero ${cashier}` : 'Un cajero';
   const action = buildAuthorizationActionLabel(request?.actionType);
   const saleClause = request?.saleId != null ? ` en la Factura #${request.saleId}` : '';
   const base = `${subject} solicita autorización para ${action}${saleClause}.`;
-  const detail = buildAuthorizationDetail(request?.context);
+  const detail = buildAuthorizationDetail(request?.context, profile);
   return detail ? `${base} ${detail}` : base;
 }
 
@@ -101,7 +144,7 @@ export function buildAlreadyResolvedMessage(resolverName) {
 }
 
 // 8.150 (T8): reducer puro de la cola; cada evento del hub conserva las solicitudes restantes.
-export function enqueueAuthorizationNotification(queue, payload) {
+export function enqueueAuthorizationNotification(queue, payload, profile) {
   if (!payload || payload.requestId == null) return queue;
   if (queue.some((item) => item.requestId === payload.requestId)) return queue;
 
@@ -114,7 +157,7 @@ export function enqueueAuthorizationNotification(queue, payload) {
     context: payload.context ?? null,
     createdAt: payload.createdAt ?? null,
     expiresAt: payload.expiresAt ?? null,
-    message: buildAuthorizationNotificationMessage(payload),
+    message: buildAuthorizationNotificationMessage(payload, profile),
   }];
 }
 
@@ -320,6 +363,7 @@ export function AuthorizationNotificationModal({
  * `onOpenChange` expone el gating de hotkeys al contenedor App (precedente del modal de espera).
  */
 export default function AuthorizationNotifications({ onOpenChange = null }) {
+  const { profile: monetaryProfile } = useMonetaryProfile();
   const [queue, setQueue] = useState([]);
   const [notice, setNotice] = useState(null);
   const [resolveError, setResolveError] = useState(null);
@@ -337,8 +381,8 @@ export default function AuthorizationNotifications({ onOpenChange = null }) {
   }, []);
 
   const handleRequested = useCallback((payload) => {
-    commitQueue((current) => enqueueAuthorizationNotification(current, payload));
-  }, [commitQueue]);
+    commitQueue((current) => enqueueAuthorizationNotification(current, payload, monetaryProfile));
+  }, [commitQueue, monetaryProfile]);
 
   const handleResolved = useCallback((payload) => {
     const requestId = payload?.requestId;
@@ -464,12 +508,17 @@ export default function AuthorizationNotifications({ onOpenChange = null }) {
 
   const head = queue.length > 0 ? queue[0] : null;
   const remainingSeconds = head ? getRemainingSeconds(head.expiresAt, now) : 0;
+  // El mensaje se deriva del perfil activo para que un cambio de símbolos/modo se refleje sin
+  // reconstruir la cola ni alterar el payload original.
+  const headForDisplay = head
+    ? { ...head, message: buildAuthorizationNotificationMessage(head, monetaryProfile) }
+    : null;
 
   return (
     <>
       <AuthorizationNotificationNotice notice={notice} onDismiss={() => setNotice(null)} />
       <AuthorizationNotificationModal
-        notification={head}
+        notification={headForDisplay}
         queuedCount={queue.length}
         remainingSeconds={remainingSeconds}
         isSubmitting={isSubmitting}

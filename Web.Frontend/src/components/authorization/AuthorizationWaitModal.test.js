@@ -1,9 +1,46 @@
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import AuthorizationWaitModal from './AuthorizationWaitModal.jsx';
 import { AUTHORIZATION_STRINGS } from '../../services/authorizationFlow.js';
+
+const storage = new Map();
+const localStorageMock = {
+  getItem: (key) => (storage.has(key) ? storage.get(key) : null),
+  setItem: (key, value) => storage.set(key, String(value)),
+  removeItem: (key) => storage.delete(key),
+  clear: () => storage.clear(),
+};
+
+globalThis.localStorage = localStorageMock;
+globalThis.window = { localStorage: localStorageMock };
+
+const DUAL_USD_COP = {
+  mode: 'Dual',
+  primaryCurrencyCode: 'USD',
+  primaryCurrencySymbol: '$',
+  secondaryCurrencyCode: 'COP',
+  secondaryCurrencySymbol: 'COP',
+  isConfigured: true,
+};
+
+const SINGLE_COP = {
+  mode: 'Single',
+  primaryCurrencyCode: 'COP',
+  primaryCurrencySymbol: 'COP',
+  secondaryCurrencyCode: null,
+  secondaryCurrencySymbol: null,
+  isConfigured: true,
+};
+
+function useProfile(profile) {
+  storage.set('monetary_profile_client', JSON.stringify(profile));
+}
+
+function visibleText(html) {
+  return html.replace(/<!--[\s\S]*?-->/g, '');
+}
 
 const CONTEXT = {
   saleId: 445,
@@ -15,7 +52,7 @@ const CONTEXT = {
 };
 
 function render(overrides = {}) {
-  return renderToString(React.createElement(AuthorizationWaitModal, {
+  return visibleText(renderToString(React.createElement(AuthorizationWaitModal, {
     isOpen: true,
     phase: 'waiting',
     context: CONTEXT,
@@ -27,7 +64,7 @@ function render(overrides = {}) {
     onRetry: () => {},
     onRetryExecution: () => {},
     ...overrides,
-  }));
+  })));
 }
 
 describe('AuthorizationWaitModal (structural, SSR)', () => {
@@ -121,5 +158,48 @@ describe('AuthorizationWaitModal (structural, SSR)', () => {
 
     assert.match(html, /00:00/);
     assert.ok(!html.includes('00:01'), 'fractional seconds must floor, never ceil');
+  });
+});
+
+describe('AuthorizationWaitModal — profile-aware context labels (8.211-T4b2b2b)', () => {
+  beforeEach(() => storage.clear());
+
+  const CONTEXT_WITH_CURRENCIES = {
+    saleId: 445,
+    productName: 'Café molido',
+    quantity: 2,
+    customUnitPriceUsd: 1.5,
+    customUnitPriceLocal: 6000,
+    pettyCashSessionId: 42,
+    pettyCashCategory: 2,
+    pettyCashAmountBsS: 1825,
+    pettyCashAmountUsd: 50,
+  };
+
+  it('8. shows the primary and local labels for a Dual USD/COP profile', () => {
+    useProfile(DUAL_USD_COP);
+    const html = render({ context: CONTEXT_WITH_CURRENCIES });
+
+    assert.match(html, /Precio USD/);
+    assert.match(html, /Precio COP/);
+    assert.match(html, /\$ 1\.50/);
+    assert.match(html, /COP 6000\.00/);
+    assert.match(html, /Monto COP/);
+    assert.match(html, /COP 1825\.00/);
+    assert.match(html, /Monto USD/);
+    assert.match(html, /\$ 50\.00/);
+  });
+
+  it('9. hides the duplicated USD lines for a Single COP profile', () => {
+    useProfile(SINGLE_COP);
+    const html = render({ context: CONTEXT_WITH_CURRENCIES });
+
+    assert.match(html, /Precio COP/);
+    assert.match(html, /COP 1\.50/);
+    assert.match(html, /Monto COP/);
+    assert.match(html, /COP 1825\.00/);
+    assert.doesNotMatch(html, /Precio USD/);
+    assert.doesNotMatch(html, /Monto USD/);
+    assert.doesNotMatch(html, /\$ /);
   });
 });

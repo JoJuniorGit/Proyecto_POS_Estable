@@ -1,14 +1,54 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { api } from '../services/api';
 import { getCategories, toCategoryOptions } from '../services/categoriesApi';
 import { Package, Search, Loader2, RefreshCw, Tag, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { formatBsS, formatUSD, resolveBsSPrice, resolveEffectiveBsS, shouldRefetchOnRateChange } from '../utils/formatters';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import {
+  MONETARY_MODE_DUAL,
+  displayCurrencyCode,
+  normalizeCurrencyCode,
+  normalizeMonetaryProfile,
+} from '../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../components/register/registerFormLogic';
+import { resolveBsSPrice, resolveEffectiveBsS, shouldRefetchOnRateChange } from '../utils/formatters';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import useDebounce from '../hooks/useDebounce';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
 import './CatalogPage.css';
+
+/**
+ * 8.211-T4b2b2b (S9): opciones del filtro de moneda del catálogo. En `Dual` se ofrecen primaria y
+ * secundaria; en `Single` sólo la primaria. El valor interno es el código ISO canónico.
+ * @param {object} [profile]
+ */
+export function buildCatalogCurrencyOptions(profile) {
+  const normalized = normalizeMonetaryProfile(profile);
+  const options = [{
+    value: normalizeCurrencyCode(normalized.primaryCurrencyCode),
+    label: displayCurrencyCode(normalized.primaryCurrencyCode),
+  }];
+
+  if (normalized.mode === MONETARY_MODE_DUAL) {
+    options.push({
+      value: normalizeCurrencyCode(normalized.secondaryCurrencyCode),
+      label: displayCurrencyCode(normalized.secondaryCurrencyCode),
+    });
+  }
+
+  return options;
+}
+
+/**
+ * Moneda local del perfil: secundaria en `Dual`, primaria en `Single`.
+ * @param {object} [profile]
+ */
+export function resolveCatalogCurrencySelection(profile) {
+  const normalized = normalizeMonetaryProfile(profile);
+  const local = resolveLocalCurrencyProfile(normalized);
+  return local.code || normalizeCurrencyCode(normalized.primaryCurrencyCode) || 'USD';
+}
 
 /**
  * 8.179-T3 (S4): URL del fetch paginado del catálogo. `categoryId` viaja sólo cuando hay
@@ -66,14 +106,24 @@ export default function CatalogPage() {
 
 function CatalogPageContent() {
   const { exchangeRate } = useExchangeRate();
+  const monetary = useMonetaryProfile();
   const isMobile = useMediaQuery('(max-width: 640px)');
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
-  
-  // Filtro de Moneda: "Bs.S" por defecto al entrar al catálogo
-  const [currency, setCurrency] = useState('Bs.S');
+
+  const currencyOptions = useMemo(
+    () => buildCatalogCurrencyOptions(monetary.profile),
+    [monetary.profile]
+  );
+  const defaultCurrency = useMemo(
+    () => resolveCatalogCurrencySelection(monetary.profile),
+    [monetary.profile]
+  );
+
+  // Filtro de Moneda: arranca en la moneda local del perfil (Bs.S/COP en Dual, primaria en Single).
+  const [currency, setCurrency] = useState(defaultCurrency);
 
   // Botón desactivado por defecto al entrar al catálogo
   const [showWholesale, setShowWholesale] = useState(false);
@@ -97,6 +147,18 @@ function CatalogPageContent() {
   const [categories, setCategories] = useState([]);
   const [categoryId, setCategoryId] = useState('');
   const categoryOptions = toCategoryOptions(categories);
+
+  const primaryCurrency = normalizeCurrencyCode(monetary.primaryCurrencyCode);
+  const activeCurrencyLabel = currencyOptions.find((option) => option.value === currency)?.label
+    || displayCurrencyCode(currency);
+  const isPrimaryCurrency = currency === primaryCurrency;
+
+  // Un cambio de perfil (p. ej. Dual USD/VES → Single COP) invalida la selección anterior.
+  useEffect(() => {
+    if (!currencyOptions.some((option) => option.value === currency)) {
+      setCurrency(defaultCurrency);
+    }
+  }, [currency, currencyOptions, defaultCurrency]);
 
   // 8.186-T2 (S1): la proyección del efectivo es server-side con la tasa vigente; cuando la tasa
   // cambia (SignalR) el catálogo refetchea para reproyectar. La transición inicial 0 → tasa no
@@ -264,7 +326,7 @@ function CatalogPageContent() {
             </select>
           </div>
 
-          {/* ── 1. Selector Desplegable de Moneda (Bs.S por defecto) ── */}
+          {/* ── 1. Selector Desplegable de Moneda (moneda local del perfil por defecto) ── */}
           <div className="flex-align-center cat-gap-6">
             <span className="text-xs text-muted font-medium text-nowrap">Moneda:</span>
             <select
@@ -272,8 +334,9 @@ function CatalogPageContent() {
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
             >
-              <option value="Bs.S">Bs.S</option>
-              <option value="USD">USD ($)</option>
+              {currencyOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
           </div>
 
@@ -368,7 +431,7 @@ function CatalogPageContent() {
                     title="Ordenar por precio al detal"
                   >
                     <div className="d-inline-flex align-center justify-end gap-1">
-                      Precio Detal ({currency}) {renderSortIcon('price')}
+                      Precio Detal ({activeCurrencyLabel}) {renderSortIcon('price')}
                     </div>
                   </th>
                   
@@ -376,7 +439,7 @@ function CatalogPageContent() {
                   {showWholesale && (
                     <>
                       <th className="cat-th-wholesale-price">
-                        Precio Mayor ({currency})
+                        Precio Mayor ({activeCurrencyLabel})
                       </th>
                       <th className="cat-th-wholesale-min">
                         Cant. Mín. Mayor
@@ -416,8 +479,8 @@ function CatalogPageContent() {
                   const isIndepParent = p.isGroupHeader && p.hasIndependentPricing;
 
                   // Formato según Moneda seleccionada
-                  const displayRetail = isIndepParent ? '—' : (currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS));
-                  const displayWholesale = isIndepParent ? '—' : (currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS));
+                  const displayRetail = isIndepParent ? '—' : (isPrimaryCurrency ? monetary.formatPrimary(retailUSD) : monetary.formatSecondary(retailBsS));
+                  const displayWholesale = isIndepParent ? '—' : (isPrimaryCurrency ? monetary.formatPrimary(wholesaleUSD) : monetary.formatSecondary(wholesaleBsS));
 
                   return (
                     <tr key={p.id} className="cat-td-row">
@@ -514,8 +577,8 @@ function CatalogPageContent() {
               const stockQty = p.isGroupHeader ? (p.consolidatedStock ?? 0) : (p.stockQuantity ?? p.stock ?? 0);
               const unitStr = p.unitOfMeasureStr || (p.unitOfMeasure !== undefined && p.unitOfMeasure !== 0 ? p.unitOfMeasure : 'Und');
 
-              const displayRetail = currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS);
-              const displayWholesale = currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS);
+              const displayRetail = isPrimaryCurrency ? monetary.formatPrimary(retailUSD) : monetary.formatSecondary(retailBsS);
+              const displayWholesale = isPrimaryCurrency ? monetary.formatPrimary(wholesaleUSD) : monetary.formatSecondary(wholesaleBsS);
 
               return (
                 <div key={p.id} className="catalog-mobile-card">
@@ -562,7 +625,7 @@ function CatalogPageContent() {
                   {/* Renglón 3: PRECIO DETAL en Moneda seleccionada */}
                   <div className="catalog-mobile-card-prices">
                     <div className="d-flex flex-column">
-                      <span className="text-xs text-muted">Precio Detal ({currency})</span>
+                      <span className="text-xs text-muted">Precio Detal ({activeCurrencyLabel})</span>
                       <span className="font-bold font-mono text-nowrap text-base">
                         {displayRetail}
                       </span>
@@ -582,7 +645,7 @@ function CatalogPageContent() {
                       <div className="d-flex justify-between align-center">
                         <div>
                           <div className="text-xs text-muted">
-                            Precio al Mayor ({currency})
+                            Precio al Mayor ({activeCurrencyLabel})
                             {!hasRealWholesale && <span className="cat-no-discount-note">(Sin Descuento)</span>}
                           </div>
                           <div className="font-bold font-mono text-nowrap cat-wholesale-num" style={{ color: wholesaleColor }}>

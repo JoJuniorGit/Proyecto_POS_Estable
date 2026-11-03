@@ -10,17 +10,36 @@ import {
   receivableBsSProyeccion,
   validateCreditPaymentInput,
 } from './creditLogic';
-import { formatBsS, formatUSD } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../register/registerFormLogic';
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 
 /**
- * 8.187-T5 (S3/S6): modal de abono CxC del POS web. El operador captura el monto en USD (la
- * deuda está denominada en USD) y ve la equivalencia informativa en Bs.S a la tasa del día; el
- * servidor congela la tasa del cobro y calcula el FX realizado. La imputación es FIFO de cartera
- * por defecto o explícita por factura. Solo el efectivo ingresa a la gaveta (lo resuelve el server).
+ * 8.211-T4b2b2b (S9): etiquetas del perfil monetario activo para el abono CxC. La deuda se
+ * denomina en la primaria; la proyección local sólo se muestra en `Dual`.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ */
+export function resolveCreditPaymentCurrencyLabels(profile) {
+  const local = resolveLocalCurrencyProfile(profile);
+  return {
+    isDual: local.isDual,
+    primaryLabel: displayCurrencyCode(profile?.primaryCurrencyCode) || 'USD',
+    localLabel: local.label || 'Bs.S',
+  };
+}
+
+/**
+ * 8.187-T5 (S3/S6): modal de abono CxC del POS web. El operador captura el monto en la moneda
+ * primaria del perfil (la deuda está denominada en ella) y, en `Dual`, ve la equivalencia
+ * informativa en la moneda local a la tasa del día; el servidor congela la tasa del cobro y
+ * calcula el FX realizado. La imputación es FIFO de cartera por defecto o explícita por factura.
+ * Solo el efectivo ingresa a la gaveta (lo resuelve el server).
  */
 export default function CreditPaymentModal({ isOpen, onClose, customerId, customerName, todayRate = 0, onSuccess }) {
   const uid = useId();
+  const { profile: monetaryProfile, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const { isDual, primaryLabel, localLabel } = resolveCreditPaymentCurrencyLabels(monetaryProfile);
   const [invoices, setInvoices] = useState([]);
   const [methods, setMethods] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -131,8 +150,10 @@ export default function CreditPaymentModal({ isOpen, onClose, customerId, custom
       <div className="credit-modal-section">
         <p className="text-muted mb-2">
           Cliente: <strong>{customerName || 'Cliente'}</strong> · Saldo pendiente:{' '}
-          <strong>{formatUSD(totalOpenUSD)}</strong>
-          {todayRate > 0 && <span className="text-muted"> (Tasa del día: {formatBsS(todayRate)})</span>}
+          <strong>{formatPrimary(totalOpenUSD)}</strong>
+          {isDual && todayRate > 0 && (
+            <span className="text-muted"> (Tasa del día: {formatSecondary(todayRate)})</span>
+          )}
         </p>
       </div>
 
@@ -156,7 +177,7 @@ export default function CreditPaymentModal({ isOpen, onClose, customerId, custom
       ) : (
         <>
           <div className="credit-modal-section form-group">
-            <label htmlFor={`${uid}-amount`}>Monto del abono (USD)</label>
+            <label htmlFor={`${uid}-amount`}>Monto del abono ({primaryLabel})</label>
             <input
               id={`${uid}-amount`}
               type="text"
@@ -174,13 +195,15 @@ export default function CreditPaymentModal({ isOpen, onClose, customerId, custom
           </div>
 
           <div className="credit-amount-preview credit-modal-section">
-            <div className="credit-amount-preview-row">
-              <span>Equivalente Bs.S (tasa del día, informativo):</span>
-              <strong>{formatBsS(receivableBsSProyeccion(amountUSD, todayRate))}</strong>
-            </div>
+            {isDual && (
+              <div className="credit-amount-preview-row">
+                <span>Equivalente {localLabel} (tasa del día, informativo):</span>
+                <strong>{formatSecondary(receivableBsSProyeccion(amountUSD, todayRate))}</strong>
+              </div>
+            )}
             <div className="credit-amount-preview-row">
               <span>Saldo resultante del cliente:</span>
-              <strong>{formatUSD(creditPaymentRemaining(totalOpenUSD, amountUSD))}</strong>
+              <strong>{formatPrimary(creditPaymentRemaining(totalOpenUSD, amountUSD))}</strong>
             </div>
           </div>
 
@@ -270,7 +293,7 @@ export default function CreditPaymentModal({ isOpen, onClose, customerId, custom
                             {invoice.invoiceNumber ? `F${String(invoice.invoiceNumber).padStart(5, '0')}` : `V${invoice.saleId}`}
                             {' '}· Vence: {formatDateVe(invoice.dueDateUtc)}
                           </span>
-                          <span>{formatUSD(invoice.balanceUSD)}</span>
+                          <span>{formatPrimary(invoice.balanceUSD)}</span>
                         </span>
                       </label>
                     );
@@ -278,7 +301,7 @@ export default function CreditPaymentModal({ isOpen, onClose, customerId, custom
                 </div>
               )}
               <p className="text-muted mt-1 credit-profile-readonly-note">
-                Seleccionadas: {formatUSD(selectedTotalUSD)}
+                Seleccionadas: {formatPrimary(selectedTotalUSD)}
               </p>
             </div>
           )}

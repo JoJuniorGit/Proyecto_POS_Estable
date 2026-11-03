@@ -19,6 +19,12 @@ globalThis.sessionStorage = {
   clear: () => {},
 };
 
+// React inserta marcadores de comentario entre nodos de texto; las aserciones de etiquetas
+// deben evaluar el texto visible.
+function visibleText(html) {
+  return html.replace(/<!--[\s\S]*?-->/g, '');
+}
+
 describe('crédito CxC — montaje real de componentes', () => {
   it('1. renders the credit profile panel for a selected customer', () => {
     let html = '';
@@ -49,7 +55,7 @@ describe('crédito CxC — montaje real de componentes', () => {
     });
 
     assert.match(html, /Registrar Abono CxC/);
-    assert.match(html, /Monto del abono \(USD\)/);
+    assert.match(visibleText(html), /Monto del abono \(USD\)/);
     assert.match(html, /FIFO \(más antigua primero\)/);
   });
 

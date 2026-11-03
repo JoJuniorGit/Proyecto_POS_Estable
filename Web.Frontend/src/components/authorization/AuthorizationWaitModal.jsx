@@ -1,6 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Lock, ShieldAlert, Timer, User } from 'lucide-react';
 import { registerOpenModal } from '../../utils/modalRegistry';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../register/registerFormLogic';
 import { AUTHORIZATION_PHASES, AUTHORIZATION_STRINGS } from '../../services/authorizationFlow.js';
 import { getPettyCashCategoryLabel } from '../../services/pettyCashApi.js';
 import './AuthorizationWaitModal.css';
@@ -35,6 +38,11 @@ export default function AuthorizationWaitModal({
 }) {
   const modalRef = useRef(null);
   const titleId = useId();
+  const { profile: monetaryProfile, primaryCurrencySymbol } = useMonetaryProfile();
+  const local = resolveLocalCurrencyProfile(monetaryProfile);
+  const primaryLabel = displayCurrencyCode(monetaryProfile.primaryCurrencyCode) || 'USD';
+  const localLabel = local.label || 'Bs.S';
+  const localSymbol = local.symbol || localLabel;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
@@ -128,14 +136,14 @@ export default function AuthorizationWaitModal({
             )}
             {context.customUnitPriceUsd != null && (
               <div className="awm-context-row">
-                <span className="awm-context-label">Precio USD</span>
-                <span className="awm-context-value">{`$ ${Number(context.customUnitPriceUsd).toFixed(2)}`}</span>
+                <span className="awm-context-label">Precio {primaryLabel}</span>
+                <span className="awm-context-value">{`${primaryCurrencySymbol} ${Number(context.customUnitPriceUsd).toFixed(2)}`}</span>
               </div>
             )}
-            {context.customUnitPriceLocal != null && (
+            {local.isDual && context.customUnitPriceLocal != null && (
               <div className="awm-context-row">
-                <span className="awm-context-label">Precio Bs.S</span>
-                <span className="awm-context-value">{`Bs.S ${Number(context.customUnitPriceLocal).toFixed(2)}`}</span>
+                <span className="awm-context-label">Precio {localLabel}</span>
+                <span className="awm-context-value">{`${localSymbol} ${Number(context.customUnitPriceLocal).toFixed(2)}`}</span>
               </div>
             )}
             {context.pettyCashSessionId != null && (
@@ -150,16 +158,28 @@ export default function AuthorizationWaitModal({
                 <span className="awm-context-value">{getPettyCashCategoryLabel(context.pettyCashCategory)}</span>
               </div>
             )}
-            {context.pettyCashAmountBsS != null && (
+            {local.isDual && context.pettyCashAmountBsS != null && (
               <div className="awm-context-row">
-                <span className="awm-context-label">Monto Bs.S</span>
-                <span className="awm-context-value">{`Bs.S ${Number(context.pettyCashAmountBsS).toFixed(2)}`}</span>
+                <span className="awm-context-label">Monto {localLabel}</span>
+                <span className="awm-context-value">{`${localSymbol} ${Number(context.pettyCashAmountBsS).toFixed(2)}`}</span>
               </div>
             )}
-            {context.pettyCashAmountUsd != null && (
+            {local.isDual && context.pettyCashAmountUsd != null && (
               <div className="awm-context-row">
-                <span className="awm-context-label">Monto USD</span>
-                <span className="awm-context-value">{`$ ${Number(context.pettyCashAmountUsd).toFixed(2)}`}</span>
+                <span className="awm-context-label">Monto {primaryLabel}</span>
+                <span className="awm-context-value">{`${primaryCurrencySymbol} ${Number(context.pettyCashAmountUsd).toFixed(2)}`}</span>
+              </div>
+            )}
+            {!local.isDual && (context.pettyCashAmountBsS != null || context.pettyCashAmountUsd != null) && (
+              <div className="awm-context-row">
+                <span className="awm-context-label">Monto {localLabel}</span>
+                <span className="awm-context-value">
+                  {`${primaryCurrencySymbol} ${Number(
+                    Number(context.pettyCashAmountBsS) !== 0
+                      ? context.pettyCashAmountBsS
+                      : (context.pettyCashAmountUsd ?? context.pettyCashAmountBsS)
+                  ).toFixed(2)}`}
+                </span>
               </div>
             )}
           </div>

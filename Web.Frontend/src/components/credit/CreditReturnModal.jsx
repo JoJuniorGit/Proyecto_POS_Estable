@@ -3,8 +3,24 @@ import Modal from '../ui/Modal';
 import { getSale } from '../../services/salesApi';
 import { registerCreditReturn } from '../../services/creditApi';
 import { parseCreditAmount } from './creditLogic';
-import { formatNumberEs, formatUSD } from '../../utils/formatters';
+import { formatNumberEs } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../register/registerFormLogic';
 import { AlertCircle, Loader2, Undo2 } from 'lucide-react';
+
+/**
+ * 8.211-T4b2b2b (S9): etiquetas del perfil monetario activo para la devolución a crédito.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ */
+export function resolveCreditReturnCurrencyLabels(profile) {
+  const local = resolveLocalCurrencyProfile(profile);
+  return {
+    isDual: local.isDual,
+    primaryLabel: displayCurrencyCode(profile?.primaryCurrencyCode) || 'USD',
+    localLabel: local.label || 'Bs.S',
+  };
+}
 
 /**
  * 8.187-T5 (S5/S7): modal de devolución de una venta a crédito (solo Admin/Manager en la UI).
@@ -13,6 +29,8 @@ import { AlertCircle, Loader2, Undo2 } from 'lucide-react';
  */
 export default function CreditReturnModal({ isOpen, onClose, row, onSuccess }) {
   const uid = useId();
+  const { profile: monetaryProfile, formatPrimary } = useMonetaryProfile();
+  const { primaryLabel } = resolveCreditReturnCurrencyLabels(monetaryProfile);
   const [sale, setSale] = useState(null);
   const [quantities, setQuantities] = useState({});
   const [reason, setReason] = useState('');
@@ -124,7 +142,7 @@ export default function CreditReturnModal({ isOpen, onClose, row, onSuccess }) {
           <div className="credit-modal-section">
             <p className="text-muted">
               Factura: <strong>{row?.invoiceDisplay || `V${row?.saleId}`}</strong> · Cliente:{' '}
-              <strong>{row?.customerName || 'Cliente'}</strong> · Saldo vigente: <strong>{formatUSD(row?.balanceUSD || 0)}</strong>
+              <strong>{row?.customerName || 'Cliente'}</strong> · Saldo vigente: <strong>{formatPrimary(row?.balanceUSD || 0)}</strong>
             </p>
           </div>
 
@@ -136,7 +154,7 @@ export default function CreditReturnModal({ isOpen, onClose, row, onSuccess }) {
                   <tr>
                     <th>Producto</th>
                     <th className="text-right">Vendido</th>
-                    <th className="text-right">Precio USD</th>
+                    <th className="text-right">Precio {primaryLabel}</th>
                     <th>Cantidad a devolver</th>
                   </tr>
                 </thead>
@@ -145,7 +163,7 @@ export default function CreditReturnModal({ isOpen, onClose, row, onSuccess }) {
                     <tr key={item.id}>
                       <td>{item.productName}</td>
                       <td className="text-right credit-amount">{formatNumberEs(item.quantity, item.isFractional ? 3 : 0)}</td>
-                      <td className="text-right credit-amount">{formatUSD(item.unitPrice)}</td>
+                      <td className="text-right credit-amount">{formatPrimary(item.unitPrice)}</td>
                       <td>
                         <input
                           id={`${uid}-qty-${item.id}`}
@@ -172,8 +190,8 @@ export default function CreditReturnModal({ isOpen, onClose, row, onSuccess }) {
           <div className="credit-modal-section">
             <div className="credit-amount-preview">
               <div className="credit-amount-preview-row">
-                <span>Valor estimado a devolver (USD):</span>
-                <strong>{formatUSD(requestedUSD)}</strong>
+                <span>Valor estimado a devolver ({primaryLabel}):</span>
+                <strong>{formatPrimary(requestedUSD)}</strong>
               </div>
               <div className="credit-amount-preview-row text-muted">
                 <span>El valor exacto y el reembolso del excedente los calcula el servidor sobre la base efectiva; stock y cupo se restituyen en la misma operación.</span>

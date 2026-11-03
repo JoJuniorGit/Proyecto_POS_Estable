@@ -2,16 +2,35 @@ import { useCallback, useEffect, useState } from 'react';
 import Modal from '../ui/Modal';
 import { getCreditStatement } from '../../services/creditApi';
 import { creditStatusLabel, formatDateVe } from './creditLogic';
-import { formatNumberEs, formatUSD } from '../../utils/formatters';
+import { formatNumberEs } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../register/registerFormLogic';
 import { AlertCircle, Loader2 } from 'lucide-react';
 
 /**
- * 8.187-T5 (S3/S6): estado de cuenta dual del cliente en el POS web. La deuda permanece en USD;
- * el Bs.S es la proyección a la tasa del día que calcula el servidor (nunca revalúa el principal).
- * Muestra el perfil, la cartera completa (abiertas y cerradas) y el historial de abonos con el
- * diferencial cambiario realizado.
+ * 8.211-T4b2b2b (S9): etiquetas del perfil monetario activo para el estado de cuenta CxC. La
+ * deuda se denomina en la primaria; las columnas locales sólo se muestran en `Dual`.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ */
+export function resolveCreditStatementCurrencyLabels(profile) {
+  const local = resolveLocalCurrencyProfile(profile);
+  return {
+    isDual: local.isDual,
+    primaryLabel: displayCurrencyCode(profile?.primaryCurrencyCode) || 'USD',
+    localLabel: local.label || 'Bs.S',
+  };
+}
+
+/**
+ * 8.187-T5 (S3/S6): estado de cuenta del cliente en el POS web. La deuda permanece en la moneda
+ * primaria del perfil; en `Dual` la proyección local la calcula el servidor a la tasa del día
+ * (nunca revalúa el principal). Muestra el perfil, la cartera completa (abiertas y cerradas) y el
+ * historial de abonos con el diferencial cambiario realizado.
  */
 export default function CreditStatementModal({ isOpen, onClose, customerId, customerName }) {
+  const { profile: monetaryProfile, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const { isDual, primaryLabel, localLabel } = resolveCreditStatementCurrencyLabels(monetaryProfile);
   const [statement, setStatement] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -60,17 +79,21 @@ export default function CreditStatementModal({ isOpen, onClose, customerId, cust
         <>
           <div className="credit-modal-section credit-amount-preview">
             <div className="credit-amount-preview-row">
-              <span>Saldo deudor (USD):</span>
-              <strong>{formatUSD(profile?.currentDebtUSD || 0)}</strong>
+              <span>Saldo deudor ({primaryLabel}):</span>
+              <strong>{formatPrimary(profile?.currentDebtUSD || 0)}</strong>
             </div>
-            <div className="credit-amount-preview-row">
-              <span>Equivalente Bs.S a la tasa del día:</span>
-              <strong>Bs.S {formatNumberEs(statement.currentDebtTodayBsS || 0)}</strong>
-            </div>
-            <div className="credit-amount-preview-row">
-              <span>Tasa del día:</span>
-              <strong>{formatNumberEs(statement.todayRate || 0)} Bs.S / USD</strong>
-            </div>
+            {isDual && (
+              <>
+                <div className="credit-amount-preview-row">
+                  <span>Equivalente {localLabel} a la tasa del día:</span>
+                  <strong>{formatSecondary(statement.currentDebtTodayBsS || 0)}</strong>
+                </div>
+                <div className="credit-amount-preview-row">
+                  <span>Tasa del día:</span>
+                  <strong>{formatSecondary(statement.todayRate || 0)} / 1.00 {primaryLabel}</strong>
+                </div>
+              </>
+            )}
           </div>
 
           {profile && (
@@ -81,11 +104,11 @@ export default function CreditStatementModal({ isOpen, onClose, customerId, cust
               </div>
               <div className="credit-profile-stat">
                 <span className="credit-profile-stat-label">Cupo</span>
-                <span className="credit-profile-stat-value">{formatUSD(profile.creditLimitUSD)}</span>
+                <span className="credit-profile-stat-value">{formatPrimary(profile.creditLimitUSD)}</span>
               </div>
               <div className="credit-profile-stat">
                 <span className="credit-profile-stat-label">Disponible</span>
-                <span className="credit-profile-stat-value">{formatUSD(profile.availableCreditUSD)}</span>
+                <span className="credit-profile-stat-value">{formatPrimary(profile.availableCreditUSD)}</span>
               </div>
               <div className="credit-profile-stat">
                 <span className="credit-profile-stat-label">Utilización</span>
@@ -93,7 +116,7 @@ export default function CreditStatementModal({ isOpen, onClose, customerId, cust
               </div>
               <div className="credit-profile-stat">
                 <span className="credit-profile-stat-label">Mora</span>
-                <span className="credit-profile-stat-value">{formatUSD(profile.overdueUSD)} ({profile.overdueCount})</span>
+                <span className="credit-profile-stat-value">{formatPrimary(profile.overdueUSD)} ({profile.overdueCount})</span>
               </div>
             </div>
           )}
@@ -110,8 +133,8 @@ export default function CreditStatementModal({ isOpen, onClose, customerId, cust
                       <th>Factura</th>
                       <th>Emisión</th>
                       <th>Vencimiento</th>
-                      <th className="text-right">Saldo USD</th>
-                      <th className="text-right">Saldo hoy Bs.S</th>
+                      <th className="text-right">Saldo {primaryLabel}</th>
+                      {isDual && <th className="text-right">Saldo hoy {localLabel}</th>}
                       <th>Estado</th>
                     </tr>
                   </thead>
@@ -124,8 +147,10 @@ export default function CreditStatementModal({ isOpen, onClose, customerId, cust
                           {formatDateVe(item.dueDateUtc)}
                           {item.isOverdue && <span className="credit-overdue-badge">Vencida</span>}
                         </td>
-                        <td className="text-right credit-amount">{formatUSD(item.balanceUSD)}</td>
-                        <td className="text-right credit-amount">{formatNumberEs(item.balanceTodayBsS || 0)}</td>
+                        <td className="text-right credit-amount">{formatPrimary(item.balanceUSD)}</td>
+                        {isDual && (
+                          <td className="text-right credit-amount">{formatSecondary(item.balanceTodayBsS || 0)}</td>
+                        )}
                         <td><span className="credit-status-badge">{item.status}</span></td>
                       </tr>
                     ))}
@@ -146,10 +171,14 @@ export default function CreditStatementModal({ isOpen, onClose, customerId, cust
                     <tr>
                       <th>Fecha</th>
                       <th>Método</th>
-                      <th className="text-right">Monto USD</th>
-                      <th className="text-right">Bs.S cobrados</th>
-                      <th className="text-right">Tasa</th>
-                      <th className="text-right">Diferencial Bs.S</th>
+                      <th className="text-right">Monto {primaryLabel}</th>
+                      {isDual && (
+                        <>
+                          <th className="text-right">{localLabel} cobrados</th>
+                          <th className="text-right">Tasa</th>
+                          <th className="text-right">Diferencial {localLabel}</th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -160,10 +189,14 @@ export default function CreditStatementModal({ isOpen, onClose, customerId, cust
                           {payment.paymentMethodName || '—'}
                           {payment.referenceNumber && <span className="credit-customer-sub">Ref: {payment.referenceNumber}</span>}
                         </td>
-                        <td className="text-right credit-amount">{formatUSD(payment.amountUSD)}</td>
-                        <td className="text-right credit-amount">{formatNumberEs(payment.amountBsS || 0)}</td>
-                        <td className="text-right credit-amount">{formatNumberEs(payment.paymentRate || 0)}</td>
-                        <td className="text-right credit-amount">{formatNumberEs(payment.fxDifferenceBsS || 0)}</td>
+                        <td className="text-right credit-amount">{formatPrimary(payment.amountUSD)}</td>
+                        {isDual && (
+                          <>
+                            <td className="text-right credit-amount">{formatSecondary(payment.amountBsS || 0)}</td>
+                            <td className="text-right credit-amount">{formatNumberEs(payment.paymentRate || 0)}</td>
+                            <td className="text-right credit-amount">{formatSecondary(payment.fxDifferenceBsS || 0)}</td>
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>

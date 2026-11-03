@@ -6,7 +6,10 @@ import {
   validateCreditProfileUpdate,
   canManageCreditProfileForm,
 } from './creditLogic';
-import { parseAmount, formatNumberEs, formatUSD } from '../../utils/formatters';
+import { parseAmount, formatNumberEs } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../register/registerFormLogic';
 import { AlertCircle, CheckCircle2, Loader2, Lock, Unlock, Wallet } from 'lucide-react';
 
 /**
@@ -19,6 +22,20 @@ import { AlertCircle, CheckCircle2, Loader2, Lock, Unlock, Wallet } from 'lucide
 
 /** Profundidad máxima que acepta el contrato del backend. */
 const NOTES_MAX_LENGTH = 1000;
+
+/**
+ * 8.211-T4b2b2b (S9): etiquetas del perfil monetario activo para el panel crediticio. La deuda
+ * se denomina en la primaria; la local sólo existe en `Dual`.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ */
+export function resolveCreditCurrencyLabels(profile) {
+  const local = resolveLocalCurrencyProfile(profile);
+  return {
+    isDual: local.isDual,
+    primaryLabel: displayCurrencyCode(profile?.primaryCurrencyCode) || 'USD',
+    localLabel: local.label || 'Bs.S',
+  };
+}
 
 function profileToForm(profile) {
   return {
@@ -35,6 +52,8 @@ function profileToForm(profile) {
 
 export default function CreditProfilePanel({ customer, canEdit = false }) {
   const uid = useId();
+  const { profile: monetaryProfile, formatPrimary } = useMonetaryProfile();
+  const { primaryLabel } = resolveCreditCurrencyLabels(monetaryProfile);
   const [profile, setProfile] = useState(null);
   const [form, setForm] = useState(null);
   // El perfil llega por GET al montar: sin datos aún, el panel arranca en estado de consulta.
@@ -157,16 +176,16 @@ export default function CreditProfilePanel({ customer, canEdit = false }) {
           <div className="credit-profile-grid">
             <div className="credit-profile-stat">
               <span className="credit-profile-stat-label">Cupo autorizado</span>
-              <span className="credit-profile-stat-value">{formatUSD(profile.creditLimitUSD)}</span>
+              <span className="credit-profile-stat-value">{formatPrimary(profile.creditLimitUSD)}</span>
             </div>
             <div className="credit-profile-stat">
               <span className="credit-profile-stat-label">Deuda actual</span>
-              <span className="credit-profile-stat-value">{formatUSD(profile.currentDebtUSD)}</span>
+              <span className="credit-profile-stat-value">{formatPrimary(profile.currentDebtUSD)}</span>
             </div>
             <div className="credit-profile-stat">
               <span className="credit-profile-stat-label">Crédito disponible</span>
               <span className={`credit-profile-stat-value${Number(profile.availableCreditUSD) < 0 ? ' credit-profile-stat-value--danger' : ''}`}>
-                {formatUSD(profile.availableCreditUSD)}
+                {formatPrimary(profile.availableCreditUSD)}
               </span>
             </div>
             <div className="credit-profile-stat">
@@ -176,7 +195,7 @@ export default function CreditProfilePanel({ customer, canEdit = false }) {
             <div className="credit-profile-stat">
               <span className="credit-profile-stat-label">Mora</span>
               <span className={`credit-profile-stat-value${Number(profile.overdueUSD) > 0 ? ' credit-profile-stat-value--danger' : ''}`}>
-                {formatUSD(profile.overdueUSD)} ({profile.overdueCount})
+                {formatPrimary(profile.overdueUSD)} ({profile.overdueCount})
               </span>
             </div>
             <div className="credit-profile-stat">
@@ -221,7 +240,7 @@ export default function CreditProfilePanel({ customer, canEdit = false }) {
 
               <div className="credit-profile-form-grid">
                 <div className="form-group mb-0">
-                  <label htmlFor={`${uid}-limit`}>Cupo autorizado (USD)</label>
+                  <label htmlFor={`${uid}-limit`}>Cupo autorizado ({primaryLabel})</label>
                   <input
                     id={`${uid}-limit`}
                     type="text"

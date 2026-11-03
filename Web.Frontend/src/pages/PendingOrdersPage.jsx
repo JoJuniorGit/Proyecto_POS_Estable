@@ -9,6 +9,9 @@ import Modal from '../components/ui/Modal';
 import PendingOrderDesktopRow from '../components/pending/PendingOrderDesktopRow';
 import PendingOrderMobileCard from '../components/pending/PendingOrderMobileCard';
 import { formatNumberEs } from '../utils/formatters';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../components/register/registerFormLogic';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import { getLockInfo } from '../utils/holdLock';
 import { createHoldOrderLockController } from '../utils/holdOrderLockController';
@@ -16,6 +19,20 @@ import { Search, Loader2, Clock, ChevronDown, RefreshCw, Trash2, AlertTriangle }
 import RoleGuard from '../navigation/RoleGuard';
 import { normalizeRole } from '../navigation/roleViews';
 import './PendingOrdersPage.css';
+
+/**
+ * 8.211-T4b2b2b (S9): etiquetas del perfil monetario activo para cuentas abiertas. En `Single`
+ * no hay tasa ni segunda moneda que mostrar.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ */
+export function resolvePendingOrdersCurrencyLabels(profile) {
+  const local = resolveLocalCurrencyProfile(profile);
+  return {
+    isDual: local.isDual,
+    primaryLabel: displayCurrencyCode(profile?.primaryCurrencyCode) || 'USD',
+    localLabel: local.label || 'Bs.S',
+  };
+}
 
 export default function PendingOrdersPage() {
   return (
@@ -37,6 +54,8 @@ function PendingOrdersPageContent() {
   const [completedLiquidation, setCompletedLiquidation] = useState(null);
   
   const { exchangeRate } = useExchangeRate();
+  const { profile: monetaryProfile } = useMonetaryProfile();
+  const { isDual, primaryLabel, localLabel } = resolvePendingOrdersCurrencyLabels(monetaryProfile);
   const { user } = useAuth();
   const currentUserId = user?.id;
   const normalizedRole = normalizeRole(user?.role);
@@ -198,7 +217,7 @@ function PendingOrdersPageContent() {
             <Clock className="color-primary" size={26} /> Cuentas Abiertas (Pedidos en Espera)
           </h1>
           <p className="pending-orders-desc">
-            Gestiona abonos en Bolívares protegidos contra devaluación y liquida cuentas sin descontar inventario previamente.
+            Gestiona abonos en {localLabel} protegidos contra devaluación y liquida cuentas sin descontar inventario previamente.
           </p>
         </div>
 
@@ -241,9 +260,11 @@ function PendingOrdersPageContent() {
           <Search size={18} className="ppo-search-icon opacity-50" />
         </div>
 
-        <div className="pending-orders-bcv-badge">
-          Tasa BCV del Día: <span className="rate-value">{formatNumberEs(exchangeRate)} Bs/$</span>
-        </div>
+        {isDual && (
+          <div className="pending-orders-bcv-badge">
+            Tasa BCV del Día: <span className="rate-value">{formatNumberEs(exchangeRate)} {localLabel}/{primaryLabel}</span>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -271,7 +292,7 @@ function PendingOrdersPageContent() {
                 <tr>
                   <th>ID / Fecha</th>
                   <th>Cliente</th>
-                  <th className="text-right">Total Factura</th>
+                  <th className="text-right">Total Factura ({localLabel})</th>
                   <th className="text-right">Acciones</th>
                 </tr>
               </thead>

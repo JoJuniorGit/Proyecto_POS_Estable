@@ -21,6 +21,24 @@ import {
 
 const EXPIRES_AT = '2026-10-08T12:00:30.000Z';
 
+const DUAL_USD_COP = {
+  mode: 'Dual',
+  primaryCurrencyCode: 'USD',
+  primaryCurrencySymbol: '$',
+  secondaryCurrencyCode: 'COP',
+  secondaryCurrencySymbol: 'COP',
+  isConfigured: true,
+};
+
+const SINGLE_COP = {
+  mode: 'Single',
+  primaryCurrencyCode: 'COP',
+  primaryCurrencySymbol: 'COP',
+  secondaryCurrencyCode: null,
+  secondaryCurrencySymbol: null,
+  isConfigured: true,
+};
+
 const REQUEST_A = {
   requestId: 1,
   actionType: 'ManualPriceOverride',
@@ -54,7 +72,7 @@ describe('AuthorizationNotifications message builders', () => {
     assert.strictEqual(
       buildAuthorizationNotificationMessage(REQUEST_A),
       'El cajero Cajero 01 solicita autorización para modificar el precio manual en la Factura #445.'
-        + ' Producto: Café molido × 2. Precio USD: $ 1.50. Precio Bs.S: 55.50'
+        + ' Producto: Café molido × 2. Precio USD: $ 1.50. Precio Bs.S: Bs.S 55.50'
     );
     assert.strictEqual(AUTHORIZATION_ACTION_LABELS.ManualPriceOverride, 'modificar el precio manual');
   });
@@ -96,7 +114,7 @@ describe('AuthorizationNotifications message builders', () => {
   it('4. formats the display context detail from the hub payload', () => {
     assert.strictEqual(
       buildAuthorizationDetail({ productName: 'Café molido', quantity: 2, customUnitPriceUsd: 1.5, customUnitPriceLocal: 55.5 }),
-      'Producto: Café molido × 2. Precio USD: $ 1.50. Precio Bs.S: 55.50'
+      'Producto: Café molido × 2. Precio USD: $ 1.50. Precio Bs.S: Bs.S 55.50'
     );
     assert.strictEqual(buildAuthorizationDetail(null), '');
   });
@@ -113,6 +131,55 @@ describe('AuthorizationNotifications message builders', () => {
       'El cajero Cajero 01 solicita autorización para un gasto de caja chica.'
         + ' Sesión #42. Mantenimiento y Reparaciones. Bs.S 1825.00 / $ 50.00'
     );
+  });
+
+  it('4c. formats the authorization context with the active Dual USD/COP labels', () => {
+    const context = {
+      productName: 'Café molido',
+      quantity: 2,
+      customUnitPriceUsd: 1.5,
+      customUnitPriceLocal: 6000,
+    };
+
+    assert.strictEqual(
+      buildAuthorizationDetail(context, DUAL_USD_COP),
+      'Producto: Café molido × 2. Precio USD: $ 1.50. Precio COP: COP 6000.00'
+    );
+    assert.strictEqual(
+      buildAuthorizationDetail(
+        { sessionId: 42, amountBsS: 1825, amountUsd: 50, category: 2 },
+        DUAL_USD_COP
+      ),
+      'Sesión #42. Mantenimiento y Reparaciones. COP 1825.00 / $ 50.00'
+    );
+
+    const queue = enqueueAuthorizationNotification([], REQUEST_A, DUAL_USD_COP);
+    assert.match(queue[0].message, /Precio COP: COP 55\.50/);
+  });
+
+  it('4d. hides the duplicated USD line in Single COP while keeping the context values', () => {
+    const context = {
+      productName: 'Café molido',
+      quantity: 2,
+      customUnitPriceUsd: 1.5,
+      customUnitPriceLocal: 6000,
+    };
+
+    assert.strictEqual(
+      buildAuthorizationDetail(context, SINGLE_COP),
+      'Producto: Café molido × 2. Precio COP: COP 1.50'
+    );
+    assert.strictEqual(
+      buildAuthorizationDetail(
+        { sessionId: 42, amountBsS: 1825, amountUsd: 50, category: 2 },
+        SINGLE_COP
+      ),
+      'Sesión #42. Mantenimiento y Reparaciones. COP 1825.00'
+    );
+
+    const queue = enqueueAuthorizationNotification([], REQUEST_A, SINGLE_COP);
+    assert.match(queue[0].message, /Precio COP: COP 1\.50/);
+    assert.doesNotMatch(queue[0].message, /\$ |USD/);
   });
 });
 
