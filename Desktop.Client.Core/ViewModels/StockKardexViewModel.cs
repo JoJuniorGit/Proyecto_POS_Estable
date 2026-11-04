@@ -499,9 +499,9 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
     {
         TotalMovementsDisplay = summary.TotalMovements.ToString("N0", MoneyFormat.Culture);
         NetVolumeDisplay = summary.NetVolume.ToString("#,##0.###", MoneyFormat.Culture);
-        EntriesValueDisplay = $"${MoneyFormat.N2(summary.EntriesValueUsd)}";
-        LossesValueDisplay = $"${MoneyFormat.N2(summary.LossesValueUsd)}";
-        NetValueDisplay = $"${MoneyFormat.N2(summary.NetValueUsd)}";
+        EntriesValueDisplay = $"{CurrencyDisplay.PrimaryCurrencySymbol}{MoneyFormat.N2(summary.EntriesValueUsd)}";
+        LossesValueDisplay = $"{CurrencyDisplay.PrimaryCurrencySymbol}{MoneyFormat.N2(summary.LossesValueUsd)}";
+        NetValueDisplay = $"{CurrencyDisplay.PrimaryCurrencySymbol}{MoneyFormat.N2(summary.NetValueUsd)}";
         UnvaluedMovements = summary.UnvaluedMovements;
     }
 
@@ -618,8 +618,8 @@ public sealed class StockKardexRowViewModel
     public string StockBeforeText => _dto.StockBefore.ToString("#,##0.###", MoneyFormat.Culture);
     public string NewStockText => _dto.NewStockLevel.ToString("#,##0.###", MoneyFormat.Culture);
 
-    public string UnitCostDisplay => _dto.UnitCostUSD.HasValue ? $"${MoneyFormat.N2(_dto.UnitCostUSD.Value)}" : "—";
-    public string TotalValueDisplay => _dto.TotalValueUSD.HasValue ? $"${MoneyFormat.N2(_dto.TotalValueUSD.Value)}" : "—";
+    public string UnitCostDisplay => _dto.UnitCostUSD.HasValue ? FormatPrimaryValue(_dto.UnitCostUSD.Value) : "—";
+    public string TotalValueDisplay => _dto.TotalValueUSD.HasValue ? FormatPrimaryValue(_dto.TotalValueUSD.Value) : "—";
 
     public string OriginLabel => StockMovementLabels.Origin(_dto.OriginType);
     public string ReasonLabel => StockMovementLabels.Reason(_dto.ReasonCode);
@@ -638,5 +638,11 @@ public sealed class StockKardexRowViewModel
 
     public string ObservationDisplay => DisplayOrDash(_dto.Observation);
 
+    // 8.211-T4c2b4d3 (S9): Kardex valuation uses the profile primary currency.
+    private static string FormatPrimaryValue(decimal value)
+        => $"{CurrencyDisplay.PrimaryCurrencySymbol}{MoneyFormat.N2(value)}";
+
     private static string DisplayOrDash(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
 }
+
+
