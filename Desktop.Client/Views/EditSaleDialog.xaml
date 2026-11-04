@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -96,7 +97,7 @@
                                             <TextBlock Grid.Column="1" FontWeight="Bold" VerticalAlignment="Center" Margin="12,0,4,0">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
-                                                        <Setter Property="Text" Value="{Binding PriceUSD, StringFormat='${0:N2}'}"/>
+                                                        <Setter Property="Text" Value="{Binding PriceUSD, Converter={StaticResource PrimaryAmountConverter}}"/>
                                                         <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
                                                         <Style.Triggers>
                                                             <MultiDataTrigger>
@@ -167,11 +168,11 @@
 
                         <DataGridTemplateColumn Width="140">
                             <DataGridTemplateColumn.Header>
-                                <TextBlock Text="PRECIO BS.S" HorizontalAlignment="Right" TextAlignment="Right"/>
+                                <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='PRECIO {0}'}" HorizontalAlignment="Right" TextAlignment="Right"/>
                             </DataGridTemplateColumn.Header>
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding UnitPriceBsS, StringFormat='Bs.S {0:N2}'}"
+                                    <TextBlock Text="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}}"
                                                FontWeight="Bold" TextAlignment="Right" VerticalAlignment="Center" Margin="8,0"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
@@ -179,11 +180,11 @@
 
                         <DataGridTemplateColumn Width="150">
                             <DataGridTemplateColumn.Header>
-                                <TextBlock Text="SUBTOTAL BS.S" HorizontalAlignment="Right" TextAlignment="Right"/>
+                                <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='SUBTOTAL {0}'}" HorizontalAlignment="Right" TextAlignment="Right"/>
                             </DataGridTemplateColumn.Header>
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding SubtotalBsS, StringFormat='Bs.S {0:N2}'}"
+                                    <TextBlock Text="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}}"
                                                FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"
                                                TextAlignment="Right" VerticalAlignment="Center" Margin="8,0"/>
                                 </DataTemplate>
@@ -218,7 +219,14 @@
 
                     <StackPanel Grid.Column="0">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <TextBlock Text="Nuevo Total USD / Bs.S: " FontWeight="Bold" FontSize="13"/>
+                            <TextBlock Text="Nuevo Total " FontWeight="Bold" FontSize="13"/>
+                            <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}" FontWeight="Bold" FontSize="13"/>
+                            <StackPanel Orientation="Horizontal"
+                                        Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                <TextBlock Text=" / " FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencyCode}}" FontWeight="Bold" FontSize="13"/>
+                            </StackPanel>
+                            <TextBlock Text=": " FontWeight="Bold" FontSize="13"/>
                             <TextBlock Text="{Binding NewTotalText}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                         </StackPanel>
                         <StackPanel Orientation="Horizontal">
