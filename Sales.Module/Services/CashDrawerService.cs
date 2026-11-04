@@ -155,6 +155,10 @@ public class CashDrawerService : ICashDrawerService
         // keep their value; a manual 8dp pair is frozen at 4dp.
         currentExchangeRate = PricingCalculator.RoundExchangeRate(currentExchangeRate, PricingCalculator.RateSnapshotDecimals);
 
+        // 8.211-T6-U1: resolve the profile before creating the session so a settings failure
+        // cannot leave an opening session behind on providers without a transaction.
+        await ResolveLocalDrawerCurrencyAsync(cancellationToken);
+
         if (await GetActiveSessionAsync(cancellationToken) != null)
         {
             throw new InvalidOperationException("Ya existe una sesión de caja activa.");
@@ -762,12 +766,11 @@ public class CashDrawerService : ICashDrawerService
         }
         catch (Exception ex)
         {
-            // La caja no debe quedar inoperante por una lectura de settings: se conserva el
-            // comportamiento histórico Bs.S y se audita el fallo.
-            Core.Logging.AppLogger.LogWarn(
-                $"[CashDrawerService] No se pudo leer el modo monetario; se usa la moneda local Bs.S. Error: {ex.Message}",
-                nameof(CashDrawerService));
-            return PaymentMethodCurrencyResolver.LocalCurrency;
+            // 8.211-T6-U1: cash routing must not silently fall back to the legacy Bs.S drawer
+            // when a configured profile cannot be read. Fail closed before writing a movement.
+            throw new InvalidOperationException(
+                "No se pudo leer el perfil monetario para enrutar la caja. Verifique la configuración monetaria.",
+                ex);
         }
     }
 

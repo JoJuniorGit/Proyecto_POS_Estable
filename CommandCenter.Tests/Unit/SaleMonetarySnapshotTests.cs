@@ -367,7 +367,7 @@ public class SaleMonetarySnapshotTests
     }
 
     [Fact]
-    public async Task CompletedSale_WhenProfileReadFails_FallsBackToLegacySnapshotWithoutFailingTheSale()
+    public async Task CompletedSale_WhenProfileReadFails_FailsClosedWithoutMutatingTheSale()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
         var profile = new Mock<IMonetaryProfileService>();
@@ -379,24 +379,13 @@ public class SaleMonetarySnapshotTests
         var service = CreateService(context, profile.Object, logger.Object);
         var sale = await SeedPendingSaleAsync(context);
 
-        await service.CompleteSaleAsync(sale.Id, 50m, ExactPayment(100m, 5000m));
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.CompleteSaleAsync(sale.Id, 50m, ExactPayment(100m, 5000m)));
 
+        Assert.Contains("perfil monetario", exception.Message, StringComparison.Ordinal);
         var saved = await context.Sales.AsNoTracking().SingleAsync(s => s.Id == sale.Id);
-        Assert.Equal(SaleStatus.Completed, saved.Status);
-        Assert.Equal("USD", saved.PrimaryCurrencyCode);
-        Assert.Equal("VES", saved.SecondaryCurrencyCode);
-        Assert.Equal("Dual", saved.MonetaryMode);
-        Assert.Equal(100m, saved.TotalUSD);
-        Assert.Equal(5000m, saved.TotalBsS);
-
-        logger.Verify(
-            l => l.Log(
-                LogLevel.Warning,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((state, _) => state.ToString()!.Contains("perfil monetario", StringComparison.Ordinal)),
-                It.IsAny<Exception?>(),
-                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
+        Assert.Equal(SaleStatus.Pending, saved.Status);
+        Assert.False(await context.SalePayments.AsNoTracking().AnyAsync());
     }
 
     [Fact]
@@ -429,3 +418,5 @@ public class SaleMonetarySnapshotTests
         }
     }
 }
+
+

@@ -135,7 +135,7 @@ public class ExchangeRateAnchorServiceSingleTests
     }
 
     [Fact]
-    public async Task ResolveAsync_ProfileReadThrows_FailsOpenToOfficialAnchorBehavior()
+    public async Task ResolveAsync_ProfileReadThrows_FailsClosedWithoutQueryingOfficialRate()
     {
         var inventory = CreateInventoryMock(50m);
         var profile = new Mock<IMonetaryProfileService>();
@@ -144,11 +144,11 @@ public class ExchangeRateAnchorServiceSingleTests
         var service = new ExchangeRateAnchorService(
             inventory.Object, CreateSettingsMock().Object, logger: null, profile.Object);
 
-        var result = await service.ResolveAsync(60m, ContextLabel, ReferenceId);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.ResolveAsync(60m, ContextLabel, ReferenceId));
 
-        Assert.Equal(ExchangeRateAnchorOutcome.Anchored, result.Outcome);
-        Assert.Equal(50m, result.EffectiveRate);
-        inventory.Verify(i => i.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("perfil monetario", exception.Message, StringComparison.Ordinal);
+        inventory.Verify(i => i.GetTodayExchangeRateAsync(It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

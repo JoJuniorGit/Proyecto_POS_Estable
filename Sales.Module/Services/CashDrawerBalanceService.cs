@@ -218,12 +218,10 @@ internal sealed class CashDrawerBalanceService
         }
         catch (Exception ex)
         {
-            // La caja no debe quedar inoperante por una lectura de settings: se conserva el
-            // comportamiento histórico Bs.S y se audita el fallo.
-            Core.Logging.AppLogger.LogWarn(
-                $"[CashDrawerBalanceService] No se pudo leer el modo monetario; se usa la moneda local Bs.S. Error: {ex.Message}",
-                nameof(CashDrawerBalanceService));
-            return PaymentMethodCurrencyResolver.LocalCurrency;
+            // 8.211-T6-U1: balances must not be projected against a guessed drawer currency.
+            throw new InvalidOperationException(
+                "No se pudo leer el perfil monetario para calcular la caja. Verifique la configuración monetaria.",
+                ex);
         }
     }
 

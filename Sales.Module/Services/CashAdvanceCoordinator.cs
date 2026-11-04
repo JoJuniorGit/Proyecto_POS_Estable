@@ -403,10 +403,10 @@ public class CashAdvanceCoordinator
         }
         catch (Exception ex)
         {
-            Core.Logging.AppLogger.LogWarn(
-                $"[CashAdvanceCoordinator] No se pudo leer el perfil monetario; se conserva la regla de efectivo entero. Error: {ex.Message}",
-                nameof(CashAdvanceCoordinator));
-            return false;
+            // 8.211-T6-U1: the cash rule depends on the profile; do not guess it.
+            throw new InvalidOperationException(
+                "No se pudo leer el perfil monetario para validar el efectivo del adelanto. Verifique la configuración monetaria.",
+                ex);
         }
     }
 

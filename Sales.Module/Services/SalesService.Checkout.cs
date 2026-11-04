@@ -230,7 +230,7 @@ public partial class SalesService
 
     private async Task<MonetaryProfileSnapshot> ResolveMonetaryProfileSnapshotAsync(
         CancellationToken cancellationToken,
-        bool failClosed = false)
+        bool failClosed = true)
     {
         if (_monetaryProfileService is null)
         {
@@ -925,4 +925,5 @@ public partial class SalesService
         }
     }
 }
+
 

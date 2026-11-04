@@ -100,7 +100,11 @@ public sealed class ExchangeRateAnchorService
             }
             catch (Exception ex)
             {
-                LogWarning("[A5-AUDIT] No se pudo leer el modo monetario en {Context} #{Ref}. Fail-open: se continúa con el anclaje BCV. Error: {Error}", contextLabel, referenceId, ex.Message);
+                // 8.211-T6-U1: a configured profile read failure must not reinterpret the rate
+                // base. Fail closed instead of silently falling back to BCV.
+                throw new InvalidOperationException(
+                    $"No se pudo leer el perfil monetario para {contextLabel} #{referenceId}. Verifique la configuración monetaria.",
+                    ex);
             }
         }
 

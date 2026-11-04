@@ -76,7 +76,7 @@ public class CashDrawerSingleCurrencyTests
         Assert.Equal(500m, transactions[1].AmountLocal);
         Assert.Equal(500m, closed.ClosingBalanceLocal);
         Assert.Equal(opened.Id, closed.Id);
-        profile.Verify(p => p.GetAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+        profile.Verify(p => p.GetAsync(It.IsAny<CancellationToken>()), Times.Exactly(3));
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public class CashDrawerSingleCurrencyTests
     }
 
     [Fact]
-    public async Task ProfileReadFailure_FallsBackToBsSWithoutAbortingDrawerWrites()
+    public async Task ProfileReadFailure_FailsClosedWithoutDrawerWrites()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
         var profile = new Mock<IMonetaryProfileService>();
@@ -232,15 +232,12 @@ public class CashDrawerSingleCurrencyTests
             .ThrowsAsync(new InvalidOperationException("settings store unavailable"));
         var service = new CashDrawerService(context, profile.Object);
 
-        var session = await service.OpenSessionAsync(100m, 50m);
-        var cashIn = await service.AddTransactionAsync(
-            session.Id, CashTransactionType.Income, CashTransactionSource.CashIn, 10m, 0.2m, 50m, "Ingreso");
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.OpenSessionAsync(100m, 50m));
 
-        var opening = await context.CashTransactions.AsNoTracking()
-            .SingleAsync(t => t.Source == CashTransactionSource.Opening);
-        Assert.Equal("Bs.S", opening.CurrencyCode);
-        Assert.Equal("Bs.S", cashIn.CurrencyCode);
-        Assert.Equal(110m, await service.GetCurrentBalanceLocalAsync(session.Id));
+        Assert.Contains("perfil monetario", exception.Message, StringComparison.Ordinal);
+        Assert.False(await context.CashDrawerSessions.AsNoTracking().AnyAsync());
+        Assert.False(await context.CashTransactions.AsNoTracking().AnyAsync());
     }
 
     [Fact]
@@ -272,3 +269,6 @@ public class CashDrawerSingleCurrencyTests
         Assert.Equal("USD", income.CurrencyCode);
     }
 }
+
+
+
