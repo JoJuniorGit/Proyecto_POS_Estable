@@ -23,5 +23,6 @@ public sealed class MonetaryProfileDto
     public string PrimaryCurrencySymbol { get; set; } = "$";
     public string? SecondaryCurrencyCode { get; set; } = "VES";
     public string? SecondaryCurrencySymbol { get; set; } = "Bs.S";
-    public bool IsConfigured { get; set; }
+    public bool IsConfigured { get; init; }
 }
+

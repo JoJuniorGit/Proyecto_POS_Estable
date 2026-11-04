@@ -228,7 +228,7 @@ public class MonetaryProfileService : IMonetaryProfileService
 
         foreach (var character in value)
         {
-            if (char.IsControl(character))
+            if (char.IsControl(character) || character is '\u2028' or '\u2029')
             {
                 return true;
             }
@@ -247,3 +247,4 @@ public class MonetaryProfileService : IMonetaryProfileService
         IsConfigured = false
     };
 }
+

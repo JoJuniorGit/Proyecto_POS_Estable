@@ -46,13 +46,14 @@ public class MonetaryProfileServiceTests
         SecondaryCurrencySymbol = "Bs.S"
     };
 
-    private static MonetaryProfileDto ValidSingleProfile() => new()
+    private static MonetaryProfileDto ValidSingleProfile(bool isConfigured = true) => new()
     {
         Mode = MonetaryMode.Single,
         PrimaryCurrencyCode = "USD",
         PrimaryCurrencySymbol = "$",
         SecondaryCurrencyCode = null,
-        SecondaryCurrencySymbol = null
+        SecondaryCurrencySymbol = null,
+        IsConfigured = isConfigured
     };
 
     private static async Task AssertSaveRejectedAsync(MonetaryProfileDto profile, string expectedMessage)
@@ -202,8 +203,7 @@ public class MonetaryProfileServiceTests
     {
         using var db = CreateInMemoryDb();
         var service = CreateService(db);
-        var profile = ValidSingleProfile();
-        profile.IsConfigured = false;
+        var profile = ValidSingleProfile(isConfigured: false);
 
         var saved = await service.SaveAsync(profile);
 
@@ -308,6 +308,16 @@ public class MonetaryProfileServiceTests
 
         await AssertSaveRejectedAsync(profile, ControlCharacterMessage);
     }
+    [Theory]
+    [InlineData("\u2028")]
+    [InlineData("\u2029")]
+    public async Task SaveAsync_WithUnicodeLineSeparatorInSymbol_ThrowsExactMessage(string separator)
+    {
+        var profile = ValidDualProfile();
+        profile.PrimaryCurrencySymbol = "$" + separator + "X";
+
+        await AssertSaveRejectedAsync(profile, ControlCharacterMessage);
+    }
 
     [Fact]
     public async Task SaveAsync_SingleWithSecondaryCode_ThrowsExactMessageAndPersistsNothing()
@@ -374,3 +384,6 @@ public class MonetaryProfileServiceTests
         await AssertSaveRejectedAsync(profile, SecondarySymbolMessage);
     }
 }
+
+
+
