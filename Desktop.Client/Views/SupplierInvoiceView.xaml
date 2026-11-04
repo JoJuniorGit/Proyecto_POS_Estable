@@ -109,13 +109,14 @@
                           VerticalAlignment="Top"
                           Margin="0,0,10,0" />
 
-                <StackPanel Grid.Column="2" MinWidth="190" VerticalAlignment="Top" Margin="0,0,10,0">
+                <StackPanel Grid.Column="2" MinWidth="190" VerticalAlignment="Top" Margin="0,0,10,0"
+                            Visibility="{Binding ShowRateInput, Converter={StaticResource BoolToVis}}">
                     <TextBox Text="{Binding AppliedRateText, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                             materialDesign:HintAssist.Hint="Tasa aplicada (Bs.S)"
+                             materialDesign:HintAssist.Hint="{Binding AppliedRateLabel}"
                              IsEnabled="{Binding IsRateInputEnabled}"
                              AutomationProperties.Name="Tasa de cambio aplicada" />
-                    <TextBlock Text="Indique una tasa mayor que cero para facturas en Bs.S."
+                    <TextBlock Text="{Binding RateValidationMessage}"
                                Foreground="#DC2626" FontSize="11" Margin="4,4,0,0"
                                Visibility="{Binding ShowRateValidationHint, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
@@ -568,8 +569,8 @@
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
 
-                <!-- 4. Costo USD -->
-                <DataGridTextColumn Header="Costo USD"
+                <!-- 4. Costo primario (USD or the profile primary code) -->
+                <DataGridTextColumn Header="{Binding Data.PrimaryCostHeader, Source={StaticResource ViewModelProxy}}"
                                     Binding="{Binding UnitCostUSD, Mode=OneWay, StringFormat={}{0:N2}}"
                                     Width="110" MinWidth="95"
                                     HeaderStyle="{StaticResource RightAlignedColumnHeader}">

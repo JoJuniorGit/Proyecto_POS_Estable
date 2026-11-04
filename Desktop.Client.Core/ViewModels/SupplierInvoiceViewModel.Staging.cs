@@ -539,6 +539,14 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
 
     private decimal CalculateUnitCostUsd()
     {
+        if (!string.Equals(_invoiceCurrency, CurrencyCodes.Usd, StringComparison.OrdinalIgnoreCase)
+            && _appliedRate <= 0m)
+        {
+            // 8.176/8.211-T4c2b4d3b: without a positive rate a non-USD document (VES/COP/MXN/EUR)
+            // has no normalized cost. Rows show 0,00 (never NaN/Infinity) and the confirm stays blocked.
+            return 0m;
+        }
+
         if (EditUnitCostDocument == _source.UnitCostDocument
             && EffectiveConversionFactor == 1m
             && _appliedRate == _initialAppliedRate
@@ -547,37 +555,13 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
             return _source.UnitCostUSD;
         }
 
-        if (string.Equals(_invoiceCurrency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase))
-        {
-            if (_appliedRate <= 0m)
-            {
-                // 8.176: sin tasa válida una factura Bs.S no tiene costo normalizado; la columna
-                // Costo USD muestra 0,00 (sin NaN/Infinity) y el confirm queda bloqueado.
-                return 0m;
-            }
-
-            return PricingCalculator.CalculateInvoiceUnitCostUsd(
-                EditUnitCostDocument,
-                EffectiveConversionFactor,
-                _invoiceCurrency,
-                _appliedRate);
-        }
-
-        var usdDocumentCost = PricingCalculator.CalculateInvoiceUnitCostUsd(
+        // The canonical calculator keeps rate 1 as identity (Single primary) and divides a secondary
+        // document cost by the applied-rate snapshot.
+        return PricingCalculator.CalculateInvoiceUnitCostUsd(
             EditUnitCostDocument,
             EffectiveConversionFactor,
             _invoiceCurrency,
             _appliedRate);
-
-        if (_appliedRate <= 0m && _source.UnitCostDocument > 0m && _source.UnitCostUSD != _source.UnitCostDocument)
-        {
-            return Math.Round(
-                _source.UnitCostUSD * (usdDocumentCost / _source.UnitCostDocument),
-                4,
-                MidpointRounding.AwayFromZero);
-        }
-
-        return usdDocumentCost;
     }
 
     private void NotifyPricingChanged()
