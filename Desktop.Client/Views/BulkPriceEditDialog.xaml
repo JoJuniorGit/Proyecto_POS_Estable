@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:converters="clr-namespace:Desktop.Client.Converters"
+        xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -237,7 +238,7 @@
                                   ToolTip="Si el redondeo deja el precio por debajo del piso configurado, se usa el siguiente escalón superior (requiere costo y piso mayores a cero)."/>
 
                         <TextBlock Grid.Row="1" Grid.Column="0"
-                                   Text="Redondeo Detal (USD)"
+                                   Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Redondeo Detal ({0})'}"
                                    FontWeight="SemiBold"
                                    FontSize="12"
                                    Foreground="#1E293B"
@@ -275,7 +276,7 @@
                                  AutomationProperties.AutomationId="BulkPriceEdit_RetailMarginFloorInput"/>
 
                         <TextBlock Grid.Row="2" Grid.Column="0"
-                                   Text="Redondeo Mayor (USD)"
+                                   Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Redondeo Mayor ({0})'}"
                                    FontWeight="SemiBold"
                                    FontSize="12"
                                    Foreground="#1E293B"
@@ -319,7 +320,7 @@
                                    Margin="0,0,0,8"/>
 
                         <TextBlock Grid.Row="4" Grid.Column="0"
-                                   Text="Redondeo Bs.S (Proyección)"
+                                   Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Redondeo {0} (Proyección)'}"
                                    FontWeight="SemiBold"
                                    FontSize="12"
                                    Foreground="#1E293B"
@@ -337,11 +338,12 @@
                                   AutomationProperties.AutomationId="BulkPriceEdit_CashBsRoundingCombo"/>
 
                         <TextBlock Grid.Row="5" Grid.ColumnSpan="4"
-                                   Text="Calcula en caliente la columna BS.S EFECTIVO (PROY.) por techo — no modifica el precio USD."
+                                   Text="Calcula en caliente la columna de efectivo local (PROY.) por techo — no modifica el precio de la moneda principal."
                                    FontSize="11"
                                    Foreground="#64748B"
                                    TextWrapping="Wrap"
-                                   Margin="0,2,0,0"/>
+                                   Margin="0,2,0,0"
+                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
                     </Grid>
                 </StackPanel>
             </Border>
@@ -501,7 +503,7 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="PRECIO USD (ANTES → DESPUÉS)" Width="*" MinWidth="150">
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='PRECIO {0} (ANTES → DESPUÉS)'}" Width="*" MinWidth="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding UsdTransitionText}"
@@ -520,7 +522,9 @@
                              el delta de redondeo entre paréntesis y el matemático exacto en ToolTip.
                              Es informativa y NUNCA se persiste: el PriceBsS guardado sigue siendo el
                              canónico 8.104. -->
-                        <DataGridTemplateColumn Header="BS.S EFECTIVO (PROY.)" Width="*" MinWidth="170">
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='{}{0} EFECTIVO (PROY.)'}"
+                                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                                Width="*" MinWidth="170">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding CashFriendlyText}"
@@ -554,7 +558,7 @@
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <TextBlock Text="Genere la vista previa para ver la comparación Antes vs Después, la proyección Bs.S, los márgenes efectivos y los omitidos con su motivo (la traza de redondeo va en ToolTip)."
+                <TextBlock Text="Genere la vista previa para ver la comparación Antes vs Después, la proyección en moneda local, los márgenes efectivos y los omitidos con su motivo (la traza de redondeo va en ToolTip)."
                            Foreground="#94A3B8"
                            FontSize="12"
                            HorizontalAlignment="Center"

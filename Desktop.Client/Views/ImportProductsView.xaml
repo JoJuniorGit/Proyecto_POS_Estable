@@ -6,6 +6,7 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="800"
              TextElement.Foreground="{DynamicResource MaterialDesignBody}"
@@ -129,11 +130,11 @@
             <controls:PerformantDataGrid.Columns>
                 <DataGridTextColumn Header="SKU" Binding="{Binding SKU}" Width="SizeToCells" MinWidth="80"/>
                 <DataGridTextColumn Header="Nombre" Binding="{Binding Name}" Width="*"/>
-                <DataGridTextColumn Header="Costo (USD)" Binding="{Binding CostPriceUSD, StringFormat={}{0:C2}}" Width="100" />
+                <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Costo ({0})'}" Binding="{Binding CostPriceUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="100" />
                 <DataGridTextColumn Header="Margen Detal" Binding="{Binding ProfitMarginRetail, StringFormat={}{0:N2}%}" Width="90" />
-                <DataGridTextColumn Header="Precio Detal (USD)" Binding="{Binding PriceRetailUSD, StringFormat={}{0:C2}}" Width="110"/>
+                <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Precio Detal ({0})'}" Binding="{Binding PriceRetailUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="110"/>
                 <DataGridTextColumn Header="Margen Mayor" Binding="{Binding ProfitMarginWholesale, StringFormat={}{0:N2}%}" Width="90" />
-                <DataGridTextColumn Header="Precio Mayor (USD)" Binding="{Binding PriceWholesaleUSD, StringFormat={}{0:C2}}" Width="110"/>
+                <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Precio Mayor ({0})'}" Binding="{Binding PriceWholesaleUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="110"/>
                 <DataGridCheckBoxColumn Header="Mayorista" Binding="{Binding HasWholesale}" Width="75"/>
                 <DataGridCheckBoxColumn Header="Fraccionable" Binding="{Binding IsFractional}" Width="85"/>
                 <DataGridTextColumn Header="Unidad" Binding="{Binding UnitOfMeasure}" Width="70"/>

@@ -6,6 +6,7 @@
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
         xmlns:converters="clr-namespace:Desktop.Client.Converters"
+        xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -314,7 +315,7 @@
                                          helpers:AtmBehavior.Value="{Binding CostPriceUSD, Mode=TwoWay}"
                                          helpers:AtmBehavior.RecalculateTrigger="Cost"
                                          IsEnabled="{Binding CanEditPricing}"
-                                         materialDesign:HintAssist.Hint="Costo Base ($ USD) *" 
+                                         materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Costo Base ({0}) *'}" 
                                          materialDesign:HintAssist.IsFloating="True"
                                          Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
                                          TabIndex="5"/>
@@ -337,7 +338,7 @@
                                               SelectedItem="{Binding SelectedRoundingUsdOption, Mode=TwoWay}"
                                               DisplayMemberPath="Label"
                                               IsEnabled="{Binding CanEditPricing}"
-                                              materialDesign:HintAssist.Hint="Redondeo USD (Detal y Mayor)"
+                                              materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Redondeo {0} (Detal y Mayor)'}"
                                               materialDesign:HintAssist.IsFloating="True"
                                               Style="{DynamicResource MaterialDesignOutlinedComboBox}"
                                               AutomationProperties.AutomationId="ProductDialog_RoundingUsdCombo"/>
@@ -346,7 +347,7 @@
                                               SelectedItem="{Binding SelectedRoundingCashOption, Mode=TwoWay}"
                                               DisplayMemberPath="Label"
                                               IsEnabled="{Binding CanEditPricing}"
-                                              materialDesign:HintAssist.Hint="Efectivo Bs.S"
+                                              materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Efectivo {0}'}"
                                               materialDesign:HintAssist.IsFloating="True"
                                               Style="{DynamicResource MaterialDesignOutlinedComboBox}"
                                               AutomationProperties.AutomationId="ProductDialog_RoundingCashCombo"/>
@@ -383,14 +384,15 @@
                                              helpers:AtmBehavior.Value="{Binding PriceRetailUSD, Mode=TwoWay}"
                                              helpers:AtmBehavior.RecalculateTrigger="PriceRetail"
                                              IsEnabled="{Binding CanEditPricing}"
-                                             materialDesign:HintAssist.Hint="Precio Detal $" 
+                                             materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, StringFormat='Precio Detal {0}'}" 
                                              materialDesign:HintAssist.IsFloating="True"
                                              Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
                                              TabIndex="7"/>
                                 </Grid>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                                            Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
                                     <TextBlock Text="Equivalente: " FontSize="11" Opacity="0.7"/>
-                                    <TextBlock Text="{Binding PriceRetailBsS, StringFormat='Bs.S {0:N2}'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                    <TextBlock Text="{Binding PriceRetailBsS, Converter={StaticResource LocalAmountConverter}}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                                 </StackPanel>
                                 <!-- 8.184-T3 (S4): traza del redondeo USD (visible solo con regla ≠ Sin redondeo). -->
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding ShowRetailRoundingTrace, Converter={StaticResource BoolToVisConverter}}">
@@ -403,8 +405,11 @@
                                 </StackPanel>
                                 <!-- 8.184-T3 (S4): proyección en caliente del Bs.S de efectivo (nunca persistida). -->
                                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0" Visibility="{Binding ShowRetailCashFriendly, Converter={StaticResource BoolToVisConverter}}">
-                                    <TextBlock Text="Bs.S en caliente (efectivo): " FontSize="11" Opacity="0.7"/>
-                                    <TextBlock Text="{Binding RetailCashFriendlyText}" FontSize="12" FontWeight="Bold" Foreground="#047857"/>
+                                    <StackPanel Orientation="Horizontal"
+                                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                        <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='{}{0} en caliente (efectivo): '}" FontSize="11" Opacity="0.7"/>
+                                        <TextBlock Text="{Binding RetailCashFriendlyText}" FontSize="12" FontWeight="Bold" Foreground="#047857"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -442,7 +447,7 @@
                                              helpers:AtmBehavior.Value="{Binding PriceWholesaleUSD, Mode=TwoWay}"
                                              helpers:AtmBehavior.RecalculateTrigger="PriceWholesale"
                                              IsEnabled="{Binding CanEditWholesale}" 
-                                             materialDesign:HintAssist.Hint="Precio Mayor $" 
+                                             materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, StringFormat='Precio Mayor {0}'}" 
                                              materialDesign:HintAssist.IsFloating="True"
                                              Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
                                              TabIndex="9"/>
@@ -455,9 +460,10 @@
                                          Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
                                          Margin="0,0,0,6"
                                          TabIndex="10"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                                            Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
                                     <TextBlock Text="Equivalente: " FontSize="11" Opacity="0.7"/>
-                                    <TextBlock Text="{Binding PriceWholesaleBsS, StringFormat='Bs.S {0:N2}'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                    <TextBlock Text="{Binding PriceWholesaleBsS, Converter={StaticResource LocalAmountConverter}}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                                 </StackPanel>
                                 <!-- 8.184-T3 (S4): traza del redondeo USD del canal Mayor + Bs.S en caliente. -->
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0" Visibility="{Binding ShowWholesaleRoundingTrace, Converter={StaticResource BoolToVisConverter}}">
@@ -469,8 +475,11 @@
                                     <TextBlock Text="{Binding WholesaleEffectiveMarginText}" FontSize="11" FontWeight="SemiBold"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0" Visibility="{Binding ShowWholesaleCashFriendly, Converter={StaticResource BoolToVisConverter}}">
-                                    <TextBlock Text="Bs.S en caliente (efectivo): " FontSize="11" Opacity="0.7"/>
-                                    <TextBlock Text="{Binding WholesaleCashFriendlyText}" FontSize="12" FontWeight="Bold" Foreground="#047857"/>
+                                    <StackPanel Orientation="Horizontal"
+                                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                        <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='{}{0} en caliente (efectivo): '}" FontSize="11" Opacity="0.7"/>
+                                        <TextBlock Text="{Binding WholesaleCashFriendlyText}" FontSize="12" FontWeight="Bold" Foreground="#047857"/>
+                                    </StackPanel>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
