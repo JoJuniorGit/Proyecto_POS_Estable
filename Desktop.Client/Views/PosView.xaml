@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:Desktop.Client.Views"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
              xmlns:converters="clr-namespace:Desktop.Client.Converters"
              xmlns:behaviors="clr-namespace:Desktop.Client.Behaviors"
@@ -331,7 +332,7 @@
                                                     <TextBlock FontWeight="Bold" FontSize="13" Margin="0,0,10,0">
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock">
-                                                                <Setter Property="Text" Value="{Binding PriceBsS, StringFormat='{}{0:N2}'}"/>
+                                                                <Setter Property="Text" Value="{Binding PriceBsS, Converter={StaticResource LocalAmountConverter}}"/>
                                                                 <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
                                                                 <Style.Triggers>
                                                                     <MultiDataTrigger>
@@ -531,15 +532,15 @@
                                 </DataGridTemplateColumn.HeaderStyle>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding UnitPriceBsS, StringFormat='{}{0:N2}'}" 
+                                        <TextBlock Text="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}}"
                                                    FontWeight="Bold" FontSize="14"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                                    Typography.NumeralAlignment="Tabular"
                                                    Margin="0,2"
                                                    TextTrimming="CharacterEllipsis"
-                                                   ToolTip="{Binding UnitPriceBsS, StringFormat='{}{0:N2} Bs.S por unidad'}"
-                                                   AutomationProperties.Name="{Binding UnitPriceBsS, StringFormat='{}{0:N2} Bs.S por unidad'}"
-                                                   AutomationProperties.HelpText="Precio unitario completo en bolívares."/>
+                                                   ToolTip="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}, StringFormat='{}{0} por unidad'}"
+                                                   AutomationProperties.Name="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}, StringFormat='{}{0} por unidad'}"
+                                                   AutomationProperties.HelpText="Precio unitario completo en la moneda local."/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
@@ -557,16 +558,16 @@
                                 </DataGridTemplateColumn.HeaderStyle>
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding SubtotalBsS, StringFormat='{}{0:N2}'}" 
+                                        <TextBlock Text="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}}"
                                                    FontWeight="Bold" FontSize="15" 
                                                    Foreground="{DynamicResource PrimaryHueMidBrush}" 
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                                    Typography.NumeralAlignment="Tabular"
                                                    Margin="0,2"
                                                    TextTrimming="CharacterEllipsis"
-                                                   ToolTip="{Binding SubtotalBsS, StringFormat='{}{0:N2} Bs.S en total'}"
-                                                   AutomationProperties.Name="{Binding SubtotalBsS, StringFormat='{}{0:N2} Bs.S en total'}"
-                                                   AutomationProperties.HelpText="Total completo de la línea en bolívares."/>
+                                                   ToolTip="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}, StringFormat='{}{0} en total'}"
+                                                   AutomationProperties.Name="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}, StringFormat='{}{0} en total'}"
+                                                   AutomationProperties.HelpText="Total completo de la línea en la moneda local."/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
@@ -751,7 +752,7 @@
                             <StackPanel>
                                 <Grid Margin="0,2">
                                     <TextBlock Text="Subtotal" Foreground="#64748B" FontSize="13"/>
-                                    <TextBlock Text="{Binding Cart.SubtotalLocal, StringFormat='Bs.S {0:N2}'}" 
+                                    <TextBlock Text="{Binding Cart.SubtotalLocal, Converter={StaticResource LocalAmountConverter}}"
                                                HorizontalAlignment="Right" 
                                                FontWeight="SemiBold" 
                                                FontSize="13" 
@@ -777,7 +778,7 @@
                                                VerticalAlignment="Center"/>
                                     
                                     <TextBlock Grid.Row="0" Grid.Column="1" 
-                                               Text="{Binding Cart.TotalAmountLocal, StringFormat='Bs.S {0:N2}'}" 
+                                               Text="{Binding Cart.TotalAmountLocal, Converter={StaticResource LocalAmountConverter}}"
                                                AutomationProperties.AutomationId="Pos_TotalAmountText"
                                                FontWeight="Heavy" 
                                                FontSize="28" 
@@ -786,7 +787,8 @@
                                                Typography.NumeralAlignment="Tabular"/>
                                                
                                     <TextBlock Grid.Row="1" Grid.Column="1"
-                                               Text="{Binding Cart.TotalUsdEffective, StringFormat='$ {0:N2}'}" 
+                                               Text="{Binding Cart.TotalUsdEffective, Converter={StaticResource PrimaryAmountConverter}}"
+                                               Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                                FontSize="16" 
                                                FontWeight="SemiBold" 
                                                Foreground="#475569" 
@@ -875,13 +877,21 @@
         <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0" Padding="12,6">
             <DockPanel LastChildFill="False">
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="6" Padding="8,3" VerticalAlignment="Center">
+                    <!-- 8.211-T4c2b2 (S9): the exchange-rate equivalence only exists in Dual. -->
+                    <Border Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="6" Padding="8,3" VerticalAlignment="Center"
+                            Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <materialDesign:PackIcon Kind="CurrencyUsd" Width="15" Height="15" VerticalAlignment="Center" Foreground="#166534" Margin="0,0,4,0"/>
-                            <TextBlock Text="{Binding CurrentExchangeRate, StringFormat='{}Tasa: {0:N2} Bs/$'}" 
-                                       AutomationProperties.AutomationId="Pos_ExchangeRateText"
+                            <TextBlock AutomationProperties.AutomationId="Pos_ExchangeRateText"
                                        FontWeight="Bold" FontSize="12" Foreground="#166534" VerticalAlignment="Center"
-                                       Typography.NumeralAlignment="Tabular"/>
+                                       Typography.NumeralAlignment="Tabular">
+                                <Run Text="Tasa: "/>
+                                <Run Text="{Binding CurrentExchangeRate, Mode=OneWay, StringFormat='{}{0:N2}'}"/>
+                                <Run Text=" "/>
+                                <Run Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencyCode}, Converter={StaticResource LocalCurrencyCodeConverter}}"/>
+                                <Run Text="/"/>
+                                <Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, Converter={StaticResource PrimaryCurrencyCodeConverter}}"/>
+                            </TextBlock>
                         </StackPanel>
                     </Border>
                     
