@@ -37,6 +37,7 @@ namespace Sales.Module.Migrations
                                     WHEN UPPER(TRIM(pm."Currency")) = 'USD' THEN 'USD'
                                     WHEN UPPER(TRIM(pm."Currency")) IN ('VES', 'BSS', 'BS.S') THEN 'Bs.S'
                                     WHEN NULLIF(TRIM(pm."Currency"), '') IS NULL AND pm."Name" ILIKE '%USD%' THEN 'USD'
+                                    WHEN UPPER(TRIM(pm."Currency")) ~ '^[A-Z]{3}$' THEN UPPER(TRIM(pm."Currency"))
                                     ELSE 'Bs.S'
                                 END
                          FROM "PaymentMethods" AS pm
