@@ -229,14 +229,16 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
 
     public bool ShowUsdReconciliation => CanViewUsdExpected && HasUsdClosureResult;
 
+    // 8.211-T4c2b4 (S9): the reconciliation uses the primary currency of the active profile.
+    // Authorization/blanking stays in this view model so XAML never binds the raw USD decimals.
     public string ExpectedClosingBalanceUsdDisplay => ShowUsdReconciliation
         && LastCreatedClosure?.ExpectedClosingBalanceUsd is { } expected
-            ? PettyCashLabels.FormatUsd(expected)
+            ? CurrencyDisplay.FormatPrimary(expected)
             : "—";
 
     public string DifferenceUsdDisplay => ShowUsdReconciliation
         && LastCreatedClosure?.DifferenceUsd is { } difference
-            ? (difference > 0 ? "+" : string.Empty) + PettyCashLabels.FormatUsd(difference)
+            ? (difference > 0 ? "+" : string.Empty) + CurrencyDisplay.FormatPrimary(difference)
             : "—";
 
     /// <summary>
@@ -255,13 +257,13 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
 
         if (!FlexibleDecimalParser.TryParse(ActualClosingBalanceUsdText, out decimal parsed))
         {
-            error = "Ingrese un conteo USD válido o deje el campo vacío.";
+            error = $"Ingrese un conteo {CurrencyDisplay.PrimaryCurrencyCode} válido o deje el campo vacío.";
             return false;
         }
 
         if (parsed < 0m)
         {
-            error = "El conteo de efectivo USD no puede ser negativo.";
+            error = $"El conteo de efectivo {CurrencyDisplay.PrimaryCurrencyCode} no puede ser negativo.";
             return false;
         }
 
@@ -290,9 +292,11 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _totalDifferenceBsS, value);
     }
 
+    // 8.211-T4c2b4 (S9): the symbol comes from the active profile. The historical suffix layout
+    // ("50,00 Bs.S") is preserved so the existing live-refresh contract keeps its shape.
     public string DifferenceStatusLabel => TotalDifferenceBsS > 0
-        ? $"SOBRANTE EN CAJA (+{CurrencyDisplay.Number(TotalDifferenceBsS)} Bs.S)"
-        : (TotalDifferenceBsS < 0 ? $"FALTANTE EN CAJA ({CurrencyDisplay.Number(TotalDifferenceBsS)} Bs.S)" : "CUADRADO EXACTO");
+        ? $"SOBRANTE EN CAJA (+{CurrencyDisplay.Number(TotalDifferenceBsS)} {CurrencyDisplay.LocalCurrencySymbol})"
+        : (TotalDifferenceBsS < 0 ? $"FALTANTE EN CAJA ({CurrencyDisplay.Number(TotalDifferenceBsS)} {CurrencyDisplay.LocalCurrencySymbol})" : "CUADRADO EXACTO");
 
     public string DifferenceStatusColor => TotalDifferenceBsS > 0
         ? "#10B981"
@@ -395,13 +399,13 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             sb.AppendLine("DESGLOSE DE MONTOS DECLARADOS:");
             foreach (var row in DetailRows)
             {
-                sb.AppendLine($"• {row.PaymentMethodName}: {MoneyFormat.N2(row.ActualAmountBsS)} Bs.S");
+                sb.AppendLine($"• {row.PaymentMethodName}: {CurrencyDisplay.FormatSecondary(row.ActualAmountBsS)}");
             }
             sb.AppendLine("-----------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO: {MoneyFormat.N2(TotalActualBsS)} Bs.S");
+            sb.AppendLine($"TOTAL DECLARADO: {CurrencyDisplay.FormatSecondary(TotalActualBsS)}");
             if (actualClosingBalanceUsd.HasValue)
             {
-                sb.AppendLine($"EFECTIVO USD CONTADO: {PettyCashLabels.FormatUsd(actualClosingBalanceUsd.Value)}");
+                sb.AppendLine($"EFECTIVO {CurrencyDisplay.PrimaryCurrencyCode} CONTADO: {CurrencyDisplay.FormatPrimary(actualClosingBalanceUsd.Value)}");
             }
             if (!string.IsNullOrWhiteSpace(Observation))
             {
@@ -423,18 +427,18 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             {
                 var diffSign = row.DifferenceBsS >= 0 ? "+" : "";
                 sb.AppendLine($"• {row.PaymentMethodName}:");
-                sb.AppendLine($"    Esperado:  {MoneyFormat.N2(row.ExpectedAmountBsS)} Bs.S");
-                sb.AppendLine($"    Declarado: {MoneyFormat.N2(row.ActualAmountBsS)} Bs.S");
-                sb.AppendLine($"    Diferencia: {diffSign}{MoneyFormat.N2(row.DifferenceBsS)} Bs.S");
+                sb.AppendLine($"    Esperado:  {CurrencyDisplay.FormatSecondary(row.ExpectedAmountBsS)}");
+                sb.AppendLine($"    Declarado: {CurrencyDisplay.FormatSecondary(row.ActualAmountBsS)}");
+                sb.AppendLine($"    Diferencia: {diffSign}{CurrencyDisplay.FormatSecondary(row.DifferenceBsS)}");
             }
             sb.AppendLine("-----------------------------------");
-            sb.AppendLine($"TOTAL ESPERADO:  {MoneyFormat.N2(TotalExpectedBsS)} Bs.S");
-            sb.AppendLine($"TOTAL DECLARADO: {MoneyFormat.N2(TotalActualBsS)} Bs.S");
+            sb.AppendLine($"TOTAL ESPERADO:  {CurrencyDisplay.FormatSecondary(TotalExpectedBsS)}");
+            sb.AppendLine($"TOTAL DECLARADO: {CurrencyDisplay.FormatSecondary(TotalActualBsS)}");
             var totalDiffSign = TotalDifferenceBsS >= 0 ? "+" : "";
-            sb.AppendLine($"DIFERENCIA NETA: {totalDiffSign}{MoneyFormat.N2(TotalDifferenceBsS)} Bs.S ({DifferenceStatusLabel})");
+            sb.AppendLine($"DIFERENCIA NETA: {totalDiffSign}{CurrencyDisplay.FormatSecondary(TotalDifferenceBsS)} ({DifferenceStatusLabel})");
             if (actualClosingBalanceUsd.HasValue)
             {
-                sb.AppendLine($"EFECTIVO USD CONTADO: {PettyCashLabels.FormatUsd(actualClosingBalanceUsd.Value)}");
+                sb.AppendLine($"EFECTIVO {CurrencyDisplay.PrimaryCurrencyCode} CONTADO: {CurrencyDisplay.FormatPrimary(actualClosingBalanceUsd.Value)}");
             }
             if (!string.IsNullOrWhiteSpace(Observation))
             {
@@ -451,7 +455,7 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
     /// </summary>
     private string BuildSuccessMessage()
     {
-        var message = "Cierre diario procesado y guardado exitosamente. Comprobantes guardados automáticamente en Descargas y en Documentos\\Registro de cierres.\n\nLos acumuladores de ingresos y egresos han sido reiniciados a 0.00 Bs.S para el nuevo turno.";
+        var message = $"Cierre diario procesado y guardado exitosamente. Comprobantes guardados automáticamente en Descargas y en Documentos\\Registro de cierres.\n\nLos acumuladores de ingresos y egresos han sido reiniciados a {CurrencyDisplay.FormatSecondary(0m)} para el nuevo turno.";
 
         if (!ShowUsdReconciliation || LastCreatedClosure is not { ActualClosingBalanceUsd: { } actual } closure)
         {
@@ -461,15 +465,15 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         var usd = new System.Text.StringBuilder();
         usd.AppendLine();
         usd.AppendLine();
-        usd.AppendLine("ARQUEO FÍSICO USD:");
-        usd.AppendLine($"  Contado:    {PettyCashLabels.FormatUsd(actual)}");
+        usd.AppendLine($"ARQUEO FÍSICO {CurrencyDisplay.PrimaryCurrencyCode}:");
+        usd.AppendLine($"  Contado:    {CurrencyDisplay.FormatPrimary(actual)}");
         if (closure.ExpectedClosingBalanceUsd is { } expected)
         {
-            usd.AppendLine($"  Esperado:   {PettyCashLabels.FormatUsd(expected)}");
+            usd.AppendLine($"  Esperado:   {CurrencyDisplay.FormatPrimary(expected)}");
         }
         if (closure.DifferenceUsd is { } difference)
         {
-            usd.AppendLine($"  Diferencia: {(difference > 0 ? "+" : string.Empty)}{PettyCashLabels.FormatUsd(difference)}");
+            usd.AppendLine($"  Diferencia: {(difference > 0 ? "+" : string.Empty)}{CurrencyDisplay.FormatPrimary(difference)}");
         }
 
         return message + usd.ToString().TrimEnd();
@@ -486,7 +490,9 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
 
         if (!TryGetActualClosingBalanceUsd(out decimal? actualClosingBalanceUsd, out string? usdError))
         {
-            _dialogService.ShowWarning("Advertencia", usdError ?? "Ingrese un conteo USD válido o deje el campo vacío.");
+            _dialogService.ShowWarning(
+                "Advertencia",
+                usdError ?? $"Ingrese un conteo {CurrencyDisplay.PrimaryCurrencyCode} válido o deje el campo vacío.");
             return;
         }
 
@@ -555,10 +561,10 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             sb.AppendLine("MÉTODOS DE PAGO DECLARADOS:");
             foreach (var row in DetailRows)
             {
-                sb.AppendLine($"  {row.PaymentMethodName,-22} Bs.S {MoneyFormat.N2(row.ActualAmountBsS),10}");
+                sb.AppendLine($"  {row.PaymentMethodName,-22} {CurrencyDisplay.FormatSecondary(row.ActualAmountBsS),10}");
             }
             sb.AppendLine("-----------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:         Bs.S {MoneyFormat.N2(TotalActualBsS),10}");
+            sb.AppendLine($"TOTAL DECLARADO:         {CurrencyDisplay.FormatSecondary(TotalActualBsS),10}");
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Notas: {Observation}");
@@ -577,12 +583,12 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             foreach (var row in DetailRows)
             {
                 sb.AppendLine($"  {row.PaymentMethodName}");
-                sb.AppendLine($"    Declarado: Bs.S {MoneyFormat.N2(row.ActualAmountBsS)} | Esperado: Bs.S {MoneyFormat.N2(row.ExpectedAmountBsS)} | Dif: Bs.S {MoneyFormat.N2(row.DifferenceBsS)}");
+                sb.AppendLine($"    Declarado: {CurrencyDisplay.FormatSecondary(row.ActualAmountBsS)} | Esperado: {CurrencyDisplay.FormatSecondary(row.ExpectedAmountBsS)} | Dif: {CurrencyDisplay.FormatSecondary(row.DifferenceBsS)}");
             }
             sb.AppendLine("-----------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {MoneyFormat.N2(TotalActualBsS),10}");
-            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {MoneyFormat.N2(TotalExpectedBsS),10}");
-            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {MoneyFormat.N2(TotalDifferenceBsS),10}");
+            sb.AppendLine($"TOTAL DECLARADO:  {CurrencyDisplay.FormatSecondary(TotalActualBsS),10}");
+            sb.AppendLine($"TOTAL ESPERADO:   {CurrencyDisplay.FormatSecondary(TotalExpectedBsS),10}");
+            sb.AppendLine($"DIFERENCIA TOTAL: {CurrencyDisplay.FormatSecondary(TotalDifferenceBsS),10}");
             sb.AppendLine($"ESTADO DE CAJA:   {DifferenceStatusLabel}");
             if (!string.IsNullOrWhiteSpace(Observation))
             {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Core.DTOs;
 using Core.Entities;
+using Core.Helpers;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
@@ -124,21 +125,34 @@ public class DailyClosureUsdCountViewModelTests
     [Fact]
     public async Task UsdReconciliation_Admin_ShowsExpectedAndDifference()
     {
-        _closureService
-            .Setup(s => s.CreateClosureAsync(It.IsAny<CreateClosureRequest>()))
-            .ReturnsAsync(CreateUsdResult());
+        var previousFormat = CurrencyDisplay.Current;
+        try
+        {
+            CurrencyDisplay.Current = MoneyDisplayFormat.Venezuelan;
+            // Defaults preserve the legacy Dual USD/$ + VES/Bs.S profile.
+            CurrencyDisplay.SetMonetaryProfile(null);
 
-        var vm = CreateViewModel(UserRole.Admin);
-        await vm.LoadExpectedTotalsCommand.ExecuteAsync(null);
-        vm.DetailRows[0].ActualAmountBsS = 500m;
-        vm.ActualClosingBalanceUsdText = "13.25";
+            _closureService
+                .Setup(s => s.CreateClosureAsync(It.IsAny<CreateClosureRequest>()))
+                .ReturnsAsync(CreateUsdResult());
 
-        await vm.ConfirmClosureCommand.ExecuteAsync(null);
+            var vm = CreateViewModel(UserRole.Admin);
+            await vm.LoadExpectedTotalsCommand.ExecuteAsync(null);
+            vm.DetailRows[0].ActualAmountBsS = 500m;
+            vm.ActualClosingBalanceUsdText = "13.25";
 
-        Assert.True(vm.CanViewUsdExpected);
-        Assert.True(vm.ShowUsdReconciliation);
-        Assert.Equal("$ 12.5000", vm.ExpectedClosingBalanceUsdDisplay);
-        Assert.Equal("+$ 0.7500", vm.DifferenceUsdDisplay);
+            await vm.ConfirmClosureCommand.ExecuteAsync(null);
+
+            Assert.True(vm.CanViewUsdExpected);
+            Assert.True(vm.ShowUsdReconciliation);
+            Assert.Equal("$ 12,50", vm.ExpectedClosingBalanceUsdDisplay);
+            Assert.Equal("+$ 0,75", vm.DifferenceUsdDisplay);
+        }
+        finally
+        {
+            CurrencyDisplay.Current = previousFormat;
+            CurrencyDisplay.SetMonetaryProfile(null);
+        }
     }
 
     [Fact]

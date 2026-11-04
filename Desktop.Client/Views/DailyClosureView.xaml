@@ -8,6 +8,7 @@
              xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
              xmlns:behaviors="clr-namespace:Desktop.Client.Behaviors"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:DailyClosureViewModel}">
 
@@ -140,7 +141,8 @@
                 CornerRadius="8"
                 Padding="16,12"
                 Margin="0,0,0,16"
-                Effect="{StaticResource EnterpriseCardShadow}">
+                Effect="{StaticResource EnterpriseCardShadow}"
+                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -148,11 +150,11 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                    <TextBlock Text="Efectivo USD contado (opcional)"
+                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Efectivo {0} contado (opcional)'}"
                                FontSize="12"
                                FontWeight="SemiBold"
                                Foreground="#475569"/>
-                    <TextBlock Text="Si se deja vacío se conserva el comportamiento previo del cierre (sin arqueo USD)."
+                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Si se deja vacío se conserva el comportamiento previo del cierre (sin arqueo {0}).'}"
                                FontSize="11"
                                Foreground="{DynamicResource MaterialDesignBodyLight}"
                                Margin="0,2,0,6"/>
@@ -189,7 +191,7 @@
                             Padding="14,8"
                             Margin="0,0,8,0">
                         <StackPanel>
-                            <TextBlock Text="ESPERADO USD"
+                            <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='ESPERADO {0}'}"
                                        FontSize="10" FontWeight="Bold"
                                        Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                             <TextBlock Text="{Binding ExpectedClosingBalanceUsdDisplay}"
@@ -207,7 +209,7 @@
                             CornerRadius="8"
                             Padding="14,8">
                         <StackPanel>
-                            <TextBlock Text="DIFERENCIA USD"
+                            <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='DIFERENCIA {0}'}"
                                        FontSize="10" FontWeight="Bold"
                                        Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                             <TextBlock Text="{Binding DifferenceUsdDisplay}"
@@ -289,8 +291,8 @@
                     </DataGridTextColumn>
 
                     <!-- Col 2: Monto Esperado (Read-only, hidden if blind) -->
-                    <DataGridTextColumn Header="MONTO ESPERADO (BS.S)"
-                                        Binding="{Binding ExpectedAmountBsS, StringFormat={}{0:N2}}"
+                    <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='MONTO ESPERADO ({0})'}"
+                                        Binding="{Binding ExpectedAmountBsS, Converter={StaticResource LocalAmountConverter}}"
                                         IsReadOnly="True"
                                         Width="*"
                                         x:Name="ExpectedColumn">
@@ -312,7 +314,7 @@
                     </DataGridTextColumn>
 
                     <!-- Col 3: Monto Declarado (Input Recuadro con Focus Morado) -->
-                    <DataGridTemplateColumn Header="MONTO DECLARADO (BS.S)" Width="*">
+                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='MONTO DECLARADO ({0})'}" Width="*">
                         <DataGridTemplateColumn.HeaderStyle>
                             <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
                                 <Setter Property="HorizontalContentAlignment" Value="Right"/>
@@ -357,7 +359,7 @@
                     </DataGridTemplateColumn>
 
                     <!-- Col 4: Diferencia (Color Semántico: Rojo, Verde o Gris) -->
-                    <DataGridTemplateColumn Header="DIFERENCIA (BS.S)"
+                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='DIFERENCIA ({0})'}"
                                             Width="*"
                                             x:Name="DifferenceColumn">
                         <DataGridTemplateColumn.HeaderStyle>
@@ -367,7 +369,7 @@
                         </DataGridTemplateColumn.HeaderStyle>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding DifferenceDisplay}"
+                                <TextBlock Text="{Binding DifferenceBsS, Converter={StaticResource LocalAmountConverter}}"
                                            Foreground="{Binding DifferenceColor}"
                                            FontWeight="Bold"
                                            FontSize="13"
@@ -413,7 +415,7 @@
                                    FontSize="11" FontWeight="Bold"
                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding TotalExpectedBsS, StringFormat=Bs.S {0:N2}}"
+                        <TextBlock Text="{Binding TotalExpectedBsS, Converter={StaticResource LocalAmountConverter}}"
                                    AutomationProperties.AutomationId="DailyClosure_ExpectedTotalText"
                                    FontSize="20" FontWeight="Bold"
                                    HorizontalAlignment="Center"
@@ -436,7 +438,7 @@
                                    FontSize="11" FontWeight="Bold"
                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding TotalActualBsS, StringFormat=Bs.S {0:N2}}"
+                        <TextBlock Text="{Binding TotalActualBsS, Converter={StaticResource LocalAmountConverter}}"
                                    AutomationProperties.AutomationId="DailyClosure_ActualTotalText"
                                    FontSize="20" FontWeight="Bold"
                                    HorizontalAlignment="Center"
@@ -460,7 +462,7 @@
                                    FontSize="11" FontWeight="Bold"
                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding TotalDifferenceBsS, StringFormat=Bs.S {0:N2}}"
+                        <TextBlock Text="{Binding TotalDifferenceBsS, Converter={StaticResource LocalAmountConverter}}"
                                    FontSize="20" FontWeight="ExtraBold"
                                    HorizontalAlignment="Center"
                                    Foreground="{Binding DifferenceStatusColor}"
