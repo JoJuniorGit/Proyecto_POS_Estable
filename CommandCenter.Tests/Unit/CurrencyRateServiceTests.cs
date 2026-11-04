@@ -536,4 +536,25 @@ public class CurrencyRateServiceTests
         Assert.Equal(0.0025m, second.Rate);
         Assert.Equal(CurrencyRateSource.ManualInverse, second.Source);
     }
+
+    [Fact]
+    public async Task GetRateAsync_ManualQuote_CacheIsIsolatedByPairAndDate()
+    {
+        using var db = CreateInMemoryDb();
+        using var cache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 });
+        var service = CreateService(db, cache);
+        var nextDate = RateDate.AddDays(1);
+
+        await service.SetManualRateAsync(CreateRequest("EUR", "COP", 100m, RateDate), updatedByUserId: 1);
+        await service.SetManualRateAsync(CreateRequest("EUR", "COP", 110m, nextDate), updatedByUserId: 1);
+        await service.SetManualRateAsync(CreateRequest("EUR", "MXN", 20m, RateDate), updatedByUserId: 1);
+
+        Assert.Equal(100m, (await service.GetRateAsync("EUR", "COP", RateDate)).Rate);
+        Assert.Equal(110m, (await service.GetRateAsync("EUR", "COP", nextDate)).Rate);
+        Assert.Equal(20m, (await service.GetRateAsync("EUR", "MXN", RateDate)).Rate);
+
+        await service.SetManualRateAsync(CreateRequest("EUR", "COP", 120m, nextDate), updatedByUserId: 1);
+        Assert.Equal(100m, (await service.GetRateAsync("EUR", "COP", RateDate)).Rate);
+        Assert.Equal(120m, (await service.GetRateAsync("EUR", "COP", nextDate)).Rate);
+    }
 }
