@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              mc:Ignorable="d"
              Width="620" MinHeight="440"
@@ -34,7 +35,7 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" HorizontalAlignment="Right">
                     <TextBlock Text="SALDO PENDIENTE" FontSize="10" FontWeight="Bold" Foreground="#9A3412" HorizontalAlignment="Right"/>
-                    <TextBlock Text="{Binding BalanceUSD, StringFormat='$ {0:N2}'}" FontSize="16" FontWeight="Bold" Foreground="#B45309" HorizontalAlignment="Right"/>
+                    <TextBlock Text="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}" FontSize="16" FontWeight="Bold" Foreground="#B45309" HorizontalAlignment="Right"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -52,7 +53,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="PRODUCTO" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
                     <TextBlock Grid.Column="1" Text="VENDIDO" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
-                    <TextBlock Grid.Column="2" Text="PRECIO USD" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                    <TextBlock Grid.Column="2" Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, StringFormat='PRECIO {0}'}" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
                     <TextBlock Grid.Column="3" Text="DEVOLVER" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Center"/>
                     <TextBlock Grid.Column="4" Text="SUBTOTAL" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
                 </Grid>
@@ -72,14 +73,14 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="{Binding ProductName}" FontSize="12" Foreground="#1E293B" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="1" Text="{Binding MaxQuantity, StringFormat='{}{0:0.###}'}" FontSize="12" Foreground="#64748B" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding UnitPriceUSD, StringFormat='${0:N2}'}" FontSize="12" Foreground="#64748B" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding UnitPriceUSD, Converter={StaticResource PrimaryAmountConverter}}" FontSize="12" Foreground="#64748B" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                         <TextBox Grid.Column="3"
                                                  AutomationProperties.AutomationId="CreditReturn_QuantityInput"
                                                  Text="{Binding QuantityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                  Style="{DynamicResource MaterialDesignOutlinedTextBox}"
                                                  FontSize="12" Height="30" Padding="6,2" Margin="8,0"
                                                  HorizontalContentAlignment="Right"/>
-                                        <TextBlock Grid.Column="4" Text="{Binding SubtotalUSD, StringFormat='${0:N2}'}" FontWeight="Bold" FontSize="12" Foreground="#0F172A" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding SubtotalUSD, Converter={StaticResource PrimaryAmountConverter}}" FontWeight="Bold" FontSize="12" Foreground="#0F172A" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
@@ -104,7 +105,7 @@
         <Grid Grid.Row="3">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="Total solicitado:" FontSize="12" Foreground="#64748B" VerticalAlignment="Center"/>
-                <TextBlock Text="{Binding RequestedReturnDisplay}" FontSize="15" FontWeight="Bold" Foreground="#0F172A" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding RequestedReturnUSD, Converter={StaticResource PrimaryAmountConverter}}" FontSize="15" FontWeight="Bold" Foreground="#0F172A" Margin="6,0,0,0" VerticalAlignment="Center"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="CANCELAR"

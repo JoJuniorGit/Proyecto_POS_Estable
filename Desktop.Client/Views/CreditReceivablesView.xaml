@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
              mc:Ignorable="d"
@@ -119,7 +120,18 @@
                 <materialDesign:PackIcon Kind="CashMultiple" Width="26" Height="26" Foreground="#5E35B1" Margin="0,0,10,0" VerticalAlignment="Center"/>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="Cuentas por Cobrar (CxC)" FontSize="20" FontWeight="Bold" Foreground="#1E293B"/>
-                    <TextBlock Text="{Binding HeaderSubtitle}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
+                    <TextBlock FontSize="11" Foreground="#64748B" Margin="0,2,0,0">
+                        <Run Text="{Binding OpenCount, Mode=OneWay, StringFormat='Cartera abierta: {0} obligaciones · '}"/>
+                        <Run Text="Busque por cliente, cédula/RIF o factura."/>
+                    </TextBlock>
+                    <!-- 8.211-T4c2b4 (S9): the daily rate only exists in Dual. -->
+                    <TextBlock FontSize="11" Foreground="#64748B" Margin="0,1,0,0"
+                               Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                        <Run Text="Tasa del día: "/>
+                        <Run Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencyCode}}"/>
+                        <Run Text="{Binding TodayRate, Mode=OneWay, StringFormat=' {0:N2} por '}"/>
+                        <Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}"/>
+                    </TextBlock>
                 </StackPanel>
             </StackPanel>
         </DockPanel>
@@ -206,7 +218,7 @@
             <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0" Effect="{StaticResource EnterpriseCardShadow}">
                 <StackPanel>
                     <TextBlock Text="CARTERA ABIERTA" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
-                    <TextBlock Text="{Binding TotalOpenUSD, StringFormat='${0:N2}'}"
+                    <TextBlock Text="{Binding TotalOpenUSD, Converter={StaticResource PrimaryAmountConverter}}"
                                AutomationProperties.AutomationId="CreditReceivables_TotalOpen"
                                FontSize="20" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
                 </StackPanel>
@@ -215,7 +227,7 @@
             <Border Grid.Column="1" Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0" Effect="{StaticResource EnterpriseCardShadow}">
                 <StackPanel>
                     <TextBlock Text="VENCIDO (MORA)" FontSize="10" FontWeight="Bold" Foreground="#991B1B"/>
-                    <TextBlock Text="{Binding TotalOverdueUSD, StringFormat='${0:N2}'}"
+                    <TextBlock Text="{Binding TotalOverdueUSD, Converter={StaticResource PrimaryAmountConverter}}"
                                AutomationProperties.AutomationId="CreditReceivables_TotalOverdue"
                                FontSize="20" FontWeight="Bold" Foreground="#DC2626" Typography.NumeralAlignment="Tabular"/>
                 </StackPanel>
@@ -230,9 +242,17 @@
                 </StackPanel>
             </Border>
 
-            <Border Grid.Column="3" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" CornerRadius="8" Padding="14,10" Effect="{StaticResource EnterpriseCardShadow}">
+            <!-- 8.211-T4c2b4 (S9): rate card is Dual-only. -->
+            <Border Grid.Column="3" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" CornerRadius="8" Padding="14,10" Effect="{StaticResource EnterpriseCardShadow}"
+                    Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
                 <StackPanel>
-                    <TextBlock Text="TASA DEL DÍA (BS.S/USD)" FontSize="10" FontWeight="Bold" Foreground="#166534"/>
+                    <TextBlock FontSize="10" FontWeight="Bold" Foreground="#166534">
+                        <Run Text="TASA DEL DÍA ("/>
+                        <Run Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencyCode}}"/>
+                        <Run Text="/"/>
+                        <Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}"/>
+                        <Run Text=")"/>
+                    </TextBlock>
                     <TextBlock Text="{Binding TodayRate, StringFormat='{}{0:N2}'}"
                                AutomationProperties.AutomationId="CreditReceivables_TodayRate"
                                FontSize="20" FontWeight="Bold" Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
@@ -246,8 +266,12 @@
                     Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8">
                 <StackPanel Orientation="Horizontal">
                     <materialDesign:PackIcon Kind="AlertCircleOutline" Width="18" Height="18" Foreground="#DC2626" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding OverdueAlertMessage}" Foreground="#991B1B" FontWeight="SemiBold"
-                               FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Foreground="#991B1B" FontWeight="SemiBold"
+                               FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center">
+                        <Run Text="Alerta de mora: "/>
+                        <Run Text="{Binding TotalOverdueUSD, Converter={StaticResource PrimaryAmountConverter}}"/>
+                        <Run Text=" vencidos en la cartera filtrada."/>
+                    </TextBlock>
                 </StackPanel>
             </Border>
 
@@ -331,21 +355,23 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="SALDO USD" Width="120" HeaderStyle="{StaticResource RightAlignedHeaderStyle}">
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, StringFormat='SALDO {0}'}" Width="120" HeaderStyle="{StaticResource RightAlignedHeaderStyle}">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding BalanceDisplay}" FontWeight="Bold" FontSize="13" Foreground="#0F172A" Typography.NumeralAlignment="Tabular" HorizontalAlignment="Right"/>
-                                        <TextBlock Text="{Binding OriginalUSD, StringFormat='Orig. ${0:N2}'}" FontSize="10" Foreground="#64748B" Typography.NumeralAlignment="Tabular" HorizontalAlignment="Right"/>
+                                        <TextBlock Text="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}" FontWeight="Bold" FontSize="13" Foreground="#0F172A" Typography.NumeralAlignment="Tabular" HorizontalAlignment="Right"/>
+                                        <TextBlock Text="{Binding OriginalUSD, Converter={StaticResource PrimaryAmountConverter}, StringFormat='Orig. {0}'}" FontSize="10" Foreground="#64748B" Typography.NumeralAlignment="Tabular" HorizontalAlignment="Right"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="SALDO BS.S HOY" Width="140" HeaderStyle="{StaticResource RightAlignedHeaderStyle}">
+                        <!-- 8.211-T4c2b4 (S9): today projection only exists in Dual. -->
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='SALDO {0} HOY'}" Width="140" HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
+                                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding BalanceTodayDisplay}" FontWeight="SemiBold" FontSize="12" Foreground="#166534"
+                                    <TextBlock Text="{Binding BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}" FontWeight="SemiBold" FontSize="12" Foreground="#166534"
                                                HorizontalAlignment="Right" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>

@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              mc:Ignorable="d"
              Width="680" MinHeight="480"
@@ -34,7 +35,7 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" HorizontalAlignment="Right">
                     <TextBlock Text="SALDO PENDIENTE" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
-                    <TextBlock Text="{Binding TotalOpenDisplay}" FontSize="13" FontWeight="Bold" Foreground="#0F172A" HorizontalAlignment="Right"/>
+                    <TextBlock Text="{Binding TotalOpenUSD, Converter={StaticResource PrimaryAmountConverter}}" FontSize="13" FontWeight="Bold" Foreground="#0F172A" HorizontalAlignment="Right"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -51,15 +52,22 @@
                 <StackPanel Grid.Column="0" Margin="0,0,12,0">
                     <TextBox AutomationProperties.AutomationId="CreditPayment_AmountUsdInput"
                              Text="{Binding AmountUsdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             materialDesign:HintAssist.Hint="Monto del abono (USD)"
+                             materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Monto del abono ({0})'}"
                              Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
                              FontWeight="Bold" FontSize="16"
                              HorizontalContentAlignment="Right"/>
-                    <TextBlock Text="{Binding AmountBsS, StringFormat='≈ Bs.S {0:N2} a la tasa del día'}"
-                               FontSize="11" Foreground="#64748B" HorizontalAlignment="Right" Margin="0,2,0,0"/>
-                    <TextBlock Text="{Binding RemainingAfterDisplay}"
-                               AutomationProperties.AutomationId="CreditPayment_RemainingAfter"
-                               FontSize="11" FontWeight="SemiBold" Foreground="#475569" HorizontalAlignment="Right" Margin="0,2,0,0"/>
+                    <!-- 8.211-T4c2b4 (S9): the local projection only exists in Dual. -->
+                    <TextBlock FontSize="11" Foreground="#64748B" HorizontalAlignment="Right" Margin="0,2,0,0"
+                               Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                        <Run Text="≈ "/>
+                        <Run Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"/>
+                        <Run Text=" a la tasa del día"/>
+                    </TextBlock>
+                    <TextBlock AutomationProperties.AutomationId="CreditPayment_RemainingAfter"
+                               FontSize="11" FontWeight="SemiBold" Foreground="#475569" HorizontalAlignment="Right" Margin="0,2,0,0">
+                        <Run Text="Saldo resultante: "/>
+                        <Run Text="{Binding RemainingAfterUSD, Converter={StaticResource PrimaryAmountConverter}}"/>
+                    </TextBlock>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Margin="0,0,12,0">
@@ -159,10 +167,12 @@
                                     <TextBlock Text="{Binding InvoiceDisplay}" FontWeight="SemiBold" FontSize="12" Foreground="#1E293B"/>
                                     <TextBlock Text="{Binding Receivable.Status}" FontSize="10" Foreground="#64748B"/>
                                 </StackPanel>
-                                <TextBlock Grid.Column="2" Text="{Binding BalanceUSD, StringFormat='$ {0:N2}'}"
+                                <TextBlock Grid.Column="2" Text="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}"
                                            FontWeight="Bold" FontSize="12" Foreground="#0F172A" VerticalAlignment="Center" Margin="0,0,16,0"
                                            Typography.NumeralAlignment="Tabular"/>
-                                <TextBlock Grid.Column="3" Text="{Binding Receivable.BalanceTodayDisplay}"
+                                <!-- 8.211-T4c2b4 (S9): today projection only exists in Dual. -->
+                                <TextBlock Grid.Column="3" Text="{Binding Receivable.BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}"
+                                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                            FontSize="11" Foreground="#166534" VerticalAlignment="Center"
                                            Typography.NumeralAlignment="Tabular"/>
                             </Grid>
