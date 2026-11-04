@@ -61,7 +61,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _formattedBalanceBsS, value);
     }
 
-    private string _formattedBalanceUsd = "0.00 $";
+    private string _formattedBalanceUsd = FormatPrimaryAmount(0m);
     public string FormattedBalanceUsd
     {
         get => _formattedBalanceUsd;
@@ -75,7 +75,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _totalIncomeBsS, value);
     }
 
-    private string _formattedTotalIncomeBsS = "0 Bs.S";
+    private string _formattedTotalIncomeBsS = CurrencyDisplay.FormatSecondary(0m, 0);
     public string FormattedTotalIncomeBsS
     {
         get => _formattedTotalIncomeBsS;
@@ -89,7 +89,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _totalExpenseBsS, value);
     }
 
-    private string _formattedTotalExpenseBsS = "0 Bs.S";
+    private string _formattedTotalExpenseBsS = CurrencyDisplay.FormatSecondary(0m, 0);
     public string FormattedTotalExpenseBsS
     {
         get => _formattedTotalExpenseBsS;
@@ -165,7 +165,8 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _isOpeningSession, value);
     }
 
-    public string OpeningRateDisplay => $"Tasa: {CurrencyDisplay.Number(_exchangeRateService.CurrentRate)} / USD";
+    public string OpeningRateDisplay =>
+        $"Tasa: {CurrencyDisplay.Number(_exchangeRateService.CurrentRate)} / {CurrencyDisplay.PrimaryCurrencyCode}";
 
 
     public CashDrawerViewModel(
@@ -231,7 +232,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             // 8.143: los montos visibles honran el ajuste activo (Venezolano/Internacional) y se
             // re-formatean al vuelo cuando el formato cambia.
             FormattedBalanceBsS = CurrencyDisplay.Number(balanceLocal, 0);
-            FormattedBalanceUsd = CurrencyDisplay.Number(rate > 0 ? balanceLocal / rate : 0) + " $";
+            FormattedBalanceUsd = FormatPrimaryAmount(rate > 0 ? balanceLocal / rate : 0);
         }
         else
         {
@@ -254,9 +255,14 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             TotalExpenseBsS = 0;
         }
 
-        FormattedTotalIncomeBsS = CurrencyDisplay.Number(TotalIncomeBsS, 0) + " Bs.S";
-        FormattedTotalExpenseBsS = CurrencyDisplay.Number(TotalExpenseBsS, 0) + " Bs.S";
+        FormattedTotalIncomeBsS = CurrencyDisplay.FormatSecondary(TotalIncomeBsS, 0);
+        FormattedTotalExpenseBsS = CurrencyDisplay.FormatSecondary(TotalExpenseBsS, 0);
     }
+
+    // The USD-equivalent line keeps the historical trailing-symbol shape ("26,00 $") because the
+    // existing cash-drawer display contract asserts it; only the symbol becomes profile-driven.
+    private static string FormatPrimaryAmount(decimal value)
+        => $"{CurrencyDisplay.Number(value)} {CurrencyDisplay.PrimaryCurrencySymbol}";
 
     public async Task LoadSessionAsync()
     {
@@ -374,13 +380,17 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
 
         if (!FlexibleDecimalParser.TryParse(OpeningBalanceLocalText, out decimal local) || local < 0m)
         {
-            _dialogService?.ShowWarning("Apertura de Caja", "Ingrese un fondo inicial válido en Bs.S (mayor o igual a cero).");
+            _dialogService?.ShowWarning(
+                "Apertura de Caja",
+                $"Ingrese un fondo inicial válido en {CurrencyDisplay.LocalCurrencyCode} (mayor o igual a cero).");
             return;
         }
 
         if (!FlexibleDecimalParser.TryParse(OpeningBalanceUsdText, out decimal usd) || usd < 0m)
         {
-            _dialogService?.ShowWarning("Apertura de Caja", "Ingrese un fondo inicial válido en USD (mayor o igual a cero).");
+            _dialogService?.ShowWarning(
+                "Apertura de Caja",
+                $"Ingrese un fondo inicial válido en {CurrencyDisplay.PrimaryCurrencyCode} (mayor o igual a cero).");
             return;
         }
 
@@ -544,7 +554,8 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
                     ? $" (Factura N° {advanceResult.InvoiceNumber.Value})"
                     : string.Empty;
 
-                _dialogService.ShowSuccessDialog($"Adelanto de {MoneyFormat.N0(res.requestedAmount)} Bs.S procesado con éxito{invoiceInfo}. Registrado en el Historial de Ventas.");
+                _dialogService.ShowSuccessDialog(
+                    $"Adelanto de {CurrencyDisplay.FormatSecondary(res.requestedAmount)} procesado con éxito{invoiceInfo}. Registrado en el Historial de Ventas.");
                 await LoadSessionAsync();
             }
         }

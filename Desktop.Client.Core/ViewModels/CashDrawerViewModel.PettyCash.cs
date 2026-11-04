@@ -43,13 +43,13 @@ public partial class CashDrawerViewModel
 
     public bool HasPettyCashExpenses => PettyCashExpenses.Count > 0;
 
-    /// <summary>Bs.S 2dp / USD 4dp; el arqueo ciego oculta el teórico a los no supervisores.</summary>
+    /// <summary>Local amount first; the primary duplicate is only rendered in Dual.</summary>
     public string PettyCashPhysicalBalanceBsSDisplay => CanViewTheoreticalBalance
-        ? $"Bs.S {PettyCashLabels.FormatBsS(PettyCashPhysicalBalanceBsS)}"
+        ? CurrencyDisplay.FormatSecondary(PettyCashPhysicalBalanceBsS)
         : "—";
 
     public string PettyCashPhysicalBalanceUsdDisplay => CanViewTheoreticalBalance
-        ? PettyCashLabels.FormatUsd(PettyCashPhysicalBalanceUsd)
+        ? CurrencyDisplay.FormatPrimary(PettyCashPhysicalBalanceUsd)
         : "—";
 
     public string PettyCashSummary
@@ -61,7 +61,10 @@ public partial class CashDrawerViewModel
                 .ToList();
             decimal totalBsS = active.Sum(row => row.Expense.AmountBsS);
             decimal totalUsd = active.Sum(row => row.Expense.AmountUsd);
-            return $"{active.Count} activo(s) · Bs.S {PettyCashLabels.FormatBsS(totalBsS)} · {PettyCashLabels.FormatUsd(totalUsd)}";
+            var localTotal = $"{active.Count} activo(s) · {CurrencyDisplay.FormatSecondary(totalBsS)}";
+            return CurrencyDisplay.IsSingle
+                ? localTotal
+                : $"{localTotal} · {CurrencyDisplay.FormatPrimary(totalUsd)}";
         }
     }
 
@@ -169,9 +172,11 @@ public partial class CashDrawerViewModel
 
             await LoadSessionAsync();
 
+            string amountSummary = CurrencyDisplay.IsSingle
+                ? CurrencyDisplay.FormatSecondary(result.AmountBsS)
+                : $"{CurrencyDisplay.FormatSecondary(result.AmountBsS)} / {CurrencyDisplay.FormatPrimary(result.AmountUsd)}";
             string message =
-                $"Gasto {result.VoucherCode} registrado: {PettyCashLabels.Category(result.Category)} · " +
-                $"Bs.S {PettyCashLabels.FormatBsS(result.AmountBsS)} / {PettyCashLabels.FormatUsd(result.AmountUsd)}.";
+                $"Gasto {result.VoucherCode} registrado: {PettyCashLabels.Category(result.Category)} · {amountSummary}.";
             if (_dialogService.ShowSuccessDialog(message, "Imprimir Vale"))
             {
                 await PrintVoucherAsync(result);

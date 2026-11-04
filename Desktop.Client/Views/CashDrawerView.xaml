@@ -8,6 +8,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
              xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              mc:Ignorable="d" 
              d:DesignHeight="700" d:DesignWidth="900">
 
@@ -143,9 +144,11 @@
                         <TextBlock Text="EFECTIVO ESPERADO EN CAJA" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" Opacity="0.8"/>
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                             <TextBlock Text="{Binding FormattedBalanceBsS}" AutomationProperties.AutomationId="CashDrawer_BalanceText" FontSize="38" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
-                            <TextBlock Text="Bs.S" FontSize="16" FontWeight="Bold" VerticalAlignment="Bottom" Margin="6,0,0,8" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                            <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}}" FontSize="16" FontWeight="Bold" VerticalAlignment="Bottom" Margin="6,0,0,8" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                         </StackPanel>
-                        <TextBlock Text="{Binding FormattedBalanceUsd}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,2,0,0"/>
+                        <TextBlock Text="{Binding FormattedBalanceUsd}"
+                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                   FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,2,0,0"/>
                     </StackPanel>
 
                     <Border Grid.Column="1" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource PrimaryHueLightBrush}" VerticalAlignment="Center">
@@ -238,14 +241,17 @@
                 <!-- Saldos físicos del turno (arqueo ciego para no supervisores) -->
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
                     <materialDesign:PackIcon Kind="ScaleBalance" Width="16" Height="16" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center"/>
-                    <TextBlock Text="Efectivo físico Bs.S:" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Efectivo físico {0}:'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="6,0,0,0" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding PettyCashPhysicalBalanceBsSDisplay}"
                                AutomationProperties.AutomationId="CashDrawer_PettyCashBalanceBsSText"
                                FontSize="12" FontWeight="Bold" Foreground="#0F766E" Margin="4,0,16,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="Efectivo físico USD:" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding PettyCashPhysicalBalanceUsdDisplay}"
-                               AutomationProperties.AutomationId="CashDrawer_PettyCashBalanceUsdText"
-                               FontSize="12" FontWeight="Bold" Foreground="#0F766E" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                        <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Efectivo físico {0}:'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding PettyCashPhysicalBalanceUsdDisplay}"
+                                   AutomationProperties.AutomationId="CashDrawer_PettyCashBalanceUsdText"
+                                   FontSize="12" FontWeight="Bold" Foreground="#0F766E" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
                     <TextBlock Text="Cargando..." FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="14,0,0,0" VerticalAlignment="Center"
                                Visibility="{Binding IsPettyCashLoading, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                 </StackPanel>
@@ -275,8 +281,12 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="MONTO Bs.S" Binding="{Binding AmountBsSDisplay}" Width="120"/>
-                        <DataGridTextColumn Header="MONTO USD" Binding="{Binding AmountUsdDisplay}" Width="110"/>
+                        <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='MONTO {0}'}"
+                                            Binding="{Binding Expense.AmountBsS, Converter={StaticResource LocalAmountConverter}}" Width="120"/>
+                        <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='MONTO {0}'}"
+                                            Binding="{Binding Expense.AmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
+                                            Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                            Width="110"/>
                         <DataGridTemplateColumn Header="ESTADO" Width="90">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -370,12 +380,13 @@
                                                        Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                                         </StackPanel>
 
-                                        <!-- Amount Bs.S + USD (Verde reservado únicamente para montos, Centrado) -->
+                                        <!-- Local amount + primary duplicate (green reserved for amounts, centered) -->
                                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding AmountBsS, StringFormat={}{0:N0} Bs.S}"
+                                            <TextBlock Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"
                                                        FontWeight="ExtraBold" FontSize="13"
                                                        Foreground="#27AE60"/>
-                                            <TextBlock Text="{Binding AmountUsd, StringFormat=' (${0:N2})'}"
+                                            <TextBlock Text="{Binding AmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
+                                                       Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                                        FontSize="11" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource MaterialDesignBodyLight}"
                                                        Margin="4,0,0,0"/>
@@ -484,8 +495,9 @@
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
 
-                    <!-- Monto (Bs.S) -->
-                    <DataGridTextColumn Header="Monto (Bs.S)" Binding="{Binding AmountBsS, StringFormat={}{0:N0}}" Width="120">
+                    <!-- Local amount -->
+                    <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Monto ({0})'}"
+                                        Binding="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}" Width="120">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="FontWeight" Value="Bold"/>
@@ -495,8 +507,11 @@
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
 
-                    <!-- Monto USD -->
-                    <DataGridTextColumn Header="USD" Binding="{Binding AmountUsd, StringFormat={}${0:N2}}" Width="90">
+                    <!-- Primary-currency duplicate (hidden in Single) -->
+                    <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}"
+                                        Binding="{Binding AmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
+                                        Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                        Width="90">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Foreground" Value="Gray"/>
@@ -506,8 +521,10 @@
                         </DataGridTextColumn.ElementStyle>
                     </DataGridTextColumn>
 
-                    <!-- Tasa -->
-                    <DataGridTextColumn Header="Tasa" Binding="{Binding ExchangeRate, StringFormat={}{0:N2}}" Width="80">
+                    <!-- Exchange rate only exists in Dual -->
+                    <DataGridTextColumn Header="Tasa" Binding="{Binding ExchangeRate, StringFormat={}{0:N2}}"
+                                        Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                        Width="80">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Foreground" Value="Gray"/>
@@ -575,19 +592,27 @@
                                                  Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                         <TextBlock Text="Abrir Caja" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock Text="Declare el fondo físico inicial de cada gaveta. El fondo USD queda segregado y se transfiere automáticamente al turno siguiente."
-                               TextWrapping="Wrap" FontSize="12" Opacity="0.7" Margin="0,0,0,18"/>
-                    <TextBox materialDesign:HintAssist.Hint="Fondo inicial Bs.S *"
+                    <StackPanel Margin="0,0,0,18">
+                        <TextBlock Text="Declare el fondo físico inicial de cada gaveta."
+                                   TextWrapping="Wrap" FontSize="12" Opacity="0.7"/>
+                        <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='El fondo {0} queda segregado y se transfiere automáticamente al turno siguiente.'}"
+                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                   TextWrapping="Wrap" FontSize="12" Opacity="0.7"/>
+                    </StackPanel>
+                    <TextBox materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Fondo inicial {0} *'}"
                              Text="{Binding OpeningBalanceLocalText, UpdateSourceTrigger=PropertyChanged}"
                              Style="{DynamicResource MaterialDesignOutlinedTextBox}"
                              AutomationProperties.AutomationId="CashDrawer_OpeningBalanceLocal"
                              Margin="0,0,0,14"/>
-                    <TextBox materialDesign:HintAssist.Hint="Fondo inicial USD"
+                    <TextBox materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Fondo inicial {0}'}"
                              Text="{Binding OpeningBalanceUsdText, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
                              Style="{DynamicResource MaterialDesignOutlinedTextBox}"
                              AutomationProperties.AutomationId="CashDrawer_OpeningBalanceUsd"
                              Margin="0,0,0,10"/>
-                    <TextBlock Text="{Binding OpeningRateDisplay}" FontSize="12" Opacity="0.7" Margin="0,0,0,18"/>
+                    <TextBlock Text="{Binding OpeningRateDisplay}"
+                               Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                               FontSize="12" Opacity="0.7" Margin="0,0,0,18"/>
                     <Button Command="{Binding OpenCashDrawerCommand}"
                             Style="{DynamicResource MaterialDesignRaisedButton}"
                             IsDefault="True"

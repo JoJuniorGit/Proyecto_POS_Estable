@@ -158,7 +158,12 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
         }
         else if (AvailableCashLocal is decimal availableCap && RequestedAmountBsS > availableCap)
         {
-            ErrorMessage = $"El monto supera el efectivo en caja ({MoneyFormat.N2(availableCap)} Bs.S).";
+            // Single has no secondary currency: the ISO code identifies the local drawer.
+            // Dual keeps the configured local symbol to preserve the existing message shape.
+            var currencyLabel = CurrencyDisplay.IsSingle
+                ? CurrencyDisplay.LocalCurrencyCode
+                : CurrencyDisplay.LocalCurrencySymbol;
+            ErrorMessage = $"El monto supera el efectivo en caja ({MoneyFormat.N2(availableCap)} {currencyLabel}).";
         }
         else if (SelectedPaymentMethod == null)
         {
