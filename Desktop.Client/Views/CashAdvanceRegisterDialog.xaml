@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -34,7 +35,7 @@
                     <TextBlock Text="EFECTIVO DISPONIBLE:" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center" HorizontalAlignment="Left"/>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
                         <TextBlock Text="{Binding AvailableCashDisplay}" FontSize="18" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
-                        <TextBlock Text=" Bs.S" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="2,0,0,2" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                        <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat=' {0}'}" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="2,0,0,2" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -46,7 +47,7 @@
                 <!-- Amount Requested -->
                 <TextBlock Text="1. Monto Entregado al Cliente (Efectivo)" Foreground="{DynamicResource PrimaryHueMidBrush}" FontWeight="Medium" Margin="0,0,0,6"/>
                 <TextBox x:Name="RequestedAmountInput" 
-                         materialDesign:HintAssist.Hint="Monto en Bs.S *" 
+                         materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Monto en {0} *'}" 
                          materialDesign:HintAssist.HelperText="Ingrese la cantidad en efectivo a retirar de caja"
                          Style="{DynamicResource MaterialDesignOutlinedTextBox}" 
                          Text="{Binding RequestedAmountBsS, UpdateSourceTrigger=PropertyChanged, TargetNullValue=''}"
@@ -68,7 +69,7 @@
                         
                         <Grid Margin="0,0,0,6">
                             <TextBlock Text="Salida de Efectivo de Caja:" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                            <TextBlock Text="{Binding RequestedAmountBsS, StringFormat='-{0:N0} Bs.S'}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#EF4444"/>
+                            <TextBlock Text="{Binding RequestedAmountBsS, Converter={StaticResource LocalAmountConverter}, StringFormat='-{0}'}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#EF4444"/>
                         </Grid>
 
                         <Grid Margin="0,0,0,6">
@@ -77,7 +78,7 @@
                                 <TextBlock Text="{Binding CommissionPercentage, StringFormat='{}{0:0}%'}" Foreground="{DynamicResource MaterialDesignBodyLight}" FontWeight="Bold"/>
                                 <TextBlock Text="):" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                             </StackPanel>
-                            <TextBlock Text="{Binding CommissionAmountBsS, StringFormat='+ {0:N0} Bs.S'}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#10B981"/>
+                            <TextBlock Text="{Binding CommissionAmountBsS, Converter={StaticResource LocalAmountConverter}, StringFormat='+ {0}'}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#10B981"/>
                         </Grid>
 
                         <Separator Margin="0,6,0,8"/>
@@ -85,11 +86,10 @@
                         <Grid>
                             <TextBlock Text="TOTAL A COBRAR AL CLIENTE:" FontWeight="Bold" VerticalAlignment="Center"/>
                             <StackPanel HorizontalAlignment="Right">
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <TextBlock Text="{Binding TotalToChargeBsS, StringFormat='{}{0:N0}'}" FontSize="18" FontWeight="ExtraBold" Foreground="#3B82F6"/>
-                                    <TextBlock Text=" Bs.S" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="2,0,0,2" Foreground="#3B82F6"/>
-                                </StackPanel>
-                                <TextBlock Text="{Binding TotalToChargeUSD, StringFormat='($ {0:N2} USD)'}" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" HorizontalAlignment="Right"/>
+                                <TextBlock Text="{Binding TotalToChargeBsS, Converter={StaticResource LocalAmountConverter}}" FontSize="18" FontWeight="ExtraBold" Foreground="#3B82F6" HorizontalAlignment="Right"/>
+                                <TextBlock Text="{Binding TotalToChargeUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                           FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" HorizontalAlignment="Right"/>
                             </StackPanel>
                         </Grid>
                     </StackPanel>

@@ -15,11 +15,11 @@ public partial class CashDrawerCloseDialog : Window
     {
         InitializeComponent();
 
-        RateText.Text = $"Tasa vigente: Bs.S {CurrencyDisplay.Number(exchangeRate, 2)} por USD";
-        TheoreticalBsSText.Text = $"Efectivo esperado Bs.S: Bs.S {CurrencyDisplay.Number(currentBalanceBsS, 2)}";
+        RateText.Text = $"Tasa vigente: {CurrencyDisplay.LocalCurrencyCode} {CurrencyDisplay.Number(exchangeRate, 2)} / {CurrencyDisplay.PrimaryCurrencyCode}";
+        TheoreticalBsSText.Text = $"Efectivo esperado {CurrencyDisplay.LocalCurrencyCode}: {CurrencyDisplay.FormatSecondary(currentBalanceBsS)}";
         TheoreticalUsdText.Text = currentBalanceUsd.HasValue
-            ? $"Efectivo esperado USD: {PettyCashLabels.FormatUsd(currentBalanceUsd.Value)}"
-            : "Efectivo esperado USD: no disponible";
+            ? $"Efectivo esperado {CurrencyDisplay.PrimaryCurrencyCode}: {CurrencyDisplay.FormatPrimary(currentBalanceUsd.Value)}"
+            : $"Efectivo esperado {CurrencyDisplay.PrimaryCurrencyCode}: no disponible";
 
         LocalAmountBox.Text = currentBalanceBsS.ToString("N2", CultureInfo.InvariantCulture);
         Loaded += (_, _) => LocalAmountBox.Focus();
@@ -33,7 +33,7 @@ public partial class CashDrawerCloseDialog : Window
     {
         if (!TryParseAmount(LocalAmountBox.Text, out decimal local) || local < 0m)
         {
-            ShowError("Ingrese un conteo válido de efectivo Bs.S (mayor o igual a cero).");
+            ShowError($"Ingrese un conteo válido de efectivo {CurrencyDisplay.LocalCurrencyCode} (mayor o igual a cero).");
             return;
         }
 
@@ -42,7 +42,7 @@ public partial class CashDrawerCloseDialog : Window
         {
             if (!TryParseAmount(UsdAmountBox.Text, out decimal parsedUsd) || parsedUsd < 0m)
             {
-                ShowError("Ingrese un conteo válido de efectivo USD (mayor o igual a cero) o déjelo vacío.");
+                ShowError($"Ingrese un conteo válido de efectivo {CurrencyDisplay.PrimaryCurrencyCode} (mayor o igual a cero) o déjelo vacío.");
                 return;
             }
 
