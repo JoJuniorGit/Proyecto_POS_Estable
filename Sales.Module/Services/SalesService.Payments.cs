@@ -337,6 +337,14 @@ public partial class SalesService
         bool? preloadedHasConfiguredMethods = null)
     {
         // 8.6-B3/8.5-A5: Tasa del abono anclada a la BCV del día cuando el cliente la envía.
+        // 8.211-T6-U4: a manual pair needs its 8dp calculation quote. Falling back to the 4dp
+        // persisted snapshot silently loses precision; require the client to send the rate.
+        if (request.ExchangeRate <= 0m && UsesManualPairRate(monetaryProfile))
+        {
+            throw new ArgumentException(
+                "La tasa de cálculo de 8 decimales es obligatoria para abonar una venta con par manual.");
+        }
+
         decimal rate = request.ExchangeRate > 0
             ? await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: contextLabel, referenceId: saleId)
             : saleAppliedRate;

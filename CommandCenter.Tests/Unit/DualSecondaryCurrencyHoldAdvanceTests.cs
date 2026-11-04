@@ -201,6 +201,83 @@ public class DualSecondaryCurrencyHoldAdvanceTests
     }
 
     [Fact]
+    public async Task HoldSale_DualUsdCop_FractionalManualRate_CalculatesWithEightDecimalsAndSnapshotsFour()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedRealCustomerAsync(context);
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 46,
+            Name = "Efectivo COP",
+            IsCash = true,
+            IsActive = true,
+            Currency = "COP"
+        });
+        await context.SaveChangesAsync();
+
+        const decimal fractionalRate = 4000.123456m;
+        var service = CreateService(
+            context,
+            CreateProfileMock(MonetaryMode.Dual, "USD", "COP").Object,
+            currencyRateService: CreateManualRateMock(fractionalRate).Object);
+
+        var sale = await SeedPendingSaleAsync(context);
+        await service.HoldSaleAsync(sale.Id, new HoldSaleRequestDto
+        {
+            CustomerId = customer.Id,
+            ExchangeRate = fractionalRate,
+            InitialPayment = new AddPaymentRequestDto
+            {
+                PaymentMethodId = 46,
+                AmountUSD = 10m,
+                AmountBsS = 40001.23m,
+                ExchangeRate = fractionalRate
+            }
+        });
+
+        var saved = await context.Sales.AsNoTracking().SingleAsync(s => s.Id == sale.Id);
+        Assert.Equal(SaleStatus.Completed, saved.Status);
+        Assert.Equal(4000.1235m, saved.AppliedRate);
+        Assert.Equal(40001.23m, saved.TotalBsS);
+        Assert.Equal(40001.23m, saved.SecondaryAmount);
+    }
+
+    [Fact]
+    public async Task AddPaymentToHoldSale_ManualPairWithoutCalculationRate_FailsClosed()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedRealCustomerAsync(context);
+        var profile = CreateProfileMock(MonetaryMode.Dual, "USD", "COP");
+        var service = CreateService(
+            context,
+            profile.Object,
+            currencyRateService: CreateManualRateMock(CopRate).Object);
+
+        var sale = await SeedPendingSaleAsync(context);
+        await service.HoldSaleAsync(sale.Id, new HoldSaleRequestDto
+        {
+            CustomerId = customer.Id,
+            ExchangeRate = CopRate
+        });
+
+        sale.ClaimedByUserId = 7;
+        sale.ClaimedByUserName = "Cajero COP";
+        sale.ClaimAction = SaleClaimAction.Editing;
+        sale.ClaimedAtUtc = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.AddPaymentToHoldSaleAsync(sale.Id, new AddPaymentRequestDto
+            {
+                PaymentMethodId = 1,
+                AmountUSD = 5m,
+                ExchangeRate = 0m
+            }, actingUserId: 7));
+
+        Assert.Contains("8 decimales", exception.Message, StringComparison.Ordinal);
+        Assert.False(await context.SalePayments.AsNoTracking().AnyAsync());
+    }
+    [Fact]
     public async Task AddPaymentToHoldSale_DualUsdCop_FractionalCashAbono_UsesCopCurrency()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
@@ -389,3 +466,4 @@ public class DualSecondaryCurrencyHoldAdvanceTests
         Assert.False(await context.SalePayments.AsNoTracking().AnyAsync());
     }
 }
+

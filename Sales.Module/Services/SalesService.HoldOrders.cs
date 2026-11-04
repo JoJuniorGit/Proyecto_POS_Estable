@@ -41,8 +41,11 @@ public partial class SalesService
 
         // 8.6-B3: La tasa del HOLD se ancla a la tasa BCV del día (misma política que CompleteSale).
         decimal anchoredHoldRate = await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "HoldSale", referenceId: sale.Id);
-        sale.AppliedRate = anchoredHoldRate;
-        await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
+        sale.AppliedRate = RoundSnapshotRate(anchoredHoldRate, monetaryProfile);
+        await RecalculateTotalAsync(
+            sale,
+            cancellationToken: cancellationToken,
+            calculationRate: ResolveCalculationRate(anchoredHoldRate, monetaryProfile));
 
         var paymentsToProcess = new List<AddPaymentRequestDto>();
         if (request.InitialPayment != null) paymentsToProcess.Add(request.InitialPayment);
@@ -80,7 +83,7 @@ public partial class SalesService
 
                 decimal rate = payment.ExchangeRate > 0
                     ? await ResolveAnchoredRateAsync(payment.ExchangeRate, contextLabel: "HoldSaleInitialPayment", referenceId: sale.Id)
-                    : sale.AppliedRate;
+                    : anchoredHoldRate;
                 decimal amountUsd = payment.AmountUSD > 0 
                     ? Math.Round(payment.AmountUSD, 2, MidpointRounding.AwayFromZero) 
                     : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
@@ -166,11 +169,14 @@ public partial class SalesService
             {
                 _context.ChangeTracker.Clear();
                 sale = await GetSaleEntityAsync(saleId);
-                sale.AppliedRate = anchoredHoldRate;
+                sale.AppliedRate = RoundSnapshotRate(anchoredHoldRate, monetaryProfile);
                 sale.CustomerId = customer.Id;
                 sale.CustomerName = customer.Name;
                 sale.CustomerCedula = customer.CedulaOrRif;
-                await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
+                await RecalculateTotalAsync(
+                    sale,
+                    cancellationToken: cancellationToken,
+                    calculationRate: ResolveCalculationRate(anchoredHoldRate, monetaryProfile));
                 foreach (var (prepPayment, prepCashTx) in preparedInitialEntries)
                 {
                     var clonedPayment = new SalePayment
@@ -313,7 +319,7 @@ public partial class SalesService
                         throw new ArgumentException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
                     }
 
-                    decimal changeBsS = Math.Round(changeUsd * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+                    decimal changeBsS = Math.Round(changeUsd * anchoredHoldRate, 2, MidpointRounding.AwayFromZero);
 
                     var paidMethodIds = sale.Payments.Select(p => p.PaymentMethodId).Distinct().ToList();
                     var paidMethods = await _context.PaymentMethods
@@ -323,7 +329,7 @@ public partial class SalesService
                         .FirstOrDefault(p => paidMethods.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)
                         ?.PaymentMethodId;
 
-                    var changeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(sale.AppliedRate, cancellationToken);
+                    var changeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(anchoredHoldRate, cancellationToken);
 
                     decimal pendingCashIncomeBsS = _context.CashTransactions.Local
                         .Where(t => t.SessionId == changeSession.Id
@@ -336,7 +342,7 @@ public partial class SalesService
                         changeSession.Id,
                         changeUsd,
                         changeBsS,
-                        sale.AppliedRate,
+                        anchoredHoldRate,
                         $"Vuelto Pedido #{sale.Id}",
                         sale.Id,
                         cashMethodId,
@@ -642,3 +648,4 @@ public partial class SalesService
         });
     }
 }
+
