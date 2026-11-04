@@ -104,15 +104,20 @@ public partial class SettingsViewModel
 
     private void UpdateCurrencyPreview(string formatKey)
     {
+        // 8.211-T4c2b4d (S9): the preview shows the active profile symbols, while separators
+        // still come from the selected numeric format. In Single both previews collapse to the
+        // primary currency; the view hides the duplicate.
+        var localSymbol = CurrencyDisplay.LocalCurrencySymbol;
+        var primarySymbol = CurrencyDisplay.PrimaryCurrencySymbol;
         if (formatKey.Equals("International", StringComparison.OrdinalIgnoreCase))
         {
-            CurrencyFormatPreviewBsS = "Bs.S 172,786.94";
-            CurrencyFormatPreviewUSD = "$ 1,250.50";
+            CurrencyFormatPreviewBsS = $"{localSymbol} 172,786.94";
+            CurrencyFormatPreviewUSD = $"{primarySymbol} 1,250.50";
         }
         else
         {
-            CurrencyFormatPreviewBsS = "Bs.S 172.786,94";
-            CurrencyFormatPreviewUSD = "$ 1.250,50";
+            CurrencyFormatPreviewBsS = $"{localSymbol} 172.786,94";
+            CurrencyFormatPreviewUSD = $"{primarySymbol} 1.250,50";
         }
     }
 }

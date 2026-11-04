@@ -6,6 +6,7 @@
              xmlns:local="clr-namespace:Desktop.Client.Views"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              mc:Ignorable="d" 
              d:DesignHeight="700" d:DesignWidth="900">
 
@@ -225,7 +226,8 @@
                                 <materialDesign:PackIcon Kind="EyeOutline" Width="18" Height="18" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock Text="Vista Previa en Vivo: " FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
                                 <TextBlock Text="{Binding CurrencyFormatPreviewBsS}" FontWeight="Bold" FontFamily="Consolas, Monospace" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                                <TextBlock Text="{Binding CurrencyFormatPreviewUSD}" FontWeight="Bold" FontFamily="Consolas, Monospace" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding CurrencyFormatPreviewUSD}" FontWeight="Bold" FontFamily="Consolas, Monospace" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"
+                       Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
                             </StackPanel>
                         </Border>
                     </Grid>
@@ -280,7 +282,7 @@
                                   DisplayMemberPath="DisplayName"
                                   SelectedItem="{Binding SelectedUsdRoundingRule, Mode=TwoWay}"
                                   IsEnabled="{Binding UserSession.CanMutateSettings}"
-                                  materialDesign:HintAssist.Hint="Redondeo USD (Detal/Mayor)"
+                                  materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Redondeo {0} (Detal/Mayor)'}"
                                   Style="{DynamicResource MaterialDesignOutlinedComboBox}"
                                   AutomationProperties.AutomationId="Settings_UsdRoundingCombo"
                                   VerticalAlignment="Center"/>
@@ -291,7 +293,7 @@
                                   DisplayMemberPath="DisplayName"
                                   SelectedItem="{Binding SelectedCashBsRoundingRule, Mode=TwoWay}"
                                   IsEnabled="{Binding UserSession.CanMutateSettings}"
-                                  materialDesign:HintAssist.Hint="Redondeo efectivo Bs.S (proyección)"
+                                  materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Redondeo efectivo {0} (proyección)'}"
                                   Style="{DynamicResource MaterialDesignOutlinedComboBox}"
                                   AutomationProperties.AutomationId="Settings_CashRoundingCombo"
                                   VerticalAlignment="Center"/>
@@ -619,3 +621,4 @@
         </Grid>
     </ScrollViewer>
 </UserControl>
+

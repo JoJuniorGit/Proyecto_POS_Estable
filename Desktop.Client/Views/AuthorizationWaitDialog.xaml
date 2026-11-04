@@ -6,6 +6,7 @@
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
         xmlns:converters="clr-namespace:Desktop.Client.Converters"
+        xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -67,12 +68,12 @@
                     <TextBlock Text="Producto" Foreground="#64748B"/>
                     <TextBlock Grid.Column="1" Text="{Binding ProductDisplay}" FontWeight="SemiBold"/>
                 </Grid>
-                <Grid Margin="0,0,0,6" Visibility="{Binding CustomPriceUsdDisplay, Converter={StaticResource StringToVis}}">
+                <Grid Margin="0,0,0,6" Visibility="{Binding CustomPriceUsdDisplay, Converter={StaticResource DualOnlyStringVisibilityConverter}}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="110"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Precio USD" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Precio {0}'}" Foreground="#64748B"/>
                     <TextBlock Grid.Column="1" Text="{Binding CustomPriceUsdDisplay}" FontWeight="SemiBold"/>
                 </Grid>
                 <Grid Visibility="{Binding CustomPriceLocalDisplay, Converter={StaticResource StringToVis}}">
@@ -80,7 +81,7 @@
                         <ColumnDefinition Width="110"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Precio Bs.S" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Precio {0}'}" Foreground="#64748B"/>
                     <TextBlock Grid.Column="1" Text="{Binding CustomPriceLocalDisplay}" FontWeight="SemiBold"/>
                 </Grid>
                 <Grid Margin="0,0,0,6" Visibility="{Binding PettyCashCategoryDisplay, Converter={StaticResource StringToVis}}">
@@ -183,3 +184,5 @@
         </Grid>
     </Grid>
 </Window>
+
+

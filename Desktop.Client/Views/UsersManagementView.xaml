@@ -6,6 +6,7 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              xmlns:converters="clr-namespace:Desktop.Client.Converters"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              mc:Ignorable="d" 
              d:DesignHeight="650" d:DesignWidth="950"
              Background="{DynamicResource MaterialDesignPaper}"
@@ -624,7 +625,7 @@
 
                                 <TextBox AutomationProperties.AutomationId="Customers_CreditLimit"
                                          Text="{Binding CreditLimitText, UpdateSourceTrigger=PropertyChanged}"
-                                         materialDesign:HintAssist.Hint="Límite de crédito (USD)"
+                                         materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Límite de crédito ({0})'}"
                                          materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          IsEnabled="{Binding CanEditCreditProfile}"
@@ -673,13 +674,13 @@
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0">
                                                 <TextBlock Text="DEUDA ACTUAL" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
-                                                <TextBlock Text="{Binding CreditProfile.CurrentDebtUSD, StringFormat='${0:N2}', FallbackValue='—'}"
+                                                <TextBlock Text="{Binding CreditProfile.CurrentDebtUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='—'}"
                                                            AutomationProperties.AutomationId="Customers_CreditDebt"
                                                            FontSize="15" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
                                             </StackPanel>
                                             <StackPanel Grid.Column="1">
                                                 <TextBlock Text="DISPONIBLE" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
-                                                <TextBlock Text="{Binding CreditProfile.AvailableCreditUSD, StringFormat='${0:N2}', FallbackValue='—'}"
+                                                <TextBlock Text="{Binding CreditProfile.AvailableCreditUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='—'}"
                                                            AutomationProperties.AutomationId="Customers_CreditAvailable"
                                                            FontSize="15" FontWeight="Bold" Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
                                             </StackPanel>
@@ -699,8 +700,8 @@
                                                 <TextBlock Text="MORA / ESTADO" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
                                                 <TextBlock FontSize="13" FontWeight="SemiBold">
                                                     <Run Text="{Binding CreditStatusLabel, Mode=OneWay}"/>
-                                                    <Run Text=" · $"/>
-                                                    <Run Text="{Binding CreditProfile.OverdueUSD, Mode=OneWay, StringFormat='{}{0:N2}', FallbackValue='0.00'}"/>
+                                                    <Run Text=" · "/><Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}}"/>
+                                                    <Run Text="{Binding CreditProfile.OverdueUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='0.00'}"/>
                                                 </TextBlock>
                                             </StackPanel>
                                         </Grid>
@@ -761,3 +762,5 @@
         </Grid>
     </Grid>
 </UserControl>
+
+

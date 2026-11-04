@@ -92,6 +92,21 @@ public sealed class DualOnlyVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// Shows a string only when it has content and the active profile is Dual. Used for legacy
+/// USD/secondary lines whose viewmodel already blanks the string outside its valid context.
+/// </summary>
+public sealed class DualOnlyStringVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => CurrencyDisplay.IsSingle || string.IsNullOrWhiteSpace(value as string)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException("Visibility is display-only.");
+}
+
+/// <summary>
 /// Defensive value adapter for bindings that may deliver <c>decimal</c>, a nullable decimal or
 /// a boxed numeric primitive. Unknown or unrepresentable values yield an empty label instead of
 /// throwing during rendering.

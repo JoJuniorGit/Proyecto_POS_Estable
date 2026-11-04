@@ -25,6 +25,7 @@
             <converters:CollectionEmptyToVisibilityConverter x:Key="CollectionEmptyToVis"/>
             <converters:TitleCaseConverter x:Key="TitleCaseConverter"/>
             <converters:HoldLockDisplayConverter x:Key="HoldLockDisplayConverter"/>
+            <converters:DualOnlyStringVisibilityConverter x:Key="DualOnlyStringVisibilityConverter"/>
             <converters:InverseNullToBooleanConverter x:Key="InverseNullToBooleanConverter"/>
             <!-- 8.211-T4c2b1 (S9): labels, amounts and dual-only visibility from the WPF profile. -->
             <converters:LocalAmountConverter x:Key="LocalAmountConverter"/>
@@ -40,3 +41,4 @@
         </ResourceDictionary>
     </Application.Resources>
 </Application>
+
