@@ -911,8 +911,8 @@ namespace Inventory.Module.Migrations
                         .HasDefaultValue(0m);
 
                     b.Property<decimal>("UnitCostUSD")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");

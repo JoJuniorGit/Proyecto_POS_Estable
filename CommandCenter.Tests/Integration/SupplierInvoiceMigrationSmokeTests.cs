@@ -44,7 +44,7 @@ public class SupplierInvoiceMigrationSmokeTests
         Assert.Equal(ValueGenerated.OnAddOrUpdate, invoiceVersion.ValueGenerated);
 
         var lineType = model.FindEntityType(typeof(SupplierInvoiceLine))!;
-        Assert.Equal("numeric(18,2)", lineType.FindProperty(nameof(SupplierInvoiceLine.UnitCostUSD))!.GetColumnType());
+        Assert.Equal("numeric(18,4)", lineType.FindProperty(nameof(SupplierInvoiceLine.UnitCostUSD))!.GetColumnType());
         Assert.Equal("numeric(18,3)", lineType.FindProperty(nameof(SupplierInvoiceLine.Quantity))!.GetColumnType());
 
         // 8.146 multi-moneda: snapshot de moneda/tasa por documento + costo en moneda de la factura.
@@ -156,6 +156,12 @@ public class SupplierInvoiceMigrationSmokeTests
             "AND table_name = 'SupplierInvoiceLines' AND column_name = 'UnitCostDocument'")
             .SingleAsync();
         Assert.Equal("numeric:18:2", documentCostColumnShape);
+        var normalizedCostColumnShape = await context.Database.SqlQueryRaw<string>(
+            "SELECT data_type || ':' || numeric_precision::text || ':' || numeric_scale::text AS \"Value\" " +
+            "FROM information_schema.columns WHERE table_schema = 'public' " +
+            "AND table_name = 'SupplierInvoiceLines' AND column_name = 'UnitCostUSD'")
+            .SingleAsync();
+        Assert.Equal("numeric:18:4", normalizedCostColumnShape);
 
         var backfilledLinesMismatch = await context.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*)::int AS \"Value\" FROM \"SupplierInvoiceLines\" " +
@@ -181,3 +187,4 @@ public class SupplierInvoiceMigrationSmokeTests
         Assert.Equal(3, ocrConfidenceShapedColumnCount);
     }
 }
+
