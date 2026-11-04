@@ -283,6 +283,63 @@ public class MonetarySetupStatusTests
     }
 
     [Fact]
+    public async Task SetMonetaryProfile_PrimaryCodeOnlyChangeWithFinancialData_ReturnsBaseLock()
+    {
+        using var db = CreateInMemoryDb();
+        var settingsService = new SystemSettingsService(db);
+        await new MonetaryProfileService(settingsService).SaveAsync(DefaultDualProfile());
+
+        var controller = CreateController(db, canMutateSettings: true, hasFinancialData: true);
+        var requested = DefaultDualProfile();
+        requested.PrimaryCurrencyCode = "EUR";
+
+        var result = await controller.SetMonetaryProfileAsync(requested);
+
+        Assert.Equal(BaseLockMessage, GetProblemMessage(result));
+        var stored = await new MonetaryProfileService(settingsService).GetAsync();
+        Assert.Equal("USD", stored.PrimaryCurrencyCode);
+    }
+
+    [Fact]
+    public async Task SetMonetaryProfile_SecondaryCodeOnlyChangeWithFinancialData_ReturnsBaseLock()
+    {
+        using var db = CreateInMemoryDb();
+        var settingsService = new SystemSettingsService(db);
+        await new MonetaryProfileService(settingsService).SaveAsync(DefaultDualProfile());
+
+        var controller = CreateController(db, canMutateSettings: true, hasFinancialData: true);
+        var requested = DefaultDualProfile();
+        requested.SecondaryCurrencyCode = "COP";
+        requested.SecondaryCurrencySymbol = "$";
+
+        var result = await controller.SetMonetaryProfileAsync(requested);
+
+        Assert.Equal(BaseLockMessage, GetProblemMessage(result));
+        var stored = await new MonetaryProfileService(settingsService).GetAsync();
+        Assert.Equal("VES", stored.SecondaryCurrencyCode);
+    }
+
+    [Fact]
+    public async Task SetMonetaryProfile_LowercaseVesWithFinancialData_IsTreatedAsSamePair()
+    {
+        using var db = CreateInMemoryDb();
+        var settingsService = new SystemSettingsService(db);
+        await new MonetaryProfileService(settingsService).SaveAsync(DefaultDualProfile());
+
+        var controller = CreateController(db, canMutateSettings: true, hasFinancialData: true);
+        var requested = DefaultDualProfile();
+        requested.SecondaryCurrencyCode = "ves";
+        requested.SecondaryCurrencySymbol = "Bs.";
+
+        var result = await controller.SetMonetaryProfileAsync(requested);
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        var dto = Assert.IsType<MonetaryProfileDto>(ok.Value);
+        Assert.Equal("VES", dto.SecondaryCurrencyCode);
+        Assert.Equal("Bs.", dto.SecondaryCurrencySymbol);
+    }
+
+    [Fact]
     public async Task SetMonetaryProfile_SymbolOnlyChangeWithFinancialData_Persists()
     {
         using var db = CreateInMemoryDb();
@@ -355,3 +412,5 @@ public class MonetarySetupStatusTests
         Assert.Equal(0, await db.SystemSettings.CountAsync());
     }
 }
+
+
