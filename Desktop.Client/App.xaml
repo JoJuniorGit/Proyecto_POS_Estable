@@ -26,6 +26,14 @@
             <converters:TitleCaseConverter x:Key="TitleCaseConverter"/>
             <converters:HoldLockDisplayConverter x:Key="HoldLockDisplayConverter"/>
             <converters:InverseNullToBooleanConverter x:Key="InverseNullToBooleanConverter"/>
+            <!-- 8.211-T4c2b1 (S9): labels, amounts and dual-only visibility from the WPF profile. -->
+            <converters:LocalAmountConverter x:Key="LocalAmountConverter"/>
+            <converters:PrimaryAmountConverter x:Key="PrimaryAmountConverter"/>
+            <converters:LocalCurrencySymbolConverter x:Key="LocalCurrencySymbolConverter"/>
+            <converters:PrimaryCurrencySymbolConverter x:Key="PrimaryCurrencySymbolConverter"/>
+            <converters:LocalCurrencyCodeConverter x:Key="LocalCurrencyCodeConverter"/>
+            <converters:PrimaryCurrencyCodeConverter x:Key="PrimaryCurrencyCodeConverter"/>
+            <converters:DualOnlyVisibilityConverter x:Key="DualOnlyVisibilityConverter"/>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
             <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
             <BooleanToVisibilityConverter x:Key="BoolToVis"/>
