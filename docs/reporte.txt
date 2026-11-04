@@ -17202,3 +17202,71 @@ C2. Mantener `Idempotency:RequireCashSessionAndInvoiceStage=false` hasta confirm
     la flota usa clientes nuevos; después activarlo por etapas.
 C3. El backend no debe exponer 5000 en el firewall cuando el proxy esté activo.
 ================================================================================
+
+================================================================================
+ANEXO XLIV - REGIMEN MONETARIO CONFIGURABLE (8.211) - 2026-11-04
+================================================================================
+Pedido del mantenedor: cerrar la feature 8.211 (regimen monetario configurable,
+moneda unica/bimonetaria, codigos ISO y simbolos parametrizables) con T5/T6.
+
+A. ALCANCE Y CAMBIOS
+A1. Perfil persistido en cinco claves (`Monetary.Mode`, `PrimaryCurrencyCode`,
+    `PrimaryCurrencySymbol`, `SecondaryCurrencyCode`, `SecondaryCurrencySymbol`) con
+    validacion/normalizacion ISO, guardado atomico e invalidacion de cache. Sin migracion
+    de esquema: la ultima migracion sigue siendo
+    `20261028062248_AddSaleAmountSnapshotsRev8211`.
+A2. Regimen `Single` (primaria 2dp; VES excluido) y `Dual` (primaria USD y secundaria
+    VES/COP/MXN/EUR). Tasas manuales por par/fecha: calculo 8dp, snapshots persistidos 4dp;
+    USD/VES conserva BCV 2dp/2A. Sin cotizacion manual para un par no VES: falla cerrada.
+A3. Snapshots aditivos en venta, pago, caja, CxC y factura de proveedor. Los importes
+    historicos no se recalculan con la tasa/perfil actual.
+A4. Web y WPF consumen `GET /api/client/monetary-profile` (cualquier rol autenticado,
+    read-only). Web refresca por contexto/evento; WPF refresca tras login y al crear la
+    vista. Recibos/PDF y cierres usan codigo/simbolo persistido o del perfil segun contrato.
+A5. Guardas de transicion: `IMonetaryTransitionGuard` bloquea cambio de modo, primaria o
+    secundaria/par si existe producto, factura, venta/pago, sesion de caja, cierre, CxC o
+    caja chica. Solo se permiten cambios de simbolo. Runbook:
+    `docs/monetary-transition-runbook.md`.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Suite .NET no-PostgreSQL: **4007/4019**, 0 omitidos; los **12 fallos** son el gate
+    ambiental `TEST_POSTGRES_CONNECTION` (`DatabaseProbeTests` y pruebas Postgres-only).
+B3. Carril PostgreSQL aislado (`scripts/test-postgres-lane.ps1`): **41/41**.
+B4. Web (sin cambios desde T4b): `npm test` **733/733**, `npm run lint` limpio,
+    `npm run build` correcto.
+B5. Focalizados: transicion/onboarding 28/28; factura de proveedor 109/109; caja 22/22;
+    cierre diario 18/18; kardex 14/14; convertidores 4/4; cache de tasas 35/35.
+B6. Verificacion independiente read-only: **PASS_WITH_NOTES, 0 bloqueantes**. Notas:
+    checkout/caja leen el perfil con fallback fail-open ante excepcion; WPF no re-renderiza
+    `x:Static` si el perfil cambia con la vista abierta; `IsConfigured` conserva setter
+    publico; backfill legacy con filas sembradas y RBAC HTTP no tienen prueba dedicada.
+
+C. OPERACION
+C1. Instalacion nueva: leer `GET /api/settings/monetary-setup-status`; con
+    `CanConfigureMonetaryProfile=true`, guardar el perfil completo por
+    `PUT /api/settings/monetary-profile`. En `Single`, verificar el catalogo de metodos de
+    pago antes de la primera venta.
+C2. Instalacion con datos: no cambiar modo/primaria/secundaria desde la app. Seguir el
+    runbook: maintenance, caja cerrada, backup, migracion offline aprobada, staging y
+    conciliacion. Los simbolos si pueden editarse online.
+C3. Pares manuales: cargar Admin por dia; un par no VES sin cotizacion bloquea la operacion.
+C4. No editar `SystemSettings`, snapshots ni importes historicos a mano.
+
+D. RESIDUALES ACEPTADOS
+D1. Los 12 fallos no-PostgreSQL son ambientales; el carril PostgreSQL cubre 41/41.
+D2. WPF captura el perfil al construir la vista; un cambio de perfil con la vista ya abierta
+    requiere recrearla. El flujo login -> MainWindow si refleja el perfil.
+D3. Checkout/caja usan fallback Dual USD/VES o Bs.S si la lectura del perfil falla por
+    excepcion; cierres y caja chica fallan cerrado. Es una ventana de riesgo conocida para
+    una futura iteracion, no un cambio de montos historicos.
+D4. Backfill legacy con filas sembradas y RBAC HTTP de ambas rutas de settings no tienen
+    prueba HTTP dedicada; se cubren por migracion/carril PG y pruebas de controlador.
+D5. Algunos strings de viewmodels CxC/catalogo siguen hardcodeando `$`/`Bs.S`; no afectan
+    montos ni contratos persistidos.
+
+E. COMMITS RELEVANTES
+E1. T5: `cf2f200` (guardas/procedimiento) + `ed748ec` (evidencia).
+E2. T4c2b4d3b: `f0b4603` (factura de proveedor) + `2d980fe` (evidencia).
+E3. T6: `ed32ef1` (dialogo/strict IsConfigured) + `d3f758c` (aislamiento de cache).
+================================================================================
