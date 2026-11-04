@@ -195,7 +195,8 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
         bool isBsSCurrency,
         Func<string, CancellationToken, Task<IReadOnlyList<ProductDto>>>? searchProductsAsync = null,
         IReadOnlyList<InvoiceProductLinkSeed>? linkSeeds = null,
-        RoundingRuleType globalUsdRoundingRule = RoundingRuleType.ExactMath)
+        RoundingRuleType globalUsdRoundingRule = RoundingRuleType.ExactMath,
+        string localCurrencyLabel = "Bs.S")
     {
         ArgumentNullException.ThrowIfNull(line);
 
@@ -215,8 +216,10 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
         ProductName = effectiveName ?? string.Empty;
         Name = ProductName.Trim();
         LineUnitCostUSD = line.UnitCostUSD > 0m ? line.UnitCostUSD : line.EditUnitCostDocument;
+        // 8.211-T6: the invoice document cost label follows the profile local currency; the
+        // default preserves the historical Bs.S wording for existing callers/tests.
         CostInfo = isBsSCurrency
-            ? $"Costo normalizado: ${line.UnitCostUSD:N2} · Costo factura: Bs.S {line.EditUnitCostDocument:N2} · Cantidad: {line.EditQuantity:N3}"
+            ? $"Costo normalizado: ${line.UnitCostUSD:N2} · Costo factura: {localCurrencyLabel} {line.EditUnitCostDocument:N2} · Cantidad: {line.EditQuantity:N3}"
             : $"Costo normalizado: ${line.UnitCostUSD:N2} · Cantidad: {line.EditQuantity:N3}";
 
         SelectedProducts.CollectionChanged += (_, _) => NotifySelectionChanged();

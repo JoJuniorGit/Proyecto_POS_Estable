@@ -102,10 +102,11 @@ public partial class SupplierInvoiceViewModel
 
             var dialogViewModel = new CreateInvoiceProductDialogViewModel(
                 anchor,
-                IsBsSInvoice,
+                IsLocalSecondaryInvoice,
                 (query, token) => _invoiceService.SearchCatalogProductsAsync(query, token),
                 linkSeeds: linkSeeds,
-                globalUsdRoundingRule: _globalUsdRoundingRule);
+                globalUsdRoundingRule: _globalUsdRoundingRule,
+                localCurrencyLabel: DisplayCurrencyCode(LocalCurrencyOption));
             if (_dialogService.ShowCreateInvoiceProductDialog(dialogViewModel) != true)
             {
                 return;

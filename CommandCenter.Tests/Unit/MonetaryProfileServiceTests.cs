@@ -198,6 +198,21 @@ public class MonetaryProfileServiceTests
     }
 
     [Fact]
+    public async Task SaveAsync_IgnoresIncomingIsConfiguredAndDerivesItFromPersistence()
+    {
+        using var db = CreateInMemoryDb();
+        var service = CreateService(db);
+        var profile = ValidSingleProfile();
+        profile.IsConfigured = false;
+
+        var saved = await service.SaveAsync(profile);
+
+        Assert.True(saved.IsConfigured);
+        var reloaded = await service.GetAsync();
+        Assert.True(reloaded.IsConfigured);
+    }
+
+    [Fact]
     public async Task SaveAsync_ValidSingle_WritesOnlyModeAndPrimaryKeys()
     {
         using var db = CreateInMemoryDb();
