@@ -112,10 +112,12 @@ public partial class PettyCashExpenseDialogViewModel : ObservableObject, IDispos
     public string EquivalentDisplay => _exchangeRate <= 0m
         ? "Configure la tasa de cambio vigente."
         : IsUsd
-            ? $"≈ Bs.S {PettyCashLabels.FormatBsS(EquivalentAmount)}"
-            : $"≈ {PettyCashLabels.FormatUsd(EquivalentAmount)}";
+            ? $"~ {CurrencyDisplay.FormatSecondary(EquivalentAmount)}"
+            : $"~ {CurrencyDisplay.FormatPrimary(EquivalentAmount)}";
 
-    public string AmountHint => IsUsd ? "Monto (USD)" : "Monto (Bs.S)";
+    public string AmountHint => IsUsd
+        ? $"Monto ({CurrencyDisplay.PrimaryCurrencyCode})"
+        : $"Monto ({CurrencyDisplay.LocalCurrencySymbol})";
 
     public string? ValidationMessage
     {
@@ -269,3 +271,4 @@ public partial class PettyCashExpenseDialogViewModel : ObservableObject, IDispos
         RequestClose = null;
     }
 }
+

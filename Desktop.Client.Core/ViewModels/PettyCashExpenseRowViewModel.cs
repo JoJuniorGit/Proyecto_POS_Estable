@@ -38,9 +38,9 @@ public sealed class PettyCashExpenseRowViewModel
 
     public string ReferenceDisplay => Expense.ReferenceNumber;
 
-    public string AmountBsSDisplay => PettyCashLabels.FormatBsS(Expense.AmountBsS) + " Bs.S";
+    public string AmountBsSDisplay => CurrencyDisplay.FormatSecondary(Expense.AmountBsS);
 
-    public string AmountUsdDisplay => PettyCashLabels.FormatUsd(Expense.AmountUsd);
+    public string AmountUsdDisplay => CurrencyDisplay.FormatPrimary(Expense.AmountUsd);
 
     public string StatusLabel => PettyCashLabels.Status(Expense.Status);
 
@@ -52,3 +52,4 @@ public sealed class PettyCashExpenseRowViewModel
 
     public bool CanCancel => Expense.Status == PettyCashStatusClient.Active;
 }
+

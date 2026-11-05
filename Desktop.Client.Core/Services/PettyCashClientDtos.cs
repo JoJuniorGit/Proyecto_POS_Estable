@@ -137,7 +137,9 @@ public sealed class PettyCashAuthorizationException : Exception
 public static class PettyCashLabels
 {
     public static string Currency(PettyCashCurrencyClient currency) =>
-        currency == PettyCashCurrencyClient.Usd ? "USD" : "Bs.S";
+        currency == PettyCashCurrencyClient.Usd
+            ? CurrencyDisplay.PrimaryCurrencyCode
+            : CurrencyDisplay.LocalCurrencySymbol;
 
     public static string Category(PettyCashCategoryClient category) => category switch
     {
@@ -155,7 +157,9 @@ public static class PettyCashLabels
     /// <summary>Bs.S siempre a 2 decimales, honrando el formato de moneda configurado.</summary>
     public static string FormatBsS(decimal amount) => CurrencyDisplay.Number(amount, 2);
 
-    /// <summary>USD siempre a 4 decimales, independiente del formato local.</summary>
+    /// <summary>8.211-T6-U7: the legacy AmountUsd is presented as the profile primary currency.</summary>
     public static string FormatUsd(decimal amount) =>
-        "$ " + amount.ToString("N4", CultureInfo.InvariantCulture);
+        CurrencyDisplay.FormatPrimary(amount, 4);
 }
+
+

@@ -39,8 +39,9 @@ public partial class PettyCashCancelDialogViewModel : ObservableObject, IDisposa
 
     public string ExpenseSummary =>
         $"{PettyCashLabels.Category(_expense.Category)} · {_expense.Concept} · " +
-        $"Bs.S {PettyCashLabels.FormatBsS(_expense.AmountBsS)} / {PettyCashLabels.FormatUsd(_expense.AmountUsd)}";
-
+        (CurrencyDisplay.IsSingle
+            ? CurrencyDisplay.FormatPrimary(_expense.AmountBsS)
+            : $"{CurrencyDisplay.FormatSecondary(_expense.AmountBsS)} / {CurrencyDisplay.FormatPrimary(_expense.AmountUsd)}");
     public PettyCashExpenseClientDto? Result { get; private set; }
 
     [ObservableProperty]
@@ -165,3 +166,4 @@ public partial class PettyCashCancelDialogViewModel : ObservableObject, IDisposa
         RequestClose = null;
     }
 }
+

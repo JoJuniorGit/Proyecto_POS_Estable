@@ -163,7 +163,9 @@ public partial class AuthorizationWaitViewModel : ObservableObject, IDisposable
 
     /// <summary>Bs.S 2dp / USD 4dp; el display honra el ajuste de moneda activo para Bs.S.</summary>
     public string PettyCashAmountDisplay => PettyCashContext is { } pettyCash
-        ? $"Bs.S {PettyCashLabels.FormatBsS(pettyCash.AmountBsS)} · {PettyCashLabels.FormatUsd(pettyCash.AmountUsd)}"
+        ? CurrencyDisplay.IsSingle
+            ? CurrencyDisplay.FormatPrimary(pettyCash.AmountBsS)
+            : $"{CurrencyDisplay.FormatSecondary(pettyCash.AmountBsS)} · {CurrencyDisplay.FormatPrimary(pettyCash.AmountUsd)}"
         : string.Empty;
 
     public string StatusMessage => Phase switch
@@ -669,3 +671,4 @@ internal sealed class ThreadingAuthorizationCountdownTimer : IAuthorizationCount
         Stop();
     }
 }
+
