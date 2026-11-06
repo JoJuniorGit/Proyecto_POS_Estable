@@ -60,9 +60,9 @@ public class SupplierInvoiceMigrationSmokeTests
         Assert.Equal(1m, appliedRate.GetDefaultValue());
 
         var unitCostDocument = lineType.FindProperty(nameof(SupplierInvoiceLine.UnitCostDocument))!;
-        Assert.Equal("numeric(18,2)", unitCostDocument.GetColumnType());
+        Assert.Equal("numeric(18,4)", unitCostDocument.GetColumnType());
         Assert.Equal(18, unitCostDocument.GetPrecision());
-        Assert.Equal(2, unitCostDocument.GetScale());
+        Assert.Equal(4, unitCostDocument.GetScale());
         Assert.Equal(0m, unitCostDocument.GetDefaultValue());
 
         // 8.147-T5/D10: confianzas OCR nullable numeric(5,2), sin default.
@@ -155,7 +155,7 @@ public class SupplierInvoiceMigrationSmokeTests
             "FROM information_schema.columns WHERE table_schema = 'public' " +
             "AND table_name = 'SupplierInvoiceLines' AND column_name = 'UnitCostDocument'")
             .SingleAsync();
-        Assert.Equal("numeric:18:2", documentCostColumnShape);
+        Assert.Equal("numeric:18:4", documentCostColumnShape);
         var normalizedCostColumnShape = await context.Database.SqlQueryRaw<string>(
             "SELECT data_type || ':' || numeric_precision::text || ':' || numeric_scale::text AS \"Value\" " +
             "FROM information_schema.columns WHERE table_schema = 'public' " +

@@ -375,7 +375,7 @@ public class InventoryDbContext : DbContext
                 .HasDefaultValue(MatchMethod.None);
             entity.Property(line => line.IsApproved).HasDefaultValue(true);
             entity.Property(line => line.Quantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
-            entity.Property(line => line.UnitCostDocument).HasColumnType("numeric(18,2)").HasPrecision(18, 2).HasDefaultValue(0m);
+            entity.Property(line => line.UnitCostDocument).HasColumnType("numeric(18,4)").HasPrecision(18, 4).HasDefaultValue(0m);
             entity.Property(line => line.UnitCostUSD).HasColumnType("numeric(18,4)").HasPrecision(18, 4);
             entity.Property(line => line.OldCostPriceUSD).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
             entity.Property(line => line.OldProfitMarginRetail).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
