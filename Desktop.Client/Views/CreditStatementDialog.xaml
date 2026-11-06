@@ -34,13 +34,13 @@
             <!-- 8.211-T4c2b4 (S9): the daily rate only exists in Dual. -->
             <TextBlock DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center"
                        FontSize="12" FontWeight="SemiBold" Foreground="#166534"
-                       Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                 <Run Text="Tasa del día: "/>
                 <Run Text="{Binding TodayRate, Mode=OneWay, StringFormat='{}{0:N2}'}"/>
                 <Run Text=" "/>
-                <Run Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencyCode}}"/>
+                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode}"/>
                 <Run Text="/"/>
-                <Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}"/>
+                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"/>
             </TextBlock>
         </DockPanel>
 
@@ -55,7 +55,7 @@
 
             <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0">
                 <StackPanel>
-                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, StringFormat='DEUDA {0}'}" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, StringFormat='DEUDA {0}'}" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
                     <TextBlock Text="{Binding CurrentDebtUSD, Converter={StaticResource PrimaryAmountConverter}}"
                                AutomationProperties.AutomationId="CreditStatement_DebtUsd"
                                FontSize="20" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
@@ -64,9 +64,9 @@
 
             <!-- 8.211-T4c2b4 (S9): the local today projection is Dual-only. -->
             <Border Grid.Column="1" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0"
-                    Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                    Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                 <StackPanel>
-                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='EQUIVALENTE {0} HOY'}" FontSize="10" FontWeight="Bold" Foreground="#166534"/>
+                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='EQUIVALENTE {0} HOY'}" FontSize="10" FontWeight="Bold" Foreground="#166534"/>
                     <TextBlock Text="{Binding CurrentDebtBsS, Converter={StaticResource LocalAmountConverter}}"
                                AutomationProperties.AutomationId="CreditStatement_DebtBsS"
                                FontSize="20" FontWeight="Bold" Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
@@ -117,10 +117,10 @@
                             <DataGridTextColumn Header="Factura" Binding="{Binding InvoiceDisplay}" Width="100" FontWeight="SemiBold"/>
                             <DataGridTextColumn Header="Emisión" Binding="{Binding IssuedAtUtc, StringFormat='{}{0:dd/MM/yyyy}'}" Width="100"/>
                             <DataGridTextColumn Header="Vence" Binding="{Binding DueDateUtc, StringFormat='{}{0:dd/MM/yyyy}'}" Width="100"/>
-                            <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, StringFormat='Saldo {0}'}" Binding="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="110"/>
+                            <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, StringFormat='Saldo {0}'}" Binding="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="110"/>
                             <!-- 8.211-T4c2b4 (S9): today projection only exists in Dual. -->
-                            <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Saldo {0} hoy'}" Binding="{Binding BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}" Width="140"
-                                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                            <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Saldo {0} hoy'}" Binding="{Binding BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}" Width="140"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
                             <DataGridTextColumn Header="Estado" Binding="{Binding Status}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>
@@ -138,7 +138,7 @@
                             </TextBlock>
                             <!-- 8.211-T4c2b4 (S9): the realized FX difference only exists in Dual. -->
                             <TextBlock FontSize="11" Foreground="#64748B"
-                                       Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                                 <Run Text=" · FX realizado: "/>
                                 <Run Text="{Binding TotalFxDifferenceBsS, Mode=OneWay, Converter={StaticResource LocalAmountConverter}}" FontWeight="Bold"/>
                             </TextBlock>
@@ -157,14 +157,14 @@
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Fecha" Binding="{Binding ReceivedAtDisplay}" Width="130"/>
                             <DataGridTextColumn Header="Método" Binding="{Binding PaymentMethodName}" Width="140"/>
-                            <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}}" Binding="{Binding AmountUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="100"
-                                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
-                            <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}}" Binding="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}" Width="130"/>
+                            <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol}" Binding="{Binding AmountUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="100"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                            <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol}" Binding="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}" Width="130"/>
                             <!-- 8.211-T4c2b4 (S9): payment rate and realized FX only exist in Dual. -->
                             <DataGridTextColumn Header="Tasa" Binding="{Binding PaymentRate, StringFormat='{}{0:N2}'}" Width="90"
-                                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
-                            <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='FX {0}'}" Binding="{Binding FxDifferenceBsS, Converter={StaticResource LocalAmountConverter}}" Width="100"
-                                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                            <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='FX {0}'}" Binding="{Binding FxDifferenceBsS, Converter={StaticResource LocalAmountConverter}}" Width="100"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
                             <DataGridTextColumn Header="Referencia" Binding="{Binding ReferenceNumber}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>
@@ -177,14 +177,14 @@
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock FontSize="11" FontStyle="Italic" Foreground="#64748B">
                     <Run Text="El saldo se mantiene en "/>
-                    <Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}"/>
+                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"/>
                     <Run Text=";"/>
                 </TextBlock>
                 <!-- 8.211-T4c2b4 (S9): the local projection only exists in Dual. -->
                 <TextBlock FontSize="11" FontStyle="Italic" Foreground="#64748B"
-                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                     <Run Text=" el equivalente en "/>
-                    <Run Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencyCode}}"/>
+                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode}"/>
                     <Run Text=" es una proyección a la tasa del día."/>
                 </TextBlock>
             </StackPanel>
@@ -196,3 +196,4 @@
         </Grid>
     </Grid>
 </UserControl>
+

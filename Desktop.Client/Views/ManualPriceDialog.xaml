@@ -50,13 +50,13 @@
         <StackPanel Grid.Row="1">
             <TextBox x:Name="UsdInput"
                      Text="{Binding UnitPriceUsdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Precio en {0}'}"
+                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Precio en {0}'}"
                      Style="{DynamicResource MaterialDesignOutlinedTextBox}"
                      TabIndex="1"
                      AutomationProperties.AutomationId="ManualPrice_UsdInput"/>
             <TextBox x:Name="BsInput"
                      Text="{Binding UnitPriceBsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Precio en {0}'}"
+                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Precio en {0}'}"
                      Style="{DynamicResource MaterialDesignOutlinedTextBox}"
                      Margin="0,12,0,0"
                      TabIndex="2"
@@ -87,3 +87,4 @@
         </StackPanel>
     </Grid>
 </Window>
+

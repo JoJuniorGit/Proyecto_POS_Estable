@@ -73,7 +73,7 @@
                         <ColumnDefinition Width="110"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Precio {0}'}" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Precio {0}'}" Foreground="#64748B"/>
                     <TextBlock Grid.Column="1" Text="{Binding CustomPriceUsdDisplay}" FontWeight="SemiBold"/>
                 </Grid>
                 <Grid Visibility="{Binding CustomPriceLocalDisplay, Converter={StaticResource StringToVis}}">
@@ -81,7 +81,7 @@
                         <ColumnDefinition Width="110"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Precio {0}'}" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Precio {0}'}" Foreground="#64748B"/>
                     <TextBlock Grid.Column="1" Text="{Binding CustomPriceLocalDisplay}" FontWeight="SemiBold"/>
                 </Grid>
                 <Grid Margin="0,0,0,6" Visibility="{Binding PettyCashCategoryDisplay, Converter={StaticResource StringToVis}}">
@@ -184,5 +184,6 @@
         </Grid>
     </Grid>
 </Window>
+
 
 

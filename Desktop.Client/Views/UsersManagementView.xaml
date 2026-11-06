@@ -625,7 +625,7 @@
 
                                 <TextBox AutomationProperties.AutomationId="Customers_CreditLimit"
                                          Text="{Binding CreditLimitText, UpdateSourceTrigger=PropertyChanged}"
-                                         materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Límite de crédito ({0})'}"
+                                         materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Límite de crédito ({0})'}"
                                          materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          IsEnabled="{Binding CanEditCreditProfile}"
@@ -700,7 +700,7 @@
                                                 <TextBlock Text="MORA / ESTADO" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
                                                 <TextBlock FontSize="13" FontWeight="SemiBold">
                                                     <Run Text="{Binding CreditStatusLabel, Mode=OneWay}"/>
-                                                    <Run Text=" · "/><Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}}"/>
+                                                    <Run Text=" · "/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol}"/>
                                                     <Run Text="{Binding CreditProfile.OverdueUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='0.00'}"/>
                                                 </TextBlock>
                                             </StackPanel>
@@ -762,5 +762,6 @@
         </Grid>
     </Grid>
 </UserControl>
+
 
 

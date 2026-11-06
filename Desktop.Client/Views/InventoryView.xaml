@@ -718,7 +718,7 @@
                                             <MouseBinding Gesture="LeftClick" Command="{Binding DataContext.SortCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="cost"/>
                                         </Grid.InputBindings>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='COSTO ({0})'}" FontWeight="SemiBold" FontSize="12" Foreground="#64748B"/>
+                                            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='COSTO ({0})'}" FontWeight="SemiBold" FontSize="12" Foreground="#64748B"/>
                                             <materialDesign:PackIcon Kind="ArrowUp" Width="14" Height="14" Margin="4,0,0,0" VerticalAlignment="Center">
                                                 <materialDesign:PackIcon.Style>
                                                     <Style TargetType="materialDesign:PackIcon">
@@ -798,8 +798,8 @@
                                                         <Setter Property="Text" Value="{Binding DataContext.RetailPriceHeader, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                                                         <Style.Triggers>
                                                             <!-- Single has no local projection: the column always shows the primary price. -->
-                                                            <DataTrigger Binding="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}}" Value="True">
-                                                                <Setter Property="Text" Value="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Precio Detal ({0})'}"/>
+                                                            <DataTrigger Binding="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle}" Value="True">
+                                                                <Setter Property="Text" Value="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Precio Detal ({0})'}"/>
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
@@ -850,13 +850,13 @@
                                                    FontWeight="Bold" 
                                                    FontSize="13"
                                                    Typography.NumeralAlignment="Tabular"
-                                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
                                         <!-- Single: only the primary price exists. -->
                                         <TextBlock Foreground="#1E293B" 
                                                    FontWeight="Bold" 
                                                    FontSize="13"
                                                    Typography.NumeralAlignment="Tabular"
-                                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Text" Value="{Binding PriceUSD, Converter={StaticResource PrimaryAmountConverter}}"/>
@@ -888,8 +888,8 @@
                                             <Style TargetType="TextBlock">
                                                 <Setter Property="Text" Value="{Binding Data.WholesalePriceHeader, Source={StaticResource Proxy}}"/>
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}}" Value="True">
-                                                        <Setter Property="Text" Value="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Precio Mayor ({0})'}"/>
+                                                    <DataTrigger Binding="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle}" Value="True">
+                                                        <Setter Property="Text" Value="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Precio Mayor ({0})'}"/>
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
@@ -905,12 +905,12 @@
                                                    FontWeight="SemiBold" 
                                                    FontSize="13"
                                                    Typography.NumeralAlignment="Tabular"
-                                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
                                         <TextBlock Foreground="#1E293B" 
                                                    FontWeight="SemiBold" 
                                                    FontSize="13"
                                                    Typography.NumeralAlignment="Tabular"
-                                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Text" Value="{Binding EffectivePriceWholesaleUSD, Converter={StaticResource PrimaryAmountConverter}}"/>
@@ -1195,3 +1195,4 @@
         </Grid>
     </Grid>
 </UserControl>
+

@@ -142,7 +142,7 @@
                 Padding="16,12"
                 Margin="0,0,0,16"
                 Effect="{StaticResource EnterpriseCardShadow}"
-                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -150,11 +150,11 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Efectivo {0} contado (opcional)'}"
+                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Efectivo {0} contado (opcional)'}"
                                FontSize="12"
                                FontWeight="SemiBold"
                                Foreground="#475569"/>
-                    <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Si se deja vacío se conserva el comportamiento previo del cierre (sin arqueo {0}).'}"
+                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Si se deja vacío se conserva el comportamiento previo del cierre (sin arqueo {0}).'}"
                                FontSize="11"
                                Foreground="{DynamicResource MaterialDesignBodyLight}"
                                Margin="0,2,0,6"/>
@@ -191,7 +191,7 @@
                             Padding="14,8"
                             Margin="0,0,8,0">
                         <StackPanel>
-                            <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='ESPERADO {0}'}"
+                            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='ESPERADO {0}'}"
                                        FontSize="10" FontWeight="Bold"
                                        Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                             <TextBlock Text="{Binding ExpectedClosingBalanceUsdDisplay}"
@@ -209,7 +209,7 @@
                             CornerRadius="8"
                             Padding="14,8">
                         <StackPanel>
-                            <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='DIFERENCIA {0}'}"
+                            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='DIFERENCIA {0}'}"
                                        FontSize="10" FontWeight="Bold"
                                        Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                             <TextBlock Text="{Binding DifferenceUsdDisplay}"
@@ -291,7 +291,7 @@
                     </DataGridTextColumn>
 
                     <!-- Col 2: Monto Esperado (Read-only, hidden if blind) -->
-                    <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='MONTO ESPERADO ({0})'}"
+                    <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='MONTO ESPERADO ({0})'}"
                                         Binding="{Binding ExpectedAmountBsS, Converter={StaticResource LocalAmountConverter}}"
                                         IsReadOnly="True"
                                         Width="*"
@@ -314,7 +314,7 @@
                     </DataGridTextColumn>
 
                     <!-- Col 3: Monto Declarado (Input Recuadro con Focus Morado) -->
-                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='MONTO DECLARADO ({0})'}" Width="*">
+                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='MONTO DECLARADO ({0})'}" Width="*">
                         <DataGridTemplateColumn.HeaderStyle>
                             <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
                                 <Setter Property="HorizontalContentAlignment" Value="Right"/>
@@ -359,7 +359,7 @@
                     </DataGridTemplateColumn>
 
                     <!-- Col 4: Diferencia (Color Semántico: Rojo, Verde o Gris) -->
-                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='DIFERENCIA ({0})'}"
+                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='DIFERENCIA ({0})'}"
                                             Width="*"
                                             x:Name="DifferenceColumn">
                         <DataGridTemplateColumn.HeaderStyle>
@@ -580,3 +580,4 @@
         </StackPanel>
     </Grid>
 </UserControl>
+

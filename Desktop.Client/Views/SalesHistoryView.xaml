@@ -444,7 +444,7 @@
                     </DataGridTemplateColumn>
 
                     <!-- Local total with the primary-currency duplicate below (Dual only) -->
-                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='TOTAL {0}'}"
+                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='TOTAL {0}'}"
                                             HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
                                             Width="150">
                         <DataGridTemplateColumn.CellTemplate>
@@ -452,7 +452,7 @@
                                 <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
                                     <TextBlock Text="{Binding TotalBsS, Converter={StaticResource LocalAmountConverter}}" FontWeight="Bold" Foreground="#1E293B" FontSize="13" TextAlignment="Right" Typography.NumeralAlignment="Tabular"/>
                                     <TextBlock Text="{Binding EffectiveTotalUSD, Converter={StaticResource PrimaryAmountConverter}}"
-                                               Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                                Foreground="#94A3B8" FontSize="11" TextAlignment="Right" Margin="0,1,0,0" Typography.NumeralAlignment="Tabular"/>
                                 </StackPanel>
                             </DataTemplate>
@@ -638,7 +638,7 @@
                                 <DataGridTextColumn Header="PRODUCTO" Binding="{Binding ProductName}" Width="*" HeaderStyle="{StaticResource StandardHeaderStyle}"/>
                                 <DataGridTextColumn Header="CANT." Binding="{Binding Quantity, StringFormat={}{0:0.###}}" Width="80" HeaderStyle="{StaticResource StandardHeaderStyle}"/>
                                 <DataGridTextColumn Header="P. UNIDAD" Binding="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}}" Width="110" HeaderStyle="{StaticResource RightAlignedHeaderStyle}" ElementStyle="{StaticResource RightAlignedElementStyle}"/>
-                                <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='SUBTOTAL {0}'}" Binding="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}}" Width="130" HeaderStyle="{StaticResource RightAlignedHeaderStyle}" ElementStyle="{StaticResource RightAlignedElementStyle}" FontWeight="Bold"/>
+                                <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='SUBTOTAL {0}'}" Binding="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}}" Width="130" HeaderStyle="{StaticResource RightAlignedHeaderStyle}" ElementStyle="{StaticResource RightAlignedElementStyle}" FontWeight="Bold"/>
                             </controls:PerformantDataGrid.Columns>
                         </controls:PerformantDataGrid>
 
@@ -677,26 +677,26 @@
 
                                 <!-- Tasa Aplicada (solo existe en Dual) -->
                                 <TextBlock Grid.Row="0" Grid.Column="0" Text="Tasa Aplicada:" TextTrimming="CharacterEllipsis" Foreground="#64748B" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,4"
-                                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
                                 <TextBlock Grid.Row="0" Grid.Column="1" Foreground="#475569" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" Margin="0,0,0,4"
-                                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                                     <Run Text="{Binding DetailAppliedRate, Mode=OneWay, StringFormat='{}{0:N2}'}"/>
                                     <Run Text=" "/>
-                                    <Run Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencyCode}}"/>
+                                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode}"/>
                                     <Run Text="/"/>
-                                    <Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}"/>
+                                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"/>
                                 </TextBlock>
 
                                 <!-- Total primario (duplicado oculto en Single) -->
                                 <TextBlock Grid.Row="1" Grid.Column="0" TextTrimming="CharacterEllipsis" Foreground="#64748B" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,4"
-                                           Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Total {0}:'}"
-                                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                           Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Total {0}:'}"
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
                                 <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DetailTotalUSD, Converter={StaticResource PrimaryAmountConverter}}" FontWeight="Bold" Foreground="#1E293B" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" Margin="0,0,0,4"
-                                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
 
                                 <!-- Total Factura en moneda local -->
                                 <TextBlock Grid.Row="2" Grid.Column="0" TextTrimming="CharacterEllipsis" Foreground="#1E293B" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Margin="0,0,8,0"
-                                           Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Total Factura {0}:'}"/>
+                                           Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Total Factura {0}:'}"/>
                                 <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DetailTotalBsS, Converter={StaticResource LocalAmountConverter}}" FontWeight="Bold" FontSize="16" Foreground="#5E35B1" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </Grid>
                         </Grid>
@@ -844,3 +844,4 @@
         </StackPanel>
     </Grid>
 </UserControl>
+

@@ -168,7 +168,7 @@
 
                         <DataGridTemplateColumn Width="140">
                             <DataGridTemplateColumn.Header>
-                                <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='PRECIO {0}'}" HorizontalAlignment="Right" TextAlignment="Right"/>
+                                <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='PRECIO {0}'}" HorizontalAlignment="Right" TextAlignment="Right"/>
                             </DataGridTemplateColumn.Header>
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -180,7 +180,7 @@
 
                         <DataGridTemplateColumn Width="150">
                             <DataGridTemplateColumn.Header>
-                                <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='SUBTOTAL {0}'}" HorizontalAlignment="Right" TextAlignment="Right"/>
+                                <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='SUBTOTAL {0}'}" HorizontalAlignment="Right" TextAlignment="Right"/>
                             </DataGridTemplateColumn.Header>
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -220,11 +220,11 @@
                     <StackPanel Grid.Column="0">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <TextBlock Text="Nuevo Total " FontWeight="Bold" FontSize="13"/>
-                            <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}" FontWeight="Bold" FontSize="13"/>
+                            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}" FontWeight="Bold" FontSize="13"/>
                             <StackPanel Orientation="Horizontal"
-                                        Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                        Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                                 <TextBlock Text=" / " FontWeight="Bold" FontSize="13"/>
-                                <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencyCode}}" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode}" FontWeight="Bold" FontSize="13"/>
                             </StackPanel>
                             <TextBlock Text=": " FontWeight="Bold" FontSize="13"/>
                             <TextBlock Text="{Binding NewTotalText}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource PrimaryHueMidBrush}"/>

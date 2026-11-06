@@ -55,7 +55,7 @@
                         <TextBlock Text="Total Invoice" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                         <TextBlock Text="{Binding TotalAmountLocal, Converter={StaticResource LocalAmountConverter}}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
                         <TextBlock Text="{Binding TotalUsdEffective, Converter={StaticResource PrimaryAmountConverter}}"
-                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                    FontSize="13" Opacity="0.6"/>
                     </StackPanel>
                     
@@ -63,7 +63,7 @@
                         <TextBlock Text="Paid" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                         <TextBlock Text="{Binding PaidAmountLocal, Converter={StaticResource LocalAmountConverter}}" FontSize="24" FontWeight="Medium" Foreground="#388E3C"/>
                         <TextBlock Text="{Binding PaidAmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
-                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                    FontSize="13" Opacity="0.6"/>
                     </StackPanel>
 
@@ -71,7 +71,7 @@
                         <TextBlock Text="Remaining" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                         <TextBlock Text="{Binding RemainingBalanceLocal, Converter={StaticResource LocalAmountConverter}}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
                         <TextBlock Text="{Binding RemainingUsdEffective, Converter={StaticResource PrimaryAmountConverter}}"
-                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                    FontSize="13" Opacity="0.6"/>
                     </StackPanel>
                 </Grid>
@@ -174,7 +174,7 @@
                                            AutomationProperties.AutomationId="Checkout_FinancedAmount"
                                            FontSize="15" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
                                 <TextBlock Text="{Binding FinancedBsS, Converter={StaticResource LocalAmountConverter}}"
-                                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                            FontSize="10" Foreground="#64748B"/>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
@@ -210,7 +210,7 @@
         <!-- Add Payment Form (local currency) -->
         <Border Grid.Row="2" Background="{DynamicResource MaterialDesignPaper}" materialDesign:ElevationAssist.Elevation="Dp1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
             <StackPanel>
-                <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Add payment ({0}):'}" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Add payment ({0}):'}" FontWeight="SemiBold" Margin="0,0,0,10"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="2*"/>
@@ -233,11 +233,11 @@
                                  AutomationProperties.AutomationId="Checkout_AmountInput"
                                  Text="{Binding AmountBsSText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  behaviors:DecimalCentsBehavior.IsEnabled="True"
-                                 materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Amount {0}'}"
+                                 materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Amount {0}'}"
                                  Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
                                  FontWeight="Bold" FontSize="16"
                                  HorizontalContentAlignment="Right"/>
-                        <TextBlock Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                        <TextBlock Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                    FontSize="11" Opacity="0.6" HorizontalAlignment="Right" Margin="0,2,0,0">
                             <Run Text="≈ "/>
                             <Run Text="{Binding AmountUsdPreview, Converter={StaticResource PrimaryAmountConverter}}"/>
@@ -285,12 +285,12 @@
                     </controls:PerformantDataGrid.InputBindings>
 
                     <controls:PerformantDataGrid.Columns>
-                        <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}}"
+                        <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol}"
                                             Binding="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"
                                             IsReadOnly="True" FontWeight="Bold" Width="Auto"/>
-                        <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}"
+                        <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"
                                             Binding="{Binding AmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
-                                            Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                            Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                             IsReadOnly="True" Width="Auto" Foreground="Gray"/>
                         <DataGridTextColumn Header="Method" Binding="{Binding MethodName}" IsReadOnly="True" Width="*"/>
                         <DataGridTextColumn Header="Reference" Binding="{Binding Dto.ReferenceNumber}" IsReadOnly="True" Width="*" Foreground="Gray"/>
@@ -371,3 +371,4 @@
 
     </Grid>
 </UserControl>
+

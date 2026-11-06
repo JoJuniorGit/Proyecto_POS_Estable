@@ -298,7 +298,7 @@
                         </DataGridTemplateColumn>
 
                         <!-- Costo ($) -->
-                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, StringFormat='Costo ({0})'}" Width="95" HeaderStyle="{StaticResource RightAlignedHeader}">
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, StringFormat='Costo ({0})'}" Width="95" HeaderStyle="{StaticResource RightAlignedHeader}">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <Grid VerticalAlignment="Center">
@@ -338,7 +338,7 @@
                         </DataGridTemplateColumn>
 
                         <!-- Precio ($) -->
-                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, StringFormat='Precio ({0})'}" Width="100" HeaderStyle="{StaticResource RightAlignedHeader}">
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, StringFormat='Precio ({0})'}" Width="100" HeaderStyle="{StaticResource RightAlignedHeader}">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <Grid VerticalAlignment="Center">
@@ -360,10 +360,10 @@
                         </DataGridTemplateColumn>
 
                         <!-- Precio local (proyección): solo existe en Dual -->
-                        <DataGridTextColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Precio ({0})'}"
+                        <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Precio ({0})'}"
                                             Binding="{Binding PriceRetailBsS, Converter={StaticResource LocalAmountConverter}}"
                                             IsReadOnly="True" Width="110" HeaderStyle="{StaticResource RightAlignedHeader}"
-                                            Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                            Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="HorizontalAlignment" Value="Right"/>
@@ -444,3 +444,4 @@
         </Grid>
     </Border>
 </Window>
+

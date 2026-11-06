@@ -30,7 +30,7 @@
             <StackPanel>
                 <TextBlock Text="Cierre de Caja" FontSize="18" FontWeight="Bold" Foreground="#1E3A8A"/>
                 <TextBlock x:Name="RateText" FontSize="11" Foreground="#475569" Margin="0,3,0,0"
-                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
             </StackPanel>
         </Border>
 
@@ -40,26 +40,26 @@
             <StackPanel>
                 <TextBlock x:Name="TheoreticalBsSText" FontWeight="SemiBold" Foreground="#1E293B"/>
                 <TextBlock x:Name="TheoreticalUsdText" FontWeight="SemiBold" Foreground="#1E293B" Margin="0,4,0,0"
-                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
             </StackPanel>
         </Border>
 
         <StackPanel Grid.Row="2">
             <TextBox x:Name="LocalAmountBox"
                      AutomationProperties.AutomationId="CashDrawerClose_LocalInput"
-                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Efectivo {0} contado'}"
+                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Efectivo {0} contado'}"
                      Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
                      FontWeight="Bold" FontSize="16" HorizontalContentAlignment="Right"
                      Margin="0,0,0,14"/>
             <TextBox x:Name="UsdAmountBox"
                      AutomationProperties.AutomationId="CashDrawerClose_UsdInput"
-                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Efectivo {0} contado (opcional)'}"
-                     Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Efectivo {0} contado (opcional)'}"
+                     Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                      Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
                      FontWeight="Bold" FontSize="16" HorizontalContentAlignment="Right"
                      Margin="0,0,0,10"/>
-            <TextBlock Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='El conteo {0} es opcional; si se deja vacío se conserva el comportamiento previo del cierre.'}"
-                       Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='El conteo {0} es opcional; si se deja vacío se conserva el comportamiento previo del cierre.'}"
+                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                        FontSize="11" Foreground="#64748B" TextWrapping="Wrap"/>
             <TextBlock x:Name="ErrorText"
                        AutomationProperties.AutomationId="CashDrawerClose_ErrorText"
@@ -82,3 +82,4 @@
         </StackPanel>
     </Grid>
 </Window>
+

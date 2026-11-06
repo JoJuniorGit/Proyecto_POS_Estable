@@ -126,11 +126,11 @@
                     </TextBlock>
                     <!-- 8.211-T4c2b4 (S9): the daily rate only exists in Dual. -->
                     <TextBlock FontSize="11" Foreground="#64748B" Margin="0,1,0,0"
-                               Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                         <Run Text="Tasa del día: "/>
-                        <Run Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencyCode}}"/>
+                        <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode}"/>
                         <Run Text="{Binding TodayRate, Mode=OneWay, StringFormat=' {0:N2} por '}"/>
-                        <Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}"/>
+                        <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"/>
                     </TextBlock>
                 </StackPanel>
             </StackPanel>
@@ -244,13 +244,13 @@
 
             <!-- 8.211-T4c2b4 (S9): rate card is Dual-only. -->
             <Border Grid.Column="3" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" CornerRadius="8" Padding="14,10" Effect="{StaticResource EnterpriseCardShadow}"
-                    Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                    Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                 <StackPanel>
                     <TextBlock FontSize="10" FontWeight="Bold" Foreground="#166534">
                         <Run Text="TASA DEL DÍA ("/>
-                        <Run Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencyCode}}"/>
+                        <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode}"/>
                         <Run Text="/"/>
-                        <Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}}"/>
+                        <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"/>
                         <Run Text=")"/>
                     </TextBlock>
                     <TextBlock Text="{Binding TodayRate, StringFormat='{}{0:N2}'}"
@@ -355,7 +355,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, StringFormat='SALDO {0}'}" Width="120" HeaderStyle="{StaticResource RightAlignedHeaderStyle}">
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, StringFormat='SALDO {0}'}" Width="120" HeaderStyle="{StaticResource RightAlignedHeaderStyle}">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -367,8 +367,8 @@
                         </DataGridTemplateColumn>
 
                         <!-- 8.211-T4c2b4 (S9): today projection only exists in Dual. -->
-                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='SALDO {0} HOY'}" Width="140" HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
-                                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='SALDO {0} HOY'}" Width="140" HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}" FontWeight="SemiBold" FontSize="12" Foreground="#166534"
@@ -510,3 +510,4 @@
         </Border>
     </Grid>
 </UserControl>
+

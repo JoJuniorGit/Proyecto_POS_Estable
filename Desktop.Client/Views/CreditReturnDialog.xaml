@@ -53,7 +53,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="PRODUCTO" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
                     <TextBlock Grid.Column="1" Text="VENDIDO" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
-                    <TextBlock Grid.Column="2" Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, StringFormat='PRECIO {0}'}" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                    <TextBlock Grid.Column="2" Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, StringFormat='PRECIO {0}'}" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
                     <TextBlock Grid.Column="3" Text="DEVOLVER" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Center"/>
                     <TextBlock Grid.Column="4" Text="SUBTOTAL" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
                 </Grid>
@@ -127,3 +127,4 @@
         </Grid>
     </Grid>
 </UserControl>
+

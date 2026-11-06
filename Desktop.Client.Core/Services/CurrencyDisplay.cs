@@ -22,6 +22,9 @@ public static class CurrencyDisplay
     private const string DefaultSecondarySymbol = "Bs.S";
     private const int MaxSymbolLength = 8;
 
+    /// <summary>8.211-T6-U12: raised after the profile state changes; WPF binds to the presenter.</summary>
+    public static event Action? ProfileChanged;
+
     public static MoneyDisplayFormat Current { get; set; } = MoneyDisplayFormat.Venezuelan;
 
     public static string PrimaryCurrencyCode { get; private set; } = DefaultPrimaryCode;
@@ -60,6 +63,7 @@ public static class CurrencyDisplay
         if (profile is null || !Enum.IsDefined(profile.Mode))
         {
             ApplyDefaults();
+            ProfileChanged?.Invoke();
             return;
         }
 
@@ -74,6 +78,7 @@ public static class CurrencyDisplay
         {
             SecondaryCurrencyCode = null;
             SecondaryCurrencySymbol = null;
+            ProfileChanged?.Invoke();
             return;
         }
 
@@ -88,6 +93,7 @@ public static class CurrencyDisplay
             var fallbackCode = primaryCode == DefaultPrimaryCode ? DefaultSecondaryCode : DefaultPrimaryCode;
             SecondaryCurrencyCode = fallbackCode;
             SecondaryCurrencySymbol = DefaultSymbolForCode(fallbackCode);
+            ProfileChanged?.Invoke();
             return;
         }
 
@@ -95,6 +101,7 @@ public static class CurrencyDisplay
         SecondaryCurrencySymbol = NormalizeSymbol(
             profile.SecondaryCurrencySymbol,
             DefaultSymbolForCode(requestedSecondaryCode!));
+        ProfileChanged?.Invoke();
     }
 
     /// <summary>Monto primario con su símbolo, delegando los separadores en <see cref="Number"/>.</summary>
@@ -217,3 +224,4 @@ public static class CurrencyDisplay
         return false;
     }
 }
+

@@ -38,7 +38,7 @@
                                 <TextBlock Text="Precio:" FontSize="12" Foreground="White" Opacity="0.9"/>
                                 <TextBlock Text="{Binding BasePriceUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}}" FontSize="12" Foreground="White" Opacity="0.9" Margin="4,0,0,0"/>
                                 <TextBlock Text="{Binding BasePriceBsS, Mode=OneWay, Converter={StaticResource LocalAmountConverter}}" FontSize="12" Foreground="White" Opacity="0.9" Margin="10,0,0,0"
-                                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
                             </StackPanel>
                         </StackPanel>
                     </StackPanel>
@@ -132,3 +132,4 @@
         </Grid>
     </Border>
 </Window>
+

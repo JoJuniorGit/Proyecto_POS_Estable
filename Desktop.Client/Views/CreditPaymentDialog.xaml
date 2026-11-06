@@ -52,13 +52,13 @@
                 <StackPanel Grid.Column="0" Margin="0,0,12,0">
                     <TextBox AutomationProperties.AutomationId="CreditPayment_AmountUsdInput"
                              Text="{Binding AmountUsdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             materialDesign:HintAssist.Hint="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Monto del abono ({0})'}"
+                             materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Monto del abono ({0})'}"
                              Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
                              FontWeight="Bold" FontSize="16"
                              HorizontalContentAlignment="Right"/>
                     <!-- 8.211-T4c2b4 (S9): the local projection only exists in Dual. -->
                     <TextBlock FontSize="11" Foreground="#64748B" HorizontalAlignment="Right" Margin="0,2,0,0"
-                               Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                         <Run Text="≈ "/>
                         <Run Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"/>
                         <Run Text=" a la tasa del día"/>
@@ -172,7 +172,7 @@
                                            Typography.NumeralAlignment="Tabular"/>
                                 <!-- 8.211-T4c2b4 (S9): today projection only exists in Dual. -->
                                 <TextBlock Grid.Column="3" Text="{Binding Receivable.BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}"
-                                           Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                            FontSize="11" Foreground="#166534" VerticalAlignment="Center"
                                            Typography.NumeralAlignment="Tabular"/>
                             </Grid>
@@ -207,3 +207,4 @@
         </Grid>
     </Grid>
 </UserControl>
+

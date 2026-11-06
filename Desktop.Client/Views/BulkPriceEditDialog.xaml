@@ -238,7 +238,7 @@
                                   ToolTip="Si el redondeo deja el precio por debajo del piso configurado, se usa el siguiente escalón superior (requiere costo y piso mayores a cero)."/>
 
                         <TextBlock Grid.Row="1" Grid.Column="0"
-                                   Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Redondeo Detal ({0})'}"
+                                   Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Redondeo Detal ({0})'}"
                                    FontWeight="SemiBold"
                                    FontSize="12"
                                    Foreground="#1E293B"
@@ -276,7 +276,7 @@
                                  AutomationProperties.AutomationId="BulkPriceEdit_RetailMarginFloorInput"/>
 
                         <TextBlock Grid.Row="2" Grid.Column="0"
-                                   Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='Redondeo Mayor ({0})'}"
+                                   Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Redondeo Mayor ({0})'}"
                                    FontWeight="SemiBold"
                                    FontSize="12"
                                    Foreground="#1E293B"
@@ -320,7 +320,7 @@
                                    Margin="0,0,0,8"/>
 
                         <TextBlock Grid.Row="4" Grid.Column="0"
-                                   Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='Redondeo {0} (Proyección)'}"
+                                   Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Redondeo {0} (Proyección)'}"
                                    FontWeight="SemiBold"
                                    FontSize="12"
                                    Foreground="#1E293B"
@@ -343,7 +343,7 @@
                                    Foreground="#64748B"
                                    TextWrapping="Wrap"
                                    Margin="0,2,0,0"
-                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
                     </Grid>
                 </StackPanel>
             </Border>
@@ -503,7 +503,7 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencyCode}, StringFormat='PRECIO {0} (ANTES → DESPUÉS)'}" Width="*" MinWidth="150">
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='PRECIO {0} (ANTES → DESPUÉS)'}" Width="*" MinWidth="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding UsdTransitionText}"
@@ -522,8 +522,8 @@
                              el delta de redondeo entre paréntesis y el matemático exacto en ToolTip.
                              Es informativa y NUNCA se persiste: el PriceBsS guardado sigue siendo el
                              canónico 8.104. -->
-                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, StringFormat='{}{0} EFECTIVO (PROY.)'}"
-                                                Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='{}{0} EFECTIVO (PROY.)'}"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                                 Width="*" MinWidth="170">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -629,3 +629,4 @@
         </Grid>
     </Grid>
 </Window>
+

@@ -186,7 +186,7 @@
                                                        FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Right"
                                                        Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
                                             <TextBlock Text="{Binding Amount, Converter={StaticResource PrimaryAmountConverter}}"
-                                                       Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                                        FontSize="10" HorizontalAlignment="Right"
                                                        Foreground="#64748B" Typography.NumeralAlignment="Tabular"/>
                                         </StackPanel>
@@ -305,15 +305,15 @@
                             CornerRadius="100"
                             Padding="14,6"
                             VerticalAlignment="Center"
-                            Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                            Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <materialDesign:PackIcon Kind="CurrencyUsd" Width="16" Height="16" VerticalAlignment="Center" Foreground="#166534"/>
                             <TextBlock Margin="4,0,0,0" FontSize="12" VerticalAlignment="Center" Foreground="#166534">
                                 <Run Text="Tasa BCV: "/>
                                 <Run Text="{Binding CurrentExchangeRate, Mode=OneWay, StringFormat='{}{0:N2}'}" FontWeight="Bold"/>
-                                <Run Text="{Binding Source={x:Static core:CurrencyDisplay.LocalCurrencySymbol}, Mode=OneWay, StringFormat=' {0}'}" FontWeight="Bold"/>
+                                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, Mode=OneWay, StringFormat=' {0}'}" FontWeight="Bold"/>
                                 <Run Text="/" FontWeight="Bold"/>
-                                <Run Text="{Binding Source={x:Static core:CurrencyDisplay.PrimaryCurrencySymbol}, Mode=OneWay}" FontWeight="Bold"/>
+                                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, Mode=OneWay}" FontWeight="Bold"/>
                             </TextBlock>
                         </StackPanel>
                     </Border>
@@ -432,7 +432,7 @@
                                                    Typography.NumeralAlignment="Tabular"
                                                    HorizontalAlignment="Right"/>
                                         <TextBlock Text="{Binding EffectiveTotalUSD, Converter={StaticResource PrimaryAmountConverter}}"
-                                                   Visibility="{Binding Source={x:Static core:CurrencyDisplay.IsSingle}, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                                    FontSize="11" Foreground="#64748B"
                                                    Typography.NumeralAlignment="Tabular"
                                                    HorizontalAlignment="Right"
@@ -512,3 +512,4 @@
         </StackPanel>
     </Grid>
 </UserControl>
+
