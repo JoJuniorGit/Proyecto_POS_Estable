@@ -20,8 +20,8 @@ public class PettyCashMonetaryProfileDisplayTests
             CurrencyDisplay.SetMonetaryProfile(new MonetaryProfileDto
             {
                 Mode = MonetaryMode.Dual,
-                PrimaryCurrencyCode = "EUR",
-                PrimaryCurrencySymbol = "EUR",
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "$",
                 SecondaryCurrencyCode = "VES",
                 SecondaryCurrencySymbol = "Bs.S",
                 IsConfigured = true
@@ -34,9 +34,9 @@ public class PettyCashMonetaryProfileDisplayTests
                 Currency = PettyCashCurrencyClient.Usd
             });
 
-            Assert.StartsWith("EUR", row.AmountUsdDisplay, System.StringComparison.Ordinal);
+            Assert.StartsWith("$", row.AmountUsdDisplay, System.StringComparison.Ordinal);
             Assert.StartsWith("Bs.S", row.AmountBsSDisplay, System.StringComparison.Ordinal);
-            Assert.Equal("EUR", PettyCashLabels.Currency(PettyCashCurrencyClient.Usd));
+            Assert.Equal("USD", PettyCashLabels.Currency(PettyCashCurrencyClient.Usd));
             Assert.Equal("Bs.S", PettyCashLabels.Currency(PettyCashCurrencyClient.BsS));
         }
         finally

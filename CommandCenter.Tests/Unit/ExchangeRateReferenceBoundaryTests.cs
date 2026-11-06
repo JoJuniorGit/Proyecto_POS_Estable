@@ -126,8 +126,8 @@ public class ExchangeRateReferenceBoundaryTests
 
         var mockCashDrawer = new Mock<ICashDrawerService>();
         decimal? capturedRate = null;
-        mockCashDrawer.Setup(c => c.AddTransactionAsync(It.IsAny<int>(), It.IsAny<CashTransactionType>(), It.IsAny<CashTransactionSource>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>(), It.IsAny<Sales.Module.DTOs.CashTransactionIdempotency?>()))
-            .ReturnsAsync((int sid, CashTransactionType t, CashTransactionSource s, decimal al, decimal au, decimal er, string d, int? rid, bool isPhys, int? pmId, CancellationToken ct, Sales.Module.DTOs.CashTransactionIdempotency? _idempotency) =>
+        mockCashDrawer.Setup(c => c.AddTransactionAsync(It.IsAny<int>(), It.IsAny<CashTransactionType>(), It.IsAny<CashTransactionSource>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>(), It.IsAny<Sales.Module.DTOs.CashTransactionIdempotency?>(), It.IsAny<string?>()))
+            .ReturnsAsync((int sid, CashTransactionType t, CashTransactionSource s, decimal al, decimal au, decimal er, string d, int? rid, bool isPhys, int? pmId, CancellationToken ct, Sales.Module.DTOs.CashTransactionIdempotency? _idempotency, string? _resolvedCurrency) =>
             {
                 capturedRate = er;
                 return new CashTransactionResponseDto { Id = 1, SessionId = sid, Type = t, Source = s, AmountLocal = al, AmountUsd = au, ExchangeRate = er, Description = d, TransactionTime = DateTime.UtcNow };

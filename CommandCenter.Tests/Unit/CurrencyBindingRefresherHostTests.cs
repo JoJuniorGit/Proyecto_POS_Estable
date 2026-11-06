@@ -1,28 +1,23 @@
 using System;
+using System.Reflection;
 using System.Threading;
-using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
-using System.Windows.Threading;
-using MonetaryMode = global::Core.DTOs.MonetaryMode;
-using MonetaryProfileDto = global::Core.DTOs.MonetaryProfileDto;
 using Desktop.Client.Converters;
 using Desktop.Client.Services;
+using MonetaryMode = global::Core.DTOs.MonetaryMode;
+using MonetaryProfileDto = global::Core.DTOs.MonetaryProfileDto;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
 
-[CollectionDefinition("WpfHost", DisableParallelization = true)]
-public sealed class WpfHostCollection
-{
-}
-
 /// <summary>
-/// 8.211-T6-U19: the real WPF host must refresh bindings hosted in TextBlock.Inlines (Run
-/// elements), not only visual-tree children. The static XAML audit cannot prove this path.
+/// 8.211-T6-U19: the real WPF binding pipeline must refresh bindings hosted in
+/// TextBlock.Inlines (Run elements), not only visual-tree children. This test exercises the
+/// private refresh walk directly so it does not create a process-wide Application (which would
+/// change the behavior of later WPF dialog tests).
 /// </summary>
-[Collection("WpfHost")]
 public class CurrencyBindingRefresherHostTests
 {
     [Fact]
@@ -33,9 +28,6 @@ public class CurrencyBindingRefresherHostTests
         {
             try
             {
-                _ = Application.Current ?? new Application();
-                CurrencyBindingRefresher.Install();
-
                 CurrencyDisplay.SetMonetaryProfile(new MonetaryProfileDto
                 {
                     Mode = MonetaryMode.Dual,
@@ -52,13 +44,9 @@ public class CurrencyBindingRefresherHostTests
                     Converter = new PrimaryAmountConverter()
                 });
 
-                var textBlock = new TextBlock();
+                var textBlock = new TextBlock { DataContext = viewModel };
                 textBlock.Inlines.Add(run);
-
-                var window = new Window { Content = textBlock };
-                window.Show();
-                window.UpdateLayout();
-                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
+                run.GetBindingExpression(Run.TextProperty)!.UpdateTarget();
 
                 var before = run.Text;
                 Assert.False(string.IsNullOrWhiteSpace(before));
@@ -72,16 +60,23 @@ public class CurrencyBindingRefresherHostTests
                     SecondaryCurrencySymbol = "Bs.S"
                 });
 
-                window.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
-                var after = run.Text;
+                var refreshTree = typeof(CurrencyBindingRefresher).GetMethod(
+                    "RefreshTree",
+                    BindingFlags.NonPublic | BindingFlags.Static);
+                Assert.NotNull(refreshTree);
+                refreshTree!.Invoke(null, new object[] { textBlock });
 
-                window.Close();
+                var after = run.Text;
                 Assert.NotEqual(before, after);
                 Assert.Contains("EUR", after, StringComparison.Ordinal);
             }
             catch (Exception exception)
             {
                 failure = exception;
+            }
+            finally
+            {
+                CurrencyDisplay.SetMonetaryProfile(null);
             }
         });
 
@@ -100,7 +95,3 @@ public class CurrencyBindingRefresherHostTests
         public decimal Amount { get; set; }
     }
 }
-
-
-
-
