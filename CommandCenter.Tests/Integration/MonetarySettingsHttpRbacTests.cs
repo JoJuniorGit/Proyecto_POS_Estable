@@ -24,19 +24,23 @@ public class PostgresMonetarySettingsHttpRbacTests
         var admin = await app.CreateUserAsync(9101, UserRole.Admin, "Admin Monetario");
         var manager = await app.CreateUserAsync(9102, UserRole.Manager, "Manager Monetario");
         var cashier = await app.CreateUserAsync(9103, UserRole.Cashier, "Cajero Monetario");
+        var driver = await app.CreateUserAsync(9104, UserRole.Driver, "Driver Monetario");
 
         using var adminClient = app.CreateHttpClient(app.IssueToken(admin));
         using var managerClient = app.CreateHttpClient(app.IssueToken(manager));
         using var cashierClient = app.CreateHttpClient(app.IssueToken(cashier));
+        using var driverClient = app.CreateHttpClient(app.IssueToken(driver));
         using var anonymous = app.Factory.CreateClient();
         anonymous.DefaultRequestHeaders.Add("X-Client-Version", "1.0.0");
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/settings/monetary-profile")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await cashierClient.GetAsync("/api/settings/monetary-profile")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await driverClient.GetAsync("/api/settings/monetary-profile")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await managerClient.GetAsync("/api/settings/monetary-profile")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await adminClient.GetAsync("/api/settings/monetary-profile")).StatusCode);
 
         Assert.Equal(HttpStatusCode.Forbidden, (await cashierClient.GetAsync("/api/settings/monetary-setup-status")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await driverClient.GetAsync("/api/settings/monetary-setup-status")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await managerClient.GetAsync("/api/settings/monetary-setup-status")).StatusCode);
 
         var profile = new MonetaryProfileDto
@@ -49,10 +53,12 @@ public class PostgresMonetarySettingsHttpRbacTests
             IsConfigured = true
         };
         Assert.Equal(HttpStatusCode.Forbidden, (await managerClient.PutAsJsonAsync("/api/settings/monetary-profile", profile)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await driverClient.PutAsJsonAsync("/api/settings/monetary-profile", profile)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await adminClient.PutAsJsonAsync("/api/settings/monetary-profile", profile)).StatusCode);
 
         var date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1));
         Assert.Equal(HttpStatusCode.Forbidden, (await cashierClient.GetAsync($"/api/settings/manual-currency-rates?date={date:yyyy-MM-dd}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await driverClient.GetAsync($"/api/settings/manual-currency-rates?date={date:yyyy-MM-dd}")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await managerClient.GetAsync($"/api/settings/manual-currency-rates?date={date:yyyy-MM-dd}")).StatusCode);
 
         var manualRate = new ManualCurrencyRateRequest
