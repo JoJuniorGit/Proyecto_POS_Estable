@@ -28,6 +28,31 @@ public class MonetaryTransitionGuard : IMonetaryTransitionGuard
         _salesContext = salesContext;
     }
 
+    private const long TransitionLockKey = 8211;
+
+    public async Task<IAsyncDisposable?> AcquireTransitionLockAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_salesContext.Database.IsNpgsql())
+        {
+            return null;
+        }
+
+        await _salesContext.Database.OpenConnectionAsync(cancellationToken);
+        try
+        {
+            await _salesContext.Database.ExecuteSqlRawAsync(
+                "SELECT pg_advisory_lock({0})",
+                new object[] { TransitionLockKey },
+                cancellationToken);
+            return new PostgresTransitionLock(_salesContext, TransitionLockKey);
+        }
+        catch
+        {
+            await _salesContext.Database.CloseConnectionAsync();
+            throw;
+        }
+    }
+
     public async Task<bool> HasFinancialDataAsync(CancellationToken cancellationToken = default)
     {
         // El producto de sistema de adelanto de efectivo se siembra en el arranque y no es
@@ -70,4 +95,38 @@ public class MonetaryTransitionGuard : IMonetaryTransitionGuard
 
         return await _salesContext.PettyCashExpenses.AsNoTracking().AnyAsync(cancellationToken);
     }
+
+    private sealed class PostgresTransitionLock : IAsyncDisposable
+    {
+        private readonly SalesDbContext _context;
+        private readonly long _key;
+        private int _disposed;
+
+        public PostgresTransitionLock(SalesDbContext context, long key)
+        {
+            _context = context;
+            _key = key;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                await _context.Database.ExecuteSqlRawAsync(
+                    "SELECT pg_advisory_unlock({0})",
+                    new object[] { _key });
+            }
+            finally
+            {
+                await _context.Database.CloseConnectionAsync();
+            }
+        }
+    }
 }
+
+

@@ -511,3 +511,4 @@ public class CompanyNameSettingResponseDto
 {
     public string Name { get; set; } = string.Empty;
 }
+

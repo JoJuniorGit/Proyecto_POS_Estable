@@ -81,6 +81,9 @@ public static class ControllerFactory
 
         public Task<bool> HasFinancialDataAsync(CancellationToken cancellationToken = default)
             => Task.FromResult(false);
+
+        public Task<IAsyncDisposable?> AcquireTransitionLockAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IAsyncDisposable?>(null);
     }
 
     public static UsersController CreateUsersController(

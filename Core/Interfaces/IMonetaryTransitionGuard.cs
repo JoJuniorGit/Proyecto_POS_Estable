@@ -11,4 +11,11 @@ namespace Core.Interfaces;
 public interface IMonetaryTransitionGuard
 {
     Task<bool> HasFinancialDataAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 8.211-T6-U10: serializes the guard probe and the profile save. PostgreSQL uses an advisory
+    /// lock; providers without it return null (the controller proceeds without a cross-instance lock).
+    /// </summary>
+    Task<IAsyncDisposable?> AcquireTransitionLockAsync(CancellationToken cancellationToken = default);
 }
+
