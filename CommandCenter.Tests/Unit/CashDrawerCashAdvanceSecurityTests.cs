@@ -57,7 +57,7 @@ public class CashDrawerCashAdvanceSecurityTests
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<string>(),
                 It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>(),
                 It.IsAny<Sales.Module.DTOs.CashTransactionIdempotency?>()))
-            .ReturnsAsync((int sessionId, CashTransactionType type, CashTransactionSource source, decimal amountLocal, decimal amountUsd, decimal exchangeRate, string description, int? referenceId, bool isPhysical, int? paymentMethodId, CancellationToken _, Sales.Module.DTOs.CashTransactionIdempotency? _idempotency) =>
+            .ReturnsAsync((int sessionId, CashTransactionType type, CashTransactionSource source, decimal amountLocal, decimal amountUsd, decimal exchangeRate, string description, int? referenceId, bool isPhysical, int? paymentMethodId, CancellationToken _, Sales.Module.DTOs.CashTransactionIdempotency? _idempotency, string? _resolvedCurrency) =>
             {
                 if (type == CashTransactionType.Expense)
                 {

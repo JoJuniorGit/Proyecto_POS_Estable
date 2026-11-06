@@ -45,7 +45,8 @@ public interface ICashDrawerService
         bool isPhysicalCash = true,
         int? paymentMethodId = null,
         CancellationToken cancellationToken = default,
-        CashTransactionIdempotency? idempotency = null);
+        CashTransactionIdempotency? idempotency = null,
+        string? resolvedCurrencyCode = null);
 
     Task<CashTransactionResponseDto> RecordSaleChangeAsync(
         int sessionId,

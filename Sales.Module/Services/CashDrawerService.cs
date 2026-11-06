@@ -157,7 +157,7 @@ public class CashDrawerService : ICashDrawerService
 
         // 8.211-T6-U1: resolve the profile before creating the session so a settings failure
         // cannot leave an opening session behind on providers without a transaction.
-        await ResolveLocalDrawerCurrencyAsync(cancellationToken);
+        var localDrawerCurrency = await ResolveLocalDrawerCurrencyAsync(cancellationToken);
 
         if (await GetActiveSessionAsync(cancellationToken) != null)
         {
@@ -209,7 +209,8 @@ public class CashDrawerService : ICashDrawerService
                 currentExchangeRate > 0 ? openingBalanceLocal / currentExchangeRate : 0,
                 currentExchangeRate,
                 "Monto de apertura de caja",
-                cancellationToken: cancellationToken
+                cancellationToken: cancellationToken,
+                resolvedCurrencyCode: localDrawerCurrency
             );
 
             if (ownTransaction != null)
@@ -386,7 +387,8 @@ public class CashDrawerService : ICashDrawerService
         bool isPhysicalCash = true,
         int? paymentMethodId = null,
         CancellationToken cancellationToken = default,
-        CashTransactionIdempotency? idempotency = null)
+        CashTransactionIdempotency? idempotency = null,
+        string? resolvedCurrencyCode = null)
     {
         if (amountLocal <= 0 && source != CashTransactionSource.Closing && source != CashTransactionSource.Opening)
         {
@@ -480,7 +482,7 @@ public class CashDrawerService : ICashDrawerService
                     }
                 }
 
-                string currencyCode = await ResolveTransactionCurrencyCodeAsync(type, source, paymentMethodId, cancellationToken);
+                string currencyCode = await ResolveTransactionCurrencyCodeAsync(type, source, paymentMethodId, cancellationToken, resolvedCurrencyCode);
 
                 var transaction = new CashTransaction
                 {
@@ -786,8 +788,16 @@ public class CashDrawerService : ICashDrawerService
         CashTransactionType type,
         CashTransactionSource source,
         int? paymentMethodId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? resolvedCurrencyCode = null)
     {
+        // 8.211-T6-U3: opening already resolved the local drawer currency; reuse it instead of
+        // reading the profile twice for the same logical operation.
+        if (!string.IsNullOrWhiteSpace(resolvedCurrencyCode))
+        {
+            return resolvedCurrencyCode;
+        }
+
         if (source == CashTransactionSource.SalePayment && type == CashTransactionType.Expense)
         {
             return await ResolveLocalDrawerCurrencyAsync(cancellationToken);

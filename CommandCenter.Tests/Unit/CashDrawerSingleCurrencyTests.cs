@@ -76,7 +76,7 @@ public class CashDrawerSingleCurrencyTests
         Assert.Equal(500m, transactions[1].AmountLocal);
         Assert.Equal(500m, closed.ClosingBalanceLocal);
         Assert.Equal(opened.Id, closed.Id);
-        profile.Verify(p => p.GetAsync(It.IsAny<CancellationToken>()), Times.Exactly(3));
+        profile.Verify(p => p.GetAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Fact]
