@@ -8,6 +8,7 @@ using Core.Entities;
 using Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using Sales.Module;
 using Sales.Module.Entities;
 using Sales.Module.Services;
 using Xunit;
@@ -222,6 +223,18 @@ public class CashDrawerSingleCurrencyTests
         Assert.Equal(100m, await service.GetCurrentBalanceLocalAsync(session.Id));
     }
 
+    [Fact]
+    public async Task OpenSession_WithoutProfileService_KeepsLegacyLocalCurrency()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var service = new CashDrawerService(context);
+
+        var session = await service.OpenSessionAsync(100m, 50m);
+
+        var opening = await context.CashTransactions.AsNoTracking()
+            .SingleAsync(t => t.SessionId == session.Id && t.Source == CashTransactionSource.Opening);
+        Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, opening.CurrencyCode);
+    }
     [Fact]
     public async Task ProfileReadFailure_FailsClosedWithoutDrawerWrites()
     {
