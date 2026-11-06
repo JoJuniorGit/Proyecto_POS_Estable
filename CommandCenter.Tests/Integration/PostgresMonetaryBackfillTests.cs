@@ -29,6 +29,64 @@ public class PostgresMonetaryBackfillTests
         await command.ExecuteNonQueryAsync();
     }
     [Fact]
+    public async Task CorrectiveCashBackfill_RepairsLegacyBsSFallback_WithoutTouchingAmounts()
+    {
+        await using var database = await IsolatedPostgresDatabase.CreateAsync();
+        await using (var context = database.CreateSalesDbContext())
+        {
+            var method = new PaymentMethod
+            {
+                Id = 7002,
+                Name = "Efectivo COP legado",
+                Currency = "COP",
+                IsCash = true,
+                IsActive = true
+            };
+            var session = new CashDrawerSession
+            {
+                Id = 7002,
+                OpenedAt = DateTime.UtcNow,
+                Status = CashDrawerStatus.Open,
+                OpeningBalanceLocal = 0m,
+                OpeningBalanceUsd = 0m,
+                OpeningExchangeRate = 4000m
+            };
+            var cash = new CashTransaction
+            {
+                SessionId = session.Id,
+                PaymentMethodId = method.Id,
+                Type = CashTransactionType.Income,
+                Source = CashTransactionSource.SalePayment,
+                AmountUsd = 10m,
+                AmountLocal = 40000m,
+                ExchangeRate = 4000m,
+                IsPhysicalCash = true,
+                TransactionTime = DateTime.UtcNow,
+                CurrencyCode = "Bs.S"
+            };
+
+            context.PaymentMethods.Add(method);
+            context.CashDrawerSessions.Add(session);
+            context.CashTransactions.Add(cash);
+            await context.SaveChangesAsync();
+
+            var migrations = context.GetService<IMigrationsAssembly>();
+            var key = migrations.Migrations.Keys.Single(key =>
+                key.Contains("AlignCashTransactionCurrencyBackfillRev8211", StringComparison.Ordinal));
+            var migration = (Migration)Activator.CreateInstance(migrations.Migrations[key].AsType())!;
+            foreach (var operation in migration.UpOperations.OfType<SqlOperation>())
+            {
+                await ExecuteSqlAsync(context, operation.Sql);
+            }
+        }
+
+        await using var verify = database.CreateSalesDbContext();
+        var corrected = await verify.CashTransactions.AsNoTracking().SingleAsync(t => t.SessionId == 7002);
+        Assert.Equal("COP", corrected.CurrencyCode);
+        Assert.Equal(40000m, corrected.AmountLocal);
+        Assert.Equal(10m, corrected.AmountUsd);
+    }
+    [Fact]
     public async Task PaymentAndCashBackfills_PreserveIsoSecondaryCurrencyOnSeededRows()
     {
         await using var database = await IsolatedPostgresDatabase.CreateAsync();
