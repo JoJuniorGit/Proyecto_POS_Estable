@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Core.Common;
 using Core.DTOs;
 using Core.Helpers;
+using Desktop.Client.Services;
 
 using System;
 using System.Collections.Generic;
@@ -90,7 +91,7 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
     public decimal LineUnitCostUSD { get; }
 
     /// <summary>Etiqueta formateada del costo base unitario para el encabezado del modal.</summary>
-    public string LineUnitCostHeaderText => $"Costo Base Unitario: ${LineUnitCostUSD:N2}";
+    public string LineUnitCostHeaderText => $"Costo Base Unitario: {CurrencyDisplay.PrimaryCurrencySymbol}{LineUnitCostUSD:N2}";
 
     /// <summary>Contexto de solo lectura: costo normalizado en USD y, para facturas Bs.S, costo de la factura.</summary>
     public string CostInfo { get; }
@@ -887,5 +888,8 @@ public sealed class SelectedProductMarginViewModel : ObservableObject
         _marginWholesaleText = SupplierInvoiceLineViewModel.FormatEditableDecimal(_marginWholesale);
     }
 }
+
+
+
 
 

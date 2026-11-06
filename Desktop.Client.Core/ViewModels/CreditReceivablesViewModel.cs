@@ -74,11 +74,11 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
     public bool HasOverdueAlert => TotalOverdueUSD > 0m;
 
     public string OverdueAlertMessage => HasOverdueAlert
-        ? $"Alerta de mora: $ {TotalOverdueUSD:N2} vencidos en la cartera filtrada."
+        ? $"Alerta de mora: {CurrencyDisplay.FormatPrimary(TotalOverdueUSD)} vencidos en la cartera filtrada."
         : string.Empty;
 
     public string HeaderSubtitle =>
-        $"Cartera abierta: {OpenCount} obligaciones · Tasa del día: Bs.S {TodayRate:N2} por USD · {DefaultCustomerFilterNote}";
+        $"Cartera abierta: {OpenCount} obligaciones · Tasa del día: {CurrencyDisplay.LocalCurrencyCode} {TodayRate:N2} por {CurrencyDisplay.PrimaryCurrencyCode} · {DefaultCustomerFilterNote}";
 
     /// <summary>Seam de pruebas para no abrir procesos externos al verificar comprobantes.</summary>
     public Func<byte[], string, Task> ReceiptOpener { get; set; }
@@ -182,7 +182,7 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
             await EnsureLoadedAsync();
 
             SuccessMessage = $"Abono registrado exitosamente (comprobante N° {result.PaymentId}): " +
-                $"$ {result.AmountUSD:N2} (Bs.S {result.AmountBsS:N2} a la tasa {result.PaymentRate:N2}).";
+                $"{CurrencyDisplay.FormatPrimary(result.AmountUSD)} ({CurrencyDisplay.FormatSecondary(result.AmountBsS)} a la tasa {result.PaymentRate:N2}).";
 
             if (_dialogService.ShowSuccessDialog(SuccessMessage, "Imprimir Comprobante"))
             {
@@ -311,8 +311,8 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
             await EnsureLoadedAsync();
 
             SuccessMessage = result.RefundedUSD > 0m
-                ? $"Devolución registrada. La caja reembolsó $ {result.RefundedUSD:N2} (Bs.S {result.RefundedBsS:N2}). Saldo pendiente: $ {result.BalanceAfterUSD:N2}."
-                : $"Devolución registrada. Saldo pendiente actualizado: $ {result.BalanceAfterUSD:N2}.";
+                ? $"Devolución registrada. La caja reembolsó {CurrencyDisplay.FormatPrimary(result.RefundedUSD)} ({CurrencyDisplay.FormatSecondary(result.RefundedBsS)}). Saldo pendiente: {CurrencyDisplay.FormatPrimary(result.BalanceAfterUSD)}."
+                : $"Devolución registrada. Saldo pendiente actualizado: {CurrencyDisplay.FormatPrimary(result.BalanceAfterUSD)}.";
         }
         catch (Exception ex)
         {
@@ -339,3 +339,4 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
         // Sin suscripciones ni recursos retenidos: el ViewModel se conserva por sesión.
     }
 }
+

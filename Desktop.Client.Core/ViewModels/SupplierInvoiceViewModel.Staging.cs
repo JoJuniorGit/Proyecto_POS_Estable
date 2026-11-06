@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Core.Common;
 using Core.DTOs;
 using Core.Helpers;
+using Desktop.Client.Services;
 using System;
 using System.Globalization;
 using System.Linq;
@@ -90,10 +91,10 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     /// </summary>
     public string CostComparisonPillText => CostChangeKind switch
     {
-        CostChangeKind.Decreased => $"${OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
+        CostChangeKind.Decreased => $"{CurrencyDisplay.PrimaryCurrencySymbol}{OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
         CostChangeKind.Unchanged => $"Sin cambio · {UnitCostUSD:N2}",
-        CostChangeKind.IncreasedDrastic => $"${OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
-        CostChangeKind.IncreasedModerate => $"${OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
+        CostChangeKind.IncreasedDrastic => $"{CurrencyDisplay.PrimaryCurrencySymbol}{OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
+        CostChangeKind.IncreasedModerate => $"{CurrencyDisplay.PrimaryCurrencySymbol}{OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
         CostChangeKind.NewProduct => $"Nuevo: {UnitCostUSD:N2}",
         _ => UnitCostUSD.ToString("N2")
     };
@@ -599,4 +600,7 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
         _ => BandNone
     };
 }
+
+
+
 

@@ -53,7 +53,7 @@ public partial class CreditReturnDialogViewModel : ObservableObject, IDisposable
 
     public decimal RequestedReturnUSD => Lines.Sum(line => line.SubtotalUSD);
 
-    public string RequestedReturnDisplay => $"$ {RequestedReturnUSD:N2}";
+    public string RequestedReturnDisplay => CurrencyDisplay.FormatPrimary(RequestedReturnUSD);
 
     [RelayCommand]
     private async Task ConfirmAsync()
@@ -147,3 +147,4 @@ public partial class CreditReturnLineViewModel : ObservableObject
 
     public decimal SubtotalUSD => Math.Round(Quantity * UnitPriceUSD, 2, MidpointRounding.AwayFromZero);
 }
+

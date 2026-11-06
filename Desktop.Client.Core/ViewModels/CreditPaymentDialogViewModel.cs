@@ -100,7 +100,7 @@ public partial class CreditPaymentDialogViewModel : ObservableObject, IDisposabl
     /// <summary>Saldo resultante del cliente tras aplicar el monto capturado (USD).</summary>
     public decimal RemainingAfterUSD => Math.Max(0m, TotalOpenUSD - AmountUSD);
 
-    public string RemainingAfterDisplay => $"Saldo resultante: $ {RemainingAfterUSD:N2}";
+    public string RemainingAfterDisplay => $"Saldo resultante: {CurrencyDisplay.FormatPrimary(RemainingAfterUSD)}";
 
     public string? ValidationMessage
     {
@@ -251,3 +251,4 @@ public partial class CreditPaymentAllocationOption : ObservableObject
 
     public decimal BalanceUSD => Receivable.BalanceUSD;
 }
+

@@ -299,10 +299,12 @@ public static class DeliveryNotePdfGenerator
                 case 'Ú': sb.Append(@"\332"); break;
                 default:
                     if (character < 128) sb.Append(character);
-                    else sb.Append('?');
+                    else sb.Append(PdfTextEscape.EncodeChar(character));
                     break;
             }
         }
         return sb.ToString();
     }
 }
+
+

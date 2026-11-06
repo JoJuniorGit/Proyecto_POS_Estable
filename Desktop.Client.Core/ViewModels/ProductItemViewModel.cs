@@ -141,7 +141,7 @@ public partial class ProductItemViewModel : ObservableObject
 
     public string WholesalePriceColor => HasRealWholesale ? "#6366F1" : "#D97706";
 
-    public string DisplayCost => (IsGroupHeader && HasIndependentPricing) ? "—" : $"${CurrencyDisplay.Number(Cost)}";
+    public string DisplayCost => (IsGroupHeader && HasIndependentPricing) ? "—" : $"{CurrencyDisplay.PrimaryCurrencySymbol}{CurrencyDisplay.Number(Cost)}";
 
     // 8.143 + 8.185 (S1): todo precio Bs.S mostrado se deriva de USD × tasa vigente por el helper
     // único del cliente (regla efectiva del artículo ?? política global + toggle). ExactMath o sin
@@ -160,9 +160,9 @@ public partial class ProductItemViewModel : ObservableObject
         get
         {
             if (IsGroupHeader && HasIndependentPricing) return "—";
-            if (SelectedCurrency == "USD") return $"${CurrencyDisplay.Number(PriceUSD)}";
+            if (SelectedCurrency == "USD") return $"{CurrencyDisplay.PrimaryCurrencySymbol}{CurrencyDisplay.Number(PriceUSD)}";
             decimal bss = BsSFromRateOrFallback(PriceUSD, PriceBsS);
-            return $"Bs.S {CurrencyDisplay.Number(bss)}";
+            return $"{CurrencyDisplay.LocalCurrencySymbol} {CurrencyDisplay.Number(bss)}";
         }
     }
 
@@ -171,9 +171,9 @@ public partial class ProductItemViewModel : ObservableObject
         get
         {
             if (IsGroupHeader && HasIndependentPricing) return "—";
-            if (SelectedCurrency == "USD") return $"${CurrencyDisplay.Number(EffectivePriceWholesaleUSD)}";
+            if (SelectedCurrency == "USD") return $"{CurrencyDisplay.PrimaryCurrencySymbol}{CurrencyDisplay.Number(EffectivePriceWholesaleUSD)}";
             decimal bss = BsSFromRateOrFallback(EffectivePriceWholesaleUSD, PriceBsS);
-            return $"Bs.S {CurrencyDisplay.Number(bss)}";
+            return $"{CurrencyDisplay.LocalCurrencySymbol} {CurrencyDisplay.Number(bss)}";
         }
     }
 
@@ -399,3 +399,5 @@ public partial class ProductItemViewModel : ObservableObject
 
     public ProductDto GetDto() => _dto;
 }
+
+

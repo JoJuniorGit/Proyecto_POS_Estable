@@ -626,3 +626,4 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 }
+

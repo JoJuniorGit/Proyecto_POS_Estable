@@ -242,10 +242,11 @@ public static class CreditSaleReceiptPdfGenerator
                 case 'Ú': sb.Append(@"\332"); break;
                 default:
                     if (c < 128) sb.Append(c);
-                    else sb.Append('?');
+                    else sb.Append(PdfTextEscape.EncodeChar(c));
                     break;
             }
         }
         return sb.ToString();
     }
 }
+
