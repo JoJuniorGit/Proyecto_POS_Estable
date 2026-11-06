@@ -29,6 +29,16 @@ public class XamlMonetaryBindingAuditTests
         throw new DirectoryNotFoundException("No se encontró Desktop.Client/Views desde el directorio de pruebas.");
     }
     [Fact]
+    public void AppStartup_InstallsTheCurrencyBindingRefresher()
+    {
+        var views = ResolveViewsDirectory();
+        var appPath = Path.Combine(Path.GetDirectoryName(views)!, "App.xaml.cs");
+        Assert.True(File.Exists(appPath), $"No se encontró {appPath}.");
+
+        var source = File.ReadAllText(appPath);
+        Assert.Contains("CurrencyBindingRefresher.Install();", source, StringComparison.Ordinal);
+    }
+    [Fact]
     public void WpfViews_DoNotUseStaticCurrencyDisplayBindings()
     {
         var views = ResolveViewsDirectory();

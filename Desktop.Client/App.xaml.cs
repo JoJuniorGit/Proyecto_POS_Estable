@@ -446,6 +446,10 @@ public partial class App : Application
                 CurrencyDisplay.SetFromSetting(null);
             }
 
+            // 8.211-T6-U12b: install the profile-change listener before applying the profile so
+            // every later profile refresh re-evaluates amount bindings in open windows.
+            CurrencyBindingRefresher.Install();
+
             // 8.211-T4c1 (S9): perfil monetario activo (modo/códigos/símbolos) para la presentación.
             // Lectura read-only best-effort con timeout duro de 2s: si falla o expira, CurrencyDisplay
             // conserva los defaults Dual USD/VES y MainWindow.Show() no se retrasa.
