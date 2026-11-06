@@ -125,6 +125,33 @@ public class PerformancePhase2Tests
     }
 
     [Fact]
+    public async Task SystemSettingsService_SetSettingsAsync_InvalidatesEveryBatchKey()
+    {
+        var options = new DbContextOptionsBuilder<Inventory.Module.Data.InventoryDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+
+        using var db = new Inventory.Module.Data.InventoryDbContext(options);
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var service = new SystemSettingsService(db, cache);
+        await service.SetSettingAsync("Batch.Key.A", "1");
+        await service.SetSettingAsync("Batch.Key.B", "2");
+        await service.GetSettingAsync("Batch.Key.A");
+        await service.GetSettingAsync("Batch.Key.B");
+
+        Assert.True(cache.TryGetValue("system_setting_Batch.Key.A", out _));
+        Assert.True(cache.TryGetValue("system_setting_Batch.Key.B", out _));
+
+        await service.SetSettingsAsync(new Dictionary<string, string>
+        {
+            ["Batch.Key.A"] = "10",
+            ["Batch.Key.B"] = "20"
+        });
+
+        Assert.False(cache.TryGetValue("system_setting_Batch.Key.A", out _));
+        Assert.False(cache.TryGetValue("system_setting_Batch.Key.B", out _));
+    }
+    [Fact]
     public async Task BulkImportProducts_CategoriesLoadedAsNoTracking_DoesNotTrackExistingCategories()
     {
         var options = new DbContextOptionsBuilder<Inventory.Module.Data.InventoryDbContext>()
@@ -167,3 +194,5 @@ public class PerformancePhase2Tests
         Assert.Null(categoryEntry);
     }
 }
+
+

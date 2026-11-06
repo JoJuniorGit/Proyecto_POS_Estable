@@ -9,6 +9,7 @@ using Inventory.Module.Data;
 using Inventory.Module.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Internal;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
@@ -538,6 +539,34 @@ public class CurrencyRateServiceTests
     }
 
     [Fact]
+    public async Task GetRateAsync_ManualQuote_CacheExpiresAfterFiveMinutes()
+    {
+        using var db = CreateInMemoryDb();
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        using var cache = new MemoryCache(new MemoryCacheOptions { Clock = clock, SizeLimit = 1000 });
+        var service = CreateService(db, cache);
+
+        await service.SetManualRateAsync(CreateRequest("EUR", "COP", 100m, RateDate), updatedByUserId: 1);
+        Assert.Equal(100m, (await service.GetRateAsync("EUR", "COP", RateDate)).Rate);
+
+        var row = await db.CurrencyPairRates.SingleAsync(r =>
+            r.RateDate == RateDate && r.FromCurrencyCode == "EUR" && r.ToCurrencyCode == "COP");
+        row.Rate = 200m;
+        await db.SaveChangesAsync();
+
+        clock.Advance(TimeSpan.FromMinutes(6));
+        Assert.Equal(200m, (await service.GetRateAsync("EUR", "COP", RateDate)).Rate);
+    }
+
+    private sealed class FakeClock : ISystemClock
+    {
+        public FakeClock(DateTimeOffset utcNow) => UtcNow = utcNow;
+
+        public DateTimeOffset UtcNow { get; private set; }
+
+        public void Advance(TimeSpan delta) => UtcNow += delta;
+    }
+    [Fact]
     public async Task GetRateAsync_ManualQuote_CacheIsIsolatedByPairAndDate()
     {
         using var db = CreateInMemoryDb();
@@ -558,3 +587,4 @@ public class CurrencyRateServiceTests
         Assert.Equal(120m, (await service.GetRateAsync("EUR", "COP", nextDate)).Rate);
     }
 }
+
