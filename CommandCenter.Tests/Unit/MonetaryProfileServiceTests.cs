@@ -323,6 +323,18 @@ public class MonetaryProfileServiceTests
     }
 
     [Theory]
+    [InlineData("XAU")]
+    [InlineData("XDR")]
+    [InlineData("XXX")]
+    public async Task SaveAsync_WithNonPaymentIsoCode_IsRejected(string code)
+    {
+        var profile = ValidDualProfile();
+        profile.PrimaryCurrencyCode = code;
+
+        await AssertSaveRejectedAsync(profile, string.Format(UnsupportedCodeMessage, code));
+    }
+
+    [Theory]
     [InlineData("   ")]
     [InlineData("123456789")]
     public async Task SaveAsync_WithInvalidPrimarySymbol_ThrowsExactMessageAndPersistsNothing(string symbol)
@@ -417,9 +429,5 @@ public class MonetaryProfileServiceTests
         await AssertSaveRejectedAsync(profile, SecondarySymbolMessage);
     }
 }
-
-
-
-
 
 
