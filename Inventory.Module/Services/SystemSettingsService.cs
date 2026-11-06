@@ -4,6 +4,8 @@ using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace Inventory.Module.Services;
@@ -57,6 +59,52 @@ public class SystemSettingsService : ISystemSettingsService
         }
 
         return value;
+    }
+
+    // 8.211-T6-U10: a single query for the five profile keys; cache is refreshed per key after
+    // the read. This avoids composing a profile from values read at different times.
+    public async Task<IReadOnlyDictionary<string, string?>> GetSettingsAsync(IReadOnlyCollection<string> keys, System.Threading.CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        var requested = keys.Where(key => !string.IsNullOrWhiteSpace(key))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var result = new Dictionary<string, string?>(StringComparer.Ordinal);
+        if (requested.Count == 0)
+        {
+            return result;
+        }
+
+        var rows = await _context.SystemSettings.AsNoTracking()
+            .Where(setting => requested.Contains(setting.Key))
+            .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
+
+        foreach (var key in requested)
+        {
+            rows.TryGetValue(key, out var value);
+            result[key] = value;
+            if (_cache is not null)
+            {
+                if (!string.IsNullOrEmpty(value))
+                {
+                    _cache.Set(CachePrefix + key, value, new MemoryCacheEntryOptions
+                    {
+                        SlidingExpiration = CacheTtl,
+                        Size = 1
+                    });
+                }
+                else
+                {
+                    _cache.Set(CachePrefix + key, NullSentinel, new MemoryCacheEntryOptions
+                    {
+                        AbsoluteExpirationRelativeToNow = NegativeCacheTtl,
+                        Size = 1
+                    });
+                }
+            }
+        }
+
+        return result;
     }
 
     public Task SetSettingAsync(string key, string value)
@@ -115,3 +163,5 @@ public class SystemSettingsService : ISystemSettingsService
         }
     }
 }
+
+

@@ -1,12 +1,16 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Core.Constants;
 using Core.DTOs;
 using Core.Entities;
+using Core.Interfaces;
 using Inventory.Module.Data;
 using Inventory.Module.Services;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 using Xunit;
 
 namespace CommandCenter.Tests.Unit;
@@ -199,6 +203,35 @@ public class MonetaryProfileServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_ReadsTheFiveProfileKeysInOneBatch()
+    {
+        var settings = new Moq.Mock<ISystemSettingsService>();
+        settings
+            .Setup(s => s.GetSettingsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, string?>
+            {
+                [SettingKeys.Monetary.Mode] = "Dual",
+                [SettingKeys.Monetary.PrimaryCurrencyCode] = "USD",
+                [SettingKeys.Monetary.PrimaryCurrencySymbol] = "$",
+                [SettingKeys.Monetary.SecondaryCurrencyCode] = "VES",
+                [SettingKeys.Monetary.SecondaryCurrencySymbol] = "Bs.S"
+            });
+        settings
+            .Setup(s => s.GetSettingAsync(It.IsAny<string>()))
+            .ThrowsAsync(new InvalidOperationException("individual reads are not allowed for a profile snapshot"));
+
+        var service = new MonetaryProfileService(settings.Object);
+        var profile = await service.GetAsync();
+
+        Assert.True(profile.IsConfigured);
+        Assert.Equal("USD", profile.PrimaryCurrencyCode);
+        Assert.Equal("VES", profile.SecondaryCurrencyCode);
+        settings.Verify(
+            s => s.GetSettingsAsync(It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        settings.Verify(s => s.GetSettingAsync(It.IsAny<string>()), Times.Never);
+    }
+    [Fact]
     public async Task SaveAsync_IgnoresIncomingIsConfiguredAndDerivesItFromPersistence()
     {
         using var db = CreateInMemoryDb();
@@ -384,6 +417,9 @@ public class MonetaryProfileServiceTests
         await AssertSaveRejectedAsync(profile, SecondarySymbolMessage);
     }
 }
+
+
+
 
 
 

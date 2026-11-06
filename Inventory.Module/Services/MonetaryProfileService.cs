@@ -39,16 +39,27 @@ public class MonetaryProfileService : IMonetaryProfileService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var modeValue = await _settingsService.GetSettingAsync(SettingKeys.Monetary.Mode);
+        var values = await _settingsService.GetSettingsAsync(
+            new[]
+            {
+                SettingKeys.Monetary.Mode,
+                SettingKeys.Monetary.PrimaryCurrencyCode,
+                SettingKeys.Monetary.PrimaryCurrencySymbol,
+                SettingKeys.Monetary.SecondaryCurrencyCode,
+                SettingKeys.Monetary.SecondaryCurrencySymbol
+            },
+            cancellationToken);
+
+        values.TryGetValue(SettingKeys.Monetary.Mode, out var modeValue);
         if (!Enum.TryParse<MonetaryMode>(modeValue?.Trim(), ignoreCase: true, out var mode) || !Enum.IsDefined(mode))
         {
             return CreateDefaultProfile();
         }
 
-        var primaryCode = await _settingsService.GetSettingAsync(SettingKeys.Monetary.PrimaryCurrencyCode);
-        var primarySymbol = await _settingsService.GetSettingAsync(SettingKeys.Monetary.PrimaryCurrencySymbol);
-        var secondaryCode = await _settingsService.GetSettingAsync(SettingKeys.Monetary.SecondaryCurrencyCode);
-        var secondarySymbol = await _settingsService.GetSettingAsync(SettingKeys.Monetary.SecondaryCurrencySymbol);
+        values.TryGetValue(SettingKeys.Monetary.PrimaryCurrencyCode, out var primaryCode);
+        values.TryGetValue(SettingKeys.Monetary.PrimaryCurrencySymbol, out var primarySymbol);
+        values.TryGetValue(SettingKeys.Monetary.SecondaryCurrencyCode, out var secondaryCode);
+        values.TryGetValue(SettingKeys.Monetary.SecondaryCurrencySymbol, out var secondarySymbol);
 
         var candidate = new MonetaryProfileDto
         {
@@ -247,4 +258,5 @@ public class MonetaryProfileService : IMonetaryProfileService
         IsConfigured = false
     };
 }
+
 

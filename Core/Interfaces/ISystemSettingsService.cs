@@ -6,6 +6,8 @@ namespace Core.Interfaces;
 public interface ISystemSettingsService
 {
     Task<string?> GetSettingAsync(string key);
+    /// <summary>8.211-T6-U10: reads a set of keys in one query so a profile snapshot cannot mix values.</summary>
+    Task<IReadOnlyDictionary<string, string?>> GetSettingsAsync(IReadOnlyCollection<string> keys, System.Threading.CancellationToken cancellationToken = default);
     Task SetSettingAsync(string key, string value);
 
     /// <summary>
@@ -14,3 +16,5 @@ public interface ISystemSettingsService
     /// </summary>
     Task SetSettingsAsync(IReadOnlyDictionary<string, string> values);
 }
+
+
