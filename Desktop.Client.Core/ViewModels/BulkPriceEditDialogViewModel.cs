@@ -218,7 +218,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
 
     public string ExchangeRateSummary => ExchangeRate > 0
         ? $"Tasa BCV aplicada: {CurrencyDisplay.Number(ExchangeRate)}"
-        : "Sin tasa configurada: se conserva el Bs.S previo de cada producto.";
+        : $"Sin tasa configurada: se conserva el {CurrencyDisplay.LocalCurrencySymbol} previo de cada producto.";
 
     public BulkPriceEditDialogViewModel(IProductService productService, IDialogService? dialogService, BulkPriceSelection selection, PricingPoliciesDto? pricingPolicies = null)
     {
@@ -229,11 +229,11 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         _dialogService = dialogService;
         _selection = selection;
 
-        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.RetailPrice, "Precio Detal", "USD", SharedModeOptions));
-        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.WholesalePrice, "Precio Mayor", "USD", SharedModeOptions));
+        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.RetailPrice, "Precio Detal", CurrencyDisplay.PrimaryCurrencyCode, SharedModeOptions));
+        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.WholesalePrice, "Precio Mayor", CurrencyDisplay.PrimaryCurrencyCode, SharedModeOptions));
         Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.RetailMargin, "Margen Detal", "%", SharedModeOptions));
         Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.WholesaleMargin, "Margen Mayor", "%", SharedModeOptions));
-        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.CostPrice, "Costo", "USD", SharedModeOptions));
+        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.CostPrice, "Costo", CurrencyDisplay.PrimaryCurrencyCode, SharedModeOptions));
 
         foreach (var row in Operations)
         {
@@ -759,7 +759,7 @@ public sealed class BulkPriceFieldChangeViewModel
             or RoundingRuleType.VesCashFriendlyStep10;
 
     private static string FormatRoundingUnit(decimal value, bool isBsS)
-        => isBsS ? $"Bs.S {CurrencyDisplay.Number(value)}" : $"${CurrencyDisplay.Number(value)}";
+        => isBsS ? $"{CurrencyDisplay.LocalCurrencySymbol} {CurrencyDisplay.Number(value)}" : $"{CurrencyDisplay.PrimaryCurrencySymbol}{CurrencyDisplay.Number(value)}";
 
     private static string FormatRoundingDelta(decimal value, bool isBsS)
     {
@@ -860,7 +860,7 @@ public sealed class BulkPricePreviewRowViewModel
         {
             var lines = Changes
                 .Where(change => change.CashFriendlyAfterBsS.HasValue && change.PreRoundingValue.HasValue)
-                .Select(change => $"{change.FieldLabel}: Bs.S {CurrencyDisplay.Number(change.PreRoundingValue!.Value)}")
+                .Select(change => $"{change.FieldLabel}: {CurrencyDisplay.LocalCurrencySymbol} {CurrencyDisplay.Number(change.PreRoundingValue!.Value)}")
                 .ToList();
 
             return lines.Count == 0 ? null : string.Join(Environment.NewLine, lines);
@@ -962,3 +962,4 @@ public sealed class BulkPricePreviewRowViewModel
     private static string FormatMarginPercent(decimal? value)
         => value.HasValue ? $"{value.Value.ToString("0.##", CultureInfo.InvariantCulture)}%" : "—";
 }
+
