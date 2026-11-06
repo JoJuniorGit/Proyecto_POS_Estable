@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using Desktop.Client.Services;
@@ -74,6 +76,21 @@ public static class CurrencyBindingRefresher
             }
         }
 
+        if (node is TextBlock textBlock)
+        {
+            // UpdateTarget can replace inline content, so enumerate a snapshot instead of
+            // the live collection.
+            foreach (var inline in textBlock.Inlines.ToList())
+            {
+                RefreshTree(inline);
+            }
+        }
+
+        if (node is not Visual)
+        {
+            return;
+        }
+
         var children = VisualTreeHelper.GetChildrenCount(node);
         for (var index = 0; index < children; index++)
         {
@@ -81,3 +98,5 @@ public static class CurrencyBindingRefresher
         }
     }
 }
+
+
