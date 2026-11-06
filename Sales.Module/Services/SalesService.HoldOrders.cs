@@ -440,8 +440,22 @@ public partial class SalesService
             if (sale.Status != SaleStatus.OnHold)
                 throw new InvalidOperationException("Solo se pueden modificar productos en ventas que estén en estado en espera (OnHold).");
 
-            decimal totalPaidUsd = sale.Payments != null ? sale.Payments.Sum(p => p.Amount) : 0;
+            // 8.211-T6-U4: the edit request carries the client's current quote. Resolve it with
+            // the same anchor/snapshot/calculation split as HoldSaleAsync, so the manual pair's
+            // 8dp calculation rate survives the 4dp AppliedRate snapshot.
+            var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+            decimal? calculationRate = null;
+            if (request?.ExchangeRate > 0m)
+            {
+                decimal anchoredRate = await ResolveAnchoredRateAsync(
+                    request.ExchangeRate,
+                    contextLabel: "UpdateSaleItems",
+                    referenceId: sale.Id);
+                sale.AppliedRate = RoundSnapshotRate(anchoredRate, monetaryProfile);
+                calculationRate = ResolveCalculationRate(anchoredRate, monetaryProfile);
+            }
 
+            decimal totalPaidUsd = sale.Payments != null ? sale.Payments.Sum(p => p.Amount) : 0;
             // Calcular nuevo total USD a partir de la lista de ítems enviada
             decimal newTotalUsd = 0;
             var newItemsList = new List<SaleItem>();
@@ -538,7 +552,7 @@ public partial class SalesService
 
             foreach (var newItem in newItemsList)
             {
-                newItem.UnitPriceBsS = ApplyCashRoundingPolicy(newItem.UnitPrice, newItem.IsCustomPrice, newItem.RoundingRuleCashBs, sale.AppliedRate, neverRoundDown);
+                newItem.UnitPriceBsS = ApplyCashRoundingPolicy(newItem.UnitPrice, newItem.IsCustomPrice, newItem.RoundingRuleCashBs, calculationRate ?? sale.AppliedRate, neverRoundDown);
                 newItem.SubtotalBsS = PricingCalculator.RoundToDigital(newItem.Quantity * newItem.UnitPriceBsS);
             }
 
@@ -576,7 +590,7 @@ public partial class SalesService
                 sale.Items.Add(newItem);
             }
 
-            await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
+            await RecalculateTotalAsync(sale, cancellationToken: cancellationToken, calculationRate: calculationRate);
             ValidateHoldSaleTotal(sale);
             await _context.SaveChangesAsync(cancellationToken);
 

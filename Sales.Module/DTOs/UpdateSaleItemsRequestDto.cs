@@ -4,6 +4,8 @@ namespace Sales.Module.DTOs;
 
 public class UpdateSaleItemsRequestDto
 {
+    public decimal ExchangeRate { get; set; }
+
     public List<UpdateSaleItemDto> Items { get; set; } = new();
 }
 
