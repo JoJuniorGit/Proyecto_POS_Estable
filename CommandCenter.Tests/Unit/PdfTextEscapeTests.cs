@@ -24,7 +24,7 @@ public class PdfTextEscapeTests
     }
 
     [Fact]
-    public void Escape_UnrepresentableCharacterFallsBackToQuestionMark()
+    public void Escape_UnrepresentableCharactersFallBackToQuestionMark()
     {
         Assert.Equal("?", PdfTextEscape.Escape("₡"));
     }
