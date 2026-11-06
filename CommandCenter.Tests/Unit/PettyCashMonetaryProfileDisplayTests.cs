@@ -12,6 +12,40 @@ namespace CommandCenter.Tests.Unit;
 public class PettyCashMonetaryProfileDisplayTests
 {
     [Fact]
+    public void DualProfile_PettyCashAmountUsd_IsPresentedAsPrimaryAndBsSAsSecondary()
+    {
+        var previous = CurrencyDisplay.Current;
+        try
+        {
+            CurrencyDisplay.SetMonetaryProfile(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Dual,
+                PrimaryCurrencyCode = "EUR",
+                PrimaryCurrencySymbol = "EUR",
+                SecondaryCurrencyCode = "VES",
+                SecondaryCurrencySymbol = "Bs.S",
+                IsConfigured = true
+            });
+
+            var row = new PettyCashExpenseRowViewModel(new PettyCashExpenseClientDto
+            {
+                AmountBsS = 100m,
+                AmountUsd = 100m,
+                Currency = PettyCashCurrencyClient.Usd
+            });
+
+            Assert.StartsWith("EUR", row.AmountUsdDisplay, System.StringComparison.Ordinal);
+            Assert.StartsWith("Bs.S", row.AmountBsSDisplay, System.StringComparison.Ordinal);
+            Assert.Equal("EUR", PettyCashLabels.Currency(PettyCashCurrencyClient.Usd));
+            Assert.Equal("Bs.S", PettyCashLabels.Currency(PettyCashCurrencyClient.BsS));
+        }
+        finally
+        {
+            CurrencyDisplay.Current = previous;
+            CurrencyDisplay.SetMonetaryProfile(null);
+        }
+    }
+    [Fact]
     public void SingleProfile_PettyCashAmountUsd_IsPresentedAsPrimaryCurrency()
     {
         var previous = CurrencyDisplay.Current;
