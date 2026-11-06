@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { X, Loader2, Package, Check, AlertCircle, Link2 } from 'lucide-react';
 import { api } from '../../services/api';
-import { formatUSD, formatBsS, resolveBsSPrice, resolveEffectiveBsS } from '../../utils/formatters';
+import { resolveBsSPrice, resolveEffectiveBsS } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
 import './VariantSelectorModal.css';
 
 function formatVariantTitle(variantName, parentName) {
@@ -54,6 +55,8 @@ export function resolveVariantDisplayBsS(variant, basePriceUSD, exchangeRate) {
 }
 
 export default function VariantSelectorModal({ isOpen, onClose, parentProduct, onSelectVariant, exchangeRate }) {
+  const { mode, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const isDual = mode === 'Dual';
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -168,10 +171,10 @@ export default function VariantSelectorModal({ isOpen, onClose, parentProduct, o
                       </div>
                       <div className="variant-card-price d-flex flex-column align-end vs-card-price">
                         <span className="font-bold vs-price-bs text-base">
-                          {displayBsS > 0 ? formatBsS(displayBsS) : ''}
+                          {displayBsS > 0 ? formatSecondary(displayBsS) : ''}
                         </span>
                         <span className="text-xs text-muted">
-                          Ref: {formatUSD(v.priceRetailUSD || basePriceUSD)}
+                          {isDual && <>Ref: {formatPrimary(v.priceRetailUSD || basePriceUSD)}</>}
                         </span>
                       </div>
                     </div>

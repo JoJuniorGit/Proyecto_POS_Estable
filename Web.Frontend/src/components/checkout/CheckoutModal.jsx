@@ -27,7 +27,7 @@ import { useCart } from '../../context/CartContext';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import { useAuth } from '../../context/AuthContext';
 import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
-import { formatBsS, formatUSD } from '../../utils/formatters';
+
 import { MONETARY_MODE_DUAL } from '../../utils/monetaryProfile';
 import CustomerSelectorCard from './CustomerSelectorCard';
 import { AlertTriangle, Check, Download, Loader2, PackageCheck, Wallet } from 'lucide-react';
@@ -630,13 +630,13 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
             <div className="credit-summary-row">
               <dt>Monto financiado:</dt>
               <dd>
-                <strong>{formatUSD(creditSuccess.financedUSD)}</strong>
-                <span className="text-muted"> ({formatBsS(creditSuccess.financedBsS)})</span>
+                <strong>{formatPrimary(creditSuccess.financedUSD)}</strong>
+                {isDual && <span className="text-muted"> ({formatSecondary(creditSuccess.financedBsS)})</span>}
               </dd>
             </div>
             <div className="credit-summary-row">
               <dt>Abono inicial cobrado:</dt>
-              <dd>{formatUSD(creditSuccess.paidNowUsd)} <span className="text-muted">({formatBsS(creditSuccess.paidNowBsS)})</span></dd>
+              <dd>{formatPrimary(creditSuccess.paidNowUsd)} {isDual && <span className="text-muted">({formatSecondary(creditSuccess.paidNowBsS)})</span>}</dd>
             </div>
             <div className="credit-summary-row">
               <dt>Vencimiento estimado:</dt>
@@ -763,13 +763,13 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
             </div>
             <div className="credit-detail-row">
               <dt>Crédito disponible:</dt>
-              <dd>{creditProfile ? formatUSD(creditProfile.availableCreditUSD) : '—'}</dd>
+              <dd>{creditProfile ? formatPrimary(creditProfile.availableCreditUSD) : '—'}</dd>
             </div>
             <div className="credit-detail-row">
               <dt>Monto a financiar:</dt>
               <dd>
-                <strong data-testid="credit-financed-usd">{formatUSD(creditView.financedUSD)}</strong>
-                <span className="text-muted"> ({formatBsS(creditView.financedBsS)})</span>
+                <strong data-testid="credit-financed-usd">{formatPrimary(creditView.financedUSD)}</strong>
+                {isDual && <span className="text-muted"> ({formatSecondary(creditView.financedBsS)})</span>}
               </dd>
             </div>
             <div className="credit-detail-row">
@@ -920,3 +920,4 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
 });
 
 export default CheckoutModal;
+

@@ -3,7 +3,8 @@ import Modal from '../ui/Modal';
 import SearchBar from './SearchBar';
 import QuantityInput from './QuantityInput';
 import { updateSaleItems } from '../../services/salesApi';
-import { formatBsS, formatUSD, formatNumberEs } from '../../utils/formatters';
+import { formatNumberEs } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
 import { Trash2, AlertTriangle, Save, Loader2, Plus, Minus } from 'lucide-react';
 import './EditSaleModal.css';
 
@@ -71,6 +72,8 @@ export function computeEditSaleSummary({ items = [], sale = null, exchangeRate }
 }
 
 export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onSuccess }) {
+  const { mode, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const isDual = mode === 'Dual';
   const [items, setItems] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -347,7 +350,7 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       {isBelowPaidAmount && (
         <div className="alert alert-warning mb-3 flex-align-center gap-2 es-warning">
           <AlertTriangle size={18} className="flex-shrink-0" />
-          <span>El nuevo total ({formatUSD(newTotalUSD)}) no puede ser menor a lo ya abonado por el cliente ({formatUSD(totalPaidUSD)}).</span>
+          <span>El nuevo total ({formatPrimary(newTotalUSD)}) no puede ser menor a lo ya abonado por el cliente ({formatPrimary(totalPaidUSD)}).</span>
         </div>
       )}
 
@@ -357,15 +360,15 @@ export default function EditSaleModal({ isOpen, onClose, sale, exchangeRate, onS
       >
         <div className="flex-between mb-1">
           <span className="text-muted">Nuevo Total:</span>
-                <span className="font-bold"><span className="color-primary font-bold es-total-bs">{formatBsS(newTotalBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newTotalEffectiveUsd)})</span></span>
+                <span className="font-bold"><span className="color-primary font-bold es-total-bs">{formatPrimary(newTotalEffectiveUsd)}</span> {isDual && <span className="text-muted text-xs font-normal">({formatSecondary(newTotalBsS)})</span>}</span>
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Total Ya Abonado:</span>
-          <span className="font-bold text-success"><span className="es-total-bs">{formatBsS(totalPaidBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(totalPaidUSD)})</span></span>
+          <span className="font-bold text-success"><span className="es-total-bs">{formatPrimary(totalPaidUSD)}</span> {isDual && <span className="text-muted text-xs font-normal">({formatSecondary(totalPaidBsS)})</span>}</span>
         </div>
         <div className="flex-between mb-1">
           <span className="text-muted">Nuevo Saldo Restante:</span>
-                  <span className="font-bold text-danger"><span className="es-total-bs">{formatBsS(newRemainingBalanceBsS)}</span> <span className="text-muted text-xs font-normal">({formatUSD(newRemainingEffectiveUsd)})</span></span>
+                  <span className="font-bold text-danger"><span className="es-total-bs">{formatPrimary(newRemainingEffectiveUsd)}</span> {isDual && <span className="text-muted text-xs font-normal">({formatSecondary(newRemainingBalanceBsS)})</span>}</span>
         </div>
       </div>
 
