@@ -64,6 +64,54 @@ public class MonetaryProfileSettingsTests
         return Assert.IsType<string>(problem.Extensions["message"]);
     }
 
+    [Fact]
+    public async Task SetMonetaryProfile_AcquiresTransitionLockBeforeReadingCurrentProfile()
+    {
+        var order = new List<string>();
+        var guard = new Mock<IMonetaryTransitionGuard>();
+        guard.Setup(g => g.AcquireTransitionLockAsync(It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                order.Add("lock");
+                return Task.FromResult<IAsyncDisposable?>(new RecordingDisposable(order));
+            });
+        guard.Setup(g => g.HasFinancialDataAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var profileService = new Mock<IMonetaryProfileService>();
+        profileService.Setup(s => s.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                order.Add("read");
+                return ValidDualProfile();
+            });
+        profileService.Setup(s => s.SaveAsync(It.IsAny<MonetaryProfileDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MonetaryProfileDto requested, CancellationToken _) => requested);
+
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.SetupGet(u => u.CanMutateSettings).Returns(true);
+
+        var controller = new SettingsController(
+            Mock.Of<ISystemSettingsService>(),
+            currentUser.Object,
+            Mock.Of<IExchangeRateHistoryService>(),
+            monetaryProfileService: profileService.Object,
+            monetaryTransitionGuard: guard.Object);
+
+        var result = await controller.SetMonetaryProfileAsync(ValidDualProfile());
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(new[] { "lock", "read" }, order.Take(2));
+    }
+
+    private sealed class RecordingDisposable(List<string> order) : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync()
+        {
+            order.Add("release");
+            return ValueTask.CompletedTask;
+        }
+    }
     // ---------------------------------------------------------------------------------------------
     // GET.
     // ---------------------------------------------------------------------------------------------
@@ -228,3 +276,4 @@ public class MonetaryProfileSettingsTests
         Assert.IsType<OkObjectResult>(result);
     }
 }
+

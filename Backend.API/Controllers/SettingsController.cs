@@ -297,6 +297,12 @@ public class SettingsController : ControllerBase
         var service = _monetaryProfileService
             ?? throw new InvalidOperationException("El servicio de perfil monetario no está configurado.");
 
+        // 8.211-T6-U10: hold the advisory lock before reading the current profile, so the
+        // comparison and the save use the same serialized view.
+        await using var transitionLock = _monetaryTransitionGuard is null
+            ? null
+            : await _monetaryTransitionGuard.AcquireTransitionLockAsync(cancellationToken);
+
         var currentProfile = await service.GetAsync(cancellationToken);
 
         // 8.211-T3c3b3: the probe feeds both the base-change guard and the catalog seeding gate,
