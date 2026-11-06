@@ -63,17 +63,19 @@ public class InventoryWholesaleVisibilityTests
         // Aislamiento del bus global compartido entre pruebas.
         WeakReferenceMessenger.Default.UnregisterAll(vm);
 
-        // Assert default headers in Bs.S
-        Assert.Equal("Bs.S", vm.SelectedCurrency);
-        Assert.Equal("Precio Detal (Bs.S)", vm.RetailPriceHeader);
-        Assert.Equal("Precio Mayor (Bs.S)", vm.WholesalePriceHeader);
+        // Assert default headers use the profile local code
+        var localCode = CurrencyDisplay.LocalCurrencyCode;
+        var primaryCode = CurrencyDisplay.PrimaryCurrencyCode;
+        Assert.Equal(localCode, vm.SelectedCurrency);
+        Assert.Equal($"Precio Detal ({localCode})", vm.RetailPriceHeader);
+        Assert.Equal($"Precio Mayor ({localCode})", vm.WholesalePriceHeader);
 
-        // Act: Change currency to USD
-        vm.SelectedCurrency = "USD";
+        // Act: switch to the profile primary currency
+        vm.SelectedCurrency = primaryCode;
 
-        // Assert updated headers in USD
-        Assert.Equal("USD", vm.SelectedCurrency);
-        Assert.Equal("Precio Detal (USD)", vm.RetailPriceHeader);
-        Assert.Equal("Precio Mayor (USD)", vm.WholesalePriceHeader);
+        // Assert updated headers in the primary code
+        Assert.Equal(primaryCode, vm.SelectedCurrency);
+        Assert.Equal($"Precio Detal ({primaryCode})", vm.RetailPriceHeader);
+        Assert.Equal($"Precio Mayor ({primaryCode})", vm.WholesalePriceHeader);
     }
 }

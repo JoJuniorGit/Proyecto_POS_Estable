@@ -66,7 +66,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
 
     private const int PageSize = 25; // Requisito: Paginación de 25 elementos
 
-    private string _selectedCurrency = "Bs.S"; // Requisito: "Bs.S" por defecto al entrar al catálogo
+    private string _selectedCurrency = CurrencyDisplay.LocalCurrencyCode; // Local (secondary in Dual, primary in Single)
     public string SelectedCurrency
     {
         get => _selectedCurrency;

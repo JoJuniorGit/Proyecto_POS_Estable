@@ -71,7 +71,7 @@ public partial class ProductItemViewModel : ObservableObject
     private string _unitOfMeasureStr = "Und";
 
     [ObservableProperty]
-    private string _selectedCurrency = "Bs.S";
+    private string _selectedCurrency = CurrencyDisplay.LocalCurrencyCode;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplayCost))]
@@ -160,7 +160,7 @@ public partial class ProductItemViewModel : ObservableObject
         get
         {
             if (IsGroupHeader && HasIndependentPricing) return "—";
-            if (SelectedCurrency == "USD") return $"{CurrencyDisplay.PrimaryCurrencySymbol}{CurrencyDisplay.Number(PriceUSD)}";
+            if (SelectedCurrency == CurrencyDisplay.PrimaryCurrencyCode) return $"{CurrencyDisplay.PrimaryCurrencySymbol}{CurrencyDisplay.Number(PriceUSD)}";
             decimal bss = BsSFromRateOrFallback(PriceUSD, PriceBsS);
             return $"{CurrencyDisplay.LocalCurrencySymbol} {CurrencyDisplay.Number(bss)}";
         }
@@ -171,7 +171,7 @@ public partial class ProductItemViewModel : ObservableObject
         get
         {
             if (IsGroupHeader && HasIndependentPricing) return "—";
-            if (SelectedCurrency == "USD") return $"{CurrencyDisplay.PrimaryCurrencySymbol}{CurrencyDisplay.Number(EffectivePriceWholesaleUSD)}";
+            if (SelectedCurrency == CurrencyDisplay.PrimaryCurrencyCode) return $"{CurrencyDisplay.PrimaryCurrencySymbol}{CurrencyDisplay.Number(EffectivePriceWholesaleUSD)}";
             decimal bss = BsSFromRateOrFallback(EffectivePriceWholesaleUSD, PriceBsS);
             return $"{CurrencyDisplay.LocalCurrencySymbol} {CurrencyDisplay.Number(bss)}";
         }

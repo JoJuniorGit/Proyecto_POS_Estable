@@ -342,7 +342,8 @@
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
                         <!-- Selector de Moneda directo (sin etiqueta externa) -->
                         <ComboBox SelectedValue="{Binding SelectedCurrency, Mode=TwoWay}"
-                                  SelectedValuePath="Content"
+                                  SelectedValuePath="Tag"
+                                  Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                   Style="{DynamicResource MaterialDesignOutlinedComboBox}"
                                   Width="85"
                                   Height="34"
@@ -354,8 +355,11 @@
                                   ToolTipService.BetweenShowDelay="50"
                                   ToolTipService.ShowDuration="8000"
                                   ToolTip="Moneda de visualización del catálogo">
-                            <ComboBoxItem Content="Bs.S" IsSelected="True"/>
-                            <ComboBoxItem Content="USD"/>
+                            <ComboBoxItem Content="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol}"
+                                          Tag="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode}"
+                                          IsSelected="True"/>
+                            <ComboBoxItem Content="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol}"
+                                          Tag="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"/>
                         </ComboBox>
 
                         <!-- Toggle solo-ícono: morado cuando ShowWholesale está activo -->
