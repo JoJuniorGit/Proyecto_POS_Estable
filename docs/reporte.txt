@@ -17299,19 +17299,19 @@ A6. U1/U2/U6/U7/U9/U10/U14/U16/U19: pruebas de fallback sin servicio, migracion 
 B. EVIDENCIA
 B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
 B2. Suite .NET completa con PostgreSQL aislado (`TEST_POSTGRES_CONNECTION` al cluster temporal):
-    **4100/4100**, 0 errores, 0 omitidos, 4m44s.
+    **4101/4101**, 0 errores, 0 omitidos, 4m57s.
 B3. Web: `npm test` **733/733**, `npm run lint` limpio, `npm run build` correcto.
 B4. Verificacion independiente read-only: **PASS_WITH_NOTES, 0 bloqueantes** despues de
     `d5a14fb`. El unico hallazgo bloqueante previo (refresher sin instalar en produccion) quedo
     corregido y cubierto por una prueba de cableado de arranque.
 B5. Focalizados: U10 lock/orden 1/1; U5 smoke 2/2; U6 backfill correctivo 2/2; U9 3/3;
-    U12/U19 host+wiring 4/4; U4 manual 8dp 1/1; U3 caja 9/9; U16 RBAC 1/1; U14 7/7;
+    U12/U19 host+wiring 4/4; U4 manual 8dp 2/2; U3 caja 9/9; U16 RBAC 1/1; U14 7/7;
     U7 2/2; U13 3/3.
 
 C. RESIDUALES
-C1. El contrato HTTP de `UpdateSaleItems` mantiene `ExchangeRate` opcional por compatibilidad;
-    si un caller lo omite, la proyeccion cae al snapshot 4dp. El cliente Desktop siempre lo
-    envia. Endurecerlo a obligatorio es una decision de contrato futura, no un cambio de datos.
+C1. U4: `UpdateSaleItems` mantiene `ExchangeRate` opcional por compatibilidad. Si un caller
+    lo omite y el perfil es un par manual, el servidor resuelve la cotizacion manual vigente y
+    calcula con 8dp, conservando el snapshot 4dp; sin servicio/cotizacion falla cerrado.
 C2. U17 ejecuta el SQL de backfill sobre una base ya migrada con filas sembradas; no agrega una
     corrida separada de la cadena completa desde el estado previo. La cadena completa si se
     aplica en el carril PostgreSQL y en la suite final.
@@ -17323,6 +17323,7 @@ C4. U9 rechaza los codigos no-pago mediante el catalogo ISO soportado; no hay un
 D. COMMITS RELEVANTES
 D1. P0: `ab8c44d` U10, `f06d444` U5, `3dcd7b2` U9, `058cb9e` U12/U19.
 D2. P1: `21512d1` U4, `4564a7a` U6, `1d2bd65` U3, `35d3dd8` U16, `dbd7951` U14,
-    `248d8c5` U7, `a0a7b1f` U13, `4ab4f4a` aislamiento de pruebas, `7ce8acb` U1/U2.
+    `248d8c5` U7, `a0a7b1f` U13, `4ab4f4a` aislamiento de pruebas, `7ce8acb` U1/U2,
+    `fb04c3c` U4 fallback de cotizacion manual.
 D3. Cierre: `d5a14fb` wiring del refresher + auditoria de arranque.
 ================================================================================
