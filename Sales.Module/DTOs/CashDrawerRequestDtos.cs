@@ -11,6 +11,18 @@ public class OpenSessionRequest
     public decimal OpeningBalanceUsd { get; set; }
 
     public decimal CurrentExchangeRate { get; set; }
+
+    /// <summary>
+    /// 8.212-WU1: optional per-method opening breakdown. When omitted, a legacy open auto-assigns
+    /// the local/USD opening only if exactly one physical method exists for that currency.
+    /// </summary>
+    public List<OpenSessionMethodBalanceRequest>? MethodBalances { get; set; }
+}
+
+public sealed class OpenSessionMethodBalanceRequest
+{
+    public int PaymentMethodId { get; set; }
+    public decimal OpeningAmount { get; set; }
 }
 
 public class CloseSessionRequest

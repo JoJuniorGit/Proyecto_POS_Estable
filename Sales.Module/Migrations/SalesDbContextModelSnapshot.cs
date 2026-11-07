@@ -474,6 +474,53 @@ namespace Sales.Module.Migrations
                     b.ToTable("CashDrawerSessions");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.CashDrawerSessionMethodBalance", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CashDrawerSessionId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("ClosingAmount")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<decimal>("OpeningAmount")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int>("PaymentMethodId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("PaymentMethodName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentMethodId")
+                        .HasDatabaseName("IX_CashDrawerSessionMethodBalances_PaymentMethodId");
+
+                    b.HasIndex("CashDrawerSessionId", "PaymentMethodId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_CashDrawerSessionMethodBalances_SessionId_PaymentMethodId");
+
+                    b.ToTable("CashDrawerSessionMethodBalances");
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.CashTransaction", b =>
                 {
                     b.Property<int>("Id")
@@ -1391,6 +1438,27 @@ namespace Sales.Module.Migrations
                     b.ToTable("SalePayments");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.CashDrawerSessionMethodBalance", b =>
+                {
+                    b.HasOne("Sales.Module.Entities.CashDrawerSession", "Session")
+                        .WithMany("MethodBalances")
+                        .HasForeignKey("CashDrawerSessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_CashDrawerSessionMethodBalances_Session");
+
+                    b.HasOne("Sales.Module.Entities.PaymentMethod", "PaymentMethod")
+                        .WithMany()
+                        .HasForeignKey("PaymentMethodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_CashDrawerSessionMethodBalances_PaymentMethod");
+
+                    b.Navigation("PaymentMethod");
+
+                    b.Navigation("Session");
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.CashTransaction", b =>
                 {
                     b.HasOne("Sales.Module.Entities.PaymentMethod", "PaymentMethod")
@@ -1696,6 +1764,8 @@ namespace Sales.Module.Migrations
 
             modelBuilder.Entity("Sales.Module.Entities.CashDrawerSession", b =>
                 {
+                    b.Navigation("MethodBalances");
+
                     b.Navigation("Transactions");
                 });
 

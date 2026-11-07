@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Core.Common;
 using Core.Entities;
 using Core.Helpers;
 using Core.Interfaces;
@@ -134,7 +135,7 @@ public class CashDrawerService : ICashDrawerService
         }
     }
 
-    public async Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default, decimal openingBalanceUsd = 0m)
+    public async Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default, decimal openingBalanceUsd = 0m, IReadOnlyList<OpenSessionMethodBalanceRequest>? requestedMethodBalances = null)
     {
         if (openingBalanceLocal < 0)
         {
@@ -155,9 +156,19 @@ public class CashDrawerService : ICashDrawerService
         // keep their value; a manual 8dp pair is frozen at 4dp.
         currentExchangeRate = PricingCalculator.RoundExchangeRate(currentExchangeRate, PricingCalculator.RateSnapshotDecimals);
 
-        // 8.211-T6-U1: resolve the profile before creating the session so a settings failure
-        // cannot leave an opening session behind on providers without a transaction.
-        var localDrawerCurrency = await ResolveLocalDrawerCurrencyAsync(cancellationToken);
+        // 8.211-T6-U1 / 8.212-WU1: resolve the profile once before creating the session; a
+        // settings failure must not leave an opening session behind.
+        var monetaryProfile = await ResolveMonetaryProfileOrNullAsync(cancellationToken);
+        var localDrawerCurrency = monetaryProfile is null
+            ? PaymentMethodCurrencyResolver.LocalCurrency
+            : CashDrawerBalanceService.ResolveLocalCurrency(monetaryProfile);
+        var methodBalanceRows = await BuildSessionMethodBalancesAsync(
+            monetaryProfile,
+            localDrawerCurrency,
+            openingBalanceLocal,
+            openingBalanceUsd,
+            requestedMethodBalances,
+            cancellationToken);
 
         if (await GetActiveSessionAsync(cancellationToken) != null)
         {
@@ -172,6 +183,11 @@ public class CashDrawerService : ICashDrawerService
             OpeningExchangeRate = currentExchangeRate,
             Status = CashDrawerStatus.Open
         };
+
+        foreach (var methodBalance in methodBalanceRows)
+        {
+            session.MethodBalances.Add(methodBalance);
+        }
 
         bool isInMemory = _context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
         var ambientTransaction = _context.Database.CurrentTransaction;
@@ -302,6 +318,12 @@ public class CashDrawerService : ICashDrawerService
                     }
                 }
 
+
+                var methodBalances = await GetMethodBalancesAsync(session.Id, cancellationToken);
+                foreach (var (methodBalance, balance) in methodBalances)
+                {
+                    methodBalance.ClosingAmount = balance;
+                }
                 session.ClosedAt = DateTime.UtcNow;
                 session.ClosingBalanceLocal = actualClosingBalanceLocal;
                 // null conserva el comportamiento previo (sin conteo USD informado).
@@ -364,6 +386,8 @@ public class CashDrawerService : ICashDrawerService
         var activeSession = await LoadActiveSessionEntityAsync(cancellationToken);
         if (activeSession == null) return;
 
+        var carryOverMethodBalances = await GetMethodBalancesAsync(activeSession.Id, cancellationToken);
+
         decimal carryOverBalance = await GetCurrentBalanceLocalAsync(activeSession.Id, cancellationToken);
         decimal carryOverBalanceUsd = await GetPhysicalBalanceAsync(activeSession.Id, PettyCashCurrency.Usd, cancellationToken);
 
@@ -372,7 +396,21 @@ public class CashDrawerService : ICashDrawerService
             currentExchangeRate,
             actualClosingBalanceUsd: carryOverBalanceUsd,
             cancellationToken: cancellationToken);
-        await OpenSessionAsync(carryOverBalance, currentExchangeRate, cancellationToken, carryOverBalanceUsd);
+
+        var requestedOpeningBalances = carryOverMethodBalances
+            .Select(entry => new OpenSessionMethodBalanceRequest
+            {
+                PaymentMethodId = entry.Row.PaymentMethodId,
+                OpeningAmount = entry.Balance
+            })
+            .ToList();
+
+        await OpenSessionAsync(
+            carryOverBalance,
+            currentExchangeRate,
+            cancellationToken,
+            carryOverBalanceUsd,
+            requestedOpeningBalances.Count > 0 ? requestedOpeningBalances : null);
     }
 
     public async Task<CashTransactionResponseDto> AddTransactionAsync(
@@ -750,17 +788,16 @@ public class CashDrawerService : ICashDrawerService
     /// a read failure keeps the historical Bs.S local currency. Read per transaction on purpose:
     /// the profile may change between requests and is not cached here.
     /// </summary>
-    private async Task<string> ResolveLocalDrawerCurrencyAsync(CancellationToken cancellationToken)
+    private async Task<Core.DTOs.MonetaryProfileDto?> ResolveMonetaryProfileOrNullAsync(CancellationToken cancellationToken)
     {
         if (_monetaryProfileService is null)
         {
-            return PaymentMethodCurrencyResolver.LocalCurrency;
+            return null;
         }
 
         try
         {
-            var profile = await _monetaryProfileService.GetAsync(cancellationToken);
-            return CashDrawerBalanceService.ResolveLocalCurrency(profile);
+            return await _monetaryProfileService.GetAsync(cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -774,6 +811,224 @@ public class CashDrawerService : ICashDrawerService
                 "No se pudo leer el perfil monetario para enrutar la caja. Verifique la configuración monetaria.",
                 ex);
         }
+    }
+
+    /// <summary>
+    /// 8.211-T3c3b1/T3c3c1 (S4/S6): local drawer rows use the primary currency in Single and the
+    /// normalized secondary in Dual (VES displays as Bs.S, other ISO as-is). A missing profile
+    /// keeps the historical Bs.S local currency.
+    /// </summary>
+    private async Task<string> ResolveLocalDrawerCurrencyAsync(CancellationToken cancellationToken)
+    {
+        var profile = await ResolveMonetaryProfileOrNullAsync(cancellationToken);
+        return profile is null
+            ? PaymentMethodCurrencyResolver.LocalCurrency
+            : CashDrawerBalanceService.ResolveLocalCurrency(profile);
+    }
+
+    private async Task<IReadOnlyList<CashDrawerSessionMethodBalance>> BuildSessionMethodBalancesAsync(
+        Core.DTOs.MonetaryProfileDto? profile,
+        string localDrawerCurrency,
+        decimal openingBalanceLocal,
+        decimal openingBalanceUsd,
+        IReadOnlyList<OpenSessionMethodBalanceRequest>? requested,
+        CancellationToken cancellationToken)
+    {
+        var methods = await _context.PaymentMethods
+            .AsNoTracking()
+            .Where(method => method.IsCash && method.IsActive && !method.IsDeleted)
+            .OrderBy(method => method.DisplayOrder)
+            .ThenBy(method => method.Id)
+            .ToListAsync(cancellationToken);
+
+        var allowedCurrencies = ResolveAllowedPhysicalCurrencies(profile, localDrawerCurrency);
+        var snapshots = new List<(PaymentMethod Method, string CurrencyCode)>();
+        foreach (var method in methods)
+        {
+            var currency = CurrencyCodeNormalizer.NormalizeToIso(
+                PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name));
+            if (currency is null || !allowedCurrencies.Contains(currency))
+            {
+                continue;
+            }
+
+            snapshots.Add((method, currency));
+        }
+
+        if (snapshots.Count == 0)
+        {
+            return Array.Empty<CashDrawerSessionMethodBalance>();
+        }
+
+        var requestedById = new Dictionary<int, decimal>();
+        if (requested is not null)
+        {
+            foreach (var item in requested)
+            {
+                if (item.OpeningAmount < 0m)
+                {
+                    throw new ArgumentException("El fondo por método físico no puede ser negativo.", nameof(requested));
+                }
+
+                if (!requestedById.TryAdd(item.PaymentMethodId, item.OpeningAmount))
+                {
+                    throw new ArgumentException("El desglose de apertura contiene un método físico duplicado.", nameof(requested));
+                }
+            }
+
+            foreach (var methodId in requestedById.Keys)
+            {
+                if (!snapshots.Any(snapshot => snapshot.Method.Id == methodId))
+                {
+                    throw new ArgumentException($"El método físico {methodId} no está activo o no pertenece al régimen monetario actual.", nameof(requested));
+                }
+            }
+        }
+
+        string localIso = CurrencyCodeNormalizer.NormalizeToIso(localDrawerCurrency) ?? localDrawerCurrency;
+        int localMethodCount = snapshots.Count(snapshot => snapshot.CurrencyCode == localIso);
+        int usdMethodCount = snapshots.Count(snapshot => snapshot.CurrencyCode == "USD");
+        var rows = new List<CashDrawerSessionMethodBalance>(snapshots.Count);
+
+        foreach (var (method, currencyCode) in snapshots)
+        {
+            decimal openingAmount;
+            if (requestedById.TryGetValue(method.Id, out var explicitAmount))
+            {
+                openingAmount = explicitAmount;
+            }
+            else if (currencyCode == localIso)
+            {
+                if (localMethodCount != 1)
+                {
+                    throw new ArgumentException(
+                        "Hay más de un método físico para la moneda local. Envíe el desglose de apertura por método (MethodBalances).",
+                        nameof(requested));
+                }
+
+                openingAmount = openingBalanceLocal;
+            }
+            else if (currencyCode == "USD")
+            {
+                if (usdMethodCount != 1)
+                {
+                    throw new ArgumentException(
+                        "Hay más de un método físico USD. Envíe el desglose de apertura por método (MethodBalances).",
+                        nameof(requested));
+                }
+
+                openingAmount = openingBalanceUsd;
+            }
+            else
+            {
+                openingAmount = 0m;
+            }
+
+            rows.Add(new CashDrawerSessionMethodBalance
+            {
+                PaymentMethodId = method.Id,
+                PaymentMethodName = method.Name,
+                CurrencyCode = currencyCode,
+                OpeningAmount = openingAmount
+            });
+        }
+
+        if (requestedById.Count > 0)
+        {
+            decimal localSum = rows.Where(row => row.CurrencyCode == localIso).Sum(row => row.OpeningAmount);
+            if (localMethodCount > 0 && localSum != openingBalanceLocal)
+            {
+                throw new ArgumentException("El desglose por método no coincide con OpeningBalanceLocal.", nameof(requested));
+            }
+
+            if (!string.Equals(localIso, "USD", StringComparison.Ordinal) && usdMethodCount > 0)
+            {
+                decimal usdSum = rows.Where(row => row.CurrencyCode == "USD").Sum(row => row.OpeningAmount);
+                if (usdSum != openingBalanceUsd)
+                {
+                    throw new ArgumentException("El desglose por método no coincide con OpeningBalanceUsd.", nameof(requested));
+                }
+            }
+        }
+
+        return rows;
+    }
+
+    private static HashSet<string> ResolveAllowedPhysicalCurrencies(
+        Core.DTOs.MonetaryProfileDto? profile,
+        string localDrawerCurrency)
+    {
+        var allowed = new HashSet<string>(StringComparer.Ordinal);
+        void Add(string? code)
+        {
+            var normalized = CurrencyCodeNormalizer.NormalizeToIso(code);
+            if (normalized is not null)
+            {
+                allowed.Add(normalized);
+            }
+        }
+
+        if (profile is null)
+        {
+            Add(localDrawerCurrency);
+            Add("USD");
+        }
+        else if (profile.Mode == Core.DTOs.MonetaryMode.Single)
+        {
+            Add(profile.PrimaryCurrencyCode);
+        }
+        else
+        {
+            Add(profile.PrimaryCurrencyCode);
+            Add(profile.SecondaryCurrencyCode);
+        }
+
+        if (allowed.Count == 0)
+        {
+            Add(localDrawerCurrency);
+            Add("USD");
+        }
+
+        return allowed;
+    }
+
+    private async Task<IReadOnlyList<(CashDrawerSessionMethodBalance Row, decimal Balance)>> GetMethodBalancesAsync(
+        int sessionId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await _context.CashDrawerSessionMethodBalances
+            .Where(row => row.CashDrawerSessionId == sessionId)
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+        {
+            return Array.Empty<(CashDrawerSessionMethodBalance, decimal)>();
+        }
+
+        var groups = await _context.CashTransactions
+            .AsNoTracking()
+            .Where(transaction => transaction.SessionId == sessionId
+                && transaction.IsPhysicalCash
+                && transaction.Source != CashTransactionSource.Opening
+                && transaction.PaymentMethodId != null)
+            .GroupBy(transaction => new { transaction.PaymentMethodId, transaction.Type })
+            .Select(group => new
+            {
+                group.Key.PaymentMethodId,
+                group.Key.Type,
+                Amount = group.Sum(transaction => transaction.AmountLocal)
+            })
+            .ToListAsync(cancellationToken);
+
+        var result = new List<(CashDrawerSessionMethodBalance Row, decimal Balance)>(rows.Count);
+        foreach (var row in rows)
+        {
+            decimal net = groups
+                .Where(group => group.PaymentMethodId == row.PaymentMethodId)
+                .Sum(group => group.Type == CashTransactionType.Expense ? -group.Amount : group.Amount);
+            result.Add((row, row.OpeningAmount + net));
+        }
+
+        return result;
     }
 
     /// <summary>

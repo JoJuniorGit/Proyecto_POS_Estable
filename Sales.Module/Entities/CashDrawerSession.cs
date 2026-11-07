@@ -48,4 +48,7 @@ public class CashDrawerSession
     public decimal? ClosingBalanceUsd { get; set; }
 
     public List<CashTransaction> Transactions { get; set; } = new();
+
+    // 8.212-WU1: per-method physical opening/closing snapshot. Empty on legacy sessions.
+    public List<CashDrawerSessionMethodBalance> MethodBalances { get; set; } = new();
 }

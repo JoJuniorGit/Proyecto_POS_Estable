@@ -21,6 +21,7 @@ public class SalesDbContext : DbContext
     public DbSet<PaymentMethod> PaymentMethods { get; set; } = null!;
     public DbSet<SalePayment> SalePayments { get; set; } = null!;
     public DbSet<CashDrawerSession> CashDrawerSessions { get; set; } = null!;
+    public DbSet<CashDrawerSessionMethodBalance> CashDrawerSessionMethodBalances { get; set; } = null!;
     public DbSet<CashTransaction> CashTransactions { get; set; } = null!;
     public DbSet<DailyClosure> DailyClosures { get; set; } = null!;
     public DbSet<ClosureDetail> ClosureDetails { get; set; } = null!;
@@ -325,6 +326,36 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingExchangeRate).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceUsd).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingBalanceUsd).HasColumnType("decimal(18,4)");
+
+        // 8.212-WU1: one row per physical payment method in the session snapshot.
+        modelBuilder.Entity<CashDrawerSessionMethodBalance>(entity =>
+        {
+            entity.HasKey(balance => balance.Id);
+            entity.Property(balance => balance.PaymentMethodName).HasMaxLength(150).IsRequired();
+            entity.Property(balance => balance.CurrencyCode).HasMaxLength(10).IsRequired();
+            entity.Property(balance => balance.OpeningAmount).HasColumnType("decimal(18,4)");
+            entity.Property(balance => balance.ClosingAmount).HasColumnType("decimal(18,4)");
+            entity.Property(balance => balance.CreatedAtUtc).HasDefaultValueSql("now()");
+
+            entity.HasOne(balance => balance.Session)
+                .WithMany(session => session.MethodBalances)
+                .HasForeignKey(balance => balance.CashDrawerSessionId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_CashDrawerSessionMethodBalances_Session");
+
+            entity.HasOne(balance => balance.PaymentMethod)
+                .WithMany()
+                .HasForeignKey(balance => balance.PaymentMethodId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_CashDrawerSessionMethodBalances_PaymentMethod");
+
+            entity.HasIndex(balance => new { balance.CashDrawerSessionId, balance.PaymentMethodId })
+                .IsUnique()
+                .HasDatabaseName("IX_CashDrawerSessionMethodBalances_SessionId_PaymentMethodId");
+
+            entity.HasIndex(balance => balance.PaymentMethodId)
+                .HasDatabaseName("IX_CashDrawerSessionMethodBalances_PaymentMethodId");
+        });
 
         // H4 (cierre 8.188): el libro de caja conserva el cuarto decimal del USD nominal (la
         // columna era numeric(18,2) y el alta de caja chica escribe 4dp: se perdia el 4to decimal

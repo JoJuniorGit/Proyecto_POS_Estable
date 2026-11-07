@@ -151,7 +151,8 @@ public class CashDrawerController : ControllerBase
             request.OpeningBalanceLocal,
             anchoredRate,
             cancellationToken: cancellationToken,
-            openingBalanceUsd: request.OpeningBalanceUsd);
+            openingBalanceUsd: request.OpeningBalanceUsd,
+            requestedMethodBalances: request.MethodBalances);
         var mapped = await MapLocalTimesAsync(session, cancellationToken);
         await _idempotencyResolver.RegisterSuccessAsync(
             idempotency,
