@@ -38,7 +38,13 @@ public class CashDrawerService : ICashDrawerService
         var session = await _context.CashDrawerSessions
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Status == CashDrawerStatus.Open, cancellationToken);
-        return session == null ? null : MapSession(session);
+        if (session == null) return null;
+
+        var methodBalances = await _balances.GetPhysicalMethodBalancesAsync(session.Id, cancellationToken);
+        return MapSession(session) with
+        {
+            PhysicalMethodBalances = methodBalances.Count == 0 ? null : methodBalances
+        };
     }
 
     private async Task<CashDrawerSession?> LoadActiveSessionEntityAsync(CancellationToken cancellationToken = default)
@@ -64,7 +70,12 @@ public class CashDrawerService : ICashDrawerService
             .Select(MapTransaction)
             .ToList();
 
-        return MapSession(session) with { Transactions = transactions };
+        var methodBalances = await _balances.GetPhysicalMethodBalancesAsync(session.Id, cancellationToken);
+        return MapSession(session) with
+        {
+            Transactions = transactions,
+            PhysicalMethodBalances = methodBalances.Count == 0 ? null : methodBalances
+        };
     }
 
     /// <inheritdoc />
@@ -319,7 +330,7 @@ public class CashDrawerService : ICashDrawerService
                 }
 
 
-                var methodBalances = await GetMethodBalancesAsync(session.Id, cancellationToken);
+                var methodBalances = await _balances.GetMethodBalancesAsync(session.Id, cancellationToken);
                 foreach (var (methodBalance, balance) in methodBalances)
                 {
                     methodBalance.ClosingAmount = balance;
@@ -386,7 +397,7 @@ public class CashDrawerService : ICashDrawerService
         var activeSession = await LoadActiveSessionEntityAsync(cancellationToken);
         if (activeSession == null) return;
 
-        var carryOverMethodBalances = await GetMethodBalancesAsync(activeSession.Id, cancellationToken);
+        var carryOverMethodBalances = await _balances.GetMethodBalancesAsync(activeSession.Id, cancellationToken);
 
         decimal carryOverBalance = await GetCurrentBalanceLocalAsync(activeSession.Id, cancellationToken);
         decimal carryOverBalanceUsd = await GetPhysicalBalanceAsync(activeSession.Id, PettyCashCurrency.Usd, cancellationToken);
@@ -712,6 +723,12 @@ public class CashDrawerService : ICashDrawerService
         => _balances.GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
 
     /// <inheritdoc />
+    public Task<IReadOnlyList<PhysicalMethodBalanceDto>> GetPhysicalMethodBalancesAsync(
+        int sessionId,
+        CancellationToken cancellationToken = default)
+        => _balances.GetPhysicalMethodBalancesAsync(sessionId, cancellationToken);
+
+    /// <inheritdoc />
     public Task<decimal> GetPhysicalBalanceAsync(int sessionId, PettyCashCurrency currency, CancellationToken cancellationToken = default)
         => _balances.GetPhysicalBalanceAsync(sessionId, currency, cancellationToken);
 
@@ -957,79 +974,7 @@ public class CashDrawerService : ICashDrawerService
     private static HashSet<string> ResolveAllowedPhysicalCurrencies(
         Core.DTOs.MonetaryProfileDto? profile,
         string localDrawerCurrency)
-    {
-        var allowed = new HashSet<string>(StringComparer.Ordinal);
-        void Add(string? code)
-        {
-            var normalized = CurrencyCodeNormalizer.NormalizeToIso(code);
-            if (normalized is not null)
-            {
-                allowed.Add(normalized);
-            }
-        }
-
-        if (profile is null)
-        {
-            Add(localDrawerCurrency);
-            Add("USD");
-        }
-        else if (profile.Mode == Core.DTOs.MonetaryMode.Single)
-        {
-            Add(profile.PrimaryCurrencyCode);
-        }
-        else
-        {
-            Add(profile.PrimaryCurrencyCode);
-            Add(profile.SecondaryCurrencyCode);
-        }
-
-        if (allowed.Count == 0)
-        {
-            Add(localDrawerCurrency);
-            Add("USD");
-        }
-
-        return allowed;
-    }
-
-    private async Task<IReadOnlyList<(CashDrawerSessionMethodBalance Row, decimal Balance)>> GetMethodBalancesAsync(
-        int sessionId,
-        CancellationToken cancellationToken)
-    {
-        var rows = await _context.CashDrawerSessionMethodBalances
-            .Where(row => row.CashDrawerSessionId == sessionId)
-            .ToListAsync(cancellationToken);
-        if (rows.Count == 0)
-        {
-            return Array.Empty<(CashDrawerSessionMethodBalance, decimal)>();
-        }
-
-        var groups = await _context.CashTransactions
-            .AsNoTracking()
-            .Where(transaction => transaction.SessionId == sessionId
-                && transaction.IsPhysicalCash
-                && transaction.Source != CashTransactionSource.Opening
-                && transaction.PaymentMethodId != null)
-            .GroupBy(transaction => new { transaction.PaymentMethodId, transaction.Type })
-            .Select(group => new
-            {
-                group.Key.PaymentMethodId,
-                group.Key.Type,
-                Amount = group.Sum(transaction => transaction.AmountLocal)
-            })
-            .ToListAsync(cancellationToken);
-
-        var result = new List<(CashDrawerSessionMethodBalance Row, decimal Balance)>(rows.Count);
-        foreach (var row in rows)
-        {
-            decimal net = groups
-                .Where(group => group.PaymentMethodId == row.PaymentMethodId)
-                .Sum(group => group.Type == CashTransactionType.Expense ? -group.Amount : group.Amount);
-            result.Add((row, row.OpeningAmount + net));
-        }
-
-        return result;
-    }
+        => CashDrawerBalanceService.ResolveAllowedCurrencies(profile, localDrawerCurrency);
 
     /// <summary>
     /// 8.211-T3b3 (S6): moneda fisica congelada del movimiento al momento de la escritura.

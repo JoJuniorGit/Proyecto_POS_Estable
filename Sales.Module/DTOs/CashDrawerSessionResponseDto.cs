@@ -1,4 +1,5 @@
 using Sales.Module.Entities;
+using System.Text.Json.Serialization;
 
 namespace Sales.Module.DTOs;
 
@@ -17,4 +18,11 @@ public sealed record CashDrawerSessionResponseDto
     public decimal? ClosingBalanceUsd { get; init; }
     public decimal? ClosingExchangeRate { get; init; }
     public IReadOnlyList<CashTransactionResponseDto> Transactions { get; init; } = [];
+
+    /// <summary>
+    /// 8.212-WU2: per-method physical balances. It stays null (and is omitted from JSON) for
+    /// sessions created before WU1, preserving the legacy active-session payload byte-for-byte.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<PhysicalMethodBalanceDto>? PhysicalMethodBalances { get; init; }
 }

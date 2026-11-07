@@ -228,6 +228,26 @@ public class CashDrawerController : ControllerBase
         return Ok(new PettyCashPhysicalBalancesResponseDto(bsS, usd));
     }
 
+    /// <summary>
+    /// 8.212-WU2 (S6): saldos físicos por método para refresco operativo de la gaveta. Comparte
+    /// el contrato de la colección incluida en la sesión activa; el endpoint legacy
+    /// <c>/physical-balances</c> permanece disponible.
+    /// </summary>
+    [HttpGet("physical-method-balances")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    public async Task<ActionResult<IReadOnlyList<PhysicalMethodBalanceDto>>> GetPhysicalMethodBalancesAsync(
+        [FromQuery] int sessionId,
+        CancellationToken cancellationToken)
+    {
+        if (sessionId <= 0)
+        {
+            return this.ApiBadRequest("La sesión de caja es requerida para consultar los saldos físicos por método.");
+        }
+
+        var balances = await _cashDrawerService.GetPhysicalMethodBalancesAsync(sessionId, cancellationToken);
+        return Ok(balances);
+    }
+
     [RequireSecurityStampValidation]
     [Authorize(Roles = "Admin,Manager")]
     [HttpPost("transaction")]

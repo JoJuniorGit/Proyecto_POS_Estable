@@ -1,5 +1,6 @@
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -60,6 +61,13 @@ public interface ICashDrawerService
         CancellationToken cancellationToken = default);
 
     Task<decimal> GetCurrentBalanceLocalAsync(int sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 8.212-WU2: saldo físico por método de pago capturado al abrir la sesión. Cada movimiento se
+    /// atribuye a su <c>PaymentMethodId</c> exacto y se valora con el snapshot de moneda del
+    /// movimiento; <c>CanDispense</c> es solo orientativo.
+    /// </summary>
+    Task<IReadOnlyList<PhysicalMethodBalanceDto>> GetPhysicalMethodBalancesAsync(int sessionId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// T2a (Paso 13, S2/S3): saldo fisico teorico del turno en la moneda indicada. Apertura de esa
