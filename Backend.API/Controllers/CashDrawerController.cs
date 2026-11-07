@@ -457,7 +457,10 @@ public class CashDrawerController : ControllerBase
                 cashierId,
                 userName,
                 cancellationToken,
-                advanceIdempotency);
+                advanceIdempotency,
+                dispensedCashPaymentMethodId: request.DispensedCashPaymentMethodId,
+                dispensedAmount: request.DispensedAmount,
+                receivedPaymentMethodId: request.ReceivedPaymentMethodId);
 
             result = MapCashAdvanceLocalTimes(result, tz);
 

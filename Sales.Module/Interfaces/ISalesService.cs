@@ -118,8 +118,8 @@ public interface ISalesService
     Task<int> RecalculateOnHoldSalesAsync(decimal newExchangeRate, System.Threading.CancellationToken cancellationToken = default);
 
     Task<SaleDto> ClaimSaleAsync(int saleId, SaleClaimAction action, int? actingUserId, System.Threading.CancellationToken cancellationToken = default);
-
     Task<SaleDto> ReleaseSaleAsync(int saleId, int? actingUserId, bool force = false, System.Threading.CancellationToken cancellationToken = default);
+
 
     Task<SaleDto> CreateCashAdvanceSaleAsync(
         decimal requestedAmountLocal,
@@ -131,5 +131,10 @@ public interface ISalesService
         int? cashierId = null,
         string? userName = null,
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? existingTransaction = null,
-        System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.CancellationToken cancellationToken = default,
+        decimal? receivedPrincipal = null,
+        decimal? receivedCommission = null,
+        decimal? receivedTotal = null,
+        decimal? receivedTotalUsd = null,
+        string? receivedCurrencyCode = null);
 }

@@ -10,6 +10,17 @@ public class CashAdvanceResultDto
 {
     public CashTransactionResponseDto ExpenseTransaction { get; set; } = null!;
     public CashTransactionResponseDto IncomeTransaction { get; set; } = null!;
+
+    // 8.212-WU3: explicit dispenser/receiver sides. Legacy fields remain below.
+    public int? DispensedCashPaymentMethodId { get; set; }
+    public string? DispensedCurrencyCode { get; set; }
+    public decimal DispensedAmount { get; set; }
+    public int? ReceivedPaymentMethodId { get; set; }
+    public string? ReceivedCurrencyCode { get; set; }
+    public decimal ReceivedAmount { get; set; }
+    public decimal ReceivedCommissionAmount { get; set; }
+    public decimal ReceivedTotalAmount { get; set; }
+
     public decimal RequestedAmountLocal { get; set; }
     public decimal CommissionAmountLocal { get; set; }
     public decimal TotalChargedLocal { get; set; }

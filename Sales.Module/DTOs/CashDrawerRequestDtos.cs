@@ -50,6 +50,18 @@ public class AddTransactionRequest
 public class CashAdvanceRequest
 {
     public int SessionId { get; set; }
+
+    // 8.212-WU3: physical method that hands the bills. Optional for legacy callers; the
+    // coordinator auto-selects it when the session has exactly one valid physical method.
+    public int? DispensedCashPaymentMethodId { get; set; }
+
+    // Amount delivered in the dispensed method currency. Legacy callers use RequestedAmountLocal.
+    public decimal? DispensedAmount { get; set; }
+
+    // Electronic method that receives the charge. Legacy callers use PaymentMethodId.
+    public int? ReceivedPaymentMethodId { get; set; }
+
+    // Legacy contract (kept for compatibility).
     public decimal RequestedAmountLocal { get; set; }
     public int PaymentMethodId { get; set; }
     public string PaymentMethodName { get; set; } = string.Empty;

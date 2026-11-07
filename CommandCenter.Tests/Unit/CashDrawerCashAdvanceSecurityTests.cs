@@ -86,8 +86,9 @@ public class CashDrawerCashAdvanceSecurityTests
         sales.Setup(s => s.CreateCashAdvanceSaleAsync(
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<int>(), It.IsAny<string>(),
                 It.IsAny<bool>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<string>(),
-                It.IsAny<IDbContextTransaction?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((decimal requestedAmountLocal, decimal commissionAmountLocal, int paymentMethodId, string paymentMethodName, bool isTransfer, decimal exchangeRate, int? cashierId, string? userName, IDbContextTransaction? existingTransaction, CancellationToken _) =>
+                It.IsAny<IDbContextTransaction?>(), It.IsAny<CancellationToken>(),
+                It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<string?>()))
+            .ReturnsAsync((decimal requestedAmountLocal, decimal commissionAmountLocal, int paymentMethodId, string paymentMethodName, bool isTransfer, decimal exchangeRate, int? cashierId, string? userName, IDbContextTransaction? existingTransaction, CancellationToken _, decimal? _receivedPrincipal, decimal? _receivedCommission, decimal? _receivedTotal, decimal? _receivedTotalUsd, string? _receivedCurrencyCode) =>
             {
                 capture.CashierId = cashierId;
                 capture.UserName = userName;

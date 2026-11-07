@@ -17,7 +17,7 @@ using System.Threading.Tasks;
 
 namespace Sales.Module.Services;
 
-public class CashAdvanceCoordinator
+public partial class CashAdvanceCoordinator
 {
     private readonly SalesDbContext _context;
     private readonly ISalesService _salesService;
@@ -51,8 +51,31 @@ public class CashAdvanceCoordinator
         int? cashierId = null,
         string? userName = null,
         CancellationToken cancellationToken = default,
-        CashAdvanceIdempotency? idempotency = null)
+        CashAdvanceIdempotency? idempotency = null,
+        int? dispensedCashPaymentMethodId = null,
+        decimal? dispensedAmount = null,
+        int? receivedPaymentMethodId = null)
     {
+        // 8.212-WU3: the method-aware path is opt-in. Legacy callers keep the historical
+        // single-local-drawer behavior even when WU1 method rows exist.
+        if (dispensedCashPaymentMethodId.HasValue || dispensedAmount.HasValue || receivedPaymentMethodId.HasValue)
+        {
+            return await ProcessMethodAwareAsync(
+                sessionId,
+                requestedAmountLocal,
+                paymentMethodId,
+                paymentMethodName,
+                isTransfer,
+                exchangeRate,
+                cashierId,
+                userName,
+                cancellationToken,
+                idempotency,
+                dispensedCashPaymentMethodId,
+                dispensedAmount,
+                receivedPaymentMethodId);
+        }
+
         ArgumentException.ThrowIfNullOrWhiteSpace(paymentMethodName);
 
         if (requestedAmountLocal <= 0)

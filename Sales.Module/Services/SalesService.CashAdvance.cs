@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +22,12 @@ public partial class SalesService
         int? cashierId = null,
         string? userName = null,
         IDbContextTransaction? existingTransaction = null,
-        System.Threading.CancellationToken cancellationToken = default)
+        System.Threading.CancellationToken cancellationToken = default,
+        decimal? receivedPrincipal = null,
+        decimal? receivedCommission = null,
+        decimal? receivedTotal = null,
+        decimal? receivedTotalUsd = null,
+        string? receivedCurrencyCode = null)
     {
         if (existingTransaction != null && _context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {
@@ -122,8 +128,9 @@ public partial class SalesService
         // 8.211-T3c3d (S4/S5): the advance amounts use the anchored calculation rate (8dp for a
         // manual pair); AppliedRate freezes the schema snapshot (4dp manual / 2dp BCV).
         decimal snapshotRate = RoundSnapshotRate(anchoredRate, monetaryProfile);
-        decimal totalChargedLocal = requestedAmountLocal + commissionAmountLocal;
-        decimal totalChargedUSD = anchoredRate > 0 ? Math.Round(totalChargedLocal / anchoredRate, 4) : 0m;
+        decimal totalChargedLocal = receivedTotal ?? (requestedAmountLocal + commissionAmountLocal);
+        decimal totalChargedUSD = receivedTotalUsd
+            ?? (anchoredRate > 0 ? Math.Round(totalChargedLocal / anchoredRate, 4) : 0m);
 
         // 5. Crear Sale completado con el CashierId resuelto
         var sale = new Sale
@@ -174,9 +181,11 @@ public partial class SalesService
         // 7. Crear SalePayment a nombre del método electrónico
         // 8.211-T3b1 (S6/S8): la moneda snapshot sale del método persistido; el nombre recibido
         // solo resuelve el fallback legacy cuando la fila no está disponible.
-        string currencyCode = paymentMethod is null
-            ? PaymentMethodCurrencyResolver.Resolve(paymentMethodName)
-            : ResolvePaymentMethodCurrency(paymentMethod);
+        string currencyCode = !string.IsNullOrWhiteSpace(receivedCurrencyCode)
+            ? CurrencyCodeNormalizer.NormalizeToIso(receivedCurrencyCode) ?? receivedCurrencyCode
+            : paymentMethod is null
+                ? PaymentMethodCurrencyResolver.Resolve(paymentMethodName)
+                : ResolvePaymentMethodCurrency(paymentMethod);
 
         var payment = new SalePayment
         {
