@@ -454,6 +454,12 @@ public partial class SalesService
                 sale.AppliedRate = RoundSnapshotRate(anchoredRate, monetaryProfile);
                 calculationRate = ResolveCalculationRate(anchoredRate, monetaryProfile);
             }
+            else if (UsesManualPairRate(monetaryProfile))
+            {
+                // 8.211-T6-U4: callers such as Web omit ExchangeRate; keep the 8dp calculation
+                // quote while preserving the 4dp AppliedRate snapshot.
+                calculationRate = await ResolveManualPairCalculationRateAsync(monetaryProfile, cancellationToken);
+            }
 
             decimal totalPaidUsd = sale.Payments != null ? sale.Payments.Sum(p => p.Amount) : 0;
             // Calcular nuevo total USD a partir de la lista de ítems enviada

@@ -190,6 +190,40 @@ public partial class SalesService
             : null;
 
     /// <summary>
+    /// 8.211-T6-U4: an edit request may omit ExchangeRate (Web does). For a manual pair the
+    /// calculation still needs the 8dp quote; resolve it from the daily manual rate instead of
+    /// degrading to the persisted 4dp AppliedRate. Missing service/quote fails closed.
+    /// </summary>
+    private async Task<decimal> ResolveManualPairCalculationRateAsync(
+        MonetaryProfileSnapshot profile,
+        CancellationToken cancellationToken)
+    {
+        if (_currencyRateService is null)
+        {
+            throw new InvalidOperationException(
+                "No hay servicio de tasas manuales configurado para el par monetario activo.");
+        }
+
+        var primary = CurrencyCodeNormalizer.NormalizeToIso(profile.PrimaryCurrencyCode) ?? "USD";
+        var secondary = CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode);
+        if (secondary is null)
+        {
+            throw new InvalidOperationException(
+                "La moneda secundaria del par manual no es válida.");
+        }
+
+        var quote = await _currencyRateService.GetRateAsync(primary, secondary, null, cancellationToken);
+        decimal rate = PricingCalculator.RoundExchangeRate(quote.Rate, PricingCalculator.ManualRateDecimals);
+        if (rate <= 0m)
+        {
+            throw new InvalidOperationException(
+                $"La tasa manual configurada para el par {primary}/{secondary} no es válida.");
+        }
+
+        return rate;
+    }
+
+    /// <summary>
     /// 8.211-T3c3c1 (S4): frozen sale rate provenance. Identity in Single, BCV for USD/VES and
     /// the manual daily pair for any other Dual secondary.
     /// </summary>

@@ -147,6 +147,52 @@ public class HoldOrderRoundingPersistenceTests
         Assert.Equal(924.52m, persisted.TotalBsS);
     }
     [Fact]
+    public async Task UpdateSaleItemsAsync_ManualPair_WithoutRequestRate_ResolvesEightDecimalQuote()
+    {
+        var dbName = $"hold_rounding_u4_manual_omitted_{Guid.NewGuid():N}";
+        using var context = TestDatabaseFactory.CreateSalesDbContext(dbName);
+
+        var product = BuildProduct(604, "Producto Manual EUR sin tasa", 1000m, rule: null);
+        var sale = BuildClaimedOnHoldSale(0.9245m);
+        context.Sales.Add(sale);
+        await context.SaveChangesAsync();
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new MonetaryProfileDto
+        {
+            Mode = MonetaryMode.Dual,
+            PrimaryCurrencyCode = "USD",
+            PrimaryCurrencySymbol = "$",
+            SecondaryCurrencyCode = "EUR",
+            SecondaryCurrencySymbol = "EUR"
+        });
+        var rates = new Mock<ICurrencyRateService>();
+        rates.Setup(r => r.GetRateAsync("USD", "EUR", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CurrencyRateQuote(
+                0.92451234m,
+                CurrencyRateSource.Manual,
+                DateOnly.FromDateTime(DateTime.UtcNow),
+                "USD",
+                "EUR"));
+
+        var service = CreateService(
+            context,
+            new[] { product },
+            globalCashRule: null,
+            enforceFloorSetting: null,
+            monetaryProfileService: profile.Object,
+            currencyRateService: rates.Object);
+
+        var updated = await service.UpdateSaleItemsAsync(1, new UpdateSaleItemsRequestDto
+        {
+            Items = new List<UpdateSaleItemDto> { new() { ProductId = 604, Quantity = 1m, UnitPrice = 1000m } }
+        }, actingUserId: TestActorId);
+
+        Assert.Equal(0.9245m, updated.AppliedRate);
+        Assert.Equal(924.52m, Assert.Single(updated.Items).UnitPriceBsS);
+        Assert.Equal(924.52m, updated.TotalBsS);
+    }
+    [Fact]
     public async Task UpdateSaleItemsAsync_QuantityChange_KeepsStep10SnapshotAndEffectiveBsSTotal()
     {
         var dbName = $"hold_rounding_t7c_qty_{Guid.NewGuid():N}";
