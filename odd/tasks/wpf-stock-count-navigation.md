@@ -47,7 +47,7 @@ T2. Add `IStockCountClientService` + `StockCountClientService` and DI registrati
 T3. Add `StockCountViewModel`, row viewmodels, commands and permission gates; add viewmodel tests. Specs: S1-S6, S9. Route: inline. Status: completed.
 T4. Add `StockCountView.xaml` + code-behind, DataTemplate and navigation item. Specs: S1-S6, S10. Route: inline. Status: completed.
 T5. Reorganize `MainWindow.xaml` sidebar by category with role-aware visibility; harden `MainViewModel` navigation commands and initial fallback view. Specs: S7, S8. Route: inline. Status: completed.
-T6. Build, run the full test suite, add ANEXO LI and commit work units. Specs: S9. Route: inline. Status: in progress (build and suites green; commit/ANEXO pending).
+T6. Build, run the full test suite, add ANEXO LI and commit work units. Specs: S9. Route: inline. Status: completed.
 
 ## Log
 
@@ -60,3 +60,4 @@ L2. Evidence (2026-11-08):
 - Full `CommandCenter.Tests` with PostgreSQL + E2E: 4182/4182.
 - Full WPF E2E suite with `E2E_FIND_TIMEOUT_SECONDS=45`: 9/9.
 - New `FullStackStockCountTests` (create session + open + Admin review + scan): 1/1.
+- Commit `98b06e6`; CI run `42506311322` green (Backend 5m27s, WPF E2E 11m24s, Frontend 31s).
