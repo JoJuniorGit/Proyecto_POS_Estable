@@ -17537,3 +17537,33 @@ B5. `FullStackStockCountTests`: 1/1 (crear, abrir, revisar y escanear).
 C. COMMIT
 C1. `98b06e6` conteo fisico WPF, politica de navegacion y pruebas.
 ================================================================================
+
+ANEXO LII - CONFIGURACION DE COMISIONES DE ADELANTO DE EFECTIVO - 2026-11-08
+================================================================================
+Pedido del mantenedor: agregar la configuracion del porcentaje de comision por
+avance de efectivo a la seccion de configuracion.
+
+A. CAMBIO
+A1. Backend: nuevos `GET`/`PUT /api/settings/cash-advance-commission`. El GET
+    queda disponible para Admin/Manager; el PUT exige Admin y el guard
+    `CanMutateSettings`. Persiste ambas claves juntas con `SetSettingsAsync`:
+    `CashAdvance.TransferCommissionPct` y `CashAdvance.CashCommissionPct`.
+A2. Validacion: cada porcentaje debe ser mayor a cero y menor o igual a 100.
+    Un valor 0 en la lectura significa "no configurada" y el coordinador
+    rechaza el adelanto hasta que un Admin guarde ambos canales.
+A3. WPF: nueva tarjeta "Comisiones de Adelanto de Efectivo" en Configuracion
+    del Sistema, con inputs para Transferencia/Pago Movil y Efectivo. Admin
+    edita y guarda; Manager solo consulta. La carga se integra a
+    `SettingsViewModel.EnsureLoadedAsync`.
+A4. Cliente WPF: metodos de lectura/escritura en `ISettingsService` y
+    `SettingsService`; DTO compartido en `Core.DTOs`.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Suite completa `CommandCenter.Tests` con PostgreSQL + E2E: 4198/4198.
+B3. Tests nuevos del endpoint, cliente WPF y ViewModel: 16/16.
+B4. `E2EAppHealthTests` (navega Configuracion con el mock): 1/1.
+
+C. COMMIT
+C1. `36dd51b` configuracion de comisiones de adelanto en backend y WPF.
+================================================================================
