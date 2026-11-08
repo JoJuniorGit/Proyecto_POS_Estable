@@ -142,11 +142,22 @@ export async function openCashDrawerSession(payload = {}, options = {}) {
     : (options || {});
   const idempotencyKey = requestOptions.idempotencyKey || createIdempotencyKey();
 
-  return await api.post('/api/cashdrawer/open', {
+  const request = {
     openingBalanceLocal: Number(payload?.openingBalanceLocal) || 0,
     openingBalanceUsd: Number(payload?.openingBalanceUsd) || 0,
     currentExchangeRate: Number(payload?.currentExchangeRate) || 0,
-  }, buildAuthorizationOptions({ idempotencyKey, signal: requestOptions.signal }));
+  };
+
+  // 8.212-WU5: explicit per-method opening breakdown. Omitted for legacy openings.
+  if (Array.isArray(payload?.methodBalances) && payload.methodBalances.length > 0) {
+    request.methodBalances = payload.methodBalances.map((row) => ({
+      paymentMethodId: row.paymentMethodId,
+      openingAmount: Number(row.openingAmount) || 0,
+    }));
+  }
+
+  return await api.post('/api/cashdrawer/open', request,
+    buildAuthorizationOptions({ idempotencyKey, signal: requestOptions.signal }));
 }
 
 /**

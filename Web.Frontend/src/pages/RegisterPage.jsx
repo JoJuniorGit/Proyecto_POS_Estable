@@ -32,6 +32,7 @@ import PettyCashCancelModal from '../components/register/PettyCashCancelModal';
 import CashDrawerCloseModal from '../components/register/CashDrawerCloseModal';
 import CashDrawerOpenModal from '../components/register/CashDrawerOpenModal';
 import { getPettyCashExpenses, getPettyCashPhysicalBalances } from '../services/pettyCashApi';
+import { formatPhysicalMethodAmount, getPhysicalMethodBalances } from '../services/cashDrawerApi';
 import { canCloseCashDrawerSession, canUsePettyCash, resolveLocalCurrencyProfile } from '../components/register/registerFormLogic';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
@@ -66,6 +67,7 @@ function RegisterPageContent() {
   const showCloseCashDrawer = canCloseCashDrawerSession(role);
 
   const [session, setSession] = useState(null);
+  const [physicalMethodBalances, setPhysicalMethodBalances] = useState([]);
   const [historyTransactions, setHistoryTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(null);
@@ -146,6 +148,20 @@ function RegisterPageContent() {
       ]);
       setSession(sessionData);
       setHistoryTransactions(historyData || []);
+
+      let balances = Array.isArray(sessionData?.physicalMethodBalances)
+        ? sessionData.physicalMethodBalances
+        : null;
+      if (!balances && sessionData?.id) {
+        try {
+          balances = await getPhysicalMethodBalances(sessionData.id);
+        } catch (balancesErr) {
+          console.warn('[RegisterPage] No se pudieron cargar los saldos por método físico:', balancesErr);
+          balances = [];
+        }
+      }
+      setPhysicalMethodBalances(balances || []);
+
       await loadPettyCash(sessionData?.id);
     } catch (err) {
       console.error('[RegisterPage] Error al obtener sesión de caja:', err);
@@ -163,6 +179,15 @@ function RegisterPageContent() {
 
   useEffect(() => {
     loadSession();
+  }, [loadSession]);
+
+  // 8.212-WU5: the server publishes CashDrawerChanged after a committed drawer operation.
+  useEffect(() => {
+    const handleCashDrawerChanged = () => {
+      loadSession();
+    };
+    window.addEventListener('onCashDrawerChanged', handleCashDrawerChanged);
+    return () => window.removeEventListener('onCashDrawerChanged', handleCashDrawerChanged);
   }, [loadSession]);
 
   // Derived state calculations
@@ -447,6 +472,30 @@ function RegisterPageContent() {
 
           </div>
 
+          {physicalMethodBalances.length > 0 && (
+            <div className="card shadow-sm p-4 bg-surface mb-4 reg-fullwidth">
+              <h3 className="card-title text-base font-bold flex-align-center gap-2 m-0 mb-3">
+                <Wallet size={20} className="color-primary" />
+                EXISTENCIAS POR MÉTODO FÍSICO
+              </h3>
+              <div className="reg-method-balance-grid">
+                {physicalMethodBalances.map((method) => (
+                  <div
+                    key={method.paymentMethodId}
+                    className={`card p-3 border rounded-lg ${method.canDispense ? '' : 'reg-method-balance-disabled'}`}
+                  >
+                    <div className="font-bold text-sm">{method.name}</div>
+                    <div className="text-xs text-muted mb-2">{method.currencyCode}</div>
+                    <div className="font-extrabold text-xl color-primary">
+                      {formatPhysicalMethodAmount(method, method.currentBalance)}
+                    </div>
+                    <div className="text-xs text-muted mt-1">Existencia actual</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-1 gap-4">
 
             {/* CARRUSEL DE ÚLTIMOS INGRESOS */}
@@ -705,6 +754,7 @@ function RegisterPageContent() {
         availableCashBsS={expectedCashBsS}
         exchangeRate={exchangeRate}
         user={user}
+        physicalMethodBalances={physicalMethodBalances}
         onSuccess={loadSession}
       />
 
@@ -738,6 +788,7 @@ function RegisterPageContent() {
           exchangeRate={exchangeRate}
           expectedCashBsS={expectedCashBsS}
           expectedCashUsd={pettyCashBalances?.usd ?? null}
+          physicalMethodBalances={physicalMethodBalances}
           role={role}
           onSuccess={loadSession}
         />

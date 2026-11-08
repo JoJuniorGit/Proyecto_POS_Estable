@@ -253,6 +253,30 @@ describe('pettyCashApi — cierre de sesión con conteo USD opcional (T2b/S2)', 
       currentExchangeRate: 36.5,
     });
   });
+
+  it('11. opens with the explicit per-method breakdown when provided', async () => {
+    await openCashDrawerSession({
+      openingBalanceLocal: 150,
+      openingBalanceUsd: 20,
+      currentExchangeRate: 36.5,
+      methodBalances: [
+        { paymentMethodId: 10, openingAmount: 100 },
+        { paymentMethodId: 11, openingAmount: 50 },
+        { paymentMethodId: 12, openingAmount: 20 },
+      ],
+    }, { idempotencyKey: 'open-methods-1' });
+
+    assert.deepStrictEqual(JSON.parse(fetchCalls[0].config.body), {
+      openingBalanceLocal: 150,
+      openingBalanceUsd: 20,
+      currentExchangeRate: 36.5,
+      methodBalances: [
+        { paymentMethodId: 10, openingAmount: 100 },
+        { paymentMethodId: 11, openingAmount: 50 },
+        { paymentMethodId: 12, openingAmount: 20 },
+      ],
+    });
+  });
 });
 
 describe('pettyCashApi — 403 authorizationAction=PettyCashExpense', () => {

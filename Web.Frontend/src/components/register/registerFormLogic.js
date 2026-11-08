@@ -186,6 +186,42 @@ export function buildCashDrawerOpenPayload({
 }
 
 /**
+ * 8.212-WU5: derives the legacy local/USD opening aggregates from the explicit per-method rows and
+ * returns the `methodBalances` payload. The server remains the authority for profile filtering.
+ */
+export function buildCashDrawerOpenMethodBreakdown({
+  methods = [],
+  amounts = {},
+  localCurrencyCode = 'VES',
+} = {}) {
+  let openingBalanceLocal = 0;
+  let openingBalanceUsd = 0;
+  const methodBalances = [];
+
+  for (const method of methods) {
+    const amount = Number(amounts[method.id] ?? 0);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return {
+        error: `Ingrese un fondo inicial válido para ${method.name} (${method.currency || method.id}) (mayor o igual a cero).`,
+        openingBalanceLocal: 0,
+        openingBalanceUsd: 0,
+        methodBalances: [],
+      };
+    }
+
+    methodBalances.push({ paymentMethodId: method.id, openingAmount: amount });
+    const currencyCode = normalizeCurrencyCode(method.currency) || localCurrencyCode;
+    if (currencyCode === localCurrencyCode) {
+      openingBalanceLocal += amount;
+    } else if (currencyCode === 'USD') {
+      openingBalanceUsd += amount;
+    }
+  }
+
+  return { error: null, openingBalanceLocal, openingBalanceUsd, methodBalances };
+}
+
+/**
  * Validación del cierre de sesión (S2): el conteo Bs.S es obligatorio (>= 0) y el USD, cuando se
  * informa, también debe ser >= 0. Vacío es válido (el contrato conserva el comportamiento previo).
  */

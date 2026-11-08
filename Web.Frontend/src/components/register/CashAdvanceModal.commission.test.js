@@ -58,7 +58,7 @@ describe('CashAdvanceModal — server-resolved commission (REQ-CAP-02/03)', () =
       'the preview must read GET /api/cashdrawer/advance-commission'
     );
     assert.ok(
-      /disabled=\{loading \|\| numRequested <= 0 \|\| !hasResolvedCommission\}/.test(source),
+      /disabled=\{loading \|\| numRequested <= 0 \|\| !hasResolvedCommission/.test(source),
       'submit must stay disabled without a resolved percentage'
     );
   });

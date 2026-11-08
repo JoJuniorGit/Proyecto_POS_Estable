@@ -147,3 +147,12 @@
   white-space: nowrap;
   padding-right: 16px;
 }
+:root .reg-method-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+:root .reg-method-balance-disabled {
+  opacity: 0.55;
+}

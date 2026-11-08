@@ -38,6 +38,7 @@ public class PettyCashController : ControllerBase
     private readonly IAuthorizationCoordinator? _authorizationCoordinator;
     private readonly ISystemSettingsService? _settingsService;
     private readonly IdempotencyRequestResolver _idempotencyResolver;
+    private readonly ICashDrawerChangedNotifier? _cashDrawerChangedNotifier;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public PettyCashController(
@@ -45,12 +46,14 @@ public class PettyCashController : ControllerBase
         ICurrentUserService currentUserService,
         IAuthorizationCoordinator? authorizationCoordinator = null,
         ISystemSettingsService? settingsService = null,
-        IIdempotencyService? idempotencyService = null)
+        IIdempotencyService? idempotencyService = null,
+        ICashDrawerChangedNotifier? cashDrawerChangedNotifier = null)
     {
         _pettyCashService = pettyCashService;
         _currentUserService = currentUserService;
         _authorizationCoordinator = authorizationCoordinator;
         _settingsService = settingsService;
+        _cashDrawerChangedNotifier = cashDrawerChangedNotifier;
         _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
     }
 
@@ -108,6 +111,7 @@ public class PettyCashController : ControllerBase
                 requestPath,
                 System.Text.Json.JsonSerializer.Serialize(result),
                 cancellationToken);
+            await NotifyCashDrawerChangedAsync(result.SessionId, cancellationToken);
 
             return Ok(result);
         }
@@ -177,6 +181,7 @@ public class PettyCashController : ControllerBase
                 requestPath,
                 System.Text.Json.JsonSerializer.Serialize(result),
                 cancellationToken);
+            await NotifyCashDrawerChangedAsync(result.SessionId, cancellationToken);
 
             return Ok(result);
         }
@@ -309,6 +314,7 @@ public class PettyCashController : ControllerBase
                         requestPath,
                         System.Text.Json.JsonSerializer.Serialize(result),
                         cancellationToken);
+                    await NotifyCashDrawerChangedAsync(result.SessionId, cancellationToken);
 
                     return Ok(result);
                 }
@@ -379,6 +385,7 @@ public class PettyCashController : ControllerBase
                         requestPath,
                         System.Text.Json.JsonSerializer.Serialize(result),
                         cancellationToken);
+                    await NotifyCashDrawerChangedAsync(result.SessionId, cancellationToken);
 
                     return Ok(result);
                 }
@@ -408,6 +415,25 @@ public class PettyCashController : ControllerBase
         return this.ApiForbidden(
             $"{signal.Message} Se requiere autorización de un Administrador o Supervisor.",
             BuildForbiddenExtensions(signal));
+    }
+
+    private async Task NotifyCashDrawerChangedAsync(int sessionId, CancellationToken cancellationToken)
+    {
+        if (_cashDrawerChangedNotifier is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _cashDrawerChangedNotifier.NotifyCashDrawerChangedAsync(sessionId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn(
+                $"[PettyCash] No se pudo publicar CashDrawerChanged para la sesión {sessionId}: {ex.Message}",
+                nameof(PettyCashController));
+        }
     }
 
     private static PettyCashExpenseAuthorizationContext BuildContext(PettyCashAuthorizationRequiredException signal) => new()

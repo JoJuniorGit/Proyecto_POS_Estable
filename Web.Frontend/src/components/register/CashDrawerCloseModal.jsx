@@ -5,6 +5,7 @@ import { Lock, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
 import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
 import { displayCurrencyCode } from '../../utils/monetaryProfile';
 import { closeCashDrawerSession, createIdempotencyKey } from '../../services/pettyCashApi';
+import { formatPhysicalMethodAmount } from '../../services/cashDrawerApi';
 import {
   buildCashDrawerClosePayload,
   canCloseCashDrawerSession,
@@ -28,6 +29,7 @@ export default function CashDrawerCloseModal({
   exchangeRate,
   expectedCashBsS = 0,
   expectedCashUsd = null,
+  physicalMethodBalances = [],
   role,
   onSuccess,
 }) {
@@ -136,6 +138,15 @@ export default function CashDrawerCloseModal({
                   {hasTheoreticalUsd
                     ? `Efectivo esperado ${usdCurrencyLabel}: ${formatPrimary(expectedCashUsd)}`
                     : `Efectivo esperado ${usdCurrencyLabel}: no disponible`}
+                </span>
+              )}
+              {Array.isArray(physicalMethodBalances) && physicalMethodBalances.length > 0 && (
+                <span className="pcm-close-summary-line">
+                  {physicalMethodBalances.map((method) => (
+                    <span key={method.paymentMethodId} className="block">
+                      {method.name} ({method.currencyCode}): {formatPhysicalMethodAmount(method, method.currentBalance)}
+                    </span>
+                  ))}
                 </span>
               )}
               {isDual && (

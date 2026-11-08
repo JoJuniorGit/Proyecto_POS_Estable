@@ -33,6 +33,8 @@ public class CashDrawerController : ControllerBase
     private readonly IdempotencyRequestResolver _idempotencyResolver;
     // 8.205 (C-01): política de anclaje de tasa compartida con SalesService.
     private readonly Sales.Module.Services.ExchangeRateAnchorService _rateAnchor;
+    // 8.212-WU5: post-commit SignalR fan-out for drawer changes.
+    private readonly ICashDrawerChangedNotifier? _cashDrawerChangedNotifier;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public CashDrawerController(
@@ -45,7 +47,8 @@ public class CashDrawerController : ControllerBase
         Sales.Module.Services.CashAdvanceCoordinator cashAdvanceCoordinator,
         IIdempotencyService? idempotencyService = null,
         IMonetaryProfileService? monetaryProfileService = null,
-        ICurrencyRateService? currencyRateService = null)
+        ICurrencyRateService? currencyRateService = null,
+        ICashDrawerChangedNotifier? cashDrawerChangedNotifier = null)
     {
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
@@ -54,6 +57,7 @@ public class CashDrawerController : ControllerBase
         _currentUserService = currentUserService;
         _timeZoneProvider = timeZoneProvider;
         _cashAdvanceCoordinator = cashAdvanceCoordinator;
+        _cashDrawerChangedNotifier = cashDrawerChangedNotifier;
         _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
         // 8.211-T3c3b1 (S4): the injected profile lets Single mode resolve an identity rate.
         // 8.211-T3c3c1 (S4): the pair rate service resolves Dual non-VES manual quotes.
@@ -154,6 +158,7 @@ public class CashDrawerController : ControllerBase
             openingBalanceUsd: request.OpeningBalanceUsd,
             requestedMethodBalances: request.MethodBalances);
         var mapped = await MapLocalTimesAsync(session, cancellationToken);
+        await NotifyCashDrawerChangedAsync(mapped.Id, cancellationToken);
         await _idempotencyResolver.RegisterSuccessAsync(
             idempotency,
             requestPath,
@@ -185,6 +190,7 @@ public class CashDrawerController : ControllerBase
             actualClosingBalanceUsd: request.ActualClosingBalanceUsd,
             cancellationToken: cancellationToken);
         var mapped = await MapLocalTimesAsync(session, cancellationToken);
+        await NotifyCashDrawerChangedAsync(mapped.Id, cancellationToken);
         await _idempotencyResolver.RegisterSuccessAsync(
             idempotency,
             requestPath,
@@ -317,6 +323,7 @@ public class CashDrawerController : ControllerBase
                 transactionIdempotency);
 
             var mapped = MapLocalTime(transaction, tz);
+            await NotifyCashDrawerChangedAsync(request.SessionId, cancellationToken);
 
             if (Response?.Headers != null)
             {
@@ -328,6 +335,25 @@ public class CashDrawerController : ControllerBase
         catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (IdempotencyRequestResolver.IsIdempotencyUniqueViolation(ex))
         {
             return await _idempotencyResolver.HandleCollisionAsync(this, ex, requestPath, resolved.Key, resolved.PayloadHash);
+        }
+    }
+
+    private async Task NotifyCashDrawerChangedAsync(int sessionId, CancellationToken cancellationToken)
+    {
+        if (_cashDrawerChangedNotifier is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _cashDrawerChangedNotifier.NotifyCashDrawerChangedAsync(sessionId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn(
+                $"[CashDrawer] No se pudo publicar CashDrawerChanged para la sesión {sessionId}: {ex.Message}",
+                nameof(CashDrawerController));
         }
     }
 
@@ -463,6 +489,7 @@ public class CashDrawerController : ControllerBase
                 receivedPaymentMethodId: request.ReceivedPaymentMethodId);
 
             result = MapCashAdvanceLocalTimes(result, tz);
+            await NotifyCashDrawerChangedAsync(request.SessionId, cancellationToken);
 
             return Ok(result);
         }

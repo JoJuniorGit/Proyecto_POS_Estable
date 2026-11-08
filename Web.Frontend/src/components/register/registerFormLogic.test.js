@@ -15,6 +15,7 @@ import {
   buildCashDrawerClosePayload,
   validateCashDrawerOpenDraft,
   buildCashDrawerOpenPayload,
+  buildCashDrawerOpenMethodBreakdown,
   getPettyCashVoucherCode,
   getPettyCashVoucherFileName,
   getPettyCashAuthorizerDisplay,
@@ -237,5 +238,24 @@ describe('registerFormLogic - apertura dual de caja (8.201)', () => {
       openingBalanceUsd: 0,
       currentExchangeRate: 0,
     });
+  });
+
+  it('16. deriva los agregados local/USD del desglose por método físico', () => {
+    const result = buildCashDrawerOpenMethodBreakdown({
+      methods: [
+        { id: 10, name: 'Caja Bs.S', currency: 'Bs.S' },
+        { id: 11, name: 'Caja USD', currency: 'USD' },
+      ],
+      amounts: { 10: 100, 11: 20 },
+      localCurrencyCode: 'VES',
+    });
+
+    assert.strictEqual(result.error, null);
+    assert.strictEqual(result.openingBalanceLocal, 100);
+    assert.strictEqual(result.openingBalanceUsd, 20);
+    assert.deepStrictEqual(result.methodBalances, [
+      { paymentMethodId: 10, openingAmount: 100 },
+      { paymentMethodId: 11, openingAmount: 20 },
+    ]);
   });
 });
