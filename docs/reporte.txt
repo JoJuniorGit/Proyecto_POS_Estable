@@ -17567,3 +17567,31 @@ B4. `E2EAppHealthTests` (navega Configuracion con el mock): 1/1.
 C. COMMIT
 C1. `36dd51b` configuracion de comisiones de adelanto en backend y WPF.
 ================================================================================
+
+ANEXO LIII - ACTUALIZACION DE ACTIONS Y ESTABILIZACION DEL E2E DE AUTORIZACIONES - 2026-11-08
+================================================================================
+Pedido del mantenedor: actualizar las actions pendientes (cache, setup-dotnet,
+upload-artifact) y dejar la CI estable.
+
+A. CAMBIO
+A1. `.github/workflows/ci.yml`: `actions/cache` v4 -> v6.1.0
+    (`55cc834...`), `actions/setup-dotnet` v4 -> v6.1.0
+    (`0f4a354...`) y `actions/upload-artifact` v4 -> v7.0.2
+    (`cf430e0...`). Se conservan checkout v7.0.1 y setup-node v7.1.0.
+A2. `AuthorizationEndToEndPostgresTests`: los waits de eventos SignalR
+    (`AuthorizationRequested`, `AuthorizationResolved`, `AuthorizationExpired`
+    y cierres) pasan de 10/15/20 s a 30 s. La suite habia fallado dos veces en
+    CI por `System.TimeoutException` en tests distintos de esa clase; el
+    rerun del mismo commit paso, confirmando flake de timing bajo carga.
+
+B. EVIDENCIA
+B1. `AuthorizationEndToEndPostgresTests` local con PostgreSQL: 7/7 (5m19s).
+B2. CI 42518950262: rerun del backend en success; frontend y WPF E2E verdes.
+B3. CI 42520733951 (con actions nuevas): frontend 30s y WPF E2E 11m41s
+    verdes; backend fallo por el mismo tipo de timeout antes del ajuste.
+B4. Build del proyecto de tests: 0 advertencias, 0 errores.
+
+C. COMMIT
+C1. `fba49fa` actualizacion de cache, setup-dotnet y upload-artifact.
+C2. `7d855e6` timeouts de SignalR de 30 s en el E2E de autorizaciones.
+================================================================================
