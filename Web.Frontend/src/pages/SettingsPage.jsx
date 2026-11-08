@@ -1,14 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
 import { getAllPaymentMethods } from '../services/paymentApi';
-import { Settings, Power, Loader2 } from 'lucide-react';
+import { Settings, Power, Loader2, DollarSign, CreditCard, Wifi } from 'lucide-react';
 import { useCurrencyFormat } from '../context/CurrencyFormatContext';
 import ConfirmModal from '../components/ui/ConfirmModal';
 import SettingsPairing from './SettingsPairing';
 import SettingsCurrencyFormat from './SettingsCurrencyFormat';
 import SettingsPaymentMethods from './SettingsPaymentMethods';
+import { SETTINGS_SECTIONS, resolveTabIndex } from './settingsSections';
 import RoleGuard from '../navigation/RoleGuard';
 import './SettingsPage.css';
+
+const SECTION_ICONS = {
+  currency: DollarSign,
+  payments: CreditCard,
+  network: Wifi,
+  system: Power,
+};
 
 export default function SettingsPage() {
   return (
@@ -26,6 +34,17 @@ function SettingsPageContent() {
   const [restarting, setRestarting] = useState(false);
   const [restartModalOpen, setRestartModalOpen] = useState(false);
   const [pairingInfo, setPairingInfo] = useState(null);
+  const [activeSection, setActiveSection] = useState(SETTINGS_SECTIONS[0].id);
+  const tabRefs = useRef([]);
+
+  const handleTabKeyDown = (event, index) => {
+    const nextIndex = resolveTabIndex(index, event.key);
+    if (nextIndex === null) return;
+
+    event.preventDefault();
+    setActiveSection(SETTINGS_SECTIONS[nextIndex].id);
+    tabRefs.current[nextIndex]?.focus();
+  };
 
   const handleFormatChange = async (newFmt) => {
     try {
@@ -96,42 +115,118 @@ function SettingsPageContent() {
 
       {message && <div className={`alert alert-${message.type} mb-4 text-sm p-3`}>{message.text}</div>}
 
-      <SettingsPairing pairingInfo={pairingInfo} setPairingInfo={setPairingInfo} />
+      <div className="set-layout">
+        <div
+          className="set-tabs"
+          role="tablist"
+          aria-label="Secciones de Configuración"
+          aria-orientation="vertical"
+        >
+          {SETTINGS_SECTIONS.map((section, index) => {
+            const Icon = SECTION_ICONS[section.icon];
+            const isActive = activeSection === section.id;
 
-      <SettingsCurrencyFormat
-        currencyFormat={currencyFormat}
-        handleFormatChange={handleFormatChange}
-        formatBsS={formatBsS}
-        formatUSD={formatUSD}
-      />
+            return (
+              <button
+                key={section.id}
+                ref={(element) => {
+                  tabRefs.current[index] = element;
+                }}
+                type="button"
+                role="tab"
+                id={`settings-tab-${section.id}`}
+                aria-selected={isActive}
+                aria-controls={`settings-panel-${section.id}`}
+                tabIndex={isActive ? 0 : -1}
+                className={`set-tab${isActive ? ' is-active' : ''}`}
+                onClick={() => setActiveSection(section.id)}
+                onKeyDown={(event) => handleTabKeyDown(event, index)}
+              >
+                <Icon size={18} aria-hidden="true" />
+                <span>{section.label}</span>
+              </button>
+            );
+          })}
+        </div>
 
-      <div className="card mb-4 p-3 sm:p-4">
-        <div className="flex-between flex-align-center flex-wrap gap-3">
-          <div className="flex-1 min-w-0">
-            <h3 className="card-title flex-align-center gap-2 text-base font-bold mb-2">
-              <Power size={20} className="color-primary flex-shrink-0" />
-              <span>Reiniciar Sistema</span>
-            </h3>
-            <p className="text-muted text-xs sm:text-sm mb-0 set-restart-hint">
-              Reinicie el servicio del sistema POS cuando presente lentitud o comportamiento anómalo.
-              Las ventas y la configuración se conservan; la caja se restablece en segundos.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary flex-align-center gap-1 text-sm flex-shrink-0"
-            onClick={() => setRestartModalOpen(true)}
-            disabled={restarting}
-            title="Reiniciar el servicio del sistema POS"
-            aria-label="Reiniciar el servicio del sistema POS"
+        <div className="set-panels">
+          <section
+            role="tabpanel"
+            id="settings-panel-currency"
+            aria-labelledby="settings-tab-currency"
+            hidden={activeSection !== 'currency'}
+            className="set-panel"
           >
-            {restarting ? <Loader2 size={16} className="animate-spin" /> : <Power size={16} />}
-            <span>{restarting ? 'Reiniciando...' : 'Reiniciar Sistema'}</span>
-          </button>
+            <SettingsCurrencyFormat
+              currencyFormat={currencyFormat}
+              handleFormatChange={handleFormatChange}
+              formatBsS={formatBsS}
+              formatUSD={formatUSD}
+            />
+          </section>
+
+          <section
+            role="tabpanel"
+            id="settings-panel-payments"
+            aria-labelledby="settings-tab-payments"
+            hidden={activeSection !== 'payments'}
+            className="set-panel"
+          >
+            <SettingsPaymentMethods
+              methods={methods}
+              setMethods={setMethods}
+              setMessage={setMessage}
+              loadMethods={loadMethods}
+              loadingMethods={loadingMethods}
+            />
+          </section>
+
+          <section
+            role="tabpanel"
+            id="settings-panel-network"
+            aria-labelledby="settings-tab-network"
+            hidden={activeSection !== 'network'}
+            className="set-panel"
+          >
+            <SettingsPairing pairingInfo={pairingInfo} setPairingInfo={setPairingInfo} />
+          </section>
+
+          <section
+            role="tabpanel"
+            id="settings-panel-system"
+            aria-labelledby="settings-tab-system"
+            hidden={activeSection !== 'system'}
+            className="set-panel"
+          >
+            <p className="set-critical-label">Zona de Acciones Críticas</p>
+            <div className="card set-critical-zone p-3 sm:p-4">
+              <div className="flex-between flex-align-center flex-wrap gap-3">
+                <div className="flex-1 min-w-0">
+                  <h3 className="card-title flex-align-center gap-2 text-base font-bold mb-2">
+                    <Power size={20} className="color-primary flex-shrink-0" />
+                    <span>Reiniciar Sistema</span>
+                  </h3>
+                  <p className="text-muted text-xs sm:text-sm mb-0 set-restart-hint">
+                    Reinicie el servicio del sistema POS cuando presente lentitud o comportamiento anómalo.
+                    Las ventas y la configuración se conservan; la caja se restablece en segundos.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary flex-align-center gap-1 text-sm flex-shrink-0"
+                  onClick={() => setRestartModalOpen(true)}
+                  disabled={restarting}
+                  title="Reiniciar el servicio del sistema POS"
+                  aria-label="Reiniciar el servicio del sistema POS"
+                >
+                  {restarting ? <Loader2 size={16} className="animate-spin" /> : <Power size={16} />}
+                  <span>{restarting ? 'Reiniciando...' : 'Reiniciar Sistema'}</span>
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
-
-      <SettingsPaymentMethods methods={methods} setMethods={setMethods} setMessage={setMessage} loadMethods={loadMethods} loadingMethods={loadingMethods} />
 
       <ConfirmModal
         isOpen={restartModalOpen}
