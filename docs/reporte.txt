@@ -17459,8 +17459,8 @@ B4. `CashDrawerService`:
 B5. `DailyClosureClientService`: el error incluye el ProblemDetails del
     servidor en lugar de solo el status.
 B6. Harness E2E: comision de transferencia sembrada, descubrimiento real de
-    metodos, parser de saldos por metodo y aserciones monetarias con
-    tolerancia.
+    metodos, parser de saldos por metodo, aserciones monetarias con tolerancia
+    y espera del debounce de busqueda antes del fallback Enter.
 
 C. EVIDENCIA
 C1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
@@ -17473,4 +17473,5 @@ C5. `FullStackHubWebSocketTests`: 1/1 con `E2E_POSTGRES_CONNECTION`.
 D. COMMIT
 D1. `0ac2dc4` fix de CI, convergencia de metodos, execution strategy y
     harness E2E.
+D2. `bdf3cc8` espera del debounce de busqueda en el E2E de catalogo.
 ================================================================================
