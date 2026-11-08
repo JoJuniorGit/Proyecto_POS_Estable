@@ -17327,3 +17327,36 @@ D2. P1: `21512d1` U4, `4564a7a` U6, `1d2bd65` U3, `35d3dd8` U16, `dbd7951` U14,
     `fb04c3c` U4 fallback de cotizacion manual.
 D3. Cierre: `d5a14fb` wiring del refresher + auditoria de arranque.
 ================================================================================
+
+================================================================================
+ANEXO XLVI - FIX CONEXION AUTOMATICA/MANUAL DEL CLIENTE WPF - 2026-11-08
+================================================================================
+Pedido del mantenedor: el cliente WPF no conecta con el backend al ejecutar
+`scripts/start.bat`, ni automatica ni manualmente.
+
+A. CAUSA
+A1. `SubnetScannerService` usaba
+    `SocketsHttpHandler.SslOptions.RemoteCertificateValidationCallback`. En ese
+    callback el sender es `SslStream`, no `HttpRequestMessage`, por lo que la
+    validacion TOFU de `CertificatePinning` nunca se ejecutaba. El certificado
+    autofirmado local se rechazaba siempre y el probe de conexion devolvia null.
+A2. El backend estaba sano: `/health` y `/api/health` respondian 200 por HTTP
+    5000 y HTTPS 5001; el pin DPAPI de `localhost` coincidia con el certificado
+    `pos-https.pfx`. El fallo era exclusivamente del probe del cliente.
+
+B. FIX
+B1. `SubnetScannerService.CreateScannerHandler()` usa `HttpClientHandler` y
+    `ServerCertificateCustomValidationCallback`, que si recibe el
+    `HttpRequestMessage`; el host del request resuelve el pin TOFU compartido.
+B2. Se agrego `SubnetScannerTlsTests` para fijar el contrato request-aware y
+    evitar la regresion a `SocketsHttpHandler.SslOptions`.
+
+C. EVIDENCIA
+C1. Probe real contra backend local: `OK https://localhost:5001/ healthy=True`.
+C2. Focalizados: 107/107 (scanner TLS, conexion y contratos HTTP del cliente).
+C3. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+C4. Suite no-PG: 4079/4132; 53 fallos ambientales PostgreSQL esperados.
+
+D. COMMIT
+D1. `9577138` fix del probe TLS y prueba de regresion.
+================================================================================
