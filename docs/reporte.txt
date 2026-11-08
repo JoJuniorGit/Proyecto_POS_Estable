@@ -17498,3 +17498,42 @@ B2. No quedan referencias a los SHA viejos
 C. COMMIT
 C1. `f38bcf2` actualizacion de las dos acciones.
 ================================================================================
+
+ANEXO LI - CONTEO FISICO WPF Y NAVEGACION POR CATEGORIAS - 2026-11-08
+================================================================================
+Pedido del mantenedor: agregar el conteo fisico a la version local WPF,
+organizar cada seccion por categoria (por ejemplo Principal para las mas
+usadas) y cuidar las vistas y permisos de cada rol.
+
+A. CAMBIO
+A1. Se agrego la vista WPF de conteo fisico sobre el contrato existente
+    `/api/stock-counts`: listado con filtro de estado, creacion de sesion
+    (Admin/Manager), detalle ciego, escaneo por SKU, ajuste de cantidad,
+    eliminacion de items, revision del descuadre (Admin/Manager) y
+    cierre/aplicacion/cancelacion (Admin/Manager).
+A2. El cajero puede listar, abrir, escanear y corregir cantidades, pero nunca
+    solicita ni ve teorico, costo o descuadre. El Driver no tiene acceso.
+A3. El sidebar quedo agrupado en PRINCIPAL, OPERACIONES, INVENTARIO y
+    ADMINISTRACION. Cada item y cada cabecera se muestran segun la matriz de
+    roles compartida con los comandos de navegacion.
+A4. La matriz WPF replica la web y agrega las vistas locales: Admin ve todo;
+    Manager ve todo menos Gestion Usuarios; Cashier ve POS, Register, Historial,
+    Cuentas Abiertas, Retiros, CxC, Cierre, Catalogo y Conteo Fisico; Driver
+    solo ve Historial y Retiros.
+A5. Un Driver que inicia o restaura sesion aterriza en Retiros Pendientes, no
+    en POS. Los comandos de navegacion vuelven a validar el rol aunque el item
+    este oculto.
+A6. Se agregaron IDs de automatizacion estables para la nueva superficie y un
+    E2E full-stack que crea la sesion, abre el detalle, valida el descuadre del
+    Admin y escanea el producto sembrado.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. `WpfNavigationPolicyTests` + `StockCountViewModelTests`: 47/47.
+B3. Suite completa `CommandCenter.Tests` con PostgreSQL + E2E: 4182/4182.
+B4. Suite WPF E2E completa con `E2E_FIND_TIMEOUT_SECONDS=45`: 9/9.
+B5. `FullStackStockCountTests`: 1/1 (crear, abrir, revisar y escanear).
+
+C. COMMIT
+C1. `98b06e6` conteo fisico WPF, politica de navegacion y pruebas.
+================================================================================
