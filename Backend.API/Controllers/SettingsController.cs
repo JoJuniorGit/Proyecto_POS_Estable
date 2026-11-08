@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.SignalR;
 using Backend.API.Attributes;
 using Backend.API.Services;
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -125,6 +127,80 @@ public class SettingsController : ControllerBase
         await _settingsService.SetSettingAsync("SelectedTimeZoneId", request.Id);
         _timeZoneProvider.Invalidate();
         return Ok(new TimeZoneSettingResponseDto { Id = request.Id });
+    }
+
+    [HttpGet("cash-advance-commission")]
+    [ProducesResponseType(typeof(CashAdvanceCommissionSettingsDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<CashAdvanceCommissionSettingsDto>> GetCashAdvanceCommissionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        _ = cancellationToken;
+        var transfer = await ReadCommissionPctAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct);
+        var cash = await ReadCommissionPctAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct);
+
+        return Ok(new CashAdvanceCommissionSettingsDto
+        {
+            TransferCommissionPct = transfer,
+            CashCommissionPct = cash
+        });
+    }
+
+    [HttpPut("cash-advance-commission")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(CashAdvanceCommissionSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<CashAdvanceCommissionSettingsDto>> SetCashAdvanceCommissionAsync(
+        [FromBody] CashAdvanceCommissionSettingsDto request,
+        CancellationToken cancellationToken = default)
+    {
+        _ = cancellationToken;
+        if (!_currentUserService.CanMutateSettings)
+        {
+            return this.ApiForbidden("Su rol no tiene permisos para actualizar las comisiones de adelanto de efectivo.");
+        }
+
+        if (request is null)
+        {
+            return this.ApiBadRequest("La configuración de comisiones de adelanto es obligatoria.");
+        }
+
+        if (request.TransferCommissionPct <= 0m || request.TransferCommissionPct > 100m)
+        {
+            return this.ApiBadRequest("La comisión de transferencia debe ser mayor a cero y menor o igual a 100.");
+        }
+
+        if (request.CashCommissionPct <= 0m || request.CashCommissionPct > 100m)
+        {
+            return this.ApiBadRequest("La comisión de efectivo debe ser mayor a cero y menor o igual a 100.");
+        }
+
+        await _settingsService.SetSettingsAsync(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct] =
+                request.TransferCommissionPct.ToString(CultureInfo.InvariantCulture),
+            [Core.Constants.SettingKeys.CashAdvanceCashCommissionPct] =
+                request.CashCommissionPct.ToString(CultureInfo.InvariantCulture)
+        });
+
+        return Ok(new CashAdvanceCommissionSettingsDto
+        {
+            TransferCommissionPct = request.TransferCommissionPct,
+            CashCommissionPct = request.CashCommissionPct
+        });
+    }
+
+    private async Task<decimal> ReadCommissionPctAsync(string key)
+    {
+        var value = await _settingsService.GetSettingAsync(key);
+        return decimal.TryParse(
+                   value,
+                   NumberStyles.Number,
+                   CultureInfo.InvariantCulture,
+                   out var percentage) &&
+               percentage > 0m
+            ? percentage
+            : 0m;
     }
 
     [HttpGet("currency-format")]

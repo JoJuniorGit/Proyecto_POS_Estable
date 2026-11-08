@@ -20,6 +20,15 @@ public interface ISettingsService
     Task<PricingPoliciesDto> GetPricingPoliciesAsync();
 
     /// <summary>
+    /// Comisiones del adelanto de efectivo por canal (transferencia y efectivo). Un valor 0
+    /// significa "no configurada"; el coordinador rechaza el adelanto hasta que un Admin guarde
+    /// ambos canales con un porcentaje mayor a cero.
+    /// </summary>
+    Task<CashAdvanceCommissionSettingsDto> GetCashAdvanceCommissionAsync();
+
+    Task SetCashAdvanceCommissionAsync(CashAdvanceCommissionSettingsDto settings);
+
+    /// <summary>
     /// 8.184-T4 (S2): persiste las políticas globales de precios y redondeo. Los TRES campos viajan
     /// juntos (el endpoint reemplaza el bloque completo); un fallo propaga la excepción para que la
     /// UI revierta al último estado aplicado (molde SetAllowNegativeStockAsync).

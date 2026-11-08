@@ -23,6 +23,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -366,7 +367,66 @@
             </Border>
 
             <!-- SECCIÓN 6: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
-            <Border Grid.Row="6" Background="{DynamicResource MaterialDesignPaper}" 
+            <!-- SECCIÓN 6: COMISIONES DE ADELANTO DE EFECTIVO -->
+            <Border Grid.Row="6" Background="{DynamicResource MaterialDesignPaper}"
+                    BorderBrush="{DynamicResource MaterialDesignDivider}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="20"
+                    Margin="0,0,0,20">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
+                        <materialDesign:PackIcon Kind="CashMultiple" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Comisiones de Adelanto de Efectivo" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
+                    </StackPanel>
+
+                    <TextBlock Text="Porcentaje que se cobra al cliente por cada canal. Un valor 0 significa no configurada y el adelanto se rechaza. Solo un Administrador puede modificarlo."
+                               Style="{DynamicResource MaterialDesignCaptionTextBlock}" Opacity="0.7" Margin="34,0,0,14" TextWrapping="Wrap"/>
+
+                    <Grid Margin="34,0,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="260"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="Auto" MinWidth="260"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Transferencia / Pago Móvil (%)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBox Text="{Binding TransferCommissionText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.AutomationId="Settings_TransferCommissionInput"
+                                     IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                     materialDesign:HintAssist.Hint="Ej: 7"
+                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                     Height="42" FontSize="13"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Efectivo (%)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <TextBox Text="{Binding CashCommissionText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.AutomationId="Settings_CashCommissionInput"
+                                     IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                     materialDesign:HintAssist.Hint="Ej: 5"
+                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                     Height="42" FontSize="13"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Text="{Binding CashAdvanceCommissionStatus}"
+                               Visibility="{Binding HasCashAdvanceCommissionStatus, Converter={StaticResource BooleanToVisibilityConverter}}"
+                               Foreground="#475569" FontSize="12" Margin="34,10,0,0" TextWrapping="Wrap"/>
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                        <Button Content="Guardar comisiones"
+                                Command="{Binding SaveCashAdvanceCommissionCommand}"
+                                AutomationProperties.AutomationId="Settings_SaveCashAdvanceCommissionButton"
+                                IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                Style="{DynamicResource MaterialDesignRaisedButton}"
+                                Height="36" Padding="16,0"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="7" Background="{DynamicResource MaterialDesignPaper}" 
                     BorderBrush="{DynamicResource MaterialDesignDivider}" 
                     BorderThickness="1" 
                     CornerRadius="10" 

@@ -106,6 +106,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             await LoadAllowNegativeStockAsync();
             // 8.184-T4 (S2): políticas globales de precios y redondeo (fallback silencioso a defaults).
             await LoadPricingPoliciesAsync();
+            // Comisiones del adelanto de efectivo (lectura Admin/Manager; escritura solo Admin).
+            await LoadCashAdvanceCommissionAsync();
             _hasLoaded = true;
         }
     }
