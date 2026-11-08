@@ -62,5 +62,45 @@ public class XamlMonetaryBindingAuditTests
 
         Assert.True(count > 0, "Ninguna vista WPF usa MonetaryProfilePresenter.Instance.");
     }
+
+    [Fact]
+    public void RunTextBindings_ToTheReadOnlyPresenter_AreOneWay()
+    {
+        var views = ResolveViewsDirectory();
+        var offenders = Directory.EnumerateFiles(views, "*.xaml")
+            .SelectMany(file => System.Text.RegularExpressions.Regex
+                .Matches(
+                    File.ReadAllText(file),
+                    "<Run\\b[^>]*MonetaryProfilePresenter\\.Instance[^>]*>",
+                    System.Text.RegularExpressions.RegexOptions.Singleline)
+                .Select(match => (File: Path.GetFileName(file), Markup: match.Value)))
+            .Where(match => !match.Markup.Contains("Mode=OneWay", StringComparison.Ordinal))
+            .Select(match => $"{match.File}: {match.Markup}")
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            $"Run.Text usa TwoWay por defecto y el presenter es de solo lectura: {string.Join(" | ", offenders)}");
+    }
+
+    [Fact]
+    public void RunTextBindings_AreAlwaysOneWay()
+    {
+        var views = ResolveViewsDirectory();
+        var offenders = Directory.EnumerateFiles(views, "*.xaml")
+            .SelectMany(file => System.Text.RegularExpressions.Regex
+                .Matches(
+                    File.ReadAllText(file),
+                    "<Run\\b[^>]*\\bText=\"\\{Binding[^>]*>",
+                    System.Text.RegularExpressions.RegexOptions.Singleline)
+                .Select(match => (File: Path.GetFileName(file), Markup: match.Value)))
+            .Where(match => !match.Markup.Contains("Mode=OneWay", StringComparison.Ordinal))
+            .Select(match => $"{match.File}: {match.Markup}")
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            $"Run.Text es de presentación y debe usar Mode=OneWay: {string.Join(" | ", offenders)}");
+    }
 }
 

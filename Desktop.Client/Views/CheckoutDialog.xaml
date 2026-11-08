@@ -36,9 +36,9 @@
                         <materialDesign:PackIcon Kind="InformationOutline" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="#92400E"/>
                         <TextBlock Foreground="#92400E" FontSize="12" TextWrapping="Wrap">
                             <Run Text="Total Factura: "/>
-                            <Run Text="{Binding OverrideSale.EffectiveTotalUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='-'}" FontWeight="Bold"/>
+                            <Run Text="{Binding OverrideSale.EffectiveTotalUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='-', Mode=OneWay}" FontWeight="Bold"/>
                             <Run Text="  |  Ya Abonado: "/>
-                            <Run Text="{Binding OverrideSale.TotalPaidUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='-'}" FontWeight="Bold" Foreground="#059669"/>
+                            <Run Text="{Binding OverrideSale.TotalPaidUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='-', Mode=OneWay}" FontWeight="Bold" Foreground="#059669"/>
                         </TextBlock>
                     </StackPanel>
                 </Border>
@@ -240,7 +240,7 @@
                         <TextBlock Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                    FontSize="11" Opacity="0.6" HorizontalAlignment="Right" Margin="0,2,0,0">
                             <Run Text="≈ "/>
-                            <Run Text="{Binding AmountUsdPreview, Converter={StaticResource PrimaryAmountConverter}}"/>
+                            <Run Text="{Binding AmountUsdPreview, Converter={StaticResource PrimaryAmountConverter}, Mode=OneWay}"/>
                         </TextBlock>
                     </StackPanel>
 

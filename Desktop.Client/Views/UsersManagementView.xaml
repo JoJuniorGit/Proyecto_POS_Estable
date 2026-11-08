@@ -700,7 +700,7 @@
                                                 <TextBlock Text="MORA / ESTADO" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
                                                 <TextBlock FontSize="13" FontWeight="SemiBold">
                                                     <Run Text="{Binding CreditStatusLabel, Mode=OneWay}"/>
-                                                    <Run Text=" · "/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol}"/>
+                                                    <Run Text=" · "/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, Mode=OneWay}"/>
                                                     <Run Text="{Binding CreditProfile.OverdueUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='0.00'}"/>
                                                 </TextBlock>
                                             </StackPanel>

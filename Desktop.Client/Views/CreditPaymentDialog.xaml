@@ -60,13 +60,13 @@
                     <TextBlock FontSize="11" Foreground="#64748B" HorizontalAlignment="Right" Margin="0,2,0,0"
                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                         <Run Text="≈ "/>
-                        <Run Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"/>
+                        <Run Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}, Mode=OneWay}"/>
                         <Run Text=" a la tasa del día"/>
                     </TextBlock>
                     <TextBlock AutomationProperties.AutomationId="CreditPayment_RemainingAfter"
                                FontSize="11" FontWeight="SemiBold" Foreground="#475569" HorizontalAlignment="Right" Margin="0,2,0,0">
                         <Run Text="Saldo resultante: "/>
-                        <Run Text="{Binding RemainingAfterUSD, Converter={StaticResource PrimaryAmountConverter}}"/>
+                        <Run Text="{Binding RemainingAfterUSD, Converter={StaticResource PrimaryAmountConverter}, Mode=OneWay}"/>
                     </TextBlock>
                 </StackPanel>
 

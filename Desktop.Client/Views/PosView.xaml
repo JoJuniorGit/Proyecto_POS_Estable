@@ -888,9 +888,9 @@
                                 <Run Text="Tasa: "/>
                                 <Run Text="{Binding CurrentExchangeRate, Mode=OneWay, StringFormat='{}{0:N2}'}"/>
                                 <Run Text=" "/>
-                                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode, Converter={StaticResource LocalCurrencyCodeConverter}}"/>
+                                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode, Mode=OneWay, Converter={StaticResource LocalCurrencyCodeConverter}}"/>
                                 <Run Text="/"/>
-                                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Converter={StaticResource PrimaryCurrencyCodeConverter}}"/>
+                                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay, Converter={StaticResource PrimaryCurrencyCodeConverter}}"/>
                             </TextBlock>
                         </StackPanel>
                     </Border>

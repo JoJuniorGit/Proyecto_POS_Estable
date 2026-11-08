@@ -52,9 +52,9 @@
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock>
-                                <Run Text="{Binding Name}"/>
-                                <Run Text=" ("/><Run Text="{Binding CurrencyCode}"/><Run Text=") — Disponible: "/>
-                                <Run Text="{Binding CurrencySymbol}"/><Run Text="{Binding CurrentBalance, StringFormat='{}{0:N2}'}"/>
+                                <Run Text="{Binding Name, Mode=OneWay}"/>
+                                <Run Text=" ("/><Run Text="{Binding CurrencyCode, Mode=OneWay}"/><Run Text=") — Disponible: "/>
+                                <Run Text="{Binding CurrencySymbol, Mode=OneWay}"/><Run Text="{Binding CurrentBalance, StringFormat='{}{0:N2}', Mode=OneWay}"/>
                             </TextBlock>
                         </DataTemplate>
                     </ComboBox.ItemTemplate>

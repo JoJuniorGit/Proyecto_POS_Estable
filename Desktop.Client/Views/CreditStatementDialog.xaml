@@ -38,9 +38,9 @@
                 <Run Text="Tasa del día: "/>
                 <Run Text="{Binding TodayRate, Mode=OneWay, StringFormat='{}{0:N2}'}"/>
                 <Run Text=" "/>
-                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode}"/>
+                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode, Mode=OneWay}"/>
                 <Run Text="/"/>
-                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"/>
+                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}"/>
             </TextBlock>
         </DockPanel>
 
@@ -177,14 +177,14 @@
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock FontSize="11" FontStyle="Italic" Foreground="#64748B">
                     <Run Text="El saldo se mantiene en "/>
-                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"/>
+                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}"/>
                     <Run Text=";"/>
                 </TextBlock>
                 <!-- 8.211-T4c2b4 (S9): the local projection only exists in Dual. -->
                 <TextBlock FontSize="11" FontStyle="Italic" Foreground="#64748B"
                            Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
                     <Run Text=" el equivalente en "/>
-                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode}"/>
+                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode, Mode=OneWay}"/>
                     <Run Text=" es una proyección a la tasa del día."/>
                 </TextBlock>
             </StackPanel>

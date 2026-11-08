@@ -169,7 +169,7 @@
                                         VerticalAlignment="Center">
                                     <TextBlock Foreground="#5E35B1" FontWeight="Bold" FontSize="12">
                                         <Run Text="Factura N° "/>
-                                        <Run Text="{Binding InvoiceNumber, StringFormat='{}{0:D5}', FallbackValue='—'}"/>
+                                        <Run Text="{Binding InvoiceNumber, StringFormat='{}{0:D5}', FallbackValue='—', Mode=OneWay}"/>
                                     </TextBlock>
                                 </Border>
 
@@ -254,7 +254,7 @@
                                     <materialDesign:PackIcon Kind="CalendarCheckOutline" Width="15" Height="15" VerticalAlignment="Center" Foreground="#94A3B8"/>
                                     <TextBlock FontSize="12" Foreground="#475569" Margin="6,0,0,0" VerticalAlignment="Center">
                                         <Run Text="Pagado: "/>
-                                        <Run Text="{Binding Date, StringFormat='{}{0:dd/MM/yy HH:mm}'}" FontWeight="SemiBold" Foreground="#1E293B"/>
+                                        <Run Text="{Binding Date, StringFormat='{}{0:dd/MM/yy HH:mm}', Mode=OneWay}" FontWeight="SemiBold" Foreground="#1E293B"/>
                                     </TextBlock>
                                 </StackPanel>
                             </WrapPanel>
