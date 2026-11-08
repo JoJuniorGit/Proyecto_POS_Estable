@@ -144,6 +144,11 @@ public class FullStackCatalogPricingTests : IClassFixture<FullStackFixture>
         search.Text = sku;
 
         bool dispatched = false;
+        // The search is debounced (300 ms) and then hits the API. On slower CI runners the
+        // suggestions popup is not ready on the first UI iteration; pressing Enter immediately
+        // would consume the only dispatch attempt before any result exists. Give the debounce
+        // and the request a bounded grace period, then use Enter only as a fallback.
+        var enterFallbackAt = DateTime.UtcNow.AddSeconds(10);
         using var automation = new UIA3Automation();
         var row = Retry.WhileNull(
             () => UiaRetry.RetryUia(() =>
@@ -180,9 +185,12 @@ public class FullStackCatalogPricingTests : IClassFixture<FullStackFixture>
                     }
                 }
 
-                search.Focus();
-                Keyboard.Press(VirtualKeyShort.RETURN);
-                dispatched = true;
+                if (DateTime.UtcNow >= enterFallbackAt)
+                {
+                    search.Focus();
+                    Keyboard.Press(VirtualKeyShort.RETURN);
+                    dispatched = true;
+                }
                 return null;
             }),
             timeout);
