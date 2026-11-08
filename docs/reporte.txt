@@ -17417,3 +17417,60 @@ C3. Suite no-PG: 4082/4135; 53 fallos ambientales PostgreSQL esperados.
 D. COMMIT
 D1. `bc1d276` fix de visibilidad y auditoria de regresion.
 ================================================================================
+
+ANEXO XLIX - ESTABILIZACION CI (BACKEND, FRONTEND Y WPF E2E) - 2026-11-08
+================================================================================
+Pedido del mantenedor: dejar el pipeline de GitHub Actions en verde tras el push
+del branch V0.15.
+
+A. CAUSAS
+A1. Frontend: `vite` en el rango vulnerable >=8.0.0 <=8.1.5; `npm audit
+    --audit-level=high` fallaba.
+A2. Backend: el test full-stack de WebSockets vive en CommandCenter.Tests y
+    exige `E2E_POSTGRES_CONNECTION`; el job solo definia
+    `TEST_POSTGRES_CONNECTION` y el harness fallaba cerrado.
+A3. WPF E2E:
+    - Cada fixture full-stack lanzaba Backend.API sin un pfx estable; el
+      fallback Development generaba un certificado efimero por proceso y el
+      pin TOFU del cliente rechazaba el siguiente backend (SSL handshake).
+    - La base E2E nueva conservaba el seed legacy "Cash" y el seeder agregaba
+      "Efectivo", dejando dos metodos fisicos locales; la apertura automatica
+      de caja fallaba con 400.
+    - El E2E de metodos fisicos hardcodeaba IDs de seed y no sembraba la
+      comision de adelanto por transferencia.
+    - El cierre diario fallaba al abrir la sesion de rollover porque
+      `OpenSessionAsync` iniciaba una transaccion sin la execution strategy
+      de Npgsql y porque los CASH IN manuales sin metodo no se atribuian a
+      ningun bucket fisico.
+    - La prueba de cierre asumia que el esperado excluia el CASH IN y
+      comparaba decimales sin tolerancia.
+
+B. FIX
+B1. `Web.Frontend/package.json` y lockfile: vite 8.3.6.
+B2. `ci.yml`: `E2E_POSTGRES_CONNECTION` en el job backend; password de
+    certificado y generacion de un pfx estable en el job WPF E2E.
+B3. `DatabaseInitializer`: convergencia de los nombres legacy "Cash"/"Card"
+    al seed canonico y baja logica de duplicados, sin agregar un segundo
+    metodo fisico local.
+B4. `CashDrawerService`:
+    - `OpenSessionAsync` envuelve la transaccion en la execution strategy.
+    - Los movimientos fisicos manuales sin metodo se atribuyen al metodo de
+      efectivo canonico de su moneda; el vuelto tambien.
+B5. `DailyClosureClientService`: el error incluye el ProblemDetails del
+    servidor en lugar de solo el status.
+B6. Harness E2E: comision de transferencia sembrada, descubrimiento real de
+    metodos, parser de saldos por metodo y aserciones monetarias con
+    tolerancia.
+
+C. EVIDENCIA
+C1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+C2. Backend completo con PostgreSQL y E2E: 4135/4135.
+C3. WPF E2E completo con `E2E_FIND_TIMEOUT_SECONDS=45`: 8/8.
+C4. Frontend: 743/743 tests, lint limpio, build OK, `npm audit` 0
+    vulnerabilidades.
+C5. `FullStackHubWebSocketTests`: 1/1 con `E2E_POSTGRES_CONNECTION`.
+
+D. COMMIT
+D1. `0ac2dc4` fix de CI, convergencia de metodos, execution strategy y
+    harness E2E.
+================================================================================
