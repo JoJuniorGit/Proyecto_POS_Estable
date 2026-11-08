@@ -17388,3 +17388,32 @@ C3. Suite no-PG: 4081/4134; 53 fallos ambientales PostgreSQL esperados.
 D. COMMIT
 D1. `cfd0c5d` fix de bindings OneWay y auditoria de regresion.
 ================================================================================
+
+================================================================================
+ANEXO XLVIII - FIX PRECIO VES DUPLICADO EN CATALOGO WPF - 2026-11-08
+================================================================================
+Pedido del mantenedor: en el catalogo local el precio en VES aparece duplicado y
+superpuesto con una leve desviacion horizontal.
+
+A. CAUSA
+A1. En `InventoryView.xaml` cada celda de Precio Detal y Precio Mayor tiene dos
+    `TextBlock` superpuestos: uno visible en Dual y otro pensado para Single.
+A2. El segundo usaba `Path=IsSingle` con `InverseBooleanToVisibilityConverter`,
+    que devuelve Visible cuando IsSingle=false (Dual). Resultado: en Dual ambos
+    precios quedaban visibles y el simbolo/monto se dibujaba dos veces.
+A3. No habia error de calculo ni de formato; era una condicion de visibilidad.
+
+B. FIX
+B1. El bloque de Single usa `BooleanToVisibilityConverter` sobre `IsSingle`, por
+    lo que ahora Dual y Single son mutuamente excluyentes.
+B2. Se agrego una auditoria XAML que falla si vuelve el converter inverso en las
+    celdas de precio del catalogo.
+
+C. EVIDENCIA
+C1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+C2. Auditoria XAML: 6/6.
+C3. Suite no-PG: 4082/4135; 53 fallos ambientales PostgreSQL esperados.
+
+D. COMMIT
+D1. `bc1d276` fix de visibilidad y auditoria de regresion.
+================================================================================
