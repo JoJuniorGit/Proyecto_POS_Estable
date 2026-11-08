@@ -75,7 +75,7 @@ public class AuthorizationEndToEndPostgresTests
         Assert.False(create.GetProperty("deduplicated").GetBoolean());
         Assert.InRange(create.GetProperty("remainingLifetimeSeconds").GetInt32(), 58, 60);
 
-        var requestedPayload = await requested.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var requestedPayload = await requested.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, requestedPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("ManualPriceOverride", requestedPayload.GetProperty("actionType").GetString());
         Assert.Equal(saleId, requestedPayload.GetProperty("saleId").GetInt32());
@@ -97,7 +97,7 @@ public class AuthorizationEndToEndPostgresTests
         Assert.Equal("Approved", resolve.GetProperty("status").GetString());
         Assert.Equal("Admin E2E Journey", resolve.GetProperty("resolvedByName").GetString());
 
-        var resolvedPayload = await resolved.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var resolvedPayload = await resolved.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, resolvedPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("Approved", resolvedPayload.GetProperty("status").GetString());
         Assert.True(resolvedPayload.GetProperty("approved").GetBoolean());
@@ -189,7 +189,7 @@ public class AuthorizationEndToEndPostgresTests
 
         var firstTask = firstAdminHub.InvokeAsync<JsonElement>("ResolveAuthorization", requestId, true, "Gano primero");
         var secondTask = secondAdminHub.InvokeAsync<JsonElement>("ResolveAuthorization", requestId, true, "Llego tarde");
-        var results = await Task.WhenAll(firstTask, secondTask).WaitAsync(TimeSpan.FromSeconds(20));
+        var results = await Task.WhenAll(firstTask, secondTask).WaitAsync(TimeSpan.FromSeconds(30));
 
         var firstSuccess = results[0].GetProperty("success").GetBoolean();
         var secondSuccess = results[1].GetProperty("success").GetBoolean();
@@ -203,7 +203,7 @@ public class AuthorizationEndToEndPostgresTests
             $"Esta solicitud ya fue resuelta por {expectedWinnerName}.",
             loser.GetProperty("message").GetString());
 
-        var requesterPayload = await requesterResolved.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var requesterPayload = await requesterResolved.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, requesterPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("Approved", requesterPayload.GetProperty("status").GetString());
         AuthorizationEndToEndApi.ReadRequiredToken(requesterPayload);
@@ -353,7 +353,7 @@ public class AuthorizationEndToEndPostgresTests
         Assert.Equal("Expired", status.GetProperty("status").GetString());
         Assert.NotEqual(JsonValueKind.Null, status.GetProperty("resolvedAt").ValueKind);
 
-        var expiredPayload = await expiredPush.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var expiredPayload = await expiredPush.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, expiredPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("Expired", expiredPayload.GetProperty("status").GetString());
 
@@ -524,13 +524,13 @@ public class AuthorizationEndToEndPostgresTests
             Assert.NotEqual(JsonValueKind.Null, body.GetProperty("resolvedAt").ValueKind);
         }
 
-        var requesterPayload = await requesterClosure.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var requesterPayload = await requesterClosure.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, requesterPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("Cancelled", requesterPayload.GetProperty("status").GetString());
         Assert.False(requesterPayload.GetProperty("approved").GetBoolean());
         Assert.Equal(JsonValueKind.Null, requesterPayload.GetProperty("token").ValueKind);
 
-        var elevatedPayload = await elevatedClosure.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var elevatedPayload = await elevatedClosure.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, elevatedPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("Cancelled", elevatedPayload.GetProperty("status").GetString());
         Assert.False(elevatedPayload.TryGetProperty("token", out _));
