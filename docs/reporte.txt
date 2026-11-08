@@ -17578,20 +17578,27 @@ A1. `.github/workflows/ci.yml`: `actions/cache` v4 -> v6.1.0
     (`55cc834...`), `actions/setup-dotnet` v4 -> v6.1.0
     (`0f4a354...`) y `actions/upload-artifact` v4 -> v7.0.2
     (`cf430e0...`). Se conservan checkout v7.0.1 y setup-node v7.1.0.
-A2. `AuthorizationEndToEndPostgresTests`: los waits de eventos SignalR
-    (`AuthorizationRequested`, `AuthorizationResolved`, `AuthorizationExpired`
-    y cierres) pasan de 10/15/20 s a 30 s. La suite habia fallado dos veces en
-    CI por `System.TimeoutException` en tests distintos de esa clase; el
-    rerun del mismo commit paso, confirmando flake de timing bajo carga.
+A2. `AuthorizationEndToEndPostgresTests`: primera mitigacion, subir los waits
+    de eventos SignalR (`AuthorizationRequested`, `AuthorizationResolved`,
+    `AuthorizationExpired` y cierres) de 10/15/20 s a 30 s. No alcanzo: el
+    backend volvio a fallar en CI con el mismo `System.TimeoutException`.
+A3. Causa raiz: carrera entre `StartAsync()` del hub admin y el alta al grupo
+    `role:elevated` en `OnConnectedAsync`; si la solicitud se creaba antes, el
+    push se perdia. Se agrego `Ping` al `AuthorizationHub` y el helper
+    `StartAndPingAsync` en el E2E para esperar a que `OnConnectedAsync` termine
+    antes de crear o resolver solicitudes.
 
 B. EVIDENCIA
-B1. `AuthorizationEndToEndPostgresTests` local con PostgreSQL: 7/7 (5m19s).
+B1. `AuthorizationEndToEndPostgresTests` local con PostgreSQL: 7/7 (50 s).
 B2. CI 42518950262: rerun del backend en success; frontend y WPF E2E verdes.
 B3. CI 42520733951 (con actions nuevas): frontend 30s y WPF E2E 11m41s
-    verdes; backend fallo por el mismo tipo de timeout antes del ajuste.
+    verdes; backend fallo por el timeout antes del fix de sincronizacion.
 B4. Build del proyecto de tests: 0 advertencias, 0 errores.
+B5. Suite completa `CommandCenter.Tests` con PostgreSQL + E2E: 4198/4198
+    (5m58s).
 
 C. COMMIT
 C1. `fba49fa` actualizacion de cache, setup-dotnet y upload-artifact.
 C2. `7d855e6` timeouts de SignalR de 30 s en el E2E de autorizaciones.
+C3. `e4a4c63` `Ping` de sincronizacion y helper `StartAndPingAsync`.
 ================================================================================
