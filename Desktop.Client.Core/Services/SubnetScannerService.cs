@@ -38,29 +38,32 @@ public interface ISubnetScannerService
 
 public class SubnetScannerService : ISubnetScannerService
 {
-    private static readonly HttpClient SharedScannerClient = new HttpClient(new SocketsHttpHandler
-    {
-        ConnectTimeout = TimeSpan.FromSeconds(3),
-        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
-        {
-            RemoteCertificateValidationCallback = (sender, cert, chain, errors) =>
-            {
-                // 8.9-M4 (TOFU pinning) + 8.16-R18: pinning Trust-On-First-Use compartido.
-                // El primer fingerprint visto por host queda registrado y cualquier certificado
-                // distinto posterior es rechazado (mitiga MITM LAN). Solo aplica a hosts
-                // privados/locales; los públicos se validan con la cadena de confianza.
-                if (sender is System.Net.Http.HttpRequestMessage req && req.RequestUri != null)
-                {
-                    return CertificatePinning.IsTrusted(req.RequestUri.Host, cert, errors);
-                }
-
-                return errors == System.Net.Security.SslPolicyErrors.None;
-            }
-        }
-    })
+    private static readonly HttpClient SharedScannerClient = new HttpClient(CreateScannerHandler())
     {
         Timeout = TimeSpan.FromSeconds(4)
     };
+
+    /// <summary>
+    /// 8.212-WU6: the TLS callback must receive an <see cref="HttpRequestMessage"/> to resolve the
+    /// host used by the TOFU pin. <c>SocketsHttpHandler.SslOptions</c> supplies an <c>SslStream</c>
+    /// instead, so the previous callback never reached <see cref="CertificatePinning"/> and every
+    /// self-signed local server failed the automatic/manual probe. HttpClientHandler preserves the
+    /// request-aware callback contract.
+    /// </summary>
+    internal static HttpClientHandler CreateScannerHandler()
+    {
+        var handler = new HttpClientHandler();
+        handler.ServerCertificateCustomValidationCallback = (request, certificate, _, errors) =>
+        {
+            if (request?.RequestUri is not { } uri)
+            {
+                return errors == System.Net.Security.SslPolicyErrors.None;
+            }
+
+            return CertificatePinning.IsTrusted(uri.Host, certificate, errors);
+        };
+        return handler;
+    }
 
     private static readonly string[] VirtualKeywords = new[]
     {
