@@ -173,103 +173,119 @@ public class CashDrawerService : ICashDrawerService
         var localDrawerCurrency = monetaryProfile is null
             ? PaymentMethodCurrencyResolver.LocalCurrency
             : CashDrawerBalanceService.ResolveLocalCurrency(monetaryProfile);
-        var methodBalanceRows = await BuildSessionMethodBalancesAsync(
-            monetaryProfile,
-            localDrawerCurrency,
-            openingBalanceLocal,
-            openingBalanceUsd,
-            requestedMethodBalances,
-            cancellationToken);
 
         if (await GetActiveSessionAsync(cancellationToken) != null)
         {
             throw new InvalidOperationException("Ya existe una sesión de caja activa.");
         }
 
-        var session = new CashDrawerSession
-        {
-            OpenedAt = DateTime.UtcNow,
-            OpeningBalanceLocal = openingBalanceLocal,
-            OpeningBalanceUsd = openingBalanceUsd,
-            OpeningExchangeRate = currentExchangeRate,
-            Status = CashDrawerStatus.Open
-        };
-
-        foreach (var methodBalance in methodBalanceRows)
-        {
-            session.MethodBalances.Add(methodBalance);
-        }
-
         bool isInMemory = _context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
         var ambientTransaction = _context.Database.CurrentTransaction;
         bool ownsTransaction = !isInMemory && ambientTransaction == null;
 
-        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? ownTransaction = null;
-        if (ownsTransaction)
+        async Task<CashDrawerSession> ExecuteWithinTransactionAsync()
         {
-            ownTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-        }
+            var methodBalanceRows = await BuildSessionMethodBalancesAsync(
+                monetaryProfile,
+                localDrawerCurrency,
+                openingBalanceLocal,
+                openingBalanceUsd,
+                requestedMethodBalances,
+                cancellationToken);
 
-        try
-        {
-            if (_context.Database.IsNpgsql())
+            var session = new CashDrawerSession
             {
-                // SRE-02: Bloqueo consultivo en PostgreSQL para serializar la apertura concurrente de sesiones de caja
-                // (tanto bajo transacción propia como bajo transacción ambiente). Provider-safe: se omite en SQLite/InMemory.
-                await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(999888777)", cancellationToken);
+                OpenedAt = DateTime.UtcNow,
+                OpeningBalanceLocal = openingBalanceLocal,
+                OpeningBalanceUsd = openingBalanceUsd,
+                OpeningExchangeRate = currentExchangeRate,
+                Status = CashDrawerStatus.Open
+            };
 
-                // Doble chequeo bajo el lock para evitar carrera
-                if (await GetActiveSessionAsync(cancellationToken) != null)
+            foreach (var methodBalance in methodBalanceRows)
+            {
+                session.MethodBalances.Add(methodBalance);
+            }
+
+            Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? ownTransaction = null;
+            if (ownsTransaction)
+            {
+                ownTransaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+            }
+
+            try
+            {
+                if (_context.Database.IsNpgsql())
                 {
-                    throw new InvalidOperationException("Ya existe una sesión de caja activa.");
+                    // SRE-02: Bloqueo consultivo en PostgreSQL para serializar la apertura concurrente de sesiones de caja
+                    // (tanto bajo transacción propia como bajo transacción ambiente). Provider-safe: se omite en SQLite/InMemory.
+                    await _context.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(999888777)", cancellationToken);
+
+                    // Doble chequeo bajo el lock para evitar carrera
+                    if (await GetActiveSessionAsync(cancellationToken) != null)
+                    {
+                        throw new InvalidOperationException("Ya existe una sesión de caja activa.");
+                    }
+                }
+
+                _context.CashDrawerSessions.Add(session);
+                await _context.SaveChangesAsync(cancellationToken);
+
+                await AddTransactionAsync(
+                    session.Id,
+                    CashTransactionType.Income,
+                    CashTransactionSource.Opening,
+                    openingBalanceLocal,
+                    currentExchangeRate > 0 ? openingBalanceLocal / currentExchangeRate : 0,
+                    currentExchangeRate,
+                    "Monto de apertura de caja",
+                    cancellationToken: cancellationToken,
+                    resolvedCurrencyCode: localDrawerCurrency
+                );
+
+                if (ownTransaction != null)
+                {
+                    await ownTransaction.CommitAsync(cancellationToken);
+                }
+
+                return session;
+            }
+            catch (DbUpdateException ex)
+            {
+                if (ownTransaction != null)
+                {
+                    await ownTransaction.RollbackAsync(cancellationToken);
+                }
+                throw new InvalidOperationException("Ya existe una sesión de caja activa.", ex);
+            }
+            catch
+            {
+                if (ownTransaction != null)
+                {
+                    await ownTransaction.RollbackAsync(cancellationToken);
+                }
+                throw;
+            }
+            finally
+            {
+                if (ownTransaction != null)
+                {
+                    await ownTransaction.DisposeAsync();
                 }
             }
-
-            _context.CashDrawerSessions.Add(session);
-            await _context.SaveChangesAsync(cancellationToken);
-
-            await AddTransactionAsync(
-                session.Id,
-                CashTransactionType.Income,
-                CashTransactionSource.Opening,
-                openingBalanceLocal,
-                currentExchangeRate > 0 ? openingBalanceLocal / currentExchangeRate : 0,
-                currentExchangeRate,
-                "Monto de apertura de caja",
-                cancellationToken: cancellationToken,
-                resolvedCurrencyCode: localDrawerCurrency
-            );
-
-            if (ownTransaction != null)
-            {
-                await ownTransaction.CommitAsync(cancellationToken);
-            }
         }
-        catch (DbUpdateException ex)
+
+        if (ownsTransaction)
         {
-            if (ownTransaction != null)
-            {
-                await ownTransaction.RollbackAsync(cancellationToken);
-            }
-            throw new InvalidOperationException("Ya existe una sesión de caja activa.", ex);
-        }
-        catch
-        {
-            if (ownTransaction != null)
-            {
-                await ownTransaction.RollbackAsync(cancellationToken);
-            }
-            throw;
-        }
-        finally
-        {
-            if (ownTransaction != null)
-            {
-                await ownTransaction.DisposeAsync();
-            }
+            var openedSession = await _context.Database.CreateExecutionStrategy().ExecuteAsync<object?, CashDrawerSession>(
+                state: null,
+                operation: (_, _, _) => ExecuteWithinTransactionAsync(),
+                verifySucceeded: null,
+                cancellationToken: cancellationToken);
+            return MapSession(openedSession);
         }
 
-        return MapSession(session);
+        return MapSession(await ExecuteWithinTransactionAsync());
     }
 
     public async Task<CashDrawerSessionResponseDto> CloseSessionAsync(
@@ -452,6 +468,26 @@ public class CashDrawerService : ICashDrawerService
             {
                 throw new ArgumentException("El hash del payload idempotente es obligatorio.", nameof(idempotency));
             }
+        }
+
+        // 8.212-WU2 follow-up: a physical manual movement (CASH IN/OUT, adjustment, petty cash)
+        // without an explicit method must land in the drawer bucket of its currency. Otherwise the
+        // total balance includes it while the per-method breakdown does not, and the daily-closure
+        // rollover rejects the opening breakdown. Opening/Closing are session-level snapshots and
+        // stay method-less by design.
+        if (isPhysicalCash
+            && paymentMethodId is null
+            && source is not (CashTransactionSource.Opening or CashTransactionSource.Closing))
+        {
+            string movementCurrency = await ResolveTransactionCurrencyCodeAsync(
+                type,
+                source,
+                paymentMethodId,
+                cancellationToken,
+                resolvedCurrencyCode);
+            paymentMethodId = await ResolveDefaultPhysicalPaymentMethodIdAsync(
+                movementCurrency,
+                cancellationToken);
         }
 
         bool isInMemory = _context.Database.ProviderName?.Contains("InMemory", StringComparison.OrdinalIgnoreCase) == true;
@@ -687,6 +723,14 @@ public class CashDrawerService : ICashDrawerService
         // 8.211-T3c3c1 (S4): the change belongs to the same local drawer currency used for the
         // movement and the operator-facing message (VES still displays as Bs.S).
         var localDrawerCurrency = await ResolveLocalDrawerCurrencyAsync(cancellationToken);
+        if (cashPaymentMethodId is null)
+        {
+            // The change leaves the local physical drawer: attribute it to the canonical local
+            // cash method so the per-method rollover keeps matching the total balance.
+            cashPaymentMethodId = await ResolveDefaultPhysicalPaymentMethodIdAsync(
+                localDrawerCurrency,
+                cancellationToken);
+        }
 
         var currentBalanceDb = await GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
         decimal available = currentBalanceDb + pendingCashIncomeBsS;
@@ -975,6 +1019,42 @@ public class CashDrawerService : ICashDrawerService
         Core.DTOs.MonetaryProfileDto? profile,
         string localDrawerCurrency)
         => CashDrawerBalanceService.ResolveAllowedCurrencies(profile, localDrawerCurrency);
+
+    /// <summary>
+    /// Default drawer method for a physical movement without an explicit method. Prefers the
+    /// canonical cash method of the movement currency (DisplayOrder, then Id) so the movement is
+    /// attributed to a per-method bucket. Returns null only when the catalog has no active cash
+    /// method for that currency.
+    /// </summary>
+    private async Task<int?> ResolveDefaultPhysicalPaymentMethodIdAsync(
+        string currencyCode,
+        CancellationToken cancellationToken)
+    {
+        var methods = await _context.PaymentMethods
+            .AsNoTracking()
+            .Where(method => method.IsCash && method.IsActive && !method.IsDeleted)
+            .OrderBy(method => method.DisplayOrder)
+            .ThenBy(method => method.Id)
+            .Select(method => new { method.Id, method.Currency, method.Name })
+            .ToListAsync(cancellationToken);
+
+        string? targetIso = CurrencyCodeNormalizer.NormalizeToIso(currencyCode);
+        foreach (var method in methods)
+        {
+            string methodCurrency = PaymentMethodCurrencyResolver.ResolveStoredOrName(
+                method.Currency,
+                method.Name);
+            if (string.Equals(
+                    CurrencyCodeNormalizer.NormalizeToIso(methodCurrency),
+                    targetIso,
+                    StringComparison.Ordinal))
+            {
+                return method.Id;
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// 8.211-T3b3 (S6): moneda fisica congelada del movimiento al momento de la escritura.

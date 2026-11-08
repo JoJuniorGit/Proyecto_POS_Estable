@@ -53,6 +53,9 @@ public sealed record E2ePhysicalMethodBalance(
 
 public sealed record E2eCashDrawerSession(int Id, IReadOnlyList<E2ePhysicalMethodBalance> PhysicalMethodBalances);
 
+/// <summary>Fila del catálogo activo de métodos de pago (ids reales, sin hardcodear seeds).</summary>
+public sealed record E2ePaymentMethod(int Id, string Name, bool IsCash, string Currency, bool IsActive);
+
 /// <summary>Cierre real: id y effectivo esperado del método Cash (solo gastos Active).</summary>
 public sealed record E2eDailyClosure(int ClosureId, decimal CashSystemAmount);
 
@@ -192,6 +195,38 @@ public sealed class E2eApiClient : IDisposable
             json.RootElement.GetProperty("id").GetInt32(),
             ReadString(json.RootElement, "cedula") ?? cedula,
             ReadString(json.RootElement, "name") ?? name);
+    }
+
+    /// <summary>
+    /// Catálogo activo real (GET /api/payment-methods/active). Los escenarios que abren la
+    /// gaveta con desglose deben descubrir los ids en lugar de asumir el orden del seed.
+    /// </summary>
+    public async Task<IReadOnlyList<E2ePaymentMethod>> GetActivePaymentMethodsAsync(
+        string bearerToken,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            "api/PaymentMethods/active",
+            payload: null,
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "get active payment methods", body);
+
+        using var json = JsonDocument.Parse(body);
+        var methods = new List<E2ePaymentMethod>();
+        foreach (var item in json.RootElement.EnumerateArray())
+        {
+            methods.Add(new E2ePaymentMethod(
+                item.GetProperty("id").GetInt32(),
+                ReadString(item, "name") ?? string.Empty,
+                item.GetProperty("isCash").GetBoolean(),
+                ReadString(item, "currency") ?? string.Empty,
+                item.GetProperty("isActive").GetBoolean()));
+        }
+
+        return methods;
     }
 
     /// <summary>Abre una venta real del usuario autenticado (POST /api/sales/start) y devuelve su id.</summary>
@@ -357,8 +392,20 @@ public sealed class E2eApiClient : IDisposable
 
     private static IReadOnlyList<E2ePhysicalMethodBalance> ParsePhysicalMethodBalances(JsonElement root)
     {
-        if (!root.TryGetProperty("physicalMethodBalances", out var rows)
-            || rows.ValueKind != JsonValueKind.Array)
+        // The active-session contract wraps the rows in an object; the dedicated
+        // physical-method-balances endpoint returns the array directly.
+        JsonElement rows;
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            rows = root;
+        }
+        else if (root.ValueKind == JsonValueKind.Object
+                 && root.TryGetProperty("physicalMethodBalances", out var property)
+                 && property.ValueKind == JsonValueKind.Array)
+        {
+            rows = property;
+        }
+        else
         {
             return Array.Empty<E2ePhysicalMethodBalance>();
         }

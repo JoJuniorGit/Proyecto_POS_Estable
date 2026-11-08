@@ -15,10 +15,6 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// </summary>
 public class FullStackPhysicalMethodDrawerTests : IClassFixture<FullStackFixture>
 {
-    private const int UsdMethodId = 1;
-    private const int LocalMethodId = 2;
-    private const int ReceiverMethodId = 4;
-
     private readonly FullStackFixture _fixture;
 
     public FullStackPhysicalMethodDrawerTests(FullStackFixture fixture)
@@ -44,6 +40,18 @@ public class FullStackPhysicalMethodDrawerTests : IClassFixture<FullStackFixture
                 ?? throw new InvalidOperationException("El bootstrap no produjo un token de Admin.");
 
             using var api = new E2eApiClient(_fixture.BackendBaseAddress);
+            var methods = await api.GetActivePaymentMethodsAsync(token);
+            var localMethod = methods.FirstOrDefault(method => method.IsCash && IsLocalCurrency(method.Currency))
+                ?? throw new InvalidOperationException(
+                    $"No hay un método físico local activo. Métodos: {DescribeMethods(methods)}");
+            var usdMethod = methods.FirstOrDefault(method =>
+                    method.IsCash && string.Equals(method.Currency, "USD", StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException(
+                    $"No hay un método físico USD activo. Métodos: {DescribeMethods(methods)}");
+            var receiverMethod = methods.FirstOrDefault(method => !method.IsCash)
+                ?? throw new InvalidOperationException(
+                    $"No hay un método digital receptor activo. Métodos: {DescribeMethods(methods)}");
+
             var sessionId = await api.OpenCashDrawerSessionWithMethodsAsync(
                 token,
                 openingBalanceLocal: 1000m,
@@ -51,8 +59,8 @@ public class FullStackPhysicalMethodDrawerTests : IClassFixture<FullStackFixture
                 exchangeRate: bootstrap.ExchangeRate,
                 methodBalances: new Dictionary<int, decimal>
                 {
-                    [UsdMethodId] = 20m,
-                    [LocalMethodId] = 1000m
+                    [usdMethod.Id] = 20m,
+                    [localMethod.Id] = 1000m
                 });
 
             var active = await api.GetActiveCashDrawerSessionAsync(token);
@@ -62,10 +70,10 @@ public class FullStackPhysicalMethodDrawerTests : IClassFixture<FullStackFixture
 
             var initialLocal = Assert.Single(
                 active.PhysicalMethodBalances,
-                balance => balance.PaymentMethodId == LocalMethodId);
+                balance => balance.PaymentMethodId == localMethod.Id);
             var initialUsd = Assert.Single(
                 active.PhysicalMethodBalances,
-                balance => balance.PaymentMethodId == UsdMethodId);
+                balance => balance.PaymentMethodId == usdMethod.Id);
             Assert.Equal(1000m, initialLocal.CurrentBalance);
             Assert.Equal(20m, initialUsd.CurrentBalance);
             Assert.True(initialLocal.CanDispense);
@@ -74,13 +82,13 @@ public class FullStackPhysicalMethodDrawerTests : IClassFixture<FullStackFixture
                 token,
                 sessionId,
                 dispensedAmount: 100m,
-                dispensedMethodId: LocalMethodId,
-                receivedMethodId: ReceiverMethodId,
+                dispensedMethodId: localMethod.Id,
+                receivedMethodId: receiverMethod.Id,
                 exchangeRate: bootstrap.ExchangeRate);
 
             var after = await api.GetPhysicalMethodBalancesAsync(token, sessionId);
-            var finalLocal = Assert.Single(after, balance => balance.PaymentMethodId == LocalMethodId);
-            var finalUsd = Assert.Single(after, balance => balance.PaymentMethodId == UsdMethodId);
+            var finalLocal = Assert.Single(after, balance => balance.PaymentMethodId == localMethod.Id);
+            var finalUsd = Assert.Single(after, balance => balance.PaymentMethodId == usdMethod.Id);
             Assert.Equal(900m, finalLocal.CurrentBalance);
             Assert.Equal(20m, finalUsd.CurrentBalance);
         }
@@ -89,4 +97,13 @@ public class FullStackPhysicalMethodDrawerTests : IClassFixture<FullStackFixture
             await _fixture.TeardownAsync();
         }
     }
+
+    private static bool IsLocalCurrency(string currency) =>
+        string.Equals(currency, "Bs.S", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(currency, "VES", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(currency, "BsS", StringComparison.OrdinalIgnoreCase);
+
+    private static string DescribeMethods(IReadOnlyList<E2ePaymentMethod> methods) =>
+        string.Join(", ", methods.Select(method =>
+            $"{method.Id}:{method.Name}:{method.Currency}:cash={method.IsCash}"));
 }

@@ -76,6 +76,10 @@ jobs:
         # (Sales.Module, Inventory.Module, Core) segun politica Rev 8.2.
         env:
           TEST_POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=pos_test;Username=postgres;Password=root"
+          # 8.151-W5: el E2E de WebSockets vive en CommandCenter.Tests y usa el harness
+          # full-stack; sin esta variable falla cerrado en CI. Usa la base de mantenimiento
+          # para derivar su propia base aislada pos_e2e_<run>.
+          E2E_POSTGRES_CONNECTION: "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=root"
           SMOKE_DB_SUFFIX: ${{ github.run_id }}
           # 8.147-T2/D15: habilita el smoke nativo de OCR (Tesseract + tessdata vendido);
           # sin la variable el test retorna silenciosamente y la suite queda mock-based.
@@ -179,6 +183,12 @@ jobs:
     # (falla cerrado si la variable faltara). Artefactos (trx + logs) solo cuando el job falla.
     runs-on: windows-2025
     timeout-minutes: 30
+    env:
+      # Cada fixture full-stack levanta su propio Backend.API. Sin un certificado estable, el
+      # fallback Development genera uno nuevo por proceso y el pin TOFU del cliente rechaza el
+      # siguiente backend (SSL handshake failures entre clases de test). El pfx se genera en el
+      # directorio de salida y este password lo hereda cada proceso Backend.API.
+      HTTPS_CERT_PASSWORD: "e2e-ci-cert-password"
 
     steps:
       - name: Checkout Code
@@ -204,6 +214,10 @@ jobs:
       # tiene referencias de proyecto): el build completo de la solución es prerequisito.
       - name: Build Solution (TreatWarningsAsErrors)
         run: dotnet build CommandCenter.slnx --no-restore --configuration Release
+
+      - name: Generate Stable HTTPS Certificate for E2E
+        shell: pwsh
+        run: ./scripts/create-https-cert.ps1 -CertOutputDir "Backend.API/bin/Release/net10.0/certs"
 
       # El runner Windows trae PostgreSQL preinstalado (servicio detenido). Sin service containers
       # y sin crear pos_test: el fixture crea su propia base aislada desde la cadena base.

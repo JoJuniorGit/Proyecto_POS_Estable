@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -68,6 +69,13 @@ public sealed class FullStackFixture : IDisposable
     public const string RotatedPassword = "E2eRotated!2026";
 
     public const decimal BootstrapExchangeRate = 50.00m;
+
+    /// <summary>
+    /// 8.212-WU6: the method-aware cash advance requires an explicit transfer commission in
+    /// SystemSettings. The isolated E2E database is created from scratch, so the harness seeds
+    /// the same 7% default used by the production settings before exercising the flow.
+    /// </summary>
+    public const decimal BootstrapTransferCommissionPct = 7m;
 
     private const string ClientSettingsRelativePath = "ProyectoPOS\\client_settings.json";
     private const int HealthTimeoutSeconds = 90;
@@ -188,6 +196,7 @@ public sealed class FullStackFixture : IDisposable
             StartBackend();
             await WaitForBackendHealthyAsync(cancellationToken);
             await VerifyIsolatedDatabaseInitializedAsync(cancellationToken);
+            await EnsureCashAdvanceCommissionAsync(cancellationToken);
             Bootstrap = await BootstrapStateAsync(cancellationToken);
             NeutralizeClientSettings();
             LaunchClient();
@@ -441,6 +450,24 @@ public sealed class FullStackFixture : IDisposable
                 "Posible override de ConnectionStrings__DefaultConnection en Backend.API\\.env (DotNetEnv pisa las " +
                 "variables del proceso en Development).");
         }
+    }
+
+    private async Task EnsureCashAdvanceCommissionAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(_derivedConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO "SystemSettings" ("Key", "Value", "LastUpdated")
+            VALUES ('CashAdvance.TransferCommissionPct', @value, NOW())
+            ON CONFLICT ("Key") DO UPDATE
+            SET "Value" = EXCLUDED."Value", "LastUpdated" = EXCLUDED."LastUpdated";
+            """;
+        command.Parameters.AddWithValue(
+            "value",
+            BootstrapTransferCommissionPct.ToString(CultureInfo.InvariantCulture));
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task<E2eBootstrapState> BootstrapStateAsync(CancellationToken cancellationToken)

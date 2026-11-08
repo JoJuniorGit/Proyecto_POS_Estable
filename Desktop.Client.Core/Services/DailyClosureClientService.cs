@@ -32,7 +32,12 @@ public class DailyClosureClientService : IDailyClosureClientService
         // MISMO request, por lo que la clave se mantiene estable dentro del intento logico.
         httpRequest.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString("N"));
         var response = await _httpClient.SendAsync(httpRequest);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException(
+                $"No se pudo guardar el cierre: {(int)response.StatusCode} {response.ReasonPhrase}. {errorBody}");
+        }
         return await response.Content.ReadFromJsonAsync<DailyClosureDto>() ?? new();
     }
 }
