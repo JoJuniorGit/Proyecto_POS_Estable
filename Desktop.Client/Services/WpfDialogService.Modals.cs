@@ -355,6 +355,51 @@ public partial class WpfDialogService
         return result;
     }
 
+    public async System.Threading.Tasks.Task<CashAdvanceRegisterDialogResult?> ShowCashAdvanceRegisterDialogWithMethodsAsync(
+        System.Collections.Generic.List<PaymentMethodDto> paymentMethods,
+        decimal? availableCashLocal,
+        System.Collections.Generic.IReadOnlyList<PhysicalMethodBalanceClientDto> physicalCashMethods)
+    {
+        if (Application.Current == null)
+            return null;
+
+        CashAdvanceRegisterDialogResult? result = null;
+
+        using var _ = TrackModal();
+
+        var vm = new ViewModels.CashAdvanceRegisterViewModel(
+            paymentMethods,
+            availableCashLocal,
+            _exchangeRateService?.CurrentRate ?? 1.0m,
+            _cashDrawerService,
+            physicalCashMethods);
+        await vm.RefreshCommissionAsync();
+
+        Action openDialog = () =>
+        {
+            var dialog = new CashAdvanceRegisterDialog(vm);
+            dialog.ShowDialog();
+            if (vm.DialogResult && vm.SelectedPaymentMethod != null)
+            {
+                result = new CashAdvanceRegisterDialogResult(
+                    true,
+                    vm.RequestedAmountBsS,
+                    vm.CommissionAmountBsS ?? 0m,
+                    vm.SelectedPaymentMethod.Id,
+                    vm.SelectedPaymentMethod.Name,
+                    vm.IsTransfer,
+                    vm.SelectedDispensedCashMethod?.PaymentMethodId,
+                    vm.SelectedDispensedCashMethod is null ? null : vm.RequestedAmountBsS,
+                    vm.SelectedPaymentMethod.Id);
+            }
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return result;
+    }
+
     public System.Threading.Tasks.Task<(bool confirmed, System.Collections.Generic.IEnumerable<UpdateSaleItemDto>? modifiedItems)> ShowEditSaleDialogAsync(
         SaleDto sale, decimal exchangeRate)
     {

@@ -82,6 +82,17 @@ public interface IDialogService
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();
     Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(System.Collections.Generic.List<PaymentMethodDto> paymentMethods, decimal? availableCashLocal);
+
+    /// <summary>
+    /// 8.212-WU4: method-aware advance dialog. The default implementation keeps the legacy result
+    /// unavailable for headless test doubles; WPF overrides it with the dispenser selector.
+    /// </summary>
+    Task<CashAdvanceRegisterDialogResult?> ShowCashAdvanceRegisterDialogWithMethodsAsync(
+        System.Collections.Generic.List<PaymentMethodDto> paymentMethods,
+        decimal? availableCashLocal,
+        System.Collections.Generic.IReadOnlyList<PhysicalMethodBalanceClientDto> physicalCashMethods) =>
+        Task.FromResult<CashAdvanceRegisterDialogResult?>(null);
+
     Task<(bool confirmed, System.Collections.Generic.IEnumerable<UpdateSaleItemDto>? modifiedItems)> ShowEditSaleDialogAsync(SaleDto sale, decimal exchangeRate);
     Task<PartialDeliveryDialogResult?> ShowPartialDeliveryDialogAsync(PendingPickupClientDto pickup) =>
         Task.FromResult<PartialDeliveryDialogResult?>(null);
@@ -153,6 +164,21 @@ public interface IDialogService
 public sealed record CashDrawerCloseResult(
     decimal ActualClosingBalanceLocal,
     decimal? ActualClosingBalanceUsd);
+
+/// <summary>
+/// 8.212-WU4: result of the method-aware cash advance dialog. Legacy fields stay populated so
+/// callers without a physical dispenser selector keep working.
+/// </summary>
+public sealed record CashAdvanceRegisterDialogResult(
+    bool Success,
+    decimal RequestedAmount,
+    decimal CommissionAmount,
+    int PaymentMethodId,
+    string PaymentMethodName,
+    bool IsTransfer,
+    int? DispensedCashPaymentMethodId,
+    decimal? DispensedAmount,
+    int? ReceivedPaymentMethodId);
 
 /// <summary>8.150 (T10): desenlace del dialogo de espera del cajero.</summary>
 public enum AuthorizationWaitOutcome

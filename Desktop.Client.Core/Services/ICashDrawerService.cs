@@ -44,10 +44,46 @@ public class AdvanceCommissionClientDto
     public decimal Percentage { get; set; }
 }
 
+/// <summary>
+/// 8.212-WU4: physical drawer balance for one payment method. <see cref="CurrencySymbol"/> is the
+/// profile presentation symbol; <see cref="CanDispense"/> is an operational hint only, the server
+/// remains the final authority for the balance.
+/// </summary>
+public sealed class PhysicalMethodBalanceClientDto
+{
+    public int PaymentMethodId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string CurrencyCode { get; set; } = string.Empty;
+    public string CurrencySymbol { get; set; } = string.Empty;
+    public decimal CurrentBalance { get; set; }
+    public bool IsActive { get; set; }
+    public bool CanDispense { get; set; }
+}
+
+/// <summary>8.212-WU4: per-method opening breakdown sent by the WPF open dialog.</summary>
+public sealed class OpenSessionMethodBalanceClientRequest
+{
+    public int PaymentMethodId { get; set; }
+    public decimal OpeningAmount { get; set; }
+}
+
 public interface ICashDrawerService
 {
     Task<CashDrawerSessionDto?> GetActiveSessionAsync();
     Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, decimal openingBalanceUsd = 0m);
+
+    /// <summary>
+    /// 8.212-WU4: optional per-method opening breakdown. The default implementation keeps the
+    /// legacy contract for test doubles and callers that do not expose physical methods.
+    /// </summary>
+    Task<CashDrawerSessionDto> OpenSessionAsync(
+        decimal openingBalanceLocal,
+        decimal currentExchangeRate,
+        decimal openingBalanceUsd,
+        System.Collections.Generic.IReadOnlyList<OpenSessionMethodBalanceClientRequest>? methodBalances,
+        System.Threading.CancellationToken cancellationToken = default) =>
+        OpenSessionAsync(openingBalanceLocal, currentExchangeRate, openingBalanceUsd);
+
     Task<CashDrawerSessionDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate);
 
     /// <summary>
@@ -60,6 +96,14 @@ public interface ICashDrawerService
         decimal? actualClosingBalanceUsd) => CloseSessionAsync(actualClosingBalanceLocal, currentExchangeRate);
 
     Task<decimal> GetCurrentBalanceLocalAsync(int sessionId);
+
+    /// <summary>8.212-WU4: live per-method physical balances for the active session.</summary>
+    Task<System.Collections.Generic.IReadOnlyList<PhysicalMethodBalanceClientDto>> GetPhysicalMethodBalancesAsync(
+        int sessionId,
+        System.Threading.CancellationToken cancellationToken = default) =>
+        Task.FromResult<System.Collections.Generic.IReadOnlyList<PhysicalMethodBalanceClientDto>>(
+            System.Array.Empty<PhysicalMethodBalanceClientDto>());
+
     Task<CashTransactionDto> AddTransactionAsync(int sessionId, decimal amountLocal, CashTransactionType type, CashTransactionSource source, string description, decimal exchangeRate);
 
     /// <summary>
@@ -112,6 +156,28 @@ public interface ICashDrawerService
         string paymentMethodName,
         bool isTransfer,
         decimal exchangeRate);
+
+    /// <summary>
+    /// 8.212-WU4: method-aware cash advance. The default implementation preserves the legacy
+    /// request for test doubles and callers without a physical dispenser selector.
+    /// </summary>
+    Task<CashAdvanceResultClientDto?> ProcessCashAdvanceAsync(
+        int sessionId,
+        decimal requestedAmountLocal,
+        int paymentMethodId,
+        string paymentMethodName,
+        bool isTransfer,
+        decimal exchangeRate,
+        int? dispensedCashPaymentMethodId,
+        decimal? dispensedAmount,
+        int? receivedPaymentMethodId) =>
+        ProcessCashAdvanceAsync(
+            sessionId,
+            requestedAmountLocal,
+            paymentMethodId,
+            paymentMethodName,
+            isTransfer,
+            exchangeRate);
 }
 
 public class CashTransactionDto
@@ -169,4 +235,7 @@ public class CashDrawerSessionDto
 
     // Needed by CashDrawerView's "Recent Transactions" grid.
     public System.Collections.Generic.List<CashTransactionDto> Transactions { get; set; } = new();
+
+    // 8.212-WU4: null for legacy sessions without WU1 method rows.
+    public System.Collections.Generic.List<PhysicalMethodBalanceClientDto>? PhysicalMethodBalances { get; set; }
 }

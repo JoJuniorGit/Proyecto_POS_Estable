@@ -21,6 +21,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>   <!-- Header -->
             <RowDefinition Height="Auto"/>   <!-- KPI Cards -->
+            <RowDefinition Height="Auto"/>   <!-- Physical Method Balances -->
             <RowDefinition Height="Auto"/>   <!-- Petty Cash Panel -->
             <RowDefinition Height="Auto"/>   <!-- Top Recent Incomes Panel -->
             <RowDefinition Height="*"/>      <!-- Transaction DataGrid -->
@@ -185,7 +186,54 @@
         <!-- ══════════════════════════════════════════
              ROW 2: PETTY CASH PANEL (T4 / 8.188)
              ══════════════════════════════════════════ -->
+        <!-- 8.212-WU4: per-physical-method drawer balances -->
         <Border Grid.Row="2" Margin="0,0,0,20"
+                Background="{DynamicResource MaterialDesignPaper}"
+                CornerRadius="10" Padding="16,14"
+                Effect="{DynamicResource MaterialDesignShadowDepth1}"
+                Visibility="{Binding HasPhysicalMethodBalances, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                    <materialDesign:PackIcon Kind="CashMultiple" Width="20" Height="20" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="EXISTENCIAS POR MÉTODO FÍSICO" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding PhysicalMethodBalances}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="220" Margin="0,0,12,12" Padding="14,12" CornerRadius="8"
+                                    Background="{DynamicResource MaterialDesignCardBackground}"
+                                    BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CanDispense}" Value="False">
+                                                <Setter Property="Opacity" Value="0.55"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="13" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding CurrencyCode}" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,2,0,8"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding CurrencySymbol}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Bottom"/>
+                                        <TextBlock Text="{Binding CurrentBalance, StringFormat='{}{0:N2}'}" FontSize="22" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="2,0,0,0"/>
+                                    </StackPanel>
+                                    <TextBlock Text="Existencia actual" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="3" Margin="0,0,0,20"
                 AutomationProperties.AutomationId="CashDrawer_PettyCashPanel"
                 Background="{DynamicResource MaterialDesignPaper}"
                 CornerRadius="10" Padding="16,14"
@@ -332,7 +380,7 @@
         <!-- ══════════════════════════════════════════
              ROW 3: TOP RECENT INCOMES PANEL
              ══════════════════════════════════════════ -->
-        <Border Grid.Row="3" Margin="0,0,0,20"
+        <Border Grid.Row="4" Margin="0,0,0,20"
                 Background="{DynamicResource MaterialDesignPaper}"
                 CornerRadius="10" Padding="16,14"
                 Effect="{DynamicResource MaterialDesignShadowDepth1}"
@@ -403,7 +451,7 @@
         <!-- ══════════════════════════════════════════
              ROW 4: TRANSACTION LIST
              ══════════════════════════════════════════ -->
-        <Grid Grid.Row="4">
+        <Grid Grid.Row="5">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
@@ -579,7 +627,7 @@
         </Grid>
 
         <!-- 8.201 (S1): apertura dual de caja (fondo Bs.S + USD). Overlay solo sin sesión. -->
-        <Border Grid.Row="0" Grid.RowSpan="5" Background="#66000000"
+        <Border Grid.Row="0" Grid.RowSpan="6" Background="#66000000"
                 Visibility="{Binding IsSessionInactive, Converter={StaticResource BooleanToVisibilityConverter}}"
                 AutomationProperties.AutomationId="CashDrawer_OpenOverlay">
             <Border Width="520" Padding="28" CornerRadius="12"
@@ -599,14 +647,38 @@
                                    Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                    TextWrapping="Wrap" FontSize="12" Opacity="0.7"/>
                     </StackPanel>
+                    <ItemsControl ItemsSource="{Binding OpeningPhysicalMethods}"
+                                  Visibility="{Binding HasOpeningPhysicalMethods, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                  Margin="0,0,0,10">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="150"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding CurrencySymbol}" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                                    </StackPanel>
+                                    <TextBox Grid.Column="1"
+                                             Text="{Binding AmountText, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                             materialDesign:HintAssist.Hint="Fondo *"
+                                             Margin="8,0,0,0"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                     <TextBox materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Fondo inicial {0} *'}"
                              Text="{Binding OpeningBalanceLocalText, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding ShowLegacyOpeningInputs, Converter={StaticResource BooleanToVisibilityConverter}}"
                              Style="{DynamicResource MaterialDesignOutlinedTextBox}"
                              AutomationProperties.AutomationId="CashDrawer_OpeningBalanceLocal"
                              Margin="0,0,0,14"/>
                     <TextBox materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Fondo inicial {0}'}"
                              Text="{Binding OpeningBalanceUsdText, UpdateSourceTrigger=PropertyChanged}"
-                             Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                             Visibility="{Binding ShowLegacyOpeningInputs, Converter={StaticResource BooleanToVisibilityConverter}}"
                              Style="{DynamicResource MaterialDesignOutlinedTextBox}"
                              AutomationProperties.AutomationId="CashDrawer_OpeningBalanceUsd"
                              Margin="0,0,0,10"/>

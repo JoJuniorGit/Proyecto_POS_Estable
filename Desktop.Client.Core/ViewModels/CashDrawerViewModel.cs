@@ -99,6 +99,14 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     public ObservableCollection<CashTransactionDto> RecentIncomes { get; } = new();
     public ObservableCollection<CashTransactionDto> OrderedTransactions { get; } = new();
 
+    // 8.212-WU4: live per-method physical balances and the editable opening breakdown.
+    public ObservableCollection<PhysicalMethodBalanceClientDto> PhysicalMethodBalances { get; } = new();
+    public ObservableCollection<OpeningPhysicalMethodViewModel> OpeningPhysicalMethods { get; } = new();
+
+    public bool HasPhysicalMethodBalances => PhysicalMethodBalances.Count > 0;
+    public bool HasOpeningPhysicalMethods => OpeningPhysicalMethods.Count > 0;
+    public bool ShowLegacyOpeningInputs => !HasOpeningPhysicalMethods;
+
     private const int HistoryWindowSize = 300;
     private const int FallbackTransferPaymentMethodId = 2;
     private const int FallbackPosPaymentMethodId = 3;
@@ -186,6 +194,12 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
 
         RecentIncomes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentIncomes));
         PettyCashExpenses.CollectionChanged += (_, _) => NotifyPettyCashChanged();
+        PhysicalMethodBalances.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPhysicalMethodBalances));
+        OpeningPhysicalMethods.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasOpeningPhysicalMethods));
+            OnPropertyChanged(nameof(ShowLegacyOpeningInputs));
+        };
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (r, m) =>
         {
@@ -264,6 +278,93 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     private static string FormatPrimaryAmount(decimal value)
         => $"{CurrencyDisplay.Number(value)} {CurrencyDisplay.PrimaryCurrencySymbol}";
 
+    private async Task LoadPhysicalMethodBalancesAsync()
+    {
+        PhysicalMethodBalances.Clear();
+
+        if (ActiveSession is null)
+        {
+            await LoadOpeningPhysicalMethodsAsync();
+            return;
+        }
+
+        try
+        {
+            var balances = ActiveSession.PhysicalMethodBalances;
+            if (balances is null)
+            {
+                balances = (await _cashDrawerService.GetPhysicalMethodBalancesAsync(ActiveSession.Id)).ToList();
+            }
+
+            foreach (var balance in balances)
+            {
+                PhysicalMethodBalances.Add(balance);
+            }
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[CashDrawer] No se pudieron leer los saldos por metodo fisico: {ex.Message}");
+        }
+    }
+
+    private async Task LoadOpeningPhysicalMethodsAsync()
+    {
+        OpeningPhysicalMethods.Clear();
+        if (_paymentService is null) return;
+
+        try
+        {
+            var allowedCurrencies = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
+            {
+                CurrencyDisplay.PrimaryCurrencyCode,
+                CurrencyDisplay.LocalCurrencyCode
+            };
+            if (!string.IsNullOrWhiteSpace(CurrencyDisplay.SecondaryCurrencyCode))
+            {
+                allowedCurrencies.Add(CurrencyDisplay.SecondaryCurrencyCode);
+            }
+
+            var methods = await _paymentService.GetActiveMethodsAsync();
+            foreach (var method in methods
+                .Where(method => method.IsCash && method.IsActive && !method.IsDeleted)
+                .Where(method => allowedCurrencies.Contains(ResolveOpeningCurrencyCode(method)))
+                .OrderBy(method => method.DisplayOrder)
+                .ThenBy(method => method.Id))
+            {
+                var currencyCode = ResolveOpeningCurrencyCode(method);
+                OpeningPhysicalMethods.Add(new OpeningPhysicalMethodViewModel
+                {
+                    PaymentMethodId = method.Id,
+                    Name = method.Name,
+                    CurrencyCode = currencyCode,
+                    CurrencySymbol = CurrencyDisplay.SymbolFor(currencyCode)
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[CashDrawer] No se pudieron preparar los metodos fisicos de apertura: {ex.Message}");
+        }
+    }
+
+    private static string ResolveOpeningCurrencyCode(PaymentMethodDto method)
+    {
+        var raw = method.Currency?.Trim().ToUpperInvariant();
+        if (raw is "USD" or "$" or "US$")
+        {
+            return "USD";
+        }
+
+        if (raw is "BS.S" or "BSS" or "VES" or "BS")
+        {
+            return CurrencyDisplay.LocalCurrencyCode;
+        }
+
+        return raw is { Length: 3 } && raw.All(character => character is >= 'A' and <= 'Z')
+            ? raw
+            : CurrencyDisplay.LocalCurrencyCode;
+    }
+
     public async Task LoadSessionAsync()
     {
         if (_userSession != null && !_userSession.IsLoggedIn) return;
@@ -271,6 +372,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         try
         {
             ActiveSession = await _cashDrawerService.GetActiveSessionAsync();
+            await LoadPhysicalMethodBalancesAsync();
 
             // Historial persistente: movimientos físicos de TODAS las sesiones (activa y cerradas),
             // para conservar la trazabilidad de las sesiones previas tras el cierre de caja.
@@ -378,20 +480,56 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     {
         if (IsSessionActive || IsOpeningSession) return;
 
-        if (!FlexibleDecimalParser.TryParse(OpeningBalanceLocalText, out decimal local) || local < 0m)
-        {
-            _dialogService?.ShowWarning(
-                "Apertura de Caja",
-                $"Ingrese un fondo inicial válido en {CurrencyDisplay.LocalCurrencyCode} (mayor o igual a cero).");
-            return;
-        }
+        decimal local = 0m;
+        decimal usd = 0m;
+        System.Collections.Generic.List<OpenSessionMethodBalanceClientRequest>? methodBalances = null;
 
-        if (!FlexibleDecimalParser.TryParse(OpeningBalanceUsdText, out decimal usd) || usd < 0m)
+        if (HasOpeningPhysicalMethods)
         {
-            _dialogService?.ShowWarning(
-                "Apertura de Caja",
-                $"Ingrese un fondo inicial válido en {CurrencyDisplay.PrimaryCurrencyCode} (mayor o igual a cero).");
-            return;
+            methodBalances = new System.Collections.Generic.List<OpenSessionMethodBalanceClientRequest>();
+            foreach (var entry in OpeningPhysicalMethods)
+            {
+                if (!FlexibleDecimalParser.TryParse(entry.AmountText, out decimal amount) || amount < 0m)
+                {
+                    _dialogService?.ShowWarning(
+                        "Apertura de Caja",
+                        $"Ingrese un fondo inicial válido para {entry.Name} ({entry.CurrencyCode}) (mayor o igual a cero).");
+                    return;
+                }
+
+                methodBalances.Add(new OpenSessionMethodBalanceClientRequest
+                {
+                    PaymentMethodId = entry.PaymentMethodId,
+                    OpeningAmount = amount
+                });
+
+                if (string.Equals(entry.CurrencyCode, CurrencyDisplay.LocalCurrencyCode, StringComparison.Ordinal))
+                {
+                    local += amount;
+                }
+                else if (string.Equals(entry.CurrencyCode, "USD", StringComparison.Ordinal))
+                {
+                    usd += amount;
+                }
+            }
+        }
+        else
+        {
+            if (!FlexibleDecimalParser.TryParse(OpeningBalanceLocalText, out local) || local < 0m)
+            {
+                _dialogService?.ShowWarning(
+                    "Apertura de Caja",
+                    $"Ingrese un fondo inicial válido en {CurrencyDisplay.LocalCurrencyCode} (mayor o igual a cero).");
+                return;
+            }
+
+            if (!FlexibleDecimalParser.TryParse(OpeningBalanceUsdText, out usd) || usd < 0m)
+            {
+                _dialogService?.ShowWarning(
+                    "Apertura de Caja",
+                    $"Ingrese un fondo inicial válido en {CurrencyDisplay.PrimaryCurrencyCode} (mayor o igual a cero).");
+                return;
+            }
         }
 
         decimal rate = _exchangeRateService.CurrentRate;
@@ -404,9 +542,22 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         IsOpeningSession = true;
         try
         {
-            await _cashDrawerService.OpenSessionAsync(local, rate, usd);
+            if (methodBalances is { Count: > 0 })
+            {
+                await _cashDrawerService.OpenSessionAsync(local, rate, usd, methodBalances);
+            }
+            else
+            {
+                await _cashDrawerService.OpenSessionAsync(local, rate, usd);
+            }
+
             OpeningBalanceLocalText = "0";
             OpeningBalanceUsdText = "0";
+            foreach (var entry in OpeningPhysicalMethods)
+            {
+                entry.AmountText = "0";
+            }
+
             await LoadSessionAsync();
         }
         catch (Exception ex)
@@ -536,26 +687,60 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             decimal? currentBalance = CanViewTheoreticalBalance
                 ? await _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id)
                 : null;
-            var dialogRes = await _dialogService.ShowCashAdvanceRegisterDialogAsync(paymentMethods, currentBalance);
+            CashAdvanceRegisterDialogResult? dialogRes = await _dialogService.ShowCashAdvanceRegisterDialogWithMethodsAsync(
+                paymentMethods,
+                currentBalance,
+                PhysicalMethodBalances.ToList());
 
-            if (dialogRes is { } res && res.success)
+            // Compatibility: headless test doubles and older dialog implementations only expose the
+            // legacy contract. Fall back to it when the method-aware dialog is unavailable.
+            if (dialogRes is null)
+            {
+                var legacy = await _dialogService.ShowCashAdvanceRegisterDialogAsync(paymentMethods, currentBalance);
+                if (legacy is { success: true } legacyResult)
+                {
+                    dialogRes = new CashAdvanceRegisterDialogResult(
+                        true,
+                        legacyResult.requestedAmount,
+                        legacyResult.commissionAmount,
+                        legacyResult.paymentMethodId,
+                        legacyResult.paymentMethodName,
+                        legacyResult.isTransfer,
+                        null,
+                        null,
+                        legacyResult.paymentMethodId);
+                }
+            }
+
+            if (dialogRes is { Success: true } res)
             {
                 var rate = _exchangeRateService.CurrentRate;
 
-                var advanceResult = await _cashDrawerService.ProcessCashAdvanceAsync(
-                    ActiveSession.Id,
-                    res.requestedAmount,
-                    res.paymentMethodId,
-                    res.paymentMethodName,
-                    res.isTransfer,
-                    rate);
+                var advanceResult = res.DispensedCashPaymentMethodId.HasValue
+                    ? await _cashDrawerService.ProcessCashAdvanceAsync(
+                        ActiveSession.Id,
+                        res.RequestedAmount,
+                        res.PaymentMethodId,
+                        res.PaymentMethodName,
+                        res.IsTransfer,
+                        rate,
+                        res.DispensedCashPaymentMethodId,
+                        res.DispensedAmount,
+                        res.ReceivedPaymentMethodId ?? res.PaymentMethodId)
+                    : await _cashDrawerService.ProcessCashAdvanceAsync(
+                        ActiveSession.Id,
+                        res.RequestedAmount,
+                        res.PaymentMethodId,
+                        res.PaymentMethodName,
+                        res.IsTransfer,
+                        rate);
 
                 string invoiceInfo = advanceResult?.InvoiceNumber.HasValue == true
                     ? $" (Factura N° {advanceResult.InvoiceNumber.Value})"
                     : string.Empty;
 
                 _dialogService.ShowSuccessDialog(
-                    $"Adelanto de {CurrencyDisplay.FormatSecondary(res.requestedAmount)} procesado con éxito{invoiceInfo}. Registrado en el Historial de Ventas.");
+                    $"Adelanto de {CurrencyDisplay.FormatSecondary(res.DispensedAmount ?? res.RequestedAmount)} procesado con éxito{invoiceInfo}. Registrado en el Historial de Ventas.");
                 await LoadSessionAsync();
             }
         }

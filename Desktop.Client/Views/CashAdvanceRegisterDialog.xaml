@@ -32,11 +32,8 @@
             
             <Border Background="{DynamicResource MaterialDesignCardBackground}" CornerRadius="6" Padding="12,10" Effect="{DynamicResource MaterialDesignShadowDepth1}">
                 <Grid>
-                    <TextBlock Text="EFECTIVO DISPONIBLE:" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center" HorizontalAlignment="Left"/>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
-                        <TextBlock Text="{Binding AvailableCashDisplay}" FontSize="18" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
-                        <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat=' {0}'}" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="2,0,0,2" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
-                    </StackPanel>
+                    <TextBlock Text="DISPONIBLE EN MÉTODO:" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                    <TextBlock Text="{Binding DispensedAvailableDisplay}" FontSize="18" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" HorizontalAlignment="Right"/>
                 </Grid>
             </Border>
         </StackPanel>
@@ -44,8 +41,29 @@
         <!-- Form & Calculations -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Focusable="False">
             <StackPanel Margin="0,5,5,5">
+                <!-- 8.212-WU4: physical dispenser selector -->
+                <TextBlock Text="1. Método Físico que Entrega el Efectivo" Foreground="{DynamicResource PrimaryHueMidBrush}" FontWeight="Medium" Margin="0,0,0,6"/>
+                <ComboBox ItemsSource="{Binding PhysicalCashMethods}"
+                          SelectedItem="{Binding SelectedDispensedCashMethod, UpdateSourceTrigger=PropertyChanged}"
+                          Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                          materialDesign:HintAssist.Hint="Seleccione la gaveta física *"
+                          Margin="0,0,0,6"
+                          Visibility="{Binding HasPhysicalCashMethods, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock>
+                                <Run Text="{Binding Name}"/>
+                                <Run Text=" ("/><Run Text="{Binding CurrencyCode}"/><Run Text=") — Disponible: "/>
+                                <Run Text="{Binding CurrencySymbol}"/><Run Text="{Binding CurrentBalance, StringFormat='{}{0:N2}'}"/>
+                            </TextBlock>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBlock Text="{Binding ProjectedBalanceDisplay}" FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}" TextWrapping="Wrap" Margin="0,0,0,14"
+                           Visibility="{Binding HasPhysicalCashMethods, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
                 <!-- Amount Requested -->
-                <TextBlock Text="1. Monto Entregado al Cliente (Efectivo)" Foreground="{DynamicResource PrimaryHueMidBrush}" FontWeight="Medium" Margin="0,0,0,6"/>
+                <TextBlock Text="2. Monto Entregado al Cliente (Efectivo)" Foreground="{DynamicResource PrimaryHueMidBrush}" FontWeight="Medium" Margin="0,0,0,6"/>
                 <TextBox x:Name="RequestedAmountInput" 
                          materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Monto en {0} *'}" 
                          materialDesign:HintAssist.HelperText="Ingrese la cantidad en efectivo a retirar de caja"
@@ -54,7 +72,7 @@
                          Margin="0,0,0,16"/>
 
                 <!-- Payment Method Selection -->
-                <TextBlock Text="2. Método de Cobro al Cliente (Solo Electrónico)" Foreground="{DynamicResource PrimaryHueMidBrush}" FontWeight="Medium" Margin="0,0,0,6"/>
+                <TextBlock Text="3. Método de Cobro al Cliente (Solo Electrónico)" Foreground="{DynamicResource PrimaryHueMidBrush}" FontWeight="Medium" Margin="0,0,0,6"/>
                 <ComboBox ItemsSource="{Binding ElectronicPaymentMethods}"
                           SelectedItem="{Binding SelectedPaymentMethod, UpdateSourceTrigger=PropertyChanged}"
                           DisplayMemberPath="Name"
@@ -69,7 +87,7 @@
                         
                         <Grid Margin="0,0,0,6">
                             <TextBlock Text="Salida de Efectivo de Caja:" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                            <TextBlock Text="{Binding RequestedAmountBsS, Converter={StaticResource LocalAmountConverter}, StringFormat='-{0}'}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#EF4444"/>
+                            <TextBlock Text="{Binding RequestedAmountDisplay, StringFormat='-{0}'}" HorizontalAlignment="Right" FontWeight="Bold" Foreground="#EF4444"/>
                         </Grid>
 
                         <Grid Margin="0,0,0,6">

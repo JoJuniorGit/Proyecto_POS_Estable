@@ -33,14 +33,27 @@ public class CashDrawerService : ICashDrawerService
         return await response.Content.ReadFromJsonAsync<CashDrawerSessionDto>();
     }
 
-    public async Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, decimal openingBalanceUsd = 0m)
+    public Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, decimal openingBalanceUsd = 0m)
+        => OpenSessionAsync(openingBalanceLocal, currentExchangeRate, openingBalanceUsd, methodBalances: null);
+
+    public async Task<CashDrawerSessionDto> OpenSessionAsync(
+        decimal openingBalanceLocal,
+        decimal currentExchangeRate,
+        decimal openingBalanceUsd,
+        IReadOnlyList<OpenSessionMethodBalanceClientRequest>? methodBalances,
+        CancellationToken cancellationToken = default)
     {
-        var request = new
+        var request = new System.Collections.Generic.Dictionary<string, object?>
         {
-            OpeningBalanceLocal = openingBalanceLocal,
-            OpeningBalanceUsd = openingBalanceUsd,
-            CurrentExchangeRate = currentExchangeRate
+            ["OpeningBalanceLocal"] = openingBalanceLocal,
+            ["OpeningBalanceUsd"] = openingBalanceUsd,
+            ["CurrentExchangeRate"] = currentExchangeRate
         };
+        if (methodBalances is { Count: > 0 })
+        {
+            request["MethodBalances"] = methodBalances;
+        }
+
         var signature = JsonSerializer.Serialize(request);
         var idempotencyKey = GetStableKey(isOpen: true, signature);
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "api/cashdrawer/open")
@@ -126,6 +139,18 @@ public class CashDrawerService : ICashDrawerService
         return await response.Content.ReadFromJsonAsync<decimal>();
     }
 
+    public async Task<IReadOnlyList<PhysicalMethodBalanceClientDto>> GetPhysicalMethodBalancesAsync(
+        int sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync(
+            $"api/cashdrawer/physical-method-balances?sessionId={sessionId}",
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<PhysicalMethodBalanceClientDto>>(
+            cancellationToken: cancellationToken) ?? new List<PhysicalMethodBalanceClientDto>();
+    }
+
     public async Task<System.Collections.Generic.List<CashTransactionDto>> GetHistoryAsync(int limit = 300)
     {
         var response = await _httpClient.GetAsync($"api/cashdrawer/history?limit={limit}");
@@ -172,25 +197,60 @@ public class CashDrawerService : ICashDrawerService
         return dto != null && dto.Percentage > 0 ? dto.Percentage : null;
     }
 
-    public async Task<CashAdvanceResultClientDto?> ProcessCashAdvanceAsync(
+    public Task<CashAdvanceResultClientDto?> ProcessCashAdvanceAsync(
         int sessionId,
         decimal requestedAmountLocal,
         int paymentMethodId,
         string paymentMethodName,
         bool isTransfer,
         decimal exchangeRate)
+        => ProcessCashAdvanceAsync(
+            sessionId,
+            requestedAmountLocal,
+            paymentMethodId,
+            paymentMethodName,
+            isTransfer,
+            exchangeRate,
+            dispensedCashPaymentMethodId: null,
+            dispensedAmount: null,
+            receivedPaymentMethodId: null);
+
+    public async Task<CashAdvanceResultClientDto?> ProcessCashAdvanceAsync(
+        int sessionId,
+        decimal requestedAmountLocal,
+        int paymentMethodId,
+        string paymentMethodName,
+        bool isTransfer,
+        decimal exchangeRate,
+        int? dispensedCashPaymentMethodId,
+        decimal? dispensedAmount,
+        int? receivedPaymentMethodId)
     {
         // 8.154 (SEC-03): la identidad del adelanto la resuelve el backend desde el token JWT;
         // el cliente solo envia los datos del movimiento.
-        var request = new
+        var request = new System.Collections.Generic.Dictionary<string, object?>
         {
-            SessionId = sessionId,
-            RequestedAmountLocal = requestedAmountLocal,
-            PaymentMethodId = paymentMethodId,
-            PaymentMethodName = paymentMethodName,
-            IsTransfer = isTransfer,
-            ExchangeRate = exchangeRate
+            ["SessionId"] = sessionId,
+            ["RequestedAmountLocal"] = requestedAmountLocal,
+            ["PaymentMethodId"] = paymentMethodId,
+            ["PaymentMethodName"] = paymentMethodName,
+            ["IsTransfer"] = isTransfer,
+            ["ExchangeRate"] = exchangeRate
         };
+        if (dispensedCashPaymentMethodId.HasValue)
+        {
+            request["DispensedCashPaymentMethodId"] = dispensedCashPaymentMethodId.Value;
+        }
+
+        if (dispensedAmount.HasValue)
+        {
+            request["DispensedAmount"] = dispensedAmount.Value;
+        }
+
+        if (receivedPaymentMethodId.HasValue)
+        {
+            request["ReceivedPaymentMethodId"] = receivedPaymentMethodId.Value;
+        }
 
         var response = await _httpClient.PostAsJsonAsync("api/cashdrawer/cash-advance", request);
         response.EnsureSuccessStatusCode();
