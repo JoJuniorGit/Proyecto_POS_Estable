@@ -84,6 +84,23 @@ public class XamlMonetaryBindingAuditTests
     }
 
     [Fact]
+    public void InventoryPriceCells_UseComplementaryDualAndSingleVisibility()
+    {
+        var views = ResolveViewsDirectory();
+        var source = File.ReadAllText(Path.Combine(views, "InventoryView.xaml"));
+
+        Assert.DoesNotContain(
+            "Path=IsSingle, Converter={StaticResource InverseBooleanToVisibilityConverter}",
+            source,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            2,
+            System.Text.RegularExpressions.Regex.Matches(
+                source,
+                "Path=IsSingle, Converter=\\{StaticResource BooleanToVisibilityConverter\\}").Count);
+    }
+
+    [Fact]
     public void RunTextBindings_AreAlwaysOneWay()
     {
         var views = ResolveViewsDirectory();

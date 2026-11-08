@@ -860,7 +860,7 @@
                                                    FontWeight="Bold" 
                                                    FontSize="13"
                                                    Typography.NumeralAlignment="Tabular"
-                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Text" Value="{Binding PriceUSD, Converter={StaticResource PrimaryAmountConverter}}"/>
@@ -914,7 +914,7 @@
                                                    FontWeight="SemiBold" 
                                                    FontSize="13"
                                                    Typography.NumeralAlignment="Tabular"
-                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Text" Value="{Binding EffectivePriceWholesaleUSD, Converter={StaticResource PrimaryAmountConverter}}"/>
