@@ -17475,3 +17475,26 @@ D1. `0ac2dc4` fix de CI, convergencia de metodos, execution strategy y
     harness E2E.
 D2. `bdf3cc8` espera del debounce de busqueda en el E2E de catalogo.
 ================================================================================
+
+ANEXO L - ACTUALIZACION DE GITHUB ACTIONS A NODE 24 - 2026-11-08
+================================================================================
+Pedido del mantenedor: eliminar las anotaciones de GitHub por acciones que
+todavia corrian sobre Node.js 20.
+
+A. CAMBIO
+A1. `actions/checkout` pasa de v4 a v7.0.1 (SHA
+    3d3c42e5aac5ba805825da76410c181273ba90b1), release que corre sobre
+    Node 24 y exige runner >= v2.327.1.
+A2. `actions/setup-node` pasa de v4 a v7.1.0 (SHA
+    949feb2413d6458794dcd2491c4babbbce0c15c1), tambien sobre Node 24.
+A3. Se mantienen los inputs actuales (`node-version: 24.x`, `cache: npm`,
+    `cache-dependency-path`), compatibles con la nueva version.
+
+B. EVIDENCIA
+B1. `git diff --check` sin errores.
+B2. No quedan referencias a los SHA viejos
+    `11d5960a...` / `49933ea5...` en `.github/workflows/ci.yml`.
+
+C. COMMIT
+C1. `f38bcf2` actualizacion de las dos acciones.
+================================================================================
