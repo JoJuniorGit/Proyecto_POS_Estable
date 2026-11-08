@@ -17602,3 +17602,39 @@ C1. `fba49fa` actualizacion de cache, setup-dotnet y upload-artifact.
 C2. `7d855e6` timeouts de SignalR de 30 s en el E2E de autorizaciones.
 C3. `e4a4c63` `Ping` de sincronizacion y helper `StartAndPingAsync`.
 ================================================================================
+
+ANEXO LIV - CONFIGURACION MODULAR POR APARTADOS - 2026-11-08
+================================================================================
+Pedido del mantenedor: reestructurar la Configuracion del Sistema en cinco
+apartados funcionales, limitandose a los controles existentes.
+
+A. CAMBIO
+A1. `SettingsView.xaml`: reemplazo del scroll unico por un `TabControl` lateral
+    con cinco apartados: Moneda, Tasas y Formato; Metodos de Pago y Caja;
+    Inventario y Reglas de Venta; Conectividad y Red Local; Sistema y
+    Mantenimiento. El encabezado, el boton Menu y el banner de solo lectura
+    permanecen fuera del contenido.
+A2. Reubicacion: Formato Numerico y Politicas de Precios y Redondeo en Moneda;
+    tabla de metodos de pago y comisiones de adelanto en Pagos y Caja;
+    "Permitir stock negativo" en Inventario; servidor y QR en Red; zona horaria
+    y reinicio en Sistema. El reinicio queda aislado con borde de advertencia
+    `#F59E0B`.
+A3. La tabla de metodos de pago agrega la columna de solo lectura `Moneda`
+    (`Currency`); renombrar y alternar tipo preservan la moneda confirmada por
+    el servidor.
+A4. `SettingsViewModel.SelectedSettingsSectionIndex` conserva el apartado; su
+    setter no dispara cargas. `EnsureLoadedAsync` sigue idempotente.
+A5. Alcance: no se agregaron regimen monetario, umbral de Caja Chica, defaults
+    de credito ni rotacion de inventario; no se modificaron contratos backend.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Tests targeted de Settings/PaymentMethods: 32/32.
+B3. Suite completa `CommandCenter.Tests` con PostgreSQL + E2E: 4203/4203
+    (6m04s).
+B4. WPF E2E `E2EAppHealthTests`: 2/2; el nuevo smoke navega los cinco apartados
+    y verifica el contenido de cada uno.
+
+C. COMMIT
+C1. `4358a48` configuracion modular por apartados y pruebas.
+================================================================================

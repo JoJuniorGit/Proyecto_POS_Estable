@@ -18,10 +18,10 @@ Branch: `V0.15` · Delivery: work-unit commits on the feature branch · Tests: `
 
 ## Tasks
 
-- [ ] **T1 — Shell de apartados y reubicación de tarjetas.** Reescribir `Desktop.Client/Views/SettingsView.xaml` con navegación de cinco apartados y mover las tarjetas existentes a su apartado. Incluir la columna `Moneda` en la tabla. Route: delegated. Commit pendiente.
-- [ ] **T2 — Estado del apartado y no recarga.** Agregar `SelectedSettingsSectionIndex` a `SettingsViewModel` y una prueba que confirme que cambiar de apartado no dispara `EnsureLoadedAsync` ni recargas. Route: delegated. Commit pendiente.
-- [ ] **T3 — Preservar moneda en reemplazos de métodos de pago.** Copiar `Currency` en los `PaymentMethodDto` reconstruidos por renombrar y alternar tipo, y cubrirlo con prueba. Route: delegated. Commit pendiente.
-- [ ] **T4 — Verificación y ANEXO.** Build 0/0, suite backend, WPF E2E smoke de Configuración, ANEXO en `docs/reporte.txt`. Route: inline. Commit pendiente.
+- [x] **T1 — Shell de apartados y reubicación de tarjetas.** `SettingsView.xaml` reescrito con `TabControl` lateral de cinco apartados; tarjetas reubicadas; columna `Moneda` agregada. Commit `4358a48`.
+- [x] **T2 — Estado del apartado y no recarga.** `SelectedSettingsSectionIndex` agregado; prueba de no recarga en `SettingsModularSectionsTests`. Commit `4358a48`.
+- [x] **T3 — Preservar moneda en reemplazos de métodos de pago.** `Currency` copiado en renombrar/alternar tipo; pruebas en `PaymentMethodManagementTests`. Commit `4358a48`.
+- [x] **T4 — Verificación y ANEXO.** Build 0/0; targeted 32/32; suite backend 4203/4203; WPF E2E health 2/2; ANEXO LIV. Commit `4358a48` + docs.
 
 ## Log
 
@@ -40,3 +40,11 @@ Limitate a lo exitente y procede
 - `PaymentMethodDto` ya expone `Currency`; la tabla no la muestra. Los reemplazos en `RenameMethodAsync` y `TogglePaymentTypeAsync` no copian `Currency`.
 - El régimen monetario existe en backend (`GET/PUT /api/settings/monetary-profile`) pero no está expuesto en WPF; el umbral de Caja Chica existe como setting sin endpoint/UI; los defaults de crédito y rotación no existen como configuración global. Quedan fuera por S11.
 - No hay un estilo de `TabControl` propio en las vistas WPF; se usará un `TabControl` con `TabStripPlacement="Left"` y plantilla de `TabItem` propia, respetando MaterialDesign.
+
+### L4 — Implementación y verificación
+
+- El worker delegado no pudo conectarse a la API; el parent completó la implementación inline con el mismo alcance.
+- `SettingsView.xaml`: `TabControl` lateral con `SelectedSettingsSectionIndex`; cinco apartados; tabla de pagos con columna `Moneda`; comisiones en Pagos y Caja; stock negativo en Inventario; red y sistema en sus apartados; reinicio con borde de advertencia `#F59E0B`.
+- `SettingsViewModel`: `SelectedSettingsSectionIndex` es estado de presentación puro; no dispara cargas. `EnsureLoadedAsync` sigue idempotente.
+- Evidencia observada: build `0 advertencias, 0 errores`; targeted `32/32`; suite backend `4203/4203`; WPF E2E health `2/2` (incluye navegación por los cinco apartados).
+- Alcance respetado: no se agregaron régimen monetario, umbral de Caja Chica, defaults de crédito ni rotación de inventario; no se tocaron contratos backend.
