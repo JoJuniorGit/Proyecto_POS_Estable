@@ -237,6 +237,12 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }));
 
+        // Conteo físico ciego (8.180): misma base HTTP y pipeline de sesión/seguridad.
+        ConfigureClient(builder.Services.AddHttpClient<IStockCountClientService, StockCountClientService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
         ConfigureClient(builder.Services.AddHttpClient("SalesApi", client =>
         {
             client.BaseAddress = baseAddressUri;
@@ -299,6 +305,7 @@ public partial class App : Application
         builder.Services.AddSingleton<PosViewModel>();
         builder.Services.AddSingleton<InventoryViewModel>();
         builder.Services.AddSingleton<StockKardexViewModel>();
+        builder.Services.AddSingleton<StockCountViewModel>();
         builder.Services.AddSingleton<SalesHistoryViewModel>();
         builder.Services.AddSingleton<PendingOrdersViewModel>(sp => new Desktop.Client.ViewModels.PendingOrdersViewModel(
             sp.GetRequiredService<Desktop.Client.Services.ISalesService>(),

@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Common;
+using Desktop.Client.Navigation;
 using Desktop.Client.Services;
 using System;
 using System.Threading;
@@ -41,6 +42,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly UsersManagementViewModel? _usersManagementViewModel;
     private readonly AuthorizationNotificationViewModel? _authorizationNotificationViewModel;
     private readonly StockKardexViewModel? _stockKardexViewModel;
+    private readonly StockCountViewModel? _stockCountViewModel;
     private readonly CreditReceivablesViewModel? _creditReceivablesViewModel;
 
     private readonly IHealthPollingService? _healthPollingService;
@@ -69,6 +71,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SupplierInvoiceViewModel? supplierInvoiceViewModel = null,
         AuthorizationNotificationViewModel? authorizationNotificationViewModel = null,
         StockKardexViewModel? stockKardexViewModel = null,
+        StockCountViewModel? stockCountViewModel = null,
         CreditReceivablesViewModel? creditReceivablesViewModel = null)
     {
         UserSession = userSession;
@@ -87,6 +90,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _usersManagementViewModel = usersManagementViewModel;
         _authorizationNotificationViewModel = authorizationNotificationViewModel;
         _stockKardexViewModel = stockKardexViewModel;
+        _stockCountViewModel = stockCountViewModel;
         _creditReceivablesViewModel = creditReceivablesViewModel;
         _healthPollingService = healthPollingService;
         _dialogService = dialogService;
@@ -107,11 +111,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         else
         {
-            _currentViewModel = _posViewModel ?? new object();
-            _title = "POINT OF SALE";
-            if (_posViewModel != null)
+            // Un Driver no puede abrir POS: su landing permitido es Retiros Pendientes.
+            var fallbackView = WpfNavigationPolicy.GetFallbackView(UserSession?.CurrentUser?.Role);
+            if (fallbackView == WpfNavigationPolicy.Pickups && _pendingPickupsViewModel != null)
             {
-                _posViewModel.InitializeForSessionAsync().SafeFireAndForget("MainViewModel.InitialPosInit");
+                _currentViewModel = _pendingPickupsViewModel;
+                _title = "RETIROS PENDIENTES";
+                _pendingPickupsViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.InitialDriverInit");
+            }
+            else
+            {
+                _currentViewModel = _posViewModel ?? new object();
+                _title = "POINT OF SALE";
+                if (_posViewModel != null)
+                {
+                    _posViewModel.InitializeForSessionAsync().SafeFireAndForget("MainViewModel.InitialPosInit");
+                }
             }
         }
 
@@ -169,6 +184,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _usersManagementViewModel,
             _authorizationNotificationViewModel,
             _stockKardexViewModel,
+            _stockCountViewModel,
             _creditReceivablesViewModel
         };
 
@@ -196,7 +212,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             catch { }
         }
-        NavigateToPos();
+        var fallbackView = WpfNavigationPolicy.GetFallbackView(UserSession?.CurrentUser?.Role);
+        if (fallbackView == WpfNavigationPolicy.Pickups)
+        {
+            NavigateToPendingPickups();
+        }
+        else
+        {
+            NavigateToPos();
+        }
     }
 
     private void OnSessionChanged()
@@ -285,10 +309,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UserSession?.Logout();
     }
 
+    /// <summary>Shared shell guard: hidden items are also rejected by the navigation commands.</summary>
+    private bool CanNavigate(string view)
+        => UserSession?.IsLoggedIn == true
+           && WpfNavigationPolicy.CanAccess(UserSession.CurrentUser?.Role, view);
+
     [RelayCommand]
     private void NavigateToPos()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _posViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Pos) || _posViewModel == null) return;
         Title = "POINT OF SALE";
         CurrentViewModel = _posViewModel;
         _posViewModel.InitializeForSessionAsync().SafeFireAndForget("MainViewModel.NavigateToPos");
@@ -297,7 +326,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToInventory()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _inventoryViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Catalog) || _inventoryViewModel == null) return;
         Title = "INVENTORY";
         CurrentViewModel = _inventoryViewModel;
         _inventoryViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToInventory");
@@ -306,16 +335,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToStockKardex()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || !UserSession.CanMutateCatalog || _stockKardexViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Kardex) || _stockKardexViewModel == null) return;
         Title = "KARDEX / AUDITORÍA DE INVENTARIO";
         CurrentViewModel = _stockKardexViewModel;
         _stockKardexViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToStockKardex");
     }
 
     [RelayCommand]
+    private void NavigateToStockCount()
+    {
+        if (!CanNavigate(WpfNavigationPolicy.StockCount) || _stockCountViewModel == null) return;
+        Title = "CONTEO FÍSICO";
+        CurrentViewModel = _stockCountViewModel;
+        _stockCountViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToStockCount");
+    }
+
+    [RelayCommand]
     private void NavigateToSalesHistory()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _salesHistoryViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.History) || _salesHistoryViewModel == null) return;
         Title = "SALES HISTORY";
         CurrentViewModel = _salesHistoryViewModel;
         _salesHistoryViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToSalesHistory");
@@ -324,7 +362,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToPendingOrders()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _pendingOrdersViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Pending) || _pendingOrdersViewModel == null) return;
         Title = "CUENTAS ABIERTAS (EN ESPERA)";
         CurrentViewModel = _pendingOrdersViewModel;
         _pendingOrdersViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToPendingOrders");
@@ -333,7 +371,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToPendingPickups()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _pendingPickupsViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Pickups) || _pendingPickupsViewModel == null) return;
         Title = "RETIROS PENDIENTES";
         CurrentViewModel = _pendingPickupsViewModel;
         _pendingPickupsViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToPendingPickups");
@@ -342,7 +380,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToCreditReceivables()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _creditReceivablesViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Credit) || _creditReceivablesViewModel == null) return;
         Title = "CUENTAS POR COBRAR (CxC)";
         CurrentViewModel = _creditReceivablesViewModel;
         _creditReceivablesViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToCreditReceivables");
@@ -351,7 +389,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToSettings()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _settingsViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Settings) || _settingsViewModel == null) return;
         Title = "SYSTEM SETTINGS";
         CurrentViewModel = _settingsViewModel;
         _settingsViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToSettings");
@@ -360,7 +398,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToExchangeRate()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _exchangeRateViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Exchange) || _exchangeRateViewModel == null) return;
         Title = "EXCHANGE RATE";
         CurrentViewModel = _exchangeRateViewModel;
         _exchangeRateViewModel.LoadAllCommand.ExecuteAsync(null).SafeFireAndForget("MainViewModel.NavigateToExchangeRate");
@@ -369,7 +407,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToCashDrawer()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _cashDrawerViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Register) || _cashDrawerViewModel == null) return;
         Title = "REGISTER / CASH DRAWER";
         CurrentViewModel = _cashDrawerViewModel;
         _cashDrawerViewModel.LoadSessionAsync().SafeFireAndForget("MainViewModel.NavigateToCashDrawer");
@@ -378,7 +416,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToImportProducts()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _importProductsViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Import) || _importProductsViewModel == null) return;
         Title = "IMPORT PRODUCTS";
         CurrentViewModel = _importProductsViewModel;
     }
@@ -386,7 +424,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToSupplierInvoices()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || !UserSession.CanMutateCatalog || _supplierInvoiceViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.SupplierInvoices) || _supplierInvoiceViewModel == null) return;
         Title = "FACTURAS DE PROVEEDORES";
         CurrentViewModel = _supplierInvoiceViewModel;
     }
@@ -394,7 +432,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToDailyClosure()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || _dailyClosureViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Closing) || _dailyClosureViewModel == null) return;
         Title = "DAILY CLOSING";
         CurrentViewModel = _dailyClosureViewModel;
         _dailyClosureViewModel.LoadExpectedTotalsAsync().SafeFireAndForget("MainViewModel.NavigateToDailyClosure");
@@ -403,7 +441,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void NavigateToUsersManagement()
     {
-        if (UserSession == null || !UserSession.IsLoggedIn || !UserSession.IsAdmin || _usersManagementViewModel == null) return;
+        if (!CanNavigate(WpfNavigationPolicy.Users) || _usersManagementViewModel == null) return;
         Title = "GESTIÓN DE USUARIOS";
         CurrentViewModel = _usersManagementViewModel;
         _usersManagementViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToUsersManagement");
