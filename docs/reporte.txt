@@ -17360,3 +17360,31 @@ C4. Suite no-PG: 4079/4132; 53 fallos ambientales PostgreSQL esperados.
 D. COMMIT
 D1. `9577138` fix del probe TLS y prueba de regresion.
 ================================================================================
+
+================================================================================
+ANEXO XLVII - FIX CRASH WPF AL INICIAR SESION - 2026-11-08
+================================================================================
+Pedido del mantenedor: al iniciar sesion el cliente WPF colapsa.
+
+A. CAUSA
+A1. `PosView.xaml` enlazaba `Run.Text` a
+    `MonetaryProfilePresenter.Instance.LocalCurrencyCode`. `Run.Text` usa
+    binding TwoWay por defecto y la propiedad del presenter es de solo lectura;
+    WPF lanzaba `InvalidOperationException` durante el layout posterior al login.
+A2. El mismo patron existia en otros Run de vistas y dialogos. No era un fallo
+    de autenticacion ni del backend.
+
+B. FIX
+B1. Todos los `Run.Text` con `Binding` usan ahora `Mode=OneWay`, que es el modo
+    correcto para texto de presentacion.
+B2. Se agrego una auditoria XAML que falla si aparece un `Run.Text` enlazado sin
+    `Mode=OneWay` y otra especifica para el presenter de solo lectura.
+
+C. EVIDENCIA
+C1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+C2. Auditoria XAML: 5/5.
+C3. Suite no-PG: 4081/4134; 53 fallos ambientales PostgreSQL esperados.
+
+D. COMMIT
+D1. `cfd0c5d` fix de bindings OneWay y auditoria de regresion.
+================================================================================
