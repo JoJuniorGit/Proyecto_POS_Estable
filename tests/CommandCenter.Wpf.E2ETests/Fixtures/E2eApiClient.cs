@@ -41,6 +41,18 @@ public sealed record E2ePendingPickup(int SaleId, decimal TotalUnits, decimal De
 /// <summary>Esperado del cierre por método de pago.</summary>
 public sealed record E2eExpectedTotal(int PaymentMethodId, string PaymentMethodName, decimal ExpectedAmountBsS);
 
+/// <summary>8.212-WU6: per-physical-method balance returned by the real active-session contract.</summary>
+public sealed record E2ePhysicalMethodBalance(
+    int PaymentMethodId,
+    string Name,
+    string CurrencyCode,
+    string CurrencySymbol,
+    decimal CurrentBalance,
+    bool IsActive,
+    bool CanDispense);
+
+public sealed record E2eCashDrawerSession(int Id, IReadOnlyList<E2ePhysicalMethodBalance> PhysicalMethodBalances);
+
 /// <summary>Cierre real: id y effectivo esperado del método Cash (solo gastos Active).</summary>
 public sealed record E2eDailyClosure(int ClosureId, decimal CashSystemAmount);
 
@@ -231,6 +243,140 @@ public sealed class E2eApiClient : IDisposable
 
         using var json = JsonDocument.Parse(body);
         return json.RootElement.GetProperty("id").GetInt32();
+    }
+
+    /// <summary>
+    /// 8.212-WU6: opens a session with the explicit per-method breakdown used by the WPF/web
+    /// opening flows. The response id is enough for the subsequent active-session read.
+    /// </summary>
+    public async Task<int> OpenCashDrawerSessionWithMethodsAsync(
+        string bearerToken,
+        decimal openingBalanceLocal,
+        decimal openingBalanceUsd,
+        decimal exchangeRate,
+        IReadOnlyDictionary<int, decimal> methodBalances,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "api/cashdrawer/open",
+            new
+            {
+                OpeningBalanceLocal = openingBalanceLocal,
+                OpeningBalanceUsd = openingBalanceUsd,
+                CurrentExchangeRate = exchangeRate,
+                MethodBalances = methodBalances
+                    .Select(pair => new { PaymentMethodId = pair.Key, OpeningAmount = pair.Value })
+                    .ToArray()
+            },
+            bearerToken,
+            cancellationToken,
+            idempotencyKey: Guid.NewGuid().ToString("N"));
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "open cash drawer session with methods", body);
+
+        using var json = JsonDocument.Parse(body);
+        return json.RootElement.GetProperty("id").GetInt32();
+    }
+
+    /// <summary>Active drawer session with its physical method balances.</summary>
+    public async Task<E2eCashDrawerSession?> GetActiveCashDrawerSessionAsync(
+        string bearerToken,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            "api/cashdrawer/active-session",
+            payload: null,
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "get active cash drawer session", body);
+        if (string.IsNullOrWhiteSpace(body) || body.Trim() == "null")
+        {
+            return null;
+        }
+
+        using var json = JsonDocument.Parse(body);
+        var root = json.RootElement;
+        return new E2eCashDrawerSession(
+            root.GetProperty("id").GetInt32(),
+            ParsePhysicalMethodBalances(root));
+    }
+
+    /// <summary>Live per-method balances for the given session.</summary>
+    public async Task<IReadOnlyList<E2ePhysicalMethodBalance>> GetPhysicalMethodBalancesAsync(
+        string bearerToken,
+        int sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"api/cashdrawer/physical-method-balances?sessionId={sessionId}",
+            payload: null,
+            bearerToken,
+            cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "get physical method balances", body);
+
+        using var json = JsonDocument.Parse(body);
+        return ParsePhysicalMethodBalances(json.RootElement);
+    }
+
+    /// <summary>Method-aware cash advance used by the WU6 full-stack scenario.</summary>
+    public async Task ProcessCashAdvanceWithMethodAsync(
+        string bearerToken,
+        int sessionId,
+        decimal dispensedAmount,
+        int dispensedMethodId,
+        int receivedMethodId,
+        decimal exchangeRate,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "api/cashdrawer/cash-advance",
+            new
+            {
+                SessionId = sessionId,
+                RequestedAmountLocal = dispensedAmount,
+                PaymentMethodId = receivedMethodId,
+                PaymentMethodName = "Pago Movil",
+                IsTransfer = true,
+                ExchangeRate = exchangeRate,
+                DispensedCashPaymentMethodId = dispensedMethodId,
+                DispensedAmount = dispensedAmount,
+                ReceivedPaymentMethodId = receivedMethodId
+            },
+            bearerToken,
+            cancellationToken,
+            idempotencyKey: Guid.NewGuid().ToString("N"));
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        EnsureSuccess(response, "method-aware cash advance", body);
+    }
+
+    private static IReadOnlyList<E2ePhysicalMethodBalance> ParsePhysicalMethodBalances(JsonElement root)
+    {
+        if (!root.TryGetProperty("physicalMethodBalances", out var rows)
+            || rows.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<E2ePhysicalMethodBalance>();
+        }
+
+        var balances = new List<E2ePhysicalMethodBalance>();
+        foreach (var row in rows.EnumerateArray())
+        {
+            balances.Add(new E2ePhysicalMethodBalance(
+                row.GetProperty("paymentMethodId").GetInt32(),
+                row.GetProperty("name").GetString() ?? string.Empty,
+                row.GetProperty("currencyCode").GetString() ?? string.Empty,
+                row.GetProperty("currencySymbol").GetString() ?? string.Empty,
+                row.GetProperty("currentBalance").GetDecimal(),
+                row.GetProperty("isActive").GetBoolean(),
+                row.GetProperty("canDispense").GetBoolean()));
+        }
+
+        return balances;
     }
 
     /// <summary>Gastos del turno (activos y anulados) según el servidor real.</summary>
