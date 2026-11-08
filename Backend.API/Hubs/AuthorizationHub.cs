@@ -80,6 +80,11 @@ public class AuthorizationHub : Hub
         return base.OnDisconnectedAsync(exception);
     }
 
+    // E2E: al responder, OnConnectedAsync (alta al grupo) ya terminó. Evita que un push
+    // enviado inmediatamente después de StartAsync se pierda por una carrera de suscripción.
+    [HubMethodName("Ping")]
+    public Task PingAsync() => Task.CompletedTask;
+
     [HubMethodName("RequestAuthorization")]
     public async Task<HubAuthorizationRequestResult> RequestAuthorizationAsync(RequestAuthorizationContract request)
     {

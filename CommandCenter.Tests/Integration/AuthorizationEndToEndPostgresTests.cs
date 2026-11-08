@@ -42,6 +42,14 @@ public class AuthorizationEndToEndPostgresTests
             CustomUnitPriceLocal,
             terminal);
 
+    private static async Task StartAndPingAsync(HubConnection hub)
+    {
+        await hub.StartAsync();
+        // El Ping se procesa después de OnConnectedAsync: garantiza que la conexión ya
+        // quedó suscrita a su grupo antes de crear o resolver una solicitud.
+        await hub.InvokeAsync("Ping");
+    }
+
     // ---------------------------------------------------------------- 1. happy full journey
 
     [Fact]
@@ -63,8 +71,8 @@ public class AuthorizationEndToEndPostgresTests
         var resolved = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         adminHub.On<JsonElement>("AuthorizationRequested", payload => requested.TrySetResult(payload));
         cashierHub.On<JsonElement>("AuthorizationResolved", payload => resolved.TrySetResult(payload));
-        await cashierHub.StartAsync();
-        await adminHub.StartAsync();
+        await StartAndPingAsync(cashierHub);
+        await StartAndPingAsync(adminHub);
 
         var create = await cashierHub.InvokeAsync<JsonElement>(
             "RequestAuthorization",
@@ -178,9 +186,9 @@ public class AuthorizationEndToEndPostgresTests
         await using var secondAdminHub = app.CreateHubConnection(app.IssueToken(secondAdmin));
         var requesterResolved = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         cashierHub.On<JsonElement>("AuthorizationResolved", payload => requesterResolved.TrySetResult(payload));
-        await cashierHub.StartAsync();
-        await firstAdminHub.StartAsync();
-        await secondAdminHub.StartAsync();
+        await StartAndPingAsync(cashierHub);
+        await StartAndPingAsync(firstAdminHub);
+        await StartAndPingAsync(secondAdminHub);
 
         var create = await cashierHub.InvokeAsync<JsonElement>(
             "RequestAuthorization",
@@ -326,7 +334,7 @@ public class AuthorizationEndToEndPostgresTests
         await using var cashierHub = app.CreateHubConnection(cashierToken);
         var expiredPush = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         cashierHub.On<JsonElement>("AuthorizationExpired", payload => expiredPush.TrySetResult(payload));
-        await cashierHub.StartAsync();
+        await StartAndPingAsync(cashierHub);
 
         // Backdate por el DbContext real: el barrido hosted (AuthorizationExpiryJob) encontrará
         // la solicitud vencida en el próximo tick.
@@ -512,8 +520,8 @@ public class AuthorizationEndToEndPostgresTests
         var elevatedClosure = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         cashierHub.On<JsonElement>("AuthorizationResolved", payload => requesterClosure.TrySetResult(payload));
         adminHub.On<JsonElement>("AuthorizationResolved", payload => elevatedClosure.TrySetResult(payload));
-        await cashierHub.StartAsync();
-        await adminHub.StartAsync();
+        await StartAndPingAsync(cashierHub);
+        await StartAndPingAsync(adminHub);
 
         using (var cancelResponse = await AuthorizationEndToEndApi.CancelAsync(cashierHttp, requestId))
         {
