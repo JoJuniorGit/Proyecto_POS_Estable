@@ -46,6 +46,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _allowNegativeStock;
 
+    // S1/S9: apartado activo de Configuración. Es estado de presentación puro: el setter no
+    // dispara cargas ni persiste nada; EnsureLoadedAsync sigue siendo la única fuente de carga.
+    [ObservableProperty]
+    private int _selectedSettingsSectionIndex;
+
     public ObservableCollection<PaymentMethodDto> PaymentMethods { get; } = new();
     public ObservableCollection<TimeZoneInfo> AvailableTimeZones { get; } = new();
 
@@ -214,6 +219,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                     IsActive = updated.IsActive,
                     RequiresReference = updated.RequiresReference,
                     IsCash = updated.IsCash,
+                    Currency = updated.Currency,
                     DisplayOrder = updated.DisplayOrder,
                     IsDeleted = updated.IsDeleted
                 };
@@ -302,7 +308,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                     IsActive = updated.IsActive,
                     RequiresReference = updated.RequiresReference,
                     IsCash = updated.IsCash,
-                    DisplayOrder = updated.DisplayOrder
+                    Currency = updated.Currency,
+                    DisplayOrder = updated.DisplayOrder,
+                    IsDeleted = updated.IsDeleted
                 };
             }
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());

@@ -93,6 +93,39 @@ public class E2EAppHealthTests : IClassFixture<WpfAppFixture>
         Assert.True(failures.Count == 0, $"Fallos tras navegar las vistas: {string.Join(" | ", failures)}");
     }
 
+    [Fact]
+    public void SettingsSections_WhenSelected_ShowOnlyTheirContent()
+    {
+        var window = _fixture.Launch();
+        Assert.NotNull(window);
+
+        TestHelper.EnsureLoggedIn(window);
+        Assert.True(TestHelper.NavigateTo(window, "Nav_BtnSettings"));
+
+        System.Threading.Thread.Sleep(1000);
+
+        AssertSettingsSection(window, "Settings_Section_Currency", "Settings_UsdRoundingCombo");
+        AssertSettingsSection(window, "Settings_Section_Payments", "Settings_PaymentMethodsGrid");
+        AssertSettingsSection(window, "Settings_Section_Inventory", "Settings_NegativeStockToggle");
+        AssertSettingsSection(window, "Settings_Section_Network", "Settings_ChangeServerButton");
+        AssertSettingsSection(window, "Settings_Section_System", "Settings_RestartButton");
+    }
+
+    private static void AssertSettingsSection(Window window, string tabAutomationId, string contentAutomationId)
+    {
+        var tab = Retry.WhileNull(
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId(tabAutomationId))),
+            TimeSpan.FromSeconds(5)).Result;
+        Assert.NotNull(tab);
+        tab.AsTabItem().Select();
+        System.Threading.Thread.Sleep(300);
+
+        var content = Retry.WhileNull(
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId(contentAutomationId))),
+            TimeSpan.FromSeconds(5)).Result;
+        Assert.NotNull(content);
+    }
+
     private string[] FindDialogs(string automationIdPrefix)
     {
         if (_fixture.App == null)
