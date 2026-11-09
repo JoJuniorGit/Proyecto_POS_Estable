@@ -17731,3 +17731,30 @@ B4. Bundle `Backend.API/wwwroot` regenerado y commiteado.
 C. COMMIT
 C1. `9e3e5ab` resumen de caja por moneda en Web y pruebas.
 ================================================================================
+
+ANEXO LVIII - VISUALIZACION DE COMISION DE ADELANTO - 2026-11-08
+================================================================================
+Pedido del mantenedor: el campo donde se ingresa el margen de comision por
+avance de efectivo no muestra correctamente el valor ingresado.
+
+A. CAMBIO
+A1. `SettingsView.xaml`: los TextBox de comision usan `MinHeight="48"` y
+    `VerticalContentAlignment="Center"`. El `Height="38"` recortaba el texto y
+    el hint flotante del estilo `MaterialDesignOutlinedTextBox`.
+A2. `SettingsViewModel.CashAdvance.cs`: `FormatCommission` respeta el formato
+    numerico activo (Venezolano/Internacional) y elimina ceros decimales
+    sobrantes. Se usa al cargar y al guardar, de modo que el campo muestra el
+    valor en el mismo formato que ve el usuario.
+A3. La validacion sigue aceptando coma o punto mediante `FlexibleDecimalParser`;
+    el backend y el contrato de comisiones no cambian.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. `SettingsCashAdvanceCommissionViewModelTests`: 6/6 (incluye formato decimal
+    venezolano e internacional).
+B3. Suite completa `CommandCenter.Tests` con PostgreSQL + E2E: 4208/4208
+    (5m40s).
+
+C. COMMIT
+C1. `507d34a` visualizacion y formato del campo de comision de adelanto.
+================================================================================
