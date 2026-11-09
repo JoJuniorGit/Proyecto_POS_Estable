@@ -329,7 +329,8 @@
                                              IsEnabled="{Binding UserSession.CanMutateSettings}"
                                              materialDesign:HintAssist.Hint="Ej: 7"
                                              Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                                             Height="38"
+                                             MinHeight="48"
+                                             VerticalContentAlignment="Center"
                                              FontSize="13" />
                                 </StackPanel>
 
@@ -340,7 +341,8 @@
                                              IsEnabled="{Binding UserSession.CanMutateSettings}"
                                              materialDesign:HintAssist.Hint="Ej: 5"
                                              Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                                             Height="38"
+                                             MinHeight="48"
+                                             VerticalContentAlignment="Center"
                                              FontSize="13" />
                                 </StackPanel>
 

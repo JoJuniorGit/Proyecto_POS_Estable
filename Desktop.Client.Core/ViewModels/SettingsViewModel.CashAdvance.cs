@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -36,12 +35,20 @@ public partial class SettingsViewModel
     {
         var settings = await _settingsService.GetCashAdvanceCommissionAsync()
             ?? new CashAdvanceCommissionSettingsDto();
-        TransferCommissionText = settings.TransferCommissionPct.ToString("0.####", CultureInfo.InvariantCulture);
-        CashCommissionText = settings.CashCommissionPct.ToString("0.####", CultureInfo.InvariantCulture);
+        TransferCommissionText = FormatCommission(settings.TransferCommissionPct);
+        CashCommissionText = FormatCommission(settings.CashCommissionPct);
 
         CashAdvanceCommissionStatus = settings.TransferCommissionPct <= 0m || settings.CashCommissionPct <= 0m
             ? "Comisiones no configuradas. Guarde ambos valores para habilitar el adelanto de efectivo."
             : string.Empty;
+    }
+
+    private static string FormatCommission(decimal value)
+    {
+        // Respeta el formato numérico activo (Venezolano/Internacional) y quita los ceros
+        // decimales sobrantes para que el campo muestre exactamente lo que el usuario ve.
+        var formatted = CurrencyDisplay.Number(value, 4);
+        return formatted.TrimEnd('0').TrimEnd('.', ',');
     }
 
     [RelayCommand]
@@ -78,8 +85,8 @@ public partial class SettingsViewModel
                 CashCommissionPct = cash
             });
 
-            TransferCommissionText = transfer.ToString("0.####", CultureInfo.InvariantCulture);
-            CashCommissionText = cash.ToString("0.####", CultureInfo.InvariantCulture);
+            TransferCommissionText = FormatCommission(transfer);
+            CashCommissionText = FormatCommission(cash);
             CashAdvanceCommissionStatus = "Comisiones guardadas correctamente.";
         }
         catch (Exception ex)

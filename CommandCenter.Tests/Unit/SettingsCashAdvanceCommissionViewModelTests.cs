@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using Core.DTOs;
 using Core.Entities;
+using Core.Helpers;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
@@ -50,6 +51,39 @@ public sealed class SettingsCashAdvanceCommissionViewModelTests
         Assert.Equal("5", vm.CashCommissionText);
         Assert.True(vm.CanEditCashAdvanceCommission);
         Assert.False(vm.HasCashAdvanceCommissionStatus);
+    }
+
+    [Fact]
+    public async Task Load_DecimalCommission_UsesTheActiveNumericFormat()
+    {
+        var previous = CurrencyDisplay.Current;
+        try
+        {
+            _settingsService
+                .Setup(service => service.GetCashAdvanceCommissionAsync())
+                .ReturnsAsync(new CashAdvanceCommissionSettingsDto
+                {
+                    TransferCommissionPct = 7.5m,
+                    CashCommissionPct = 5.25m
+                });
+            using var vm = CreateViewModel(UserRole.Admin);
+
+            CurrencyDisplay.Current = MoneyDisplayFormat.Venezuelan;
+            await vm.LoadCashAdvanceCommissionAsync();
+
+            Assert.Equal("7,5", vm.TransferCommissionText);
+            Assert.Equal("5,25", vm.CashCommissionText);
+
+            CurrencyDisplay.Current = MoneyDisplayFormat.International;
+            await vm.LoadCashAdvanceCommissionAsync();
+
+            Assert.Equal("7.5", vm.TransferCommissionText);
+            Assert.Equal("5.25", vm.CashCommissionText);
+        }
+        finally
+        {
+            CurrencyDisplay.Current = previous;
+        }
     }
 
     [Fact]
