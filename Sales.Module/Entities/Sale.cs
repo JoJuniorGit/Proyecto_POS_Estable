@@ -15,6 +15,18 @@ public enum SaleStatus
     OnHold
 }
 
+/// <summary>
+/// Paso 14 (S2): naturaleza persistida de la venta. El capital dispensado en un avance de
+/// efectivo es movimiento de tesoreria, no ingreso por venta de mercancia; el discriminador
+/// permite excluirlo de Ventas Netas y CMV sin reinterpretar los montos historicos.
+/// </summary>
+public enum SaleType
+{
+    Merchandise = 0,
+    CashAdvance = 1,
+    Service = 2
+}
+
 public class Sale
 {
     public int Id { get; set; }
@@ -44,6 +56,21 @@ public class Sale
 
     [Required]
     public SaleStatus Status { get; set; } = SaleStatus.Pending;
+
+    // Paso 14 (S2): discriminador de la naturaleza de la venta (mercancia, avance, servicio).
+    public SaleType SaleType { get; set; } = SaleType.Merchandise;
+
+    // Paso 14 (S2): comision de servicio del avance congelada al completar la venta. Importes
+    // inmutables: 4dp para USD y 2dp para la moneda local, alineados con el resto del sistema.
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal CommissionAmountUSD { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal CommissionAmountLocal { get; set; }
+
+    // Paso 14 (S3): fecha real de anulacion (UTC) para reversas de comision del periodo y
+    // consistencia historica de las ventas ya anuladas.
+    public DateTime? CancelledAtUtc { get; set; }
 
     [Column(TypeName = "decimal(18,4)")]
     public decimal Subtotal { get; set; }

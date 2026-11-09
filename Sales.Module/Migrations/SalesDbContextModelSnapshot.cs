@@ -713,6 +713,9 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("CashTransactionId");
 
+                    b.HasIndex("CreatedAtUtc")
+                        .HasDatabaseName("IX_CreditReturns_CreatedAtUtc");
+
                     b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("CustomerId");
@@ -881,6 +884,67 @@ namespace Sales.Module.Migrations
                             Name = "Card",
                             RequiresReference = true
                         });
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.PaymentMethodFeeRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<DateTime>("EffectiveFromUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EffectiveToUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("FeeType")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("FixedAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("PaymentMethodId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("Percentage")
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentMethodId", "EffectiveFromUtc")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PaymentMethodFeeRules_PaymentMethodId_EffectiveFromUtc");
+
+                    b.ToTable("PaymentMethodFeeRules");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.PettyCashExpense", b =>
@@ -1075,12 +1139,43 @@ namespace Sales.Module.Migrations
                     b.Property<int>("CustomerId")
                         .HasColumnType("integer");
 
+                    b.Property<decimal>("FeeAmountLocal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("FeeAmountUsd")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<bool>("FeeConfigured")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("FeeCurrencyCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<decimal?>("FeeFixedAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("FeePercentage")
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("FeeRate")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime?>("FeeRuleEffectiveFromUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("FeeType")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("FxDifferenceBsS")
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("PaymentMethodFeeRuleId")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("PaymentMethodId")
                         .HasColumnType("integer");
@@ -1107,6 +1202,9 @@ namespace Sales.Module.Migrations
                         .IsUnique()
                         .HasDatabaseName("IX_ReceivablePayments_IdempotencyKey")
                         .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
+                    b.HasIndex("PaymentMethodFeeRuleId")
+                        .HasDatabaseName("IX_ReceivablePayments_PaymentMethodFeeRuleId");
 
                     b.HasIndex("PaymentMethodId")
                         .HasDatabaseName("IX_ReceivablePayments_PaymentMethodId");
@@ -1138,6 +1236,9 @@ namespace Sales.Module.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int?>("CashierId")
                         .HasColumnType("integer");
 
@@ -1153,6 +1254,12 @@ namespace Sales.Module.Migrations
                     b.Property<string>("ClaimedByUserName")
                         .HasMaxLength(150)
                         .HasColumnType("character varying(150)");
+
+                    b.Property<decimal>("CommissionAmountLocal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("CommissionAmountUSD")
+                        .HasColumnType("decimal(18,4)");
 
                     b.Property<string>("CustomerCedula")
                         .HasMaxLength(20)
@@ -1205,6 +1312,9 @@ namespace Sales.Module.Migrations
                     b.Property<decimal>("RoundingAdjustment")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int>("SaleType")
+                        .HasColumnType("integer");
+
                     b.Property<decimal?>("SecondaryAmount")
                         .HasColumnType("decimal(18,4)");
 
@@ -1237,6 +1347,9 @@ namespace Sales.Module.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CancelledAtUtc")
+                        .HasDatabaseName("IX_Sales_CancelledAtUtc");
+
                     b.HasIndex("CashierId");
 
                     b.HasIndex("CustomerId");
@@ -1250,6 +1363,9 @@ namespace Sales.Module.Migrations
                     b.HasIndex("Status", "Date");
 
                     b.HasIndex("Status", "DeliveryStatus");
+
+                    b.HasIndex("SaleType", "Status", "Date")
+                        .HasDatabaseName("IX_Sales_SaleType_Status_Date");
 
                     b.ToTable("Sales");
                 });
@@ -1362,6 +1478,9 @@ namespace Sales.Module.Migrations
                     b.Property<decimal>("SubtotalBsS")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<decimal?>("UnitCostLocal")
+                        .HasColumnType("decimal(18,4)");
+
                     b.Property<decimal?>("UnitCostUSD")
                         .HasColumnType("decimal(18,2)");
 
@@ -1412,8 +1531,39 @@ namespace Sales.Module.Migrations
                     b.Property<decimal>("ExchangeRate")
                         .HasColumnType("decimal(18,4)");
 
+                    b.Property<decimal>("FeeAmountLocal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("FeeAmountUsd")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<bool>("FeeConfigured")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("FeeCurrencyCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<decimal?>("FeeFixedAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("FeePercentage")
+                        .HasColumnType("decimal(9,4)");
+
+                    b.Property<decimal>("FeeRate")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime?>("FeeRuleEffectiveFromUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("FeeType")
+                        .HasColumnType("integer");
+
                     b.Property<decimal?>("OriginalAmount")
                         .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("PaymentMethodFeeRuleId")
+                        .HasColumnType("integer");
 
                     b.Property<int>("PaymentMethodId")
                         .HasColumnType("integer");
@@ -1429,6 +1579,9 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("IX_SalePayments_CreatedAt");
+
+                    b.HasIndex("PaymentMethodFeeRuleId")
+                        .HasDatabaseName("IX_SalePayments_PaymentMethodFeeRuleId");
 
                     b.HasIndex("PaymentMethodId");
 
@@ -1598,6 +1751,18 @@ namespace Sales.Module.Migrations
                     b.Navigation("Session");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.PaymentMethodFeeRule", b =>
+                {
+                    b.HasOne("Sales.Module.Entities.PaymentMethod", "PaymentMethod")
+                        .WithMany()
+                        .HasForeignKey("PaymentMethodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_PaymentMethodFeeRules_PaymentMethods");
+
+                    b.Navigation("PaymentMethod");
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.PettyCashExpense", b =>
                 {
                     b.HasOne("Core.Entities.AuthorizationRequest", null)
@@ -1667,6 +1832,12 @@ namespace Sales.Module.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Sales.Module.Entities.PaymentMethodFeeRule", "PaymentMethodFeeRule")
+                        .WithMany()
+                        .HasForeignKey("PaymentMethodFeeRuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_ReceivablePayments_PaymentMethodFeeRules");
+
                     b.HasOne("Sales.Module.Entities.PaymentMethod", "PaymentMethod")
                         .WithMany()
                         .HasForeignKey("PaymentMethodId")
@@ -1682,6 +1853,8 @@ namespace Sales.Module.Migrations
                     b.Navigation("Customer");
 
                     b.Navigation("PaymentMethod");
+
+                    b.Navigation("PaymentMethodFeeRule");
 
                     b.Navigation("ReceivedByUser");
                 });
@@ -1745,6 +1918,12 @@ namespace Sales.Module.Migrations
 
             modelBuilder.Entity("Sales.Module.Entities.SalePayment", b =>
                 {
+                    b.HasOne("Sales.Module.Entities.PaymentMethodFeeRule", "PaymentMethodFeeRule")
+                        .WithMany()
+                        .HasForeignKey("PaymentMethodFeeRuleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_SalePayments_PaymentMethodFeeRules");
+
                     b.HasOne("Sales.Module.Entities.PaymentMethod", "PaymentMethod")
                         .WithMany()
                         .HasForeignKey("PaymentMethodId")
@@ -1758,6 +1937,8 @@ namespace Sales.Module.Migrations
                         .IsRequired();
 
                     b.Navigation("PaymentMethod");
+
+                    b.Navigation("PaymentMethodFeeRule");
 
                     b.Navigation("Sale");
                 });

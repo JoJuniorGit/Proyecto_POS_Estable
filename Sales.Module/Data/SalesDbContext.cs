@@ -19,6 +19,7 @@ public class SalesDbContext : DbContext
     public DbSet<SaleDelivery> SaleDeliveries { get; set; } = null!;
     public DbSet<SaleDeliveryItem> SaleDeliveryItems { get; set; } = null!;
     public DbSet<PaymentMethod> PaymentMethods { get; set; } = null!;
+    public DbSet<PaymentMethodFeeRule> PaymentMethodFeeRules { get; set; } = null!;
     public DbSet<SalePayment> SalePayments { get; set; } = null!;
     public DbSet<CashDrawerSession> CashDrawerSessions { get; set; } = null!;
     public DbSet<CashDrawerSessionMethodBalance> CashDrawerSessionMethodBalances { get; set; } = null!;
@@ -210,6 +211,16 @@ modelBuilder.Entity<User>().HasData(
             .Property(s => s.AppliedRateSource)
             .HasMaxLength(16);
 
+        // Paso 14 (S2): snapshots de la comision de servicio congelados al completar la venta.
+        // Mismos tipos que el resto del sistema: USD 4dp y moneda local 2dp.
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.CommissionAmountUSD)
+            .HasColumnType("decimal(18,4)");
+
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.CommissionAmountLocal)
+            .HasColumnType("decimal(18,2)");
+
         modelBuilder.Entity<SaleItem>().Property(i => i.Quantity).HasColumnType("numeric(18,3)");
         modelBuilder.Entity<SaleItem>().Property(i => i.DeliveredQuantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPrice).HasColumnType("decimal(18,4)");
@@ -223,6 +234,16 @@ modelBuilder.Entity<User>().HasData(
 
         modelBuilder.Entity<Sale>()
             .HasIndex(s => new { s.Status, s.DeliveryStatus });
+
+        // Paso 14 (S3): ventas anuladas por periodo (reversas de comision del periodo).
+        modelBuilder.Entity<Sale>()
+            .HasIndex(s => s.CancelledAtUtc)
+            .HasDatabaseName("IX_Sales_CancelledAtUtc");
+
+        // Paso 14 (S2): agregaciones del Estado de Resultados por tipo de venta y periodo.
+        modelBuilder.Entity<Sale>()
+            .HasIndex(s => new { s.SaleType, s.Status, s.Date })
+            .HasDatabaseName("IX_Sales_SaleType_Status_Date");
 
         modelBuilder.Entity<Sale>()
             .HasIndex(s => s.CustomerId);
@@ -260,6 +281,8 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPriceBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<SaleItem>().Property(i => i.SubtotalBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitCostUSD).HasColumnType("decimal(18,2)");
+        // Paso 14 (S4): snapshot de costo en la moneda del regimen de la venta (4dp).
+        modelBuilder.Entity<SaleItem>().Property(i => i.UnitCostLocal).HasColumnType("decimal(18,4)");
         // 8.185-T2 (S5): regla de efectivo por línea persistida por NOMBRE (estilo 8.184 Product);
         // nullable = línea previa a 8.185 sin política registrada (techo canónico 8.104).
         modelBuilder.Entity<SaleItem>().Property(i => i.RoundingRuleCashBs).HasConversion<string>().HasMaxLength(32);
@@ -277,6 +300,26 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<SalePayment>()
             .Property(p => p.OriginalAmount)
             .HasColumnType("decimal(18,4)");
+
+        // Paso 14 (S7): snapshot inmutable de la regla de comision resuelta al cobrar. Sin
+        // cascade: las reglas historicas no se borran si el metodo se desactiva.
+        modelBuilder.Entity<SalePayment>()
+            .HasOne(payment => payment.PaymentMethodFeeRule)
+            .WithMany()
+            .HasForeignKey(payment => payment.PaymentMethodFeeRuleId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("FK_SalePayments_PaymentMethodFeeRules");
+
+        modelBuilder.Entity<SalePayment>()
+            .HasIndex(payment => payment.PaymentMethodFeeRuleId)
+            .HasDatabaseName("IX_SalePayments_PaymentMethodFeeRuleId");
+
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeePercentage).HasColumnType("decimal(9,4)");
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeeFixedAmount).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeeCurrencyCode).HasMaxLength(10);
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeeAmountUsd).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeeAmountLocal).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeeRate).HasColumnType("decimal(18,4)");
 
         // Cash Drawer Configurations
         modelBuilder.Entity<CashDrawerSession>()
@@ -412,6 +455,26 @@ modelBuilder.Entity<User>().HasData(
             .Property(p => p.Currency)
             .HasMaxLength(10);
 
+        // Paso 14 (S7): reglas de comision de medios de pago con vigencia. La comision es un
+        // costo del negocio: cada cobro snapshotan la regla resuelta y no la re-leen.
+        modelBuilder.Entity<PaymentMethodFeeRule>(entity =>
+        {
+            entity.HasOne(rule => rule.PaymentMethod)
+                .WithMany()
+                .HasForeignKey(rule => rule.PaymentMethodId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_PaymentMethodFeeRules_PaymentMethods");
+
+            // Una unica regla por metodo y fecha de inicio de vigencia.
+            entity.HasIndex(rule => new { rule.PaymentMethodId, rule.EffectiveFromUtc })
+                .IsUnique()
+                .HasDatabaseName("IX_PaymentMethodFeeRules_PaymentMethodId_EffectiveFromUtc");
+
+            entity.Property(rule => rule.Percentage).HasColumnType("decimal(9,4)");
+            entity.Property(rule => rule.FixedAmount).HasColumnType("decimal(18,2)");
+            entity.Property(rule => rule.CurrencyCode).HasMaxLength(10).IsRequired();
+        });
+
         if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
         {
             modelBuilder.Entity<PaymentMethod>()
@@ -453,6 +516,14 @@ modelBuilder.Entity<User>().HasData(
                 .IsConcurrencyToken();
 
             modelBuilder.Entity<Receivable>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+
+            // Paso 14 (S7): las reglas de comision se editan desde Configuracion mientras las
+            // ventas las resuelven; xmin evita pisar una vigencia recien cambiada.
+            modelBuilder.Entity<PaymentMethodFeeRule>()
                 .Property<uint>("xmin")
                 .HasColumnType("xid")
                 .ValueGeneratedOnAddOrUpdate()
@@ -645,6 +716,24 @@ modelBuilder.Entity<User>().HasData(
             entity.HasIndex(payment => payment.ReceivedByUserId)
                 .HasDatabaseName("IX_ReceivablePayments_ReceivedByUserId");
 
+            // Paso 14 (S7): snapshot inmutable de la regla de comision resuelta al recibir el
+            // abono. Sin cascade: las reglas historicas no se borran si el metodo se desactiva.
+            entity.HasOne(payment => payment.PaymentMethodFeeRule)
+                .WithMany()
+                .HasForeignKey(payment => payment.PaymentMethodFeeRuleId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_ReceivablePayments_PaymentMethodFeeRules");
+
+            entity.HasIndex(payment => payment.PaymentMethodFeeRuleId)
+                .HasDatabaseName("IX_ReceivablePayments_PaymentMethodFeeRuleId");
+
+            entity.Property(payment => payment.FeePercentage).HasColumnType("decimal(9,4)");
+            entity.Property(payment => payment.FeeFixedAmount).HasColumnType("decimal(18,2)");
+            entity.Property(payment => payment.FeeCurrencyCode).HasMaxLength(10);
+            entity.Property(payment => payment.FeeAmountUsd).HasColumnType("decimal(18,4)");
+            entity.Property(payment => payment.FeeAmountLocal).HasColumnType("decimal(18,2)");
+            entity.Property(payment => payment.FeeRate).HasColumnType("decimal(18,4)");
+
             entity.Property(payment => payment.AmountUSD).HasColumnType("decimal(18,4)");
             entity.Property(payment => payment.AmountBsS).HasColumnType("decimal(18,2)");
             entity.Property(payment => payment.PaymentRate).HasColumnType("decimal(18,4)");
@@ -711,6 +800,10 @@ modelBuilder.Entity<User>().HasData(
                 .IsUnique()
                 .HasFilter("\"IdempotencyKey\" IS NOT NULL")
                 .HasDatabaseName("IX_CreditReturns_IdempotencyKey");
+
+            // Paso 14 (S6): ventana de devoluciones del periodo consultado.
+            entity.HasIndex(creditReturn => creditReturn.CreatedAtUtc)
+                .HasDatabaseName("IX_CreditReturns_CreatedAtUtc");
 
             entity.Property(creditReturn => creditReturn.ReturnedUSD).HasColumnType("decimal(18,4)");
             entity.Property(creditReturn => creditReturn.RefundedUSD).HasColumnType("decimal(18,4)");
