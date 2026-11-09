@@ -12,6 +12,14 @@ using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
 
+/// <summary>POS-UI-842: filtro rapido del libro diario de caja.</summary>
+public enum CashMovementTypeFilter
+{
+    All,
+    Income,
+    Expense
+}
+
 public partial class CashDrawerViewModel : ObservableObject, IDisposable
 {
     private readonly ICashDrawerService _cashDrawerService;
@@ -126,15 +134,41 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
 
     public int PageSize => 25;
     private readonly System.Collections.Generic.List<CashTransactionDto> _allPhysicalTransactions = new();
+    private readonly System.Collections.Generic.List<CashTransactionDto> _filteredPhysicalTransactions = new();
 
-    public int TotalPhysicalTransactions => _allPhysicalTransactions.Count;
+    // POS-UI-842: busqueda y filtro rapido aplicados en memoria sobre el historial cargado.
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    [ObservableProperty]
+    private CashMovementTypeFilter _movementTypeFilter = CashMovementTypeFilter.All;
+
+    [ObservableProperty]
+    private bool _isRecentIncomesExpanded;
+
+    partial void OnSearchTextChanged(string value) => ApplyTransactionFilter();
+
+    partial void OnMovementTypeFilterChanged(CashMovementTypeFilter value)
+    {
+        OnPropertyChanged(nameof(IsFilterAll));
+        OnPropertyChanged(nameof(IsFilterIncome));
+        OnPropertyChanged(nameof(IsFilterExpense));
+        ApplyTransactionFilter();
+    }
+
+    public bool IsFilterAll => MovementTypeFilter == CashMovementTypeFilter.All;
+    public bool IsFilterIncome => MovementTypeFilter == CashMovementTypeFilter.Income;
+    public bool IsFilterExpense => MovementTypeFilter == CashMovementTypeFilter.Expense;
+    public bool HasActiveFilter => !string.IsNullOrWhiteSpace(SearchText) || MovementTypeFilter != CashMovementTypeFilter.All;
+
+    public int TotalPhysicalTransactions => _filteredPhysicalTransactions.Count;
     public int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalPhysicalTransactions / PageSize));
 
     public bool CanGoPrevious => CurrentPage > 1;
     public bool CanGoNext => CurrentPage < TotalPages;
 
-    public string PaginationSummary => TotalPhysicalTransactions == 0 
-        ? "No hay movimientos registrados" 
+    public string PaginationSummary => TotalPhysicalTransactions == 0
+        ? (HasActiveFilter ? "No hay movimientos para el filtro aplicado" : "No hay movimientos registrados")
         : $"Mostrando {Math.Min((CurrentPage - 1) * PageSize + 1, TotalPhysicalTransactions)} a {Math.Min(CurrentPage * PageSize, TotalPhysicalTransactions)} de {TotalPhysicalTransactions} movimientos";
 
     public string CurrentPageDisplay => $"Página {CurrentPage} de {TotalPages}";
@@ -427,8 +461,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
                 CurrentBalanceBsS = 0;
                 RecentIncomes.Clear();
             }
-            CurrentPage = 1;
-            UpdatePaginatedTransactions();
+            ApplyTransactionFilter();
             UpdateFormattedBalances();
 
             // T4 (Paso 13 / 8.188, S1): el panel de caja chica conserva el turno sincronizado.
@@ -446,7 +479,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     private void UpdatePaginatedTransactions()
     {
         OrderedTransactions.Clear();
-        var pageItems = _allPhysicalTransactions
+        var pageItems = _filteredPhysicalTransactions
             .Skip((CurrentPage - 1) * PageSize)
             .Take(PageSize);
         foreach (var tx in pageItems)
@@ -458,11 +491,67 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(TotalPages));
         OnPropertyChanged(nameof(CanGoPrevious));
         OnPropertyChanged(nameof(CanGoNext));
+        OnPropertyChanged(nameof(HasActiveFilter));
         OnPropertyChanged(nameof(PaginationSummary));
         OnPropertyChanged(nameof(CurrentPageDisplay));
         PreviousPageCommand.NotifyCanExecuteChanged();
         NextPageCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>
+    /// POS-UI-842: recompone el conjunto visible (tipo + busqueda) y vuelve a la primera pagina
+    /// para que el paginador nunca quede fuera de rango tras cambiar un filtro.
+    /// </summary>
+    private void ApplyTransactionFilter()
+    {
+        RebuildFilteredTransactions();
+        CurrentPage = 1;
+        UpdatePaginatedTransactions();
+    }
+
+    private void RebuildFilteredTransactions()
+    {
+        IEnumerable<CashTransactionDto> query = _allPhysicalTransactions;
+        query = MovementTypeFilter switch
+        {
+            CashMovementTypeFilter.Income => query.Where(tx => tx.Type == CashTransactionType.Income),
+            CashMovementTypeFilter.Expense => query.Where(tx => tx.Type == CashTransactionType.Expense),
+            _ => query
+        };
+
+        var term = SearchText?.Trim();
+        if (!string.IsNullOrEmpty(term))
+        {
+            query = query.Where(tx => MatchesMovementSearch(tx, term));
+        }
+
+        _filteredPhysicalTransactions.Clear();
+        _filteredPhysicalTransactions.AddRange(query);
+    }
+
+    private static bool MatchesMovementSearch(CashTransactionDto transaction, string term)
+    {
+        if (transaction.InvoiceNumber.HasValue
+            && transaction.InvoiceNumber.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                .Contains(term, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(transaction.Description)
+            && transaction.Description.Contains(term, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return transaction.FormattedInvoiceNumber.Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [RelayCommand]
+    private void SetMovementTypeFilter(CashMovementTypeFilter filter) => MovementTypeFilter = filter;
+
+    [RelayCommand]
+    private void ToggleRecentIncomes() => IsRecentIncomesExpanded = !IsRecentIncomesExpanded;
 
     [RelayCommand(CanExecute = nameof(CanGoPrevious))]
     private void PreviousPage()

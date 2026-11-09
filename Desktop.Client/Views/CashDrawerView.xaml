@@ -36,6 +36,60 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!-- POS-UI-842: sombra sutil y estilos de grilla alineados con las tarjetas enterprise. -->
+        <DropShadowEffect x:Key="EnterpriseCardShadow"
+                          Color="#000000"
+                          BlurRadius="10"
+                          Opacity="0.05"
+                          Direction="270"
+                          ShadowDepth="2"/>
+
+        <Style x:Key="StandardHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        </Style>
+
+        <Style x:Key="RightAlignedHeaderStyle" TargetType="DataGridColumnHeader" BasedOn="{StaticResource StandardHeaderStyle}">
+            <Setter Property="HorizontalContentAlignment" Value="Right"/>
+        </Style>
+
+        <Style x:Key="MovementNumericCellStyle" TargetType="TextBlock">
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="Padding" Value="0,0,2,0"/>
+            <Setter Property="Typography.NumeralAlignment" Value="Tabular"/>
+            <Setter Property="FontFamily" Value="Consolas, Courier New, monospace"/>
+        </Style>
+
+        <Style x:Key="MovementFilterChipStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="Padding" Value="12,5"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="14"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <Grid Margin="24">
@@ -374,22 +428,54 @@
         </Border>
 
         <!-- ══════════════════════════════════════════
-             ROW 3: TOP RECENT INCOMES PANEL
+             ROW 3: TOP RECENT INCOMES PANEL (COMPACTO)
              ══════════════════════════════════════════ -->
-        <Border Grid.Row="4" Margin="0,0,0,20"
+        <Border Grid.Row="4" Margin="0,0,0,12"
                 Background="{DynamicResource MaterialDesignPaper}"
-                CornerRadius="10" Padding="16,14"
-                Effect="{DynamicResource MaterialDesignShadowDepth1}"
+                CornerRadius="10" Padding="16,10"
+                BorderBrush="#E2E8F0" BorderThickness="1"
+                Effect="{StaticResource EnterpriseCardShadow}"
                 Visibility="{Binding HasRecentIncomes, Converter={StaticResource BooleanToVisibilityConverter}}">
             <StackPanel>
-                <!-- Section Title (Margen amplio mb-4) -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                    <materialDesign:PackIcon Kind="CashCheck" Width="20" Height="20" Foreground="#27AE60" VerticalAlignment="Center"/>
-                    <TextBlock Text="ÚLTIMOS INGRESOS RECIBIDOS" FontSize="13" FontWeight="Bold" Foreground="#27AE60" Margin="8,0,0,0" VerticalAlignment="Center"/>
-                </StackPanel>
+                <!-- Barra resumen: siempre visible y colapsable para liberar altura de la grilla. -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="CashCheck" Width="18" Height="18" Foreground="#27AE60" VerticalAlignment="Center"/>
+                        <TextBlock Text="ÚLTIMOS INGRESOS RECIBIDOS" FontSize="12" FontWeight="Bold" Foreground="#27AE60" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        <Border Background="#DCFCE7" CornerRadius="8" Padding="7,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                            <TextBlock FontSize="10" FontWeight="Bold" Foreground="#166534">
+                                <Run Text="{Binding RecentIncomes.Count, Mode=OneWay}"/>
+                                <Run Text="del turno"/>
+                            </TextBlock>
+                        </Border>
+                    </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Command="{Binding ToggleRecentIncomesCommand}"
+                            AutomationProperties.AutomationId="CashDrawer_ToggleRecentIncomesButton"
+                            Style="{DynamicResource MaterialDesignIconButton}"
+                            Width="30" Height="30" Padding="0"
+                            ToolTip="Mostrar u ocultar los últimos ingresos recibidos">
+                        <Grid>
+                            <materialDesign:PackIcon Kind="ChevronDown" Width="18" Height="18"
+                                                     Foreground="#64748B"
+                                                     Visibility="{Binding IsRecentIncomesExpanded, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                            <materialDesign:PackIcon Kind="ChevronUp" Width="18" Height="18"
+                                                     Foreground="#64748B"
+                                                     Visibility="{Binding IsRecentIncomesExpanded, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        </Grid>
+                    </Button>
+                </Grid>
 
                 <!-- Cards horizontal scroll container for recent incomes (Evita compresión y cortes) -->
-                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Focusable="False">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Focusable="False"
+                              MaxHeight="84" Margin="0,8,0,0"
+                              Visibility="{Binding IsRecentIncomesExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <ItemsControl ItemsSource="{Binding RecentIncomes}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -398,8 +484,8 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Background="#FFFFFF" CornerRadius="8" Padding="14,12" Margin="0,0,12,0" 
-                                        BorderBrush="#ABEBC6" BorderThickness="1" MinWidth="180">
+                                <Border Background="#FFFFFF" CornerRadius="8" Padding="12,8" Margin="0,0,10,0"
+                                        BorderBrush="#ABEBC6" BorderThickness="1" MinWidth="160">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
@@ -410,28 +496,28 @@
                                         <!-- Invoice Number / Description (Gris Oscuro / Sólido #1E293B, Centrado) -->
                                         <TextBlock Grid.Row="0"
                                                    Text="{Binding FormattedInvoiceNumber}"
-                                                   FontWeight="Bold" FontSize="13"
+                                                   FontWeight="Bold" FontSize="12"
                                                    Foreground="#1E293B"
                                                    TextAlignment="Center"
                                                    HorizontalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis"/>
 
                                         <!-- Time (Gris claro, Centrado) -->
-                                        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,3,0,6">
+                                        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,4">
                                             <materialDesign:PackIcon Kind="ClockOutline" Width="12" Height="12" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center" Margin="0,0,3,0"/>
                                             <TextBlock Text="{Binding TransactionTimeLocal, StringFormat={}{0:hh:mm tt}}"
-                                                       FontSize="11" VerticalAlignment="Center"
+                                                       FontSize="10" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource MaterialDesignBodyLight}"/>
                                         </StackPanel>
 
                                         <!-- Local amount + primary duplicate (green reserved for amounts, centered) -->
                                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"
-                                                       FontWeight="ExtraBold" FontSize="13"
+                                                       FontWeight="ExtraBold" FontSize="12"
                                                        Foreground="#27AE60"/>
                                             <TextBlock Text="{Binding AmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
                                                        Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
-                                                       FontSize="11" VerticalAlignment="Center"
+                                                       FontSize="10" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource MaterialDesignBodyLight}"
                                                        Margin="4,0,0,0"/>
                                         </StackPanel>
@@ -445,182 +531,324 @@
         </Border>
         
         <!-- ══════════════════════════════════════════
-             ROW 4: TRANSACTION LIST
+             ROW 4: TRANSACTION LIST (TARJETA MODERNA)
              ══════════════════════════════════════════ -->
-        <Grid Grid.Row="5">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+        <Border Grid.Row="5"
+                Background="#FFFFFF"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="0"
+                Effect="{StaticResource EnterpriseCardShadow}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
             
-            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
-                <materialDesign:PackIcon Kind="FormatListBulleted" Width="20" Height="20" VerticalAlignment="Center" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
-                <TextBlock Text="Movimientos de Caja (Físicos)" FontSize="16" FontWeight="Bold" Margin="8,0,0,0" VerticalAlignment="Center"/>
-            </StackPanel>
-            
-            <controls:PerformantDataGrid Grid.Row="1" ItemsSource="{Binding OrderedTransactions}" 
-                      AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True"
-                      VirtualizingStackPanel.IsVirtualizing="True"
-                      VirtualizingStackPanel.VirtualizationMode="Recycling"
-                      VirtualizingPanel.ScrollUnit="Pixel"
-                      Visibility="{Binding IsSessionActive, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <controls:PerformantDataGrid.Columns>
-                    
-                    <!-- FECHA / HORA (Columna Apilada) -->
-                    <DataGridTemplateColumn Header="FECHA / HORA" Width="130">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Vertical" VerticalAlignment="Center" Margin="0,2">
-                                    <TextBlock Text="{Binding TransactionTimeLocal, StringFormat={}{0:dd/MM/yyyy}}"
-                                               FontWeight="SemiBold"
-                                               FontSize="12"
-                                               Foreground="{DynamicResource MaterialDesignBody}"/>
-                                    <TextBlock Text="{Binding TransactionTimeLocal, StringFormat={}{0:hh:mm tt}}"
-                                               FontSize="10"
-                                               Foreground="Gray"
-                                               Margin="0,2,0,0"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    
-                    <!-- Tipo (Badge) -->
-                    <DataGridTemplateColumn Header="Tipo" Width="100">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="#EAECEE"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Type}" Value="Income">
-                                                    <Setter Property="Background" Value="#E8F8F5"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Type}" Value="Expense">
-                                                    <Setter Property="Background" Value="#FDEDEC"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                    <TextBlock FontSize="11" FontWeight="Bold">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="{Binding Type}"/>
-                                                <Setter Property="Foreground" Value="#2C3E50"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Type}" Value="Income">
-                                                        <Setter Property="Text" Value="Ingreso"/>
-                                                        <Setter Property="Foreground" Value="#27AE60"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Type}" Value="Expense">
-                                                        <Setter Property="Text" Value="Egreso"/>
-                                                        <Setter Property="Foreground" Value="#C0392B"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Border>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-
-                    <!-- Origen -->
-                    <DataGridTextColumn Header="Origen" Binding="{Binding SourceDisplay}" Width="130"/>
-
-                    <!-- Factura N° / Detalle -->
-                    <DataGridTextColumn Header="Factura / Detalle" Binding="{Binding FormattedInvoiceNumber}" Width="*">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="FontWeight" Value="SemiBold"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-
-                    <!-- Local amount -->
-                    <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Monto ({0})'}"
-                                        Binding="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}" Width="120">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="FontWeight" Value="Bold"/>
-                                <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-
-                    <!-- Primary-currency duplicate (hidden in Single) -->
-                    <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"
-                                        Binding="{Binding AmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
-                                        Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
-                                        Width="90">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Foreground" Value="Gray"/>
-                                <Setter Property="FontSize" Value="12"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-
-                    <!-- Exchange rate only exists in Dual -->
-                    <DataGridTextColumn Header="Tasa" Binding="{Binding ExchangeRate, StringFormat={}{0:N2}}"
-                                        Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
-                                        Width="80">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Foreground" Value="Gray"/>
-                                <Setter Property="FontSize" Value="11"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-
-                </controls:PerformantDataGrid.Columns>
-            </controls:PerformantDataGrid>
-
-            <!-- Pie de página con Paginación (hasta 25 movimientos por página) -->
-            <Border Grid.Row="2" Margin="0,10,0,0" Padding="4,4"
-                    Visibility="{Binding IsSessionActive, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <Grid>
+                <!-- Barra de control: titulo, chips de tipo y busqueda en memoria. -->
+                <Grid Grid.Row="0" Margin="16,12,16,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" Text="{Binding PaginationSummary}"
-                               VerticalAlignment="Center" FontSize="12" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="FormatListBulleted" Width="20" Height="20" VerticalAlignment="Center" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                        <TextBlock Text="Movimientos de Caja (Físicos)" FontSize="15" FontWeight="Bold" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        <Border Background="#F1F5F9" CornerRadius="9" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                            <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="#64748B">
+                                <Run Text="{Binding TotalPhysicalTransactions, Mode=OneWay}"/>
+                                <Run Text="registros"/>
+                            </TextBlock>
+                        </Border>
+                    </StackPanel>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding TotalPhysicalTransactions, StringFormat={}Total registros: {0}}" VerticalAlignment="Center" Margin="0,0,16,0" FontSize="12" Foreground="Gray"/>
-
-                        <Button Command="{Binding PreviousPageCommand}"
-                                Style="{DynamicResource MaterialDesignOutlinedButton}"
-                                Height="32" Padding="8,0" Margin="0,0,6,0">
-                            <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="ChevronLeft" Width="16" Height="16" VerticalAlignment="Center"/>
-                                <TextBlock Text="Anterior" VerticalAlignment="Center" Margin="2,0,0,0"/>
-                            </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0">
+                        <Button Command="{Binding SetMovementTypeFilterCommand}"
+                                CommandParameter="{x:Static vm:CashMovementTypeFilter.All}"
+                                AutomationProperties.AutomationId="CashDrawer_MovementFilterAll"
+                                Margin="0,0,4,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MovementFilterChipStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsFilterAll}" Value="True">
+                                            <Setter Property="Background" Value="#EDE9FE"/>
+                                            <Setter Property="Foreground" Value="#5B21B6"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <TextBlock Text="Todos"/>
                         </Button>
-
-                        <TextBlock Text="{Binding CurrentPageDisplay}"
-                                   VerticalAlignment="Center" FontSize="12" FontWeight="Bold"
-                                   Margin="8,0"/>
-
-                        <Button Command="{Binding NextPageCommand}"
-                                Style="{DynamicResource MaterialDesignOutlinedButton}"
-                                Height="32" Padding="8,0" Margin="6,0,0,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Siguiente" VerticalAlignment="Center" Margin="0,0,2,0"/>
-                                <materialDesign:PackIcon Kind="ChevronRight" Width="16" Height="16" VerticalAlignment="Center"/>
-                            </StackPanel>
+                        <Button Command="{Binding SetMovementTypeFilterCommand}"
+                                CommandParameter="{x:Static vm:CashMovementTypeFilter.Income}"
+                                AutomationProperties.AutomationId="CashDrawer_MovementFilterIncome"
+                                Margin="0,0,4,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MovementFilterChipStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsFilterIncome}" Value="True">
+                                            <Setter Property="Background" Value="#DCFCE7"/>
+                                            <Setter Property="Foreground" Value="#166534"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <TextBlock Text="Ingresos"/>
+                        </Button>
+                        <Button Command="{Binding SetMovementTypeFilterCommand}"
+                                CommandParameter="{x:Static vm:CashMovementTypeFilter.Expense}"
+                                AutomationProperties.AutomationId="CashDrawer_MovementFilterExpense">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MovementFilterChipStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsFilterExpense}" Value="True">
+                                            <Setter Property="Background" Value="#FEE2E2"/>
+                                            <Setter Property="Foreground" Value="#B91C1C"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <TextBlock Text="Egresos"/>
                         </Button>
                     </StackPanel>
+
+                    <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                            CornerRadius="8" Height="38" Width="230">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18"
+                                                     Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,2,0"/>
+                            <TextBox Grid.Column="1"
+                                     AutomationProperties.AutomationId="CashDrawer_MovementSearchInput"
+                                     Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     materialDesign:HintAssist.Hint="Buscar factura o detalle..."
+                                     materialDesign:TextFieldAssist.HasClearButton="True"
+                                     BorderThickness="0" Background="Transparent"
+                                     VerticalAlignment="Center" FontSize="12" Foreground="#1E293B"
+                                     Padding="6,0,10,0"/>
+                        </Grid>
+                    </Border>
                 </Grid>
-            </Border>
-        </Grid>
+            
+                <controls:PerformantDataGrid Grid.Row="1" ItemsSource="{Binding OrderedTransactions}"
+                          AutomationProperties.AutomationId="CashDrawer_MovementsGrid"
+                          AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True"
+                          SelectionUnit="FullRow" SelectionMode="Single"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="Horizontal"
+                          HorizontalGridLinesBrush="#F1F5F9"
+                          VerticalGridLinesBrush="Transparent"
+                          RowHeaderWidth="0"
+                          RowHeight="48"
+                          ColumnHeaderHeight="44"
+                          Background="#FFFFFF"
+                          RowBackground="#FFFFFF"
+                          BorderThickness="0"
+                          EnableRowVirtualization="True"
+                          EnableColumnVirtualization="True"
+                          VirtualizingStackPanel.IsVirtualizing="True"
+                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                          VirtualizingPanel.ScrollUnit="Pixel"
+                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                          materialDesign:DataGridAssist.CellPadding="14,6,14,6"
+                          materialDesign:DataGridAssist.ColumnHeaderPadding="14,10,14,10">
+                    <controls:PerformantDataGrid.ColumnHeaderStyle>
+                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource StandardHeaderStyle}"/>
+                    </controls:PerformantDataGrid.ColumnHeaderStyle>
+                    <controls:PerformantDataGrid.Columns>
+                    
+                        <!-- FECHA / HORA (Columna Apilada) -->
+                        <DataGridTemplateColumn Header="FECHA / HORA" HeaderStyle="{StaticResource StandardHeaderStyle}" Width="120">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Vertical" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding TransactionTimeLocal, StringFormat={}{0:dd/MM/yyyy}}"
+                                                   FontWeight="SemiBold"
+                                                   FontSize="12"
+                                                   Foreground="#1E293B"/>
+                                        <TextBlock Text="{Binding TransactionTimeLocal, StringFormat={}{0:hh:mm tt}}"
+                                                   FontSize="10"
+                                                   Foreground="#94A3B8"
+                                                   Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    
+                        <!-- Tipo (Badge pildora) -->
+                        <DataGridTemplateColumn Header="TIPO" HeaderStyle="{StaticResource StandardHeaderStyle}" Width="96">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="10" Padding="10,3" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#E0F2FE"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Type}" Value="Income">
+                                                        <Setter Property="Background" Value="#DCFCE7"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Type}" Value="Expense">
+                                                        <Setter Property="Background" Value="#FEE2E2"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Source}" Value="CashAdvance">
+                                                        <Setter Property="Background" Value="#E0F2FE"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock FontSize="10" FontWeight="Bold">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="Otro"/>
+                                                    <Setter Property="Foreground" Value="#1D4ED8"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Type}" Value="Income">
+                                                            <Setter Property="Text" Value="Ingreso"/>
+                                                            <Setter Property="Foreground" Value="#166534"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Type}" Value="Expense">
+                                                            <Setter Property="Text" Value="Egreso"/>
+                                                            <Setter Property="Foreground" Value="#B91C1C"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Source}" Value="CashAdvance">
+                                                            <Setter Property="Text" Value="Adelanto"/>
+                                                            <Setter Property="Foreground" Value="#1D4ED8"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- Origen -->
+                        <DataGridTextColumn Header="ORIGEN" HeaderStyle="{StaticResource StandardHeaderStyle}"
+                                            Binding="{Binding SourceDisplay}" Width="130">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="FontSize" Value="11"/>
+                                    <Setter Property="Foreground" Value="#475569"/>
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <!-- Factura N° / Detalle (unica columna flexible) -->
+                        <DataGridTemplateColumn Header="FACTURA / DETALLE" HeaderStyle="{StaticResource StandardHeaderStyle}" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding FormattedInvoiceNumber}"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               Foreground="#1E293B"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <!-- Local amount -->
+                        <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='MONTO ({0})'}"
+                                            HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
+                                            Binding="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}" Width="130">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource MovementNumericCellStyle}">
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                    <Setter Property="Foreground" Value="#1E293B"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <!-- Primary-currency duplicate (hidden in Single) -->
+                        <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"
+                                            HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
+                                            Binding="{Binding AmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
+                                            Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                            Width="104">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource MovementNumericCellStyle}">
+                                    <Setter Property="Foreground" Value="#64748B"/>
+                                    <Setter Property="FontSize" Value="11"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <!-- Exchange rate only exists in Dual -->
+                        <DataGridTextColumn Header="TASA" HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
+                                            Binding="{Binding ExchangeRate, StringFormat={}{0:N2}}"
+                                            Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                            Width="80">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource MovementNumericCellStyle}">
+                                    <Setter Property="Foreground" Value="#64748B"/>
+                                    <Setter Property="FontSize" Value="11"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                    </controls:PerformantDataGrid.Columns>
+                </controls:PerformantDataGrid>
+
+                <!-- Estado vacio del conjunto filtrado. -->
+                <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsHitTestVisible="False"
+                            Visibility="{Binding OrderedTransactions.Count, Converter={StaticResource CollectionEmptyToVisibilityConverter}}">
+                    <materialDesign:PackIcon Kind="FormatListBulleted" Width="30" Height="30"
+                                             Foreground="#CBD5E1" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Sin movimientos para el filtro actual" FontSize="12"
+                               Foreground="#94A3B8" Margin="0,6,0,0"/>
+                </StackPanel>
+
+                <!-- Paginador integrado en la base de la tarjeta (25 movimientos por pagina). -->
+                <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0"
+                        CornerRadius="0,0,12,12" Padding="16,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="{Binding PaginationSummary}"
+                                   VerticalAlignment="Center" FontSize="12" Foreground="#64748B"/>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Command="{Binding PreviousPageCommand}"
+                                    AutomationProperties.AutomationId="CashDrawer_PreviousPageButton"
+                                    Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                    Height="32" Padding="10,0" Margin="0,0,6,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="ChevronLeft" Width="16" Height="16" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Anterior" VerticalAlignment="Center" Margin="2,0,0,0"/>
+                                </StackPanel>
+                            </Button>
+
+                            <TextBlock Text="{Binding CurrentPageDisplay}"
+                                       VerticalAlignment="Center" FontSize="12" FontWeight="Bold"
+                                       Margin="8,0" Foreground="#334155"/>
+
+                            <Button Command="{Binding NextPageCommand}"
+                                    AutomationProperties.AutomationId="CashDrawer_NextPageButton"
+                                    Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                    Height="32" Padding="10,0" Margin="6,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Siguiente" VerticalAlignment="Center" Margin="0,0,2,0"/>
+                                    <materialDesign:PackIcon Kind="ChevronRight" Width="16" Height="16" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
 
         <!-- 8.201 (S1): apertura dual de caja (fondo Bs.S + USD). Overlay solo sin sesión. -->
         <Border Grid.Row="0" Grid.RowSpan="6" Background="#66000000"
