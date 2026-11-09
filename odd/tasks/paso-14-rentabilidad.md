@@ -67,7 +67,7 @@ F1 se ejecuta en orden `F1-WU1` → `F1-WU6`. Al cerrar se presenta: build 0/0, 
 
 ## Tasks
 
-- F1-WU1 | S3/S6/S7/S12 | Migración idempotente, tablas/columnas, `ModelSnapshot`, drift tests | delegated | completed (commit pending)
+- F1-WU1 | S3/S6/S7/S12 | Migración idempotente, tablas/columnas, `ModelSnapshot`, drift tests | delegated | completed (commit afe8ebe)
 - F1-WU2 | S2/S3/S10 | Service wiring de `SaleType`/comisión/`CancelledAtUtc`, corrección de `SaleId` en `CashTransactions` y backfill correctivo de comisión | delegated | pending
 - F1-WU3 | S4/S9 | `UnitCostLocal`, helper de snapshot Single/Dual | delegated | pending
 - F1-WU4 | S7/S10 | `PaymentMethodFeeRule`, snapshots, resolver y wiring en pagos | delegated | pending
