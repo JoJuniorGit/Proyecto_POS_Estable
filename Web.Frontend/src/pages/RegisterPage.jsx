@@ -8,8 +8,6 @@ import {
   Loader2, 
   RefreshCw, 
   ShieldAlert, 
-  TrendingUp, 
-  TrendingDown, 
   Clock,
   CheckCircle,
   Wallet,
@@ -38,6 +36,7 @@ import {
   canUsePettyCash,
   resolveLocalCurrencyProfile,
   buildPhysicalCurrencySummaries,
+  buildCashDrawerSessionSummary,
   sortPhysicalMethodBalances,
 } from '../components/register/registerFormLogic';
 import Pagination from '../components/ui/Pagination';
@@ -198,20 +197,18 @@ function RegisterPageContent() {
 
   // Derived state calculations
   const transactions = useMemo(() => session?.transactions || [], [session]);
-  const openingBsS = session?.openingBalanceLocal || 0;
-  
-  // Physical cash income & expense totals
-  const { totalIncomeBsS, totalExpenseBsS } = useMemo(() => ({
-    totalIncomeBsS: transactions
-      .filter(t => t.type === 0 && t.source !== CashTransactionSource.Opening && t.isPhysicalCash)
-      .reduce((sum, t) => sum + (t.amountLocal || 0), 0),
-    totalExpenseBsS: transactions
-      .filter(t => t.type === 1 && t.isPhysicalCash)
-      .reduce((sum, t) => sum + (t.amountLocal || 0), 0)
-  }), [transactions]);
 
-  const expectedCashBsS = openingBsS + totalIncomeBsS - totalExpenseBsS;
-  const expectedCashUsd = (exchangeRate && exchangeRate > 0) ? expectedCashBsS / exchangeRate : 0;
+  // Resumen por moneda: fondo, ingresos, egresos y esperado de la sesión. La moneda local
+  // siempre va primero; las filas legacy sin currencyCode se atribuyen a la local.
+  const sessionCurrencySummary = useMemo(
+    () => buildCashDrawerSessionSummary(profile, session, transactions),
+    [profile, session, transactions]
+  );
+
+  // El efectivo local disponible para retiros/adelantos/cierre sale de la columna local,
+  // no de una suma global que mezcle montos USD convertidos.
+  const localCurrencySummary = sessionCurrencySummary.find((currency) => currency.isLocal);
+  const expectedCashBsS = localCurrencySummary?.expected ?? 0;
 
   // S1/S2: resumen físico por moneda (local primero) y detalle por método en el mismo orden.
   // Se construye en el cliente con los saldos y el perfil ya existentes; no hay fetch extra.
@@ -407,86 +404,78 @@ function RegisterPageContent() {
             />
           )}
 
-          {/* ── Requisito 3: Tarjetas de Resumen (Espaciado Tipográfico Garantizado entre Número y Divisa Bs.S) ── */}
-          <div className="grid w-full gap-4 reg-summary-grid">
-            
-            {/* Tarjeta 1: EFECTIVO ESPERADO EN CAJA */}
-            <div className="card shadow-sm p-4 bg-surface flex-between flex-align-center reg-card-indigo">
-              <div className="flex-1 pr-3 flex flex-column justify-content-between">
-                <span className="stat-label text-xs font-bold text-muted uppercase tracking-wider block mb-1">
-                  EFECTIVO ESPERADO EN CAJA
-                </span>
-                
-                {/* Requisito 3: Espaciado en la divisa (26,673.74 Bs.S) */}
-                <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
-                  <span className="text-3xl font-extrabold color-primary">
-                    {formatNumberEs(expectedCashBsS, 2)}
-                  </span>
-                  <span className="text-base font-bold color-primary reg-currency-gap">
-                    {localCurrencyLabel}
-                  </span>
-                </div>
-
-                {isDual && (
-                  <div className="text-xs font-semibold text-muted">
-                    {formatPrimary(expectedCashUsd)}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex-align-center justify-content-center p-2 rounded-lg flex-shrink-0 reg-card-icon-circle">
-                <Landmark size={26} className="color-primary" />
-              </div>
+          {/* Resumen por moneda: columnas con fondo, ingresos, egresos y esperado. */}
+          <div className="card shadow-sm p-4 bg-surface mb-4 reg-fullwidth">
+            <div className="flex-between flex-align-center mb-3">
+              <h3 className="card-title text-base font-bold flex-align-center gap-2 m-0">
+                <Landmark size={20} className="color-primary" />
+                RESUMEN POR MONEDA
+              </h3>
+              <span className="text-xs text-muted">Sesión actual</span>
             </div>
-
-            {/* Tarjeta 2: TOTAL INGRESOS EN EFECTIVO */}
-            <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between reg-card-green">
-              <div className="flex-align-center gap-2 mb-1">
-                <TrendingUp size={18} className="color-success flex-shrink-0" />
-                <span className="stat-label text-xs font-bold uppercase tracking-wider reg-label-green">
-                  TOTAL INGRESOS EN EFECTIVO
-                </span>
-              </div>
-
-              {/* Requisito 3: Espaciado en la divisa */}
-              <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
-                <span className="text-2xl font-extrabold color-success">
-                  {formatNumberEs(totalIncomeBsS, 2)}
-                </span>
-                <span className="text-sm font-bold color-success reg-currency-gap">
-                  {localCurrencyLabel}
-                </span>
-              </div>
-
-              <div className="text-xs text-muted font-medium">
-                Acumulado en sesión
-              </div>
+            <div className="overflow-x-auto">
+              <table className="cart-table reg-currency-summary-table">
+                <thead>
+                  <tr>
+                    <th className="text-left">Concepto</th>
+                    {sessionCurrencySummary.map((currency) => (
+                      <th key={currency.code} className="text-right">
+                        <span className="font-bold">{currency.label}</span>
+                        {currency.isLocal && (
+                          <span className="reg-currency-local-badge">LOCAL</span>
+                        )}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className="text-left text-muted">FONDO INICIAL</td>
+                    {sessionCurrencySummary.map((currency) => (
+                      <td
+                        key={currency.code}
+                        className={`text-right ${currency.isLocal ? 'reg-currency-summary-local' : ''}`}
+                      >
+                        {currency.symbol} {formatNumberEs(currency.opening, 2)}
+                      </td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td className="text-left text-muted">TOTAL INGRESOS</td>
+                    {sessionCurrencySummary.map((currency) => (
+                      <td
+                        key={currency.code}
+                        className={`text-right color-success ${currency.isLocal ? 'reg-currency-summary-local' : ''}`}
+                      >
+                        {currency.symbol} {formatNumberEs(currency.income, 2)}
+                      </td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td className="text-left text-muted">TOTAL EGRESOS</td>
+                    {sessionCurrencySummary.map((currency) => (
+                      <td
+                        key={currency.code}
+                        className={`text-right color-danger ${currency.isLocal ? 'reg-currency-summary-local' : ''}`}
+                      >
+                        {currency.symbol} {formatNumberEs(currency.expense, 2)}
+                      </td>
+                    ))}
+                  </tr>
+                  <tr className="reg-currency-summary-total">
+                    <td className="text-left font-bold">EFECTIVO ESPERADO EN CAJA</td>
+                    {sessionCurrencySummary.map((currency) => (
+                      <td
+                        key={currency.code}
+                        className={`text-right font-extrabold ${currency.isLocal ? 'reg-currency-summary-local' : ''}`}
+                      >
+                        {currency.symbol} {formatNumberEs(currency.expected, 2)}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
             </div>
-
-            {/* Tarjeta 3: TOTAL EGRESOS EN EFECTIVO */}
-            <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between reg-card-red">
-              <div className="flex-align-center gap-2 mb-1">
-                <TrendingDown size={18} className="color-danger flex-shrink-0" />
-                <span className="stat-label text-xs font-bold uppercase tracking-wider reg-label-red">
-                  TOTAL EGRESOS EN EFECTIVO
-                </span>
-              </div>
-
-              {/* Requisito 3: Espaciado en la divisa */}
-              <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
-                <span className="text-2xl font-extrabold color-danger">
-                  {formatNumberEs(totalExpenseBsS, 2)}
-                </span>
-                <span className="text-sm font-bold color-danger reg-currency-gap">
-                  {localCurrencyLabel}
-                </span>
-              </div>
-
-              <div className="text-xs text-muted font-medium">
-                Retiros y salidas
-              </div>
-            </div>
-
           </div>
 
           <div className="card shadow-sm p-4 bg-surface mb-4 reg-fullwidth">

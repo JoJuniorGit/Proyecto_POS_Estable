@@ -9,6 +9,7 @@ import {
   normalizeCurrencyCode,
   symbolForCode,
 } from '../../utils/monetaryProfile';
+import { CashTransactionSource } from '../../constants/cashTransactionSource';
 
 /**
  * T5 (Paso 13 / 8.188): lógica pura de presentación de los formularios de caja en el POS web.
@@ -147,6 +148,63 @@ export function sortPhysicalMethodBalances(methods = [], profile = {}) {
     if (nameDiff !== 0) return nameDiff;
 
     return (Number(left?.paymentMethodId) || 0) - (Number(right?.paymentMethodId) || 0);
+  });
+}
+
+/**
+ * Resumen de sesión por moneda: fondo, ingresos, egresos y esperado. Cada transacción se
+ * atribuye a su `currencyCode`; las filas legacy sin snapshot caen a la moneda local. El monto
+ * se toma de `amountLocal` para la moneda local y de `amountUsd` para la primaria.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ * @param {{ openingBalanceLocal?: number, openingBalanceUsd?: number }} session
+ * @param {Array<{ type?: number, source?: number, isPhysicalCash?: boolean, currencyCode?: string, amountLocal?: number, amountUsd?: number, exchangeRate?: number }>} transactions
+ * @returns {Array<{ code: string, label: string, symbol: string, opening: number, income: number, expense: number, expected: number, isLocal: boolean }>}
+ */
+export function buildCashDrawerSessionSummary(profile = {}, session = {}, transactions = []) {
+  const rows = Array.isArray(transactions) ? transactions : [];
+  const { localCode, order } = profileCurrencyOrder(profile);
+  const primaryCode = normalizeCurrencyCode(profile?.primaryCurrencyCode);
+  const openingLocal = Number(session?.openingBalanceLocal) || 0;
+  const openingPrimary = Number(session?.openingBalanceUsd) || 0;
+  const physicalRows = rows.filter((transaction) => transaction?.isPhysicalCash);
+
+  const amountForCurrency = (transaction, code) => {
+    const transactionCode = normalizeCurrencyCode(transaction?.currencyCode) || localCode;
+    if (transactionCode !== code) return 0;
+
+    if (code === localCode) {
+      return Number(transaction?.amountLocal) || 0;
+    }
+
+    if (code === primaryCode) {
+      const usd = Number(transaction?.amountUsd);
+      if (Number.isFinite(usd) && usd !== 0) return usd;
+      const rate = Number(transaction?.exchangeRate) || 0;
+      return rate > 0 ? (Number(transaction?.amountLocal) || 0) / rate : 0;
+    }
+
+    return 0;
+  };
+
+  return order.map((code) => {
+    const income = physicalRows
+      .filter((transaction) => transaction?.type === 0 && transaction?.source !== CashTransactionSource.Opening)
+      .reduce((sum, transaction) => sum + amountForCurrency(transaction, code), 0);
+    const expense = physicalRows
+      .filter((transaction) => transaction?.type === 1)
+      .reduce((sum, transaction) => sum + amountForCurrency(transaction, code), 0);
+    const opening = code === localCode ? openingLocal : code === primaryCode ? openingPrimary : 0;
+
+    return {
+      code,
+      label: displayCurrencyCode(code),
+      symbol: symbolForCode(profile, code) || displayCurrencyCode(code),
+      opening,
+      income,
+      expense,
+      expected: opening + income - expense,
+      isLocal: code === localCode,
+    };
   });
 }
 
