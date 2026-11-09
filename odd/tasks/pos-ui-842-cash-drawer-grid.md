@@ -30,6 +30,10 @@ Runner: `dotnet build CommandCenter.slnx -c Release` + `dotnet test` (filtro caj
 - S10. Alcance: solo `CashDrawerView.xaml` (recursos locales) y `CashDrawerViewModel.cs`
   (busqueda/filtro/estado de alternancia). Sin cambios de backend, sin librerias externas de UI,
   build Release 0 errores/0 warnings y suite de caja al 100%.
+- S11. Altura minima de la grilla: 8 filas visibles por defecto; si la pagina contiene mas de 8
+  movimientos, se suman 2.5 filas adicionales (10.5 visibles) antes del scroll interno. El alto
+  de fila (48) y de cabecera (44) se exponen desde el ViewModel para que XAML y calculo no
+  dupliquen constantes.
 
 ## Tasks
 
@@ -38,6 +42,8 @@ Runner: `dotnet build CommandCenter.slnx -c Release` + `dotnet test` (filtro caj
 - WU2 | S1-S7/S9 | XAML: layout flexible, tarjeta, DataGrid estilizado, badges, columnas y
   paginador integrado | inline | commit e997390
 - WU3 | S10 | Build Release, tests de caja y suite no-PG | inline | commit e997390
+- WU4 | S11 | Altura minima de grilla 8 filas + 2.5 adicionales con mas de 8 movimientos |
+  inline | commit pendiente
 
 ## Log
 
@@ -164,4 +170,23 @@ Runner: `dotnet build CommandCenter.slnx -c Release` + `dotnet test` (filtro caj
   `docs/reporte.txt`. Mirror en Engram guardado como observacion `858` del proyecto
   `proyecto_pos_estable`.
 
+- L7 (2026-11-09): pedido verbatim del mantenedor:
+
+  > 2.5 filas adicionales para vidsualizacion el alto por defecto que contiene las filas de
+  > movimientos, para termitir la visualizacion simltanea de mas filas
+
+  Interpretacion confirmada: la base son 8 filas; si la pagina actual tiene mas de 8, se suman
+  2.5 filas (10.5 visibles). Se agrega S11/WU4.
+
+- L8 (2026-11-09): **WU4 COMPLETADA**. `CashDrawerViewModel` expone `MovementGridRowHeight`
+  (48), `MovementGridColumnHeaderHeight` (44) y `MovementsGridMinHeight`: 428 px para 8 filas
+  (44 + 8x48) y 548 px para 10.5 filas (44 + 10.5x48); se notifica al cambiar la pagina o el
+  filtro. El XAML bindea `RowHeight`, `ColumnHeaderHeight` y `MinHeight` a esas propiedades para
+  no duplicar constantes. Para que el minimo no recorte el paginador en ventanas bajas, la vista
+  completa queda dentro de un `ScrollViewer` con `Padding=24`; el Grid interno usa
+  `MinHeight=ViewportHeight`, de modo que en pantallas grandes la fila `*` sigue absorbiendo el
+  espacio libre y solo aparece scroll de pagina cuando el contenido no entra. El overlay de
+  apertura se movio fuera del ScrollViewer para seguir cubriendo todo el viewport. Tests nuevos
+  de altura minima y paginacion: 10/10 en `CashDrawerMovementFilterTests`; focalizados de caja
+  16/16; build Release 0/0.
 

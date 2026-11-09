@@ -133,6 +133,28 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     }
 
     public int PageSize => 25;
+
+    // POS-UI-842: la grilla garantiza 8 filas visibles y suma 2.5 filas cuando la pagina
+    // contiene mas movimientos. El XAML consume estos mismos valores para no duplicarlos.
+    private const double MovementGridRowHeightValue = 48d;
+    private const double MovementGridColumnHeaderHeightValue = 44d;
+    private const double BaseVisibleMovementRows = 8d;
+    private const double ExtraVisibleMovementRows = 2.5d;
+
+    public double MovementGridRowHeight => MovementGridRowHeightValue;
+    public double MovementGridColumnHeaderHeight => MovementGridColumnHeaderHeightValue;
+
+    public double MovementsGridMinHeight
+    {
+        get
+        {
+            var visibleRows = OrderedTransactions.Count > BaseVisibleMovementRows
+                ? BaseVisibleMovementRows + ExtraVisibleMovementRows
+                : BaseVisibleMovementRows;
+            return MovementGridColumnHeaderHeightValue + (visibleRows * MovementGridRowHeightValue);
+        }
+    }
+
     private readonly System.Collections.Generic.List<CashTransactionDto> _allPhysicalTransactions = new();
     private readonly System.Collections.Generic.List<CashTransactionDto> _filteredPhysicalTransactions = new();
 
@@ -492,6 +514,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanGoPrevious));
         OnPropertyChanged(nameof(CanGoNext));
         OnPropertyChanged(nameof(HasActiveFilter));
+        OnPropertyChanged(nameof(MovementsGridMinHeight));
         OnPropertyChanged(nameof(PaginationSummary));
         OnPropertyChanged(nameof(CurrentPageDisplay));
         PreviousPageCommand.NotifyCanExecuteChanged();

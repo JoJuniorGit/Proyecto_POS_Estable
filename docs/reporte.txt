@@ -17824,16 +17824,26 @@ A5. `CashDrawerViewModel`: `SearchText`, `MovementTypeFilter`
     el historial ya cargado, sin llamadas nuevas al backend; cambiar filtro o
     busqueda vuelve a pagina 1 y recalcula totales/paginas del conjunto
     filtrado.
+A6. Altura minima de la grilla: 8 filas (428 px con fila de 48 y cabecera de
+    44); si la pagina tiene mas de 8 movimientos se suman 2.5 filas (10.5
+    visibles, 548 px). La vista completa se envuelve en un `ScrollViewer` con
+    `Padding=24` y el Grid interno usa `MinHeight=ViewportHeight`: en pantallas
+    grandes la fila `*` sigue absorbiendo el espacio libre y el scroll de pagina
+    aparece solo si el minimo no entra. El overlay de apertura queda fuera del
+    ScrollViewer.
 
 B. EVIDENCIA
 B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
-B2. Tests focalizados de caja/filtro/paginacion: 14/14.
-B3. Suite completa `CommandCenter.Tests`: 4164 superados, 53 fallos
-    ambientales del carril PostgreSQL por falta de `TEST_POSTGRES_CONNECTION`
-    (todos en `PostgresTestLane.RequireResolution`; ninguno de este cambio).
-B4. Sin cambios de backend, endpoints ni estructura de `CashMovements`.
+B2. Tests focalizados de caja/filtro/paginacion: 16/16.
+B3. Tests `CashDrawerMovementFilterTests` (incluye altura minima): 10/10.
+B4. Suite completa `CommandCenter.Tests` (corrida previa): 4164 superados, 53
+    fallos ambientales del carril PostgreSQL por falta de
+    `TEST_POSTGRES_CONNECTION` (todos en `PostgresTestLane.RequireResolution`;
+    ninguno de este cambio).
+B5. Sin cambios de backend, endpoints ni estructura de `CashMovements`.
 
 C. COMMIT
 C1. `e997390` modernizacion de la grilla de movimientos de caja (WPF).
+C2. Commit pendiente: altura minima de la grilla 8 filas + 2.5 adicionales.
 ================================================================================
 

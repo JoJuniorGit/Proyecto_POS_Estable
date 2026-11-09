@@ -177,6 +177,43 @@ public class CashDrawerMovementFilterTests
     }
 
     [Fact]
+    public async Task MovementsGridMinHeight_ReservesEightRowsAndAddsTwoAndHalfRowsOnOverflow()
+    {
+        var eight = Enumerable.Range(1, 8)
+            .Select(id => Transaction(id, CashTransactionType.Income, CashTransactionSource.SalePayment, $"Venta {id}"))
+            .ToArray();
+        var nine = Enumerable.Range(1, 9)
+            .Select(id => Transaction(id, CashTransactionType.Income, CashTransactionSource.SalePayment, $"Venta {id}"))
+            .ToArray();
+
+        using var eightRows = await LoadViewModelAsync(eight);
+        using var nineRows = await LoadViewModelAsync(nine);
+
+        Assert.Equal(48d, eightRows.MovementGridRowHeight);
+        Assert.Equal(44d, eightRows.MovementGridColumnHeaderHeight);
+        Assert.Equal(428d, eightRows.MovementsGridMinHeight);
+        Assert.Equal(548d, nineRows.MovementsGridMinHeight);
+    }
+
+    [Fact]
+    public async Task MovementsGridMinHeight_FollowsPaginationBackToEightRows()
+    {
+        var history = Enumerable.Range(1, 30)
+            .Select(id => Transaction(id, CashTransactionType.Income, CashTransactionSource.SalePayment, $"Venta {id}"))
+            .ToArray();
+
+        using var vm = await LoadViewModelAsync(history);
+
+        Assert.Equal(25, vm.OrderedTransactions.Count);
+        Assert.Equal(548d, vm.MovementsGridMinHeight);
+
+        vm.NextPageCommand.Execute(null);
+
+        Assert.Equal(5, vm.OrderedTransactions.Count);
+        Assert.Equal(428d, vm.MovementsGridMinHeight);
+    }
+
+    [Fact]
     public async Task RecentIncomesPanel_StartsCollapsed()
     {
         using var vm = await LoadViewModelAsync();
