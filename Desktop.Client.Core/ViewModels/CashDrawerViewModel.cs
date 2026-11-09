@@ -5,6 +5,7 @@ using Core.Common;
 using Core.Helpers;
 using Desktop.Client.Services;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -101,9 +102,13 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
 
     // 8.212-WU4: live per-method physical balances and the editable opening breakdown.
     public ObservableCollection<PhysicalMethodBalanceClientDto> PhysicalMethodBalances { get; } = new();
+
+    // S1/S2: total físico por moneda, con la moneda local del perfil primero.
+    public ObservableCollection<PhysicalCurrencyBalanceViewModel> PhysicalCurrencyBalances { get; } = new();
     public ObservableCollection<OpeningPhysicalMethodViewModel> OpeningPhysicalMethods { get; } = new();
 
     public bool HasPhysicalMethodBalances => PhysicalMethodBalances.Count > 0;
+    public bool HasPhysicalCurrencyBalances => PhysicalCurrencyBalances.Count > 0;
     public bool HasOpeningPhysicalMethods => OpeningPhysicalMethods.Count > 0;
     public bool ShowLegacyOpeningInputs => !HasOpeningPhysicalMethods;
 
@@ -195,6 +200,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         RecentIncomes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentIncomes));
         PettyCashExpenses.CollectionChanged += (_, _) => NotifyPettyCashChanged();
         PhysicalMethodBalances.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPhysicalMethodBalances));
+        PhysicalCurrencyBalances.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPhysicalCurrencyBalances));
         OpeningPhysicalMethods.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasOpeningPhysicalMethods));
@@ -228,6 +234,14 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         {
             _dispatcherInvoker.Invoke(() => RefreshAsync().SafeFireAndForget("CashDrawer.ShiftClosed"));
         });
+
+        // S1/S2: el resumen por moneda sigue al perfil y al formato activos. El mensaje usa
+        // WeakReferenceMessenger (se libera con Dispose) para no dejar handlers estáticos vivos.
+        WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.MonetaryProfileChangedMessage>(this, (r, m) =>
+        {
+            _dispatcherInvoker.Invoke(((CashDrawerViewModel)r).UpdateFormattedBalances);
+        });
+        RebuildPhysicalCurrencyBalances();
 
         if (_userSession == null || _userSession.IsLoggedIn)
         {
@@ -271,6 +285,9 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
 
         FormattedTotalIncomeBsS = CurrencyDisplay.FormatSecondary(TotalIncomeBsS, 0);
         FormattedTotalExpenseBsS = CurrencyDisplay.FormatSecondary(TotalExpenseBsS, 0);
+
+        // S1/S2: refresca el resumen por moneda con el formato/perfil vigente.
+        RebuildPhysicalCurrencyBalances();
     }
 
     // The USD-equivalent line keeps the historical trailing-symbol shape ("26,00 $") because the
@@ -296,7 +313,10 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
                 balances = (await _cashDrawerService.GetPhysicalMethodBalancesAsync(ActiveSession.Id)).ToList();
             }
 
-            foreach (var balance in balances)
+            foreach (var balance in balances
+                .OrderBy(balance => GetPhysicalCurrencyPriority(balance.CurrencyCode))
+                .ThenBy(balance => balance.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(balance => balance.PaymentMethodId))
             {
                 PhysicalMethodBalances.Add(balance);
             }
@@ -753,5 +773,63 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         WeakReferenceMessenger.Default.UnregisterAll(this);
+    }
+
+    private int GetPhysicalCurrencyPriority(string? currencyCode)
+    {
+        var normalized = NormalizePhysicalCurrencyCode(currencyCode);
+        if (string.IsNullOrEmpty(normalized)) return 3;
+        if (normalized == NormalizePhysicalCurrencyCode(CurrencyDisplay.LocalCurrencyCode)) return 0;
+        if (normalized == NormalizePhysicalCurrencyCode(CurrencyDisplay.PrimaryCurrencyCode)) return 1;
+        if (normalized == NormalizePhysicalCurrencyCode(CurrencyDisplay.SecondaryCurrencyCode)) return 2;
+        return 3;
+    }
+
+    private static string NormalizePhysicalCurrencyCode(string? currencyCode)
+    {
+        var normalized = currencyCode?.Trim().ToUpperInvariant();
+        if (normalized is "BS.S" or "BSS" or "VES") return "VES";
+        return normalized ?? string.Empty;
+    }
+
+    private static string DisplayPhysicalCurrencyCode(string code)
+        => string.Equals(code, "VES", StringComparison.Ordinal) ? "Bs.S" : code;
+
+    private void RebuildPhysicalCurrencyBalances()
+    {
+        PhysicalCurrencyBalances.Clear();
+        var ordered = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        void Add(string? code)
+        {
+            var normalized = NormalizePhysicalCurrencyCode(code);
+            if (string.IsNullOrEmpty(normalized) || !seen.Add(normalized)) return;
+            ordered.Add(normalized);
+        }
+
+        Add(CurrencyDisplay.LocalCurrencyCode);
+        Add(CurrencyDisplay.PrimaryCurrencyCode);
+        Add(CurrencyDisplay.SecondaryCurrencyCode);
+        foreach (var balance in PhysicalMethodBalances)
+        {
+            Add(balance.CurrencyCode);
+        }
+
+        foreach (var code in ordered)
+        {
+            var total = PhysicalMethodBalances
+                .Where(balance => NormalizePhysicalCurrencyCode(balance.CurrencyCode) == code)
+                .Sum(balance => balance.CurrentBalance);
+
+            PhysicalCurrencyBalances.Add(new PhysicalCurrencyBalanceViewModel
+            {
+                CurrencyCode = code,
+                CurrencyLabel = DisplayPhysicalCurrencyCode(code),
+                CurrencySymbol = CurrencyDisplay.SymbolFor(code),
+                CurrentBalance = total,
+                IsLocal = code == NormalizePhysicalCurrencyCode(CurrencyDisplay.LocalCurrencyCode)
+            });
+        }
     }
 }

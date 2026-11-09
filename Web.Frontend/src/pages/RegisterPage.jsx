@@ -33,7 +33,13 @@ import CashDrawerCloseModal from '../components/register/CashDrawerCloseModal';
 import CashDrawerOpenModal from '../components/register/CashDrawerOpenModal';
 import { getPettyCashExpenses, getPettyCashPhysicalBalances } from '../services/pettyCashApi';
 import { formatPhysicalMethodAmount, getPhysicalMethodBalances } from '../services/cashDrawerApi';
-import { canCloseCashDrawerSession, canUsePettyCash, resolveLocalCurrencyProfile } from '../components/register/registerFormLogic';
+import {
+  canCloseCashDrawerSession,
+  canUsePettyCash,
+  resolveLocalCurrencyProfile,
+  buildPhysicalCurrencySummaries,
+  sortPhysicalMethodBalances,
+} from '../components/register/registerFormLogic';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
 import { normalizeRole } from '../navigation/roleViews';
@@ -206,6 +212,17 @@ function RegisterPageContent() {
 
   const expectedCashBsS = openingBsS + totalIncomeBsS - totalExpenseBsS;
   const expectedCashUsd = (exchangeRate && exchangeRate > 0) ? expectedCashBsS / exchangeRate : 0;
+
+  // S1/S2: resumen físico por moneda (local primero) y detalle por método en el mismo orden.
+  // Se construye en el cliente con los saldos y el perfil ya existentes; no hay fetch extra.
+  const physicalCurrencySummaries = useMemo(
+    () => buildPhysicalCurrencySummaries(profile, physicalMethodBalances),
+    [profile, physicalMethodBalances]
+  );
+  const sortedPhysicalMethodBalances = useMemo(
+    () => sortPhysicalMethodBalances(physicalMethodBalances, profile),
+    [physicalMethodBalances, profile]
+  );
 
   // Last 7 received incomes (sorted most recent first)
   const recentIncomes = useMemo(() => [...transactions]
@@ -472,29 +489,52 @@ function RegisterPageContent() {
 
           </div>
 
-          {physicalMethodBalances.length > 0 && (
-            <div className="card shadow-sm p-4 bg-surface mb-4 reg-fullwidth">
-              <h3 className="card-title text-base font-bold flex-align-center gap-2 m-0 mb-3">
-                <Wallet size={20} className="color-primary" />
-                EXISTENCIAS POR MÉTODO FÍSICO
-              </h3>
-              <div className="reg-method-balance-grid">
-                {physicalMethodBalances.map((method) => (
-                  <div
-                    key={method.paymentMethodId}
-                    className={`card p-3 border rounded-lg ${method.canDispense ? '' : 'reg-method-balance-disabled'}`}
-                  >
-                    <div className="font-bold text-sm">{method.name}</div>
-                    <div className="text-xs text-muted mb-2">{method.currencyCode}</div>
-                    <div className="font-extrabold text-xl color-primary">
-                      {formatPhysicalMethodAmount(method, method.currentBalance)}
-                    </div>
-                    <div className="text-xs text-muted mt-1">Existencia actual</div>
+          <div className="card shadow-sm p-4 bg-surface mb-4 reg-fullwidth">
+            <h3 className="card-title text-base font-bold flex-align-center gap-2 m-0 mb-3">
+              <Wallet size={20} className="color-primary" />
+              EXISTENCIAS FÍSICAS POR MONEDA
+            </h3>
+            <div className="reg-currency-balance-grid">
+              {physicalCurrencySummaries.map((currency) => (
+                <div
+                  key={currency.code}
+                  className={`card p-3 border rounded-lg ${currency.isLocal ? 'reg-currency-balance-local' : ''}`}
+                >
+                  <div className="flex-between flex-align-center mb-2">
+                    <span className="font-bold text-sm">{currency.label}</span>
+                    {currency.isLocal && (
+                      <span className="reg-currency-local-badge">MONEDA LOCAL</span>
+                    )}
                   </div>
-                ))}
-              </div>
+                  <div className="font-extrabold text-xl color-primary">
+                    {currency.symbol ? `${currency.symbol} ` : ''}{formatNumberEs(currency.total, 2)}
+                  </div>
+                  <div className="text-xs text-muted mt-1">Existencia física</div>
+                </div>
+              ))}
             </div>
-          )}
+
+            {sortedPhysicalMethodBalances.length > 0 && (
+              <>
+                <h4 className="text-sm font-bold mt-4 mb-2">Detalle por método físico</h4>
+                <div className="reg-method-balance-grid">
+                  {sortedPhysicalMethodBalances.map((method) => (
+                    <div
+                      key={method.paymentMethodId}
+                      className={`card p-3 border rounded-lg ${method.canDispense ? '' : 'reg-method-balance-disabled'}`}
+                    >
+                      <div className="font-bold text-sm">{method.name}</div>
+                      <div className="text-xs text-muted mb-2">{method.currencyCode}</div>
+                      <div className="font-extrabold text-xl color-primary">
+                        {formatPhysicalMethodAmount(method, method.currentBalance)}
+                      </div>
+                      <div className="text-xs text-muted mt-1">Existencia actual</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
 
           <div className="grid grid-1 gap-4">
 

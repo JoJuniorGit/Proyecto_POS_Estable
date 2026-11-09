@@ -186,18 +186,59 @@
         <!-- ══════════════════════════════════════════
              ROW 2: PETTY CASH PANEL (T4 / 8.188)
              ══════════════════════════════════════════ -->
-        <!-- 8.212-WU4: per-physical-method drawer balances -->
+        <!-- 8.212-WU4 / S1-S2: physical balances by currency (local first) and by method -->
         <Border Grid.Row="2" Margin="0,0,0,20"
                 Background="{DynamicResource MaterialDesignPaper}"
                 CornerRadius="10" Padding="16,14"
                 Effect="{DynamicResource MaterialDesignShadowDepth1}"
-                Visibility="{Binding HasPhysicalMethodBalances, Converter={StaticResource BooleanToVisibilityConverter}}">
+                Visibility="{Binding HasPhysicalCurrencyBalances, Converter={StaticResource BooleanToVisibilityConverter}}">
             <StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                     <materialDesign:PackIcon Kind="CashMultiple" Width="20" Height="20" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"/>
-                    <TextBlock Text="EXISTENCIAS POR MÉTODO FÍSICO" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="EXISTENCIAS FÍSICAS POR MONEDA" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
-                <ItemsControl ItemsSource="{Binding PhysicalMethodBalances}">
+
+                <ItemsControl ItemsSource="{Binding PhysicalCurrencyBalances}" Margin="0,0,0,12">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="200" Margin="0,0,12,12" Padding="14,12" CornerRadius="8"
+                                    Background="{DynamicResource MaterialDesignCardBackground}"
+                                    BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsLocal}" Value="True">
+                                                <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                                                <Setter Property="Background" Value="{DynamicResource PrimaryHueLightBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding CurrencyLabel}" FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
+                                        <Border Background="{DynamicResource PrimaryHueMidBrush}" CornerRadius="8" Padding="6,1" Margin="6,0,0,0"
+                                                Visibility="{Binding IsLocal, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock Text="LOCAL" FontSize="9" FontWeight="Bold" Foreground="White"/>
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding DisplayAmount}" FontSize="22" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}" Margin="0,6,0,0"/>
+                                    <TextBlock Text="Existencia física" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock Text="Detalle por método físico" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,8"
+                           Visibility="{Binding HasPhysicalMethodBalances, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                <ItemsControl ItemsSource="{Binding PhysicalMethodBalances}"
+                              Visibility="{Binding HasPhysicalMethodBalances, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel/>

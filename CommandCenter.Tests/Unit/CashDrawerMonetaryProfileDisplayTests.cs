@@ -227,6 +227,168 @@ public class CashDrawerMonetaryProfileDisplayTests
         }
     }
 
+    private static CashDrawerViewModel CreateDrawerWithPhysicalBalances(CashDrawerSessionDto session)
+    {
+        var cash = new Mock<ICashDrawerService>();
+        cash.Setup(s => s.GetActiveSessionAsync()).ReturnsAsync(session);
+        cash.Setup(s => s.GetHistoryAsync(It.IsAny<int>())).ReturnsAsync(new List<CashTransactionDto>());
+
+        var rate = new Mock<IExchangeRateService>();
+        rate.SetupGet(r => r.CurrentRate).Returns(50m);
+
+        var userSession = new UserSession();
+        var viewModel = new CashDrawerViewModel(
+            cash.Object,
+            rate.Object,
+            new Mock<IDialogService>().Object,
+            new Mock<IPaymentService>().Object,
+            userSession);
+        WeakReferenceMessenger.Default.UnregisterAll(viewModel);
+
+        // Registering the user after construction suppresses the initial background load; the
+        // test calls LoadSessionAsync explicitly with the seeded session.
+        userSession.SetUser(new UserDto { Id = 1, Name = "Supervisor Test", Cedula = "V-1", Role = UserRole.Admin });
+        return viewModel;
+    }
+
+    private static CashDrawerSessionDto PhysicalSession(params PhysicalMethodBalanceClientDto[] balances) => new()
+    {
+        Id = 1,
+        Status = CashDrawerStatus.Open,
+        Transactions = new List<CashTransactionDto>(),
+        PhysicalMethodBalances = balances.ToList()
+    };
+
+    [Fact]
+    public async Task DualProfile_PhysicalCurrencyBalances_ShowLocalFirstAndAggregateMethods()
+    {
+        var previousFormat = CurrencyDisplay.Current;
+        try
+        {
+            CurrencyDisplay.Current = MoneyDisplayFormat.Venezuelan;
+            ApplyDualProfile();
+            var session = PhysicalSession(
+                new PhysicalMethodBalanceClientDto { PaymentMethodId = 1, Name = "Efectivo USD", CurrencyCode = "USD", CurrencySymbol = "$", CurrentBalance = 10m, IsActive = true, CanDispense = true },
+                new PhysicalMethodBalanceClientDto { PaymentMethodId = 2, Name = "Efectivo Bs.S", CurrencyCode = "VES", CurrencySymbol = "Bs.S", CurrentBalance = 100m, IsActive = true, CanDispense = true },
+                new PhysicalMethodBalanceClientDto { PaymentMethodId = 3, Name = "Caja Bs.S", CurrencyCode = "VES", CurrencySymbol = "Bs.S", CurrentBalance = 50m, IsActive = true, CanDispense = true });
+
+            using var viewModel = CreateDrawerWithPhysicalBalances(session);
+            await viewModel.LoadSessionAsync();
+
+            Assert.Collection(
+                viewModel.PhysicalCurrencyBalances,
+                local =>
+                {
+                    Assert.Equal("VES", local.CurrencyCode);
+                    Assert.True(local.IsLocal);
+                    Assert.Equal(150m, local.CurrentBalance);
+                },
+                primary =>
+                {
+                    Assert.Equal("USD", primary.CurrencyCode);
+                    Assert.False(primary.IsLocal);
+                    Assert.Equal(10m, primary.CurrentBalance);
+                });
+
+            Assert.Collection(
+                viewModel.PhysicalMethodBalances,
+                first => Assert.Equal(3, first.PaymentMethodId),
+                second => Assert.Equal(2, second.PaymentMethodId),
+                third => Assert.Equal(1, third.PaymentMethodId));
+        }
+        finally
+        {
+            CurrencyDisplay.Current = previousFormat;
+            CurrencyDisplay.SetMonetaryProfile(null);
+        }
+    }
+
+    [Fact]
+    public async Task DualProfile_PhysicalCurrencyBalances_IncludeZeroForMissingCurrency()
+    {
+        var previousFormat = CurrencyDisplay.Current;
+        try
+        {
+            CurrencyDisplay.Current = MoneyDisplayFormat.Venezuelan;
+            ApplyDualProfile();
+            var session = PhysicalSession(
+                new PhysicalMethodBalanceClientDto { PaymentMethodId = 1, Name = "Efectivo USD", CurrencyCode = "USD", CurrencySymbol = "$", CurrentBalance = 25m, IsActive = true, CanDispense = true });
+
+            using var viewModel = CreateDrawerWithPhysicalBalances(session);
+            await viewModel.LoadSessionAsync();
+
+            Assert.Collection(
+                viewModel.PhysicalCurrencyBalances,
+                local => Assert.Equal(0m, local.CurrentBalance),
+                primary => Assert.Equal(25m, primary.CurrentBalance));
+        }
+        finally
+        {
+            CurrencyDisplay.Current = previousFormat;
+            CurrencyDisplay.SetMonetaryProfile(null);
+        }
+    }
+
+    [Fact]
+    public async Task SingleProfile_PhysicalCurrencyBalances_KeepLocalFirstAndLegacyExtraCurrency()
+    {
+        var previousFormat = CurrencyDisplay.Current;
+        try
+        {
+            CurrencyDisplay.Current = MoneyDisplayFormat.Venezuelan;
+            ApplySingleEurProfile();
+            var session = PhysicalSession(
+                new PhysicalMethodBalanceClientDto { PaymentMethodId = 1, Name = "Caja USD", CurrencyCode = "USD", CurrencySymbol = "$", CurrentBalance = 5m, IsActive = true, CanDispense = true },
+                new PhysicalMethodBalanceClientDto { PaymentMethodId = 2, Name = "Caja EUR", CurrencyCode = "EUR", CurrencySymbol = "?", CurrentBalance = 20m, IsActive = true, CanDispense = true });
+
+            using var viewModel = CreateDrawerWithPhysicalBalances(session);
+            await viewModel.LoadSessionAsync();
+
+            Assert.Collection(
+                viewModel.PhysicalCurrencyBalances,
+                local =>
+                {
+                    Assert.Equal("EUR", local.CurrencyCode);
+                    Assert.True(local.IsLocal);
+                    Assert.Equal(20m, local.CurrentBalance);
+                },
+                other =>
+                {
+                    Assert.Equal("USD", other.CurrencyCode);
+                    Assert.False(other.IsLocal);
+                    Assert.Equal(5m, other.CurrentBalance);
+                });
+        }
+        finally
+        {
+            CurrencyDisplay.Current = previousFormat;
+            CurrencyDisplay.SetMonetaryProfile(null);
+        }
+    }
+
+    [Fact]
+    public void DualProfile_PhysicalCurrencyBalances_AreVisibleWithoutSessionOrMethods()
+    {
+        var previousFormat = CurrencyDisplay.Current;
+        try
+        {
+            CurrencyDisplay.Current = MoneyDisplayFormat.Venezuelan;
+            ApplyDualProfile();
+            using var viewModel = CreateDrawer();
+
+            Assert.True(viewModel.HasPhysicalCurrencyBalances);
+            Assert.Collection(
+                viewModel.PhysicalCurrencyBalances,
+                local => Assert.True(local.IsLocal),
+                primary => Assert.False(primary.IsLocal));
+        }
+        finally
+        {
+            CurrencyDisplay.Current = previousFormat;
+            CurrencyDisplay.SetMonetaryProfile(null);
+        }
+    }
+
     private static CashAdvanceRegisterViewModel CreateAdvanceDialog(decimal? availableCashLocal)
     {
         var methods = new List<PaymentMethodDto>

@@ -60,6 +60,97 @@ export function profileIncludesCurrency(profile = {}, code) {
 }
 
 /**
+ * Orden de monedas del perfil para la gaveta: local primero, luego primaria y secundaria.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ * @returns {{ localCode: string | null, order: string[] }}
+ */
+function profileCurrencyOrder(profile = {}) {
+  const local = resolveLocalCurrencyProfile(profile);
+  const primary = normalizeCurrencyCode(profile?.primaryCurrencyCode);
+  const secondary = profile?.mode === MONETARY_MODE_DUAL
+    ? normalizeCurrencyCode(profile?.secondaryCurrencyCode)
+    : null;
+
+  const order = [];
+  const seen = new Set();
+  for (const code of [local.code, primary, secondary]) {
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    order.push(code);
+  }
+
+  return { localCode: local.code, order };
+}
+
+function methodCurrencyCode(method) {
+  return normalizeCurrencyCode(method?.currencyCode);
+}
+
+/**
+ * Construye el resumen de existencia física por moneda. Incluye todas las monedas del perfil
+ * (local primero) y cualquier moneda extra presente en los métodos; las ausentes quedan en 0.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ * @param {Array<{ currencyCode?: string, currentBalance?: number }>} methods
+ * @returns {Array<{ code: string, label: string, symbol: string, total: number, isLocal: boolean }>}
+ */
+export function buildPhysicalCurrencySummaries(profile = {}, methods = []) {
+  const rows = Array.isArray(methods) ? methods : [];
+  const { localCode, order } = profileCurrencyOrder(profile);
+  const codes = [...order];
+  const seen = new Set(codes);
+
+  for (const method of rows) {
+    const code = methodCurrencyCode(method);
+    if (code && !seen.has(code)) {
+      seen.add(code);
+      codes.push(code);
+    }
+  }
+
+  return codes.map((code) => {
+    const total = rows.reduce(
+      (sum, method) => (methodCurrencyCode(method) === code ? sum + (Number(method?.currentBalance) || 0) : sum),
+      0
+    );
+
+    return {
+      code,
+      label: displayCurrencyCode(code),
+      symbol: symbolForCode(profile, code) || displayCurrencyCode(code),
+      total,
+      isLocal: code === localCode,
+    };
+  });
+}
+
+/**
+ * Ordena los métodos físicos por prioridad de moneda (local primero) y luego por nombre/ID.
+ * @param {Array<{ currencyCode?: string, name?: string, paymentMethodId?: number }>} methods
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ * @returns {Array}
+ */
+export function sortPhysicalMethodBalances(methods = [], profile = {}) {
+  const rows = Array.isArray(methods) ? methods : [];
+  const { order } = profileCurrencyOrder(profile);
+  const priorityByCode = new Map(order.map((code, index) => [code, index]));
+  const priorityFor = (method) => {
+    const code = methodCurrencyCode(method);
+    if (!code) return order.length;
+    return priorityByCode.has(code) ? priorityByCode.get(code) : order.length;
+  };
+
+  return [...rows].sort((left, right) => {
+    const priorityDiff = priorityFor(left) - priorityFor(right);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    const nameDiff = String(left?.name || '').localeCompare(String(right?.name || ''), 'es', { sensitivity: 'base' });
+    if (nameDiff !== 0) return nameDiff;
+
+    return (Number(left?.paymentMethodId) || 0) - (Number(right?.paymentMethodId) || 0);
+  });
+}
+
+/**
  * La anulación exige token supervisor para Manager y Cashier (S5); solo Admin anula directo.
  * Es gating de presentación (qué aviso se muestra), nunca una política: el servidor decide; el
  * modal abre la espera de autorización y reintenta con el token (residual 3).
