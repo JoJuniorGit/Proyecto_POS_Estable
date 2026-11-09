@@ -17703,3 +17703,31 @@ B5. Bundle `Backend.API/wwwroot` regenerado y commiteado.
 C. COMMIT
 C1. `5fcaca8` resumen fisico por moneda en Web y WPF con pruebas.
 ================================================================================
+
+ANEXO LVII - RESUMEN DE CAJA POR MONEDA EN WEB - 2026-11-08
+================================================================================
+Pedido del mantenedor: que cada moneda sea una columna con el efectivo esperado
+en caja, el total de ingresos y el total de egresos de la sesion.
+
+A. CAMBIO
+A1. Web: `RegisterPage` reemplaza las tres tarjetas de una sola moneda por una
+    tabla por moneda. Columnas: local primero y luego primaria/secundaria. Filas:
+    FONDO INICIAL, TOTAL INGRESOS, TOTAL EGRESOS y EFECTIVO ESPERADO EN CAJA.
+A2. `buildCashDrawerSessionSummary` atribuye cada movimiento fisico a su
+    `currencyCode`: la local usa `amountLocal`; la primaria usa `amountUsd` con
+    fallback a `amountLocal / exchangeRate`; las filas legacy sin `currencyCode`
+    caen a la moneda local. El esperado por moneda es fondo + ingresos - egresos.
+A3. El esperado local usado por retiros, adelantos y cierre de caja sale de la
+    columna local, no de una suma global que mezcle montos USD convertidos.
+A4. Sin cambios de backend ni de permisos. Se conservan las tarjetas de
+    existencias fisicas por moneda debajo del resumen.
+
+B. EVIDENCIA
+B1. `npm run lint`: OK.
+B2. `npm test`: 756/756.
+B3. `npm run build`: OK.
+B4. Bundle `Backend.API/wwwroot` regenerado y commiteado.
+
+C. COMMIT
+C1. `9e3e5ab` resumen de caja por moneda en Web y pruebas.
+================================================================================
