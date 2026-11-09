@@ -238,4 +238,18 @@ public class CashDrawerSessionDto
 
     // 8.212-WU4: null for legacy sessions without WU1 method rows.
     public System.Collections.Generic.List<PhysicalMethodBalanceClientDto>? PhysicalMethodBalances { get; set; }
+
+    // S1/S2: resumen físico por moneda activa, calculado por el backend.
+    public System.Collections.Generic.List<CurrencySessionSummaryClientDto>? CurrencySummaries { get; set; }
+}
+
+public sealed class CurrencySessionSummaryClientDto
+{
+    public string CurrencyCode { get; set; } = string.Empty;
+    public string CurrencySymbol { get; set; } = string.Empty;
+    public decimal OpeningBalance { get; set; }
+    public decimal TotalPhysicalInflows { get; set; }
+    public decimal TotalPhysicalOutflows { get; set; }
+    public decimal ExpectedCashBalance { get; set; }
+    public bool IsLocal { get; set; }
 }

@@ -37,13 +37,16 @@ public class CashDrawerService : ICashDrawerService
     {
         var session = await _context.CashDrawerSessions
             .AsNoTracking()
+            .Include(s => s.Transactions)
             .FirstOrDefaultAsync(s => s.Status == CashDrawerStatus.Open, cancellationToken);
         if (session == null) return null;
 
         var methodBalances = await _balances.GetPhysicalMethodBalancesAsync(session.Id, cancellationToken);
+        var currencySummaries = await _balances.GetCurrencySessionSummariesAsync(session, cancellationToken);
         return MapSession(session) with
         {
-            PhysicalMethodBalances = methodBalances.Count == 0 ? null : methodBalances
+            PhysicalMethodBalances = methodBalances.Count == 0 ? null : methodBalances,
+            CurrencySummaries = currencySummaries
         };
     }
 
@@ -71,10 +74,12 @@ public class CashDrawerService : ICashDrawerService
             .ToList();
 
         var methodBalances = await _balances.GetPhysicalMethodBalancesAsync(session.Id, cancellationToken);
+        var currencySummaries = await _balances.GetCurrencySessionSummariesAsync(session, cancellationToken);
         return MapSession(session) with
         {
             Transactions = transactions,
-            PhysicalMethodBalances = methodBalances.Count == 0 ? null : methodBalances
+            PhysicalMethodBalances = methodBalances.Count == 0 ? null : methodBalances,
+            CurrencySummaries = currencySummaries
         };
     }
 

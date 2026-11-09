@@ -8,6 +8,8 @@ import {
   Loader2, 
   RefreshCw, 
   ShieldAlert, 
+  TrendingUp,
+  TrendingDown,
   Clock,
   CheckCircle,
   Wallet,
@@ -30,14 +32,12 @@ import PettyCashCancelModal from '../components/register/PettyCashCancelModal';
 import CashDrawerCloseModal from '../components/register/CashDrawerCloseModal';
 import CashDrawerOpenModal from '../components/register/CashDrawerOpenModal';
 import { getPettyCashExpenses, getPettyCashPhysicalBalances } from '../services/pettyCashApi';
-import { formatPhysicalMethodAmount, getPhysicalMethodBalances } from '../services/cashDrawerApi';
+import { getPhysicalMethodBalances } from '../services/cashDrawerApi';
 import {
   canCloseCashDrawerSession,
   canUsePettyCash,
   resolveLocalCurrencyProfile,
-  buildPhysicalCurrencySummaries,
   buildCashDrawerSessionSummary,
-  sortPhysicalMethodBalances,
 } from '../components/register/registerFormLogic';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
@@ -198,28 +198,33 @@ function RegisterPageContent() {
   // Derived state calculations
   const transactions = useMemo(() => session?.transactions || [], [session]);
 
-  // Resumen por moneda: fondo, ingresos, egresos y esperado de la sesión. La moneda local
-  // siempre va primero; las filas legacy sin currencyCode se atribuyen a la local.
-  const sessionCurrencySummary = useMemo(
-    () => buildCashDrawerSessionSummary(profile, session, transactions),
-    [profile, session, transactions]
-  );
+  // Resumen por moneda: el backend es la fuente de verdad. El helper cliente queda solo como
+  // fallback para respuestas legacy que aún no traen currencySummaries.
+  const sessionCurrencySummary = useMemo(() => {
+    const backendRows = Array.isArray(session?.currencySummaries)
+      ? session.currencySummaries
+      : null;
 
-  // El efectivo local disponible para retiros/adelantos/cierre sale de la columna local,
+    if (backendRows && backendRows.length > 0) {
+      return backendRows.map((row) => ({
+        code: row.currencyCode,
+        label: displayCurrencyCode(row.currencyCode),
+        symbol: row.currencySymbol || displayCurrencyCode(row.currencyCode),
+        opening: Number(row.openingBalance) || 0,
+        income: Number(row.totalPhysicalInflows) || 0,
+        expense: Number(row.totalPhysicalOutflows) || 0,
+        expected: Number(row.expectedCashBalance) || 0,
+        isLocal: row.isLocal === true,
+      }));
+    }
+
+    return buildCashDrawerSessionSummary(profile, session, transactions);
+  }, [profile, session, transactions]);
+
+  // El efectivo local disponible para retiros/adelantos/cierre sale de la fila local,
   // no de una suma global que mezcle montos USD convertidos.
   const localCurrencySummary = sessionCurrencySummary.find((currency) => currency.isLocal);
   const expectedCashBsS = localCurrencySummary?.expected ?? 0;
-
-  // S1/S2: resumen físico por moneda (local primero) y detalle por método en el mismo orden.
-  // Se construye en el cliente con los saldos y el perfil ya existentes; no hay fetch extra.
-  const physicalCurrencySummaries = useMemo(
-    () => buildPhysicalCurrencySummaries(profile, physicalMethodBalances),
-    [profile, physicalMethodBalances]
-  );
-  const sortedPhysicalMethodBalances = useMemo(
-    () => sortPhysicalMethodBalances(physicalMethodBalances, profile),
-    [physicalMethodBalances, profile]
-  );
 
   // Last 7 received incomes (sorted most recent first)
   const recentIncomes = useMemo(() => [...transactions]
@@ -404,7 +409,7 @@ function RegisterPageContent() {
             />
           )}
 
-          {/* Resumen por moneda: columnas con fondo, ingresos, egresos y esperado. */}
+          {/* Resumen por moneda: una fila de 3 tarjetas por cada moneda activa. */}
           <div className="card shadow-sm p-4 bg-surface mb-4 reg-fullwidth">
             <div className="flex-between flex-align-center mb-3">
               <h3 className="card-title text-base font-bold flex-align-center gap-2 m-0">
@@ -413,116 +418,82 @@ function RegisterPageContent() {
               </h3>
               <span className="text-xs text-muted">Sesión actual</span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="cart-table reg-currency-summary-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Concepto</th>
-                    {sessionCurrencySummary.map((currency) => (
-                      <th key={currency.code} className="text-right">
-                        <span className="font-bold">{currency.label}</span>
-                        {currency.isLocal && (
-                          <span className="reg-currency-local-badge">LOCAL</span>
-                        )}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="text-left text-muted">FONDO INICIAL</td>
-                    {sessionCurrencySummary.map((currency) => (
-                      <td
-                        key={currency.code}
-                        className={`text-right ${currency.isLocal ? 'reg-currency-summary-local' : ''}`}
-                      >
-                        {currency.symbol} {formatNumberEs(currency.opening, 2)}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr>
-                    <td className="text-left text-muted">TOTAL INGRESOS</td>
-                    {sessionCurrencySummary.map((currency) => (
-                      <td
-                        key={currency.code}
-                        className={`text-right color-success ${currency.isLocal ? 'reg-currency-summary-local' : ''}`}
-                      >
-                        {currency.symbol} {formatNumberEs(currency.income, 2)}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr>
-                    <td className="text-left text-muted">TOTAL EGRESOS</td>
-                    {sessionCurrencySummary.map((currency) => (
-                      <td
-                        key={currency.code}
-                        className={`text-right color-danger ${currency.isLocal ? 'reg-currency-summary-local' : ''}`}
-                      >
-                        {currency.symbol} {formatNumberEs(currency.expense, 2)}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="reg-currency-summary-total">
-                    <td className="text-left font-bold">EFECTIVO ESPERADO EN CAJA</td>
-                    {sessionCurrencySummary.map((currency) => (
-                      <td
-                        key={currency.code}
-                        className={`text-right font-extrabold ${currency.isLocal ? 'reg-currency-summary-local' : ''}`}
-                      >
-                        {currency.symbol} {formatNumberEs(currency.expected, 2)}
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
 
-          <div className="card shadow-sm p-4 bg-surface mb-4 reg-fullwidth">
-            <h3 className="card-title text-base font-bold flex-align-center gap-2 m-0 mb-3">
-              <Wallet size={20} className="color-primary" />
-              EXISTENCIAS FÍSICAS POR MONEDA
-            </h3>
-            <div className="reg-currency-balance-grid">
-              {physicalCurrencySummaries.map((currency) => (
+            <div className="reg-currency-summary-rows">
+              {sessionCurrencySummary.map((currency) => (
                 <div
                   key={currency.code}
-                  className={`card p-3 border rounded-lg ${currency.isLocal ? 'reg-currency-balance-local' : ''}`}
+                  className={`reg-currency-summary-row ${currency.isLocal ? 'is-local' : ''}`}
                 >
-                  <div className="flex-between flex-align-center mb-2">
+                  <div className="reg-currency-summary-row-header">
                     <span className="font-bold text-sm">{currency.label}</span>
                     {currency.isLocal && (
                       <span className="reg-currency-local-badge">MONEDA LOCAL</span>
                     )}
                   </div>
-                  <div className="font-extrabold text-xl color-primary">
-                    {currency.symbol ? `${currency.symbol} ` : ''}{formatNumberEs(currency.total, 2)}
+
+                  <div className="grid w-full gap-4 reg-currency-summary-cards">
+                    <div className="card shadow-sm p-4 bg-surface flex-between flex-align-center reg-card-indigo">
+                      <div className="flex-1 pr-3 flex flex-column justify-content-between">
+                        <span className="stat-label text-xs font-bold text-muted uppercase tracking-wider block mb-1">
+                          EFECTIVO ESPERADO EN CAJA ({currency.label})
+                        </span>
+                        <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
+                          <span className="text-3xl font-extrabold color-primary">
+                            {formatNumberEs(currency.expected, 2)}
+                          </span>
+                          <span className="text-base font-bold color-primary reg-currency-gap">
+                            {currency.symbol}
+                          </span>
+                        </div>
+                        <div className="text-xs font-semibold text-muted">
+                          Fondo inicial: {currency.symbol} {formatNumberEs(currency.opening, 2)}
+                        </div>
+                      </div>
+                      <div className="flex-align-center justify-content-center p-2 rounded-lg flex-shrink-0 reg-card-icon-circle">
+                        <Landmark size={26} className="color-primary" />
+                      </div>
+                    </div>
+
+                    <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between reg-card-green">
+                      <div className="flex-align-center gap-2 mb-1">
+                        <TrendingUp size={18} className="color-success flex-shrink-0" />
+                        <span className="stat-label text-xs font-bold uppercase tracking-wider reg-label-green">
+                          TOTAL INGRESOS ({currency.label})
+                        </span>
+                      </div>
+                      <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
+                        <span className="text-2xl font-extrabold color-success">
+                          {formatNumberEs(currency.income, 2)}
+                        </span>
+                        <span className="text-sm font-bold color-success reg-currency-gap">
+                          {currency.symbol}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted font-medium">Acumulado en sesión</div>
+                    </div>
+
+                    <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between reg-card-red">
+                      <div className="flex-align-center gap-2 mb-1">
+                        <TrendingDown size={18} className="color-danger flex-shrink-0" />
+                        <span className="stat-label text-xs font-bold uppercase tracking-wider reg-label-red">
+                          TOTAL EGRESOS ({currency.label})
+                        </span>
+                      </div>
+                      <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
+                        <span className="text-2xl font-extrabold color-danger">
+                          {formatNumberEs(currency.expense, 2)}
+                        </span>
+                        <span className="text-sm font-bold color-danger reg-currency-gap">
+                          {currency.symbol}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted font-medium">Retiros y salidas</div>
+                    </div>
                   </div>
-                  <div className="text-xs text-muted mt-1">Existencia física</div>
                 </div>
               ))}
             </div>
-
-            {sortedPhysicalMethodBalances.length > 0 && (
-              <>
-                <h4 className="text-sm font-bold mt-4 mb-2">Detalle por método físico</h4>
-                <div className="reg-method-balance-grid">
-                  {sortedPhysicalMethodBalances.map((method) => (
-                    <div
-                      key={method.paymentMethodId}
-                      className={`card p-3 border rounded-lg ${method.canDispense ? '' : 'reg-method-balance-disabled'}`}
-                    >
-                      <div className="font-bold text-sm">{method.name}</div>
-                      <div className="text-xs text-muted mb-2">{method.currencyCode}</div>
-                      <div className="font-extrabold text-xl color-primary">
-                        {formatPhysicalMethodAmount(method, method.currentBalance)}
-                      </div>
-                      <div className="text-xs text-muted mt-1">Existencia actual</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
           </div>
 
           <div className="grid grid-1 gap-4">

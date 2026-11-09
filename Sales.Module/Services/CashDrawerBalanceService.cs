@@ -185,6 +185,22 @@ internal sealed class CashDrawerBalanceService
     }
 
     /// <summary>
+    /// S1/S2: resumen físico por moneda activa para la sesión. La moneda local va primero y cada
+    /// fila se expresa en su propia divisa, sin conversiones cruzadas.
+    /// </summary>
+    public async Task<IReadOnlyList<CurrencySessionSummaryDto>> GetCurrencySessionSummariesAsync(
+        CashDrawerSession session,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var profile = await ResolveProfileOrNullAsync(
+            "No se pudo leer el perfil monetario para calcular los resúmenes por moneda. Verifique la configuración monetaria.",
+            cancellationToken);
+        return CashDrawerCurrencySummaryBuilder.Build(session, profile);
+    }
+
+    /// <summary>
     /// 8.212-WU2: filas vivas (tracked) con su saldo para cerrar/arrastrar la sesión. Mantiene
     /// una única fórmula compartida con la lectura por método.
     /// </summary>

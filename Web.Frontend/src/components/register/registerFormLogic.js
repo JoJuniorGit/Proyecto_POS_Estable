@@ -188,11 +188,17 @@ export function buildCashDrawerSessionSummary(profile = {}, session = {}, transa
 
   return order.map((code) => {
     const income = physicalRows
-      .filter((transaction) => transaction?.type === 0 && transaction?.source !== CashTransactionSource.Opening)
+      .filter((transaction) => transaction?.type === 0
+        && transaction?.source !== CashTransactionSource.Opening
+        && transaction?.source !== CashTransactionSource.PettyCashReversal)
       .reduce((sum, transaction) => sum + amountForCurrency(transaction, code), 0);
-    const expense = physicalRows
-      .filter((transaction) => transaction?.type === 1)
+    const expenses = physicalRows
+      .filter((transaction) => transaction?.type === 1 && transaction?.source !== CashTransactionSource.Closing)
       .reduce((sum, transaction) => sum + amountForCurrency(transaction, code), 0);
+    const reversals = physicalRows
+      .filter((transaction) => transaction?.source === CashTransactionSource.PettyCashReversal)
+      .reduce((sum, transaction) => sum + amountForCurrency(transaction, code), 0);
+    const expense = expenses - reversals;
     const opening = code === localCode ? openingLocal : code === primaryCode ? openingPrimary : 0;
 
     return {

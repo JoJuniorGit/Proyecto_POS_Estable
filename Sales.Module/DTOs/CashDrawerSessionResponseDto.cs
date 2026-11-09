@@ -25,4 +25,11 @@ public sealed record CashDrawerSessionResponseDto
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<PhysicalMethodBalanceDto>? PhysicalMethodBalances { get; init; }
+
+    /// <summary>
+    /// S1/S2: resumen físico por moneda activa (local primero). El cliente no debe recalcular
+    /// conversiones ni atribuciones cuando este bloque está presente.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<CurrencySessionSummaryDto>? CurrencySummaries { get; init; }
 }

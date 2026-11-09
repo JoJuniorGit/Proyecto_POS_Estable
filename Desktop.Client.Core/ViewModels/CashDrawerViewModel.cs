@@ -103,12 +103,11 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     // 8.212-WU4: live per-method physical balances and the editable opening breakdown.
     public ObservableCollection<PhysicalMethodBalanceClientDto> PhysicalMethodBalances { get; } = new();
 
-    // S1/S2: total físico por moneda, con la moneda local del perfil primero.
-    public ObservableCollection<PhysicalCurrencyBalanceViewModel> PhysicalCurrencyBalances { get; } = new();
+    // S1/S2: resumen por moneda activa (local primero), calculado por el backend.
+    public ObservableCollection<CurrencySessionSummaryViewModel> CurrencySummaries { get; } = new();
     public ObservableCollection<OpeningPhysicalMethodViewModel> OpeningPhysicalMethods { get; } = new();
 
     public bool HasPhysicalMethodBalances => PhysicalMethodBalances.Count > 0;
-    public bool HasPhysicalCurrencyBalances => PhysicalCurrencyBalances.Count > 0;
     public bool HasOpeningPhysicalMethods => OpeningPhysicalMethods.Count > 0;
     public bool ShowLegacyOpeningInputs => !HasOpeningPhysicalMethods;
 
@@ -200,7 +199,6 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         RecentIncomes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentIncomes));
         PettyCashExpenses.CollectionChanged += (_, _) => NotifyPettyCashChanged();
         PhysicalMethodBalances.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPhysicalMethodBalances));
-        PhysicalCurrencyBalances.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPhysicalCurrencyBalances));
         OpeningPhysicalMethods.CollectionChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(HasOpeningPhysicalMethods));
@@ -241,7 +239,6 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         {
             _dispatcherInvoker.Invoke(((CashDrawerViewModel)r).UpdateFormattedBalances);
         });
-        RebuildPhysicalCurrencyBalances();
 
         if (_userSession == null || _userSession.IsLoggedIn)
         {
@@ -287,7 +284,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         FormattedTotalExpenseBsS = CurrencyDisplay.FormatSecondary(TotalExpenseBsS, 0);
 
         // S1/S2: refresca el resumen por moneda con el formato/perfil vigente.
-        RebuildPhysicalCurrencyBalances();
+        RebuildCurrencySummaries();
     }
 
     // The USD-equivalent line keeps the historical trailing-symbol shape ("26,00 $") because the
@@ -792,44 +789,68 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         return normalized ?? string.Empty;
     }
 
-    private static string DisplayPhysicalCurrencyCode(string code)
-        => string.Equals(code, "VES", StringComparison.Ordinal) ? "Bs.S" : code;
-
-    private void RebuildPhysicalCurrencyBalances()
+    private void RebuildCurrencySummaries()
     {
-        PhysicalCurrencyBalances.Clear();
-        var ordered = new List<string>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        CurrencySummaries.Clear();
 
-        void Add(string? code)
+        // Sin sesión activa, el perfil sigue definiendo las monedas visibles: se muestran en
+        // cero para que la caja tenga una fila local estable y el operador vea el régimen.
+        if (ActiveSession is null)
         {
-            var normalized = NormalizePhysicalCurrencyCode(code);
-            if (string.IsNullOrEmpty(normalized) || !seen.Add(normalized)) return;
-            ordered.Add(normalized);
+            AddProfileCurrencySummary(CurrencyDisplay.LocalCurrencyCode, isLocal: true);
+            AddProfileCurrencySummary(CurrencyDisplay.PrimaryCurrencyCode, isLocal: false);
+            AddProfileCurrencySummary(CurrencyDisplay.SecondaryCurrencyCode, isLocal: false);
+            return;
         }
 
-        Add(CurrencyDisplay.LocalCurrencyCode);
-        Add(CurrencyDisplay.PrimaryCurrencyCode);
-        Add(CurrencyDisplay.SecondaryCurrencyCode);
-        foreach (var balance in PhysicalMethodBalances)
+        var rows = ActiveSession.CurrencySummaries;
+        if (rows is null)
         {
-            Add(balance.CurrencyCode);
+            return;
         }
 
-        foreach (var code in ordered)
+        foreach (var row in rows)
         {
-            var total = PhysicalMethodBalances
-                .Where(balance => NormalizePhysicalCurrencyCode(balance.CurrencyCode) == code)
-                .Sum(balance => balance.CurrentBalance);
-
-            PhysicalCurrencyBalances.Add(new PhysicalCurrencyBalanceViewModel
+            CurrencySummaries.Add(new CurrencySessionSummaryViewModel
             {
-                CurrencyCode = code,
-                CurrencyLabel = DisplayPhysicalCurrencyCode(code),
-                CurrencySymbol = CurrencyDisplay.SymbolFor(code),
-                CurrentBalance = total,
-                IsLocal = code == NormalizePhysicalCurrencyCode(CurrencyDisplay.LocalCurrencyCode)
+                CurrencyCode = row.CurrencyCode,
+                CurrencySymbol = row.CurrencySymbol,
+                OpeningBalance = row.OpeningBalance,
+                TotalPhysicalInflows = row.TotalPhysicalInflows,
+                TotalPhysicalOutflows = row.TotalPhysicalOutflows,
+                ExpectedCashBalance = row.ExpectedCashBalance,
+                IsLocal = row.IsLocal
             });
         }
+    }
+
+    private void AddProfileCurrencySummary(string? code, bool isLocal)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return;
+        }
+
+        var normalized = code.Trim().ToUpperInvariant();
+        if (normalized is "BS.S" or "BSS")
+        {
+            normalized = "VES";
+        }
+
+        if (CurrencySummaries.Any(row => row.CurrencyCode == normalized))
+        {
+            return;
+        }
+
+        CurrencySummaries.Add(new CurrencySessionSummaryViewModel
+        {
+            CurrencyCode = normalized,
+            CurrencySymbol = CurrencyDisplay.SymbolFor(normalized),
+            OpeningBalance = 0m,
+            TotalPhysicalInflows = 0m,
+            TotalPhysicalOutflows = 0m,
+            ExpectedCashBalance = 0m,
+            IsLocal = isLocal
+        });
     }
 }

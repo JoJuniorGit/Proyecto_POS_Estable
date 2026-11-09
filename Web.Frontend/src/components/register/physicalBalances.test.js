@@ -178,4 +178,24 @@ describe('cash drawer session summary by currency', () => {
     assert.strictEqual(summary[1].income, 10);
     assert.strictEqual(summary[1].expected, 10);
   });
+
+  it('nets petty cash reversals and excludes closing from the fallback summary', () => {
+    const summary = buildCashDrawerSessionSummary(
+      DUAL_USD_VES,
+      { openingBalanceLocal: 100, openingBalanceUsd: 0 },
+      [
+        { type: 0, source: 0, isPhysicalCash: true, currencyCode: 'VES', amountLocal: 100, amountUsd: 2 },
+        { type: 0, source: 1, isPhysicalCash: true, currencyCode: 'VES', amountLocal: 50, amountUsd: 1 },
+        { type: 1, source: 6, isPhysicalCash: true, currencyCode: 'VES', amountLocal: 10, amountUsd: 0.2 },
+        { type: 1, source: 9, isPhysicalCash: true, currencyCode: 'VES', amountLocal: 2, amountUsd: 0.04 },
+        { type: 0, source: 10, isPhysicalCash: true, currencyCode: 'VES', amountLocal: 1, amountUsd: 0.02 },
+        { type: 1, source: 4, isPhysicalCash: true, currencyCode: 'VES', amountLocal: 100, amountUsd: 2 },
+      ]
+    );
+
+    assert.strictEqual(summary[0].opening, 100);
+    assert.strictEqual(summary[0].income, 50);
+    assert.strictEqual(summary[0].expense, 11);
+    assert.strictEqual(summary[0].expected, 139);
+  });
 });

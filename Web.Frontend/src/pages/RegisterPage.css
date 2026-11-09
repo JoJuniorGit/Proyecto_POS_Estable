@@ -190,6 +190,40 @@
   margin-left: 6px;
 }
 
+:root .reg-currency-summary-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+:root .reg-currency-summary-row {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+:root .reg-currency-summary-row.is-local {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-primary-light);
+}
+
+:root .reg-currency-summary-row-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+:root .reg-currency-summary-cards {
+  grid-template-columns: 2fr 1fr 1fr;
+}
+
+@media (max-width: 900px) {
+  :root .reg-currency-summary-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
 :root .reg-currency-balance-local {
   border-color: var(--accent-primary) !important;
   background-color: var(--accent-primary-light) !important;
