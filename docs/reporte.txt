@@ -17831,6 +17831,10 @@ A6. Altura minima de la grilla: 8 filas (428 px con fila de 48 y cabecera de
     grandes la fila `*` sigue absorbiendo el espacio libre y el scroll de pagina
     aparece solo si el minimo no entra. El overlay de apertura queda fuera del
     ScrollViewer.
+A7. La grilla fija su altura con `MaxHeight` igual a ese minimo y habilita el
+    scrollbar vertical interno (`ScrollViewer.VerticalScrollBarVisibility=Auto`,
+    `VerticalAlignment=Top`). La navegacion de filas ocurre dentro de la caja;
+    la pagina no se estira con el contenido de los 25 registros de la pagina.
 
 B. EVIDENCIA
 B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
@@ -17841,9 +17845,11 @@ B4. Suite completa `CommandCenter.Tests` (corrida previa): 4164 superados, 53
     `TEST_POSTGRES_CONNECTION` (todos en `PostgresTestLane.RequireResolution`;
     ninguno de este cambio).
 B5. Sin cambios de backend, endpoints ni estructura de `CashMovements`.
+B6. Ajuste de scroll interno: build Release 0/0; focalizados de caja 16/16.
 
 C. COMMIT
 C1. `e997390` modernizacion de la grilla de movimientos de caja (WPF).
 C2. `5b455ee` altura minima de la grilla: 8 filas + 2.5 adicionales.
+C3. `61dc282` scroll interno de la grilla de movimientos.
 ================================================================================
 

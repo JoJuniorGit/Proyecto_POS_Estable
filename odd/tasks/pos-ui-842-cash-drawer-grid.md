@@ -196,5 +196,5 @@ Runner: `dotnet build CommandCenter.slnx -c Release` + `dotnet test` (filtro caj
   `MovementsGridMinHeight`, `VerticalAlignment="Top"` y
   `ScrollViewer.VerticalScrollBarVisibility="Auto"`: la caja queda fija en 8 filas (o 10.5 con
   mas de 8) y el resto de la pagina se navega con el scrollbar interno de la grilla. Build
-  Release 0/0; focalizados de caja 16/16.
+  Release 0/0; focalizados de caja 16/16. Commit `61dc282`.
 
