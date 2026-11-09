@@ -15,10 +15,10 @@ Branch: `V0.15` · Delivery: work-unit commits on the feature branch · Tests: `
 
 ## Tasks
 
-- [ ] **T1 — Backend: DTO y cálculo por moneda.** Agregar `CurrencySessionSummaryDto`, `CurrencySummaries` en `CashDrawerSessionResponseDto`, builder en `CashDrawerBalanceService`, mapeo en `CashDrawerService` y pruebas. Route: inline.
-- [ ] **T2 — WPF: modelo, ViewModel y XAML.** DTO cliente, `CurrencySummaries` en el ViewModel, filas de 3 tarjetas, eliminación del bloque físico, IDs E2E y pruebas. Route: inline.
-- [ ] **T3 — Web: filas de 3 tarjetas.** Usar `session.currencySummaries` con fallback, eliminar el bloque/tabla duplicado, CSS y pruebas. Route: inline.
-- [ ] **T4 — Verificación y ANEXO.** Build/test WPF, lint/test/build Web, suite backend, ANEXO LIX. Route: inline.
+- [x] **T1 — Backend: DTO y cálculo por moneda.** `CurrencySessionSummaryDto`, builder `CashDrawerCurrencySummaryBuilder`, `CashDrawerSessionResponseDto.CurrencySummaries` y mapeo en `CashDrawerService`. Commit `a365ed3`.
+- [x] **T2 — WPF: modelo, ViewModel y XAML.** `CurrencySessionSummaryViewModel`, `CurrencySummaries`, filas de 3 tarjetas, IDs E2E y fallback en cero sin sesión. Commit `a365ed3`.
+- [x] **T3 — Web: filas de 3 tarjetas.** `session.currencySummaries` con fallback, filas de 3 tarjetas y eliminación del bloque físico/tabla. Commit `a365ed3`.
+- [x] **T4 — Verificación y ANEXO.** Build 0/0, backend 4210/4210, WPF E2E caja 1/1, Web 757/757 y build OK; ANEXO LIX. Commit `a365ed3` + docs.
 
 ## Log
 
@@ -38,3 +38,11 @@ En Dual: dos filas (local/secundaria primero, principal/dura después). En Singl
 - La moneda local es la secundaria en `Dual` y la primaria en `Single`. La apertura local/primaria está en `OpeningBalanceLocal`/`OpeningBalanceUsd`.
 - Los movimientos físicos tienen `CurrencyCode`, `AmountLocal` y `AmountUsd`; las filas legacy sin snapshot deben caer a la moneda local.
 - La caja chica reversa es un ingreso compensatorio: debe excluirse de Ingresos y restarse de Egresos para mostrar el neto.
+
+### L3 — Implementación y verificación
+
+- Backend: `CashDrawerCurrencySummaryBuilder` arma local/primaria/secundaria con apertura, ingresos físicos (sin apertura ni reversas) y egresos físicos netos de reversas y sin cierre; `CurrencySessionSummaryDto` viaja en `CashDrawerSessionResponseDto.CurrencySummaries`.
+- WPF: `CashDrawerViewModel.CurrencySummaries` se llena desde el backend; `CashDrawerView` reemplazó las tarjetas fijas y el bloque de existencias por filas de 3 tarjetas. Sin sesión, muestra las monedas del perfil en cero para conservar una fila local estable y los IDs E2E.
+- Web: `RegisterPage` usa `session.currencySummaries` con fallback legacy; reemplazó la tabla y el bloque de existencias por filas de 3 tarjetas. El esperado local de retiros/adelantos/cierre sale de la fila local.
+- Evidencia: build WPF 0/0; `CashDrawerCurrencySummaryTests` + display tests 11/11; suite backend 4210/4210; WPF E2E `FullStackCashClosureTests` 1/1; Web lint OK, tests 757/757, build OK; bundle `wwwroot` regenerado.
+- El test dorado del DTO se actualizó con `currencySummaries` y los `Run.Text` nuevos usan `Mode=OneWay`.

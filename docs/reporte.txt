@@ -17758,3 +17758,38 @@ B3. Suite completa `CommandCenter.Tests` con PostgreSQL + E2E: 4208/4208
 C. COMMIT
 C1. `507d34a` visualizacion y formato del campo de comision de adelanto.
 ================================================================================
+
+ANEXO LIX - RESUMEN DE CAJA POR MONEDA ACTIVA - 2026-11-08
+================================================================================
+Pedido del mantenedor: mostrar una fila de 3 tarjetas por cada moneda activa
+con Efectivo Esperado, Total Ingresos y Total Egresos de la sesion, sin
+conversiones cruzadas y eliminando el bloque duplicado de existencias.
+
+A. CAMBIO
+A1. Backend: `CurrencySessionSummaryDto` y `CashDrawerCurrencySummaryBuilder`
+    calculan por moneda activa: apertura, ingresos fisicos (excluyendo apertura
+    y reversas de caja chica), egresos fisicos netos de reversas y excluyendo
+    cierre, y esperado = apertura + ingresos - egresos. `CurrencySummaries`
+    viaja en `CashDrawerSessionResponseDto`; la moneda local va primero.
+A2. WPF: `CashDrawerViewModel.CurrencySummaries` se llena desde el backend;
+    `CashDrawerView` reemplazo las tarjetas fijas y el bloque de existencias
+    por un ItemsControl de filas de 3 tarjetas. Sin sesion se muestran las
+    monedas del perfil en cero, conservando los IDs E2E en la fila local.
+A3. Web: `RegisterPage` usa `session.currencySummaries` (con fallback legacy)
+    y muestra filas de 3 tarjetas por moneda. Se elimino la tabla y el bloque
+    `EXISTENCIAS FISICAS POR MONEDA`.
+A4. El esperado local usado por retiros, adelantos y cierre sale de la fila
+    local. No se alteran permisos, backend de saldos ni conversiones cruzadas.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Tests WPF de caja (resumen + display): 11/11.
+B3. Suite completa `CommandCenter.Tests` con PostgreSQL + E2E: 4210/4210
+    (5m12s).
+B4. WPF E2E `FullStackCashClosureTests`: 1/1.
+B5. Web: `npm run lint` OK; `npm test` 757/757; `npm run build` OK; bundle
+    `Backend.API/wwwroot` regenerado y commiteado.
+
+C. COMMIT
+C1. `a365ed3` resumen de caja por moneda activa en backend, WPF y Web.
+================================================================================
