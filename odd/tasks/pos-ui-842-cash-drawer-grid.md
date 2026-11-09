@@ -43,7 +43,7 @@ Runner: `dotnet build CommandCenter.slnx -c Release` + `dotnet test` (filtro caj
   paginador integrado | inline | commit e997390
 - WU3 | S10 | Build Release, tests de caja y suite no-PG | inline | commit e997390
 - WU4 | S11 | Altura minima de grilla 8 filas + 2.5 adicionales con mas de 8 movimientos |
-  inline | commit pendiente
+  inline | commit 5b455ee
 
 ## Log
 
@@ -188,5 +188,5 @@ Runner: `dotnet build CommandCenter.slnx -c Release` + `dotnet test` (filtro caj
   espacio libre y solo aparece scroll de pagina cuando el contenido no entra. El overlay de
   apertura se movio fuera del ScrollViewer para seguir cubriendo todo el viewport. Tests nuevos
   de altura minima y paginacion: 10/10 en `CashDrawerMovementFilterTests`; focalizados de caja
-  16/16; build Release 0/0.
+  16/16; build Release 0/0. Commit `5b455ee`.
 

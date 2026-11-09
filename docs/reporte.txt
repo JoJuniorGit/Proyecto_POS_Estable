@@ -17844,6 +17844,6 @@ B5. Sin cambios de backend, endpoints ni estructura de `CashMovements`.
 
 C. COMMIT
 C1. `e997390` modernizacion de la grilla de movimientos de caja (WPF).
-C2. Commit pendiente: altura minima de la grilla 8 filas + 2.5 adicionales.
+C2. `5b455ee` altura minima de la grilla: 8 filas + 2.5 adicionales.
 ================================================================================
 
