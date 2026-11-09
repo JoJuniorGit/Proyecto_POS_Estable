@@ -161,7 +161,7 @@ Runner: `dotnet build CommandCenter.slnx -c Release` + `dotnet test` (filtro caj
   ANEXO y el commit del work unit.
 
 - L6 (2026-11-09): Work unit `e997390` (`feat(pos-ui-842)`). ANEXO LX registrado en
-  `docs/reporte.txt`. Mirror en Engram pendiente por degradacion del proveedor; el documento
-  local sigue siendo la fuente de recuperacion.
+  `docs/reporte.txt`. Mirror en Engram guardado como observacion `858` del proyecto
+  `proyecto_pos_estable`.
 
 
