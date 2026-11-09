@@ -34,10 +34,10 @@ Runner: `dotnet build CommandCenter.slnx -c Release` + `dotnet test` (filtro caj
 ## Tasks
 
 - WU1 | S8/S9 | ViewModel: `SearchText`, `MovementTypeFilter`, filtro en memoria, reset de pagina y
-  tests RED->GREEN | inline | commit pendiente
+  tests RED->GREEN | inline | commit e997390
 - WU2 | S1-S7/S9 | XAML: layout flexible, tarjeta, DataGrid estilizado, badges, columnas y
-  paginador integrado | inline | commit pendiente
-- WU3 | S10 | Build Release, tests de caja y suite no-PG | inline | commit pendiente
+  paginador integrado | inline | commit e997390
+- WU3 | S10 | Build Release, tests de caja y suite no-PG | inline | commit e997390
 
 ## Log
 
@@ -159,4 +159,9 @@ Runner: `dotnet build CommandCenter.slnx -c Release` + `dotnet test` (filtro caj
   tener `TEST_POSTGRES_CONNECTION` (todos los bloques de error son
   `PostgresTestLane.RequireResolution`; ninguno pertenece a este cambio). Queda registrar el
   ANEXO y el commit del work unit.
+
+- L6 (2026-11-09): Work unit `e997390` (`feat(pos-ui-842)`). ANEXO LX registrado en
+  `docs/reporte.txt`. Mirror en Engram pendiente por degradacion del proveedor; el documento
+  local sigue siendo la fuente de recuperacion.
+
 

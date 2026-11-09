@@ -17793,3 +17793,47 @@ B5. Web: `npm run lint` OK; `npm test` 757/757; `npm run build` OK; bundle
 C. COMMIT
 C1. `a365ed3` resumen de caja por moneda activa en backend, WPF y Web.
 ================================================================================
+
+ANEXO LX - MODERNIZACION GRILLA MOVIMIENTOS DE CAJA (POS-UI-842) - 2026-11-09
+================================================================================
+Pedido del mantenedor (JIRA POS-UI-842): modernizar visualmente la grilla de
+Movimientos de Caja (Fisicos) de WPF, liberar altura vertical y optimizar el
+layout sin tocar backend, contrato de datos ni agregar librerias de UI.
+
+A. CAMBIO
+A1. `CashDrawerView.xaml`: la seccion inferior pasa a una tarjeta blanca con
+    `CornerRadius=12`, borde `#E2E8F0` y barra de control con titulo, contador
+    de registros, chips Todos/Ingresos/Egresos y buscador por factura o
+    detalle. La grilla ocupa el alto restante (`Height="*"`).
+A2. `PerformantDataGrid`: sin `RowHeader` (`HeadersVisibility="Column"`), sin
+    lineas verticales, separadores horizontales `#F1F5F9`, cabecera `#F8FAFC`
+    con texto `#64748B` de 12 px y borde inferior unico. Virtualizacion
+    Recycling intacta.
+A3. Columnas: `Fecha/Hora`, `Tipo`, `Origen`, `Monto (Bs.S)`, `USD` y `Tasa`
+    con ancho fijo; `Factura / Detalle` es la unica `Width="*"`. Importes y
+    tasa alineados a la derecha con numeros tabulares. Badges verde/coral/azul
+    para Ingreso/Egreso/Adelanto-Otros; fecha principal y hora secundaria
+    apiladas con menor contraste.
+A4. El bloque "Ultimos ingresos recibidos" queda como barra resumen colapsable
+    (default colapsada) y el paginador se integra en la base de la tarjeta,
+    conservando `PreviousPageCommand`, `NextPageCommand`, `Mostrando X a Y` y
+    `Pagina X de Y`.
+A5. `CashDrawerViewModel`: `SearchText`, `MovementTypeFilter`
+    (`All/Income/Expense`), `IsRecentIncomesExpanded` y comandos de chip. El
+    filtro compone tipo + busqueda (factura o detalle, case-insensitive) sobre
+    el historial ya cargado, sin llamadas nuevas al backend; cambiar filtro o
+    busqueda vuelve a pagina 1 y recalcula totales/paginas del conjunto
+    filtrado.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Tests focalizados de caja/filtro/paginacion: 14/14.
+B3. Suite completa `CommandCenter.Tests`: 4164 superados, 53 fallos
+    ambientales del carril PostgreSQL por falta de `TEST_POSTGRES_CONNECTION`
+    (todos en `PostgresTestLane.RequireResolution`; ninguno de este cambio).
+B4. Sin cambios de backend, endpoints ni estructura de `CashMovements`.
+
+C. COMMIT
+C1. `e997390` modernizacion de la grilla de movimientos de caja (WPF).
+================================================================================
+
