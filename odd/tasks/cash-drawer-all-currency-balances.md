@@ -15,10 +15,10 @@ Branch: `V0.15` · Delivery: work-unit commits on the feature branch · Tests: `
 
 ## Tasks
 
-- [ ] **T1 — Web: helpers de resumen y orden.** Agregar `buildPhysicalCurrencySummaries` y `sortPhysicalMethodBalances` en la lógica de caja, con pruebas. Route: inline.
-- [ ] **T2 — Web: UI y CSS.** Renderizar el resumen por moneda siempre visible, local primero, y el detalle por método ordenado. Route: inline.
-- [ ] **T3 — WPF: resumen y orden.** Agregar `PhysicalCurrencyBalances`, reconstrucción desde el perfil y orden de `PhysicalMethodBalances`; XAML del resumen. Route: inline.
-- [ ] **T4 — Verificación y ANEXO.** Lint/tests/build Web; build/tests WPF; ANEXO LVI. Route: inline.
+- [x] **T1 — Web: helpers de resumen y orden.** `buildPhysicalCurrencySummaries` y `sortPhysicalMethodBalances` con pruebas en `physicalBalances.test.js`. Commit `5fcaca8`.
+- [x] **T2 — Web: UI y CSS.** `RegisterPage` muestra el resumen siempre visible, local primero, y el detalle por método ordenado. Commit `5fcaca8`.
+- [x] **T3 — WPF: resumen y orden.** `PhysicalCurrencyBalances`, reconstrucción desde el perfil y orden de `PhysicalMethodBalances`; XAML del resumen. Commit `5fcaca8`.
+- [x] **T4 — Verificación y ANEXO.** Web lint/tests/build OK; WPF build 0/0, targeted 9/9, suite backend 4207/4207; ANEXO LVI. Commit `5fcaca8` + docs.
 
 ## Log
 
@@ -32,3 +32,11 @@ Necesito que la caja Muestre siempre la existencia de todas las monedas en Fisic
 - WPF: `CashDrawerView` oculta la sección con `HasPhysicalMethodBalances` (count > 0); `PhysicalMethodBalances` se llena en el orden del servicio. `CurrencyDisplay` expone local/primaria/secundaria y `SymbolFor`.
 - El perfil monetario define la moneda local: secundaria en `Dual`, primaria en `Single`. El resumen puede construirse en el cliente sin backend.
 - El KPI de efectivo esperado no es la existencia física; la regla se aplica a la sección de existencias físicas.
+
+### L3 — Implementación y verificación
+
+- Web: `buildPhysicalCurrencySummaries` arma el resumen local/primaria/secundaria + monedas extra de los métodos, con totales y ceros; `sortPhysicalMethodBalances` ordena local primero y luego por nombre/ID. `RegisterPage` renderiza `EXISTENCIAS FÍSICAS POR MONEDA` sin condicionar a que existan métodos.
+- WPF: `CashDrawerViewModel` agrega `PhysicalCurrencyBalances` y lo reconstruye desde `CurrencyDisplay` + `PhysicalMethodBalances`; `CashDrawerView` muestra el resumen y mantiene el detalle por método. El mensaje de perfil usa `WeakReferenceMessenger` para no dejar handlers estáticos.
+- Evidencia Web: `npm run lint` OK; `npm test` 752/752; `npm run build` OK; bundle `Backend.API/wwwroot` regenerado.
+- Evidencia WPF: build 0/0; `CashDrawerMonetaryProfileDisplayTests` 9/9; suite backend completa 4207/4207.
+- Sin cambios de backend, permisos ni arqueo ciego.

@@ -17671,3 +17671,35 @@ B4. Bundle de `Backend.API/wwwroot` regenerado y commiteado.
 C. COMMIT
 C1. `02631c6` configuracion modular Web y pruebas.
 ================================================================================
+
+ANEXO LVI - EXISTENCIAS FISICAS POR MONEDA EN CAJA - 2026-11-08
+================================================================================
+Pedido del mantenedor: la caja debe mostrar siempre la existencia fisica de
+todas las monedas, dandole prioridad a la moneda local.
+
+A. CAMBIO
+A1. Web: `RegisterPage` muestra el resumen `EXISTENCIAS FISICAS POR MONEDA`
+    sin condicionarlo a que existan metodos. Incluye la moneda local primero,
+    luego primaria/secundaria y cualquier moneda extra presente en los saldos;
+    una moneda sin metodos se muestra en 0.00.
+A2. Web: `buildPhysicalCurrencySummaries` agrega los saldos por moneda y
+    `sortPhysicalMethodBalances` ordena el detalle por prioridad de moneda
+    (local primero) y luego por nombre/ID.
+A3. WPF: `CashDrawerViewModel` expone `PhysicalCurrencyBalances`, reconstruido
+    desde el perfil monetario y los saldos por metodo; `CashDrawerView` muestra
+    el resumen por moneda y conserva el detalle por metodo.
+A4. La moneda local del perfil es la secundaria en `Dual` y la primaria en
+    `Single`. No se alteran permisos, arqueo ciego, contratos ni calculos del
+    backend; se usa la data ya existente de `physicalMethodBalances`.
+
+B. EVIDENCIA
+B1. Web: `npm run lint` OK; `npm test` 752/752; `npm run build` OK.
+B2. WPF: `dotnet build CommandCenter.slnx -c Release` 0/0.
+B3. WPF: `CashDrawerMonetaryProfileDisplayTests` 9/9.
+B4. WPF: suite completa `CommandCenter.Tests` con PostgreSQL + E2E: 4207/4207
+    (5m38s).
+B5. Bundle `Backend.API/wwwroot` regenerado y commiteado.
+
+C. COMMIT
+C1. `5fcaca8` resumen fisico por moneda en Web y WPF con pruebas.
+================================================================================
