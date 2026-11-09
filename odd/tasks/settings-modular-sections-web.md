@@ -17,10 +17,10 @@ Branch: `V0.15` · Delivery: work-unit commits on the feature branch · Tests: `
 
 ## Tasks
 
-- [ ] **T1 — Shell de pestañas y reubicación de paneles.** Reestructurar `SettingsPage.jsx`, agregar metadatos de secciones, navegación accesible y CSS de sidebar/responsive; mover moneda, pagos, red y reinicio a sus paneles. Route: inline.
-- [ ] **T2 — Moneda en métodos de pago.** Agregar columna `Moneda` en la tabla de escritorio y chip en las tarjetas móviles usando `m.currency`. Route: inline.
-- [ ] **T3 — Pruebas y verificación.** Test de metadatos/navegación por teclado; lint, test y build. Route: inline.
-- [ ] **T4 — ANEXO y cierre.** Registrar ANEXO LV en `docs/reporte.txt`. Route: inline.
+- [x] **T1 — Shell de pestañas y reubicación de paneles.** `SettingsPage.jsx` con tablist lateral, cuatro paneles montados y CSS responsive. Commit `02631c6`.
+- [x] **T2 — Moneda en métodos de pago.** Columna `Moneda` en la tabla y chip en tarjetas móviles usando `m.currency`. Commit `02631c6`.
+- [x] **T3 — Pruebas y verificación.** `settingsSections.test.js` y `SettingsPage.test.js`; lint OK, tests 747/747, build OK. Commit `02631c6`.
+- [x] **T4 — ANEXO y cierre.** ANEXO LV en `docs/reporte.txt`. Commit `02631c6` + docs.
 
 ## Log
 
@@ -35,3 +35,11 @@ Aplica las mejoras a la version WEb
 - `SettingsPairing` carga `/api/pairing/info` en `useEffect` al montar y `SettingsPage` carga `/api/paymentmethods` una vez; mantener los paneles montados evita recargas al cambiar de pestaña.
 - `SettingsPaymentMethods` ya recibe `m.currency` del backend, pero no lo muestra; se agrega solo lectura.
 - No hay un componente de tabs reutilizable en la web; se implementa uno local con roles ARIA y navegación por teclado.
+
+### L3 — Implementación y verificación
+
+- `SettingsPage.jsx`: tablist con `role="tablist"`, botones `role="tab"` con foco roving y paneles `role="tabpanel"` montados; `resolveTabIndex` cubre flechas, Home y End.
+- Paneles: Moneda (`SettingsCurrencyFormat`), Pagos (`SettingsPaymentMethods`), Red (`SettingsPairing`) y Sistema (reinicio aislado con `set-critical-zone`).
+- La tabla de métodos de pago y las tarjetas móviles muestran `m.currency || 'Bs.S'` como dato de solo lectura.
+- La web no expone inventario, caja chica, redondeo, comisiones ni zona horaria; no se crearon apartados vacíos ni endpoints nuevos.
+- Evidencia: `npm run lint` OK; `npm test` 747/747; `npm run build` OK; bundle `Backend.API/wwwroot` regenerado y commiteado.

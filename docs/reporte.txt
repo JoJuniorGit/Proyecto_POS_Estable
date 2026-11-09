@@ -17638,3 +17638,36 @@ B4. WPF E2E `E2EAppHealthTests`: 2/2; el nuevo smoke navega los cinco apartados
 C. COMMIT
 C1. `4358a48` configuracion modular por apartados y pruebas.
 ================================================================================
+
+ANEXO LV - CONFIGURACION MODULAR WEB POR APARTADOS - 2026-11-08
+================================================================================
+Pedido del mantenedor: aplicar las mejoras de configuracion modular a la
+version Web, limitandose a los controles que ya existen en el cliente Web.
+
+A. CAMBIO
+A1. `SettingsPage.jsx`: reemplazo de la pagina apilada por un tablist lateral
+    con cuatro apartados existentes: Moneda, Tasas y Formato; Metodos de Pago
+    y Caja; Conectividad y Red Local; Sistema y Mantenimiento.
+A2. Reubicacion: `SettingsCurrencyFormat` en Moneda; `SettingsPaymentMethods`
+    en Pagos; `SettingsPairing` en Red; la tarjeta `Reiniciar Sistema` queda
+    aislada al final de Sistema con borde de advertencia.
+A3. La tabla de metodos de pago y las tarjetas moviles muestran la moneda
+    asociada (`currency`) como dato de solo lectura; se conservan alta, tipo,
+    referencia, estado y eliminacion.
+A4. Los cuatro paneles permanecen montados: cambiar de apartado no repite
+    `GET /api/pairing/info` ni `GET /api/paymentmethods`.
+A5. Navegacion accesible con `role="tablist"`, `role="tab"`, `role="tabpanel"`,
+    `aria-selected`, foco roving y teclas de flechas/Home/End.
+A6. Alcance: la Web no expone inventario, caja chica, redondeo, comisiones ni
+    zona horaria; no se agregaron apartados vacios, controles nuevos ni
+    endpoints. El bundle `Backend.API/wwwroot` se regenero para servir la UI.
+
+B. EVIDENCIA
+B1. `npm run lint`: OK.
+B2. `npm test`: 747/747.
+B3. `npm run build`: OK; `SettingsPage` CSS 2.09 kB y JS 25.84 kB.
+B4. Bundle de `Backend.API/wwwroot` regenerado y commiteado.
+
+C. COMMIT
+C1. `02631c6` configuracion modular Web y pruebas.
+================================================================================
