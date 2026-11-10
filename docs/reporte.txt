@@ -18029,3 +18029,70 @@ D5. La atribucion de anulaciones/devoluciones es por periodo del evento; una ven
     previo anulada en la ventana aparece como contribucion negativa de producto/categoria.
 ================================================================================
 
+================================================================================
+ANEXO LXIII - PASO 14 F3: API, RBAC Y EXPORTACION SERVER-SIDE - 2026-11-10
+================================================================================
+
+A. CAMBIOS
+A1. API REST y RBAC (F3-WU1):
+    - `ProfitabilityController` (`/api/profitability`) con `summary`, `breakdown` y `export`
+      bajo `RequireAdminOrManager` + `RequireSecurityStampValidation`; filtros query
+      periodo/fechas/categorias/cajero/tipo/canal y propagacion de `RequestAborted`.
+    - `PaymentMethodFeesController` (`/api/payment-method-fees`) CRUD exclusivo `RequireAdmin`
+      con baja logica.
+    - `PaymentMethodFeeRuleService`: valida metodo no efectivo, vigencia coherente, ausencia de
+      solapamientos activos, porcentaje `(0, 100]`, fijo `>= 0` y moneda compatible con el
+      regimen; `ProfitabilityBreakdownDto.Alerts` expuesto por `GetBreakdownAsync`.
+A2. Exportacion CSV/XLSX (F3-WU2) y detalle de Caja Chica (F3-S5):
+    - `ProfitabilityExportContext`/`ProfitabilityExportFile` e `IProfitabilityExportService`.
+    - CSV UTF-8 con BOM, delimitador `;`, escape CWE-1236 (`=`, `+`, `-`, `@`) y secciones
+      RESUMEN DEVENGADO/PERCIBIDO, COBERTURA, PRODUCTOS Y CATEGORIAS, MEDIOS DE PAGO y
+      CAJA CHICA POR CATEGORIA.
+    - XLSX con ClosedXML y pestanas `Resumen Ejecutivo`, `Por Producto y Categoría`,
+      `Medios de Pago`, `Caja Chica por Categoría`; cabeceras estilizadas, moneda/porcentaje y
+      autoajuste.
+    - Caja Chica por categoria en la misma ventana `[fromUtc, toUtc)` del resumen, solo gastos
+      activos, con cantidad, USD, Bs.S y monto de la moneda de reporte; el KPI principal sigue
+      global y no se prorratea por articulo.
+A3. PDF 1.4 nativo (F3-WU3):
+    - `ProfitabilityPdfGenerator` sin librerias externas: membrete, metadatos locales/UTC,
+      tarjetas Devengado vs. Percibido, tabla comparativa, Caja Chica por categoria y pie
+      `Pagina X de Y` multi-pagina.
+    - Endpoint unificado `GET /api/profitability/export?format=csv|xlsx|pdf` con `File`,
+      Content-Type por formato y nombre `Estado_Resultados_[Periodo].ext`.
+A4. Integracion HTTP (F3-WU4):
+    - Nuevo `ProfitabilityExportHttpTests` (traits `RequiresDocker` + `PostgresRealCollection`)
+      sobre `AuthorizationEndToEndApplication` con base aislada sin ventas: los tres formatos
+      renderizan reportes en cero.
+    - Matriz RBAC: Admin y Manager 200 en los tres formatos; Cashier 403; anonimo 401; formato
+      invalido 400.
+    - Assertions de contrato: Content-Type exacto y Content-Disposition con extension; CSV con
+      BOM `EF BB BF`, `;` y secciones; XLSX abierto con ClosedXML con las cuatro pestanas; PDF
+      ASCII iniciando `%PDF-1.4` y conteniendo `%%EOF`.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Suite completa `CommandCenter.Tests` con `TEST_POSTGRES_CONNECTION`:
+    4382 superados, 0 fallidos, 0 omitidos (5m 20s).
+B3. Filtro focalizado `ProfitabilityHttpRbacTests|ProfitabilityExportHttpTests|
+    ProfitabilityExportServiceTests|ProfitabilityPdfGeneratorTests`: 15/15 (32 s).
+B4. Export HTTP: `text/csv`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+    y `application/pdf`; Content-Disposition `.csv`/`.xlsx`/`.pdf`; contenido no vacio; BOM,
+    `RESUMEN DEVENGADO`, `CAJA CHICA POR CATEGORIA`, cuatro pestanas XLSX, `%PDF-1.4` y
+    `%%EOF` verificados sobre el pipeline real.
+B5. Drift `MigrationIndexDriftTests` + `PendingModelChangesTests`: 4/4.
+
+C. COMMITS
+C1. b238146 feat(paso-14): add profitability API and fee rule RBAC.
+C2. 2b9a3ad feat(paso-14): add profitability CSV and XLSX export.
+C3. 0eb43b9 feat(paso-14): add native profitability PDF export.
+C4. WU4 (tests HTTP y este ANEXO): pendiente de commit.
+
+D. PENDIENTE / RIESGOS
+D1. F4 (UI de rentabilidad y gestion de comisiones en Configuracion) queda pendiente.
+D2. `ProfitabilityExportService.cs` (700 lineas) y `ProfitabilityPdfGenerator.cs` (659 lineas)
+    superan la guia de 500 lineas; deuda de mantenibilidad para un refactor posterior.
+D3. El `EXPLAIN ANALYZE` de F2 usa un seed pequeno con `enable_seqscan=off`: certifica que los
+    indices existen y son usables, no el costo real a escala.
+================================================================================
+
