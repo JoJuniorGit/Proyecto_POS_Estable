@@ -91,6 +91,9 @@ public partial class ProfitabilityService : IProfitabilityService
             accruedResult.Accrued.GrossMarginPercent,
             cancellationToken);
 
+        // F3-S1: the breakdown endpoint exposes the same alerts as the summary.
+        breakdown = breakdown with { Alerts = alerts };
+
         return new ProfitabilitySummaryDto
         {
             FromUtc = window.FromUtc,
@@ -108,6 +111,16 @@ public partial class ProfitabilityService : IProfitabilityService
             Breakdown = breakdown,
             Alerts = alerts
         };
+    }
+
+    public async Task<ProfitabilityBreakdownDto> GetBreakdownAsync(
+        ProfitabilityFilterDto filter,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+
+        var summary = await GetSummaryAsync(filter, cancellationToken);
+        return summary.Breakdown;
     }
 
     private async Task<ProfitabilityFilterDto> ResolveEffectiveFilterAsync(

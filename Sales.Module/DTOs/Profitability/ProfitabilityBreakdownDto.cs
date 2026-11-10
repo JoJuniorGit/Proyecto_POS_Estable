@@ -15,6 +15,12 @@ public sealed record ProfitabilityBreakdownDto
     public IReadOnlyList<ProductBreakdownDto> Products { get; init; } = [];
 
     public IReadOnlyList<SellerBreakdownDto> Sellers { get; init; } = [];
+
+    /// <summary>
+    /// Paso 14 (F3-S1): alertas de erosión de margen del período, incluidas también en la
+    /// respuesta de <c>GET /api/profitability/breakdown</c>.
+    /// </summary>
+    public IReadOnlyList<ProfitabilityAlertDto> Alerts { get; init; } = [];
 }
 
 /// <summary>

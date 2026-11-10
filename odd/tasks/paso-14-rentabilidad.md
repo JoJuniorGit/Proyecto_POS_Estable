@@ -114,6 +114,44 @@ F2-WU5 incluye `EXPLAIN ANALYZE` de consultas clave y regresión completa.
 - F2-WU4 | F2-S4 | Series, desgloses, filtros de categoría/producto/vendedor, alertas y Multi-Régimen | delegated | completed (commit 6dd3c02)
 - F2-WU5 | F2-S5 | Integración PostgreSQL real, fee inserts, EXPLAIN ANALYZE y regresión completa | delegated | completed (commit fa045cc)
 
+## F3 Specs
+
+### F3-S1 — API REST y RBAC
+`ProfitabilityController` (`/api/profitability`):
+- `GET /api/profitability/summary` devuelve `ProfitabilitySummaryDto`.
+- `GET /api/profitability/breakdown` devuelve `ProfitabilityBreakdownDto` (series, métodos, productos/categorías, vendedores y alertas).
+- Autorización `RequireAdminOrManager` (`Admin`, `Manager`); `Cashier` y no autenticados reciben 403/401.
+- Mapeo de filtros período/fechas, categorías con subárbol, cajero y tipo/canal; propagación de `HttpContext.RequestAborted`.
+`PaymentMethodFeesController` (`/api/payment-method-fees`):
+- CRUD de `PaymentMethodFeeRule` exclusivo `RequireAdmin`.
+- Validación de vigencias coherentes, sin solapamientos para el mismo método, porcentaje `(0, 100]`, fijo `>= 0`, moneda compatible con el régimen y método no efectivo.
+- Baja lógica para preservar snapshots históricos.
+
+### F3-S2 — Exportación CSV y XLSX
+CSV: UTF-8 con BOM, delimitador `;`, escape de fórmulas `=`, `+`, `-`, `@` y formato numérico por moneda.
+XLSX con ClosedXML: pestañas `Resumen Ejecutivo`, `Por Producto y Categoría`, `Medios de Pago` y `Caja Chica por Categoría` (detalle aprobado); cabeceras estilizadas, moneda/porcentaje y columnas autoajustadas.
+La exportación incluye metadatos de corte local, usuario y filtros aplicados.
+
+### F3-S3 — PDF 1.4 Nativo
+`ProfitabilityPdfGenerator` reutiliza las primitivas vectoriales nativas del proyecto, sin librerías externas.
+Incluye membrete comercial, metadatos de emisión/zona horaria, bloques comparativos Devengado vs. Percibido, tabla de Estado de Resultados, detalle de Caja Chica por categoría y pie `Página X de Y`.
+Endpoint unificado `GET /api/profitability/export?format=csv|xlsx|pdf`; retorna `File` con `Content-Type` y nombre `Estado_Resultados_[Periodo].ext`.
+
+### F3-S4 — Integración, Seguridad y Cierre
+Tests HTTP de contratos JSON, propagación de filtros y matrices RBAC (`Admin`/`Manager` lectura; `Admin` fees; `Cashier` 403; no autenticado 401).
+Tests de contenido/formato CSV, XLSX (workbook abrible) y PDF (`%PDF-1.4`, `%%EOF`, longitud no vacía).
+Build Release 0/0, suite completa en verde y ANEXO LXIII.
+
+### F3-S5 — Caja Chica por Categoría en Reportes
+Los reportes descargables incluyen el desglose de gastos de Caja Chica por categoría, cantidad y moneda de reporte como sección/pestaña de detalle. El KPI principal `PettyCashExpenses` sigue siendo global y no se prorratea por artículo.
+
+## F3 Tasks
+
+- F3-WU1 | F3-S1 | `ProfitabilityController`, `PaymentMethodFeesController`, `PaymentMethodFeeRuleService` y RBAC | delegated | completed (commit pending)
+- F3-WU2 | F3-S2/F3-S5 | Exportación CSV y XLSX con detalle de Caja Chica | delegated | pending
+- F3-WU3 | F3-S3/F3-S5 | Generador PDF 1.4 nativo y endpoint unificado | delegated | pending
+- F3-WU4 | F3-S4 | Integración HTTP/RBAC, contenido de exports y cierre ANEXO LXIII | delegated | pending
+
 ## Log
 
 - L1 (2026-11-09): pedido verbatim del mantenedor:
@@ -189,3 +227,7 @@ F2-WU5 incluye `EXPLAIN ANALYZE` de consultas clave y regresión completa.
 - L18 (2026-11-10): **F2-WU5 COMPLETADA (work unit local, sin commit)**. Nuevo `CommandCenter.Tests/Integration/ProfitabilityPostgresTests.cs` sobre el carril aislado (`IsolatedPostgresDatabase.CreateAsync(applyMigrations: true)`, traits `RequiresDocker` + `PostgresRealCollection`). Escenario sembrado por `SalesDbContext`: métodos card (no efectivo, VES) y efectivo; regla `PaymentMethodFeeRule` card 1 % USD con vigencia previa (Percentage 9,4); venta A 100/5000 con ítem costo 60 y pago card fee 1,0000/50,00; venta B con costo desconocido y pago efectivo 50/2500; avance C con comisión 10/500 y pago card 510/25500 fee 5,1000/255,00; venta D pre-período anulada en la ventana con fee 2,0000/100,00; venta a crédito E 100/5000 con costo 60, `Receivable`/`ReceivablePayment`/`CreditPaymentAllocation` 40/2000 fee 0,4000/20,00 y `FxDifferenceBsS=400`; devolución parcial de A (`ReturnedUSD/RefundedUSD=10`, `RefundedBsS=500`); caja chica activa 5/250 con sesión de caja. Resultado Dual USD con ventana local UTC-4 [2026-11-02T04Z, 2026-11-03T04Z): Accrued bruto 250, anulaciones 50, devoluciones 10, neto 190, ingreso con costo 140, desconocido 50, CMV 94, utilidad bruta 46 (32,8571 %), comisiones 10, caja chica 5, fees 4,50 (incluye reversa S10 de 2,00), utilidad neta 46,50 y FX informativo 8; cobertura de costo 73,6842 % y fee 100 % (base conocida 650); Realized cobros 180, conocido 130, desconocido 50, CMV 84, utilidad bruta 46 (35,3846 %), FX 8, fees 4,50, utilidad neta 54,50; desgloses de métodos (card 650/fee 4,50 y efectivo 50), productos (E 40, A 36, B 0, D -30), categorías, vendedor único (190/46) y serie de un día reconciliada (190/46,50 y 180/54,50). Se certifican las columnas `FeeAmountUsd` 18,4 y `FeeAmountLocal` 18,2 con valores textuales 1.0000|50.00, 5.1000|255.00, 2.0000|100.00 y 0.4000|20.00, `PaymentMethodFeeRules.Percentage` 9,4, las 3 FKs de comisión y las dos migraciones F1 en el historial. Segundo test con `SET LOCAL enable_seqscan = off`: EXPLAIN (ANALYZE, BUFFERS) usa `Index Scan` en `IX_Sales_SaleType_Status_Date`, `IX_SalePayments_CreatedAt`, `IX_ReceivablePayments_ReceivedAtUtc`, `IX_CreditReturns_CreatedAtUtc` y `IX_PettyCashExpenses_CreatedAtUtc`, sin Seq Scan. Evidencia: build Release 0/0; PostgreSQL 2/2; filtro Profitability* 67/67; drift 4/4. Sin cambios de comportamiento productivo, sin migraciones aplicadas a la base real y sin commit.
 
 - L19 (2026-11-10): **F2 CERRADA**. Verificación final del padre: build Release 0/0; suite completa `CommandCenter.Tests` con `TEST_POSTGRES_CONNECTION` **4349/4349, 0 skipped, 5m29s**; `ProfitabilityPostgresTests` 2/2; filtro Profitability* 67/67; drift 4/4. ANEXO LXII registrado. F2 queda cerrada; F3 (API/RBAC/exportación) y F4 (UI) son el siguiente alcance. Residuales: partials Accrued/Realized >500 líneas, desglose por método no aplica filtros de cajero/tipo/canal a fees/FX de CxC, EXPLAIN con seed pequeño y `enable_seqscan=off`.
+
+- L20 (2026-11-10): **F3 aprobada y en ejecución**. El mantenedor aprobó F3 (API REST, RBAC y exportación server-side) con los WUs: F3-WU1 controladores y permisos; F3-WU2 CSV/XLSX; F3-WU3 PDF 1.4 nativo; F3-WU4 integración HTTP/RBAC, contenido de exports y ANEXO LXIII. Decisión sobre la consulta de Caja Chica: **sí**, los reportes PDF/Excel/CSV incluyen el desglose de gastos de Caja Chica por categoría como sección/pestaña de detalle; el KPI principal `PettyCashExpenses` sigue global y no se prorratea por artículo.
+
+- L21 (2026-11-10): **F3-WU1 COMPLETADA**. Se agregaron las políticas `RequireAdminOrManager`/`RequireAdmin`, `ProfitabilityController` (`summary`/`breakdown`, Admin/Manager, `CancellationToken` y filtros query), `PaymentMethodFeesController` (CRUD Admin, baja lógica) y `PaymentMethodFeeRuleService` con validación de método no efectivo, vigencia, solapamientos activos, porcentaje `(0,100]`, fijo `>=0`, moneda USD/local y auditoría. `IProfitabilityService.GetBreakdownAsync` y `ProfitabilityBreakdownDto.Alerts` exponen el desglose con alertas. Evidencia: build Release 0/0; `PaymentMethodFeeRuleServiceTests` + `ProfitabilityHttpRbacTests` 20/20; filtro Profitability* + RBAC 87/87; drift 4/4. La matriz HTTP valida 401 anónimo, 403 Cashier, Manager 200 en lectura y 403 en fees, Admin 200/201/200/204; el filtro `Custom` 2026-11-01..02 se traduce a `[2026-11-01T04Z, 2026-11-03T04Z)` en zona global UTC-4. El controlador devuelve 400 ante `InvalidOperationException` de catálogo ausente.

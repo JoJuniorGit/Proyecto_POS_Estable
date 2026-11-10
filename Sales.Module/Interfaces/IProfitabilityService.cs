@@ -13,4 +13,12 @@ public interface IProfitabilityService
     Task<ProfitabilitySummaryDto> GetSummaryAsync(
         ProfitabilityFilterDto filter,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Paso 14 (F3-S1): desgloses del período (series, métodos, productos/categorías, vendedores
+    /// y alertas) sin duplicar la lógica del resumen.
+    /// </summary>
+    Task<ProfitabilityBreakdownDto> GetBreakdownAsync(
+        ProfitabilityFilterDto filter,
+        CancellationToken cancellationToken = default);
 }

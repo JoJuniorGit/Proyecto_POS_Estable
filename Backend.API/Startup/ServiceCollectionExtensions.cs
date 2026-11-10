@@ -103,6 +103,9 @@ public static class ServiceCollectionExtensions
         // CreditMora:IntervalHours, default 6 h; cubre el barrido diario).
         builder.Services.AddHostedService<Backend.API.Jobs.CreditMoraJob>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();
+        // Paso 14 (F3-S1): CRUD de reglas de comisión de medios de pago (Admin) con vigencia,
+        // validación monetaria y baja lógica.
+        builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodFeeRuleService, Sales.Module.Services.PaymentMethodFeeRuleService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
         builder.Services.AddScoped<Sales.Module.Interfaces.ICashDrawerChangedNotifier, Backend.API.Services.SignalRCashDrawerNotifier>();
         // 8.211-T3c3b3 (S7/S11): prepara el catálogo de métodos de pago en la moneda primaria al
@@ -225,6 +228,14 @@ public static class ServiceCollectionExtensions
                     return Task.CompletedTask;
                 }
             };
+        });
+
+        // Paso 14 (F3-S1): políticas nombradas de la API de rentabilidad. Los controladores
+        // históricos con [Authorize(Roles = ...)] conservan su comportamiento.
+        builder.Services.AddAuthorization(options =>
+        {
+            options.AddPolicy("RequireAdminOrManager", policy => policy.RequireRole("Admin", "Manager"));
+            options.AddPolicy("RequireAdmin", policy => policy.RequireRole("Admin"));
         });
 
         builder.Services.AddControllers(options =>
