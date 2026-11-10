@@ -148,7 +148,7 @@ Los reportes descargables incluyen el desglose de gastos de Caja Chica por categ
 ## F3 Tasks
 
 - F3-WU1 | F3-S1 | `ProfitabilityController`, `PaymentMethodFeesController`, `PaymentMethodFeeRuleService` y RBAC | delegated | completed (commit b238146)
-- F3-WU2 | F3-S2/F3-S5 | Exportación CSV y XLSX con detalle de Caja Chica | delegated | completed (commit pending)
+- F3-WU2 | F3-S2/F3-S5 | Exportación CSV y XLSX con detalle de Caja Chica | delegated | completed (commit 2b9a3ad)
 - F3-WU3 | F3-S3/F3-S5 | Generador PDF 1.4 nativo y endpoint unificado | delegated | pending
 - F3-WU4 | F3-S4 | Integración HTTP/RBAC, contenido de exports y cierre ANEXO LXIII | delegated | pending
 
