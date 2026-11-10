@@ -18188,7 +18188,7 @@ B6. Pins: `%LOCALAPPDATA%\SolucionesPOS\certificate-pins.dat` se movio a backup 
     `certificate-pins.dat.f5-generated-*`.
 
 C. COMMITS
-C1. Sin commits: F5 queda como work unit local pendiente de revision/commit del padre.
+C1. d73d29e test(paso-14): add profitability browser and WPF E2E (incluye este ANEXO).
 
 D. PENDIENTE / RIESGOS
 D1. El toggle WPF no expone un estado UIA "selected" (los botones no enlazan un indicador de

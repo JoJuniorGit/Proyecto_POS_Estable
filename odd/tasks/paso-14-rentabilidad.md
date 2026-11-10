@@ -183,7 +183,7 @@ ANEXO LXIV y actualización del documento de tracking.
 ## F4 Tasks
 
 - F4-WU1 | F4-S1/F4-S3 | WPF: servicio cliente, ViewModel, vista, navegación, gráficos, export y fee config | delegated | completed (commit 5071d91)
-- F4-WU2 | F4-S2/F4-S3 | Web: API client, página, ruta/nav, gráficos SVG/CSS, export y fee config | delegated | completed (commit pending)
+- F4-WU2 | F4-S2/F4-S3 | Web: API client, página, ruta/nav, gráficos SVG/CSS, export y fee config | delegated | completed (commit d73d29e)
 - F4-WU3 | F4-S4 | Verificación UI, regresión y ANEXO LXIV | delegated | completed (commit 64d9083)
 
 ## F5 Specs
@@ -200,9 +200,9 @@ Suite completa .NET con Postgres, `npm test`, `npm run lint`, `npm run build`, P
 
 ## F5 Tasks
 
-- F5-WU1 | F5-S1 | Playwright profitability Admin journey y mocks | delegated | completed (commit pending)
-- F5-WU2 | F5-S2 | WPF full-stack profitability E2E + screenshot | delegated | completed (commit pending)
-- F5-WU3 | F5-S3 | Regresión completa y ANEXO LXV | delegated | completed (commit pending)
+- F5-WU1 | F5-S1 | Playwright profitability Admin journey y mocks | delegated | completed (commit d73d29e)
+- F5-WU2 | F5-S2 | WPF full-stack profitability E2E + screenshot | delegated | completed (commit d73d29e)
+- F5-WU3 | F5-S3 | Regresión completa y ANEXO LXV | delegated | completed (commit d73d29e)
 
 ## Log
 
