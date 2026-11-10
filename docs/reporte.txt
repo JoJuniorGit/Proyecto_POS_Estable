@@ -17853,3 +17853,90 @@ C2. `5b455ee` altura minima de la grilla: 8 filas + 2.5 adicionales.
 C3. `61dc282` scroll interno de la grilla de movimientos.
 ================================================================================
 
+================================================================================
+ANEXO LXI - PASO 14 F1: FUNDACION DE RENTABILIDAD Y COMISIONES DE MEDIOS DE PAGO - 2026-11-09
+================================================================================
+
+A. CAMBIOS
+A1. Esquema (migracion 20261109231727_AddProfitabilityFoundationRev8213):
+    - Sales: SaleType (Merchandise=0, CashAdvance=1, Service=2),
+      CommissionAmountUSD numeric(18,4), CommissionAmountLocal numeric(18,2),
+      CancelledAtUtc timestamptz nullable + IX_Sales_CancelledAtUtc +
+      IX_Sales_SaleType_Status_Date.
+    - SaleItems: UnitCostLocal numeric(18,4) nullable (costo en la moneda del
+      regimen de la venta).
+    - SalePayments y ReceivablePayments: 10 columnas de snapshot de comision
+      (PaymentMethodFeeRuleId, FeeType, FeePercentage 9,4, FeeFixedAmount 18,2,
+      FeeCurrencyCode, FeeAmountUsd 18,4, FeeAmountLocal 18,2, FeeRate 18,4,
+      FeeConfigured, FeeRuleEffectiveFromUtc).
+    - PaymentMethodFeeRules: regla de comision con vigencia (EffectiveFromUtc/
+      EffectiveToUtc), tipo Percentage/Fixed/PercentagePlusFixed, moneda USD o
+      local, IsActive y auditoria; indice unico (PaymentMethodId,
+      EffectiveFromUtc) y FKs Restrict.
+    - CreditReturns: IX_CreditReturns_CreatedAtUtc.
+    - ModelSnapshot y Designer regenerados; DDL idempotente y Down ordenado.
+A2. Backfills de la migracion:
+    - Avances historicos por Products.IsCashAdvance o patron
+      ProductName='Adelanto de Efectivo%' + SalePayments.ReferenceNumber=
+      'ADELANTO-%'.
+    - Comision de servicio del avance desde CashTransactions Income no fisico.
+    - UnitCostLocal = UnitCostUSD * Sales.AppliedRate (4dp) solo con costo
+      conocido; NULL se conserva desconocido.
+    - CancelledAtUtc = Sales.Date para Status=Cancelled.
+A3. Migracion data-only 20261110000007_CorrectCashAdvanceCommissionBackfillRev8213:
+    - Corrige el backfill de comision historica que WU1 no podia poblar porque
+      los CashTransactions del avance no tenian SaleId. Empareja una pareja
+      unica egreso fisico + ingreso no fisico dentro de 10 minutos, misma
+      sesion y moneda, y valida capital + comision = total del pago. Lo
+      ambiguo o cross-currency queda en cero y se reporta como cobertura.
+A4. Servicios:
+    - SalesService.CashAdvance: SaleType=CashAdvance, CommissionAmountLocal/USD
+      (receivedCommissionUsd en method-aware), UnitCostLocal=0 en la linea
+      sintetica.
+    - CashAdvanceCoordinator legacy/method-aware: referenceId=createdSale.Id en
+      los dos CashTransactions, para que SaleId quede ligado.
+    - CancelSaleAsync y las dos rutas de CreditReturns setean CancelledAtUtc.
+    - ApplyLocalCostSnapshots en CompleteSaleCoreAsync y en el hold con pago
+      inicial 100%: UnitCostUSD * AppliedRate 4dp AwayFromZero; costo
+      desconocido -> null.
+    - PaymentMethodFeeResolver: regla activa por fecha, efectivo sin fee,
+      rechazo de solapamientos/moneda no soportada/porcentaje fuera de
+      (0,100]/fijo negativo; FeeAmountUsd 4dp y FeeAmountLocal 2dp con la tasa
+      snapshot del pago.
+    - Wiring del snapshot en checkout, hold inicial, add-payment simple/batch,
+      avance de efectivo (sobre total cobrado) y abono CxC. El retry de hold
+      copia los 10 campos sin re-resolver. Sin recargo al cliente ni cambios de
+      totales, comprobantes o checkout.
+
+B. EVIDENCIA
+B1. dotnet build CommandCenter.slnx -c Release: 0 advertencias, 0 errores.
+B2. Suite completa CommandCenter.Tests con TEST_POSTGRES_CONNECTION:
+    4262 superados, 0 fallos, 0 omitidos (4m52s).
+B3. ProfitabilityFoundationMigrationSmokeTests (PostgreSQL real, base aislada):
+    1/1. Migra al nivel previo, siembra legacy, aplica WU1+WU2, verifica
+    esquema/indices/FKs/backfills y reaplica MigrateAsync sin duplicar historial.
+B4. Drift: MigrationIndexDriftTests + PendingModelChangesTests 4/4.
+B5. Backfill verificado: avance SaleType=1, comision 70,00 local / 1,4000 USD;
+    mercancia UnitCostLocal=100,0000; anulada CancelledAtUtc=Date.
+B6. Tests nuevos: schema 9, resolver 19, wiring de fee 7, snapshot de avance/
+    cancelacion y costos locales; mocks de CashDrawerCashAdvanceSecurityTests
+    actualizados al nuevo parametro opcional de ISalesService.
+
+C. COMMITS
+C1. afe8ebe feat(paso-14): add profitability foundation schema.
+C2. 59ba573 feat(paso-14): persist cash advance commission snapshots.
+C3. 33b3aaf feat(paso-14): materialize local cost snapshots.
+C4. d31f9c0 feat(paso-14): persist payment method fee snapshots.
+C5. a49765a test(paso-14): add profitability migration smoke test.
+C6. WU6: cierre de verificacion (commit de este ANEXO).
+
+D. PENDIENTE / RIESGOS
+D1. F2 ProfitabilityService (devengado/percibido, cobertura, reversas) no forma
+    parte de F1.
+D2. Avances historicos cross-currency o con alias legacy pueden quedar con
+    comision cero; se reportan como cobertura/desconocido.
+D3. Lookup de metodo por pago (N+1) diferido a F2; la regla se snapshotea.
+D4. Single se mantiene como regimen identidad (AppliedRate=1): UnitCostLocal
+    acompana el contrato existente; no se re-convierte en F2.
+================================================================================
+

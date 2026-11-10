@@ -87,12 +87,12 @@ public class CashDrawerCashAdvanceSecurityTests
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<int>(), It.IsAny<string>(),
                 It.IsAny<bool>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<string>(),
                 It.IsAny<IDbContextTransaction?>(), It.IsAny<CancellationToken>(),
-                It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<string?>()))
-            .ReturnsAsync((decimal requestedAmountLocal, decimal commissionAmountLocal, int paymentMethodId, string paymentMethodName, bool isTransfer, decimal exchangeRate, int? cashierId, string? userName, IDbContextTransaction? existingTransaction, CancellationToken _, decimal? _receivedPrincipal, decimal? _receivedCommission, decimal? _receivedTotal, decimal? _receivedTotalUsd, string? _receivedCurrencyCode) =>
+                It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<string?>(), It.IsAny<decimal?>()))
+            .Returns((decimal requestedAmountLocal, decimal commissionAmountLocal, int paymentMethodId, string paymentMethodName, bool isTransfer, decimal exchangeRate, int? cashierId, string? userName, IDbContextTransaction? existingTransaction, CancellationToken _, decimal? _receivedPrincipal, decimal? _receivedCommission, decimal? _receivedTotal, decimal? _receivedTotalUsd, string? _receivedCurrencyCode, decimal? _receivedCommissionUsd) =>
             {
                 capture.CashierId = cashierId;
                 capture.UserName = userName;
-                return (SaleDto)null!;
+                return Task.FromResult((SaleDto)null!);
             });
 
         var currentUser = new Mock<ICurrentUserService>();
