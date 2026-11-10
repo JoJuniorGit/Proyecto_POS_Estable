@@ -10,9 +10,9 @@ using System.Threading.Tasks;
 namespace Sales.Module.Services;
 
 /// <summary>
-/// Paso 14 (F2-S1/S4): fachada del Estado de Resultados. Este work unit resuelve el contexto
-/// (ventana UTC, zona horaria y moneda de reporte); los motores devengado/percibido y los
-/// desgloses se incorporan en WU2/WU3/WU4 sobre las mismas dependencias.
+/// Paso 14 (F2-S1/S4): fachada del Estado de Resultados. Resuelve el contexto (ventana UTC, zona
+/// horaria y moneda de reporte) e integra el motor devengado de WU2; el bloque percibido y los
+/// desgloses se incorporan en WU3/WU4 sobre las mismas dependencias.
 /// </summary>
 public partial class ProfitabilityService : IProfitabilityService
 {
@@ -37,8 +37,8 @@ public partial class ProfitabilityService : IProfitabilityService
     }
 
     /// <summary>
-    /// Paso 14 (F2-WU2/WU3): context shared with the partial engine files. The skeleton does not
-    /// query yet; exposing it here keeps the dependency alive for the accrual/realized engines.
+    /// Paso 14 (F2-WU2/WU3): context shared with the partial engine files so the accrual/realized
+    /// engines can reuse the same tracked-free query surface.
     /// </summary>
     internal SalesDbContext Context => _context;
 
@@ -48,15 +48,27 @@ public partial class ProfitabilityService : IProfitabilityService
     {
         ArgumentNullException.ThrowIfNull(filter);
 
+        // F2-WU4 owns the category catalog (including the subtree). Until then the filter fails
+        // explicitly instead of silently returning unfiltered data.
+        if (filter.CategoryIds is { Count: > 0 })
+        {
+            throw new NotSupportedException("El filtro por categoría se habilita en F2-WU4.");
+        }
+
         var window = await ProfitabilityTimeWindow.ResolveAsync(
             filter,
             _timeZoneProvider,
             cancellationToken: cancellationToken);
 
         var reportCurrency = await ResolveReportCurrencyAsync(cancellationToken);
+        var accruedResult = await BuildAccruedAsync(
+            filter,
+            window,
+            reportCurrency,
+            cancellationToken);
 
-        // WU2-WU4 fill the KPI blocks and breakdowns; the empty structures keep the response
-        // contract stable from the first work unit.
+        // WU3-WU4 fill the realized block and breakdowns; the empty structures keep the response
+        // contract stable while those engines land.
         return new ProfitabilitySummaryDto
         {
             FromUtc = window.FromUtc,
@@ -68,9 +80,9 @@ public partial class ProfitabilityService : IProfitabilityService
             IsSingleCurrency = reportCurrency.Mode == MonetaryMode.Single,
             GeneratedAtUtc = DateTime.UtcNow,
             GlobalCostsNote = ProfitabilitySummaryDto.GlobalCostsNoteText,
-            Accrued = new ProfitabilityAccruedDto(),
+            Accrued = accruedResult.Accrued,
             Realized = new ProfitabilityRealizedDto(),
-            Coverage = new ProfitabilityCoverageDto(),
+            Coverage = accruedResult.Coverage,
             Breakdown = new ProfitabilityBreakdownDto(),
             Alerts = Array.Empty<ProfitabilityAlertDto>()
         };

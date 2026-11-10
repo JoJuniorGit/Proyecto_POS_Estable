@@ -432,6 +432,10 @@ public partial class SalesService
                 }
 
                 receivable.BalanceUSD = newBalance;
+                // F2-S2: la anulacion por devolucion total y el evento CreditReturn comparten el
+                // mismo instante para que el motor devengado represente la devolucion una sola vez
+                // (renglon Returns, nunca tambien Anulaciones).
+                var returnTimestampUtc = DateTime.UtcNow;
                 if (newBalance == 0m)
                 {
                     receivable.Status = ReceivableStatus.Anulada;
@@ -443,7 +447,7 @@ public partial class SalesService
                     {
                         sale.Status = SaleStatus.Cancelled;
                         // Paso 14 (S3): fecha real de anulacion para las reversas del periodo.
-                        sale.CancelledAtUtc = DateTime.UtcNow;
+                        sale.CancelledAtUtc = returnTimestampUtc;
                     }
                 }
                 else if (hasPayments)
@@ -470,7 +474,7 @@ public partial class SalesService
                     RefundedBsS = refundedBsS,
                     RefundRate = refundRate,
                     CashTransaction = refundCashTransaction,
-                    CreatedAtUtc = DateTime.UtcNow,
+                    CreatedAtUtc = returnTimestampUtc,
                     Reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim(),
                     CreatedByUserId = actingUserId,
                     IdempotencyKey = string.IsNullOrWhiteSpace(request.IdempotencyKey) ? null : request.IdempotencyKey.Trim()
