@@ -60,6 +60,7 @@ public class CreditReturnTests
 
         var persistedSale = await context.Sales.AsNoTracking().FirstAsync(candidate => candidate.Id == sale.Id);
         Assert.Equal(SaleStatus.Cancelled, persistedSale.Status);
+        Assert.NotNull(persistedSale.CancelledAtUtc);
 
         var persistedReceivable = await context.Receivables.AsNoTracking().FirstAsync(candidate => candidate.Id == receivable.Id);
         Assert.Equal(ReceivableStatus.Anulada, persistedReceivable.Status);
@@ -426,7 +427,9 @@ public class CreditReturnTests
         Assert.Equal(0m, result.RefundedUSD);
         Assert.Null(result.CashTransactionId);
 
-        Assert.Equal(SaleStatus.Cancelled, (await context.Sales.AsNoTracking().FirstAsync(candidate => candidate.Id == sale.Id)).Status);
+        var persistedCancelledSale = await context.Sales.AsNoTracking().FirstAsync(candidate => candidate.Id == sale.Id);
+        Assert.Equal(SaleStatus.Cancelled, persistedCancelledSale.Status);
+        Assert.NotNull(persistedCancelledSale.CancelledAtUtc);
         Assert.Empty(await context.CashTransactions.AsNoTracking().ToListAsync());
         Assert.Equal(ReceivableStatus.Anulada, (await context.Receivables.AsNoTracking().FirstAsync(candidate => candidate.Id == receivable.Id)).Status);
     }

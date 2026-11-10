@@ -127,6 +127,8 @@ public partial class SalesService
                 receivable.Status = ReceivableStatus.Anulada;
                 receivable.BalanceUSD = 0m;
                 sale.Status = SaleStatus.Cancelled;
+                // Paso 14 (S3): fecha real de anulacion para las reversas de comision del periodo.
+                sale.CancelledAtUtc = DateTime.UtcNow;
 
                 await RestockCreditSaleItemsAsync(sale, actingUserId, cancellationToken);
 
@@ -440,6 +442,8 @@ public partial class SalesService
                     if (!hasReceivedMoney)
                     {
                         sale.Status = SaleStatus.Cancelled;
+                        // Paso 14 (S3): fecha real de anulacion para las reversas del periodo.
+                        sale.CancelledAtUtc = DateTime.UtcNow;
                     }
                 }
                 else if (hasPayments)

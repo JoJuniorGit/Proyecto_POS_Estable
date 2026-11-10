@@ -163,7 +163,8 @@ public partial class CashAdvanceCoordinator
                 receivedCommission: sides.ReceivedCommission,
                 receivedTotal: sides.ReceivedTotal,
                 receivedTotalUsd: sides.TotalUsd,
-                receivedCurrencyCode: sides.ReceivedCurrency);
+                receivedCurrencyCode: sides.ReceivedCurrency,
+                receivedCommissionUsd: sides.ReceivedCommissionUsd);
 
             var expenseTx = await _cashDrawerService.AddTransactionAsync(
                 sessionId: sessionId,
@@ -173,6 +174,7 @@ public partial class CashAdvanceCoordinator
                 amountUsd: sides.DispensedUsd,
                 exchangeRate: sides.ExchangeRate,
                 description: $"Adelanto de Efectivo - {sides.ReceivedMethodName} {commissionPercentage:0}% {activeUserName}",
+                referenceId: createdSale?.Id,
                 isPhysicalCash: true,
                 paymentMethodId: sides.DispensedMethodId,
                 cancellationToken: cancellationToken,
@@ -186,6 +188,7 @@ public partial class CashAdvanceCoordinator
                 amountUsd: sides.ReceivedCommissionUsd,
                 exchangeRate: sides.ExchangeRate,
                 description: $"Comisión Adelanto ({commissionPercentage:0}% {sides.ReceivedMethodName}) - {activeUserName}",
+                referenceId: createdSale?.Id,
                 isPhysicalCash: false,
                 paymentMethodId: sides.ReceivedMethodId,
                 cancellationToken: cancellationToken,

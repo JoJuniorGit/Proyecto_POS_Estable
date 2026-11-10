@@ -235,6 +235,7 @@ public partial class CashAdvanceCoordinator
                 amountUsd: anchoredRate > 0 ? roundedRequested / anchoredRate : 0,
                 exchangeRate: anchoredRate,
                 description: $"Adelanto de Efectivo - {paymentMethodName} {commissionPercentage:0}% {activeUserName}",
+                referenceId: createdSale?.Id,
                 isPhysicalCash: true,
                 paymentMethodId: paymentMethodId,
                 cancellationToken: cancellationToken
@@ -248,6 +249,7 @@ public partial class CashAdvanceCoordinator
                 amountUsd: anchoredRate > 0 ? commissionAmountLocal / anchoredRate : 0,
                 exchangeRate: anchoredRate,
                 description: $"Comisión Adelanto ({commissionPercentage:0}% {paymentMethodName}) - {activeUserName}",
+                referenceId: createdSale?.Id,
                 isPhysicalCash: false,
                 paymentMethodId: paymentMethodId,
                 cancellationToken: cancellationToken

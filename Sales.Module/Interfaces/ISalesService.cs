@@ -136,5 +136,6 @@ public interface ISalesService
         decimal? receivedCommission = null,
         decimal? receivedTotal = null,
         decimal? receivedTotalUsd = null,
-        string? receivedCurrencyCode = null);
+        string? receivedCurrencyCode = null,
+        decimal? receivedCommissionUsd = null);
 }

@@ -566,6 +566,8 @@ public partial class SalesService : ISalesService
                 throw new InvalidOperationException("No se puede anular un pedido que ya ha sido entregado al cliente.");
 
             sale.Status = SaleStatus.Cancelled;
+            // Paso 14 (S3): fecha real de anulacion para las reversas de comision del periodo.
+            sale.CancelledAtUtc = DateTime.UtcNow;
             ClearHoldClaim(sale);
             await _context.SaveChangesAsync(cancellationToken);
 

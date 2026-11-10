@@ -27,7 +27,8 @@ public partial class SalesService
         decimal? receivedCommission = null,
         decimal? receivedTotal = null,
         decimal? receivedTotalUsd = null,
-        string? receivedCurrencyCode = null)
+        string? receivedCurrencyCode = null,
+        decimal? receivedCommissionUsd = null)
     {
         if (existingTransaction != null && _context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {
@@ -139,6 +140,16 @@ public partial class SalesService
             Status = SaleStatus.Completed,
             DeliveryStatus = SaleDeliveryStatus.Delivered,
             InvoiceNumber = nextInvoice,
+            // Paso 14 (S2): el capital del avance es movimiento de tesoreria, no venta de
+            // mercancia. La comision de servicio se congela junto al discriminador para que el
+            // Estado de Resultados la sume como ServiceCommissions sin reinterpretar montos.
+            SaleType = SaleType.CashAdvance,
+            CommissionAmountLocal = commissionAmountLocal,
+            // Paso 14 (S2): en el camino method-aware la comision puede venir ya denominada en
+            // USD (receptor USD); solo el fallback legacy convierte desde la moneda local.
+            CommissionAmountUSD = receivedCommissionUsd ?? (anchoredRate > 0m
+                ? Math.Round(commissionAmountLocal / anchoredRate, 4, MidpointRounding.AwayFromZero)
+                : 0m),
             CashierId = resolvedCashierId,
             CustomerId = customerId,
             CustomerName = customerName,
@@ -170,6 +181,9 @@ public partial class SalesService
             ProductName = $"Adelanto de Efectivo ({paymentMethodName})",
             Quantity = 1m,
             UnitCostUSD = 0m,
+            // Paso 14 (S4): la linea sintetica no representa mercancia; su costo local es 0
+            // explicito para que el CMV nunca lo interprete como costo desconocido.
+            UnitCostLocal = 0m,
             UnitPrice = totalChargedUSD,
             Subtotal = totalChargedUSD,
             UnitPriceBsS = totalChargedLocal,

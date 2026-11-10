@@ -188,6 +188,19 @@ public class CashAdvanceDispensedMethodTests
         Assert.Equal(2, result.ExpenseTransaction.PaymentMethodId);
         Assert.Equal(7, result.IncomeTransaction.PaymentMethodId);
         Assert.Equal(1000m, (await drawer.GetPhysicalMethodBalancesAsync(session.Id)).Single(b => b.PaymentMethodId == 2).CurrentBalance);
+
+        // Paso 14 (S2): la comision recibida en USD ya esta denominada en USD; no debe
+        // dividirse otra vez por la tasa. Ambas salidas de caja del avance quedan ligadas a la venta.
+        var sale = await context.Sales.SingleAsync(candidate => candidate.Id == result.RelatedSaleId!.Value);
+        Assert.Equal(SaleType.CashAdvance, sale.SaleType);
+        Assert.Equal(5m, sale.CommissionAmountLocal);
+        Assert.Equal(5m, sale.CommissionAmountUSD);
+
+        var advanceTransactions = await context.CashTransactions
+            .Where(transaction => transaction.Source == CashTransactionSource.CashAdvance)
+            .ToListAsync();
+        Assert.Equal(2, advanceTransactions.Count);
+        Assert.All(advanceTransactions, transaction => Assert.Equal(result.RelatedSaleId, transaction.SaleId));
     }
 
     [Fact]
