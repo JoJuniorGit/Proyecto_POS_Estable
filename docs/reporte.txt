@@ -18086,7 +18086,7 @@ C. COMMITS
 C1. b238146 feat(paso-14): add profitability API and fee rule RBAC.
 C2. 2b9a3ad feat(paso-14): add profitability CSV and XLSX export.
 C3. 0eb43b9 feat(paso-14): add native profitability PDF export.
-C4. WU4 (tests HTTP y este ANEXO): pendiente de commit.
+C4. b14f5cf test(paso-14): add profitability export HTTP tests (incluye este ANEXO).
 
 D. PENDIENTE / RIESGOS
 D1. F4 (UI de rentabilidad y gestion de comisiones en Configuracion) queda pendiente.
