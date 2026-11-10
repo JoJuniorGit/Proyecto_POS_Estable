@@ -18146,3 +18146,59 @@ D4. `ProfitabilityPage.jsx` (~941 lineas), `PaymentMethodFeeRules.jsx` (~596 lin
 D5. `Backend.API/wwwroot` se regenero con el build Web y se versiono junto con la UI.
 ================================================================================
 
+================================================================================
+ANEXO LXV - PASO 14 F5: E2E Y CIERRE - 2026-11-10
+================================================================================
+
+A. CAMBIOS
+A1. Web Playwright (F5-WU1):
+    - Nuevo `Web.Frontend/e2e/profitability.spec.js`: login Admin con el helper existente,
+      mock determinista de `**/api/profitability/**` (summary/breakdown y export CSV)
+      registrado despues del login y navegacion a `#profitability`.
+    - Verifica KPIs headline/secundario y detalle, banner de cobertura, SVG nativo con series
+      accrued/realized, tablas de series/metodos/productos/categorias/vendedores/alertas,
+      botones CSV/XLSX/PDF y el toggle Devengado/Percibido/Ambos (aria-pressed, series del
+      grafico y encabezados de la tabla cambian con el modo).
+    - Export CSV ejercitado contra el mock binario; la pagina confirma la exportacion.
+A2. WPF full-stack (F5-WU2):
+    - AutomationIds estables en `ProfitabilityView.xaml`: `Profitability_KpiAccrued`,
+      `Profitability_KpiRealized`, `Profitability_Coverage`, `Profitability_ToggleAccrued`,
+      `Profitability_ToggleRealized`, `Profitability_ToggleBoth`, `Profitability_SeriesChart`
+      y `Profitability_ExportCsv`.
+    - Nuevo `FullStackProfitabilityTests`: `IClassFixture<FullStackFixture>`, gating por
+      `E2E_POSTGRES_CONNECTION`, login Admin con reintento acotado, navegacion
+      `Nav_BtnProfitability` con fallback de drawer, espera del summary real por la
+      cobertura/grafico, verificacion de titulo/labels y toggle Percibido -> Ambos.
+    - Captura `artifacts/profitability-wpf.png` (107,908 bytes) para revision visual.
+A3. Sin cambios de comportamiento productivo: solo metadatos UIA y tests E2E.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Suite completa `CommandCenter.Tests` con `TEST_POSTGRES_CONNECTION`:
+    4406 superados, 0 fallidos, 0 omitidos (5m 54s).
+B3. Web Playwright `npm run test:e2e -- e2e/profitability.spec.js`: 1 passed (3.5 s de
+    test, 8.0 s total).
+B4. WPF full-stack `dotnet test ... --filter FullyQualifiedName~FullStackProfitabilityTests`
+    con `E2E_POSTGRES_CONNECTION` y `E2E_FIND_TIMEOUT_SECONDS=45`: 1/1 superado (45 s).
+    Screenshot: `C:\Users\Lenovo IdeaPad 3\Desktop\Proyecto_POS_Estable\V0.1\artifacts\profitability-wpf.png`.
+B5. Web: `npm test` 799/799; `npm run lint` limpio; `npm run build` exitoso (sin cambios
+    en `Backend.API/wwwroot`).
+B6. Pins: `%LOCALAPPDATA%\SolucionesPOS\certificate-pins.dat` se movio a backup antes del
+    E2E y se restauro despues; el archivo generado por la corrida se aparto como
+    `certificate-pins.dat.f5-generated-*`.
+
+C. COMMITS
+C1. Sin commits: F5 queda como work unit local pendiente de revision/commit del padre.
+
+D. PENDIENTE / RIESGOS
+D1. El toggle WPF no expone un estado UIA "selected" (los botones no enlazan un indicador de
+    modo); el E2E automatiza la invocacion y confirma que el dashboard sigue vivo, mientras la
+    captura muestra el boton enfocado. Una asercion de modo activo requeriria un indicador en
+    la vista o datos sembrados que cambien las series.
+D2. La captura WPF muestra el viewport superior del dashboard (KPIs y toggle); la cobertura
+    queda debajo del pliegue en la ventana de 1024x720.
+D3. La base aislada del E2E arranca sin ventas: los KPIs se validan en cero y la revision
+    visual se centra en layout/labels, no en cifras reales.
+D4. `Backend.API/wwwroot` no cambio con el build de F5.
+================================================================================
+

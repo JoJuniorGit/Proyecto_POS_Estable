@@ -186,6 +186,24 @@ ANEXO LXIV y actualización del documento de tracking.
 - F4-WU2 | F4-S2/F4-S3 | Web: API client, página, ruta/nav, gráficos SVG/CSS, export y fee config | delegated | completed (commit pending)
 - F4-WU3 | F4-S4 | Verificación UI, regresión y ANEXO LXIV | delegated | completed (commit 64d9083)
 
+## F5 Specs
+
+### F5-S1 — Web Playwright Profitability Journey
+`e2e/profitability.spec.js` con el helper de login Admin/mock API: navega a `#profitability`, verifica KPIs, toggle Devengado/Percibido/Ambos, banner de cobertura, gráfico SVG, tablas y controles de exportación. Cashier/Manager RBAC ya está cubierto por los tests SSR de `roleViews`/`Sidebar`; el E2E confirma el journey real Admin en navegador.
+
+### F5-S2 — WPF Full-Stack Visual E2E
+`FullStackProfitabilityTests` con `FullStackFixture`: login Admin real, navegación `Nav_BtnProfitability`, render del dashboard, toggle y captura de pantalla en `artifacts/profitability-wpf.png` para revisión visual. AutomationIds estables en los KPI/toggle de `ProfitabilityView`.
+Gateado por `E2E_POSTGRES_CONNECTION`; sin variable retorna en silencio como el resto del harness. Certificado y pins se preparan según el procedimiento local del repo.
+
+### F5-S3 — Cierre
+Suite completa .NET con Postgres, `npm test`, `npm run lint`, `npm run build`, Playwright profitability y WPF full-stack profitability. ANEXO LXV y actualización del tracking.
+
+## F5 Tasks
+
+- F5-WU1 | F5-S1 | Playwright profitability Admin journey y mocks | delegated | completed (commit pending)
+- F5-WU2 | F5-S2 | WPF full-stack profitability E2E + screenshot | delegated | completed (commit pending)
+- F5-WU3 | F5-S3 | Regresión completa y ANEXO LXV | delegated | completed (commit pending)
+
 ## Log
 
 - L1 (2026-11-09): pedido verbatim del mantenedor:
@@ -281,3 +299,7 @@ ANEXO LXIV y actualización del documento de tracking.
 - L28 (2026-11-10): **F4-WU2 COMPLETADA (work unit local, sin commit)**. Nuevo `profitabilityApi.js` con query de presets/fechas/categorías/productos/métodos/cajero/tipo/lista/agrupación, summary/breakdown, export binario con filename/content-type desde `Content-Disposition` y CRUD Admin-only de `PaymentMethodFeeRule`. `ProfitabilityPage` con KPIs (Utilidad Devengada headline, Utilidad Percibida, ventas netas, CMV, utilidad bruta, margen, comisiones, FX, caja chica, fees, utilidad neta), toggle Devengado/Percibido/Ambos, banner de cobertura, gráfico SVG nativo de series, barras CSS y tablas de métodos/productos/categorías/vendedores/alertas, filtros combinables y export CSV/XLSX/PDF con descarga local. Ruta/nav `profitability` restringida a Admin/Manager (`roleViews` + Sidebar + Layout + App lazy route); Cashier redirigido a `pos`. Settings incorpora la tarjeta **Comisiones de Medios de Pago** dentro de **Métodos de Pago y Caja**, solo Admin, con CRUD, validaciones locales (porcentaje/fijo/vigencia/moneda) y baja lógica. Evidencia: RED observado (módulos nuevos ausentes y aserciones de rol/nav fallando); GREEN `npm test` **799/799**; `npm run lint` limpio; `npm run build` exitoso. Nota: el test de página se nombró `ProfitabilityPage.test.js` (no `.test.jsx`) porque el script `npm test` solo globa `src/**/*.test.js`; `npm run build` regeneró los assets versionados de `Backend.API/wwwroot` como efecto del outDir configurado. Sin commit; F4-WU3 (verificación UI/regresión y ANEXO LXIV) queda pendiente.
 
 - L29 (2026-11-10): **F4-WU3 COMPLETADA / F4 CERRADA**. Verificación final: build Release 0/0; suite completa .NET con `TEST_POSTGRES_CONNECTION` **4406/4406, 0 skipped, 5m51s**; Web `npm test` **799/799**, `npm run lint` limpio y `npm run build` exitoso; WPF focalizado **220/220**; ANEXO LXIV registrado. Commits: `5071d91` (WPF), `5ec7c0a` (Web), WU3 commit pendiente. Residuales: la ventana WPF no se inspeccionó visualmente, el click real de descarga Web no corre en navegador E2E, las opciones de filtros Web se acumulan desde breakdowns, y varios archivos UI superan la guía de 500 líneas. `Backend.API/wwwroot` se versionó con el build Web.
+
+- L30 (2026-11-10): **F5 aprobada y en ejecución**. WU1 Playwright profitability (login Admin, ruta, KPIs, toggle, cobertura, SVG, tablas, export), WU2 WPF full-stack E2E con navegación `Nav_BtnProfitability` y screenshot `artifacts/profitability-wpf.png`, WU3 regresión completa y ANEXO LXV. La revisión visual WPF se hará sobre la captura generada.
+
+- L31 (2026-11-10): **F5 COMPLETADA (work unit local, sin commit)**. Nuevo `Web.Frontend/e2e/profitability.spec.js` con login Admin, mock determinista de `/api/profitability/**` registrado tras el login, navegación `#profitability` y verificación de KPIs, cobertura, SVG nativo, tablas, export CSV y toggle Devengado/Percibido/Ambos con `aria-pressed` y series del gráfico. AutomationIds UIA añadidos en `ProfitabilityView.xaml` (`KpiAccrued`, `KpiRealized`, `Coverage`, `ToggleAccrued`, `ToggleRealized`, `ToggleBoth`, `SeriesChart`, `ExportCsv`) y nuevo `FullStackProfitabilityTests` con login Admin de reintento acotado, navegación `Nav_BtnProfitability`, espera del summary real y captura `artifacts/profitability-wpf.png` (107.908 bytes). Evidencia: build Release 0/0; suite completa `CommandCenter.Tests` con `TEST_POSTGRES_CONNECTION` **4406/4406, 0 skipped, 5m54s**; Web Playwright **1/1**; WPF full-stack **1/1 (45 s)**; `npm test` **799/799**, `npm run lint` limpio y `npm run build` exitoso sin cambios en `Backend.API/wwwroot`; ANEXO LXV registrado. Pins de certificado respaldados/restaurados. Residuales: el toggle WPF no expone estado UIA "selected" (se automatiza la invocación y la captura muestra el botón enfocado); la captura cubre el viewport superior y la cobertura queda bajo el pliegue; la base E2E arranca sin ventas, por lo que los KPIs se validan en cero. Sin commit.
