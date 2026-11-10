@@ -79,6 +79,8 @@ public static class ServiceCollectionExtensions
         // Paso 14 (F2-S1/S4): Estado de Resultados con ventana UTC de la Zona Horaria Global y
         // moneda de reporte según el régimen (Dual USD / Single primaria).
         builder.Services.AddScoped<Sales.Module.Interfaces.IProfitabilityService, Sales.Module.Services.ProfitabilityService>();
+        // Paso 14 (F3-S2/F3-S5): exportacion server-side CSV/XLSX con detalle de Caja Chica.
+        builder.Services.AddScoped<Sales.Module.Interfaces.IProfitabilityExportService, Sales.Module.Services.ProfitabilityExportService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
         builder.Services.AddScoped<IExchangeRateHistoryService, ExchangeRateHistoryService>();
         builder.Services.AddScoped<IInventoryHealthProbe, InventoryHealthProbe>();
