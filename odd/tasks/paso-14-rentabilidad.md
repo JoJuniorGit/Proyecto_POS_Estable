@@ -184,7 +184,7 @@ ANEXO LXIV y actualización del documento de tracking.
 
 - F4-WU1 | F4-S1/F4-S3 | WPF: servicio cliente, ViewModel, vista, navegación, gráficos, export y fee config | delegated | completed (commit 5071d91)
 - F4-WU2 | F4-S2/F4-S3 | Web: API client, página, ruta/nav, gráficos SVG/CSS, export y fee config | delegated | completed (commit pending)
-- F4-WU3 | F4-S4 | Verificación UI, regresión y ANEXO LXIV | delegated | completed (commit pending)
+- F4-WU3 | F4-S4 | Verificación UI, regresión y ANEXO LXIV | delegated | completed (commit 64d9083)
 
 ## Log
 

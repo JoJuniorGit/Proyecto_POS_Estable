@@ -18132,7 +18132,7 @@ B5. Tests nuevos Web: profitabilityApi 16, ProfitabilityPage 13, PaymentMethodFe
 C. COMMITS
 C1. 5071d91 feat(paso-14): add WPF profitability dashboard.
 C2. 5ec7c0a feat(paso-14): add Web profitability dashboard.
-C3. WU3: verificacion UI y cierre de F4 (commit de este ANEXO).
+C3. 64d9083 docs(paso-14): close F4 evidence (incluye este ANEXO).
 
 D. PENDIENTE / RIESGOS
 D1. No se inspecciono visualmente la ventana WPF en ejecucion; compila y los ViewModel tests
