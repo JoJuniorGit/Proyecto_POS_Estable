@@ -136,6 +136,28 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             ? CurrentSale.TotalBsS
             : Core.Helpers.PricingCalculator.RoundToDigital(TotalUSD * _exchangeRateService.CurrentRate);
 
+    /// <summary>
+    /// Sincronización USD efectivo (ANEXO XII): $ mostrado = inverso del Bs.S EFECTIVO que se
+    /// cobra (TotalAmountLocal / tasa), no la suma canónica de precios base. Solo display: el
+    /// TotalUSD canónico sigue rigiendo gates, mensajes y recuperación. La tasa se resuelve con
+    /// la misma prioridad que UpdateCollection (histórico ⇒ AppliedRate congelado; vivo ⇒ tasa
+    /// vigente). Sin tasa válida cae al canónico para no mostrar un monto inventado.
+    /// </summary>
+    public decimal TotalUsdEffective
+    {
+        get
+        {
+            bool isHistorical = CurrentSale != null && CurrentSale.Status != "Pending";
+            decimal current = _exchangeRateService.CurrentRate;
+            decimal rate = isHistorical
+                ? (CurrentSale!.AppliedRate > 0 ? CurrentSale.AppliedRate : current)
+                : (current > 0 ? current : CurrentSale?.AppliedRate ?? 0m);
+            return rate > 0m
+                ? Core.Helpers.PricingCalculator.ToUSD(TotalAmountLocal, rate)
+                : TotalUSD;
+        }
+    }
+
     private bool IsLivePendingSale => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
 
     public bool HasUncommittedItems => CurrentSale is { Status: "Pending" } && CartItems.Count > 0;
@@ -275,6 +297,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
 
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(SubtotalLocal));
+        OnPropertyChanged(nameof(TotalUsdEffective));
 
         // Notify other components (like Checkout) that the cart has changed
         WeakReferenceMessenger.Default.Send(new CartUpdatedMessage(TotalUSD));
@@ -310,6 +333,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         // Fire notifications for calculated totals
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(SubtotalLocal));
+        OnPropertyChanged(nameof(TotalUsdEffective));
     }
 
     private async Task LoadPricingPoliciesAsync()
@@ -347,6 +371,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
 
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(SubtotalLocal));
+        OnPropertyChanged(nameof(TotalUsdEffective));
     }
 
     private async Task RefreshOnHoldSaleAsync()
@@ -367,6 +392,12 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
     private async Task IncreaseQuantity(CartItemViewModel? vm)
     {
         if (CurrentSale == null || vm == null) return;
+
+        // ANEXO XIV: commitea las ediciones de cantidad pendientes de CUALQUIER fila antes de
+        // mutar el carrito — la respuesta del servidor reconstruye la colección y sin esto se
+        // perderían los valores tipeados sin Enter (bug de sincronización UI/Modelo del POS).
+        await FlushAllQuantitiesAsync();
+
         try
         {
             int selectedId = vm.Id;
@@ -385,14 +416,18 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
     private async Task DecreaseQuantity(CartItemViewModel? vm)
     {
         if (CurrentSale == null || vm == null) return;
+
+        // ANEXO XIV: idem IncreaseQuantity — ningún refresco de colección debe pisar ediciones
+        // pendientes de otras filas.
+        await FlushAllQuantitiesAsync();
+
         try
         {
             decimal newQty = Math.Round(vm.Model.Quantity - vm.StepAmount, 3, MidpointRounding.AwayFromZero);
-            if (newQty <= 0m)
-            {
-                await RemoveItem(vm);
-                return;
-            }
+
+            // Piso de cantidad (paridad con el carrito web): una resta que cae por debajo de un
+            // paso se ignora y NUNCA elimina. El borrado queda solo en el 🗑 o la tecla Supr.
+            if (newQty < vm.StepAmount) return;
 
             int selectedId = vm.Id;
             CurrentSale = await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, vm.Id, newQty, _exchangeRateService.CurrentRate);
@@ -409,9 +444,19 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
     private async Task RemoveItem(CartItemViewModel? vm)
     {
         if (CurrentSale == null || vm == null) return;
+
+        // ANEXO XIV: el 🗑 (botón de acción dentro de la grilla) fuerza el commit de cualquier
+        // edición de cantidad activa ANTES de su lógica — mismo invariante del resto de comandos.
+        await FlushAllQuantitiesAsync();
+
+        await RemoveItemCoreAsync(vm);
+    }
+
+    private async Task RemoveItemCoreAsync(CartItemViewModel vm)
+    {
         try
         {
-            CurrentSale = await _salesService.RemoveItemAsync(CurrentSale.Id, vm.Id, _exchangeRateService.CurrentRate);
+            CurrentSale = await _salesService.RemoveItemAsync(CurrentSale!.Id, vm.Id, _exchangeRateService.CurrentRate);
         }
         catch (System.Exception ex)
         {
@@ -446,20 +491,27 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         }
     }
 
+    public Task CommitItemQuantityFromTextAsync(int itemId, string? rawText)
+    {
+        decimal q = 0m;
+        if (!decimal.TryParse(rawText, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out q))
+        {
+            _ = decimal.TryParse(rawText, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out q);
+        }
+
+        return CommitItemQuantityAsync(itemId, q);
+    }
+
     public async Task CommitItemQuantityAsync(int itemId, decimal newQty)
     {
         if (CurrentSale == null) return;
         try
         {
-            if (newQty <= 0m)
-            {
-                var itemToRemove = CartItems.FirstOrDefault(i => i.Id == itemId);
-                if (itemToRemove != null)
-                {
-                    await RemoveItem(itemToRemove);
-                }
-                return;
-            }
+            newQty = System.Math.Round(newQty, 3, System.MidpointRounding.AwayFromZero);
+
+            // Edicion manual protegida (paridad con el input web): un valor confirmado <= 0
+            // revierte a 1 — nunca elimina la linea (el borrado es exclusivo del 🗑/Supr).
+            if (newQty <= 0m) newQty = 1m;
 
             var updated = await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, itemId, newQty, _exchangeRateService.CurrentRate);
 
@@ -481,13 +533,22 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
         if (CurrentSale == null) return;
         try
         {
-            var dirtyItems = CartItems.Where(i => i.IsQuantityDirty && i.Model.Quantity > 0m).ToList();
+            var dirtyItems = CartItems.Where(i => i.IsQuantityDirty).ToList();
             if (dirtyItems.Count == 0) return;
 
-            foreach (var item in dirtyItems)
-            {
-                await _salesService.UpdateItemQuantityAsync(CurrentSale.Id, item.Id, item.Model.Quantity, _exchangeRateService.CurrentRate);
-            }
+            // PERF-10: una sola llamada batch en lugar de un PUT por ítem modificado.
+            // Edicion manual protegida: un borrador confirmado <= 0 revierte a 1 (nunca 0 al
+            // servidor y nunca eliminacion implicita por la cantidad).
+            var updates = dirtyItems
+                .Select(item => new UpdateSaleItemDto
+                {
+                    SaleItemId = item.Id,
+                    ProductId = item.Model.ProductId,
+                    Quantity = item.Model.Quantity <= 0m ? 1m : item.Model.Quantity,
+                    UnitPrice = item.Model.UnitPrice
+                })
+                .ToList();
+            await _salesService.UpdateSaleItemsAsync(CurrentSale.Id, updates, _exchangeRateService.CurrentRate);
             var reloaded = await _salesService.GetSaleAsync(CurrentSale.Id);
             CurrentSale = reloaded;
         }

@@ -1,4 +1,5 @@
 using Sales.Module.Entities;
+using System.Text.Json.Serialization;
 
 namespace Sales.Module.DTOs;
 
@@ -19,4 +20,10 @@ public sealed record CashTransactionResponseDto
     public int? InvoiceNumber { get; init; }
     public bool IsPhysicalCash { get; init; } = true;
     public int? PaymentMethodId { get; init; }
+
+    /// <summary>Moneda fisica del movimiento (8.211-T3b3, S6); null en filas previas al backfill.</summary>
+    // 8.211-T3b3 (S6): snapshot aditivo. El JSON omite el campo cuando es null para no alterar
+    // el contrato dorado del arqueo legacy; las filas backfilleadas y nuevas siempre lo publican.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CurrencyCode { get; init; }
 }

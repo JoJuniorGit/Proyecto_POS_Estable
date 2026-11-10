@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using Desktop.Client.ViewModels;
@@ -141,6 +142,27 @@ namespace Desktop.Client.Views
                     e.Handled = true;
                     vm.RefreshCommand.Execute(null);
                 }
+
+                return;
+            }
+
+            // Ctrl+F: atajo de la vista para enfocar y seleccionar el buscador.
+            if (e.Key == Key.F && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                SearchInput.Focus();
+                SearchInput.SelectAll();
+                return;
+            }
+
+            // Ctrl+A con foco en un editor: preserva el Select All nativo del TextBox y evita que
+            // el KeyBinding del ancestro (seleccionar todos los filtrados) lo intercepte.
+            if (e.Key == Key.A
+                && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control
+                && Keyboard.FocusedElement is TextBoxBase textBox)
+            {
+                e.Handled = true;
+                textBox.SelectAll();
             }
         }
     }

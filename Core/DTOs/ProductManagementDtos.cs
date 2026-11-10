@@ -163,7 +163,10 @@ public class BulkPriceOperationDto
     public BulkPriceField Field { get; set; }
     public BulkPriceMode Mode { get; set; }
 
-    // SetFixed: valor absoluto. IncreasePercent/DecreasePercent: porcentaje aplicado al valor actual.
+    // SetFixed: valor absoluto. IncreasePercent/DecreasePercent: en precio/costo el valor es un
+    // porcentaje multiplicativo sobre el valor actual; en los márgenes (RetailMargin/WholesaleMargin)
+    // se interpreta SIEMPRE como puntos porcentuales aditivos (actual ± Δ; p. ej. 10 + 10 = 20) y las
+    // reducciones se clipean al piso del canal o a 0 (nunca quedan negativas).
     public decimal Value { get; set; }
 }
 
@@ -187,11 +190,32 @@ public class BulkPriceUpdateRequestDto
 
     public List<BulkPriceOperationDto> Operations { get; set; } = new();
 
-    // 8.182-T1 (S5): política de redondeo por canal (default ExactMath = comportamiento 8.181) y piso
-    // de margen por lote (supuesto v1: sin setting global). El piso solo se evalúa con
-    // EnforceMinimumMarginFloor activo, piso > 0 y costo > 0; VES redondea el Bs.S canónico del canal.
+    // 8.182-T1 (S5) + Spec V0.15: redondeo USD por canal (default ExactMath = comportamiento 8.181).
+    // La proyección Bs.S de efectivo vive en CashBsRoundingRule (capa independiente). Pisos de margen
+    // por lote (supuesto v1: sin setting global): se evalúan con EnforceMinimumMarginFloor activo,
+    // piso > 0 y costo > 0.
     public RoundingRuleType RetailRoundingRule { get; set; } = RoundingRuleType.ExactMath;
     public RoundingRuleType WholesaleRoundingRule { get; set; } = RoundingRuleType.ExactMath;
+
+    // Spec V0.15: capa de proyección Bs.S en caliente (columna BS.S EFECTIVO (PROY.)) con las reglas
+    // VesCashFriendly*; ExactMath (default) = sin proyección. NUNCA se persiste. Un caller viejo que
+    // envíe una regla VES en el canal ya no proyecta: esa vía quedó defensiva en el motor.
+    public RoundingRuleType CashBsRoundingRule { get; set; } = RoundingRuleType.ExactMath;
+
+    // Spec V0.15 (persistencia de política): baselines globales del lote para comparar la herencia
+    // (Product.RoundingRuleUsd/RoundingRuleCashBs null = hereda global) sin materializar la política
+    // cuando la efectiva ya coincide con la wanted. El VM los completa con las políticas sembradas.
+    public RoundingRuleType GlobalUsdRoundingRule { get; set; } = RoundingRuleType.ExactMath;
+    public RoundingRuleType GlobalCashBsRoundingRule { get; set; } = RoundingRuleType.ExactMath;
+
+    // Spec V0.15 (intención explícita): true SOLO cuando el usuario cambió ese selector respecto de
+    // su valor inicial, o ejecuta modo Solo Redondeo (sin operaciones) con la regla activa. Sin touch
+    // el motor PRESERVA la política del artículo (override propio o herencia global) y calcula con
+    // ella; con touch la regla del lote gobierna cálculo y persistencia de esa capa.
+    public bool TouchRetailUsdPolicy { get; set; }
+    public bool TouchWholesaleUsdPolicy { get; set; }
+    public bool TouchCashBsPolicy { get; set; }
+
     public bool EnforceMinimumMarginFloor { get; set; }
     public decimal? RetailMarginFloorPct { get; set; }
     public decimal? WholesaleMarginFloorPct { get; set; }
@@ -239,6 +263,10 @@ public class BulkPricePreviewRowDto
     // el apply completo con 400 (resultado negativo, mayor>detal, cap excedido).
     public string? SkipReason { get; set; }
     public bool IsError { get; set; }
+
+    // Spec V0.15: nota de política cuando la configuración del lote no puede materializarse por
+    // artículo (p. ej. reglas USD distintas por canal: la columna es única por producto). null = sin nota.
+    public string? PolicyNote { get; set; }
 
     // 8.182-T1 (S5): margen efectivo (precio final − costo) / costo × 100 del canal, calculado sobre
     // el precio FINAL; informado solo cuando el precio USD del canal cambió y el costo es > 0.

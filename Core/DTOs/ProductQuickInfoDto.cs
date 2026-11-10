@@ -36,6 +36,11 @@ public class ProductQuickInfoDto
     // default global de Pricing). No sensible (no expone costo/margen) y sobrevive al masking de Cashier.
     public RoundingRuleType? RoundingRuleCashBs { get; set; }
 
+    // 8.186-T1 (S1/S3): precios efectivos Bs.S proyectados server-side con el motor único; Mayor = 0
+    // cuando !HasWholesale o PriceWholesaleUSD <= 0. No sensibles: sobreviven al masking de Cashier.
+    public decimal EffectivePriceBsS { get; set; }
+    public decimal EffectiveWholesalePriceBsS { get; set; }
+
     // 8.143: convención es-VE determinista del producto (MoneyFormat), independiente de la cultura del SO.
     public string DisplayPriceBsS => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : MoneyFormat.N2(PriceBsS);
     public string DisplayPriceUSD => (IsGroupHeader && HasIndependentPricing) ? "Precios indiv." : $"${MoneyFormat.N2(PriceUSD)}";

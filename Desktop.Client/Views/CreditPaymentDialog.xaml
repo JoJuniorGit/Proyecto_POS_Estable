@@ -1,0 +1,210 @@
+<UserControl x:Class="Desktop.Client.Views.CreditPaymentDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             mc:Ignorable="d"
+             Width="680" MinHeight="480"
+             d:DataContext="{d:DesignInstance Type=vm:CreditPaymentDialogViewModel}">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </UserControl.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#F5F3FF" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="8" Padding="16,12" Margin="0,0,0,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="Registrar Abono CxC" FontSize="18" FontWeight="Bold" Foreground="#1E293B"/>
+                    <TextBlock Text="{Binding CustomerName}" FontSize="12" Foreground="#5E35B1" FontWeight="SemiBold" Margin="0,2,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                    <TextBlock Text="SALDO PENDIENTE" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                    <TextBlock Text="{Binding TotalOpenUSD, Converter={StaticResource PrimaryAmountConverter}}" FontSize="13" FontWeight="Bold" Foreground="#0F172A" HorizontalAlignment="Right"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Amount + method -->
+        <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" materialDesign:ElevationAssist.Elevation="Dp1" CornerRadius="6" Padding="14" Margin="0,0,0,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.2*"/>
+                    <ColumnDefinition Width="1.2*"/>
+                    <ColumnDefinition Width="1.4*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                    <TextBox AutomationProperties.AutomationId="CreditPayment_AmountUsdInput"
+                             Text="{Binding AmountUsdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Monto del abono ({0})'}"
+                             Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
+                             FontWeight="Bold" FontSize="16"
+                             HorizontalContentAlignment="Right"/>
+                    <!-- 8.211-T4c2b4 (S9): the local projection only exists in Dual. -->
+                    <TextBlock FontSize="11" Foreground="#64748B" HorizontalAlignment="Right" Margin="0,2,0,0"
+                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                        <Run Text="≈ "/>
+                        <Run Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}, Mode=OneWay}"/>
+                        <Run Text=" a la tasa del día"/>
+                    </TextBlock>
+                    <TextBlock AutomationProperties.AutomationId="CreditPayment_RemainingAfter"
+                               FontSize="11" FontWeight="SemiBold" Foreground="#475569" HorizontalAlignment="Right" Margin="0,2,0,0">
+                        <Run Text="Saldo resultante: "/>
+                        <Run Text="{Binding RemainingAfterUSD, Converter={StaticResource PrimaryAmountConverter}, Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                    <ComboBox AutomationProperties.AutomationId="CreditPayment_MethodCombo"
+                              ItemsSource="{Binding AvailableMethods}"
+                              SelectedItem="{Binding SelectedMethod, Mode=TwoWay}"
+                              materialDesign:HintAssist.Hint="Método de pago"
+                              Style="{DynamicResource MaterialDesignFloatingHintComboBox}"
+                              DisplayMemberPath="Name"/>
+                </StackPanel>
+
+                <TextBox Grid.Column="2"
+                         AutomationProperties.AutomationId="CreditPayment_ReferenceInput"
+                         Text="{Binding Reference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         materialDesign:HintAssist.Hint="Referencia / comprobante"
+                         Style="{DynamicResource MaterialDesignFloatingHintTextBox}"/>
+            </Grid>
+        </Border>
+
+        <!-- Allocation -->
+        <Border Grid.Row="2" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="14" Margin="0,0,0,16">
+            <DockPanel>
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Imputación del abono" FontWeight="SemiBold" Foreground="#475569" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Command="{Binding SelectFifoModeCommand}"
+                                AutomationProperties.AutomationId="CreditPayment_FifoMode"
+                                Content="FIFO (más antigua)"
+                                Height="30" Padding="14,0" FontSize="11" FontWeight="SemiBold" Margin="0,0,8,0"
+                                materialDesign:ButtonAssist.CornerRadius="5">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="#475569"/>
+                                    <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsFifoAllocation}" Value="True">
+                                            <Setter Property="Background" Value="#5E35B1"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                            <Setter Property="BorderBrush" Value="#5E35B1"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Command="{Binding SelectExplicitModeCommand}"
+                                AutomationProperties.AutomationId="CreditPayment_ExplicitMode"
+                                Content="Factura específica"
+                                Height="30" Padding="14,0" FontSize="11" FontWeight="SemiBold"
+                                materialDesign:ButtonAssist.CornerRadius="5">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="#475569"/>
+                                    <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsExplicitAllocation}" Value="True">
+                                            <Setter Property="Background" Value="#D97706"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                            <Setter Property="BorderBrush" Value="#D97706"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock DockPanel.Dock="Top"
+                           Text="La cartera se imputa de la obligación más antigua a la más reciente."
+                           Visibility="{Binding IsFifoAllocation, Converter={StaticResource BoolToVis}}"
+                           FontSize="11" FontStyle="Italic" Foreground="#64748B" Margin="0,0,0,8"/>
+
+                <ListBox ItemsSource="{Binding OpenReceivables}"
+                         AutomationProperties.AutomationId="CreditPayment_ReceivablesList"
+                         BorderThickness="0" Background="Transparent"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         MaxHeight="180">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,5">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <CheckBox Grid.Column="0"
+                                          IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                          IsEnabled="{Binding DataContext.IsExplicitAllocation, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                          VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding InvoiceDisplay}" FontWeight="SemiBold" FontSize="12" Foreground="#1E293B"/>
+                                    <TextBlock Text="{Binding Receivable.Status}" FontSize="10" Foreground="#64748B"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                           FontWeight="Bold" FontSize="12" Foreground="#0F172A" VerticalAlignment="Center" Margin="0,0,16,0"
+                                           Typography.NumeralAlignment="Tabular"/>
+                                <!-- 8.211-T4c2b4 (S9): today projection only exists in Dual. -->
+                                <TextBlock Grid.Column="3" Text="{Binding Receivable.BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}"
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                           FontSize="11" Foreground="#166534" VerticalAlignment="Center"
+                                           Typography.NumeralAlignment="Tabular"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <!-- Footer -->
+        <Grid Grid.Row="3">
+            <TextBlock Text="{Binding ValidationMessage}"
+                       Foreground="#B45309" FontWeight="SemiBold" FontSize="11" TextWrapping="Wrap"
+                       VerticalAlignment="Center" Margin="0,0,220,0"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="CANCELAR"
+                        Command="{Binding CloseCommand}"
+                        AutomationProperties.AutomationId="CreditPayment_CancelButton"
+                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                        Height="40" Padding="18,0" Margin="0,0,10,0"/>
+                <Button Content="REGISTRAR ABONO"
+                        Command="{Binding ConfirmCommand}"
+                        AutomationProperties.AutomationId="CreditPayment_ConfirmButton"
+                        Style="{DynamicResource MaterialDesignRaisedButton}"
+                        Background="#5E35B1" Foreground="White"
+                        Height="40" Padding="22,0" FontWeight="Bold"
+                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
+                        materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsProcessing}"
+                        materialDesign:ButtonProgressAssist.IsIndeterminate="True"
+                        materialDesign:ButtonProgressAssist.Value="-1"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>
+

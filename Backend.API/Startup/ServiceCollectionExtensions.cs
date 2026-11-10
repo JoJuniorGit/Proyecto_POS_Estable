@@ -68,6 +68,19 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IOcrExtractionService, OcrExtractionService>();
         builder.Services.AddScoped<IReservationService, Inventory.Module.Services.ReservationService>();
         builder.Services.AddScoped<ISystemSettingsService, SystemSettingsService>();
+        // 8.211-T1 (S1/S2/S3): perfil monetario configurable (contrato, persistencia y API).
+        builder.Services.AddScoped<IMonetaryProfileService, MonetaryProfileService>();
+        // 8.211-T2a (S4): tasas manuales por par (USD/VES sigue en ExchangeRateHistory).
+        builder.Services.AddScoped<ICurrencyRateService, CurrencyRateService>();
+        // 8.211-T3c3a (S11): guarda de transición del régimen monetario (solo lectura).
+        builder.Services.AddScoped<IMonetaryTransitionGuard, MonetaryTransitionGuard>();
+        // 8.211-T2b (S5): conversión central con identidad exacta y precisión por moneda destino.
+        builder.Services.AddScoped<IMonetaryConversionService, MonetaryConversionService>();
+        // Paso 14 (F2-S1/S4): Estado de Resultados con ventana UTC de la Zona Horaria Global y
+        // moneda de reporte según el régimen (Dual USD / Single primaria).
+        builder.Services.AddScoped<Sales.Module.Interfaces.IProfitabilityService, Sales.Module.Services.ProfitabilityService>();
+        // Paso 14 (F3-S2/F3-S5): exportacion server-side CSV/XLSX con detalle de Caja Chica.
+        builder.Services.AddScoped<Sales.Module.Interfaces.IProfitabilityExportService, Sales.Module.Services.ProfitabilityExportService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
         builder.Services.AddScoped<IExchangeRateHistoryService, ExchangeRateHistoryService>();
         builder.Services.AddScoped<IInventoryHealthProbe, InventoryHealthProbe>();
@@ -79,8 +92,27 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<Sales.Module.Interfaces.ICheckoutCalculationService, Sales.Module.Services.CheckoutCalculationService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.ICashDrawerService, Sales.Module.Services.CashDrawerService>();
         builder.Services.AddScoped<Sales.Module.Services.CashAdvanceCoordinator>();
+        // 8.187-T2 (F2a, S1/S2): perfil crediticio y solvencia en tiempo real del cliente para el
+        // checkout a crédito (cupo disponible, utilización, mora dinámica y bloqueos). Lo consume
+        // el cierre de venta a crédito y el endpoint de perfil crediticio.
+        builder.Services.AddScoped<Sales.Module.Interfaces.ICreditService, Sales.Module.Services.CreditService>();
+        // 8.188-T2a (F2a, S1/S3/S5): caja chica bimonetaria — registro atomico con valoracion
+        // dual server-side, liquidez fisica por moneda, autorizacion jerarquica y anulacion
+        // compensatoria con snapshots congelados.
+        builder.Services.AddScoped<Sales.Module.Interfaces.IPettyCashService, Sales.Module.Services.PettyCashService>();
+        // 8.187-T6 (H1, S3/S4): barrido periódico de cartera — materializa Vencida y aplica la
+        // suspensión/reactivación automática por mora de forma idempotente (intervalo
+        // CreditMora:IntervalHours, default 6 h; cubre el barrido diario).
+        builder.Services.AddHostedService<Backend.API.Jobs.CreditMoraJob>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodService, Sales.Module.Services.PaymentMethodService>();
+        // Paso 14 (F3-S1): CRUD de reglas de comisión de medios de pago (Admin) con vigencia,
+        // validación monetaria y baja lógica.
+        builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodFeeRuleService, Sales.Module.Services.PaymentMethodFeeRuleService>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IPaymentMethodNotifier, Backend.API.Services.SignalRPaymentMethodNotifier>();
+        builder.Services.AddScoped<Sales.Module.Interfaces.ICashDrawerChangedNotifier, Backend.API.Services.SignalRCashDrawerNotifier>();
+        // 8.211-T3c3b3 (S7/S11): prepara el catálogo de métodos de pago en la moneda primaria al
+        // configurar un perfil Single en una instalación nueva (idempotente, caché y SignalR).
+        builder.Services.AddScoped<IMonetaryPaymentMethodSeeder, Sales.Module.Services.MonetaryPaymentMethodSeeder>();
         builder.Services.AddScoped<Sales.Module.Interfaces.IHoldOrderNotifier, Backend.API.Services.SignalRHoldOrderNotifier>();
         // 8.150-T4 (design D6): fuente unica de los tiempos de autorizaciones remotas. El mismo
         // TTL se inyecta en el token service, el coordinator y el servicio de estado, de modo que
@@ -161,7 +193,11 @@ public static class ServiceCollectionExtensions
         })
         .AddJwtBearer(options =>
         {
-            options.RequireHttpsMetadata = builder.Configuration.GetValue<bool>("SecuritySettings:RequireHttpsMetadata", false);
+            // 8.203 (auditoría H-02): fuera de Development el default es exigir HTTPS para la
+            // metadata JWT. El transporte Web ya se fuerza en PipelineExtensions cuando hay cert.
+            options.RequireHttpsMetadata = builder.Configuration.GetValue<bool>(
+                "SecuritySettings:RequireHttpsMetadata",
+                !builder.Environment.IsDevelopment());
             options.SaveToken = true;
             options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
             {
@@ -196,6 +232,14 @@ public static class ServiceCollectionExtensions
             };
         });
 
+        // Paso 14 (F3-S1): políticas nombradas de la API de rentabilidad. Los controladores
+        // históricos con [Authorize(Roles = ...)] conservan su comportamiento.
+        builder.Services.AddAuthorization(options =>
+        {
+            options.AddPolicy("RequireAdminOrManager", policy => policy.RequireRole("Admin", "Manager"));
+            options.AddPolicy("RequireAdmin", policy => policy.RequireRole("Admin"));
+        });
+
         builder.Services.AddControllers(options =>
         {
             options.Filters.Add<Backend.API.Filters.ModelStateValidationFilter>();
@@ -220,6 +264,7 @@ public static class ServiceCollectionExtensions
         builder.Services.AddSingleton<Sales.Module.Receipts.IReceiptPrintQueue>(
             sp => sp.GetRequiredService<Backend.API.Services.ChannelReceiptPrintQueue>());
         builder.Services.AddSingleton<Backend.API.Metrics.RequestMetricsRegistry>();
+        builder.Services.AddSingleton<Backend.API.Services.IAuthorizationHubRateLimiter, Backend.API.Services.AuthorizationHubRateLimiter>();
         builder.Services.AddSingleton<Sales.Module.Receipts.IReceiptDocumentRenderer, Sales.Module.Receipts.SaleReceiptRenderer>();
         builder.Services.AddScoped<Sales.Module.Receipts.ISalesReceiptService, Sales.Module.Receipts.SalesReceiptService>();
         builder.Services.AddHostedService<Backend.API.Jobs.ReceiptPrintBackgroundService>();
@@ -307,6 +352,12 @@ public static class ServiceCollectionExtensions
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+            // En el despliegue con reverse proxy el proxy corre en el mismo host. Se declara
+            // explícitamente loopback para que X-Forwarded-For/Proto se apliquen y el pairing
+            // no confunda una conexión remota con una local.
+            options.KnownProxies.Add(System.Net.IPAddress.Loopback);
+            options.KnownProxies.Add(System.Net.IPAddress.IPv6Loopback);
 
             var knownProxiesConfig = builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>();
             if (knownProxiesConfig != null)

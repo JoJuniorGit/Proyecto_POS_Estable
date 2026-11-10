@@ -1,0 +1,23 @@
+# Residuales financieros 8.201 — apertura USD, moneda persistida y carril Postgres
+
+Objetivo: cerrar los tres residuales del cierre 8.200: (1) la apertura de caja no expone el fondo USD, (2) la moneda del método de pago se deriva del nombre y un renombre reclasifica historial, (3) el carril PostgreSQL real no se ejercitó en vivo.
+Arquitectura: la moneda del método pasa a ser un dato persistido (nullable para legado, backfill por nombre); la apertura manual (WPF/Web) envía Bs.S y USD; el carril Postgres se ejecuta contra un clúster aislado temporal iniciado con `initdb` cuando la credencial local no está disponible.
+Rama: V0.15 — Entrega: work units locales; push/PR a decisión del mantenedor — Runner: `dotnet build CommandCenter.slnx -c Release`, `dotnet test` focalizado y suite, `npm test`/`npm run lint`/`npm run build` (Web), `Wpf.E2ETests`, carril `~Postgres`.
+
+## Specs
+
+S1 — Apertura dual en clientes. WPF y Web deben permitir abrir una sesión de caja declarando **fondo inicial en Bs.S y en USD**. Ambos envían `openingBalanceLocal`, `openingBalanceUsd` y `currentExchangeRate` a `POST /api/cashdrawer/open`; validan montos no negativos; el botón solo aparece sin sesión activa y con usuario autenticado; al éxito recargan la sesión. No se cambia el auto-alta existente cuando no hay apertura manual.
+
+S2 — Moneda persistida e inmutable ante renombres. `PaymentMethod` gana `Currency` (`USD`/`Bs.S`, nullable para filas legadas). Migración aditiva idempotente con backfill por la regla histórica (nombre contiene USD → `USD`, resto → `Bs.S`). Toda atribución de gaveta, caja chica, cierre y reembolso usa la moneda persistida; el nombre queda solo como fallback de filas legadas. Un renombre no cambia la moneda. Cambiar explícitamente la moneda de un método existente se rechaza con error de dominio (crear un método nuevo).
+
+S3 — Carril PostgreSQL real ejecutable. Proveer un script reproducible que cree un clúster PostgreSQL aislado en el directorio temporal (trust local, puerto libre), ejecute el carril `~Postgres` con `TEST_POSTGRES_CONNECTION` apuntando a ese clúster y lo detenga al final; documentar el uso y correrlo en verde. No se modifica la credencial del servidor local desconocida.
+
+## Tasks
+- T1 | S2 | PaymentMethod.Currency persistida + migración/backfill + consumidores + pruebas de renombre | inline | done | commit: 75f2f89
+- T2 | S1 | Apertura dual WPF y Web + validaciones + pruebas | inline | done | commit: ce9f657
+- T3 | S3 | Script de clúster aislado + corrida del carril Postgres real | inline | done | commit: 5893b95
+- T4 | S1-S3 | Build, suites, evidencia y ANEXO | inline | done | commit: docs(8.201) + ANEXO XXXV
+
+## Log
+- L1 (verbatim — pedido del mantenedor): "Corrige los residuales: Residuales 1. La UI de apertura no expone todavía un campo USD; el backend/API y el rollover sí lo soportan (el alta manual envía 0). 2. PaymentMethod.Currency sigue derivándose del nombre: renombrar un método puede reclasificar movimientos históricos. 3. El carril Postgres real no se ejercitó en vivo por la credencial vencida; locks y tipos quedan cubiertos por modelo/pruebas, no por ejecución."
+- L2 (2026-10-26): **T1-T4 COMPLETADAS**. **T1**: `PaymentMethod.Currency` nullable persistida (`character varying(10)`) con migración idempotente `20261026022722` y backfill por nombre; `PaymentMethodService` la fija al crear, la conserva al renombrar y rechaza un cambio explícito; gaveta/cierre/caja chica/reembolsos leen la moneda persistida con fallback al nombre solo para filas legadas. Pruebas: rename no reclasifica buckets, cambio explícito rechazado, create explícito/derivado, legado null. **T2**: overlay WPF y modal Web de apertura con fondo Bs.S + USD, validaciones, tasa obligatoria y payload `openingBalanceLocal/openingBalanceUsd/currentExchangeRate`; auto-alta intacta. **T3**: `scripts/test-postgres-lane.ps1` crea clúster `initdb` aislado (puerto 55432, trust), corre `~Postgres`, lo detiene y limpia opcionalmente; documentado en `docs/coding-guidelines-qa.md`. Evidencia: build Release 0/0; focalizados 95/95; **carril Postgres real 35/35** (dos corridas: manual y vía script); suite sin carril Postgres **3535 superados** con 14 fallos ambientales/pre-existentes (10 del carril Postgres sin credencial local + 4 de OcrExtraction por DI del host); WPF E2E **7/7**; Web **628/628**, lint limpio y build OK (bundle regenerado). Residual: `OcrExtractionEndpointTests` sigue fallando por `ICurrentUserService` no registrado en su host de pruebas (ajeno a este cambio); la columna Currency queda nullable para no romper inserts legados y el backfill cubre filas existentes.

@@ -114,9 +114,9 @@ public class CashDrawerClosureTests
             }).ToList();
         }
 
-        public async Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate)
+        public async Task<CashDrawerSessionDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, decimal openingBalanceUsd = 0m)
         {
-            var session = await _serverService.OpenSessionAsync(openingBalanceLocal, currentExchangeRate);
+            var session = await _serverService.OpenSessionAsync(openingBalanceLocal, currentExchangeRate, openingBalanceUsd: openingBalanceUsd);
             return (await GetActiveSessionAsync())!;
         }
 

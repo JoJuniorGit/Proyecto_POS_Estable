@@ -41,7 +41,7 @@ public class BcvScraperService
         try
         {
             _logger.LogInformation("Attempting to fetch official BCV USD rate from bcv.org.ve (timeout: {Timeout}s)...", _timeout.TotalSeconds);
-            var response = await _httpClient.GetAsync("https://www.bcv.org.ve/", cts.Token);
+            using var response = await _httpClient.GetAsync("https://www.bcv.org.ve/", cts.Token);
             response.EnsureSuccessStatusCode();
 
             var html = await response.Content.ReadAsStringAsync(cts.Token);

@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using Core.DTOs;
+using Core.Logging;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -239,7 +240,14 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            try { await _salesService.ReleaseSaleAsync(sale!.Id); } catch { }
+            try
+            {
+                await _salesService.ReleaseSaleAsync(sale!.Id);
+            }
+            catch (Exception ex)
+            {
+                ClientStateLogger.LogWarning($"[LOCK] Failed to release claim on sale #{sale?.Id}: {ex.Message}", nameof(PendingOrdersViewModel));
+            }
             checkoutVm?.Dispose();
             await EnsureLoadedAsync();
             if (result is int invoiceId && invoiceId > 0)
@@ -281,7 +289,14 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            try { await _salesService.ReleaseSaleAsync(sale!.Id); } catch { }
+            try
+            {
+                await _salesService.ReleaseSaleAsync(sale!.Id);
+            }
+            catch (Exception ex)
+            {
+                ClientStateLogger.LogWarning($"[LOCK] Failed to release claim on sale #{sale?.Id}: {ex.Message}", nameof(PendingOrdersViewModel));
+            }
             await EnsureLoadedAsync();
             if (updated)
                 SuccessMessage = $"Pedido #{sale!.Id} actualizado correctamente.";

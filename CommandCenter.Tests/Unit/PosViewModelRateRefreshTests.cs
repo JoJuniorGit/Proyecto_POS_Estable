@@ -114,4 +114,33 @@ public class PosViewModelRateRefreshTests
             vm.Dispose();
         }
     }
+
+    [Fact]
+    public async Task ExecuteSearch_UsesRetailChannel_WhenLegacyPriceUsdIsStale()
+    {
+        // Tras una edición masiva el canal Detal es la autoridad; PriceUSD puede quedar viejo.
+        var suggestion = new ProductQuickInfoDto
+        {
+            Id = 43,
+            Name = "Cemento",
+            SKU = "CEM-43",
+            PriceUSD = 10.00m,
+            PriceRetailUSD = 12.00m,
+            PriceBsS = 100.00m
+        };
+        var (vm, _) = CreateVm(suggestion, 50.00m);
+
+        try
+        {
+            vm.SearchText = "Cemento";
+
+            bool derived = await WaitUntilAsync(() => vm.Suggestions.Count == 1 && vm.Suggestions[0].PriceBsS == 600.00m);
+            Assert.True(derived, $"El POS no uso el canal Detal. Actual: {(vm.Suggestions.Count > 0 ? vm.Suggestions[0].PriceBsS : -1m)}");
+            Assert.Equal(600.00m, vm.Suggestions[0].EffectivePriceBsS);
+        }
+        finally
+        {
+            vm.Dispose();
+        }
+    }
 }

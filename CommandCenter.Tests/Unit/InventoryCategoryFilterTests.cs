@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
@@ -67,6 +68,60 @@ public class InventoryCategoryFilterTests
         vm.SelectedCategoryFilter = vm.CategoryFilterOptions.Single(o => o.Id == 0);
         await WaitUntilAsync(() => captured.Count >= 3);
         Assert.Null(captured[^1]);
+    }
+
+    [Fact]
+    public async Task CategoryFilter_AfterLoad_ShowsAllFilterSelected()
+    {
+        // Regresión del combo en blanco: tras poblar las opciones, "Todas" debe quedar
+        // seleccionado (no null) para que el ComboBox muestre un valor.
+        var fixture = new Fixture(new List<int?>());
+        var vm = fixture.CreateViewModel();
+
+        await vm.CategoryFilterLoadTask;
+
+        Assert.NotNull(vm.SelectedCategoryFilter);
+        Assert.Equal(0, vm.SelectedCategoryFilter!.Id);
+        Assert.Equal("Todas", vm.SelectedCategoryFilter.Path);
+        Assert.Equal(new[] { 0, 1, 2, 3 }, vm.CategoryFilterOptions.Select(o => o.Id));
+    }
+
+    [Fact]
+    public async Task CategoryFilter_WhenComboBoxClearsSelectionOnReload_ReselectsPreviousCategory()
+    {
+        // El ComboBox TwoWay empuja SelectedItem = null cuando su ItemsSource se vacía
+        // (Clear). Simulamos ese efecto durante la recarga y verificamos que el filtro
+        // retenido se re-seleccione sobre la instancia repoblada.
+        var fixture = new Fixture(new List<int?>());
+        var vm = fixture.CreateViewModel();
+        await vm.CategoryFilterLoadTask;
+
+        vm.SelectedCategoryFilter = vm.CategoryFilterOptions.Single(o => o.Id == 2);
+        await WaitUntilAsync(() => vm.SelectedCategoryFilter?.Id == 2);
+
+        void SimulateComboBoxClear(object? sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.Action == NotifyCollectionChangedAction.Reset)
+            {
+                vm.SelectedCategoryFilter = null;
+            }
+        }
+
+        vm.CategoryFilterOptions.CollectionChanged += SimulateComboBoxClear;
+        try
+        {
+            await vm.EnsureLoadedAsync();
+        }
+        finally
+        {
+            vm.CategoryFilterOptions.CollectionChanged -= SimulateComboBoxClear;
+        }
+
+        Assert.NotNull(vm.SelectedCategoryFilter);
+        Assert.Equal(2, vm.SelectedCategoryFilter!.Id);
+        Assert.Equal("Alimentos > Lácteos", vm.SelectedCategoryFilter.Path);
+        Assert.Contains(vm.SelectedCategoryFilter, vm.CategoryFilterOptions);
+        Assert.Equal(new[] { 0, 1, 2, 3 }, vm.CategoryFilterOptions.Select(o => o.Id));
     }
 
     [Fact]

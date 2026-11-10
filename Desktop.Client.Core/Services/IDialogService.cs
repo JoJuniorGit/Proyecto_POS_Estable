@@ -82,6 +82,17 @@ public interface IDialogService
     void ShowInterruptedTransactionDialog(string title, string message);
     Task<CustomerDto?> ShowCustomerPickerAsync();
     Task<(bool success, decimal requestedAmount, decimal commissionAmount, int paymentMethodId, string paymentMethodName, bool isTransfer)?> ShowCashAdvanceRegisterDialogAsync(System.Collections.Generic.List<PaymentMethodDto> paymentMethods, decimal? availableCashLocal);
+
+    /// <summary>
+    /// 8.212-WU4: method-aware advance dialog. The default implementation keeps the legacy result
+    /// unavailable for headless test doubles; WPF overrides it with the dispenser selector.
+    /// </summary>
+    Task<CashAdvanceRegisterDialogResult?> ShowCashAdvanceRegisterDialogWithMethodsAsync(
+        System.Collections.Generic.List<PaymentMethodDto> paymentMethods,
+        decimal? availableCashLocal,
+        System.Collections.Generic.IReadOnlyList<PhysicalMethodBalanceClientDto> physicalCashMethods) =>
+        Task.FromResult<CashAdvanceRegisterDialogResult?>(null);
+
     Task<(bool confirmed, System.Collections.Generic.IEnumerable<UpdateSaleItemDto>? modifiedItems)> ShowEditSaleDialogAsync(SaleDto sale, decimal exchangeRate);
     Task<PartialDeliveryDialogResult?> ShowPartialDeliveryDialogAsync(PendingPickupClientDto pickup) =>
         Task.FromResult<PartialDeliveryDialogResult?>(null);
@@ -107,12 +118,67 @@ public interface IDialogService
         Func<string, Task> retry) => Task.FromResult<AuthorizationWaitResult?>(null);
 
     /// <summary>
+    /// T4 (F3, S4): sobrecarga genérica del flujo de espera para acciones protegidas distintas del
+    /// precio manual (p. ej. <see cref="CreditOverLimitAuthorizationRequestContext"/>). La
+    /// implementación por defecto delega al contrato histórico cuando el contexto es de precio
+    /// manual y, en cualquier otro caso, equivale a cancelado (stubs headless).
+    /// </summary>
+    Task<AuthorizationWaitResult?> ShowAuthorizationWaitAsync(
+        IAuthorizationRequestContext context,
+        Func<string, Task> retry) => context is AuthorizationRequestContext manual
+            ? ShowAuthorizationWaitAsync(manual, retry)
+            : Task.FromResult<AuthorizationWaitResult?>(null);
+
+    /// <summary>
     /// 8.150 (T10, design D7): modal interrumpente de notificaciones admin (aprobar/rechazar,
     /// motivo opcional, badge de cola y aviso de carrera/expiracion). No dispone el ViewModel:
     /// su ciclo de vida pertenece a la sesion.
     /// </summary>
     Task ShowAuthorizationNotificationAsync(ViewModels.AuthorizationNotificationViewModel viewModel) => Task.CompletedTask;
+
+    /// <summary>
+    /// T4 (Paso 13 / 8.188, S1/S4): modal de registro de caja chica. La implementación WPF abre
+    /// una ventana propia y devuelve el gasto confirmado; los stubs headless equivalen a cancelado.
+    /// </summary>
+    Task<PettyCashExpenseClientDto?> ShowPettyCashExpenseDialogAsync(
+        ViewModels.PettyCashExpenseDialogViewModel viewModel) =>
+        Task.FromResult<PettyCashExpenseClientDto?>(null);
+
+    /// <summary>T4 (S5): modal de anulación con motivo obligatorio y autorización jerárquica.</summary>
+    Task<PettyCashExpenseClientDto?> ShowPettyCashCancelDialogAsync(
+        ViewModels.PettyCashCancelDialogViewModel viewModel) =>
+        Task.FromResult<PettyCashExpenseClientDto?>(null);
+
+    /// <summary>
+    /// T4 (S2): arqueo de cierre de la sesión de caja con conteo USD opcional. La implementación
+    /// headless devuelve null (cierre cancelado).
+    /// </summary>
+    Task<CashDrawerCloseResult?> ShowCashDrawerCloseDialogAsync(
+        decimal exchangeRate,
+        decimal currentBalanceBsS,
+        decimal? currentBalanceUsd) =>
+        Task.FromResult<CashDrawerCloseResult?>(null);
 }
+
+/// <summary>T4 (Paso 13 / 8.188, S2): conteo capturado en el cierre de la sesión de caja.</summary>
+public sealed record CashDrawerCloseResult(
+    decimal ActualClosingBalanceLocal,
+    decimal? ActualClosingBalanceUsd);
+
+/// <summary>
+/// 8.212-WU4: result of the method-aware cash advance dialog. Legacy fields stay populated so
+/// callers without a physical dispenser selector keep working.
+/// </summary>
+public sealed record CashAdvanceRegisterDialogResult(
+    bool Success,
+    decimal RequestedAmount,
+    decimal CommissionAmount,
+    int PaymentMethodId,
+    string PaymentMethodName,
+    bool IsTransfer,
+    int? DispensedCashPaymentMethodId,
+    decimal? DispensedAmount,
+    int? ReceivedPaymentMethodId);
 
 /// <summary>8.150 (T10): desenlace del dialogo de espera del cajero.</summary>
 public enum AuthorizationWaitOutcome

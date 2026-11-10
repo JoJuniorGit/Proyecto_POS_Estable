@@ -466,7 +466,7 @@ public class AuthorizationCoordinatorTests
 
         var resolvedAt = UtcNowSeconds();
         var resolved = SampleRequest(status: AuthorizationStatus.Approved, mode: AuthorizationResolutionMode.Local, resolvedAt: resolvedAt, resolvedByName: "Supervisora Ana");
-        service.Setup(s => s.ResolveLocalAsync(7, "usuario2", "Clave123!", null, It.IsAny<CancellationToken>()))
+        service.Setup(s => s.ResolveLocalAsync(7, "usuario2", "Clave123!", null, It.IsAny<CancellationToken>(), It.IsAny<int?>(), It.IsAny<bool>()))
             .ReturnsAsync(new LocalResolveResult(LocalResolveOutcome.Resolved, resolved, 2, "Supervisora Ana"));
 
         var result = await coordinator.ResolveLocalAsync(7, "usuario2", "Clave123!");
@@ -491,7 +491,7 @@ public class AuthorizationCoordinatorTests
         using var db = TestDatabaseFactory.CreateSalesDbContext();
         var coordinator = new AuthorizationCoordinator(service.Object, CreateTokenService(), notifier.Object, db);
 
-        service.Setup(s => s.ResolveLocalAsync(7, "usuario2", "mala", null, It.IsAny<CancellationToken>()))
+        service.Setup(s => s.ResolveLocalAsync(7, "usuario2", "mala", null, It.IsAny<CancellationToken>(), It.IsAny<int?>(), It.IsAny<bool>()))
             .ReturnsAsync(new LocalResolveResult(LocalResolveOutcome.InvalidCredentials, Message: AuthorizationMessages.InvalidCredentials));
 
         var result = await coordinator.ResolveLocalAsync(7, "usuario2", "mala");

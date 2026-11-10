@@ -5,11 +5,20 @@ using Core.Common;
 using Core.Helpers;
 using Desktop.Client.Services;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
+
+/// <summary>POS-UI-842: filtro rapido del libro diario de caja.</summary>
+public enum CashMovementTypeFilter
+{
+    All,
+    Income,
+    Expense
+}
 
 public partial class CashDrawerViewModel : ObservableObject, IDisposable
 {
@@ -29,6 +38,14 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             if (SetProperty(ref _activeSession, value))
             {
                 OnPropertyChanged(nameof(IsSessionActive));
+                OnPropertyChanged(nameof(IsSessionInactive));
+                OnPropertyChanged(nameof(CanOpenCashDrawer));
+                OnPropertyChanged(nameof(CanUsePettyCash));
+                OnPropertyChanged(nameof(CanCloseCashDrawer));
+                if (value is null)
+                {
+                    IsPettyCashPanelOpen = false;
+                }
             }
         }
     }
@@ -53,7 +70,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _formattedBalanceBsS, value);
     }
 
-    private string _formattedBalanceUsd = "0.00 $";
+    private string _formattedBalanceUsd = FormatPrimaryAmount(0m);
     public string FormattedBalanceUsd
     {
         get => _formattedBalanceUsd;
@@ -67,7 +84,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _totalIncomeBsS, value);
     }
 
-    private string _formattedTotalIncomeBsS = "0 Bs.S";
+    private string _formattedTotalIncomeBsS = CurrencyDisplay.FormatSecondary(0m, 0);
     public string FormattedTotalIncomeBsS
     {
         get => _formattedTotalIncomeBsS;
@@ -81,7 +98,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _totalExpenseBsS, value);
     }
 
-    private string _formattedTotalExpenseBsS = "0 Bs.S";
+    private string _formattedTotalExpenseBsS = CurrencyDisplay.FormatSecondary(0m, 0);
     public string FormattedTotalExpenseBsS
     {
         get => _formattedTotalExpenseBsS;
@@ -90,6 +107,17 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<CashTransactionDto> RecentIncomes { get; } = new();
     public ObservableCollection<CashTransactionDto> OrderedTransactions { get; } = new();
+
+    // 8.212-WU4: live per-method physical balances and the editable opening breakdown.
+    public ObservableCollection<PhysicalMethodBalanceClientDto> PhysicalMethodBalances { get; } = new();
+
+    // S1/S2: resumen por moneda activa (local primero), calculado por el backend.
+    public ObservableCollection<CurrencySessionSummaryViewModel> CurrencySummaries { get; } = new();
+    public ObservableCollection<OpeningPhysicalMethodViewModel> OpeningPhysicalMethods { get; } = new();
+
+    public bool HasPhysicalMethodBalances => PhysicalMethodBalances.Count > 0;
+    public bool HasOpeningPhysicalMethods => OpeningPhysicalMethods.Count > 0;
+    public bool ShowLegacyOpeningInputs => !HasOpeningPhysicalMethods;
 
     private const int HistoryWindowSize = 300;
     private const int FallbackTransferPaymentMethodId = 2;
@@ -105,16 +133,64 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     }
 
     public int PageSize => 25;
-    private readonly System.Collections.Generic.List<CashTransactionDto> _allPhysicalTransactions = new();
 
-    public int TotalPhysicalTransactions => _allPhysicalTransactions.Count;
+    // POS-UI-842: la grilla garantiza 8 filas visibles y suma 2.5 filas cuando la pagina
+    // contiene mas movimientos. El XAML consume estos mismos valores para no duplicarlos.
+    private const double MovementGridRowHeightValue = 48d;
+    private const double MovementGridColumnHeaderHeightValue = 44d;
+    private const double BaseVisibleMovementRows = 8d;
+    private const double ExtraVisibleMovementRows = 2.5d;
+
+    public double MovementGridRowHeight => MovementGridRowHeightValue;
+    public double MovementGridColumnHeaderHeight => MovementGridColumnHeaderHeightValue;
+
+    public double MovementsGridMinHeight
+    {
+        get
+        {
+            var visibleRows = OrderedTransactions.Count > BaseVisibleMovementRows
+                ? BaseVisibleMovementRows + ExtraVisibleMovementRows
+                : BaseVisibleMovementRows;
+            return MovementGridColumnHeaderHeightValue + (visibleRows * MovementGridRowHeightValue);
+        }
+    }
+
+    private readonly System.Collections.Generic.List<CashTransactionDto> _allPhysicalTransactions = new();
+    private readonly System.Collections.Generic.List<CashTransactionDto> _filteredPhysicalTransactions = new();
+
+    // POS-UI-842: busqueda y filtro rapido aplicados en memoria sobre el historial cargado.
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    [ObservableProperty]
+    private CashMovementTypeFilter _movementTypeFilter = CashMovementTypeFilter.All;
+
+    [ObservableProperty]
+    private bool _isRecentIncomesExpanded;
+
+    partial void OnSearchTextChanged(string value) => ApplyTransactionFilter();
+
+    partial void OnMovementTypeFilterChanged(CashMovementTypeFilter value)
+    {
+        OnPropertyChanged(nameof(IsFilterAll));
+        OnPropertyChanged(nameof(IsFilterIncome));
+        OnPropertyChanged(nameof(IsFilterExpense));
+        ApplyTransactionFilter();
+    }
+
+    public bool IsFilterAll => MovementTypeFilter == CashMovementTypeFilter.All;
+    public bool IsFilterIncome => MovementTypeFilter == CashMovementTypeFilter.Income;
+    public bool IsFilterExpense => MovementTypeFilter == CashMovementTypeFilter.Expense;
+    public bool HasActiveFilter => !string.IsNullOrWhiteSpace(SearchText) || MovementTypeFilter != CashMovementTypeFilter.All;
+
+    public int TotalPhysicalTransactions => _filteredPhysicalTransactions.Count;
     public int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalPhysicalTransactions / PageSize));
 
     public bool CanGoPrevious => CurrentPage > 1;
     public bool CanGoNext => CurrentPage < TotalPages;
 
-    public string PaginationSummary => TotalPhysicalTransactions == 0 
-        ? "No hay movimientos registrados" 
+    public string PaginationSummary => TotalPhysicalTransactions == 0
+        ? (HasActiveFilter ? "No hay movimientos para el filtro aplicado" : "No hay movimientos registrados")
         : $"Mostrando {Math.Min((CurrentPage - 1) * PageSize + 1, TotalPhysicalTransactions)} a {Math.Min(CurrentPage * PageSize, TotalPhysicalTransactions)} de {TotalPhysicalTransactions} movimientos";
 
     public string CurrentPageDisplay => $"Página {CurrentPage} de {TotalPages}";
@@ -128,6 +204,37 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     /// sesión el permiso falla cerrado (mismo criterio que <see cref="IsAdmin"/>).
     /// </summary>
     public bool CanViewTheoreticalBalance => _userSession?.IsAdmin == true || _userSession?.IsManager == true;
+
+    /// <summary>
+    /// 8.201 (S1): apertura manual con fondo dual. Sin sesión activa, el overlay de apertura
+    /// declara el fondo Bs.S y el USD; el backend los persiste por separado.
+    /// </summary>
+    public bool IsSessionInactive => !IsSessionActive;
+    public bool CanOpenCashDrawer => IsSessionInactive && (_userSession == null || _userSession.IsLoggedIn);
+
+    private string _openingBalanceLocalText = "0";
+    public string OpeningBalanceLocalText
+    {
+        get => _openingBalanceLocalText;
+        set => SetProperty(ref _openingBalanceLocalText, value);
+    }
+
+    private string _openingBalanceUsdText = "0";
+    public string OpeningBalanceUsdText
+    {
+        get => _openingBalanceUsdText;
+        set => SetProperty(ref _openingBalanceUsdText, value);
+    }
+
+    private bool _isOpeningSession;
+    public bool IsOpeningSession
+    {
+        get => _isOpeningSession;
+        set => SetProperty(ref _isOpeningSession, value);
+    }
+
+    public string OpeningRateDisplay =>
+        $"Tasa: {CurrencyDisplay.Number(_exchangeRateService.CurrentRate)} / {CurrencyDisplay.PrimaryCurrencyCode}";
 
 
     public CashDrawerViewModel(
@@ -146,6 +253,13 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
 
         RecentIncomes.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentIncomes));
+        PettyCashExpenses.CollectionChanged += (_, _) => NotifyPettyCashChanged();
+        PhysicalMethodBalances.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPhysicalMethodBalances));
+        OpeningPhysicalMethods.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasOpeningPhysicalMethods));
+            OnPropertyChanged(nameof(ShowLegacyOpeningInputs));
+        };
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (r, m) =>
         {
@@ -159,6 +273,8 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             {
                 vm.UpdateFormattedBalances();
             }
+
+            vm.OnPropertyChanged(nameof(OpeningRateDisplay));
         });
 
         // 8.143: si el ajuste de moneda cambia en caliente (Settings o SignalR), re-formatear los
@@ -171,6 +287,13 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.ShiftClosedMessage>(this, (r, m) =>
         {
             _dispatcherInvoker.Invoke(() => RefreshAsync().SafeFireAndForget("CashDrawer.ShiftClosed"));
+        });
+
+        // S1/S2: el resumen por moneda sigue al perfil y al formato activos. El mensaje usa
+        // WeakReferenceMessenger (se libera con Dispose) para no dejar handlers estáticos vivos.
+        WeakReferenceMessenger.Default.Register<Desktop.Client.Messages.MonetaryProfileChangedMessage>(this, (r, m) =>
+        {
+            _dispatcherInvoker.Invoke(((CashDrawerViewModel)r).UpdateFormattedBalances);
         });
 
         if (_userSession == null || _userSession.IsLoggedIn)
@@ -190,7 +313,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             // 8.143: los montos visibles honran el ajuste activo (Venezolano/Internacional) y se
             // re-formatean al vuelo cuando el formato cambia.
             FormattedBalanceBsS = CurrencyDisplay.Number(balanceLocal, 0);
-            FormattedBalanceUsd = CurrencyDisplay.Number(rate > 0 ? balanceLocal / rate : 0) + " $";
+            FormattedBalanceUsd = FormatPrimaryAmount(rate > 0 ? balanceLocal / rate : 0);
         }
         else
         {
@@ -213,8 +336,106 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             TotalExpenseBsS = 0;
         }
 
-        FormattedTotalIncomeBsS = CurrencyDisplay.Number(TotalIncomeBsS, 0) + " Bs.S";
-        FormattedTotalExpenseBsS = CurrencyDisplay.Number(TotalExpenseBsS, 0) + " Bs.S";
+        FormattedTotalIncomeBsS = CurrencyDisplay.FormatSecondary(TotalIncomeBsS, 0);
+        FormattedTotalExpenseBsS = CurrencyDisplay.FormatSecondary(TotalExpenseBsS, 0);
+
+        // S1/S2: refresca el resumen por moneda con el formato/perfil vigente.
+        RebuildCurrencySummaries();
+    }
+
+    // The USD-equivalent line keeps the historical trailing-symbol shape ("26,00 $") because the
+    // existing cash-drawer display contract asserts it; only the symbol becomes profile-driven.
+    private static string FormatPrimaryAmount(decimal value)
+        => $"{CurrencyDisplay.Number(value)} {CurrencyDisplay.PrimaryCurrencySymbol}";
+
+    private async Task LoadPhysicalMethodBalancesAsync()
+    {
+        PhysicalMethodBalances.Clear();
+
+        if (ActiveSession is null)
+        {
+            await LoadOpeningPhysicalMethodsAsync();
+            return;
+        }
+
+        try
+        {
+            var balances = ActiveSession.PhysicalMethodBalances;
+            if (balances is null)
+            {
+                balances = (await _cashDrawerService.GetPhysicalMethodBalancesAsync(ActiveSession.Id)).ToList();
+            }
+
+            foreach (var balance in balances
+                .OrderBy(balance => GetPhysicalCurrencyPriority(balance.CurrencyCode))
+                .ThenBy(balance => balance.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(balance => balance.PaymentMethodId))
+            {
+                PhysicalMethodBalances.Add(balance);
+            }
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[CashDrawer] No se pudieron leer los saldos por metodo fisico: {ex.Message}");
+        }
+    }
+
+    private async Task LoadOpeningPhysicalMethodsAsync()
+    {
+        OpeningPhysicalMethods.Clear();
+        if (_paymentService is null) return;
+
+        try
+        {
+            var allowedCurrencies = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal)
+            {
+                CurrencyDisplay.PrimaryCurrencyCode,
+                CurrencyDisplay.LocalCurrencyCode
+            };
+            if (!string.IsNullOrWhiteSpace(CurrencyDisplay.SecondaryCurrencyCode))
+            {
+                allowedCurrencies.Add(CurrencyDisplay.SecondaryCurrencyCode);
+            }
+
+            var methods = await _paymentService.GetActiveMethodsAsync();
+            foreach (var method in methods
+                .Where(method => method.IsCash && method.IsActive && !method.IsDeleted)
+                .Where(method => allowedCurrencies.Contains(ResolveOpeningCurrencyCode(method)))
+                .OrderBy(method => method.DisplayOrder)
+                .ThenBy(method => method.Id))
+            {
+                var currencyCode = ResolveOpeningCurrencyCode(method);
+                OpeningPhysicalMethods.Add(new OpeningPhysicalMethodViewModel
+                {
+                    PaymentMethodId = method.Id,
+                    Name = method.Name,
+                    CurrencyCode = currencyCode,
+                    CurrencySymbol = CurrencyDisplay.SymbolFor(currencyCode)
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[CashDrawer] No se pudieron preparar los metodos fisicos de apertura: {ex.Message}");
+        }
+    }
+
+    private static string ResolveOpeningCurrencyCode(PaymentMethodDto method)
+    {
+        var raw = method.Currency?.Trim().ToUpperInvariant();
+        if (raw is "USD" or "$" or "US$")
+        {
+            return "USD";
+        }
+
+        if (raw is "BS.S" or "BSS" or "VES" or "BS")
+        {
+            return CurrencyDisplay.LocalCurrencyCode;
+        }
+
+        return raw is { Length: 3 } && raw.All(character => character is >= 'A' and <= 'Z')
+            ? raw
+            : CurrencyDisplay.LocalCurrencyCode;
     }
 
     public async Task LoadSessionAsync()
@@ -224,6 +445,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         try
         {
             ActiveSession = await _cashDrawerService.GetActiveSessionAsync();
+            await LoadPhysicalMethodBalancesAsync();
 
             // Historial persistente: movimientos físicos de TODAS las sesiones (activa y cerradas),
             // para conservar la trazabilidad de las sesiones previas tras el cierre de caja.
@@ -261,9 +483,14 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
                 CurrentBalanceBsS = 0;
                 RecentIncomes.Clear();
             }
-            CurrentPage = 1;
-            UpdatePaginatedTransactions();
+            ApplyTransactionFilter();
             UpdateFormattedBalances();
+
+            // T4 (Paso 13 / 8.188, S1): el panel de caja chica conserva el turno sincronizado.
+            if (IsPettyCashPanelOpen)
+            {
+                await LoadPettyCashAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -274,7 +501,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     private void UpdatePaginatedTransactions()
     {
         OrderedTransactions.Clear();
-        var pageItems = _allPhysicalTransactions
+        var pageItems = _filteredPhysicalTransactions
             .Skip((CurrentPage - 1) * PageSize)
             .Take(PageSize);
         foreach (var tx in pageItems)
@@ -286,11 +513,68 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(TotalPages));
         OnPropertyChanged(nameof(CanGoPrevious));
         OnPropertyChanged(nameof(CanGoNext));
+        OnPropertyChanged(nameof(HasActiveFilter));
+        OnPropertyChanged(nameof(MovementsGridMinHeight));
         OnPropertyChanged(nameof(PaginationSummary));
         OnPropertyChanged(nameof(CurrentPageDisplay));
         PreviousPageCommand.NotifyCanExecuteChanged();
         NextPageCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>
+    /// POS-UI-842: recompone el conjunto visible (tipo + busqueda) y vuelve a la primera pagina
+    /// para que el paginador nunca quede fuera de rango tras cambiar un filtro.
+    /// </summary>
+    private void ApplyTransactionFilter()
+    {
+        RebuildFilteredTransactions();
+        CurrentPage = 1;
+        UpdatePaginatedTransactions();
+    }
+
+    private void RebuildFilteredTransactions()
+    {
+        IEnumerable<CashTransactionDto> query = _allPhysicalTransactions;
+        query = MovementTypeFilter switch
+        {
+            CashMovementTypeFilter.Income => query.Where(tx => tx.Type == CashTransactionType.Income),
+            CashMovementTypeFilter.Expense => query.Where(tx => tx.Type == CashTransactionType.Expense),
+            _ => query
+        };
+
+        var term = SearchText?.Trim();
+        if (!string.IsNullOrEmpty(term))
+        {
+            query = query.Where(tx => MatchesMovementSearch(tx, term));
+        }
+
+        _filteredPhysicalTransactions.Clear();
+        _filteredPhysicalTransactions.AddRange(query);
+    }
+
+    private static bool MatchesMovementSearch(CashTransactionDto transaction, string term)
+    {
+        if (transaction.InvoiceNumber.HasValue
+            && transaction.InvoiceNumber.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                .Contains(term, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(transaction.Description)
+            && transaction.Description.Contains(term, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return transaction.FormattedInvoiceNumber.Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [RelayCommand]
+    private void SetMovementTypeFilter(CashMovementTypeFilter filter) => MovementTypeFilter = filter;
+
+    [RelayCommand]
+    private void ToggleRecentIncomes() => IsRecentIncomesExpanded = !IsRecentIncomesExpanded;
 
     [RelayCommand(CanExecute = nameof(CanGoPrevious))]
     private void PreviousPage()
@@ -315,6 +599,105 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private async Task RefreshAsync() => await LoadSessionAsync();
+
+    /// <summary>
+    /// 8.201 (S1): abre la sesión con fondo inicial Bs.S + USD. El auto-alta por primer cobro no
+    /// se toca: este comando es la apertura explícita desde la vista de caja.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenCashDrawerAsync()
+    {
+        if (IsSessionActive || IsOpeningSession) return;
+
+        decimal local = 0m;
+        decimal usd = 0m;
+        System.Collections.Generic.List<OpenSessionMethodBalanceClientRequest>? methodBalances = null;
+
+        if (HasOpeningPhysicalMethods)
+        {
+            methodBalances = new System.Collections.Generic.List<OpenSessionMethodBalanceClientRequest>();
+            foreach (var entry in OpeningPhysicalMethods)
+            {
+                if (!FlexibleDecimalParser.TryParse(entry.AmountText, out decimal amount) || amount < 0m)
+                {
+                    _dialogService?.ShowWarning(
+                        "Apertura de Caja",
+                        $"Ingrese un fondo inicial válido para {entry.Name} ({entry.CurrencyCode}) (mayor o igual a cero).");
+                    return;
+                }
+
+                methodBalances.Add(new OpenSessionMethodBalanceClientRequest
+                {
+                    PaymentMethodId = entry.PaymentMethodId,
+                    OpeningAmount = amount
+                });
+
+                if (string.Equals(entry.CurrencyCode, CurrencyDisplay.LocalCurrencyCode, StringComparison.Ordinal))
+                {
+                    local += amount;
+                }
+                else if (string.Equals(entry.CurrencyCode, "USD", StringComparison.Ordinal))
+                {
+                    usd += amount;
+                }
+            }
+        }
+        else
+        {
+            if (!FlexibleDecimalParser.TryParse(OpeningBalanceLocalText, out local) || local < 0m)
+            {
+                _dialogService?.ShowWarning(
+                    "Apertura de Caja",
+                    $"Ingrese un fondo inicial válido en {CurrencyDisplay.LocalCurrencyCode} (mayor o igual a cero).");
+                return;
+            }
+
+            if (!FlexibleDecimalParser.TryParse(OpeningBalanceUsdText, out usd) || usd < 0m)
+            {
+                _dialogService?.ShowWarning(
+                    "Apertura de Caja",
+                    $"Ingrese un fondo inicial válido en {CurrencyDisplay.PrimaryCurrencyCode} (mayor o igual a cero).");
+                return;
+            }
+        }
+
+        decimal rate = _exchangeRateService.CurrentRate;
+        if (rate <= 0m)
+        {
+            _dialogService?.ShowWarning("Apertura de Caja", "Configure la tasa de cambio vigente antes de abrir la caja.");
+            return;
+        }
+
+        IsOpeningSession = true;
+        try
+        {
+            if (methodBalances is { Count: > 0 })
+            {
+                await _cashDrawerService.OpenSessionAsync(local, rate, usd, methodBalances);
+            }
+            else
+            {
+                await _cashDrawerService.OpenSessionAsync(local, rate, usd);
+            }
+
+            OpeningBalanceLocalText = "0";
+            OpeningBalanceUsdText = "0";
+            foreach (var entry in OpeningPhysicalMethods)
+            {
+                entry.AmountText = "0";
+            }
+
+            await LoadSessionAsync();
+        }
+        catch (Exception ex)
+        {
+            _dialogService?.ShowError("Apertura de Caja", $"No se pudo abrir la caja: {ex.Message}");
+        }
+        finally
+        {
+            IsOpeningSession = false;
+        }
+    }
 
     [RelayCommand]
     private async Task ProcessCashInAsync()
@@ -433,25 +816,60 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             decimal? currentBalance = CanViewTheoreticalBalance
                 ? await _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id)
                 : null;
-            var dialogRes = await _dialogService.ShowCashAdvanceRegisterDialogAsync(paymentMethods, currentBalance);
+            CashAdvanceRegisterDialogResult? dialogRes = await _dialogService.ShowCashAdvanceRegisterDialogWithMethodsAsync(
+                paymentMethods,
+                currentBalance,
+                PhysicalMethodBalances.ToList());
 
-            if (dialogRes is { } res && res.success)
+            // Compatibility: headless test doubles and older dialog implementations only expose the
+            // legacy contract. Fall back to it when the method-aware dialog is unavailable.
+            if (dialogRes is null)
+            {
+                var legacy = await _dialogService.ShowCashAdvanceRegisterDialogAsync(paymentMethods, currentBalance);
+                if (legacy is { success: true } legacyResult)
+                {
+                    dialogRes = new CashAdvanceRegisterDialogResult(
+                        true,
+                        legacyResult.requestedAmount,
+                        legacyResult.commissionAmount,
+                        legacyResult.paymentMethodId,
+                        legacyResult.paymentMethodName,
+                        legacyResult.isTransfer,
+                        null,
+                        null,
+                        legacyResult.paymentMethodId);
+                }
+            }
+
+            if (dialogRes is { Success: true } res)
             {
                 var rate = _exchangeRateService.CurrentRate;
 
-                var advanceResult = await _cashDrawerService.ProcessCashAdvanceAsync(
-                    ActiveSession.Id,
-                    res.requestedAmount,
-                    res.paymentMethodId,
-                    res.paymentMethodName,
-                    res.isTransfer,
-                    rate);
+                var advanceResult = res.DispensedCashPaymentMethodId.HasValue
+                    ? await _cashDrawerService.ProcessCashAdvanceAsync(
+                        ActiveSession.Id,
+                        res.RequestedAmount,
+                        res.PaymentMethodId,
+                        res.PaymentMethodName,
+                        res.IsTransfer,
+                        rate,
+                        res.DispensedCashPaymentMethodId,
+                        res.DispensedAmount,
+                        res.ReceivedPaymentMethodId ?? res.PaymentMethodId)
+                    : await _cashDrawerService.ProcessCashAdvanceAsync(
+                        ActiveSession.Id,
+                        res.RequestedAmount,
+                        res.PaymentMethodId,
+                        res.PaymentMethodName,
+                        res.IsTransfer,
+                        rate);
 
                 string invoiceInfo = advanceResult?.InvoiceNumber.HasValue == true
                     ? $" (Factura N° {advanceResult.InvoiceNumber.Value})"
                     : string.Empty;
 
-                _dialogService.ShowSuccessDialog($"Adelanto de {MoneyFormat.N0(res.requestedAmount)} Bs.S procesado con éxito{invoiceInfo}. Registrado en el Historial de Ventas.");
+                _dialogService.ShowSuccessDialog(
+                    $"Adelanto de {CurrencyDisplay.FormatSecondary(res.DispensedAmount ?? res.RequestedAmount)} procesado con éxito{invoiceInfo}. Registrado en el Historial de Ventas.");
                 await LoadSessionAsync();
             }
         }
@@ -464,5 +882,87 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         WeakReferenceMessenger.Default.UnregisterAll(this);
+    }
+
+    private int GetPhysicalCurrencyPriority(string? currencyCode)
+    {
+        var normalized = NormalizePhysicalCurrencyCode(currencyCode);
+        if (string.IsNullOrEmpty(normalized)) return 3;
+        if (normalized == NormalizePhysicalCurrencyCode(CurrencyDisplay.LocalCurrencyCode)) return 0;
+        if (normalized == NormalizePhysicalCurrencyCode(CurrencyDisplay.PrimaryCurrencyCode)) return 1;
+        if (normalized == NormalizePhysicalCurrencyCode(CurrencyDisplay.SecondaryCurrencyCode)) return 2;
+        return 3;
+    }
+
+    private static string NormalizePhysicalCurrencyCode(string? currencyCode)
+    {
+        var normalized = currencyCode?.Trim().ToUpperInvariant();
+        if (normalized is "BS.S" or "BSS" or "VES") return "VES";
+        return normalized ?? string.Empty;
+    }
+
+    private void RebuildCurrencySummaries()
+    {
+        CurrencySummaries.Clear();
+
+        // Sin sesión activa, el perfil sigue definiendo las monedas visibles: se muestran en
+        // cero para que la caja tenga una fila local estable y el operador vea el régimen.
+        if (ActiveSession is null)
+        {
+            AddProfileCurrencySummary(CurrencyDisplay.LocalCurrencyCode, isLocal: true);
+            AddProfileCurrencySummary(CurrencyDisplay.PrimaryCurrencyCode, isLocal: false);
+            AddProfileCurrencySummary(CurrencyDisplay.SecondaryCurrencyCode, isLocal: false);
+            return;
+        }
+
+        var rows = ActiveSession.CurrencySummaries;
+        if (rows is null)
+        {
+            return;
+        }
+
+        foreach (var row in rows)
+        {
+            CurrencySummaries.Add(new CurrencySessionSummaryViewModel
+            {
+                CurrencyCode = row.CurrencyCode,
+                CurrencySymbol = row.CurrencySymbol,
+                OpeningBalance = row.OpeningBalance,
+                TotalPhysicalInflows = row.TotalPhysicalInflows,
+                TotalPhysicalOutflows = row.TotalPhysicalOutflows,
+                ExpectedCashBalance = row.ExpectedCashBalance,
+                IsLocal = row.IsLocal
+            });
+        }
+    }
+
+    private void AddProfileCurrencySummary(string? code, bool isLocal)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return;
+        }
+
+        var normalized = code.Trim().ToUpperInvariant();
+        if (normalized is "BS.S" or "BSS")
+        {
+            normalized = "VES";
+        }
+
+        if (CurrencySummaries.Any(row => row.CurrencyCode == normalized))
+        {
+            return;
+        }
+
+        CurrencySummaries.Add(new CurrencySessionSummaryViewModel
+        {
+            CurrencyCode = normalized,
+            CurrencySymbol = CurrencyDisplay.SymbolFor(normalized),
+            OpeningBalance = 0m,
+            TotalPhysicalInflows = 0m,
+            TotalPhysicalOutflows = 0m,
+            ExpectedCashBalance = 0m,
+            IsLocal = isLocal
+        });
     }
 }

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
@@ -64,6 +66,82 @@ public class PosSearchSuggestionsTests
         Assert.Empty(vm.Suggestions);
         Assert.False(vm.HasSuggestions);
         Assert.Null(vm.SelectedSuggestion);
+    }
+
+    [Fact]
+    public async Task AddSelectedSuggestion_WithPendingQuantityEdit_CommitsEditBeforeAddingItem()
+    {
+        // Reproducción del bug de sincronización UI/Modelo: cantidad 10 tipeada (sin Enter) en el
+        // Producto A; al agregar el Producto secundario, la edición debe commitearse ANTES del alta
+        // y sobrevivir a la reconstrucción de la colección desde la respuesta del servidor.
+        const decimal Rate = 842.21m;
+        var mockSales = new Mock<ISalesService>();
+        var mockProducts = new Mock<IProductService>();
+        var mockPayments = new Mock<IPaymentService>();
+        var mockRate = new Mock<IExchangeRateService>();
+        mockRate.SetupGet(r => r.CurrentRate).Returns(Rate);
+
+        var cartVm = new CartViewModel(mockSales.Object, mockRate.Object);
+        var session = new UserSession();
+        WeakReferenceMessenger.Default.UnregisterAll(cartVm);
+
+        // Servidor simulado con estado mutable: el alta devuelve lo que el servidor tiene al momento.
+        decimal serverQuantityA = 1m;
+
+        SaleDto BuildServerSale(bool withSecondaryItem)
+        {
+            var sale = new SaleDto
+            {
+                Id = 10,
+                Status = "Pending",
+                AppliedRate = Rate,
+                TotalUSD = serverQuantityA,
+                Items = new System.Collections.Generic.List<SaleItemDto>
+                {
+                    new() { Id = 1, ProductId = 1, ProductName = "Producto A", Quantity = serverQuantityA, UnitPrice = 1m, Subtotal = serverQuantityA, UnitPriceBsS = Rate, SubtotalBsS = Rate * serverQuantityA }
+                }
+            };
+            if (withSecondaryItem)
+            {
+                sale.Items.Add(new SaleItemDto { Id = 2, ProductId = 42, ProductName = "Refresco 2L", Quantity = 1m, UnitPrice = 5m, Subtotal = 5m, UnitPriceBsS = 4211.05m, SubtotalBsS = 4211.05m });
+            }
+            return sale;
+        }
+
+        cartVm.CurrentSale = BuildServerSale(withSecondaryItem: false);
+        cartVm.CartItems[0].QuantityText = "10";
+
+        mockSales.Setup(s => s.UpdateSaleItemsAsync(10, It.IsAny<IEnumerable<UpdateSaleItemDto>>(), Rate))
+                 .Callback(() => serverQuantityA = 10m)
+                 .Returns(Task.CompletedTask);
+        mockSales.Setup(s => s.GetSaleAsync(10))
+                 .ReturnsAsync(() => BuildServerSale(withSecondaryItem: false));
+        mockSales.Setup(s => s.AddItemAsync(10, 42, 1, It.IsAny<decimal>(), null, null))
+                 .ReturnsAsync(() => BuildServerSale(withSecondaryItem: true));
+
+        var vm = new PosViewModel(
+            mockSales.Object,
+            mockProducts.Object,
+            mockPayments.Object,
+            mockRate.Object,
+            cartVm,
+            session);
+
+        var product = new ProductQuickInfoDto { Id = 42, Name = "Refresco 2L", SKU = "REF002", PriceUSD = 5 };
+        vm.SearchText = "Refresco";
+        vm.Suggestions.Add(product);
+        vm.HasSuggestions = true;
+
+        await vm.AddSelectedSuggestionCommand.ExecuteAsync(product);
+
+        mockSales.Verify(
+            s => s.UpdateSaleItemsAsync(
+                10,
+                It.Is<IEnumerable<UpdateSaleItemDto>>(items => items.Single().Quantity == 10m),
+                Rate),
+            Times.Once);
+        Assert.Equal(10m, cartVm.CartItems.Single(i => i.Id == 1).Model.Quantity);
+        Assert.Equal(2, cartVm.CartItems.Count);
     }
 
     [Fact]

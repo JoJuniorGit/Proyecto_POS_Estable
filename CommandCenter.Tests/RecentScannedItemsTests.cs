@@ -97,4 +97,66 @@ public class RecentScannedItemsTests
         Assert.Equal(new[] { 4, 1, 3 }, list);
         Assert.Equal(3, list.Count);
     }
+
+    [Fact]
+    public async Task DecrementQuantityAsync_AtFloor_IsIgnored()
+    {
+        var salesMock = new Mock<ISalesService>();
+        var rateMock = new Mock<IExchangeRateService>();
+        rateMock.Setup(r => r.CurrentRate).Returns(36.5m);
+
+        var cart = new CartViewModel(salesMock.Object, rateMock.Object);
+        WeakReferenceMessenger.Default.UnregisterAll(cart);
+
+        var sale = new SaleDto
+        {
+            Id = 1,
+            Items = new System.Collections.Generic.List<SaleItemDto>
+            {
+                new() { Id = 10, ProductId = 100, ProductName = "Bebida", Quantity = 1m, UnitPrice = 2m, UnitPriceBsS = 73m }
+            }
+        };
+        cart.CurrentSale = sale;
+
+        var updates = new System.Collections.Generic.List<(int Id, decimal Quantity)>();
+        var recentItem = new RecentScannedItemViewModel(
+            100, "759", "Bebida", 73m, 2m, cart,
+            (id, qty) => { updates.Add((id, qty)); return Task.CompletedTask; });
+
+        await recentItem.DecrementQuantityCommand.ExecuteAsync(null);
+
+        // Piso de cantidad: en 1 la resta de la tarjeta se ignora (nunca envia 0 al commit).
+        Assert.Empty(updates);
+    }
+
+    [Fact]
+    public async Task DecrementQuantityAsync_AboveFloor_SendsQuantityMinusOne()
+    {
+        var salesMock = new Mock<ISalesService>();
+        var rateMock = new Mock<IExchangeRateService>();
+        rateMock.Setup(r => r.CurrentRate).Returns(36.5m);
+
+        var cart = new CartViewModel(salesMock.Object, rateMock.Object);
+        WeakReferenceMessenger.Default.UnregisterAll(cart);
+
+        var sale = new SaleDto
+        {
+            Id = 1,
+            Items = new System.Collections.Generic.List<SaleItemDto>
+            {
+                new() { Id = 10, ProductId = 100, ProductName = "Bebida", Quantity = 2m, UnitPrice = 2m, UnitPriceBsS = 73m }
+            }
+        };
+        cart.CurrentSale = sale;
+
+        var updates = new System.Collections.Generic.List<(int Id, decimal Quantity)>();
+        var recentItem = new RecentScannedItemViewModel(
+            100, "759", "Bebida", 73m, 2m, cart,
+            (id, qty) => { updates.Add((id, qty)); return Task.CompletedTask; });
+
+        await recentItem.DecrementQuantityCommand.ExecuteAsync(null);
+
+        Assert.Single(updates);
+        Assert.Equal((10, 1m), updates[0]);
+    }
 }

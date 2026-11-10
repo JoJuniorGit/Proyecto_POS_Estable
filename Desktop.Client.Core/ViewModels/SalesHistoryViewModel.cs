@@ -343,8 +343,13 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         _salesService = salesService;
         _dispatchAction = dispatchAction ?? (action => action());
 
-        _startDate = DateTime.Today;
-        _endDate = DateTime.Today;
+        // Hotfix (CI/timezone): el backend interpreta las fechas del historial como DÍAS CALENDARIO
+        // DE VENEZUELA (UTC-4; ver TimeZoneHelper.GetUtcRange) — el default debe ser la jornada VE,
+        // no la fecha local de la máquina: en un cliente fuera de VE divergían y la venta recién
+        // hecha quedaba fuera del rango "Hoy" (fallo determinista entre 00:00Z y 04:00Z).
+        var venezuelaToday = Core.Helpers.TimeZoneHelper.GetVenezuelaDate().ToDateTime(TimeOnly.MinValue);
+        _startDate = venezuelaToday;
+        _endDate = venezuelaToday;
 
         WeakReferenceMessenger.Default.Register<TimeZoneChangedMessage>(this, (_r, _m) =>
         {
@@ -378,7 +383,8 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
             IsPurchaseDetailsExpanded = true;
             DetailDateLocalFormatted = _value.DateLocal.ToString("dd/MM/yyyy hh:mm tt", CultureInfo.CurrentCulture);
             DetailAppliedRate = _value.AppliedRate;
-            DetailTotalUSD = _value.TotalUSD;
+            // ANEXO XIII: el "Total USD" del panel muestra el efectivo (inverso del Bs.S cobrado).
+            DetailTotalUSD = _value.EffectiveTotalUSD;
             DetailTotalBsS = _value.TotalBsS;
             DetailSubtotalBsS = 0;
             DetailErrorMessage = null;
@@ -593,7 +599,8 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
                 ReplaceCollection(SelectedSalePayments, _detail.Payments);
                 DetailDateLocalFormatted = _detail.DateLocal.ToString("dd/MM/yyyy hh:mm tt", CultureInfo.CurrentCulture);
                 DetailAppliedRate = _detail.AppliedRate;
-                DetailTotalUSD = _detail.TotalUSD;
+                // ANEXO XIII: idem precarga — el detalle confirmado tambien muestra el efectivo.
+                DetailTotalUSD = _detail.EffectiveTotalUSD;
                 DetailTotalBsS = _detail.TotalBsS;
                 DetailSubtotalBsS = _detail.Items.Sum(_i => _i.SubtotalBsS);
                 IsDetailFetching = false;

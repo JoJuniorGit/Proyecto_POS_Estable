@@ -1,15 +1,54 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { api } from '../services/api';
 import { getCategories, toCategoryOptions } from '../services/categoriesApi';
 import { Package, Search, Loader2, RefreshCw, Tag, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { formatBsS, formatUSD, resolveBsSPrice } from '../utils/formatters';
-import { usdToBs } from '../utils/money';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import {
+  MONETARY_MODE_DUAL,
+  displayCurrencyCode,
+  normalizeCurrencyCode,
+  normalizeMonetaryProfile,
+} from '../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../components/register/registerFormLogic';
+import { resolveBsSPrice, resolveEffectiveBsS, shouldRefetchOnRateChange } from '../utils/formatters';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import useDebounce from '../hooks/useDebounce';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
 import './CatalogPage.css';
+
+/**
+ * 8.211-T4b2b2b (S9): opciones del filtro de moneda del catálogo. En `Dual` se ofrecen primaria y
+ * secundaria; en `Single` sólo la primaria. El valor interno es el código ISO canónico.
+ * @param {object} [profile]
+ */
+export function buildCatalogCurrencyOptions(profile) {
+  const normalized = normalizeMonetaryProfile(profile);
+  const options = [{
+    value: normalizeCurrencyCode(normalized.primaryCurrencyCode),
+    label: displayCurrencyCode(normalized.primaryCurrencyCode),
+  }];
+
+  if (normalized.mode === MONETARY_MODE_DUAL) {
+    options.push({
+      value: normalizeCurrencyCode(normalized.secondaryCurrencyCode),
+      label: displayCurrencyCode(normalized.secondaryCurrencyCode),
+    });
+  }
+
+  return options;
+}
+
+/**
+ * Moneda local del perfil: secundaria en `Dual`, primaria en `Single`.
+ * @param {object} [profile]
+ */
+export function resolveCatalogCurrencySelection(profile) {
+  const normalized = normalizeMonetaryProfile(profile);
+  const local = resolveLocalCurrencyProfile(normalized);
+  return local.code || normalizeCurrencyCode(normalized.primaryCurrencyCode) || 'USD';
+}
 
 /**
  * 8.179-T3 (S4): URL del fetch paginado del catálogo. `categoryId` viaja sólo cuando hay
@@ -27,6 +66,36 @@ export function resolveCategorySelection(value) {
   return { categoryId: value || '', page: 1 };
 }
 
+/**
+ * 8.186-T2 (S1/S3): precios que muestran las grillas del catálogo (escritorio y móvil). El Bs.S
+ * Detal/Mayor es el EFECTIVO proyectado por el servidor con el motor único de redondeo
+ * (`effectivePriceBsS` / `effectiveWholesalePriceBsS` + tasa vigente); web NO replica la política
+ * en JS. Solo si el campo falta o viene <= 0 se usa el fallback canónico de legado (USD × tasa con
+ * techo / snapshot persistido, 8.143). Regla Mayor vigente: con mayor real se muestra el efectivo
+ * Mayor; sin mayor real hereda el Detal.
+ */
+export function resolveCatalogProductPrices(product, exchangeRate) {
+  const retailUSD = product.priceUSD || 0;
+  const retailBsS = resolveEffectiveBsS(
+    product.effectivePriceBsS,
+    resolveBsSPrice(product.priceUSD, product.priceBsS, exchangeRate)
+  );
+
+  // Regla 2: ¿Tiene descuento de precio al mayor real configurado?
+  const hasRealWholesale = (product.hasWholesale || product.priceWholesaleUSD > 0) && product.priceWholesaleUSD > 0 && product.priceWholesaleUSD < retailUSD;
+
+  // Regla 2: Si NO tiene precio al mayor, hereda el precio al detal
+  const wholesaleUSD = hasRealWholesale ? product.priceWholesaleUSD : retailUSD;
+  const wholesaleBsS = hasRealWholesale
+    ? resolveEffectiveBsS(
+        product.effectiveWholesalePriceBsS,
+        resolveBsSPrice(product.priceWholesaleUSD, 0, exchangeRate)
+      )
+    : retailBsS;
+
+  return { retailUSD, retailBsS, hasRealWholesale, wholesaleUSD, wholesaleBsS };
+}
+
 export default function CatalogPage() {
   return (
     <RoleGuard view="catalog">
@@ -37,14 +106,24 @@ export default function CatalogPage() {
 
 function CatalogPageContent() {
   const { exchangeRate } = useExchangeRate();
+  const monetary = useMonetaryProfile();
   const isMobile = useMediaQuery('(max-width: 640px)');
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search, 300);
-  
-  // Filtro de Moneda: "Bs.S" por defecto al entrar al catálogo
-  const [currency, setCurrency] = useState('Bs.S');
+
+  const currencyOptions = useMemo(
+    () => buildCatalogCurrencyOptions(monetary.profile),
+    [monetary.profile]
+  );
+  const defaultCurrency = useMemo(
+    () => resolveCatalogCurrencySelection(monetary.profile),
+    [monetary.profile]
+  );
+
+  // Filtro de Moneda: arranca en la moneda local del perfil (Bs.S/COP en Dual, primaria en Single).
+  const [currency, setCurrency] = useState(defaultCurrency);
 
   // Botón desactivado por defecto al entrar al catálogo
   const [showWholesale, setShowWholesale] = useState(false);
@@ -69,7 +148,29 @@ function CatalogPageContent() {
   const [categoryId, setCategoryId] = useState('');
   const categoryOptions = toCategoryOptions(categories);
 
-  const toBsSCeiling = usdToBs;
+  const primaryCurrency = normalizeCurrencyCode(monetary.primaryCurrencyCode);
+  const activeCurrencyLabel = currencyOptions.find((option) => option.value === currency)?.label
+    || displayCurrencyCode(currency);
+  const isPrimaryCurrency = currency === primaryCurrency;
+
+  // Un cambio de perfil (p. ej. Dual USD/VES → Single COP) invalida la selección anterior.
+  useEffect(() => {
+    if (!currencyOptions.some((option) => option.value === currency)) {
+      setCurrency(defaultCurrency);
+    }
+  }, [currency, currencyOptions, defaultCurrency]);
+
+  // 8.186-T2 (S1): la proyección del efectivo es server-side con la tasa vigente; cuando la tasa
+  // cambia (SignalR) el catálogo refetchea para reproyectar. La transición inicial 0 → tasa no
+  // refetchea: el fetch de montaje ya usó la tasa del servidor (evita el doble fetch inicial).
+  const previousRateRef = useRef(exchangeRate);
+  useEffect(() => {
+    const previousRate = previousRateRef.current;
+    previousRateRef.current = exchangeRate;
+    if (shouldRefetchOnRateChange(previousRate, exchangeRate)) {
+      setReloadToken((t) => t + 1);
+    }
+  }, [exchangeRate]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -225,7 +326,7 @@ function CatalogPageContent() {
             </select>
           </div>
 
-          {/* ── 1. Selector Desplegable de Moneda (Bs.S por defecto) ── */}
+          {/* ── 1. Selector Desplegable de Moneda (moneda local del perfil por defecto) ── */}
           <div className="flex-align-center cat-gap-6">
             <span className="text-xs text-muted font-medium text-nowrap">Moneda:</span>
             <select
@@ -233,8 +334,9 @@ function CatalogPageContent() {
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
             >
-              <option value="Bs.S">Bs.S</option>
-              <option value="USD">USD ($)</option>
+              {currencyOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
           </div>
 
@@ -329,7 +431,7 @@ function CatalogPageContent() {
                     title="Ordenar por precio al detal"
                   >
                     <div className="d-inline-flex align-center justify-end gap-1">
-                      Precio Detal ({currency}) {renderSortIcon('price')}
+                      Precio Detal ({activeCurrencyLabel}) {renderSortIcon('price')}
                     </div>
                   </th>
                   
@@ -337,7 +439,7 @@ function CatalogPageContent() {
                   {showWholesale && (
                     <>
                       <th className="cat-th-wholesale-price">
-                        Precio Mayor ({currency})
+                        Precio Mayor ({activeCurrencyLabel})
                       </th>
                       <th className="cat-th-wholesale-min">
                         Cant. Mín. Mayor
@@ -361,16 +463,9 @@ function CatalogPageContent() {
               </thead>
               <tbody>
                 {products.map((p) => {
-                  const retailUSD = p.priceUSD || 0;
-                  // 8.143: precio Bs.S derivado de USD × tasa vigente; snapshot solo como fallback
-                  const retailBsS = resolveBsSPrice(p.priceUSD, p.priceBsS, exchangeRate);
-
-                  // Regla 2: ¿Tiene descuento de precio al mayor real configurado?
-                  const hasRealWholesale = (p.hasWholesale || p.priceWholesaleUSD > 0) && p.priceWholesaleUSD > 0 && p.priceWholesaleUSD < retailUSD;
-
-                  // Regla 2: Si NO tiene precio al mayor, hereda el precio al detal
-                  const wholesaleUSD = hasRealWholesale ? p.priceWholesaleUSD : retailUSD;
-                  const wholesaleBsS = hasRealWholesale ? toBsSCeiling(p.priceWholesaleUSD, exchangeRate) : retailBsS;
+                  // 8.186-T2 (S1/S3): Detal/Mayor efectivos proyectados server-side (motor único);
+                  // el canónico local queda solo como fallback documentado si el campo no viene.
+                  const { retailUSD, retailBsS, hasRealWholesale, wholesaleUSD, wholesaleBsS } = resolveCatalogProductPrices(p, exchangeRate);
 
                   // Regla 3: Si hereda detal, unidades mínimas por defecto en "1" (en lugar de "0"), siempre entero sin decimales
                   const minQty = Math.round(hasRealWholesale ? (p.minWholesaleQuantity || 1) : 1);
@@ -384,8 +479,8 @@ function CatalogPageContent() {
                   const isIndepParent = p.isGroupHeader && p.hasIndependentPricing;
 
                   // Formato según Moneda seleccionada
-                  const displayRetail = isIndepParent ? '—' : (currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS));
-                  const displayWholesale = isIndepParent ? '—' : (currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS));
+                  const displayRetail = isIndepParent ? '—' : (isPrimaryCurrency ? monetary.formatPrimary(retailUSD) : monetary.formatSecondary(retailBsS));
+                  const displayWholesale = isIndepParent ? '—' : (isPrimaryCurrency ? monetary.formatPrimary(wholesaleUSD) : monetary.formatSecondary(wholesaleBsS));
 
                   return (
                     <tr key={p.id} className="cat-td-row">
@@ -472,21 +567,18 @@ function CatalogPageContent() {
           {isMobile && (
           <div className="catalog-mobile-view">
             {products.map((p) => {
-              const retailUSD = p.priceUSD || 0;
-              // 8.143: precio Bs.S derivado de USD × tasa vigente; snapshot solo como fallback
-              const retailBsS = resolveBsSPrice(p.priceUSD, p.priceBsS, exchangeRate);
+              // 8.186-T2 (S1/S3): Detal/Mayor efectivos proyectados server-side (motor único);
+              // el canónico local queda solo como fallback documentado si el campo no viene.
+              const { retailUSD, retailBsS, hasRealWholesale, wholesaleUSD, wholesaleBsS } = resolveCatalogProductPrices(p, exchangeRate);
 
-              const hasRealWholesale = (p.hasWholesale || p.priceWholesaleUSD > 0) && p.priceWholesaleUSD > 0 && p.priceWholesaleUSD < retailUSD;
-              const wholesaleUSD = hasRealWholesale ? p.priceWholesaleUSD : retailUSD;
-              const wholesaleBsS = hasRealWholesale ? toBsSCeiling(p.priceWholesaleUSD, exchangeRate) : retailBsS;
               const minQty = Math.round(hasRealWholesale ? (p.minWholesaleQuantity || 1) : 1);
               const wholesaleColor = hasRealWholesale ? 'var(--primary-color)' : 'var(--warning)';
 
               const stockQty = p.isGroupHeader ? (p.consolidatedStock ?? 0) : (p.stockQuantity ?? p.stock ?? 0);
               const unitStr = p.unitOfMeasureStr || (p.unitOfMeasure !== undefined && p.unitOfMeasure !== 0 ? p.unitOfMeasure : 'Und');
 
-              const displayRetail = currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS);
-              const displayWholesale = currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS);
+              const displayRetail = isPrimaryCurrency ? monetary.formatPrimary(retailUSD) : monetary.formatSecondary(retailBsS);
+              const displayWholesale = isPrimaryCurrency ? monetary.formatPrimary(wholesaleUSD) : monetary.formatSecondary(wholesaleBsS);
 
               return (
                 <div key={p.id} className="catalog-mobile-card">
@@ -533,7 +625,7 @@ function CatalogPageContent() {
                   {/* Renglón 3: PRECIO DETAL en Moneda seleccionada */}
                   <div className="catalog-mobile-card-prices">
                     <div className="d-flex flex-column">
-                      <span className="text-xs text-muted">Precio Detal ({currency})</span>
+                      <span className="text-xs text-muted">Precio Detal ({activeCurrencyLabel})</span>
                       <span className="font-bold font-mono text-nowrap text-base">
                         {displayRetail}
                       </span>
@@ -553,7 +645,7 @@ function CatalogPageContent() {
                       <div className="d-flex justify-between align-center">
                         <div>
                           <div className="text-xs text-muted">
-                            Precio al Mayor ({currency})
+                            Precio al Mayor ({activeCurrencyLabel})
                             {!hasRealWholesale && <span className="cat-no-discount-note">(Sin Descuento)</span>}
                           </div>
                           <div className="font-bold font-mono text-nowrap cat-wholesale-num" style={{ color: wholesaleColor }}>

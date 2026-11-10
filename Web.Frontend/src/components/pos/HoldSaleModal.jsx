@@ -5,11 +5,19 @@ import { getCustomers, createCustomer } from '../../services/customerApi';
 import { getActivePaymentMethods } from '../../services/paymentApi';
 import { holdSale } from '../../services/salesApi';
 import { createCheckoutKeyHolder } from '../../utils/idempotency.js';
-import { formatNumberEs, formatBsS, formatUSD } from '../../utils/formatters';
+import { formatNumberEs } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { MONETARY_MODE_DUAL } from '../../utils/monetaryProfile';
 import { Search, UserPlus, Clock, Loader2, RefreshCw, X } from 'lucide-react';
 import './HoldSaleModal.css';
 
 export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer, saleTotalUSD, saleTotalBsS = 0, exchangeRate, onSuccess }) {
+  // 8.211-T4b2b1 (S9): el hold normal opera en Dual; las etiquetas locales y la referencia
+  // primaria salen del perfil. El payload y los cálculos de abono no cambian.
+  const { mode, primaryCurrencyCode, primaryCurrencySymbol, secondaryCurrencySymbol, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const isDual = mode === MONETARY_MODE_DUAL;
+  const localCurrencySymbol = (isDual && secondaryCurrencySymbol) || primaryCurrencySymbol;
+
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounce(query, 250);
   const [customers, setCustomers] = useState([]);
@@ -202,7 +210,6 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
   const isCashSelected = !!selectedMethod?.isCash;
   // El efectivo solo acepta montos enteros (sin centavos): se normaliza antes de enviar.
   const finalPaymentBsS = isCashSelected ? Math.trunc(initialBsS) : initialBsS;
-  const finalPaymentUsd = exchangeRate > 0 ? finalPaymentBsS / exchangeRate : 0;
 
   const handleCancel = () => {
     holdKeyHolderRef.current.reset();
@@ -232,7 +239,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
       const initialPaymentsList = (enablePayment && finalPaymentBsS > 0) ? [{
         paymentMethodId: parseInt(paymentMethodId, 10),
         amountBsS: finalPaymentBsS,
-        amountUSD: parseFloat(finalPaymentUsd.toFixed(2)),
+        amountUSD: exchangeRate > 0 ? Math.round((finalPaymentBsS / exchangeRate) * 100) / 100 : 0,
         exchangeRate: exchangeRate,
         referenceNumber: reference.trim() || null
       }] : null;
@@ -414,7 +421,7 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
               </div>
 
               <div className="form-group mb-2 text-left">
-                <label className="form-label text-primary font-semibold">Monto de Abono (Bs.S) - Entrada ATM</label>
+                <label className="form-label text-primary font-semibold">Monto de Abono ({localCurrencySymbol}) - Entrada ATM</label>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -430,9 +437,11 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
                     El pago en efectivo solo acepta montos enteros.
                   </div>
                 )}
-                <div className="text-muted hold-subtext text-center">
-                  ≈ {formatUSD(initialUsd)} (Tasa: {formatNumberEs(exchangeRate)} Bs/$)
-                </div>
+                {isDual && (
+                  <div className="text-muted hold-subtext text-center">
+                    ≈ {formatPrimary(initialUsd)} (Tasa: {formatNumberEs(exchangeRate)} {secondaryCurrencySymbol}/{primaryCurrencyCode})
+                  </div>
+                )}
               </div>
 
               {selectedMethod?.requiresReference && (
@@ -451,17 +460,19 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
           )}
         </div>
 
-        {/* Summary Box — Bs.S destacado sobre USD */}
+        {/* Summary Box — moneda local destacada sobre la referencia primaria en Dual */}
         <div className="checkout-summary-box mb-4">
           <div className="checkout-summary-row hold-summary-row">
             <span>Total del Pedido:</span>
             <div className="text-right">
               <div className="font-bold text-nowrap color-primary hold-total-lg">
-                {formatBsS(saleTotalUSD * exchangeRate)}
+                {formatSecondary(saleTotalBsS > 0 ? saleTotalBsS : saleTotalUSD * exchangeRate)}
               </div>
-              <div className="text-xs text-muted font-medium">
-                Ref: {formatUSD(saleTotalUSD)}
-              </div>
+              {isDual && (
+                <div className="text-xs text-muted font-medium">
+                  Ref: {formatPrimary(saleTotalBsS > 0 && exchangeRate > 0 ? Math.round((saleTotalBsS / exchangeRate) * 100) / 100 : saleTotalUSD)}
+                </div>
+              )}
             </div>
           </div>
           {enablePayment && initialBsS > 0 && (
@@ -469,11 +480,13 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
               <span>Abono Inicial:</span>
               <div className="text-right">
                 <div className="font-bold text-nowrap hold-total-md">
-                  {formatBsS(initialBsS)}
+                  {formatSecondary(initialBsS)}
                 </div>
-                <div className="text-xs text-muted font-medium">
-                  Ref: {formatUSD(initialUsd)}
-                </div>
+                {isDual && (
+                  <div className="text-xs text-muted font-medium">
+                    Ref: {formatPrimary(initialUsd)}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -481,11 +494,13 @@ export default function HoldSaleModal({ isOpen, onClose, saleId, currentCustomer
             <span>Deuda Restante Resultante:</span>
             <div className="text-right">
               <div className="font-bold hold-sale-debt text-nowrap hold-total-lg">
-                {formatBsS(remainingBsS)}
+                {formatSecondary(remainingBsS)}
               </div>
-              <div className="text-xs text-muted font-medium">
-                Ref: {formatUSD(remainingUsd)}
-              </div>
+              {isDual && (
+                <div className="text-xs text-muted font-medium">
+                  Ref: {formatPrimary(exchangeRate > 0 ? Math.round((remainingBsS / exchangeRate) * 100) / 100 : remainingUsd)}
+                </div>
+              )}
             </div>
           </div>
         </div>

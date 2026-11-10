@@ -152,7 +152,7 @@ public class ForwardedHeadersIntegrationTests
     }
 
     [Fact]
-    public async Task PairingController_WhenRemoteAndAuthenticated_Returns200OK()
+    public async Task PairingController_WhenRemoteAuthenticatedButHttpsUnavailable_Returns503()
     {
 // Arrange
         var controller = new PairingController(_networkDiscoveryMock.Object, new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
@@ -170,9 +170,31 @@ public class ForwardedHeadersIntegrationTests
         // Act
         var result = await controller.GetPairingInfo();
 
-        // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result);
-        Assert.NotNull(okResult.Value);
+        // El rol autenticado no habilita la filtración del token QR por HTTP en la LAN.
+        var unavailable = Assert.IsType<ObjectResult>(result);
+        Assert.Equal((int)HttpStatusCode.ServiceUnavailable, unavailable.StatusCode);
+    }
+
+    [Fact]
+    public async Task PairingController_RemoteHttpsBehindProxy_AllowsPairingWhenLocalKestrelHasNoCertificate()
+    {
+        var controller = new PairingController(
+            _networkDiscoveryMock.Object,
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+            new HttpsRuntimeInfo(Enabled: false, HttpPort: 5000, HttpsPort: 5001));
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Parse("192.168.1.88");
+        context.Request.Scheme = "https";
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+        {
+            new Claim(ClaimTypes.Name, "AdminPrincipal"),
+            new Claim(ClaimTypes.Role, "Admin")
+        }, "TestAuth"));
+        controller.ControllerContext = new ControllerContext { HttpContext = context };
+
+        var result = await controller.GetPairingInfo();
+
+        Assert.IsType<OkObjectResult>(result);
     }
 
     [Fact]
@@ -219,7 +241,7 @@ public class ForwardedHeadersIntegrationTests
                 IsHttpsEnabled = isHttpsEnabled,
                 QrPayload = isHttpsEnabled
                     ? $"https://192.168.1.10:{httpsPort}/?paired=true&pair=TESTTOKEN"
-                    : $"http://192.168.1.10:{httpPort}/?paired=true&pair=TESTTOKEN"
+                    : string.Empty
             });
 
         var controller = new PairingController(
@@ -243,7 +265,7 @@ public class ForwardedHeadersIntegrationTests
     }
 
     [Fact]
-    public async Task PairingController_WhenHttpsRuntimeDisabled_AdvertisesHttpPortAndInsecurePayload()
+    public async Task PairingController_WhenHttpsRuntimeDisabled_DoesNotAdvertiseRemotePairingPayload()
     {
         // Arrange
         _networkDiscoveryMock
@@ -255,7 +277,7 @@ public class ForwardedHeadersIntegrationTests
                 IsHttpsEnabled = isHttpsEnabled,
                 QrPayload = isHttpsEnabled
                     ? $"https://192.168.1.10:{httpsPort}/?paired=true&pair=TESTTOKEN"
-                    : $"http://192.168.1.10:{httpPort}/?paired=true&pair=TESTTOKEN"
+                    : string.Empty
             });
 
         var controller = new PairingController(
@@ -274,7 +296,6 @@ public class ForwardedHeadersIntegrationTests
         var okResult = Assert.IsType<OkObjectResult>(result);
         var info = Assert.IsType<ServerPairingInfo>(okResult.Value);
         Assert.False(info.IsHttpsEnabled);
-        Assert.StartsWith("http://", info.QrPayload);
-        Assert.Contains(":5000", info.QrPayload);
+        Assert.Equal(string.Empty, info.QrPayload);
     }
 }

@@ -1,8 +1,14 @@
 import { Loader2 } from 'lucide-react';
-import { formatNumberEs, resolveBsSPrice } from '../../utils/formatters';
+import { formatNumberEs, resolveBsSPrice, resolveEffectiveBsS } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { MONETARY_MODE_DUAL } from '../../utils/monetaryProfile';
 import './SuggestionList.css';
 
 export default function SuggestionList({ suggestions, isLoading, onSelectSuggestion, exchangeRate }) {
+  const { mode, primaryCurrencySymbol, secondaryCurrencySymbol } = useMonetaryProfile();
+  const localCurrencySymbol = (mode === MONETARY_MODE_DUAL && secondaryCurrencySymbol)
+    || primaryCurrencySymbol;
+
   if (isLoading) {
     return (
       <div className="search-dropdown flex-center">
@@ -23,8 +29,12 @@ export default function SuggestionList({ suggestions, isLoading, onSelectSuggest
   return (
     <div className="search-dropdown">
       {suggestions.map((item) => {
-        // 8.143: precio Bs.S derivado de USD × tasa vigente; snapshot solo como fallback
-        const priceBsS = resolveBsSPrice(item.priceUSD, item.priceBsS, exchangeRate);
+        // 8.186-T2 (S1/S3): el servidor proyecta el efectivo Bs.S (motor único); el canónico
+        // USD × tasa (8.143) queda solo como fallback documentado si el campo falta o viene <= 0.
+        const priceBsS = resolveEffectiveBsS(
+          item.effectivePriceBsS,
+          resolveBsSPrice(item.priceUSD, item.priceBsS, exchangeRate)
+        );
         return (
           <div
             key={item.id}
@@ -51,7 +61,7 @@ export default function SuggestionList({ suggestions, isLoading, onSelectSuggest
                   'Precios indiv.'
                 ) : (
                   <>
-                    <span className="price-currency-symbol">Bs.S </span>
+                    <span className="price-currency-symbol">{localCurrencySymbol} </span>
                     {formatNumberEs(priceBsS)}
                   </>
                 )}

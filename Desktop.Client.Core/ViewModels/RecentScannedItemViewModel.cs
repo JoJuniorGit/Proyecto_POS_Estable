@@ -65,9 +65,12 @@ public partial class RecentScannedItemViewModel : ObservableObject
     private async Task DecrementQuantityAsync()
     {
         var lineItem = _cart.CartItems.FirstOrDefault(i => i.Model.ProductId == ProductId);
-        if (lineItem != null && lineItem.Model.Quantity > 0m)
+
+        // Piso de cantidad (paso 1 de la tarjeta): en 1 la resta se ignora en vez de enviar 0,
+        // que eliminaria la linea del carrito.
+        if (lineItem != null && lineItem.Model.Quantity - 1m >= 1m)
         {
-            await _onUpdateQuantity(lineItem.Id, Math.Max(0m, lineItem.Model.Quantity - 1m));
+            await _onUpdateQuantity(lineItem.Id, lineItem.Model.Quantity - 1m);
             Refresh();
         }
     }

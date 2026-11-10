@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Core.Logging;
 using Inventory.Module.Data;
@@ -337,7 +339,8 @@ END $$;");
         catch (System.Exception ex)
         {
             var criticalMsg = "[ERROR CRÍTICO] Error ejecutando las migraciones de base de datos. Abortando el arranque. " + ex.Message;
-            Console.WriteLine(criticalMsg);
+            Console.Error.WriteLine(criticalMsg);
+            AppLogger.LogCrash(ex, "Database.Migrate.Startup");
             AppLogger.LogDbError(ex, "Database.Migrate");
             Environment.ExitCode = 1;
             return false;
@@ -520,20 +523,7 @@ END $$;");
                 }
             }
 
-            var defaultMethods = Sales.Module.PaymentMethodDefaults.CreateDefault();
-            var existingMethodNames = salesDb.PaymentMethods
-                .Where(m => !m.IsDeleted)
-                .Select(m => m.Name)
-                .ToList();
-            var missingMethods = defaultMethods
-                .Where(m => !existingMethodNames.Contains(m.Name, StringComparer.OrdinalIgnoreCase))
-                .ToList();
-            if (missingMethods.Count > 0)
-            {
-                salesDb.PaymentMethods.AddRange(missingMethods);
-                salesDb.SaveChanges();
-                AppLogger.LogStart("[Seed] Ensured default payment methods (Efectivo, Tarjeta PDV, Transferencia/Pago Movil, Divisas USD).");
-            }
+            EnsureDefaultPaymentMethods(salesDb);
         }
         catch (System.Exception ex)
         {
@@ -545,5 +535,90 @@ END $$;");
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Converge the default payment methods with the legacy seed names created by the first
+    /// migration ("Cash" and "Card"). Renaming the legacy row instead of inserting a second
+    /// default keeps a single physical method per currency, which the drawer auto-open path
+    /// requires when a sale completes without an explicit MethodBalances payload.
+    /// </summary>
+    private static void EnsureDefaultPaymentMethods(Sales.Module.Data.SalesDbContext salesDb)
+    {
+        var defaults = Sales.Module.PaymentMethodDefaults.CreateDefault();
+        var existing = salesDb.PaymentMethods
+            .Where(method => !method.IsDeleted)
+            .ToList();
+
+        var legacyNamesByDefaultName = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Efectivo"] = new[] { "Cash" },
+            ["Tarjeta (Punto de Venta)"] = new[] { "Card" },
+            ["Transferencia / Pago Móvil"] = new[] { "Transfer" }
+        };
+
+        var changed = false;
+        foreach (var defaultMethod in defaults)
+        {
+            var current = existing.FirstOrDefault(method =>
+                string.Equals(method.Name, defaultMethod.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (current is null &&
+                legacyNamesByDefaultName.TryGetValue(defaultMethod.Name, out var legacyNames))
+            {
+                var legacy = existing.FirstOrDefault(method =>
+                    legacyNames.Any(legacyName =>
+                        string.Equals(method.Name, legacyName, StringComparison.OrdinalIgnoreCase)));
+                if (legacy is not null)
+                {
+                    legacy.Name = defaultMethod.Name;
+                    legacy.IsActive = true;
+                    legacy.IsCash = defaultMethod.IsCash;
+                    legacy.RequiresReference = defaultMethod.RequiresReference;
+                    current = legacy;
+                    changed = true;
+                }
+            }
+
+            if (current is null)
+            {
+                salesDb.PaymentMethods.Add(defaultMethod);
+                existing.Add(defaultMethod);
+                changed = true;
+                continue;
+            }
+
+            if (legacyNamesByDefaultName.TryGetValue(defaultMethod.Name, out var legacyDuplicates))
+            {
+                foreach (var duplicate in existing.Where(method =>
+                    !ReferenceEquals(method, current) &&
+                    legacyDuplicates.Any(legacyName =>
+                        string.Equals(method.Name, legacyName, StringComparison.OrdinalIgnoreCase))))
+                {
+                    duplicate.IsDeleted = true;
+                    duplicate.IsActive = false;
+                    changed = true;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(current.Currency) &&
+                !string.IsNullOrWhiteSpace(defaultMethod.Currency))
+            {
+                current.Currency = defaultMethod.Currency;
+                changed = true;
+            }
+
+            if (current.DisplayOrder == 0 && defaultMethod.DisplayOrder > 0)
+            {
+                current.DisplayOrder = defaultMethod.DisplayOrder;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            salesDb.SaveChanges();
+            AppLogger.LogStart("[Seed] Ensured default payment methods (Efectivo, Tarjeta PDV, Transferencia/Pago Movil, Divisas USD).");
+        }
     }
 }

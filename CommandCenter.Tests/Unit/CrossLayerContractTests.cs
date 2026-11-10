@@ -90,6 +90,36 @@ public class CrossLayerContractTests
         Assert.Equal(Enum.GetNames<Sales.Module.Entities.CashTransactionSource>().Length, comparados);
     }
 
+    [Fact]
+    public void PettyCashTransactionSources_AreAppendedAndMirroredAcrossEveryLayer()
+    {
+        // Paso 13 / 8.188-T1 (S6): origen del egreso de caja chica y de su reversa compensatoria.
+        // Se anexan (9/10) para no renumerar los valores ya persistidos; el test generico de
+        // espejos cubre la paridad completa, este fija los valores nuevos en las tres capas.
+        Assert.Equal(9, (int)Sales.Module.Entities.CashTransactionSource.PettyCashExpense);
+        Assert.Equal(10, (int)Sales.Module.Entities.CashTransactionSource.PettyCashReversal);
+        Assert.Equal(9, (int)Desktop.Client.Services.CashTransactionSource.PettyCashExpense);
+        Assert.Equal(10, (int)Desktop.Client.Services.CashTransactionSource.PettyCashReversal);
+
+        Assert.Equal(
+            "Caja Chica",
+            new Desktop.Client.Services.CashTransactionDto
+            {
+                Source = Desktop.Client.Services.CashTransactionSource.PettyCashExpense
+            }.SourceDisplay);
+        Assert.Equal(
+            "Reversa Caja Chica",
+            new Desktop.Client.Services.CashTransactionDto
+            {
+                Source = Desktop.Client.Services.CashTransactionSource.PettyCashReversal
+            }.SourceDisplay);
+
+        var jsPath = FindRepositoryFile(Path.Combine("Web.Frontend", "src", "constants", "cashTransactionSource.js"));
+        var js = File.ReadAllText(jsPath);
+        Assert.Contains("PettyCashExpense: 9", js);
+        Assert.Contains("PettyCashReversal: 10", js);
+    }
+
     private static string FindRepositoryFile(string relativePath)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

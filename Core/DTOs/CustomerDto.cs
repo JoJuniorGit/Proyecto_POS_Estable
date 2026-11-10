@@ -29,6 +29,11 @@ public class CreateCustomerDto
     [RegularExpression(@"^(?:0(?:412|414|416|424|426)\d{7}|\+?\d{10,15}|)$", ErrorMessage = "Formato de teléfono inválido.")]
     public string Phone { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Campo legado del contrato de contacto. Se conserva por compatibilidad de clientes, pero el
+    /// servidor lo descarta: el alta/edición de contacto no administra crédito (8.188). El cupo
+    /// solo se escribe por <c>PUT customers/{id}/credit-profile</c> (Admin/Manager).
+    /// </summary>
     [Range(0, 1000000, ErrorMessage = "El límite de crédito no puede ser negativo ni exceder $1,000,000.")]
     public decimal CreditLimitUSD { get; set; } = 0m;
 }
@@ -48,6 +53,11 @@ public class UpdateCustomerDto
     [RegularExpression(@"^(?:0(?:412|414|416|424|426)\d{7}|\+?\d{10,15}|)$", ErrorMessage = "Formato de teléfono inválido.")]
     public string Phone { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Campo legado del contrato de contacto. Se conserva por compatibilidad de clientes, pero el
+    /// servidor lo descarta para TODOS los roles: la edición de contacto no administra crédito
+    /// (8.188) y el cupo solo cambia por <c>PUT customers/{id}/credit-profile</c> (Admin/Manager).
+    /// </summary>
     [Range(0, 1000000, ErrorMessage = "El límite de crédito no puede ser negativo ni exceder $1,000,000.")]
     public decimal CreditLimitUSD { get; set; } = 0m;
 

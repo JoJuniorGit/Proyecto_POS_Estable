@@ -28,10 +28,24 @@ public partial class SalesService : ISalesService
     private readonly ICashDrawerService _cashDrawerService;
     private readonly ISystemSettingsService _settingsService;
     private readonly Microsoft.Extensions.Logging.ILogger<SalesService>? _logger;
-    private readonly IMemoryCache? _cache;
     private readonly Sales.Module.Receipts.IReceiptPrintQueue? _receiptPrintQueue;
     private readonly Sales.Module.Interfaces.IHoldOrderNotifier? _holdOrderNotifier;
-    private const string DefaultCustomerCacheKey = "default_customer_cache";
+    // 8.205: vertical de consultas de historial/entregas extraída para reducir la fachada.
+    private readonly SalesHistoryService _history;
+    // 8.205 (C-01): política de anclaje de tasa compartida con CashDrawerController.
+    private readonly ExchangeRateAnchorService _rateAnchor;
+    // 8.206: catálogo de clientes extraído de la fachada.
+    private readonly SalesCustomerService _customers;
+    // 8.187-T2 (F2a, S1/S2): perfil/elegibilidad de crédito para el cierre de venta a crédito.
+    // Opcional para preservar la construcción directa histórica de tests (precedente 8.149/8.150);
+    // el flujo de crédito falla cerrado si no está configurado.
+    private readonly ICreditService? _creditService;
+    // 8.211-T3a (S6): perfil monetario opcional para el snapshot aditivo de la venta. Null
+    // conserva el comportamiento histórico USD/VES/Dual (composiciones directas de tests).
+    private readonly IMonetaryProfileService? _monetaryProfileService;
+    // 8.211-T3c3c1 (S4): manual per-pair rates for the anchor and CxC payment rate. Null keeps
+    // the historical BCV behavior and fails closed when a manual pair is actually requested.
+    private readonly ICurrencyRateService? _currencyRateService;
     // 8.149 (SEC-02): mensaje único para ambos puntos de mutación de ítems de venta
     // (AddItemAsync y UpdateSaleItemsAsync). El adelanto de efectivo solo entra por CreateCashAdvanceSaleAsync.
     private const string CashAdvanceSaleItemRejectionMessage = "Los productos de adelanto de efectivo no pueden agregarse ni modificarse en una venta; use el flujo de adelanto de efectivo.";
@@ -45,17 +59,32 @@ public partial class SalesService : ISalesService
         Sales.Module.Interfaces.IHoldOrderNotifier? holdOrderNotifier = null,
         Microsoft.Extensions.Logging.ILogger<SalesService>? logger = null,
         IMemoryCache? cache = null,
-        Sales.Module.Receipts.IReceiptPrintQueue? receiptPrintQueue = null)
+        Sales.Module.Receipts.IReceiptPrintQueue? receiptPrintQueue = null,
+        ICreditService? creditService = null,
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         _context = context;
+        _history = new SalesHistoryService(context);
+        // 8.211-T3c3b1 (S4): the profile must be assigned before the anchor is built so Single
+        // mode resolves identity; the optional parameter keeps historical direct compositions working.
+        _monetaryProfileService = monetaryProfileService;
+        _currencyRateService = currencyRateService;
+        _rateAnchor = new ExchangeRateAnchorService(
+            inventoryService,
+            settingsService,
+            logger,
+            monetaryProfileService,
+            currencyRateService);
+        _customers = new SalesCustomerService(context, cache, logger);
         _inventoryService = inventoryService;
         _mediator = mediator;
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
         _holdOrderNotifier = holdOrderNotifier;
         _logger = logger;
-        _cache = cache;
         _receiptPrintQueue = receiptPrintQueue;
+        _creditService = creditService;
     }
 
     private async Task NotifyHoldOrdersChangedAsync()
@@ -141,11 +170,8 @@ public partial class SalesService : ISalesService
 
     public async Task<SaleDto> StartSaleAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default)
     {
-        var defaultCustomer = await _context.Customers.FirstOrDefaultAsync(c => c.IsDefault, cancellationToken) 
-                           ?? await _context.Customers.FirstOrDefaultAsync(c => c.Id == 1, cancellationToken);
-        
-        if (defaultCustomer == null)
-            throw new InvalidOperationException("Cliente por defecto no encontrado en la configuración del sistema. Verifique que la base de datos esté correctamente sembrada.");
+        // PERF-09: usa el cliente por defecto cacheado en lugar de consultar Customers por venta.
+        var defaultCustomer = await _customers.GetDefaultCustomerAsync(cancellationToken);
 
         var sale = new Sale
         {
@@ -234,7 +260,46 @@ public partial class SalesService : ISalesService
         return ValidateAndAdjustQuantity(product, quantity);
     }
 
-    public async Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
+    public async Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, string? requestPath = null)
+    {
+        if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyPayloadHash == null)
+        {
+            return await AddItemCoreAsync(saleId, productId, quantity, exchangeRate, customUnitPriceUsd, customUnitPriceLocal, isPriceOverrideAuthorized, actingUserId, cancellationToken);
+        }
+
+        var strategy = _context.Database.CreateExecutionStrategy();
+        var isRetry = false;
+        return await strategy.ExecuteAsync(async () =>
+        {
+            if (isRetry)
+            {
+                _context.ChangeTracker.Clear();
+            }
+            isRetry = true;
+
+            await using var transaction = _context.Database.IsRelational()
+                ? await _context.Database.BeginTransactionAsync(cancellationToken)
+                : null;
+
+            var dto = await AddItemCoreAsync(saleId, productId, quantity, exchangeRate, customUnitPriceUsd, customUnitPriceLocal, isPriceOverrideAuthorized, actingUserId, cancellationToken);
+            RegisterIdempotencyRecord(
+                idempotencyKey,
+                idempotencyPayloadHash,
+                requestPath ?? $"/api/sales/{saleId}/items",
+                JsonSerializer.Serialize(dto),
+                actingUserId);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            if (transaction != null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+
+            return dto;
+        });
+    }
+
+    private async Task<SaleDto> AddItemCoreAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, bool isPriceOverrideAuthorized, int? actingUserId, System.Threading.CancellationToken cancellationToken)
     {
         var sale = await GetSaleEntityAsync(saleId);
         EnsureHoldClaimAccess(sale, actingUserId);
@@ -279,12 +344,11 @@ public partial class SalesService : ISalesService
         }
         else
         {
-            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule, cancellationToken));
+            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, product, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule, cancellationToken));
         }
 
-        await RecalculateTotalAsync(sale);
+        await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
         ValidateHoldSaleTotal(sale);
-
         await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
     }
@@ -322,7 +386,7 @@ public partial class SalesService : ISalesService
         // SEC-09: Do not merge a standard item addition into an existing item with an authorized custom price.
         if (existingItem.IsCustomPrice && !customUnitPriceUsd.HasValue && !customUnitPriceLocal.HasValue)
         {
-            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, quantity, null, null, effectiveCashRule, cancellationToken));
+            sale.Items.Add(await BuildNewSaleItemAsync(saleId, productId, product, quantity, null, null, effectiveCashRule, cancellationToken));
             return;
         }
 
@@ -343,16 +407,12 @@ public partial class SalesService : ISalesService
             return;
         }
 
-        await MergeExistingItemAsync(existingItem, productId, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule, cancellationToken);
+        await MergeExistingItemAsync(existingItem, product, quantity, customUnitPriceUsd, customUnitPriceLocal, effectiveCashRule);
     }
 
-    private async Task MergeExistingItemAsync(SaleItem existingItem, int productId, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule, System.Threading.CancellationToken cancellationToken)
+    private static Task MergeExistingItemAsync(SaleItem existingItem, SaleProductInfoDto? productInfo, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule)
     {
         existingItem.Quantity += quantity;
-        var productInfo = (customUnitPriceUsd.HasValue && customUnitPriceLocal.HasValue)
-            ? null
-            : await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
-
         decimal grossPrice = customUnitPriceUsd ?? productInfo?.PriceUSD ?? existingItem.UnitPrice;
         decimal grossPriceBsS = customUnitPriceLocal ?? productInfo?.PriceBsS ?? existingItem.UnitPriceBsS;
 
@@ -360,11 +420,12 @@ public partial class SalesService : ISalesService
         existingItem.UnitPriceBsS = Math.Round(grossPriceBsS, 4);
         existingItem.IsCustomPrice = existingItem.IsCustomPrice || customUnitPriceUsd.HasValue || customUnitPriceLocal.HasValue;
         existingItem.RoundingRuleCashBs = effectiveCashRule;
+        return Task.CompletedTask;
     }
 
-    private async Task<SaleItem> BuildNewSaleItemAsync(int saleId, int productId, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule, System.Threading.CancellationToken cancellationToken)
+    private async Task<SaleItem> BuildNewSaleItemAsync(int saleId, int productId, SaleProductInfoDto? product, decimal quantity, decimal? customUnitPriceUsd, decimal? customUnitPriceLocal, RoundingRuleType effectiveCashRule, System.Threading.CancellationToken cancellationToken)
     {
-        var fetchedProduct = await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
+        var fetchedProduct = product ?? await _inventoryService!.GetSaleProductByIdAsync(productId, cancellationToken);
         if (fetchedProduct == null) throw new KeyNotFoundException($"Product {productId} not found.");
 
         if (fetchedProduct.IsGroupHeader)
@@ -412,7 +473,7 @@ public partial class SalesService : ISalesService
             }
             else
             {
-                await RecalculateTotalAsync(sale);
+                await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
             }
             ValidateHoldSaleTotal(sale);
             await _context.SaveChangesAsync(cancellationToken);
@@ -446,7 +507,7 @@ public partial class SalesService : ISalesService
                 }
                 else
                 {
-                    await RecalculateTotalAsync(sale);
+                    await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
                 }
             }
             else
@@ -463,7 +524,7 @@ public partial class SalesService : ISalesService
                 }
 
                 item.Quantity = quantity;
-                await RecalculateTotalAsync(sale);
+                await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
             }
             ValidateHoldSaleTotal(sale);
             await _context.SaveChangesAsync(cancellationToken);
@@ -476,7 +537,7 @@ public partial class SalesService : ISalesService
         int cancelRetryAttempt = 0;
         bool wasCancelled = await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
-            if (cancelRetryAttempt++ > 0)
+            if (cancelRetryAttempt++ > 0 || _context.Database.IsRelational())
             {
                 _context.ChangeTracker.Clear();
             }
@@ -505,6 +566,8 @@ public partial class SalesService : ISalesService
                 throw new InvalidOperationException("No se puede anular un pedido que ya ha sido entregado al cliente.");
 
             sale.Status = SaleStatus.Cancelled;
+            // Paso 14 (S3): fecha real de anulacion para las reversas de comision del periodo.
+            sale.CancelledAtUtc = DateTime.UtcNow;
             ClearHoldClaim(sale);
             await _context.SaveChangesAsync(cancellationToken);
 

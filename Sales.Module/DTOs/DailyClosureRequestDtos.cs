@@ -8,6 +8,13 @@ public class CreateClosureRequest
     public DateTime ClosureDate { get; set; }
     public string? UserId { get; set; } = "Admin";
     public string? Observation { get; set; }
+
+    /// <summary>
+    /// Residual 8.187-8.188: conteo fisico USD opcional del cierre diario. Ausente/null conserva
+    /// el comportamiento previo.
+    /// </summary>
+    public decimal? ActualClosingBalanceUsd { get; set; }
+
     public List<CreateClosureDetailRequest> Details { get; set; } = new();
 }
 

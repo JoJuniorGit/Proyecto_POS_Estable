@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense, useCallback } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ExchangeRateProvider, useExchangeRate } from './context/ExchangeRateContext';
 import { CurrencyFormatProvider } from './context/CurrencyFormatContext';
+import { MonetaryProfileProvider } from './context/MonetaryProfileContext';
 import { CartProvider, useCart } from './context/CartContext';
 import { AuthorizationProvider, useAuthorization } from './components/authorization/AuthorizationProvider';
 import AuthorizationNotifications from './components/authorization/AuthorizationNotifications';
@@ -21,8 +22,10 @@ import AccessDenied from './navigation/AccessDenied';
 const PosPage = lazy(() => import('./pages/PosPage'));
 const CatalogPage = lazy(() => import('./pages/CatalogPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
+const ProfitabilityPage = lazy(() => import('./pages/ProfitabilityPage'));
 const PendingOrdersPage = lazy(() => import('./pages/PendingOrdersPage'));
 const PendingPickupsPage = lazy(() => import('./pages/PendingPickupsPage'));
+const CreditReceivablesPage = lazy(() => import('./pages/CreditReceivablesPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const RegisterClosePage = lazy(() => import('./pages/RegisterClosePage'));
 const StockCountPage = lazy(() => import('./pages/StockCountPage'));
@@ -179,10 +182,14 @@ function MainApp() {
         return <CatalogPage />;
       case 'history':
         return <HistoryPage />;
+      case 'profitability':
+        return <ProfitabilityPage />;
       case 'pending':
         return <PendingOrdersPage onNavigate={handleNavigate} />;
       case 'pickups':
         return <PendingPickupsPage />;
+      case 'credit':
+        return <CreditReceivablesPage />;
       case 'register':
         return <RegisterPage />;
       case 'closing':
@@ -288,11 +295,13 @@ export default function App() {
     <AuthProvider>
       <ExchangeRateProvider>
         <CurrencyFormatProvider>
-          <CartProvider>
-            <AuthorizationProvider>
-              <MainApp />
-            </AuthorizationProvider>
-          </CartProvider>
+          <MonetaryProfileProvider>
+            <CartProvider>
+              <AuthorizationProvider>
+                <MainApp />
+              </AuthorizationProvider>
+            </CartProvider>
+          </MonetaryProfileProvider>
         </CurrencyFormatProvider>
       </ExchangeRateProvider>
     </AuthProvider>

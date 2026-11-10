@@ -40,9 +40,23 @@ public interface IInventoryService
     // 8.181-T1 (S1-S4): edición masiva de precios. Preview sin escrituras; apply en UNA transacción
     // all-or-nothing. Ambas comparten el mismo motor de cálculo (S4).
     Task<Core.DTOs.BulkPriceUpdateResultDto> PreviewBulkPriceUpdateAsync(Core.DTOs.BulkPriceUpdateRequestDto request, System.Threading.CancellationToken cancellationToken = default);
-    Task<Core.DTOs.BulkPriceUpdateResultDto> BulkUpdatePricesAsync(Core.DTOs.BulkPriceUpdateRequestDto request, System.Threading.CancellationToken cancellationToken = default);
+    Task<Core.DTOs.BulkPriceUpdateResultDto> BulkUpdatePricesAsync(
+        Core.DTOs.BulkPriceUpdateRequestDto request,
+        System.Threading.CancellationToken cancellationToken = default,
+        Core.DTOs.BulkPriceIdempotency? idempotency = null);
     Task<byte[]> ExportProductsAsync(string format, bool activeOnly, string? filter = null, System.Threading.CancellationToken cancellationToken = default);
     Task<byte[]> GenerateTemplateAsync(string format, System.Threading.CancellationToken cancellationToken = default);
+
+    // Paso 14 (F2-WU4, F2-S4): catálogo mínimo para resolver el filtro por categoría (incluyendo
+    // subárbol) y para nombrar productos/categorías en los desgloses de rentabilidad.
+    Task<IReadOnlyList<int>> GetProductIdsByCategoryAsync(
+        IReadOnlyCollection<int> categoryIds,
+        bool includeSubtree,
+        System.Threading.CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyDictionary<int, Core.DTOs.ProfitabilityProductInfoDto>> GetProductCategoryInfoAsync(
+        IReadOnlyCollection<int> productIds,
+        System.Threading.CancellationToken cancellationToken = default);
     Task EnrollInTransactionAsync(System.Data.Common.DbTransaction transaction, System.Threading.CancellationToken cancellationToken = default);
     /// <summary>Restaura la conexión propia del scope tras una transacción compartida (8.7-B7).</summary>
     Task DetachFromTransactionAsync(System.Threading.CancellationToken cancellationToken = default);

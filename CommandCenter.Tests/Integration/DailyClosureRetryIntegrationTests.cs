@@ -79,9 +79,23 @@ public class DailyClosureRetryIntegrationTests
             var saleBase = DateTime.UtcNow.Date.AddDays(1).AddHours(9);
             int idSuffix = Environment.TickCount & 0x3FFFF;
             context.Sales.Add(new Sale { Id = idSuffix + 500, Status = SaleStatus.Completed, Date = saleBase.AddHours(1) });
-            context.SalePayments.Add(new SalePayment { SaleId = idSuffix + 500, PaymentMethodId = 1, AmountBsS = 1000m });
+            // 8.200+: el Cierre Z usa la fecha REAL del pago (CreatedAt), no la fecha de la venta.
+            // El fixture debe reflejar esa ventana para que el esperado no quede en cero.
+            context.SalePayments.Add(new SalePayment
+            {
+                SaleId = idSuffix + 500,
+                PaymentMethodId = 1,
+                AmountBsS = 1000m,
+                CreatedAt = saleBase.AddHours(1)
+            });
             context.Sales.Add(new Sale { Id = idSuffix + 501, Status = SaleStatus.Completed, Date = saleBase.AddHours(2) });
-            context.SalePayments.Add(new SalePayment { SaleId = idSuffix + 501, PaymentMethodId = puntoDeVentaId, AmountBsS = 2500m });
+            context.SalePayments.Add(new SalePayment
+            {
+                SaleId = idSuffix + 501,
+                PaymentMethodId = puntoDeVentaId,
+                AmountBsS = 2500m,
+                CreatedAt = saleBase.AddHours(2)
+            });
             await context.SaveChangesAsync();
 
             var command = new CreateClosureCommand(

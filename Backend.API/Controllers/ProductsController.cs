@@ -11,8 +11,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Backend.API.Attributes;
+
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize(Roles = "Admin,Manager,Cashier")]
 [ApiController]
 [Route("api/[controller]")]
@@ -50,9 +53,16 @@ public partial class ProductsController : ControllerBase
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        if (!_currentUserService.CanMutateCatalog && string.Equals(sortBy, "cost", System.StringComparison.OrdinalIgnoreCase))
+        if (!_currentUserService.CanMutateCatalog && !string.IsNullOrWhiteSpace(sortBy))
         {
-            sortBy = "name";
+            // SEC-14: el servicio acepta "cost" y "costprice". Normalizamos ambos para que
+            // ningún alias permita inferir el costo por el orden de la respuesta.
+            var normalizedSort = sortBy.Trim();
+            if (string.Equals(normalizedSort, "cost", System.StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedSort, "costprice", System.StringComparison.OrdinalIgnoreCase))
+            {
+                sortBy = "name";
+            }
         }
 
         // 8.179-T1 (S4): categoryId filtra por la categoría y todo su subárbol.
@@ -116,6 +126,10 @@ public partial class ProductsController : ControllerBase
         catch (System.Collections.Generic.KeyNotFoundException)
         {
             return this.ApiNotFound($"Producto con ID {id} no encontrado.");
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return this.ApiConflict("The product was modified concurrently by another operation. Please reload and try again.");
         }
     }
 
@@ -243,6 +257,9 @@ public partial class ProductsController : ControllerBase
         }
     }
 
+    // 8.186-T1 (S1/S6): el masking de Cashier solo oculta costo/margen; los campos efectivos Bs.S
+    // (no sensibles) sobreviven por construcción para que la web del Cashier muestre el mismo
+    // precio proyectado que el POS.
     private ProductDto MaskProductDto(ProductDto item) => item.MaskCosts();
 
     private Core.DTOs.ProductQuickInfoDto MaskQuickInfoDto(Core.DTOs.ProductQuickInfoDto item)
@@ -259,6 +276,10 @@ public partial class ProductsController : ControllerBase
             // 8.185-T2 (S6): la regla de efectivo no es sensible (no expone costo/margen) y debe
             // sobrevivir al masking para que el rol Cashier proyecte el mismo precio publicado.
             RoundingRuleCashBs = item.RoundingRuleCashBs,
+            // 8.186-T1 (S1/S6): los precios efectivos Bs.S tampoco son sensibles — sin copiarlos,
+            // el masking los descartaría y la web del Cashier perdería la paridad con el POS.
+            EffectivePriceBsS = item.EffectivePriceBsS,
+            EffectiveWholesalePriceBsS = item.EffectiveWholesalePriceBsS,
             HasWholesale = item.HasWholesale,
             IsFractional = item.IsFractional,
             UnitOfMeasure = item.UnitOfMeasure,

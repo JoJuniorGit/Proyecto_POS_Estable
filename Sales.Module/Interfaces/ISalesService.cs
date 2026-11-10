@@ -13,13 +13,56 @@ public interface ISalesService
     Task<SaleDto> StartSaleAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> GetSaleAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
     Task<(string Status, int? CashierId)?> GetSaleAuthMetadataAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
-    Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+    Task<SaleDto> AddItemAsync(int saleId, int productId, decimal quantity, decimal exchangeRate, decimal? customUnitPriceUsd = null, decimal? customUnitPriceLocal = null, bool isPriceOverrideAuthorized = false, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, string? requestPath = null);
     Task<SaleDto> RemoveItemAsync(int saleId, int itemId, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> UpdateItemQuantityAsync(int saleId, int itemId, decimal quantity, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> UpdateExchangeRateAsync(int saleId, decimal exchangeRate, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> UpdatePriceListAsync(int saleId, string priceListType, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task CancelSaleAsync(int saleId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<int> CompleteSaleAsync(int saleId, decimal exchangeRate, IEnumerable<PaymentInfo> payments, decimal roundingAdjustment = 0, int? cashierId = null, bool isPendingPickup = false, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, System.Threading.CancellationToken cancellationToken = default, int? actingUserId = null);
+
+    /// <summary>
+    /// 8.187-T2 (F2a, S2/S6): cierra una venta a crédito (total o mixta con abono inicial). Lo
+    /// cobrado ingresa a caja como un pago regular; el remanente efectivo en Bs.S por encima del
+    /// polvo decimal se financia como Cuenta por Cobrar y no toca la gaveta. La factura se emite al
+    /// completar, el stock se descuenta de inmediato y el reintento devuelve la misma factura.
+    /// Devuelve el número de factura (mismo contrato del cierre regular).
+    /// T3b1 (S4): cuando el ÚNICO bloqueo de solvencia es el sobregiro de cupo, el servicio lanza
+    /// <see cref="Core.DTOs.CreditOverLimitRequiresAuthorizationException"/> con el contexto exacto
+    /// (solo si <paramref name="creditOverLimitAuthorized"/> es false). Con el flag en true —ruta
+    /// exclusiva del token ya consumido por el controlador— el sobregiro deja de bloquear, pero
+    /// bloqueo manual, mora, línea deshabilitada, plazo inválido y cliente inexistente/inactivo
+    /// jamas se omiten.
+    /// </summary>
+    Task<int> CompleteCreditSaleAsync(int saleId, CreditSaleRequest request, int? actingUserId = null, bool creditOverLimitAuthorized = false, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T3a (F2b, S3/S6): registra un abono CxC contra la cartera del cliente (FIFO por
+    /// vencimiento/emisión/Id o factura explícita en el orden informado). La tasa es server-side
+    /// (fuente BCV cacheada) y queda congelada en el abono; el FX se realiza por asignación con
+    /// signo. Solo lo cobrado entra a caja (método efectivo) con origen CreditPayment. La clave
+    /// de idempotencia replica el cobro existente sin nuevos movimientos.
+    /// </summary>
+    Task<CreditPaymentResultDto> RegisterCreditPaymentAsync(CreditPaymentRequest request, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T3b2 (F2b, S5/S7): anula una venta a crédito SIN abonos (saldo vigente igual al original,
+    /// sin asignaciones de cobro). Restituye TODO el stock por el camino de inventario (motivo
+    /// Return), marca la obligación Anulada con saldo 0 y la venta Cancelada; no genera
+    /// movimientos de caja y el cupo del cliente se restituye implícitamente. Con abonos o
+    /// devoluciones previas la anulación simple queda bloqueada.
+    /// </summary>
+    Task<CreditCancelResultDto> CancelCreditSaleAsync(int saleId, string? reason, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T3b2 (F2b, S5/S7): registra la devolución total o parcial de una venta a crédito. El valor
+    /// por línea se calcula server-side sobre la base EFECTIVA (SubtotalBsS / tasa de emisión) y
+    /// reduce primero el saldo; el excedente efectivamente pagado (overpago) se reembolsa por caja
+    /// (Expense, origen CreditRefund) a la tasa congelada del último abono. La devolución acumulada
+    /// por ítem nunca excede la cantidad vendida y la clave de idempotencia replica sin nuevos
+    /// movimientos.
+    /// </summary>
+    Task<CreditReturnResultDto> RegisterCreditReturnAsync(int saleId, CreditReturnRequest request, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 8.152 (SEC-08): resuelve la tasa efectiva del checkout-preview con el MISMO anclaje del
@@ -75,8 +118,8 @@ public interface ISalesService
     Task<int> RecalculateOnHoldSalesAsync(decimal newExchangeRate, System.Threading.CancellationToken cancellationToken = default);
 
     Task<SaleDto> ClaimSaleAsync(int saleId, SaleClaimAction action, int? actingUserId, System.Threading.CancellationToken cancellationToken = default);
-
     Task<SaleDto> ReleaseSaleAsync(int saleId, int? actingUserId, bool force = false, System.Threading.CancellationToken cancellationToken = default);
+
 
     Task<SaleDto> CreateCashAdvanceSaleAsync(
         decimal requestedAmountLocal,
@@ -88,5 +131,11 @@ public interface ISalesService
         int? cashierId = null,
         string? userName = null,
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? existingTransaction = null,
-        System.Threading.CancellationToken cancellationToken = default);
+        System.Threading.CancellationToken cancellationToken = default,
+        decimal? receivedPrincipal = null,
+        decimal? receivedCommission = null,
+        decimal? receivedTotal = null,
+        decimal? receivedTotalUsd = null,
+        string? receivedCurrencyCode = null,
+        decimal? receivedCommissionUsd = null);
 }

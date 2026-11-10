@@ -29,6 +29,7 @@ const ALL_LABELS = [
   'Catálogo',
   'Conteo físico',
   'Historial Ventas',
+  'Rentabilidad',
   'Caja',
   'Cierre Diario',
   'Configuración',
@@ -72,10 +73,14 @@ describe('Sidebar per-role menu [8.130]', () => {
 
     assert.ok(adminText.includes('Configuración'));
     assert.ok(managerText.includes('Configuración'));
+    assert.ok(adminText.includes('Rentabilidad'));
+    assert.ok(managerText.includes('Rentabilidad'));
     assert.ok(!cashierText.includes('Configuración'));
     assert.ok(!cashierText.includes('Tasa de Cambio'));
+    assert.ok(!cashierText.includes('Rentabilidad'));
     assert.ok(!driverText.includes('Punto de Venta'));
     assert.ok(!driverText.includes('Caja'));
+    assert.ok(!driverText.includes('Rentabilidad'));
     assert.ok(driverText.includes('Retiros Pendientes'));
     assert.ok(driverText.includes('Historial Ventas'));
   });

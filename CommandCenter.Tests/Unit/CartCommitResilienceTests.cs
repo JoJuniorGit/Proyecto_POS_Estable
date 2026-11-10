@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -98,7 +99,7 @@ public class CartCommitResilienceTests
         cart.CartItems[0].Model.Quantity = 3m;
         cart.CartItems[1].Model.Quantity = 4m;
 
-        mockSales.Setup(s => s.UpdateItemQuantityAsync(101, 1, 3m, Rate))
+        mockSales.Setup(s => s.UpdateSaleItemsAsync(101, It.IsAny<IEnumerable<UpdateSaleItemDto>>(), Rate))
                  .ThrowsAsync(new InvalidOperationException("flush-down"));
         mockSales.Setup(s => s.GetSaleAsync(101)).ReturnsAsync(PendingSale((1, 1m), (2, 1m)));
 
@@ -107,6 +108,38 @@ public class CartCommitResilienceTests
         Assert.Equal(1m, cart.CartItems[0].Model.Quantity);
         Assert.Equal(1m, cart.CartItems[1].Model.Quantity);
         mockDialog.Verify(d => d.ShowError("Error", RollbackMessage), Times.Once);
+    }
+
+    [Fact]
+    public async Task RemoveItem_WithPendingQuantityEditInAnotherRow_CommitsEditBeforeRemoval()
+    {
+        // Reproducción del bug de sincronización UI/Modelo: con una edición de cantidad
+        // pendiente (sin Enter) en la fila 1, cualquier mutación del carrito (🗑 de la fila 2)
+        // debe commitear esa edición ANTES de reconstruir la colección desde el servidor.
+        var mockSales = new Mock<ISalesService>();
+        var mockDialog = new Mock<IDialogService>();
+        var cart = CreateCart(mockSales, mockDialog, PendingSale((1, 1m), (2, 1m)));
+
+        cart.CartItems[0].QuantityText = "10";
+
+        var committedSale = PendingSale((1, 10m), (2, 1m));
+        var afterRemoval = PendingSale((1, 10m));
+        var callOrder = new System.Collections.Generic.List<string>();
+
+        mockSales.Setup(s => s.UpdateSaleItemsAsync(101, It.IsAny<IEnumerable<UpdateSaleItemDto>>(), Rate))
+                 .Callback(() => callOrder.Add("commit-item-1"))
+                 .Returns(Task.CompletedTask);
+        mockSales.Setup(s => s.GetSaleAsync(101))
+                 .Callback(() => callOrder.Add("reload"))
+                 .ReturnsAsync(committedSale);
+        mockSales.Setup(s => s.RemoveItemAsync(101, 2, Rate))
+                 .Callback(() => callOrder.Add("remove-item-2"))
+                 .ReturnsAsync(afterRemoval);
+
+        await cart.RemoveItemCommand.ExecuteAsync(cart.CartItems[1]);
+
+        Assert.Equal(new[] { "commit-item-1", "reload", "remove-item-2" }, callOrder);
+        Assert.Equal(10m, cart.CurrentSale!.Items.Single(i => i.Id == 1).Quantity);
     }
 
     [Fact]

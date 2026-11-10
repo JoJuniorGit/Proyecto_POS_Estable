@@ -15,6 +15,11 @@ using Xunit;
 
 namespace CommandCenter.Tests.Integration;
 
+/// <summary>
+/// Concurrencia real de abonos sobre ventas en espera (PostgreSQL aislado por test, carril
+/// <see cref="PostgresTestLane"/>): el advisory lock por venta (clase 2) serializa los abonos y
+/// el tope de saldo impide el sobrepago. Sin conexión utilizable el carril falla EXPLÍCITO.
+/// </summary>
 [Trait("Category", "RequiresDocker")]
 [Collection(PostgresRealCollection.Name)]
 public class HoldPaymentConcurrencyPostgresTests
@@ -45,17 +50,10 @@ public class HoldPaymentConcurrencyPostgresTests
     [Fact]
     public async Task AddPaymentToHoldSaleAsync_TwoConcurrentAbonos_CannotOverpaySale()
     {
-        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connStr)) return;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(seedStandardSalesData: true);
 
-        using (var seedContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext())
+        await using (var seedContext = database.CreateSalesDbContext())
         {
-            if (seedContext == null) return;
-            await TestDatabaseFactory.SeedStandardSalesDataAsync(seedContext);
-
-            await seedContext.SalePayments.Where(p => p.SaleId == SaleId).ExecuteDeleteAsync();
-            await seedContext.Sales.Where(s => s.Id == SaleId).ExecuteDeleteAsync();
-
             seedContext.Sales.Add(new Sale
             {
                 Id = SaleId,
@@ -70,49 +68,34 @@ public class HoldPaymentConcurrencyPostgresTests
             await seedContext.SaveChangesAsync();
         }
 
-        try
+        await using var firstContext = database.CreateSalesDbContext();
+        await using var secondContext = database.CreateSalesDbContext();
+
+        var paymentMethodId = await firstContext.PaymentMethods
+            .Where(pm => !pm.IsCash && pm.IsActive)
+            .Select(pm => pm.Id)
+            .FirstAsync();
+
+        var request = new AddPaymentRequestDto
         {
-            using var firstContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-            using var secondContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-            if (firstContext == null || secondContext == null) return;
+            PaymentMethodId = paymentMethodId,
+            AmountUSD = 60m,
+            AmountBsS = 3000m,
+            ExchangeRate = 50m
+        };
 
-            var paymentMethodId = await firstContext.PaymentMethods
-                .Where(pm => !pm.IsCash && pm.IsActive)
-                .Select(pm => pm.Id)
-                .FirstAsync();
+        var results = await Task.WhenAll(
+            TryAddPaymentAsync(CreateService(firstContext), request),
+            TryAddPaymentAsync(CreateService(secondContext), request));
 
-            var request = new AddPaymentRequestDto
-            {
-                PaymentMethodId = paymentMethodId,
-                AmountUSD = 60m,
-                AmountBsS = 3000m,
-                ExchangeRate = 50m
-            };
+        Assert.Equal(1, results.Count(r => r == null));
+        Assert.Equal(1, results.Count(r => r is ArgumentException));
 
-            var results = await Task.WhenAll(
-                TryAddPaymentAsync(CreateService(firstContext), request),
-                TryAddPaymentAsync(CreateService(secondContext), request));
+        await using var verifyContext = database.CreateSalesDbContext();
+        decimal paid = await verifyContext.SalePayments
+            .Where(p => p.SaleId == SaleId)
+            .SumAsync(p => (decimal?)p.Amount) ?? 0m;
 
-            Assert.Equal(1, results.Count(r => r == null));
-            Assert.Equal(1, results.Count(r => r is ArgumentException));
-
-            using var verifyContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-            if (verifyContext == null) return;
-
-            decimal paid = await verifyContext.SalePayments
-                .Where(p => p.SaleId == SaleId)
-                .SumAsync(p => (decimal?)p.Amount) ?? 0m;
-
-            Assert.True(paid <= 100.05m, $"El total abonado ({paid}) no debe exceder el total de la venta.");
-        }
-        finally
-        {
-            using var cleanupContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-            if (cleanupContext != null)
-            {
-                await cleanupContext.SalePayments.Where(p => p.SaleId == SaleId).ExecuteDeleteAsync();
-                await cleanupContext.Sales.Where(s => s.Id == SaleId).ExecuteDeleteAsync();
-            }
-        }
+        Assert.True(paid <= 100.05m, $"El total abonado ({paid}) no debe exceder el total de la venta.");
     }
 }

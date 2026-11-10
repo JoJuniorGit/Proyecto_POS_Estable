@@ -4,7 +4,10 @@ import {
   getDeliveryNoteBlob,
   getPendingPickupsPage,
 } from '../services/pendingPickupApi';
-import { formatBsS, formatUSD, formatQuantity } from '../utils/formatters';
+import { formatNumberEs, formatQuantity, effectiveTotalUsd } from '../utils/formatters';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../components/register/registerFormLogic';
 import {
   PackageCheck,
   User,
@@ -23,6 +26,20 @@ import PartialDeliveryModal from '../components/pending/PartialDeliveryModal';
 import { computeProgress } from '../utils/deliveryProgress';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import './PendingPickupsPage.css';
+
+/**
+ * 8.211-T4b2b2b (S9): etiquetas del perfil monetario activo para retiros pendientes. En `Single`
+ * sólo existe la primaria; la línea USD duplicada se oculta.
+ * @param {{ mode?: string, primaryCurrencyCode?: string, secondaryCurrencyCode?: string }} profile
+ */
+export function resolvePendingPickupsCurrencyLabels(profile) {
+  const local = resolveLocalCurrencyProfile(profile);
+  return {
+    isDual: local.isDual,
+    primaryLabel: displayCurrencyCode(profile?.primaryCurrencyCode) || 'USD',
+    localLabel: local.label || 'Bs.S',
+  };
+}
 
 function PickupStatus({ pickup, size }) {
   if (pickup.deliveryStatus !== 'PartiallyDelivered') {
@@ -62,6 +79,8 @@ export default function PendingPickupsPage() {
 }
 
 function PendingPickupsPageContent() {
+  const { profile: monetaryProfile, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const { isDual, primaryLabel, localLabel } = resolvePendingPickupsCurrencyLabels(monetaryProfile);
   const [pickups, setPickups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -299,7 +318,7 @@ function PendingPickupsPageContent() {
                 <tr className="ppk-border-bottom ppk-thead-bg">
                   <th className="ppk-table-pad">Factura N° / Fecha</th>
                   <th className="ppk-table-pad">Cliente</th>
-                  <th className="ppk-table-pad text-right">TOTAL FACTURA (Bs.S)</th>
+                  <th className="ppk-table-pad text-right">TOTAL FACTURA ({localLabel})</th>
                   <th className="ppk-table-pad text-center">Estado</th>
                   <th className="ppk-table-pad text-right">Acciones</th>
                 </tr>
@@ -352,11 +371,13 @@ function PendingPickupsPageContent() {
 
                         <td className="ppk-table-pad text-right">
                           <strong className="font-mono ppk-total-mono">
-                            {formatBsS(pickup.totalBsS).replace(/^Bs\.S\s?/, '')}
+                            {formatNumberEs(pickup.totalBsS)}
                           </strong>
-                          <div className="text-muted font-normal text-xs text-right ppk-mt-2px">
-                            {formatUSD(pickup.totalUSD || 0)}
-                          </div>
+                          {isDual && (
+                            <div className="text-muted font-normal text-xs text-right ppk-mt-2px">
+                              {formatPrimary(effectiveTotalUsd(pickup))}
+                            </div>
+                          )}
                         </td>
 
                         <td className="ppk-table-pad text-center">
@@ -394,8 +415,8 @@ function PendingPickupsPageContent() {
                                   <tr className="ppk-border-bottom ppk-faded">
                                     <th className="ppk-detail-th-first">Producto</th>
                                     <th className="ppk-detail-th-mid ppk-th-cant">Cant.</th>
-                                    <th className="ppk-detail-th-mid ppk-th-punit">P. Unit Bs.S</th>
-                                    <th className="ppk-detail-th-mid ppk-th-subtotal">Subtotal Bs.S</th>
+                                    <th className="ppk-detail-th-mid ppk-th-punit">P. Unit {localLabel}</th>
+                                    <th className="ppk-detail-th-mid ppk-th-subtotal">Subtotal {localLabel}</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -403,8 +424,8 @@ function PendingPickupsPageContent() {
                                       <tr key={`${item.productName}-${item.quantity}-${idx}`} className="ppk-border-dashed">
                                       <td className="ppk-item-name">{item.productName}</td>
                                       <td className="text-right font-bold text-nowrap ppk-item-cell">{formatQuantity(item.quantity)}</td>
-                                      <td className="text-right font-mono text-nowrap ppk-item-cell">{formatBsS(item.unitPriceBsS)}</td>
-                                      <td className="text-right font-mono font-bold text-nowrap ppk-item-cell">{formatBsS(item.subtotalBsS)}</td>
+                                      <td className="text-right font-mono text-nowrap ppk-item-cell">{formatSecondary(item.unitPriceBsS)}</td>
+                                      <td className="text-right font-mono font-bold text-nowrap ppk-item-cell">{formatSecondary(item.subtotalBsS)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -465,13 +486,15 @@ function PendingPickupsPageContent() {
                   <div
                     className="pending-mobile-card-summary ppk-summary-grid"
                   >
-                    <div>
-                      <div className="text-xs text-muted mb-1">Total (USD)</div>
-                      <div className="font-bold text-primary text-nowrap ppk-total-sm">{formatUSD(pickup.totalUSD)}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-muted mb-1">Total (Bs.S)</div>
-                      <div className="font-bold font-mono text-primary text-nowrap ppk-total-sm">{formatBsS(pickup.totalBsS).replace(/^Bs\.S\s?/, '')}</div>
+                    {isDual && (
+                      <div>
+                        <div className="text-xs text-muted mb-1">Total ({primaryLabel})</div>
+                        <div className="font-bold text-primary text-nowrap ppk-total-sm">{formatPrimary(effectiveTotalUsd(pickup))}</div>
+                      </div>
+                    )}
+                    <div className={isDual ? 'text-right' : ''}>
+                      <div className="text-xs text-muted mb-1">Total ({localLabel})</div>
+                      <div className="font-bold font-mono text-primary text-nowrap ppk-total-sm">{formatNumberEs(pickup.totalBsS)}</div>
                     </div>
                   </div>
 
@@ -511,9 +534,9 @@ function PendingPickupsPageContent() {
                           <div key={`${item.productName}-${item.quantity}-${idx}`} className="flex-between align-start ppk-item-row ppk-border-bottom">
                             <div className="ppk-item-main">
                               <div><strong>{item.productName}</strong></div>
-                              <div className="text-xs text-muted">{formatQuantity(item.quantity)} unds x {formatBsS(item.unitPriceBsS)}</div>
+                              <div className="text-xs text-muted">{formatQuantity(item.quantity)} unds x {formatSecondary(item.unitPriceBsS)}</div>
                             </div>
-                            <div className="font-bold font-mono text-right text-nowrap flex-shrink-0">{formatBsS(item.subtotalBsS)}</div>
+                            <div className="font-bold font-mono text-right text-nowrap flex-shrink-0">{formatSecondary(item.subtotalBsS)}</div>
                           </div>
                         ))}
                       </div>

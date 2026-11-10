@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Core.Entities;
+using Core.Helpers;
 
 namespace Sales.Module.Entities;
 
@@ -12,6 +13,18 @@ public enum SaleStatus
     Completed,
     Cancelled,
     OnHold
+}
+
+/// <summary>
+/// Paso 14 (S2): naturaleza persistida de la venta. El capital dispensado en un avance de
+/// efectivo es movimiento de tesoreria, no ingreso por venta de mercancia; el discriminador
+/// permite excluirlo de Ventas Netas y CMV sin reinterpretar los montos historicos.
+/// </summary>
+public enum SaleType
+{
+    Merchandise = 0,
+    CashAdvance = 1,
+    Service = 2
 }
 
 public class Sale
@@ -44,6 +57,21 @@ public class Sale
     [Required]
     public SaleStatus Status { get; set; } = SaleStatus.Pending;
 
+    // Paso 14 (S2): discriminador de la naturaleza de la venta (mercancia, avance, servicio).
+    public SaleType SaleType { get; set; } = SaleType.Merchandise;
+
+    // Paso 14 (S2): comision de servicio del avance congelada al completar la venta. Importes
+    // inmutables: 4dp para USD y 2dp para la moneda local, alineados con el resto del sistema.
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal CommissionAmountUSD { get; set; }
+
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal CommissionAmountLocal { get; set; }
+
+    // Paso 14 (S3): fecha real de anulacion (UTC) para reversas de comision del periodo y
+    // consistencia historica de las ventas ya anuladas.
+    public DateTime? CancelledAtUtc { get; set; }
+
     [Column(TypeName = "decimal(18,4)")]
     public decimal Subtotal { get; set; }
 
@@ -65,6 +93,31 @@ public class Sale
     [Column(TypeName = "decimal(18,2)")]
     public decimal FinalPaidAmountBsS { get; set; }
 
+    // 8.211-T3a (S6): snapshot aditivo del perfil monetario vigente al completar la venta.
+    // Instalaciones legacy o sin perfil configurado conservan USD/VES/Dual. Los montos y tasas
+    // históricos siguen siendo la fuente de cálculo: estas columnas solo describen el régimen.
+    [MaxLength(3)]
+    public string PrimaryCurrencyCode { get; set; } = "USD";
+
+    [MaxLength(3)]
+    public string? SecondaryCurrencyCode { get; set; } = "VES";
+
+    [MaxLength(16)]
+    public string MonetaryMode { get; set; } = "Dual";
+
+    // 8.211-T3c2 (S6): snapshots aditivos de los importes del régimen USD-primario vigente.
+    // Duplican los totales canónicos (TotalUSD/TotalBsS) sin recalcularlos ni reinterpretarlos;
+    // las columnas históricas siguen siendo la fuente de cálculo. En esta fase la única ruta
+    // habilitada es Dual USD/VES y la tasa proviene de BCV (AppliedRateSource = "Bcv").
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? PrimaryAmount { get; set; }
+
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? SecondaryAmount { get; set; }
+
+    [MaxLength(16)]
+    public string? AppliedRateSource { get; set; }
+
     public int? CashierId { get; set; }
     public User? Cashier { get; set; }
 
@@ -78,6 +131,19 @@ public class Sale
     public DateTime? ClaimedAtUtc { get; set; }
 
     public bool IsZeroAmountOrder => TotalUSD == 0;
+
+    /// <summary>
+    /// Sincronización USD efectivo (ANEXO XII): monto real transado en USD — inverso del Total
+    /// Bs.S EFECTIVO (ya redondeado) a la tasa anclada de la venta. Propiedad calculada, sin
+    /// columna nueva: TotalBsS + AppliedRate ya son el snapshot inmutable y duplicar el cociente
+    /// abriría una segunda fuente de verdad (el flujo de venta lo persiste como derivado).
+    /// 4 decimales por consistencia con el precedente de CashAdvance (BsS/rate) y precisión
+    /// sub-centavo para analítica (Paso 14). Sin Bs.S cobrado o sin tasa cae al canónico.
+    /// 8.186-T3 (S3): la fórmula vive en el helper único PricingCalculator.EffectiveUsdFromBsS
+    /// (compartido con el checkout preview web) — comportamiento byte-idéntico, sin duplicar la inversa.
+    /// </summary>
+    [NotMapped]
+    public decimal EffectiveTotalUSD => PricingCalculator.EffectiveUsdFromBsS(TotalBsS, AppliedRate, TotalUSD);
 
     public List<SalePayment> Payments { get; set; } = new();
 

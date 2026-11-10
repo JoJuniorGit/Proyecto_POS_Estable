@@ -83,7 +83,8 @@ public class ClosureReportLineCurrencyTests
         await SeedSaleAsync(context, 1, 1, 2500m);
 
         var service = DailyClosureTestHelper.CreateService(context);
-        var result = await service.CreateClosureFromCommandAsync(CreateCommand(), CancellationToken.None);
+        var result = await service.CreateClosureFromCommandAsync(
+            CreateCommand(new DeclaredPaymentAmount(1, 50m)), CancellationToken.None);
 
         var detail = result.Details.Single(d => d.PaymentMethodId == 1);
         Assert.Equal(PaymentMethodCurrencyResolver.Usd, detail.Currency);
@@ -140,7 +141,8 @@ public class ClosureReportLineCurrencyTests
         await SeedSaleAsync(context, 4, 4, 1000m);
 
         var service = DailyClosureTestHelper.CreateService(context);
-        var result = await service.CreateClosureFromCommandAsync(CreateCommand(), CancellationToken.None);
+        var result = await service.CreateClosureFromCommandAsync(
+            CreateCommand(new DeclaredPaymentAmount(4, 1000m)), CancellationToken.None);
 
         var detail = result.Details.Single(d => d.PaymentMethodId == 4);
         Assert.Equal(PaymentMethodCurrencyResolver.LocalCurrency, detail.Currency);

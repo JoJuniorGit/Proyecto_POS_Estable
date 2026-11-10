@@ -2,7 +2,9 @@ using System;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
+using Desktop.Client.Messages;
 using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
@@ -14,6 +16,9 @@ public partial class LoginViewModel : ObservableObject, IDisposable
     private readonly UserSession _userSession;
     private readonly IConnectionManager? _connectionManager;
     private readonly IDispatcherInvoker _dispatcherInvoker;
+    // 8.211-T4c2a (S9): tras autenticar se refresca el perfil read-only y se actualiza el
+    // display global; un fallo de settings nunca bloquea el login.
+    private readonly IClientMonetaryProfileService? _monetaryProfileService;
     private readonly EventHandler<ConnectionStatusEventArgs>? _connectionStatusHandler;
 
     [ObservableProperty]
@@ -35,7 +40,7 @@ public partial class LoginViewModel : ObservableObject, IDisposable
     private bool _isScanningServer;
 
     [ObservableProperty]
-    private string _serverAddressText = "localhost:5000";
+    private string _serverAddressText = "localhost:5001";
 
     [RelayCommand]
     private void TogglePasswordVisibility()
@@ -85,13 +90,20 @@ public partial class LoginViewModel : ObservableObject, IDisposable
 
     public event Action? LoginSuccess;
 
-    public LoginViewModel(IUserService userService, IDialogService dialogService, UserSession userSession, IConnectionManager? connectionManager = null, IDispatcherInvoker? dispatcherInvoker = null)
+    public LoginViewModel(
+        IUserService userService,
+        IDialogService dialogService,
+        UserSession userSession,
+        IConnectionManager? connectionManager = null,
+        IDispatcherInvoker? dispatcherInvoker = null,
+        IClientMonetaryProfileService? monetaryProfileService = null)
     {
         _userService = userService;
         _dialogService = dialogService;
         _userSession = userSession;
         _connectionManager = connectionManager;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
+        _monetaryProfileService = monetaryProfileService;
 
         if (_connectionManager != null)
         {
@@ -153,6 +165,43 @@ public partial class LoginViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// 8.211-T4c2a (S9): aplica el perfil vigente después de autenticar. Es best-effort: un
+    /// timeout o un backend sin respuesta conserva el estado actual y jamás bloquea el login.
+    /// </summary>
+    private async Task RefreshMonetaryProfileAsync()
+    {
+        if (_monetaryProfileService is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var profile = await _monetaryProfileService.GetAsync()
+                .WaitAsync(TimeSpan.FromSeconds(2));
+            if (profile is null)
+            {
+                return;
+            }
+
+            CurrencyDisplay.SetMonetaryProfile(profile);
+            WeakReferenceMessenger.Default.Send(new MonetaryProfileChangedMessage());
+        }
+        catch (TimeoutException)
+        {
+            Core.Logging.ClientStateLogger.LogWarning(
+                "[MONETARY] El perfil no respondió en 2s; se conserva el display actual.",
+                nameof(LoginViewModel));
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.ClientStateLogger.LogWarning(
+                $"[MONETARY] No se pudo refrescar el perfil tras login: {ex.Message}.",
+                nameof(LoginViewModel));
+        }
+    }
+
     [RelayCommand]
     private async Task LoginAsync()
     {
@@ -200,6 +249,7 @@ public partial class LoginViewModel : ObservableObject, IDisposable
                 Cedula = string.Empty;
                 Password = string.Empty;
                 IsPasswordVisible = false;
+                await RefreshMonetaryProfileAsync();
                 LoginSuccess?.Invoke();
             }
             else
@@ -244,6 +294,7 @@ public partial class LoginViewModel : ObservableObject, IDisposable
                 _userSession.SetUser(retry.User, retry.Token);
                 Cedula = string.Empty;
                 Password = string.Empty;
+                await RefreshMonetaryProfileAsync();
                 LoginSuccess?.Invoke();
             }
             else

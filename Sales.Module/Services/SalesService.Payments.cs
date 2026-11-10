@@ -23,6 +23,11 @@ public partial class SalesService
 
     public async Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request, string? idempotencyKey = null, byte[]? idempotencyPayloadHash = null, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default)
     {
+        // 8.211-T3c3b2 (S7): Single add-payment support is deferred; reject before any mutation.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+        string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
+
         Sale? sale = null;
         if (!_context.Database.IsRelational())
         {
@@ -78,8 +83,9 @@ public partial class SalesService
             decimal runningPaidUsd = existingPayments.Sum(p => p.Amount);
             decimal runningPaidBsS = existingPayments.Sum(p => p.AmountBsS > 0m ? p.AmountBsS : PricingCalculator.ToBsS(p.Amount, freshSale.AppliedRate));
 
-            var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentToHoldSale");
+            var input = await ComputePaymentInputsAsync(saleId, monetaryProfile, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentToHoldSale");
 
+            var currencyCode = ResolvePaymentMethodCurrency(input.Method);
             var paymentEntity = new SalePayment
             {
                 SaleId = sale!.Id,
@@ -88,15 +94,31 @@ public partial class SalesService
                 AmountBsS = Math.Round(input.AmountBsS, 2, MidpointRounding.AwayFromZero),
                 ExchangeRate = input.Rate,
                 ReferenceNumber = request.ReferenceNumber,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                CurrencyCode = currencyCode,
+                OriginalAmount = ResolveOriginalAmount(input.AmountUsd, input.AmountBsS, currencyCode)
             };
+
+            // Paso 14 (S7): la comision es un costo del negocio; solo se snapshotea en el abono.
+            var feeSnapshot = await ResolvePaymentMethodFeeAsync(
+                input.Method,
+                request.PaymentMethodId,
+                paymentEntity.CreatedAt,
+                input.AmountUsd,
+                input.AmountBsS,
+                input.Rate,
+                localCurrencyCode,
+                cancellationToken);
+            paymentEntity.ApplyFeeSnapshot(feeSnapshot);
 
             _context.SalePayments.Add(paymentEntity);
 
             // Si es efectivo y monto positivo, registrar en sesión activa de caja
             if (input.Method != null && input.Method.IsCash && input.AmountUsd > 0 && _cashDrawerService != null)
             {
-                var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(input.Rate);
+                var activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(input.Rate, cancellationToken);
+                // 8.202-H1 (S2): venta (clase 2) -> sesión; el lock cubre el alta del movimiento.
+                await _cashDrawerService.LockOpenSessionForWriteAsync(activeSession.Id, cancellationToken);
                 var cashTx = new CashTransaction
                 {
                     SessionId = activeSession.Id,
@@ -109,7 +131,9 @@ public partial class SalesService
                     Description = $"Abono Venta #{saleId}",
                     TransactionTime = DateTime.UtcNow,
                     SaleId = sale.Id,
-                    PaymentMethodId = request.PaymentMethodId
+                    PaymentMethodId = request.PaymentMethodId,
+                    // 8.211-T3b3 (S6): snapshot de la moneda fisica del abono.
+                    CurrencyCode = currencyCode
                 };
                 _context.CashTransactions.Add(cashTx);
             }
@@ -153,6 +177,11 @@ public partial class SalesService
 
         if (payments.Count > 50)
             throw new ArgumentException("El lote de abonos supera el máximo permitido (50).");
+
+        // 8.211-T3c3b2 (S7): Single batch add-payment support is deferred; reject before mutation.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+        string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
 
         Sale? sale = null;
         if (!_context.Database.IsRelational())
@@ -221,21 +250,32 @@ public partial class SalesService
                 var computedInputs = new List<(AddPaymentRequestDto Request, ComputedPaymentInput Input)>(payments.Count);
                 foreach (var request in payments)
                 {
-                    var input = await ComputePaymentInputsAsync(saleId, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentsBatchToHoldSale", preloadedMethods, hasConfiguredPaymentMethods);
+                    var input = await ComputePaymentInputsAsync(saleId, monetaryProfile, freshSale.TotalUSD, freshSale.TotalBsS, freshSale.AppliedRate, runningPaidUsd, runningPaidBsS, request, "AddPaymentsBatchToHoldSale", preloadedMethods, hasConfiguredPaymentMethods);
                     runningPaidUsd += input.AmountUsd;
                     runningPaidBsS += input.AmountBsS;
                     computedInputs.Add((request, input));
                 }
+
+                // Paso 14 (F2-S5): contextos de comision del lote cargados una sola vez para
+                // todos los metodos distintos; cada abono calcula su snapshot en memoria.
+                var feeRuleContexts = await PaymentMethodFeeResolver.LoadRuleContextsAsync(
+                    _context,
+                    computedInputs.Select(item => item.Request.PaymentMethodId).Distinct().ToList(),
+                    DateTime.UtcNow,
+                    cancellationToken);
 
                 CashDrawerSessionResponseDto? activeSession = null;
                 var firstCashInput = computedInputs.FirstOrDefault(ci => ci.Input.Method != null && ci.Input.Method.IsCash && ci.Input.AmountUsd > 0);
                 if (firstCashInput.Input != null && _cashDrawerService != null)
                 {
                     activeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(firstCashInput.Input.Rate, cancellationToken);
+                    // 8.202-H1 (S2): un lock por lote cubre todos los abonos en efectivo.
+                    await _cashDrawerService.LockOpenSessionForWriteAsync(activeSession.Id, cancellationToken);
                 }
 
                 foreach (var (request, input) in computedInputs)
                 {
+                    var currencyCode = ResolvePaymentMethodCurrency(input.Method);
                     var paymentEntity = new SalePayment
                     {
                         SaleId = sale!.Id,
@@ -244,8 +284,23 @@ public partial class SalesService
                         AmountBsS = Math.Round(input.AmountBsS, 2, MidpointRounding.AwayFromZero),
                         ExchangeRate = input.Rate,
                         ReferenceNumber = request.ReferenceNumber,
-                        CreatedAt = DateTime.UtcNow
+                        CreatedAt = DateTime.UtcNow,
+                        CurrencyCode = currencyCode,
+                        OriginalAmount = ResolveOriginalAmount(input.AmountUsd, input.AmountBsS, currencyCode)
                     };
+
+                    // Paso 14 (S7/F2-S5): snapshot de comision por cada abono del lote, calculado
+                    // desde el contexto precargado. El lote sigue siendo la unica transaccion:
+                    // la comision no altera montos ni caja.
+                    var feeSnapshot = feeRuleContexts.TryGetValue(request.PaymentMethodId, out var feeRuleContext)
+                        ? PaymentMethodFeeResolver.ComputeSnapshot(
+                            feeRuleContext,
+                            input.AmountUsd,
+                            input.AmountBsS,
+                            input.Rate,
+                            localCurrencyCode)
+                        : PaymentMethodFeeSnapshot.None;
+                    paymentEntity.ApplyFeeSnapshot(feeSnapshot);
 
                     _context.SalePayments.Add(paymentEntity);
 
@@ -263,7 +318,9 @@ public partial class SalesService
                             Description = $"Abono Venta #{saleId}",
                             TransactionTime = DateTime.UtcNow,
                             SaleId = sale.Id,
-                            PaymentMethodId = request.PaymentMethodId
+                            PaymentMethodId = request.PaymentMethodId,
+                            // 8.211-T3b3 (S6): snapshot de la moneda fisica del abono.
+                            CurrencyCode = currencyCode
                         };
                         _context.CashTransactions.Add(cashTx);
                     }
@@ -303,6 +360,7 @@ public partial class SalesService
     // abonos del lote en cada dominio.
     private async Task<ComputedPaymentInput> ComputePaymentInputsAsync(
         int saleId,
+        MonetaryProfileSnapshot monetaryProfile,
         decimal saleTotalUsd,
         decimal saleTotalBsS,
         decimal saleAppliedRate,
@@ -314,6 +372,14 @@ public partial class SalesService
         bool? preloadedHasConfiguredMethods = null)
     {
         // 8.6-B3/8.5-A5: Tasa del abono anclada a la BCV del día cuando el cliente la envía.
+        // 8.211-T6-U4: a manual pair needs its 8dp calculation quote. Falling back to the 4dp
+        // persisted snapshot silently loses precision; require the client to send the rate.
+        if (request.ExchangeRate <= 0m && UsesManualPairRate(monetaryProfile))
+        {
+            throw new ArgumentException(
+                "La tasa de cálculo de 8 decimales es obligatoria para abonar una venta con par manual.");
+        }
+
         decimal rate = request.ExchangeRate > 0
             ? await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: contextLabel, referenceId: saleId)
             : saleAppliedRate;
@@ -361,8 +427,18 @@ public partial class SalesService
             throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={request.PaymentMethodId}. Verifique la configuración de métodos de pago.");
         }
 
-        // Validación de integridad: el efectivo solo acepta montos enteros (sin centavos).
-        if (method != null && method.IsCash && resolvedAmountBsS % 1 != 0)
+        if (method != null)
+        {
+            EnsurePaymentMethodCurrencyMatchesProfile(monetaryProfile, method);
+        }
+
+        // Validación de integridad: el efectivo VES solo acepta montos enteros (sin centavos).
+        // 8.211-T3c3c1 (S4/S5): Single y Dual con secundaria no-VES aceptan la unidad menor
+        // (montos fraccionarios); el legado Dual USD/VES conserva la regla histórica.
+        if (method != null
+            && method.IsCash
+            && !AllowsFractionalLocalCash(monetaryProfile)
+            && resolvedAmountBsS % 1 != 0)
         {
             throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
         }
@@ -416,6 +492,20 @@ public partial class SalesService
 
         return (0m, 0m);
     }
+
+    // 8.211-T3b1 (S6/S8): moneda congelada del abono. La autoridad es la moneda PERSISTIDA del
+    // método; el nombre solo se usa como fallback legacy; un método ausente cae a la moneda local.
+    private static string ResolvePaymentMethodCurrency(PaymentMethod? method)
+        => method is null
+            ? PaymentMethodCurrencyResolver.LocalCurrency
+            : PaymentMethodCurrencyResolver.ResolveStoredOrName(method.Currency, method.Name);
+
+    // 8.211-T3c2/T3c3c1 (S6): importe original del abono en la moneda del medio de pago. USD usa
+    // el monto dólar; cualquier moneda local/secundaria (Bs.S, COP, MXN, EUR) usa el monto local.
+    private static decimal ResolveOriginalAmount(decimal amountUsd, decimal amountLocal, string? currencyCode)
+        => string.Equals(currencyCode, PaymentMethodCurrencyResolver.Usd, StringComparison.Ordinal)
+            ? amountUsd
+            : amountLocal;
 
     private sealed record ComputedPaymentInput(decimal Rate, decimal AmountUsd, decimal AmountBsS, PaymentMethod? Method);
 }

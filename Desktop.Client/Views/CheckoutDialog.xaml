@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              xmlns:behaviors="clr-namespace:Desktop.Client.Behaviors"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
@@ -17,11 +18,12 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header: Balances (Bs.S primary, USD secondary) -->
+        <!-- Header: balances in the local currency; the primary line is Dual-only -->
         <Border Grid.Row="0" Margin="0,0,0,20">
             <StackPanel>
                 <TextBlock Text="{Binding CheckoutTitle}" Style="{DynamicResource MaterialDesignHeadline4TextBlock}" FontWeight="Bold"/>
@@ -34,9 +36,9 @@
                         <materialDesign:PackIcon Kind="InformationOutline" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="#92400E"/>
                         <TextBlock Foreground="#92400E" FontSize="12" TextWrapping="Wrap">
                             <Run Text="Total Factura: "/>
-                            <Run Text="{Binding OverrideSale.TotalUSD, StringFormat='USD {0:N2}', FallbackValue='-'}" FontWeight="Bold"/>
+                            <Run Text="{Binding OverrideSale.EffectiveTotalUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='-', Mode=OneWay}" FontWeight="Bold"/>
                             <Run Text="  |  Ya Abonado: "/>
-                            <Run Text="{Binding OverrideSale.TotalPaidUSD, StringFormat='USD {0:N2}', FallbackValue='-'}" FontWeight="Bold" Foreground="#059669"/>
+                            <Run Text="{Binding OverrideSale.TotalPaidUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='-', Mode=OneWay}" FontWeight="Bold" Foreground="#059669"/>
                         </TextBlock>
                     </StackPanel>
                 </Border>
@@ -51,29 +53,164 @@
 
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="Total Invoice" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                        <TextBlock Text="{Binding TotalAmountLocal, StringFormat='{}{0:N2}'}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
-                        <TextBlock Text="{Binding TotalUSD, StringFormat='{}USD {0:N2}'}" FontSize="13" Opacity="0.6"/>
+                        <TextBlock Text="{Binding TotalAmountLocal, Converter={StaticResource LocalAmountConverter}}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
+                        <TextBlock Text="{Binding TotalUsdEffective, Converter={StaticResource PrimaryAmountConverter}}"
+                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                   FontSize="13" Opacity="0.6"/>
                     </StackPanel>
                     
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="Paid" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                        <TextBlock Text="{Binding PaidAmountLocal, StringFormat='{}{0:N2}'}" FontSize="24" FontWeight="Medium" Foreground="#388E3C"/>
-                        <TextBlock Text="{Binding PaidAmountUsd, StringFormat='{}USD {0:N2}'}" FontSize="13" Opacity="0.6"/>
+                        <TextBlock Text="{Binding PaidAmountLocal, Converter={StaticResource LocalAmountConverter}}" FontSize="24" FontWeight="Medium" Foreground="#388E3C"/>
+                        <TextBlock Text="{Binding PaidAmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
+                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                   FontSize="13" Opacity="0.6"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="Remaining" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                        <TextBlock Text="{Binding RemainingBalanceLocal, StringFormat='{}{0:N2}'}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
-                        <TextBlock Text="{Binding RemainingBalanceUsd, StringFormat='{}USD {0:N2}'}" FontSize="13" Opacity="0.6"/>
+                        <TextBlock Text="{Binding RemainingBalanceLocal, Converter={StaticResource LocalAmountConverter}}" FontSize="24" FontWeight="Bold" Foreground="{DynamicResource PrimaryHueDarkBrush}"/>
+                        <TextBlock Text="{Binding RemainingUsdEffective, Converter={StaticResource PrimaryAmountConverter}}"
+                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                   FontSize="13" Opacity="0.6"/>
                     </StackPanel>
                 </Grid>
             </StackPanel>
         </Border>
 
-        <!-- Add Payment Form (Bs.S primary) -->
-        <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" materialDesign:ElevationAssist.Elevation="Dp1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+        <!-- Modalidad de cobro + panel de crédito -->
+        <Border Grid.Row="1" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="14" Margin="0,0,0,16">
             <StackPanel>
-                <TextBlock Text="Add payment (Bs.S):" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Modalidad de cobro" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="#475569"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Command="{Binding UseCashModeCommand}"
+                                AutomationProperties.AutomationId="Checkout_CashModeButton"
+                                Height="32" Padding="18,0" FontSize="12" FontWeight="SemiBold" Margin="0,0,8,0"
+                                materialDesign:ButtonAssist.CornerRadius="6">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="#475569"/>
+                                    <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCreditMode}" Value="False">
+                                            <Setter Property="Background" Value="#5E35B1"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                            <Setter Property="BorderBrush" Value="#5E35B1"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <TextBlock Text="CONTADO"/>
+                        </Button>
+                        <Button Command="{Binding UseCreditModeCommand}"
+                                AutomationProperties.AutomationId="Checkout_CreditModeButton"
+                                IsEnabled="{Binding CanUseCreditMode}"
+                                Height="32" Padding="18,0" FontSize="12" FontWeight="SemiBold"
+                                materialDesign:ButtonAssist.CornerRadius="6">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="Foreground" Value="#475569"/>
+                                    <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCreditMode}" Value="True">
+                                            <Setter Property="Background" Value="#D97706"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                            <Setter Property="BorderBrush" Value="#D97706"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <TextBlock Text="CRÉDITO"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <Border AutomationProperties.AutomationId="Checkout_CreditPanel"
+                        Visibility="{Binding IsCreditMode, Converter={StaticResource BoolToVis}}"
+                        Background="#FFFBEB" BorderBrush="#FCD34D" BorderThickness="1" CornerRadius="6"
+                        Padding="12" Margin="0,12,0,0">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="CashMultiple" Width="18" Height="18" Foreground="#B45309" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding CustomerDisplay}" FontWeight="Bold" Foreground="#92400E" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Command="{Binding SelectCreditCustomerCommand}"
+                                    AutomationProperties.AutomationId="Checkout_SelectCreditCustomerButton"
+                                    Content="Cambiar cliente"
+                                    Height="28" Padding="12,0" FontSize="11" FontWeight="SemiBold"
+                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                    BorderBrush="#D97706" Foreground="#B45309"/>
+                        </Grid>
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="CRÉDITO DISPONIBLE" FontSize="10" FontWeight="Bold" Foreground="#92400E"/>
+                                <TextBlock Text="{Binding AvailableCreditUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='—'}"
+                                           AutomationProperties.AutomationId="Checkout_AvailableCredit"
+                                           FontSize="15" FontWeight="Bold" Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="MONTO FINANCIADO" FontSize="10" FontWeight="Bold" Foreground="#92400E"/>
+                                <TextBlock Text="{Binding FinancedUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                           AutomationProperties.AutomationId="Checkout_FinancedAmount"
+                                           FontSize="15" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
+                                <TextBlock Text="{Binding FinancedBsS, Converter={StaticResource LocalAmountConverter}}"
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                           FontSize="10" Foreground="#64748B"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="VENCIMIENTO" FontSize="10" FontWeight="Bold" Foreground="#92400E"/>
+                                <TextBlock Text="{Binding CreditDueDate, StringFormat='{}{0:dd/MM/yyyy}', FallbackValue='—'}"
+                                           AutomationProperties.AutomationId="Checkout_CreditDueDate"
+                                           FontSize="15" FontWeight="Bold" Foreground="#0F172A"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="3">
+                                <TextBlock Text="ESTADO CREDITICIO" FontSize="10" FontWeight="Bold" Foreground="#92400E"/>
+                                <TextBlock Text="{Binding CreditStatusDisplay}" FontSize="13" FontWeight="SemiBold" Foreground="#475569"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Consultando perfil crediticio..."
+                                   Visibility="{Binding IsCreditProfileLoading, Converter={StaticResource BoolToVis}}"
+                                   FontSize="11" FontStyle="Italic" Foreground="#92400E" Margin="0,10,0,0"/>
+
+                        <Border Visibility="{Binding CreditOverLimitMessage, Converter={StaticResource StringToVisibilityConverter}}"
+                                Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="4"
+                                Padding="10,6" Margin="0,10,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ShieldAlertOutline" Width="16" Height="16" Foreground="#B45309" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding CreditOverLimitMessage}" FontSize="11" Foreground="#92400E"
+                                           TextWrapping="Wrap" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- Add Payment Form (local currency) -->
+        <Border Grid.Row="2" Background="{DynamicResource MaterialDesignPaper}" materialDesign:ElevationAssist.Elevation="Dp1" CornerRadius="5" Padding="15" Margin="0,0,0,20">
+            <StackPanel>
+                <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Add payment ({0}):'}" FontWeight="SemiBold" Margin="0,0,0,10"/>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="2*"/>
@@ -90,18 +227,21 @@
                               Style="{DynamicResource MaterialDesignFloatingHintComboBox}"
                               DisplayMemberPath="Name" Margin="0,0,10,0"/>
 
-                    <!-- Amount Bs.S (primary input with decimal-cents behavior) -->
+                    <!-- Amount in the local currency (primary input with decimal-cents behavior) -->
                     <StackPanel Grid.Column="1" Margin="0,0,10,0">
                         <TextBox x:Name="AmountInput"
                                  AutomationProperties.AutomationId="Checkout_AmountInput"
                                  Text="{Binding AmountBsSText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  behaviors:DecimalCentsBehavior.IsEnabled="True"
-                                 materialDesign:HintAssist.Hint="Amount Bs.S"
+                                 materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Amount {0}'}"
                                  Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
                                  FontWeight="Bold" FontSize="16"
                                  HorizontalContentAlignment="Right"/>
-                        <TextBlock Text="{Binding AmountUsdPreview, StringFormat='{}≈ USD {0:N2}'}" 
-                                   FontSize="11" Opacity="0.6" HorizontalAlignment="Right" Margin="0,2,0,0"/>
+                        <TextBlock Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                   FontSize="11" Opacity="0.6" HorizontalAlignment="Right" Margin="0,2,0,0">
+                            <Run Text="≈ "/>
+                            <Run Text="{Binding AmountUsdPreview, Converter={StaticResource PrimaryAmountConverter}, Mode=OneWay}"/>
+                        </TextBlock>
                     </StackPanel>
 
                     <!-- Reference -->
@@ -120,7 +260,7 @@
         </Border>
 
         <!-- Applied Payments List -->
-        <Border Grid.Row="2" Margin="0,0,0,20">
+        <Border Grid.Row="3" Margin="0,0,0,20">
             <StackPanel>
                 <TextBlock Text="Applied Payments" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" Margin="0,0,0,10"/>
                 
@@ -145,8 +285,13 @@
                     </controls:PerformantDataGrid.InputBindings>
 
                     <controls:PerformantDataGrid.Columns>
-                        <DataGridTextColumn Header="Bs.S" Binding="{Binding AmountBsS, StringFormat='{}{0:N2}'}" IsReadOnly="True" FontWeight="Bold" Width="Auto"/>
-                        <DataGridTextColumn Header="USD" Binding="{Binding AmountUsd, StringFormat='{}{0:N2}'}" IsReadOnly="True" Width="Auto" Foreground="Gray"/>
+                        <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol}"
+                                            Binding="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"
+                                            IsReadOnly="True" FontWeight="Bold" Width="Auto"/>
+                        <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode}"
+                                            Binding="{Binding AmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
+                                            Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                            IsReadOnly="True" Width="Auto" Foreground="Gray"/>
                         <DataGridTextColumn Header="Method" Binding="{Binding MethodName}" IsReadOnly="True" Width="*"/>
                         <DataGridTextColumn Header="Reference" Binding="{Binding Dto.ReferenceNumber}" IsReadOnly="True" Width="*" Foreground="Gray"/>
                         
@@ -176,6 +321,7 @@
                 <CheckBox Content="Mercancía en Custodia (Pendiente por Retirar)"
                           IsChecked="{Binding IsPendingPickup}"
                           IsEnabled="{Binding IsCustodyAllowed}"
+                          Visibility="{Binding IsCreditMode, Converter={StaticResource InverseBoolToVis}}"
                           Margin="0,10,0,0"
                           FontWeight="Bold"
                           Foreground="#F59E0B"
@@ -184,7 +330,7 @@
         </Border>
 
         <!-- Footer Actions -->
-        <StackPanel Grid.Row="3">
+        <StackPanel Grid.Row="4">
             <TextBlock Text="{Binding ValidationHelperMessage}"
                        Foreground="#E65100"
                        FontWeight="SemiBold"
@@ -225,3 +371,4 @@
 
     </Grid>
 </UserControl>
+

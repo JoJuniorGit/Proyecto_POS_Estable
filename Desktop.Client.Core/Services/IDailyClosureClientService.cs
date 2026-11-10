@@ -20,6 +20,17 @@ public class DailyClosureDto
     public decimal TotalActualBsS { get; set; }
     public decimal TotalDifferenceBsS { get; set; }
     public string? Observation { get; set; }
+
+    /// <summary>
+    /// Residual 8.187-8.188: arqueo USD del cierre tal como lo devuelve el servidor. Esperado y
+    /// diferencia llegan null para roles no supervisores (blind 8.153).
+    /// </summary>
+    public decimal? ExpectedClosingBalanceUsd { get; set; }
+
+    public decimal? ActualClosingBalanceUsd { get; set; }
+
+    public decimal? DifferenceUsd { get; set; }
+
     public List<ClosureDetailDto> Details { get; set; } = new();
 }
 
@@ -38,6 +49,12 @@ public class CreateClosureRequest
     public DateTime ClosureDate { get; set; }
     public string? UserId { get; set; } = "Admin";
     public string? Observation { get; set; }
+
+    /// <summary>
+    /// Residual 8.187-8.188: conteo fisico USD opcional. Null conserva el contrato previo.
+    /// </summary>
+    public decimal? ActualClosingBalanceUsd { get; set; }
+
     public List<CreateClosureDetailRequest> Details { get; set; } = new();
 }
 

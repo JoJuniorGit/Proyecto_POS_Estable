@@ -6,7 +6,7 @@ namespace Desktop.Client.Services;
 
 public class ClientAppSettings
 {
-    public string ServerBaseAddress { get; set; } = "http://localhost:5000/";
+    public string ServerBaseAddress { get; set; } = "https://localhost:5001/";
     public string? LastKnownServerIp { get; set; }
     public string? LastKnownServerMachineName { get; set; }
     public bool AutoDiscoverOnFailure { get; set; } = true;
@@ -56,10 +56,18 @@ public class ClientSettingsStore : IClientSettingsStore
                     var settings = JsonSerializer.Deserialize<ClientAppSettings>(json);
                     if (settings != null)
                     {
-                        if (!settings.ServerBaseAddress.EndsWith("/"))
-                            settings.ServerBaseAddress += "/";
+                        var secureAddress = ServerPortResolver.NormalizeHttpsAddress(settings.ServerBaseAddress);
+                        bool migratedAddress = !string.Equals(
+                            secureAddress,
+                            settings.ServerBaseAddress,
+                            StringComparison.OrdinalIgnoreCase);
+                        settings.ServerBaseAddress = secureAddress;
 
                         _cachedSettings = settings;
+                        if (migratedAddress)
+                        {
+                            SaveSettings(settings);
+                        }
                         return settings;
                     }
                 }
@@ -105,7 +113,7 @@ public class ClientSettingsStore : IClientSettingsStore
     public void UpdateServerAddress(string newAddress, string? machineName = null)
     {
         var settings = LoadSettings();
-        settings.ServerBaseAddress = newAddress;
+        settings.ServerBaseAddress = ServerPortResolver.NormalizeHttpsAddress(newAddress);
         if (!string.IsNullOrWhiteSpace(machineName))
         {
             settings.LastKnownServerMachineName = machineName;

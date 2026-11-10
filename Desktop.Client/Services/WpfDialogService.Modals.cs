@@ -306,7 +306,7 @@ public partial class WpfDialogService
     {
         if (Application.Current == null) return null;
 
-        var vm = new ViewModels.CustomerPickerViewModel(_salesService);
+        using var vm = new ViewModels.CustomerPickerViewModel(_salesService);
         await vm.InitializeAsync();
 
         CustomerDto? result = null;
@@ -346,6 +346,51 @@ public partial class WpfDialogService
             if (vm.DialogResult && vm.SelectedPaymentMethod != null)
             {
                 result = (true, vm.RequestedAmountBsS, vm.CommissionAmountBsS ?? 0m, vm.SelectedPaymentMethod.Id, vm.SelectedPaymentMethod.Name, vm.IsTransfer);
+            }
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return result;
+    }
+
+    public async System.Threading.Tasks.Task<CashAdvanceRegisterDialogResult?> ShowCashAdvanceRegisterDialogWithMethodsAsync(
+        System.Collections.Generic.List<PaymentMethodDto> paymentMethods,
+        decimal? availableCashLocal,
+        System.Collections.Generic.IReadOnlyList<PhysicalMethodBalanceClientDto> physicalCashMethods)
+    {
+        if (Application.Current == null)
+            return null;
+
+        CashAdvanceRegisterDialogResult? result = null;
+
+        using var _ = TrackModal();
+
+        var vm = new ViewModels.CashAdvanceRegisterViewModel(
+            paymentMethods,
+            availableCashLocal,
+            _exchangeRateService?.CurrentRate ?? 1.0m,
+            _cashDrawerService,
+            physicalCashMethods);
+        await vm.RefreshCommissionAsync();
+
+        Action openDialog = () =>
+        {
+            var dialog = new CashAdvanceRegisterDialog(vm);
+            dialog.ShowDialog();
+            if (vm.DialogResult && vm.SelectedPaymentMethod != null)
+            {
+                result = new CashAdvanceRegisterDialogResult(
+                    true,
+                    vm.RequestedAmountBsS,
+                    vm.CommissionAmountBsS ?? 0m,
+                    vm.SelectedPaymentMethod.Id,
+                    vm.SelectedPaymentMethod.Name,
+                    vm.IsTransfer,
+                    vm.SelectedDispensedCashMethod?.PaymentMethodId,
+                    vm.SelectedDispensedCashMethod is null ? null : vm.RequestedAmountBsS,
+                    vm.SelectedPaymentMethod.Id);
             }
         };
 
@@ -435,11 +480,11 @@ public partial class WpfDialogService
         using var _ = TrackModal();
         Action openDialog = () =>
         {
-            var serverAddr = _connectionManager.CurrentServerAddress ?? "http://localhost:5000/";
+            var serverAddr = _connectionManager.CurrentServerAddress ?? "https://localhost:5001/";
             var httpClient = _httpClientFactory.CreateClient("SalesApi");
             httpClient.BaseAddress = new Uri(serverAddr);
 
-            var vm = new ViewModels.PairingQrViewModel(httpClient);
+            using var vm = new ViewModels.PairingQrViewModel(httpClient);
             var dialog = new PairingQrDialog(vm);
             if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
             {
@@ -473,7 +518,7 @@ public partial class WpfDialogService
         using var _ = TrackModal();
         Action openDialog = () =>
         {
-            var vm = new ViewModels.ServerConnectionViewModel(_connectionManager, _scannerService);
+            using var vm = new ViewModels.ServerConnectionViewModel(_connectionManager, _scannerService);
             var dialog = new ServerConnectionDialog(vm);
             if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
             {
@@ -543,7 +588,7 @@ public partial class WpfDialogService
         using var _ = TrackModal();
         Action openDialog = () =>
         {
-            var vm = new ViewModels.VariantManagementViewModel(_productService, _exchangeRateService, this, parentProduct);
+            using var vm = new ViewModels.VariantManagementViewModel(_productService, _exchangeRateService, this, parentProduct);
             var dialog = new VariantManagementDialog(vm);
             if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
             {
@@ -564,8 +609,22 @@ public partial class WpfDialogService
     /// ShowDialog (contrato T9), abre el dialogo y mapea la fase final a un resultado tipado. Un
     /// fallo de creacion degrada a Failed con mensaje visible (residual T9 cubierto por T10).
     /// </summary>
-    public async System.Threading.Tasks.Task<AuthorizationWaitResult?> ShowAuthorizationWaitAsync(
+    public System.Threading.Tasks.Task<AuthorizationWaitResult?> ShowAuthorizationWaitAsync(
         AuthorizationRequestContext context,
+        Func<string, System.Threading.Tasks.Task> retry)
+        => ShowAuthorizationWaitCoreAsync(context, retry);
+
+    /// <summary>
+    /// T4 (F3, S4): flujo de espera para acciones protegidas con contexto genérico (sobregiro de
+    /// crédito). Comparte exactamente el mismo ciclo de vida y mapeo de fases que el precio manual.
+    /// </summary>
+    public System.Threading.Tasks.Task<AuthorizationWaitResult?> ShowAuthorizationWaitAsync(
+        IAuthorizationRequestContext context,
+        Func<string, System.Threading.Tasks.Task> retry)
+        => ShowAuthorizationWaitCoreAsync(context, retry);
+
+    private async System.Threading.Tasks.Task<AuthorizationWaitResult?> ShowAuthorizationWaitCoreAsync(
+        IAuthorizationRequestContext context,
         Func<string, System.Threading.Tasks.Task> retry)
     {
         if (Application.Current == null || _authorizationHubService == null || context == null || retry == null)
@@ -743,6 +802,107 @@ public partial class WpfDialogService
         else Application.Current.Dispatcher.Invoke(openDialog);
 
         return applied;
+    }
+
+    /// <summary>
+    /// T4 (Paso 13 / 8.188, S1/S4): modal de registro de caja chica. La ventana se cierra desde el
+    /// ViewModel al completar el registro (o al cancelar) y se devuelve el gasto confirmado.
+    /// </summary>
+    public System.Threading.Tasks.Task<PettyCashExpenseClientDto?> ShowPettyCashExpenseDialogAsync(
+        PettyCashExpenseDialogViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (Application.Current == null)
+        {
+            return System.Threading.Tasks.Task.FromResult<PettyCashExpenseClientDto?>(null);
+        }
+
+        using var _ = TrackModal();
+        PettyCashExpenseClientDto? result = null;
+        Action openDialog = () =>
+        {
+            var dialog = new PettyCashExpenseDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            dialog.ShowDialog();
+            result = viewModel.Result;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
+    }
+
+    /// <summary>T4 (S5): modal de anulación con motivo obligatorio y autorización jerárquica.</summary>
+    public System.Threading.Tasks.Task<PettyCashExpenseClientDto?> ShowPettyCashCancelDialogAsync(
+        PettyCashCancelDialogViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (Application.Current == null)
+        {
+            return System.Threading.Tasks.Task.FromResult<PettyCashExpenseClientDto?>(null);
+        }
+
+        using var _ = TrackModal();
+        PettyCashExpenseClientDto? result = null;
+        Action openDialog = () =>
+        {
+            var dialog = new PettyCashCancelDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            dialog.ShowDialog();
+            result = viewModel.Result;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
+    }
+
+    /// <summary>
+    /// T4 (S2): arqueo de cierre de la sesión de caja con conteo USD opcional. Devuelve null si el
+    /// operador cancela; sin USD informado el servidor conserva el comportamiento previo.
+    /// </summary>
+    public System.Threading.Tasks.Task<CashDrawerCloseResult?> ShowCashDrawerCloseDialogAsync(
+        decimal exchangeRate,
+        decimal currentBalanceBsS,
+        decimal? currentBalanceUsd)
+    {
+        if (Application.Current == null)
+        {
+            return System.Threading.Tasks.Task.FromResult<CashDrawerCloseResult?>(null);
+        }
+
+        using var _ = TrackModal();
+        CashDrawerCloseResult? result = null;
+        Action openDialog = () =>
+        {
+            var dialog = new CashDrawerCloseDialog(exchangeRate, currentBalanceBsS, currentBalanceUsd);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            if (dialog.ShowDialog() == true)
+            {
+                result = new CashDrawerCloseResult(
+                    dialog.ActualClosingBalanceLocal,
+                    dialog.ActualClosingBalanceUsd);
+            }
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
     }
 }
 

@@ -125,32 +125,34 @@ public static class TestDatabaseFactory
         await using var lockCmd = new Npgsql.NpgsqlCommand("SELECT pg_advisory_xact_lock(42000)", conn, tx);
         await lockCmd.ExecuteScalarAsync();
 
-        var methods = new (int Id, string Name, bool IsCash)[]
+        var methods = new (int Id, string Name, bool IsCash, string Currency)[]
         {
-            // 8.143: nombres canónicos del fixture, espejo exacto del seed InMemory. El Id=1 debe
-            // quedar dolarizado (PaymentMethodCurrencyResolver clasifica por nombre, 8.9-M16).
+            // 8.143: nombres canónicos del fixture, espejo exacto del seed InMemory. Desde 8.201 la
+            // moneda es un dato persistido: el seed debe fijarla (el HasData la deja en Bs.S para
+            // "Cash"/"Card" y la convergencia por Id renombra sin reclasificar).
             // Ojo: el esquema de tests se crea con CreateTablesAsync, que inserta el HasData del
             // modelo ("Cash"/"Card" en Id=1/2); por eso el seed CONVERGE por Id y no asume tabla vacía.
-            (1, "Efectivo USD", true),
-            (2, "Efectivo Bs.S", true),
-            (3, "Punto de Venta", false),
-            (4, "Pago Móvil", false),
-            (5, "Zelle", false)
+            (1, "Efectivo USD", true, "USD"),
+            (2, "Efectivo Bs.S", true, "Bs.S"),
+            (3, "Punto de Venta", false, "Bs.S"),
+            (4, "Pago Móvil", false, "Bs.S"),
+            (5, "Zelle", false, "Bs.S")
         };
 
-        foreach (var (id, name, isCash) in methods)
+        foreach (var (id, name, isCash, currency) in methods)
         {
             // Convergencia del Id canónico: si la fila ya existe (p. ej. HasData), se restauran
-            // nombre/tipo y actividad (IsActive/IsDeleted) para que una BD local sucia no degrade
-            // el fixture en silencio; se omite si otro registro ya usa el nombre destino.
+            // nombre/tipo/moneda y actividad (IsActive/IsDeleted) para que una BD local sucia no
+            // degrade el fixture en silencio; se omite si otro registro ya usa el nombre destino.
             await using var convergeCmd = new Npgsql.NpgsqlCommand(
-                "UPDATE \"PaymentMethods\" SET \"Name\" = @name, \"IsCash\" = @isCash, \"IsActive\" = true, \"IsDeleted\" = false " +
-                "WHERE \"Id\" = @id AND (\"Name\" <> @name OR \"IsCash\" <> @isCash OR \"IsActive\" = false OR \"IsDeleted\" = true) " +
+                "UPDATE \"PaymentMethods\" SET \"Name\" = @name, \"IsCash\" = @isCash, \"Currency\" = @currency, \"IsActive\" = true, \"IsDeleted\" = false " +
+                "WHERE \"Id\" = @id AND (\"Name\" <> @name OR \"IsCash\" <> @isCash OR \"Currency\" IS DISTINCT FROM @currency OR \"IsActive\" = false OR \"IsDeleted\" = true) " +
                 "AND NOT EXISTS (SELECT 1 FROM \"PaymentMethods\" p2 WHERE p2.\"Name\" = @name AND p2.\"Id\" <> @id)",
                 conn, tx);
             convergeCmd.Parameters.AddWithValue("@id", id);
             convergeCmd.Parameters.AddWithValue("@name", name);
             convergeCmd.Parameters.AddWithValue("@isCash", isCash);
+            convergeCmd.Parameters.AddWithValue("@currency", currency);
             await convergeCmd.ExecuteNonQueryAsync();
 
             await using var idCheck = new Npgsql.NpgsqlCommand(
@@ -168,11 +170,12 @@ public static class TestDatabaseFactory
             if (nameExists) continue;
 
             await using var insertCmd = new Npgsql.NpgsqlCommand(
-                "INSERT INTO \"PaymentMethods\" (\"Id\", \"Name\", \"IsCash\", \"IsActive\", \"IsDeleted\", \"RequiresReference\", \"DisplayOrder\") VALUES (@id, @name, @isCash, true, false, false, @id)",
+                "INSERT INTO \"PaymentMethods\" (\"Id\", \"Name\", \"IsCash\", \"Currency\", \"IsActive\", \"IsDeleted\", \"RequiresReference\", \"DisplayOrder\") VALUES (@id, @name, @isCash, @currency, true, false, false, @id)",
                 conn, tx);
             insertCmd.Parameters.AddWithValue("@id", id);
             insertCmd.Parameters.AddWithValue("@name", name);
             insertCmd.Parameters.AddWithValue("@isCash", isCash);
+            insertCmd.Parameters.AddWithValue("@currency", currency);
             await insertCmd.ExecuteNonQueryAsync();
         }
 
@@ -182,9 +185,25 @@ public static class TestDatabaseFactory
         var custExists = (long)(await custCheck.ExecuteScalarAsync())! > 0;
         if (!custExists)
         {
-            await using var insertCust = new Npgsql.NpgsqlCommand(
-                "INSERT INTO \"Customers\" (\"Id\", \"Name\", \"CedulaOrRif\", \"Phone\", \"CreditLimitUSD\", \"IsDefault\", \"IsActive\", \"CreatedAt\") VALUES (1, 'Consumidor Final', 'V-00000000', '', 0, true, true, NOW())",
+            // 8.187: el perfil crediticio es NOT NULL en el modelo (sin default de DB en esquemas
+            // creados por EnsureCreated): el INSERT explícito debe fijar los valores seguros
+            // (crédito deshabilitado) o la siembra revienta con 23502 en una base recién creada.
+            // Los esquemas legados previos a 8.187 no tienen las columnas: se detecta paridad para
+            // no romper bases stale (documentadas como descartables).
+            await using var creditColumnsCheck = new Npgsql.NpgsqlCommand(
+                "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' " +
+                "AND table_name = 'Customers' AND column_name = 'IsCreditEnabled'",
                 conn, tx);
+            bool hasCreditColumns = (long)(await creditColumnsCheck.ExecuteScalarAsync())! > 0;
+
+            string insertCustSql = hasCreditColumns
+                ? "INSERT INTO \"Customers\" (\"Id\", \"Name\", \"CedulaOrRif\", \"Phone\", \"CreditLimitUSD\", \"IsDefault\", \"IsActive\", \"CreatedAt\", " +
+                  "\"IsCreditEnabled\", \"PaymentTermDays\", \"CreditGraceDays\", \"CreditStatus\") " +
+                  "VALUES (1, 'Consumidor Final', 'V-00000000', '', 0, true, true, NOW(), false, 30, 0, 0)"
+                : "INSERT INTO \"Customers\" (\"Id\", \"Name\", \"CedulaOrRif\", \"Phone\", \"CreditLimitUSD\", \"IsDefault\", \"IsActive\", \"CreatedAt\") " +
+                  "VALUES (1, 'Consumidor Final', 'V-00000000', '', 0, true, true, NOW())";
+
+            await using var insertCust = new Npgsql.NpgsqlCommand(insertCustSql, conn, tx);
             await insertCust.ExecuteNonQueryAsync();
         }
 
@@ -208,11 +227,11 @@ public static class TestDatabaseFactory
         if (!await context.PaymentMethods.AnyAsync())
         {
             context.PaymentMethods.AddRange(
-                new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true, IsActive = true, DisplayOrder = 1 },
-                new PaymentMethod { Id = 2, Name = "Efectivo Bs.S", IsCash = true, IsActive = true, DisplayOrder = 2 },
-                new PaymentMethod { Id = 3, Name = "Punto de Venta", IsCash = false, IsActive = true, DisplayOrder = 3 },
-                new PaymentMethod { Id = 4, Name = "Pago Móvil", IsCash = false, IsActive = true, DisplayOrder = 4 },
-                new PaymentMethod { Id = 5, Name = "Zelle", IsCash = false, IsActive = true, DisplayOrder = 5 }
+                new PaymentMethod { Id = 1, Name = "Efectivo USD", IsCash = true, IsActive = true, DisplayOrder = 1, Currency = "USD" },
+                new PaymentMethod { Id = 2, Name = "Efectivo Bs.S", IsCash = true, IsActive = true, DisplayOrder = 2, Currency = "Bs.S" },
+                new PaymentMethod { Id = 3, Name = "Punto de Venta", IsCash = false, IsActive = true, DisplayOrder = 3, Currency = "Bs.S" },
+                new PaymentMethod { Id = 4, Name = "Pago Móvil", IsCash = false, IsActive = true, DisplayOrder = 4, Currency = "Bs.S" },
+                new PaymentMethod { Id = 5, Name = "Zelle", IsCash = false, IsActive = true, DisplayOrder = 5, Currency = "Bs.S" }
             );
         }
 

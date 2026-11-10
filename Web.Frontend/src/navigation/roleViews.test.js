@@ -16,7 +16,7 @@ const ALL_VIEWS = [...VIEW_ORDER];
 const EXPECTED_POLICY = {
   Admin: ALL_VIEWS,
   Manager: ALL_VIEWS,
-  Cashier: ['pos', 'pending', 'pickups', 'catalog', 'history', 'register', 'closing', 'stock-count'],
+  Cashier: ['pos', 'pending', 'pickups', 'credit', 'catalog', 'history', 'register', 'closing', 'stock-count'],
   Driver: ['pickups', 'history'],
 };
 
@@ -41,6 +41,24 @@ describe('roleViews role→view matrix [8.130]', () => {
     for (const view of ['pos', 'register', 'closing']) {
       assert.strictEqual(canAccessView('Driver', view), false, `Driver → ${view}`);
     }
+  });
+
+  it('keeps profitability restricted to Admin and Manager', () => {
+    assert.strictEqual(canAccessView('Admin', 'profitability'), true);
+    assert.strictEqual(canAccessView('Manager', 'profitability'), true);
+    assert.strictEqual(canAccessView(3, 'profitability'), true);
+    assert.strictEqual(canAccessView(2, 'profitability'), true);
+    assert.strictEqual(canAccessView('Cashier', 'profitability'), false);
+    assert.strictEqual(canAccessView('Driver', 'profitability'), false);
+    assert.strictEqual(canAccessView(null, 'profitability'), false);
+    assert.deepStrictEqual(resolveAccessibleView('Cashier', 'profitability'), {
+      allowed: false,
+      view: 'pos',
+    });
+    assert.deepStrictEqual(resolveAccessibleView('Manager', 'profitability'), {
+      allowed: true,
+      view: 'profitability',
+    });
   });
 
   it('normalizes role names case-insensitively and trims whitespace', () => {

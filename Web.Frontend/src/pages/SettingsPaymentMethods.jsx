@@ -107,7 +107,10 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
             {methods.map((m) => (
               <div key={m.id} className="settings-method-card p-3 mb-3 border rounded-lg bg-surface shadow-xs">
                 <div className="flex-between flex-align-center mb-2.5 pb-2 border-bottom">
-                  <span className="font-bold text-base color-primary">{m.name}</span>
+                  <div className="flex-align-center gap-2 min-w-0">
+                    <span className="font-bold text-base color-primary">{m.name}</span>
+                    <span className="set-currency-chip">{m.currency || 'Bs.S'}</span>
+                  </div>
                   <div className="flex-align-center gap-2">
                     <button
                       type="button"
@@ -170,6 +173,7 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
                 <tr>
                   <th>Nombre</th>
                   <th className="text-center">Tipo</th>
+                  <th className="text-center">Moneda</th>
                   <th className="text-center">Requiere Referencia</th>
                   <th className="text-center">Estado</th>
                   <th className="text-center">Acciones</th>
@@ -194,6 +198,9 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
                       >
                         {m.isCash ? 'Físico' : 'Digital'}
                       </button>
+                    </td>
+                    <td className="text-center">
+                      <span className="set-currency-chip">{m.currency || 'Bs.S'}</span>
                     </td>
                     <td className="text-center">
                       <button

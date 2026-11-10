@@ -485,7 +485,9 @@ public class ClientHttpContractTests
     {
         var requests = await CaptureAsync<CashDrawerService>(c => new CashDrawerService(c), s => s.OpenSessionAsync(150.25m, 36.5m));
 
-        AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/cashdrawer/open", typeof(CashDrawerController), nameof(CashDrawerController.OpenSessionAsync));
+        var request = Assert.Single(requests);
+        AssertRequest(request, HttpMethod.Post, "/api/cashdrawer/open", typeof(CashDrawerController), nameof(CashDrawerController.OpenSessionAsync));
+        Assert.False(string.IsNullOrWhiteSpace(request.GetHeaderValue("Idempotency-Key")));
     }
 
     [Fact]
@@ -493,7 +495,25 @@ public class ClientHttpContractTests
     {
         var requests = await CaptureAsync<CashDrawerService>(c => new CashDrawerService(c), s => s.CloseSessionAsync(200m, 36.5m));
 
-        AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/cashdrawer/close", typeof(CashDrawerController), nameof(CashDrawerController.CloseSessionAsync));
+        var request = Assert.Single(requests);
+        AssertRequest(request, HttpMethod.Post, "/api/cashdrawer/close", typeof(CashDrawerController), nameof(CashDrawerController.CloseSessionAsync));
+        Assert.False(string.IsNullOrWhiteSpace(request.GetHeaderValue("Idempotency-Key")));
+    }
+
+    [Fact]
+    public async Task CashDrawer_OpenSessionAsync_RetryAfterLostResponseReusesIdempotencyKey()
+    {
+        var handler = new CapturingHandler("{}", HttpStatusCode.ServiceUnavailable);
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new CashDrawerService(client);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.OpenSessionAsync(200m, 36.5m));
+        await service.OpenSessionAsync(200m, 36.5m);
+
+        var requests = handler.Requests;
+        Assert.Equal(2, requests.Count);
+        Assert.False(string.IsNullOrWhiteSpace(requests[0].GetHeaderValue("Idempotency-Key")));
+        Assert.Equal(requests[0].GetHeaderValue("Idempotency-Key"), requests[1].GetHeaderValue("Idempotency-Key"));
     }
 
     [Fact]

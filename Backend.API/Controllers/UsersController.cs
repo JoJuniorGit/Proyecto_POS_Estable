@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Backend.API.Attributes;
 using Backend.API.Services;
 using Core.Logging;
 using Core.Interfaces;
@@ -13,6 +14,7 @@ using Sales.Module.Services;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize(Roles = "Admin")]
 [ApiController]
 [Route("api/[controller]")]
@@ -90,6 +92,7 @@ public class UsersController : ControllerBase
                     await _stampValidator.InvalidateUserSessionsAsync(user.Id);
                 }
                 AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={user.Id}, Username={user.Cedula}, Reason=UserUpdated");
+                AppLogger.LogStructuredSecurity("SECURITY_STAMP_RESET", user.Id, HttpContext?.Request?.Path.Value ?? string.Empty, HttpContext?.Connection?.RemoteIpAddress?.ToString(), "UserUpdated", new { Username = user.Cedula });
             }
             return Ok(user);
         }
@@ -119,6 +122,7 @@ public class UsersController : ControllerBase
                 await _stampValidator.InvalidateUserSessionsAsync(id);
             }
             AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Reason=UserDeactivated");
+            AppLogger.LogStructuredSecurity("SECURITY_STAMP_RESET", id, HttpContext?.Request?.Path.Value ?? string.Empty, HttpContext?.Connection?.RemoteIpAddress?.ToString(), "UserDeactivated");
             return Ok(new { Message = "Usuario desactivado exitosamente." });
         }
         catch (KeyNotFoundException)
@@ -143,6 +147,7 @@ public class UsersController : ControllerBase
                 await _stampValidator.InvalidateUserSessionsAsync(id);
             }
             AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Reason=UserReactivated");
+            AppLogger.LogStructuredSecurity("SECURITY_STAMP_RESET", id, HttpContext?.Request?.Path.Value ?? string.Empty, HttpContext?.Connection?.RemoteIpAddress?.ToString(), "UserReactivated");
             return Ok(new { Message = "Usuario reactivado exitosamente." });
         }
         catch (KeyNotFoundException)
@@ -163,6 +168,7 @@ public class UsersController : ControllerBase
                 await _stampValidator.InvalidateUserSessionsAsync(id);
             }
             AppLogger.LogSecurityAudit($"[AUDIT_SECURITY_STAMP_RESET] UserId={id}, Reason=UserPermanentlyDeleted");
+            AppLogger.LogStructuredSecurity("SECURITY_STAMP_RESET", id, HttpContext?.Request?.Path.Value ?? string.Empty, HttpContext?.Connection?.RemoteIpAddress?.ToString(), "UserPermanentlyDeleted");
             return Ok(new { Message = "Usuario eliminado permanentemente." });
         }
         catch (KeyNotFoundException)
@@ -183,6 +189,7 @@ public class UsersController : ControllerBase
             var username = await _userService.UnlockUserAsync(id, GetCurrentUserId(), cancellationToken);
             var adminId = GetCurrentUserId();
             AppLogger.LogSecurityAudit($"[USER_UNLOCKED] TargetUserId={id}, Username={username}, UnlockedBy={adminId}, Timestamp={DateTime.UtcNow:O}");
+            AppLogger.LogStructuredSecurity("USER_UNLOCKED", id, HttpContext?.Request?.Path.Value ?? string.Empty, HttpContext?.Connection?.RemoteIpAddress?.ToString(), "AccountUnlocked", new { Username = username, UnlockedBy = adminId });
             return Ok(new { Message = $"Cuenta de {username} desbloqueada exitosamente." });
         }
         catch (KeyNotFoundException)
@@ -206,6 +213,7 @@ public class UsersController : ControllerBase
             if (_stampValidator != null) await _stampValidator.InvalidateUserSessionsAsync(id);
             var adminId = GetCurrentUserId();
             AppLogger.LogSecurityAudit($"[TEMP_PASSWORD_RESET] TargetUserId={id}, ResetBy={adminId}, Timestamp={DateTime.UtcNow:O}");
+            AppLogger.LogStructuredSecurity("TEMP_PASSWORD_RESET", id, HttpContext?.Request?.Path.Value ?? string.Empty, HttpContext?.Connection?.RemoteIpAddress?.ToString(), "TemporaryPasswordReset", new { ResetBy = adminId });
             return Ok(res);
         }
         catch (KeyNotFoundException)

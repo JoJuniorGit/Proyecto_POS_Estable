@@ -1,0 +1,596 @@
+/* ══════════════════════════════════════════════════════════
+   Crédito CxC (Paso 11/12, F4 web) — estilos del módulo.
+   Solo usa los design tokens oficiales (tokens.css) para mantener
+   la paridad visual con el Desktop WPF. Prefijo común: credit-*.
+   ══════════════════════════════════════════════════════════ */
+
+/* ── 1. Checkout: modalidad de cobro y panel de crédito ── */
+
+.checkout-mode-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.checkout-mode-toggle .btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.credit-checkout-panel {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.credit-checkout-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px 0;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+}
+
+.credit-detail-grid,
+.credit-summary-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.credit-detail-row,
+.credit-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.credit-detail-row dt,
+.credit-summary-row dt {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.credit-detail-row dd,
+.credit-summary-row dd {
+  margin: 0;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 2. Checkout: panel de éxito de la venta a crédito ── */
+
+.credit-success-panel {
+  text-align: center;
+}
+
+.credit-success-badge {
+  display: inline-block;
+  padding: 8px 18px;
+  margin-bottom: 10px;
+  border-radius: var(--radius-full);
+  background-color: var(--success-light);
+  color: var(--success);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.credit-success-note {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 14px;
+}
+
+.credit-success-panel .credit-summary-list {
+  text-align: left;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+/* ── 3. Perfil crediticio (CustomerModal / panel administrativo) ── */
+
+.credit-profile-panel {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-primary);
+  padding: 14px;
+}
+
+.credit-profile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.credit-profile-head h4 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.credit-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.credit-profile-stat {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.credit-profile-stat-label {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.credit-profile-stat-value {
+  display: block;
+  margin-top: 2px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.credit-profile-stat-value--danger {
+  color: var(--danger);
+}
+
+.credit-profile-stat-value--warning {
+  color: var(--warning);
+}
+
+.credit-profile-form {
+  display: grid;
+  gap: 10px;
+}
+
+.credit-profile-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.credit-profile-status-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.credit-profile-status-buttons .btn {
+  flex: 1;
+}
+
+.credit-profile-notes textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+}
+
+.credit-profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.credit-profile-alert {
+  margin-bottom: 10px;
+}
+
+.credit-profile-readonly-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ── 4. Página CxC: métricas y filtros ── */
+
+.credit-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.credit-metric-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+
+.credit-metric-card--danger {
+  border-color: var(--danger);
+  background-color: var(--danger-light);
+}
+
+.credit-metric-label {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.credit-metric-value {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.credit-metric-sub {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.credit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.credit-toolbar-search {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.credit-toolbar-search input {
+  width: 100%;
+  padding-left: 36px;
+}
+
+.credit-toolbar-search svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+}
+
+.credit-toolbar .credit-toolbar-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ── 5. Página CxC: tabla de cartera ── */
+
+.credit-table-wrap {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.credit-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.credit-table thead th {
+  padding: 14px 16px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.credit-table tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.credit-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.credit-table tbody tr:hover {
+  background-color: var(--bg-hover);
+}
+
+.credit-table .credit-amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.credit-toolbar .form-group {
+  margin-bottom: 0;
+}
+
+.credit-toolbar select.form-select {
+  min-width: 170px;
+}
+
+.credit-cancel-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: var(--danger-light);
+  color: var(--danger);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px auto;
+}
+
+.credit-row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.credit-row-actions .btn {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+
+.credit-customer-name {
+  font-weight: 700;
+}
+
+.credit-customer-sub {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+/* ── 6. Estados y alertas ── */
+
+.credit-status-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  background-color: var(--bg-primary);
+  color: var(--text-muted);
+}
+
+.credit-status-badge--vigente {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.credit-status-badge--parcial {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.credit-status-badge--vencida {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.credit-status-badge--pagada {
+  color: var(--success);
+  border-color: var(--success);
+  background-color: var(--success-light);
+}
+
+.credit-status-badge--anulada {
+  text-decoration: line-through;
+}
+
+.credit-overdue-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--danger);
+  background-color: var(--danger-light);
+  border: 1px solid var(--danger);
+}
+
+.credit-alert-inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  margin-bottom: 14px;
+  border: 1px solid var(--success);
+  background-color: var(--success-light);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.credit-alert-inline--error {
+  border-color: var(--danger);
+  background-color: var(--danger-light);
+}
+
+.credit-state {
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* ── 7. Modales de la cartera (abono, estado de cuenta, devolución) ── */
+
+.credit-modal-section {
+  margin-bottom: 14px;
+}
+
+.credit-modal-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 0.92rem;
+}
+
+.credit-invoice-option-list {
+  display: grid;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  background-color: var(--bg-primary);
+}
+
+.credit-invoice-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.credit-invoice-option:hover {
+  background-color: var(--bg-hover);
+}
+
+.credit-invoice-option--selected {
+  background-color: var(--accent-primary-light);
+  outline: 1px solid var(--accent-primary);
+}
+
+.credit-invoice-option-info {
+  display: flex;
+  justify-content: space-between;
+  flex: 1;
+  gap: 10px;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.credit-amount-preview {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.credit-amount-preview .credit-amount-preview-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.credit-modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.credit-modal-actions .btn {
+  flex: 1;
+}
+
+.credit-modal-message {
+  margin-bottom: 12px;
+}
+
+.credit-statement-currency {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.credit-statement-section {
+  margin-top: 16px;
+}
+
+.credit-statement-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 0.92rem;
+}
+
+.credit-table--compact thead th,
+.credit-table--compact tbody td {
+  padding: 8px 10px;
+  font-size: 0.82rem;
+}
+
+.credit-return-line-qty {
+  width: 90px;
+}
+
+@media (max-width: 768px) {
+  .credit-table-wrap {
+    display: none;
+  }
+
+  .credit-row-actions {
+    justify-content: flex-start;
+  }
+}
+
+.credit-mobile-list {
+  display: grid;
+  gap: 10px;
+}
+
+.credit-mobile-card {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+}
+
+.credit-mobile-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.credit-mobile-card-grid {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}

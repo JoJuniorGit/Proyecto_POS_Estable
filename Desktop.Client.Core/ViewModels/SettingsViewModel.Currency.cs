@@ -31,9 +31,10 @@ public partial class SettingsViewModel
         get => _selectedCurrencyFormat;
         set
         {
+            var previous = _selectedCurrencyFormat;
             if (SetProperty(ref _selectedCurrencyFormat, value))
             {
-                OnSelectedCurrencyFormatChangedAsync(value).SafeFireAndForget("Settings.CurrencyFormatChanged");
+                OnSelectedCurrencyFormatChangedAsync(value, previous).SafeFireAndForget("Settings.CurrencyFormatChanged");
             }
         }
     }
@@ -57,8 +58,11 @@ public partial class SettingsViewModel
             CurrencyDisplay.SetFromSetting(selected.Key);
             UpdateCurrencyPreview(selected.Key);
         }
-        catch
+        catch (Exception ex)
         {
+            Core.Logging.ClientStateLogger.LogWarning(
+                $"No se pudo cargar el formato de moneda; se usa el venezolano: {ex.Message}",
+                nameof(SettingsViewModel));
             _selectedCurrencyFormat = AvailableCurrencyFormats[0];
             OnPropertyChanged(nameof(SelectedCurrencyFormat));
             CurrencyDisplay.SetFromSetting("Venezuelan");
@@ -66,7 +70,7 @@ public partial class SettingsViewModel
         }
     }
 
-    private async Task OnSelectedCurrencyFormatChangedAsync(CurrencyFormatOption? option)
+    private async Task OnSelectedCurrencyFormatChangedAsync(CurrencyFormatOption? option, CurrencyFormatOption? previous)
     {
         if (option == null) return;
         try
@@ -80,21 +84,40 @@ public partial class SettingsViewModel
         }
         catch (Exception ex)
         {
-            if (_dialogService != null) _dialogService.ShowError("Settings Error", $"Error al guardar formato de moneda: {ex.Message}");
+            // CLEAN-06: revierte el estado optimista para que la UI no quede mostrando un
+            // formato que el servidor no confirmó.
+            if (previous != null)
+            {
+                _selectedCurrencyFormat = previous;
+                OnPropertyChanged(nameof(SelectedCurrencyFormat));
+                CurrencyDisplay.SetFromSetting(previous.Key);
+                UpdateCurrencyPreview(previous.Key);
+                WeakReferenceMessenger.Default.Send(new CurrencyFormatChangedMessage());
+            }
+
+            Core.Logging.ClientStateLogger.LogError(
+                $"Error al guardar formato de moneda: {ex.Message}",
+                nameof(SettingsViewModel));
+            _dialogService?.ShowError("Settings Error", $"Error al guardar formato de moneda: {ex.Message}");
         }
     }
 
     private void UpdateCurrencyPreview(string formatKey)
     {
+        // 8.211-T4c2b4d (S9): the preview shows the active profile symbols, while separators
+        // still come from the selected numeric format. In Single both previews collapse to the
+        // primary currency; the view hides the duplicate.
+        var localSymbol = CurrencyDisplay.LocalCurrencySymbol;
+        var primarySymbol = CurrencyDisplay.PrimaryCurrencySymbol;
         if (formatKey.Equals("International", StringComparison.OrdinalIgnoreCase))
         {
-            CurrencyFormatPreviewBsS = "Bs.S 172,786.94";
-            CurrencyFormatPreviewUSD = "$ 1,250.50";
+            CurrencyFormatPreviewBsS = $"{localSymbol} 172,786.94";
+            CurrencyFormatPreviewUSD = $"{primarySymbol} 1,250.50";
         }
         else
         {
-            CurrencyFormatPreviewBsS = "Bs.S 172.786,94";
-            CurrencyFormatPreviewUSD = "$ 1.250,50";
+            CurrencyFormatPreviewBsS = $"{localSymbol} 172.786,94";
+            CurrencyFormatPreviewUSD = $"{primarySymbol} 1.250,50";
         }
     }
 }

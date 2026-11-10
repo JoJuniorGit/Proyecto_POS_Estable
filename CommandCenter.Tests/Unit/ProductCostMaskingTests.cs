@@ -50,6 +50,28 @@ public class ProductCostMaskingTests
     }
 
     [Fact]
+    public async Task ProductsController_GetAll_AsCashier_CostPriceAliasIsNormalizedAndMasked()
+    {
+        var paged = new PagedResultDto<ProductDto>(
+            new List<ProductDto> { CreateProductDto(1) },
+            totalCount: 1);
+        var mockService = new Mock<IInventoryService>();
+        mockService
+            .Setup(s => s.GetProductsPagedAsync(null, 1, 50, null, "name", false, It.IsAny<CancellationToken>(), null))
+            .ReturnsAsync(paged);
+        var mockUser = new Mock<ICurrentUserService>();
+        mockUser.Setup(u => u.CanMutateCatalog).Returns(false);
+
+        var controller = new ProductsController(mockService.Object, Mock.Of<IProductManagementService>(), mockUser.Object);
+        var result = await controller.GetAllAsync(sortBy: "costprice");
+
+        Assert.NotNull(result.Value);
+        mockService.Verify(
+            s => s.GetProductsPagedAsync(null, 1, 50, null, "name", false, It.IsAny<CancellationToken>(), null),
+            Times.Once);
+    }
+
+    [Fact]
     public async Task ProductsController_GetAll_AsManager_KeepsCostsAndMarginsOnEveryItem()
     {
         var paged = new PagedResultDto<ProductDto>(

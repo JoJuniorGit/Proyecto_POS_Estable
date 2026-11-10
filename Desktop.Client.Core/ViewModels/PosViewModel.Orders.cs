@@ -104,6 +104,11 @@ public partial class PosViewModel
 
         if (value != null && value.Id > 0 && Cart.CurrentSale != null)
         {
+            // ANEXO XIV: antes de agregar una línea, commitear las ediciones de cantidad
+            // pendientes (tipeadas sin Enter) para que la reconstrucción del carrito no las
+            // descarte — bug de sincronización UI/Modelo reportado por el mantenedor.
+            await Cart.FlushAllQuantitiesAsync();
+
             if (value.IsGroupHeader)
             {
                 var variant = await (_dialogService?.ShowVariantSelectionDialogAsync(value) ?? Task.FromResult<ProductDto?>(null));
@@ -268,27 +273,76 @@ public partial class PosViewModel
 
         var checkoutVm = new CheckoutViewModel(Cart.CurrentSale, ActivePaymentMethods, _salesService, CurrentExchangeRate, _userSession, overrideSale: null, dialogService: _dialogService);
         object? result = null;
+        bool wasCreditSale = false;
+        bool wasPendingPickup = false;
+        decimal financedUsd = 0m;
         if (_dialogService != null)
         {
             result = await _dialogService.ShowModalAsync(checkoutVm, "RootDialog");
+            wasCreditSale = checkoutVm.IsCreditMode;
+            wasPendingPickup = checkoutVm.IsPendingPickup;
+            financedUsd = checkoutVm.FinancedUSD;
         }
         checkoutVm.Dispose();
 
         if (result is int realInvoice)
         {
-            string formattedMessage = checkoutVm.IsPendingPickup
-                ? $"Factura N° {realInvoice:D5}: Cuenta liquidada, stock descontado y enviada a Mercancía en Custodia."
-                : $"¡Factura N° {realInvoice:D5} completada con éxito!";
+            string formattedMessage;
+            string receiptActionLabel;
+
+            if (wasCreditSale)
+            {
+                formattedMessage = $"¡Venta a crédito completada! Factura N° {realInvoice:D5} emitida; " +
+                    $"saldo financiado USD {financedUsd:N2}.";
+                receiptActionLabel = "Guardar Comprobante de Crédito";
+            }
+            else
+            {
+                formattedMessage = wasPendingPickup
+                    ? $"Factura N° {realInvoice:D5}: Cuenta liquidada, stock descontado y enviada a Mercancía en Custodia."
+                    : $"¡Factura N° {realInvoice:D5} completada con éxito!";
+                receiptActionLabel = "Guardar Recibo";
+            }
 
             var completedSaleId = Cart.CurrentSale?.Id;
-            bool wantsReceipt = _dialogService?.ShowSuccessDialog(formattedMessage, "Guardar Recibo") == true;
+            bool wantsReceipt = _dialogService?.ShowSuccessDialog(formattedMessage, receiptActionLabel) == true;
 
             if (wantsReceipt && completedSaleId.HasValue)
             {
-                await OpenSaleReceiptAsync(completedSaleId.Value);
+                if (wasCreditSale)
+                {
+                    await OpenCreditSaleReceiptAsync(completedSaleId.Value);
+                }
+                else
+                {
+                    await OpenSaleReceiptAsync(completedSaleId.Value);
+                }
             }
 
             StartNewSaleAsync().SafeFireAndForget("PosViewModel.Orders.PostCheckoutStartNewSale");
+        }
+    }
+
+    private async Task OpenCreditSaleReceiptAsync(int saleId)
+    {
+        try
+        {
+            var bytes = await _salesService.GetCreditSaleReceiptAsync(saleId);
+            if (bytes == null || bytes.Length == 0)
+            {
+                _dialogService?.ShowWarning("Comprobante de Crédito", "El comprobante de venta a crédito aún no está disponible.");
+                return;
+            }
+
+            var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "CommandCenterReceipts");
+            System.IO.Directory.CreateDirectory(dir);
+            var filePath = System.IO.Path.Combine(dir, $"Comprobante_Venta_Credito_{saleId}_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
+            System.IO.File.WriteAllBytes(filePath, bytes);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(filePath) { UseShellExecute = true });
+        }
+        catch (System.Exception ex)
+        {
+            _dialogService?.ShowError("Comprobante de Crédito", $"No se pudo abrir el comprobante: {ex.Message}");
         }
     }
 
@@ -446,6 +500,10 @@ public partial class PosViewModel
             OnPropertyChanged(nameof(CurrentExchangeRate));
             OnPropertyChanged(nameof(IsRateOutdated));
         }
-        catch { }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn($"[PosViewModel] Error al sincronizar tasa BCV: {ex.Message}", "PosSync");
+            _dialogService?.ShowError("Error de Sincronización", $"No se pudo sincronizar la tasa BCV oficial: {ex.Message}");
+        }
     }
 }

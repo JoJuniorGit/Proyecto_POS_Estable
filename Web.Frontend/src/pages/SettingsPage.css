@@ -8,7 +8,7 @@
 
 /* ── Layout y contenedor de página ── */
 :root .set-page {
-  max-width: 900px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 16px;
 }
@@ -65,4 +65,100 @@
 
 :root .set-form-name {
   min-width: 220px;
+}
+
+/* ── Navegación modular por apartados ── */
+:root .set-layout {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+:root .set-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: sticky;
+  top: 16px;
+}
+
+:root .set-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+:root .set-tab:hover {
+  background: var(--bg-hover);
+}
+
+:root .set-tab.is-active {
+  background: var(--accent-primary-light);
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+:root .set-panels {
+  min-width: 0;
+}
+
+:root .set-panel[hidden] {
+  display: none !important;
+}
+
+:root .set-critical-label {
+  margin: 0 0 8px;
+  color: #B45309;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+:root .set-critical-zone {
+  border-color: #F59E0B;
+  background-color: #FFFBEB;
+}
+
+:root .set-currency-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  :root .set-layout {
+    grid-template-columns: 1fr;
+  }
+
+  :root .set-tabs {
+    flex-direction: row;
+    position: static;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  :root .set-tab {
+    width: auto;
+    white-space: nowrap;
+  }
 }

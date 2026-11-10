@@ -1,6 +1,7 @@
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Core.DTOs;
 
 namespace Desktop.Client.ViewModels;
 
@@ -14,6 +15,11 @@ public partial class EditableSaleItemVm : ObservableObject
     public decimal MinWholesaleQuantity { get; set; }
     public bool IsWholesaleSale { get; set; }
     public decimal ExchangeRate { get; set; } = 1m;
+
+    // Regla cash del artículo (snapshot de la línea) y toggle vigente: el Bs.S mostrado en el
+    // editor debe coincidir con el que persistirá el backend al re-guardar el pedido.
+    public RoundingRuleType? RoundingRuleCashBs { get; set; }
+    public bool NeverRoundDownCashBs { get; set; } = true;
 
     private decimal _quantity = 1m;
     public decimal Quantity
@@ -48,7 +54,11 @@ public partial class EditableSaleItemVm : ObservableObject
         }
     }
 
-    public decimal UnitPriceBsS => Helpers.PricingHelper.ToBsSCeiling(UnitPrice, ExchangeRate);
+    public decimal UnitPriceBsS => Helpers.EffectivePriceVesHelper.EffectiveBsS(
+        UnitPrice,
+        ExchangeRate,
+        RoundingRuleCashBs,
+        NeverRoundDownCashBs);
     public decimal Subtotal => Quantity * UnitPrice;
     public decimal SubtotalBsS => Helpers.PricingHelper.RoundToDigital(Quantity * UnitPriceBsS);
 

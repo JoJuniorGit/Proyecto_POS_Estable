@@ -21,7 +21,16 @@ public enum CashTransactionSource
 
     // Nuevos valores para auditar el origen exacto de cash-in / cash-out.
     CashIn = 5,
-    CashOut = 6
+    CashOut = 6,
+
+    // Paso 11/12 (S5): abonos CxC y devoluciones de credito; se anexan al final
+    // para no renumerar los valores ya persistidos.
+    CreditPayment = 7,
+    CreditRefund = 8,
+
+    // Paso 13 / 8.188-T1 (S6): egreso de caja chica y su reversa compensatoria.
+    PettyCashExpense = 9,
+    PettyCashReversal = 10
 }
 
 public class CashTransaction
@@ -38,7 +47,7 @@ public class CashTransaction
     public CashTransactionSource Source { get; set; }
 
     // Amount stored in USD, but UI typically shows Bs.S (AmountUsd * ExchangeRate)
-    [Column(TypeName = "decimal(18,2)")]
+    [Column(TypeName = "decimal(18,4)")]
     public decimal AmountUsd { get; set; }
 
     [Column(TypeName = "decimal(18,4)")]
@@ -62,4 +71,16 @@ public class CashTransaction
 
     public int? PaymentMethodId { get; set; }
     public PaymentMethod? PaymentMethod { get; set; }
+
+    // 8.211-T3b3 (S6): snapshot aditivo de la moneda FISICA de la gaveta. El libro sigue
+    // calculando saldos con las columnas viejas; este codigo solo describe la divisa del
+    // movimiento (USD / Bs.S) y nunca revaloriza montos historicos.
+    [MaxLength(10)]
+    public string? CurrencyCode { get; set; }
+
+    // 8.188-T1 (Paso 13, S6): vinculo del movimiento con el gasto de caja chica. Tanto el
+    // Expense original (PettyCashExpense) como su reversa compensatoria (PettyCashReversal)
+    // apuntan al mismo gasto. La FK vive aqui para evitar el ciclo con PettyCashExpenses.
+    public int? PettyCashExpenseId { get; set; }
+    public PettyCashExpense? PettyCashExpense { get; set; }
 }

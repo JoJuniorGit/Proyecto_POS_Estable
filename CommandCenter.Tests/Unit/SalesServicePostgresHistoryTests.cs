@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using CommandCenter.Tests.Builders;
 using CommandCenter.Tests.Integration;
 using Core.Interfaces;
 using MediatR;
@@ -17,6 +16,11 @@ using ICashDrawerService = Sales.Module.Interfaces.ICashDrawerService;
 
 namespace CommandCenter.Tests.Unit;
 
+/// <summary>
+/// Historial de ventas contra PostgreSQL real en base AISLADA por test (carril
+/// <see cref="PostgresTestLane"/>): siembra sus propias ventas y valida el filtro real. Sin
+/// conexión utilizable el carril falla EXPLÍCITO (nunca silent-pass).
+/// </summary>
 [Collection(PostgresRealCollection.Name)]
 public class SalesServicePostgresHistoryTests
 {
@@ -28,28 +32,14 @@ public class SalesServicePostgresHistoryTests
         // (antes asumía facturas 216-220 del 04-sep-2026 del CommandCenterDb local, lo que
         // hacía el test irrompible en CI). Ahora siembra sus propias ventas en la ventana
         // calendar del día (Venezuela UTC-4) y valida el filtro real de Postgres.
-        var connStr = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connStr))
-        {
-            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")))
-            {
-                throw new InvalidOperationException(
-                    "TEST_POSTGRES_CONNECTION no está definida en CI. Configure PostgreSQL real para ejecutar GetSalesHistoryAsync_AgainstRealPostgreSql_ReturnsSeededInvoices.");
-            }
-
-            return;
-        }
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(seedStandardSalesData: true);
 
         // Ventana calendario 2026-09-04 en Venezuela (UTC-4): [2026-09-04T04:00Z, 2026-09-05T04:00Z).
         var dayStartUtc = new DateTime(2026, 9, 4, 4, 0, 0, DateTimeKind.Utc);
 
-        using (var seedContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext())
+        await using (var seedContext = database.CreateSalesDbContext())
         {
-            Assert.NotNull(seedContext);
-
-            await TestDatabaseFactory.SeedStandardSalesDataAsync(seedContext!);
-
-            var previous = await seedContext!.Sales
+            var previous = await seedContext.Sales
                 .Where(s => s.InvoiceNumber != null && s.InvoiceNumber.Value >= 216 && s.InvoiceNumber.Value <= 220)
                 .ToListAsync();
             seedContext.Sales.RemoveRange(previous);
@@ -147,7 +137,7 @@ public class SalesServicePostgresHistoryTests
             await seedContext.SaveChangesAsync();
         }
 
-        using var realContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext()!;
+        await using var realContext = database.CreateSalesDbContext();
 
         var inventoryMock = new Mock<IInventoryService>();
         var mediatorMock = new Mock<IMediator>();

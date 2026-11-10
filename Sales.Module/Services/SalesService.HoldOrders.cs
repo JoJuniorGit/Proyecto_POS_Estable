@@ -27,6 +27,10 @@ public partial class SalesService
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold)
             throw new InvalidOperationException("Solo se pueden poner en espera ventas pendientes o abiertas.");
 
+        // 8.211-T3c3b2 (S7): Single hold support is deferred; reject before any hold mutation.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+
         var customer = await _context.Customers.FindAsync(new object[] { request.CustomerId }, cancellationToken);
         if (customer == null) throw new KeyNotFoundException($"Cliente con ID {request.CustomerId} no encontrado.");
         if (!customer.IsActive)
@@ -37,8 +41,11 @@ public partial class SalesService
 
         // 8.6-B3: La tasa del HOLD se ancla a la tasa BCV del día (misma política que CompleteSale).
         decimal anchoredHoldRate = await ResolveAnchoredRateAsync(request.ExchangeRate, contextLabel: "HoldSale", referenceId: sale.Id);
-        sale.AppliedRate = anchoredHoldRate;
-        await RecalculateTotalAsync(sale);
+        sale.AppliedRate = RoundSnapshotRate(anchoredHoldRate, monetaryProfile);
+        await RecalculateTotalAsync(
+            sale,
+            cancellationToken: cancellationToken,
+            calculationRate: ResolveCalculationRate(anchoredHoldRate, monetaryProfile));
 
         var paymentsToProcess = new List<AddPaymentRequestDto>();
         if (request.InitialPayment != null) paymentsToProcess.Add(request.InitialPayment);
@@ -47,6 +54,7 @@ public partial class SalesService
         var preparedInitialEntries = new List<(SalePayment Payment, CashTransaction? CashTx)>();
         if (paymentsToProcess.Any())
         {
+            string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
             var pMethodIds = paymentsToProcess.Select(p => p.PaymentMethodId).Distinct().ToList();
             var pMethodsDict = await _context.PaymentMethods
                 .AsNoTracking()
@@ -54,6 +62,15 @@ public partial class SalesService
                 .Where(pm => pMethodIds.Contains(pm.Id))
                 .ToDictionaryAsync(pm => pm.Id, cancellationToken);
             bool hasConfiguredPaymentMethods = pMethodsDict.Count > 0 || await _context.PaymentMethods.AsNoTracking().IgnoreQueryFilters().AnyAsync(cancellationToken);
+
+            // Paso 14 (F2-S5): contextos de comision del abono inicial cargados una sola vez
+            // para todos los metodos distintos del hold; cada pago calcula su snapshot en
+            // memoria. Un contexto ausente (catalogo legacy) conserva el snapshot None.
+            var feeRuleContexts = await PaymentMethodFeeResolver.LoadRuleContextsAsync(
+                _context,
+                pMethodIds,
+                DateTime.UtcNow,
+                cancellationToken);
 
             foreach (var payment in paymentsToProcess)
             {
@@ -69,20 +86,31 @@ public partial class SalesService
                     throw new ArgumentException($"Método de pago inválido o inactivo: PaymentMethodId={payment.PaymentMethodId}. Verifique la configuración de métodos de pago.");
                 }
 
+                if (pMethodForValidation != null)
+                {
+                    EnsurePaymentMethodCurrencyMatchesProfile(monetaryProfile, pMethodForValidation);
+                }
+
                 decimal rate = payment.ExchangeRate > 0
                     ? await ResolveAnchoredRateAsync(payment.ExchangeRate, contextLabel: "HoldSaleInitialPayment", referenceId: sale.Id)
-                    : sale.AppliedRate;
+                    : anchoredHoldRate;
                 decimal amountUsd = payment.AmountUSD > 0 
                     ? Math.Round(payment.AmountUSD, 2, MidpointRounding.AwayFromZero) 
                     : (rate > 0 ? Math.Round(payment.AmountBsS / rate, 2, MidpointRounding.AwayFromZero) : 0m);
 
                 var (resolvedAmountUsd, resolvedAmountBsS) = ResolveConsistentPaymentAmounts(amountUsd, payment.AmountBsS, rate);
 
-                if (pMethodForValidation != null && pMethodForValidation.IsCash && resolvedAmountBsS % 1 != 0)
+                // 8.211-T3c3c1 (S4/S5): integer cash is VES-specific in Dual; Single and Dual
+                // non-VES secondaries accept the local minor unit (fractional amounts).
+                if (pMethodForValidation != null
+                    && pMethodForValidation.IsCash
+                    && !AllowsFractionalLocalCash(monetaryProfile)
+                    && resolvedAmountBsS % 1 != 0)
                 {
                     throw new ArgumentException("El método de pago en efectivo solo acepta montos enteros.");
                 }
 
+                var currencyCode = ResolvePaymentMethodCurrency(pMethodForValidation);
                 var initialPaymentEntity = new SalePayment
                 {
                     SaleId = sale.Id,
@@ -91,8 +119,22 @@ public partial class SalesService
                     AmountBsS = Math.Round(resolvedAmountBsS, 2, MidpointRounding.AwayFromZero),
                     ExchangeRate = rate,
                     ReferenceNumber = payment.ReferenceNumber,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    CurrencyCode = currencyCode,
+                    OriginalAmount = ResolveOriginalAmount(resolvedAmountUsd, resolvedAmountBsS, currencyCode)
                 };
+
+                // Paso 14 (S7/F2-S5): comision congelada del abono inicial; jamas modifica el
+                // monto. Se calcula desde el contexto precargado, sin lookup por pago.
+                var feeSnapshot = feeRuleContexts.TryGetValue(payment.PaymentMethodId, out var feeRuleContext)
+                    ? PaymentMethodFeeResolver.ComputeSnapshot(
+                        feeRuleContext,
+                        resolvedAmountUsd,
+                        resolvedAmountBsS,
+                        rate,
+                        localCurrencyCode)
+                    : PaymentMethodFeeSnapshot.None;
+                initialPaymentEntity.ApplyFeeSnapshot(feeSnapshot);
 
                 sale.Payments.Add(initialPaymentEntity);
 
@@ -115,7 +157,9 @@ public partial class SalesService
                             Description = $"Abono Inicial Venta #{sale.Id}",
                             TransactionTime = DateTime.UtcNow,
                             SaleId = sale.Id,
-                            PaymentMethodId = payment.PaymentMethodId
+                            PaymentMethodId = payment.PaymentMethodId,
+                            // 8.211-T3b3 (S6): snapshot de la moneda fisica del abono inicial.
+                            CurrencyCode = currencyCode
                         };
                         _context.CashTransactions.Add(initialCashTx);
                     }
@@ -135,6 +179,8 @@ public partial class SalesService
         if (totalPaidUsd > 0 && sale.TotalUSD > 0 && remainingBalanceUsd <= 0.05m && totalPaidUsd >= (sale.TotalUSD - 0.05m))
         {
             // Se cubrió el 100% mediante los pagos iniciales -> Completar y generar factura
+            // 8.211-T3a (S6): este camino completa la venta sin pasar por CompleteSaleCoreAsync,
+            // por lo que captura el snapshot monetario una sola vez antes de la transacción.
             // 8.9-B4: caminar TODA la operación bajo execution strategy para que un fallo
             // transitorio reintente el bloque completo (sales + inventory enrollado) y no
             // quede una escritura a medias entre las dos bases.
@@ -145,11 +191,14 @@ public partial class SalesService
             {
                 _context.ChangeTracker.Clear();
                 sale = await GetSaleEntityAsync(saleId);
-                sale.AppliedRate = anchoredHoldRate;
+                sale.AppliedRate = RoundSnapshotRate(anchoredHoldRate, monetaryProfile);
                 sale.CustomerId = customer.Id;
                 sale.CustomerName = customer.Name;
                 sale.CustomerCedula = customer.CedulaOrRif;
-                await RecalculateTotalAsync(sale);
+                await RecalculateTotalAsync(
+                    sale,
+                    cancellationToken: cancellationToken,
+                    calculationRate: ResolveCalculationRate(anchoredHoldRate, monetaryProfile));
                 foreach (var (prepPayment, prepCashTx) in preparedInitialEntries)
                 {
                     var clonedPayment = new SalePayment
@@ -160,7 +209,21 @@ public partial class SalesService
                         AmountBsS = prepPayment.AmountBsS,
                         ExchangeRate = prepPayment.ExchangeRate,
                         ReferenceNumber = prepPayment.ReferenceNumber,
-                        CreatedAt = prepPayment.CreatedAt
+                        CreatedAt = prepPayment.CreatedAt,
+                        CurrencyCode = prepPayment.CurrencyCode,
+                        OriginalAmount = prepPayment.OriginalAmount,
+                        // Paso 14 (S7): el reintento copia el snapshot congelado; nunca re-resuelve
+                        // la regla (una reconfiguracion concurrente no debe reescribir el cobro).
+                        PaymentMethodFeeRuleId = prepPayment.PaymentMethodFeeRuleId,
+                        FeeType = prepPayment.FeeType,
+                        FeePercentage = prepPayment.FeePercentage,
+                        FeeFixedAmount = prepPayment.FeeFixedAmount,
+                        FeeCurrencyCode = prepPayment.FeeCurrencyCode,
+                        FeeAmountUsd = prepPayment.FeeAmountUsd,
+                        FeeAmountLocal = prepPayment.FeeAmountLocal,
+                        FeeRate = prepPayment.FeeRate,
+                        FeeConfigured = prepPayment.FeeConfigured,
+                        FeeRuleEffectiveFromUtc = prepPayment.FeeRuleEffectiveFromUtc
                     };
                     sale.Payments.Add(clonedPayment);
                     if (prepCashTx != null)
@@ -177,7 +240,9 @@ public partial class SalesService
                             Description = prepCashTx.Description,
                             TransactionTime = prepCashTx.TransactionTime,
                             SaleId = sale.Id,
-                            PaymentMethodId = prepCashTx.PaymentMethodId
+                            PaymentMethodId = prepCashTx.PaymentMethodId,
+                            // 8.211-T3b3 (S6): el clon del retry conserva la moneda congelada.
+                            CurrencyCode = prepCashTx.CurrencyCode
                         });
                     }
                 }
@@ -198,6 +263,20 @@ public partial class SalesService
                 sale.Status = SaleStatus.Completed;
                 sale.Date = DateTime.UtcNow;
                 sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
+                // 8.211-T3c2 (S6): snapshots aditivos de importes con los totales ya definitivos.
+                // El bloque corre en el intento inicial y en el retry, por lo que ambos terminan
+                // con los tres campos fijados antes de SaveChanges.
+                sale.PrimaryAmount = sale.TotalUSD;
+                sale.SecondaryAmount = sale.TotalBsS;
+                // 8.211-T3c3c2 (S4): la fuente de tasa sigue el régimen (Bcv en USD/VES, Manual en
+                // el resto de Dual, Identity en Single — hoy inalcanzable por el guard de hold).
+                sale.AppliedRateSource = ResolveAppliedRateSource(monetaryProfile);
+                sale.PrimaryCurrencyCode = monetaryProfile.PrimaryCurrencyCode;
+                sale.SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode;
+                sale.MonetaryMode = monetaryProfile.MonetaryMode;
+                // Paso 14 (S4/S9): este camino completa la venta sin pasar por CompleteSaleCoreAsync,
+                // por lo que materializa el costo local con la misma tasa snapshot de la venta.
+                ApplyLocalCostSnapshots(sale);
                 ClearHoldClaim(sale);
 
                 // Synchronous stock deduction
@@ -255,6 +334,20 @@ public partial class SalesService
                     Status = "Pending"
                 });
 
+                // 8.202-H1 (S2): el abono inicial en efectivo se preparó como entidad tracked antes
+                // de abrir la transacción. Se revalida su sesión bajo el lock antes de persistirlo.
+                if (_cashDrawerService != null)
+                {
+                    int? initialCashSessionId = preparedInitialEntries
+                        .Where(entry => entry.CashTx != null)
+                        .Select(entry => (int?)entry.CashTx!.SessionId)
+                        .FirstOrDefault();
+                    if (initialCashSessionId.HasValue)
+                    {
+                        await _cashDrawerService.LockOpenSessionForWriteAsync(initialCashSessionId.Value, cancellationToken);
+                    }
+                }
+
                 if (_cashDrawerService != null && remainingBalanceUsd < -0.05m)
                 {
                     decimal changeUsd = Math.Abs(remainingBalanceUsd);
@@ -263,7 +356,7 @@ public partial class SalesService
                         throw new ArgumentException($"El sobrepago o vuelto requerido (${changeUsd:F2} USD) excede los límites operacionales de seguridad.");
                     }
 
-                    decimal changeBsS = Math.Round(changeUsd * sale.AppliedRate, 2, MidpointRounding.AwayFromZero);
+                    decimal changeBsS = Math.Round(changeUsd * anchoredHoldRate, 2, MidpointRounding.AwayFromZero);
 
                     var paidMethodIds = sale.Payments.Select(p => p.PaymentMethodId).Distinct().ToList();
                     var paidMethods = await _context.PaymentMethods
@@ -273,7 +366,7 @@ public partial class SalesService
                         .FirstOrDefault(p => paidMethods.TryGetValue(p.PaymentMethodId, out var pm) && pm.IsCash)
                         ?.PaymentMethodId;
 
-                    var changeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(sale.AppliedRate, cancellationToken);
+                    var changeSession = await _cashDrawerService.GetOrCreateActiveSessionAsync(anchoredHoldRate, cancellationToken);
 
                     decimal pendingCashIncomeBsS = _context.CashTransactions.Local
                         .Where(t => t.SessionId == changeSession.Id
@@ -286,7 +379,7 @@ public partial class SalesService
                         changeSession.Id,
                         changeUsd,
                         changeBsS,
-                        sale.AppliedRate,
+                        anchoredHoldRate,
                         $"Vuelto Pedido #{sale.Id}",
                         sale.Id,
                         cashMethodId,
@@ -365,7 +458,7 @@ public partial class SalesService
         int updateRetryAttempt = 0;
         var updatedSale = await _context.Database.CreateExecutionStrategy().ExecuteAsync(async _ =>
         {
-            if (updateRetryAttempt++ > 0)
+            if (updateRetryAttempt++ > 0 || _context.Database.IsRelational())
             {
                 _context.ChangeTracker.Clear();
             }
@@ -384,8 +477,28 @@ public partial class SalesService
             if (sale.Status != SaleStatus.OnHold)
                 throw new InvalidOperationException("Solo se pueden modificar productos en ventas que estén en estado en espera (OnHold).");
 
-            decimal totalPaidUsd = sale.Payments != null ? sale.Payments.Sum(p => p.Amount) : 0;
+            // 8.211-T6-U4: the edit request carries the client's current quote. Resolve it with
+            // the same anchor/snapshot/calculation split as HoldSaleAsync, so the manual pair's
+            // 8dp calculation rate survives the 4dp AppliedRate snapshot.
+            var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+            decimal? calculationRate = null;
+            if (request?.ExchangeRate > 0m)
+            {
+                decimal anchoredRate = await ResolveAnchoredRateAsync(
+                    request.ExchangeRate,
+                    contextLabel: "UpdateSaleItems",
+                    referenceId: sale.Id);
+                sale.AppliedRate = RoundSnapshotRate(anchoredRate, monetaryProfile);
+                calculationRate = ResolveCalculationRate(anchoredRate, monetaryProfile);
+            }
+            else if (UsesManualPairRate(monetaryProfile))
+            {
+                // 8.211-T6-U4: callers such as Web omit ExchangeRate; keep the 8dp calculation
+                // quote while preserving the 4dp AppliedRate snapshot.
+                calculationRate = await ResolveManualPairCalculationRateAsync(monetaryProfile, cancellationToken);
+            }
 
+            decimal totalPaidUsd = sale.Payments != null ? sale.Payments.Sum(p => p.Amount) : 0;
             // Calcular nuevo total USD a partir de la lista de ítems enviada
             decimal newTotalUsd = 0;
             var newItemsList = new List<SaleItem>();
@@ -444,9 +557,13 @@ public partial class SalesService
 
                     decimal unitPriceUsd = reqItem.UnitPrice > 0 ? reqItem.UnitPrice : effectivePrice;
                     decimal subtotalUsd = Math.Round(unitPriceUsd * adjustedQty, 2, MidpointRounding.AwayFromZero);
-                    decimal unitPriceBsS = PricingCalculator.ToBsSCeiling(unitPriceUsd, sale.AppliedRate);
-                    decimal subtotalBsS = PricingCalculator.RoundToDigital(adjustedQty * unitPriceBsS);
                     bool isCustomPrice = reqItem.UnitPrice > 0 && reqItem.UnitPrice != effectivePrice;
+
+                    // 8.186-T7c (S4/S1): misma resolución y snapshot de regla que AddItemAsync — el
+                    // override del artículo manda; sin él, el default global resuelto por el lector
+                    // 8.184 (ExactMath ante ausencia/valor ilegible). Sin este snapshot la
+                    // recalculación posterior degradaba la línea a la semántica canónica.
+                    var effectiveCashRule = await ResolveEffectiveCashRuleAsync(product);
 
                     newTotalUsd += subtotalUsd;
 
@@ -458,12 +575,28 @@ public partial class SalesService
                         Quantity = adjustedQty,
                         UnitCostUSD = product.CostPriceUSD,
                         UnitPrice = unitPriceUsd,
-                        UnitPriceBsS = unitPriceBsS,
                         Subtotal = subtotalUsd,
-                        SubtotalBsS = subtotalBsS,
-                        IsCustomPrice = isCustomPrice
+                        IsCustomPrice = isCustomPrice,
+                        RoundingRuleCashBs = effectiveCashRule
                     });
                 }
+            }
+
+            // 8.186-T7c (S4/S1): Bs.S efectivo de cada línea recreada con la MISMA política que
+            // RecalculateTotalAsync/AddItemAsync (kernel único vía ApplyCashRoundingPolicy). El
+            // toggle del piso se lee UNA vez por request y solo si hay alguna línea no-custom con
+            // regla cash (default-safe, espejo de la recalculación); ExactMath y precios custom
+            // conservan el techo canónico 8.104 byte-idéntico.
+            bool neverRoundDown = true;
+            if (newItemsList.Any(i => !i.IsCustomPrice && IsCashFriendlyRule(i.RoundingRuleCashBs)))
+            {
+                neverRoundDown = await ResolveNeverRoundDownAsync();
+            }
+
+            foreach (var newItem in newItemsList)
+            {
+                newItem.UnitPriceBsS = ApplyCashRoundingPolicy(newItem.UnitPrice, newItem.IsCustomPrice, newItem.RoundingRuleCashBs, calculationRate ?? sale.AppliedRate, neverRoundDown);
+                newItem.SubtotalBsS = PricingCalculator.RoundToDigital(newItem.Quantity * newItem.UnitPriceBsS);
             }
 
             if (sale.Items != null)
@@ -500,7 +633,7 @@ public partial class SalesService
                 sale.Items.Add(newItem);
             }
 
-            await RecalculateTotalAsync(sale);
+            await RecalculateTotalAsync(sale, cancellationToken: cancellationToken, calculationRate: calculationRate);
             ValidateHoldSaleTotal(sale);
             await _context.SaveChangesAsync(cancellationToken);
 
@@ -572,3 +705,4 @@ public partial class SalesService
         });
     }
 }
+

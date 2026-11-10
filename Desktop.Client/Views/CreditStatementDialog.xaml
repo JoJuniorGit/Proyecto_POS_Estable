@@ -1,0 +1,199 @@
+<UserControl x:Class="Desktop.Client.Views.CreditStatementDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             mc:Ignorable="d"
+             Width="820" Height="620"
+             d:DataContext="{d:DesignInstance Type=vm:CreditStatementDialogViewModel}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,14">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <materialDesign:PackIcon Kind="FileAccountOutline" Width="28" Height="28" Foreground="#5E35B1" VerticalAlignment="Center"/>
+                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="Estado de Cuenta del Cliente" FontSize="20" FontWeight="Bold" Foreground="#1E293B"/>
+                    <TextBlock FontSize="12" Foreground="#64748B">
+                        <Run Text="{Binding CustomerName, Mode=OneWay}" FontWeight="SemiBold"/>
+                        <Run Text=" · "/>
+                        <Run Text="{Binding StatusLabel, Mode=OneWay}"/>
+                    </TextBlock>
+                </StackPanel>
+            </StackPanel>
+            <!-- 8.211-T4c2b4 (S9): the daily rate only exists in Dual. -->
+            <TextBlock DockPanel.Dock="Right" HorizontalAlignment="Right" VerticalAlignment="Center"
+                       FontSize="12" FontWeight="SemiBold" Foreground="#166534"
+                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                <Run Text="Tasa del día: "/>
+                <Run Text="{Binding TodayRate, Mode=OneWay, StringFormat='{}{0:N2}'}"/>
+                <Run Text=" "/>
+                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode, Mode=OneWay}"/>
+                <Run Text="/"/>
+                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}"/>
+            </TextBlock>
+        </DockPanel>
+
+        <!-- Summary -->
+        <Grid Grid.Row="1" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0">
+                <StackPanel>
+                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, StringFormat='DEUDA {0}'}" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding CurrentDebtUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                               AutomationProperties.AutomationId="CreditStatement_DebtUsd"
+                               FontSize="20" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
+                </StackPanel>
+            </Border>
+
+            <!-- 8.211-T4c2b4 (S9): the local today projection is Dual-only. -->
+            <Border Grid.Column="1" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0"
+                    Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='EQUIVALENTE {0} HOY'}" FontSize="10" FontWeight="Bold" Foreground="#166534"/>
+                    <TextBlock Text="{Binding CurrentDebtBsS, Converter={StaticResource LocalAmountConverter}}"
+                               AutomationProperties.AutomationId="CreditStatement_DebtBsS"
+                               FontSize="20" FontWeight="Bold" Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0">
+                <StackPanel>
+                    <TextBlock Text="CRÉDITO DISPONIBLE" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding AvailableCreditUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                               AutomationProperties.AutomationId="CreditStatement_Available"
+                               FontSize="20" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="3" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14,10">
+                <StackPanel>
+                    <TextBlock Text="UTILIZACIÓN" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                    <TextBlock Text="{Binding UtilizationPercent, StringFormat='{}{0:N2}%'}"
+                               AutomationProperties.AutomationId="CreditStatement_Utilization"
+                               FontSize="20" FontWeight="Bold" Foreground="#0F172A"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Receivables + payments -->
+        <Grid Grid.Row="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="8"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Background="#FFFFFF" ClipToBounds="True">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="OBLIGACIONES" FontSize="11" FontWeight="Bold" Foreground="#475569" Margin="0,0,0,6"/>
+                    <DataGrid ItemsSource="{Binding Receivables}"
+                              AutomationProperties.AutomationId="CreditStatement_ReceivablesGrid"
+                              AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                              SelectionMode="Single" BorderThickness="0" Background="Transparent"
+                              VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Pixel"
+                              GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E2E8F0"
+                              VerticalGridLinesBrush="Transparent" HeadersVisibility="Column"
+                              RowHeight="34">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Factura" Binding="{Binding InvoiceDisplay}" Width="100" FontWeight="SemiBold"/>
+                            <DataGridTextColumn Header="Emisión" Binding="{Binding IssuedAtUtc, StringFormat='{}{0:dd/MM/yyyy}'}" Width="100"/>
+                            <DataGridTextColumn Header="Vence" Binding="{Binding DueDateUtc, StringFormat='{}{0:dd/MM/yyyy}'}" Width="100"/>
+                            <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, StringFormat='Saldo {0}'}" Binding="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="110"/>
+                            <!-- 8.211-T4c2b4 (S9): today projection only exists in Dual. -->
+                            <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Saldo {0} hoy'}" Binding="{Binding BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}" Width="140"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                            <DataGridTextColumn Header="Estado" Binding="{Binding Status}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Row="2" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12" Background="#FFFFFF" ClipToBounds="True">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <TextBlock Text="HISTORIAL DE ABONOS" FontSize="11" FontWeight="Bold" Foreground="#475569"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock FontSize="11" Foreground="#64748B">
+                                <Run Text="Total abonado: "/>
+                                <Run Text="{Binding TotalPaymentsUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}}" FontWeight="Bold"/>
+                            </TextBlock>
+                            <!-- 8.211-T4c2b4 (S9): the realized FX difference only exists in Dual. -->
+                            <TextBlock FontSize="11" Foreground="#64748B"
+                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                <Run Text=" · FX realizado: "/>
+                                <Run Text="{Binding TotalFxDifferenceBsS, Mode=OneWay, Converter={StaticResource LocalAmountConverter}}" FontWeight="Bold"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
+                    <DataGrid ItemsSource="{Binding Payments}"
+                              AutomationProperties.AutomationId="CreditStatement_PaymentsGrid"
+                              AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                              SelectionMode="Single" BorderThickness="0" Background="Transparent"
+                              VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Pixel"
+                              GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E2E8F0"
+                              VerticalGridLinesBrush="Transparent" HeadersVisibility="Column"
+                              RowHeight="34">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Fecha" Binding="{Binding ReceivedAtDisplay}" Width="130"/>
+                            <DataGridTextColumn Header="Método" Binding="{Binding PaymentMethodName}" Width="140"/>
+                            <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol}" Binding="{Binding AmountUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="100"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                            <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol}" Binding="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}" Width="130"/>
+                            <!-- 8.211-T4c2b4 (S9): payment rate and realized FX only exist in Dual. -->
+                            <DataGridTextColumn Header="Tasa" Binding="{Binding PaymentRate, StringFormat='{}{0:N2}'}" Width="90"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                            <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='FX {0}'}" Binding="{Binding FxDifferenceBsS, Converter={StaticResource LocalAmountConverter}}" Width="100"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                            <DataGridTextColumn Header="Referencia" Binding="{Binding ReferenceNumber}" Width="*"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- Footer -->
+        <Grid Grid.Row="3" Margin="0,14,0,0">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock FontSize="11" FontStyle="Italic" Foreground="#64748B">
+                    <Run Text="El saldo se mantiene en "/>
+                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}"/>
+                    <Run Text=";"/>
+                </TextBlock>
+                <!-- 8.211-T4c2b4 (S9): the local projection only exists in Dual. -->
+                <TextBlock FontSize="11" FontStyle="Italic" Foreground="#64748B"
+                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                    <Run Text=" el equivalente en "/>
+                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode, Mode=OneWay}"/>
+                    <Run Text=" es una proyección a la tasa del día."/>
+                </TextBlock>
+            </StackPanel>
+            <Button Content="CERRAR"
+                    Command="{Binding CloseCommand}"
+                    AutomationProperties.AutomationId="CreditStatement_CloseButton"
+                    Style="{DynamicResource MaterialDesignOutlinedButton}"
+                    HorizontalAlignment="Right" Height="38" Padding="22,0"/>
+        </Grid>
+    </Grid>
+</UserControl>
+

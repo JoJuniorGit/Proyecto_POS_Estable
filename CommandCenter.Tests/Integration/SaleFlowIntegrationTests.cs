@@ -94,6 +94,9 @@ public class SaleFlowIntegrationTests
         Assert.All(transactions, t => Assert.True(t.IsPhysicalCash));
 
         decimal currentBalance = await cashDrawerService.GetCurrentBalanceLocalAsync(session.Id);
-        Assert.Equal(2270.00m, currentBalance);
+        // Gaveta local estricta: 2000 inicial + 120 Bs.S del pago local. Los 3 USD del pago en
+        // divisas viven en su propio bucket y no financian el saldo Bs.S.
+        Assert.Equal(2120.00m, currentBalance);
+        Assert.Equal(3m, await cashDrawerService.GetPhysicalBalanceAsync(session.Id, PettyCashCurrency.Usd));
     }
 }

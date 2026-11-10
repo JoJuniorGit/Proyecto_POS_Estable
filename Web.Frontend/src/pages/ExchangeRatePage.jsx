@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useExchangeRate } from '../context/ExchangeRateContext';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../components/register/registerFormLogic';
 import { DollarSign, RefreshCw, Save, Loader2, History } from 'lucide-react';
-import { formatBsS, formatNumberEs } from '../utils/formatters';
 import RoleGuard from '../navigation/RoleGuard';
 import './ExchangeRatePage.css';
 
@@ -16,6 +18,11 @@ export default function ExchangeRatePage() {
 
 function ExchangeRatePageContent() {
   const { exchangeRate, setExchangeRate, lastUpdated, isRateOutdated } = useExchangeRate();
+  const { profile: monetaryProfile, formatSecondary } = useMonetaryProfile();
+  const local = resolveLocalCurrencyProfile(monetaryProfile);
+  const isDual = local.isDual;
+  const primaryLabel = displayCurrencyCode(monetaryProfile.primaryCurrencyCode) || 'USD';
+  const localLabel = local.label || 'Bs.S';
   const [newRateText, setNewRateText] = useState('');
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -42,8 +49,8 @@ function ExchangeRatePageContent() {
   };
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+    if (isDual) loadHistory();
+  }, [isDual]);
 
   const handleSaveManual = async (e) => {
     e.preventDefault();
@@ -76,7 +83,7 @@ function ExchangeRatePageContent() {
       if (res?.value) {
         setExchangeRate(res.value);
         setNewRateText(res.value.toFixed(2));
-        setMessage({ type: 'success', text: `Tasa sincronizada con BCV: ${formatBsS(res.value)}` });
+        setMessage({ type: 'success', text: `Tasa sincronizada con BCV: ${formatSecondary(res.value)}` });
         loadHistory();
       }
     } catch (err) {
@@ -90,6 +97,20 @@ function ExchangeRatePageContent() {
       setIsSyncing(false);
     }
   };
+
+  // 8.211-T4b2b2b (S9): `Single` no opera tasa de cambio; se muestra un estado explícito y se
+  // ocultan los controles de tasa actual/manual/sincronización sin tocar los contratos backend.
+  if (!isDual) {
+    return (
+      <div className="exchange-page xr-container">
+        <h2 className="page-title mb-4">Gestión de Tasa de Cambio</h2>
+        <div className="alert alert-info mb-3 text-sm" role="status">
+          El régimen monetario Single no utiliza tasa de cambio: los importes se expresan únicamente
+          en {localLabel}. No hay sincronización BCV ni carga manual disponibles.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="exchange-page xr-container">
@@ -155,9 +176,9 @@ function ExchangeRatePageContent() {
           <div className="flex-align-center gap-2">
             <DollarSign size={32} className="color-primary" />
             <span className="current-rate-value">
-              Bs.S {exchangeRate > 0 ? formatNumberEs(exchangeRate) : '---'}
+              {exchangeRate > 0 ? formatSecondary(exchangeRate) : `${localLabel} ---`}
             </span>
-            <span className="text-muted xr-fs-09">/ 1.00 USD</span>
+            <span className="text-muted xr-fs-09">/ 1.00 {primaryLabel}</span>
           </div>
           {lastUpdated && (
             <span className="text-muted xr-updated-at">
@@ -168,7 +189,7 @@ function ExchangeRatePageContent() {
 
         <form onSubmit={handleSaveManual} className="form-row align-end">
           <div className="form-group flex-1">
-            <label className="form-label">Establecer Tasa Manual (Bs.S por USD)</label>
+            <label className="form-label">Establecer Tasa Manual ({localLabel} por {primaryLabel})</label>
             <input
               type="number"
               step="0.01"
@@ -203,7 +224,7 @@ function ExchangeRatePageContent() {
             <thead>
               <tr>
                 <th>Fecha</th>
-                <th className="text-right">Tasa (Bs.S / USD)</th>
+                <th className="text-right">Tasa ({localLabel} / {primaryLabel})</th>
               </tr>
             </thead>
             <tbody>
@@ -211,7 +232,7 @@ function ExchangeRatePageContent() {
                 <tr key={i}>
                   <td>{h.date || h.Date || '-'}</td>
                   <td className="text-right font-bold color-primary">
-                    {formatBsS(h.value || h.Value || h.rate || h.Rate || 0)}
+                    {formatSecondary(h.value || h.Value || h.rate || h.Rate || 0)}
                   </td>
                 </tr>
               ))}

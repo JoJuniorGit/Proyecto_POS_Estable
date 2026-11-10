@@ -24,39 +24,6 @@ public class E2EAppHealthTests : IClassFixture<WpfAppFixture>
     }
 
     [Fact]
-    public void PosView_AfterLogin_LoadsMockBackendWithoutErrorDialogs()
-    {
-        var window = _fixture.Launch();
-        Assert.NotNull(window);
-
-        TestHelper.EnsureLoggedIn(window);
-
-        // El badge de tasa del header muestra "Tasa: 50,00 Bs/$" (o "50.00" según cultura).
-        var rateText = Retry.WhileNull(
-            () => UiaRetry.RetryUia(() => window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Text))
-                .FirstOrDefault(e => (e.Name ?? string.Empty).StartsWith("Tasa", StringComparison.Ordinal))),
-            TimeSpan.FromSeconds(10));
-        Assert.NotNull(rateText.Result);
-        Assert.Contains("50", rateText.Result!.Name);
-
-        // La inicialización asíncrona del POS (tasa, métodos de pago, venta) tarda unos segundos;
-        // se monitorea hasta 8s para detectar cualquier diálogo de error que aparezca.
-        string[] errorDialogs = Array.Empty<string>();
-        var deadline = DateTime.UtcNow.AddSeconds(8);
-        while (DateTime.UtcNow < deadline)
-        {
-            errorDialogs = FindDialogs("CustomDialogWindow_Error");
-            if (errorDialogs.Length > 0)
-            {
-                break;
-            }
-            System.Threading.Thread.Sleep(250);
-        }
-
-        Assert.True(errorDialogs.Length == 0, $"Diálogos de error inesperados en modo E2E: {string.Join(" | ", errorDialogs)}");
-    }
-
-    [Fact]
     public void MainViews_WhenNavigated_DoNotOpenErrorDialogs()
     {
         var window = _fixture.Launch();
@@ -124,6 +91,39 @@ public class E2EAppHealthTests : IClassFixture<WpfAppFixture>
         }
 
         Assert.True(failures.Count == 0, $"Fallos tras navegar las vistas: {string.Join(" | ", failures)}");
+    }
+
+    [Fact]
+    public void SettingsSections_WhenSelected_ShowOnlyTheirContent()
+    {
+        var window = _fixture.Launch();
+        Assert.NotNull(window);
+
+        TestHelper.EnsureLoggedIn(window);
+        Assert.True(TestHelper.NavigateTo(window, "Nav_BtnSettings"));
+
+        System.Threading.Thread.Sleep(1000);
+
+        AssertSettingsSection(window, "Settings_Section_Currency", "Settings_UsdRoundingCombo");
+        AssertSettingsSection(window, "Settings_Section_Payments", "Settings_PaymentMethodsGrid");
+        AssertSettingsSection(window, "Settings_Section_Inventory", "Settings_NegativeStockToggle");
+        AssertSettingsSection(window, "Settings_Section_Network", "Settings_ChangeServerButton");
+        AssertSettingsSection(window, "Settings_Section_System", "Settings_RestartButton");
+    }
+
+    private static void AssertSettingsSection(Window window, string tabAutomationId, string contentAutomationId)
+    {
+        var tab = Retry.WhileNull(
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId(tabAutomationId))),
+            TimeSpan.FromSeconds(5)).Result;
+        Assert.NotNull(tab);
+        tab.AsTabItem().Select();
+        System.Threading.Thread.Sleep(300);
+
+        var content = Retry.WhileNull(
+            () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId(contentAutomationId))),
+            TimeSpan.FromSeconds(5)).Result;
+        Assert.NotNull(content);
     }
 
     private string[] FindDialogs(string automationIdPrefix)

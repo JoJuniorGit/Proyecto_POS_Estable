@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
+using Core.Helpers;
 using System;
 using System.Globalization;
 using System.Linq;
@@ -108,38 +109,19 @@ public partial class ExchangeRateViewModel : ObservableObject, IDisposable
 
     public static bool TryParseRate(string? text, out decimal rate)
     {
+        if (FlexibleDecimalParser.TryParse(text, out rate))
+        {
+            return rate > 0;
+        }
+
+        // Fallback para configuraciones regionales que el parser tolerante no cubre.
+        if (!string.IsNullOrWhiteSpace(text)
+            && decimal.TryParse(text.Trim(), NumberStyles.Any, CultureInfo.CurrentCulture, out rate))
+        {
+            return rate > 0;
+        }
+
         rate = 0m;
-        if (string.IsNullOrWhiteSpace(text)) return false;
-        string clean = text.Trim();
-
-        int lastDot = clean.LastIndexOf('.');
-        int lastComma = clean.LastIndexOf(',');
-
-        if (lastComma > -1 && lastDot > -1)
-        {
-            if (lastComma > lastDot)
-            {
-                // Formato europeo/latino: 1.234,56 -> quitar puntos, coma pasa a punto
-                clean = clean.Replace(".", "").Replace(',', '.');
-            }
-            else
-            {
-                // Formato anglosajón: 1,234.56 -> quitar comas
-                clean = clean.Replace(",", "");
-            }
-        }
-        else if (lastComma > -1)
-        {
-            // Solo comas: "813,74" -> reemplazar por punto
-            clean = clean.Replace(',', '.');
-        }
-
-        if (decimal.TryParse(clean, NumberStyles.Any, CultureInfo.InvariantCulture, out rate))
-            return rate > 0;
-
-        if (decimal.TryParse(text.Trim(), NumberStyles.Any, CultureInfo.CurrentCulture, out rate))
-            return rate > 0;
-
         return false;
     }
 

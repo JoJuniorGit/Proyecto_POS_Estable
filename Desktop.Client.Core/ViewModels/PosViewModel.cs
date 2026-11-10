@@ -231,9 +231,25 @@ public partial class PosViewModel : ObservableObject, IDisposable
     /// </summary>
     private void RewriteEffectivePriceBsS(ProductQuickInfoDto item)
     {
-        item.PriceBsS = item.PriceUSD > 0 && CurrentExchangeRate > 0
-            ? Helpers.EffectivePriceVesHelper.EffectiveBsS(item.PriceUSD, CurrentExchangeRate, item.RoundingRuleCashBs ?? _globalCashRoundingRule, _neverRoundDownCashBs)
-            : item.PriceBsS;
+        // El precio Detal canónico del artículo es PriceRetailUSD (mismo canal que usa el
+        // backend en RecalculateTotalAsync); PriceUSD solo es fallback legado.
+        decimal retailUsd = item.PriceRetailUSD > 0m ? item.PriceRetailUSD : item.PriceUSD;
+        if (retailUsd > 0m && CurrentExchangeRate > 0m)
+        {
+            item.PriceBsS = Helpers.EffectivePriceVesHelper.EffectiveBsS(
+                retailUsd,
+                CurrentExchangeRate,
+                item.RoundingRuleCashBs ?? _globalCashRoundingRule,
+                _neverRoundDownCashBs);
+            item.EffectivePriceBsS = item.PriceBsS;
+            return;
+        }
+
+        // Sin USD/tasa válidos se conserva la proyección del servidor o el snapshot persistido.
+        if (item.EffectivePriceBsS > 0m)
+        {
+            item.PriceBsS = item.EffectivePriceBsS;
+        }
     }
 
     private readonly SemaphoreSlim _sessionInitializationGate = new(1, 1);
@@ -529,6 +545,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
         }
         catch (ObjectDisposedException) { }
 
+        _cart?.Dispose();
         WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 

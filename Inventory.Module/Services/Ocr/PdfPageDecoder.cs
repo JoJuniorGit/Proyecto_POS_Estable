@@ -1,3 +1,5 @@
+using System;
+using System.Buffers.Binary;
 using Core.Interfaces;
 using OpenCvSharp;
 using PDFtoImage;
@@ -67,17 +69,31 @@ public sealed class PdfPageDecoder
             Conversion.SavePng(buffer, fileBytes, page, options: options);
             var png = buffer.ToArray();
 
-            // Dimensiones exactas del PNG renderizado (PDFium cuantiza el tamaño en píxeles).
-            using var rendered = Cv2.ImDecode(png, ImreadModes.Unchanged);
-            if (rendered.Empty())
-            {
-                throw new ArgumentException("No se pudo rasterizar una página del PDF.", nameof(fileBytes));
-            }
-
-            pages.Add(new OcrImage(png, rendered.Width, rendered.Height));
+            // PERF-R04: las dimensiones viven en la cabecera IHDR del PNG; no hace falta
+            // decodificar el bitmap completo solo para leerlas.
+            var (width, height) = ReadPngDimensions(png, fileBytes);
+            pages.Add(new OcrImage(png, width, height));
         }
 
         return pages;
 #pragma warning restore CA1416
+    }
+
+    private static (int Width, int Height) ReadPngDimensions(byte[] png, byte[] source)
+    {
+        if (png.Length < 24
+            || png[0] != 0x89 || png[1] != 0x50 || png[2] != 0x4E || png[3] != 0x47)
+        {
+            throw new ArgumentException("No se pudo rasterizar una página del PDF.", nameof(source));
+        }
+
+        int width = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16, 4));
+        int height = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20, 4));
+        if (width <= 0 || height <= 0)
+        {
+            throw new ArgumentException("No se pudo rasterizar una página del PDF.", nameof(source));
+        }
+
+        return (width, height);
     }
 }

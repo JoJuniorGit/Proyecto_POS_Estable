@@ -61,7 +61,7 @@ public partial class InventoryService
         // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy en producción.
         return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            using var transaction = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
+            await using var transaction = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
             try
             {
             var skusToImport = productList.Where(IsImportable).Select(p => p.SKU.Trim()).Distinct().ToList();
@@ -411,7 +411,9 @@ public partial class InventoryService
     /// </summary>
     private async Task<Dictionary<string, Category>> BuildCategoryIndexByPathAsync(CancellationToken cancellationToken)
     {
-        var categories = await _context.Categories.ToListAsync(cancellationToken);
+        var categories = await _context.Categories
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
         var paths = CategoryHierarchy.BuildPaths(categories, normalized: true);
 
         var index = new Dictionary<string, Category>(StringComparer.OrdinalIgnoreCase);
@@ -458,7 +460,8 @@ public partial class InventoryService
                 {
                     Name = segment,
                     NormalizedName = normalized,
-                    ParentCategory = parent
+                    ParentCategoryId = parent?.Id > 0 ? parent.Id : null,
+                    ParentCategory = parent?.Id == 0 ? parent : null
                 };
                 _context.Categories.Add(category);
                 categoriesByPath[path] = category;
@@ -498,7 +501,14 @@ public partial class InventoryService
             _context.ProductCategories.RemoveRange(pending);
         }
 
-        _context.ProductCategories.Add(new ProductCategory { Product = product, Category = leaf });
+        if (leaf.Id != 0)
+        {
+            _context.ProductCategories.Add(new ProductCategory { Product = product, CategoryId = leaf.Id });
+        }
+        else
+        {
+            _context.ProductCategories.Add(new ProductCategory { Product = product, Category = leaf });
+        }
     }
 
 }

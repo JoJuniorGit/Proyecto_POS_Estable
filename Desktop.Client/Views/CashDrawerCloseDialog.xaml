@@ -1,0 +1,85 @@
+<Window x:Class="Desktop.Client.Views.CashDrawerCloseDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
+        mc:Ignorable="d"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Auto"
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        Title="Cierre de Caja"
+        Height="460" Width="500"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False">
+
+    <Grid Margin="26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1"
+                CornerRadius="8" Padding="16,12" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock Text="Cierre de Caja" FontSize="18" FontWeight="Bold" Foreground="#1E3A8A"/>
+                <TextBlock x:Name="RateText" FontSize="11" Foreground="#475569" Margin="0,3,0,0"
+                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Background="{DynamicResource MaterialDesignCardBackground}"
+                BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6"
+                Padding="14,12" Margin="0,0,0,16">
+            <StackPanel>
+                <TextBlock x:Name="TheoreticalBsSText" FontWeight="SemiBold" Foreground="#1E293B"/>
+                <TextBlock x:Name="TheoreticalUsdText" FontWeight="SemiBold" Foreground="#1E293B" Margin="0,4,0,0"
+                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2">
+            <TextBox x:Name="LocalAmountBox"
+                     AutomationProperties.AutomationId="CashDrawerClose_LocalInput"
+                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Efectivo {0} contado'}"
+                     Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
+                     FontWeight="Bold" FontSize="16" HorizontalContentAlignment="Right"
+                     Margin="0,0,0,14"/>
+            <TextBox x:Name="UsdAmountBox"
+                     AutomationProperties.AutomationId="CashDrawerClose_UsdInput"
+                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Efectivo {0} contado (opcional)'}"
+                     Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                     Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
+                     FontWeight="Bold" FontSize="16" HorizontalContentAlignment="Right"
+                     Margin="0,0,0,10"/>
+            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='El conteo {0} es opcional; si se deja vacío se conserva el comportamiento previo del cierre.'}"
+                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                       FontSize="11" Foreground="#64748B" TextWrapping="Wrap"/>
+            <TextBlock x:Name="ErrorText"
+                       AutomationProperties.AutomationId="CashDrawerClose_ErrorText"
+                       Foreground="#B91C1C" TextWrapping="Wrap" Margin="2,10,0,0"
+                       Visibility="Collapsed"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="CANCELAR"
+                    AutomationProperties.AutomationId="CashDrawerClose_CancelButton"
+                    Style="{DynamicResource MaterialDesignOutlinedButton}"
+                    Height="40" Padding="18,0" Margin="0,0,10,0"
+                    IsCancel="True"/>
+            <Button Content="CONFIRMAR CIERRE"
+                    AutomationProperties.AutomationId="CashDrawerClose_ConfirmButton"
+                    Style="{DynamicResource MaterialDesignRaisedButton}"
+                    Background="#1D4ED8" Foreground="White"
+                    Height="40" Padding="22,0" FontWeight="Bold"
+                    IsDefault="True" Click="Save_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
+

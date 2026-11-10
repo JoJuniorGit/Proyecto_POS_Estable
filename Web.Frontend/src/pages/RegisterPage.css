@@ -147,3 +147,101 @@
   white-space: nowrap;
   padding-right: 16px;
 }
+:root .reg-method-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+:root .reg-currency-balance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+:root .reg-currency-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+:root .reg-currency-summary-table th,
+:root .reg-currency-summary-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+:root .reg-currency-summary-table thead th {
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+:root .reg-currency-summary-local {
+  background-color: var(--accent-primary-light);
+}
+
+:root .reg-currency-summary-total td {
+  border-top: 2px solid var(--border);
+}
+
+:root .reg-currency-summary-table .reg-currency-local-badge {
+  margin-left: 6px;
+}
+
+:root .reg-currency-summary-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+:root .reg-currency-summary-row {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 10px;
+}
+
+:root .reg-currency-summary-row.is-local {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-primary-light);
+}
+
+:root .reg-currency-summary-row-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+:root .reg-currency-summary-cards {
+  grid-template-columns: 2fr 1fr 1fr;
+}
+
+@media (max-width: 900px) {
+  :root .reg-currency-summary-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+:root .reg-currency-balance-local {
+  border-color: var(--accent-primary) !important;
+  background-color: var(--accent-primary-light) !important;
+}
+
+:root .reg-currency-local-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background-color: var(--accent-primary);
+  color: #FFFFFF;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+:root .reg-method-balance-disabled {
+  opacity: 0.55;
+}

@@ -109,9 +109,26 @@ Invoke-RestMethod "http://localhost:5000/health"
 |---|---|---|---|
 | `ASPNETCORE_ENVIRONMENT` | Development | Production | Production |
 | `ConnectionStrings` | local dev | BD QA | secrets.json |
-| `AdminSeedPassword` | appsettings.Development | CSPRNG por sitio | CSPRNG por sitio |
+| `AdminSeedPassword` | User Secrets | CSPRNG por sitio | CSPRNG por sitio |
 | `JwtSettings.Key` | clave dev | CSPRNG 512 bits | CSPRNG 512 bits |
 | `RequireHttpsMetadata` | false | false (LAN) | true si no es LAN |
+| `Idempotency:RequireCashSessionAndInvoiceStage` | false (compatibilidad) | false hasta actualizar clientes | true tras el rollout |
+
+### Secretos del entorno de desarrollo
+
+`Backend.API/appsettings.Development.json` no debe almacenar credenciales. En Desarrollo, ASP.NET Core carga User Secrets automáticamente mediante el `UserSecretsId` del proyecto:
+
+```powershell
+dotnet user-secrets list --project Backend.API/Backend.API.csproj
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=CommandCenterDb;Username=postgres;Password=<secreto>" --project Backend.API/Backend.API.csproj
+dotnet user-secrets set "SystemSettings:AdminSeedPassword" "<secreto aleatorio>" --project Backend.API/Backend.API.csproj
+```
+
+El almacén es local al perfil de Windows y no se publica ni se versiona. El secreto de seed solo se usa al crear una instalación nueva; cambiarlo no rota automáticamente la contraseña de un administrador que ya existe. Para Producción, conservar `secrets.json` protegido por ACL o usar el almacén seguro del sitio. El desktop usa HTTPS y pinning TOFU por host privado; para Web/móviles, el certificado debe ser confiable para el navegador o instalarse mediante el procedimiento del sitio.
+
+### Rollout de claves de idempotencia
+
+Las versiones actuales de WPF y Web envían `Idempotency-Key` para apertura/cierre de caja y staging de facturas proveedor. El servidor registra temporalmente las solicitudes sin clave para identificar clientes legacy, pero las acepta mientras `Idempotency:RequireCashSessionAndInvoiceStage` sea `false`. Después de actualizar toda la flota, establecerlo en `true` en `BackendAPI/secrets.json`; a partir de ahí los requests sin clave reciben `400`.
 
 ---
 
@@ -122,7 +139,7 @@ Invoke-RestMethod "http://localhost:5000/health"
 3. Ejecutar instalador como Administrador
 4. Verificar servicio NSSM, firewall, `secrets.json` con ACL, certificado, backup
 5. Probar `GET /health` y smoke `MigratedSchema`
-6. Importar `.cer` en cajas si usan HTTPS
+6. Verificar el certificado HTTPS y su confianza en desktop y navegador/móviles; la primera conexión desktop a un certificado local queda fijada con DPAPI.
 7. Cambio obligatorio de contraseña del admin
 
 ---

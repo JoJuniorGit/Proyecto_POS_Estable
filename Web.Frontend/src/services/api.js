@@ -42,7 +42,10 @@ export async function claimPairingToken(apiBaseUrl, token) {
     if (!response.ok) return false;
     const body = await response.json().catch(() => null);
     return !!(body && body.status === 'ok' && body.paired === true);
-  } catch {
+  } catch (err) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('Pairing claim failed:', err);
+    }
     return false;
   }
 }
@@ -90,7 +93,10 @@ export function resolveBaseUrl() {
       try {
         const parsed = new URL(normalized);
         isAllowed = isAllowedApiHost(parsed.hostname);
-      } catch {
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('Invalid URL in search param:', err);
+        }
         isAllowed = false;
       }
 
@@ -116,14 +122,22 @@ export function resolveBaseUrl() {
                 // Si cambió, forzar recarga para usar la nueva URL validada
                 window.location.reload();
               }
-            } catch {}
+            } catch (err) {
+              if (typeof console !== 'undefined' && console.warn) {
+                console.warn('Failed to update URL history state:', err);
+              }
+            }
           });
         }
         // No retornamos `normalized` aquí. Se resolverá usando la URL anterior o por defecto
         // hasta que el claim sea exitoso y recargue la página.
       }
     }
-  } catch {}
+  } catch (err) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('Error resolving URL from search params:', err);
+    }
+  }
 
   // 3. Sanitización de valor almacenado en localStorage
   try {
@@ -138,22 +152,37 @@ export function resolveBaseUrl() {
       let storedHostAllowed = false;
       try {
         storedHostAllowed = isAllowedApiHost(new URL(sanitized).hostname);
-      } catch {
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('Failed to validate stored API URL:', err);
+        }
         storedHostAllowed = false;
       }
       if (storedHostAllowed) {
         if (sanitized !== stored) {
           try {
             localStorage.setItem('pos_custom_api_url', sanitized);
-          } catch {}
+          } catch (err) {
+            if (typeof console !== 'undefined' && console.warn) {
+              console.warn('Failed to save sanitized API URL to localStorage:', err);
+            }
+          }
         }
         return sanitized;
       }
       try {
         localStorage.removeItem('pos_custom_api_url');
-      } catch {}
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('Failed to remove invalid API URL from localStorage:', err);
+        }
+      }
     }
-  } catch {}
+  } catch (err) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('Error accessing localStorage for custom API URL:', err);
+    }
+  }
 
   // 4. Variables de entorno (con guard seguro para Node/Jest/Vitest/Vite).
   // 8.9-L11: también se revalidan contra la whitelist LAN/Loopback.
@@ -163,7 +192,10 @@ export function resolveBaseUrl() {
     let viteAllowed = false;
     try {
       viteAllowed = isAllowedApiHost(new URL(viteApiUrl).hostname);
-    } catch {
+    } catch (err) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('Invalid Vite API URL:', err);
+      }
       viteAllowed = false;
     }
     if (viteAllowed) return viteApiUrl;
@@ -324,7 +356,11 @@ export async function apiFetch(endpoint, options = {}) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('pos_unauthorized'));
         }
-      } catch {}
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('Error clearing storage on 401:', err);
+        }
+      }
     }
 
     let errorMessage = response.status === 401

@@ -6,6 +6,7 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              xmlns:converters="clr-namespace:Desktop.Client.Converters"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              mc:Ignorable="d" 
              d:DesignHeight="650" d:DesignWidth="950"
              Background="{DynamicResource MaterialDesignPaper}"
@@ -441,6 +442,7 @@
 
                 <!-- Columna 2: Formulario de Creación / Edición de Cliente -->
                 <Border Grid.Column="1" Background="{DynamicResource MaterialDesignCard}" CornerRadius="8" Padding="20" Effect="{DynamicResource MaterialDesignShadowDepth1}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel>
                         <DockPanel Margin="0,0,0,16">
                             <TextBlock FontSize="16" FontWeight="Bold" VerticalAlignment="Center">
@@ -455,7 +457,7 @@
                                     </Style>
                                 </TextBlock.Style>
                             </TextBlock>
-                            <Button Command="{Binding NewCustomerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="32" Padding="8,0" DockPanel.Dock="Right" IsEnabled="{Binding CanMutate}">
+                            <Button Command="{Binding NewCustomerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="32" Padding="8,0" DockPanel.Dock="Right" IsEnabled="{Binding CanManageCustomerContact}">
                                 <TextBlock Text="+ Nuevo" FontSize="12"/>
                             </Button>
                         </DockPanel>
@@ -468,7 +470,7 @@
                                          materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          Padding="12,10,34,10"
-                                         IsEnabled="{Binding CanMutate}"/>
+                                         IsEnabled="{Binding CanManageCustomerContact}"/>
                                 <materialDesign:PackIcon Kind="CheckCircle" Width="18" Height="18" Foreground="#059669"
                                                          HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
                                                          Visibility="{Binding IsCedulaValid, Converter={StaticResource BoolToVis}}"/>
@@ -485,7 +487,7 @@
                                          materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          Padding="12,10,50,10"
-                                         IsEnabled="{Binding CanMutate}"/>
+                                         IsEnabled="{Binding CanManageCustomerContact}"/>
                                 <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0" FontSize="11">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -513,7 +515,7 @@
                                          materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          Padding="12,10,34,10"
-                                         IsEnabled="{Binding CanMutate}"/>
+                                         IsEnabled="{Binding CanManageCustomerContact}"/>
                                 <materialDesign:PackIcon Kind="CheckCircle" Width="18" Height="18" Foreground="#059669"
                                                          HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0"
                                                          Visibility="{Binding IsPhoneValid, Converter={StaticResource BoolToVis}}"/>
@@ -529,7 +531,7 @@
                                 Style="{StaticResource MaterialDesignRaisedButton}"
                                 Background="#7C3AED" Foreground="White"
                                 Height="44" FontSize="14" FontWeight="Bold" Margin="0,0,0,10"
-                                IsEnabled="{Binding CanMutate}">
+                                IsEnabled="{Binding CanManageCustomerContact}">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="ContentSave" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <TextBlock Text="GUARDAR CLIENTE" VerticalAlignment="Center"/>
@@ -581,21 +583,185 @@
                             </StackPanel>
                         </Button>
 
-                        <!-- Botón Eliminar Cliente -->
+                        <!-- Botón Eliminar Cliente (Admin/Manager; bloqueado con cartera conocida) -->
                         <Button Command="{Binding DeleteCustomerCommand}"
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Foreground="#B71C1C" BorderBrush="#B71C1C"
                                 Height="38" FontSize="13"
-                                IsEnabled="{Binding CanMutate}"
+                                IsEnabled="{Binding CanDeleteCustomer}"
                                 Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="DeleteForever" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <TextBlock Text="Eliminar Cliente" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
+
+                        <!-- ══════════════════════════════════════════════════════
+                             PERFIL CREDITICIO (Paso 11, S1/S4; 8.188 segregación)
+                             Oculto por completo para Cashier (Visibility, no solo IsEnabled);
+                             Admin/Manager conservan la lectura y la mora la administra el sistema.
+                             ══════════════════════════════════════════════════════ -->
+                        <Separator Margin="0,18,0,10" Visibility="{Binding CanViewCreditProfile, Converter={StaticResource BoolToVis}}"/>
+
+                        <Expander AutomationProperties.AutomationId="Customers_CreditProfilePanel"
+                                  Header="Perfil Crediticio"
+                                  IsExpanded="{Binding IsEditing, Mode=OneWay}"
+                                  Visibility="{Binding CanViewCreditProfile, Converter={StaticResource BoolToVis}}"
+                                  Margin="0,0,0,8">
+                            <StackPanel Margin="0,10,0,0">
+                                <TextBlock Text="Consultando perfil crediticio..."
+                                           Visibility="{Binding IsCreditProfileLoading, Converter={StaticResource BoolToVis}}"
+                                           FontSize="11" FontStyle="Italic" Foreground="#64748B" Margin="0,0,0,6"/>
+
+                                <TextBlock Text="{Binding CreditProfileError}"
+                                           Visibility="{Binding CreditProfileError, Converter={StaticResource StringToVisibilityConverter}}"
+                                           FontSize="11" Foreground="#B91C1C" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                                <CheckBox AutomationProperties.AutomationId="Customers_IsCreditEnabled"
+                                          Content="Habilitar línea de crédito"
+                                          IsChecked="{Binding IsCreditEnabled}"
+                                          IsEnabled="{Binding CanEditCreditProfile}"
+                                          Margin="0,0,0,10"/>
+
+                                <TextBox AutomationProperties.AutomationId="Customers_CreditLimit"
+                                         Text="{Binding CreditLimitText, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Límite de crédito ({0})'}"
+                                         materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         IsEnabled="{Binding CanEditCreditProfile}"
+                                         Margin="0,0,0,10"/>
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0"
+                                             AutomationProperties.AutomationId="Customers_PaymentTermDays"
+                                             Text="{Binding PaymentTermDaysText, UpdateSourceTrigger=PropertyChanged}"
+                                             materialDesign:HintAssist.Hint="Plazo de pago (días)"
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                             IsEnabled="{Binding CanEditCreditProfile}"/>
+                                    <TextBox Grid.Column="2"
+                                             AutomationProperties.AutomationId="Customers_CreditGraceDays"
+                                             Text="{Binding CreditGraceDaysText, UpdateSourceTrigger=PropertyChanged}"
+                                             materialDesign:HintAssist.Hint="Días de gracia"
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                             IsEnabled="{Binding CanEditCreditProfile}"/>
+                                </Grid>
+
+                                <TextBox AutomationProperties.AutomationId="Customers_CreditNotes"
+                                         Text="{Binding CreditNotes, UpdateSourceTrigger=PropertyChanged}"
+                                         MaxLength="1000"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         MinHeight="56"
+                                         materialDesign:HintAssist.Hint="Notas, garantías o acuerdos especiales"
+                                         materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         IsEnabled="{Binding CanEditCreditProfile}"
+                                         Margin="0,0,0,12"/>
+
+                                <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="DEUDA ACTUAL" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                                                <TextBlock Text="{Binding CreditProfile.CurrentDebtUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='—'}"
+                                                           AutomationProperties.AutomationId="Customers_CreditDebt"
+                                                           FontSize="15" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="DISPONIBLE" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                                                <TextBlock Text="{Binding CreditProfile.AvailableCreditUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='—'}"
+                                                           AutomationProperties.AutomationId="Customers_CreditAvailable"
+                                                           FontSize="15" FontWeight="Bold" Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        <Grid Margin="0,10,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="UTILIZACIÓN" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                                                <TextBlock Text="{Binding CreditProfile.UtilizationPercent, StringFormat='{}{0:N2}%', FallbackValue='—'}"
+                                                           AutomationProperties.AutomationId="Customers_CreditUtilization"
+                                                           FontSize="15" FontWeight="Bold" Foreground="#0F172A"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="MORA / ESTADO" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                                                <TextBlock FontSize="13" FontWeight="SemiBold">
+                                                    <Run Text="{Binding CreditStatusLabel, Mode=OneWay}"/>
+                                                    <Run Text=" · "/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, Mode=OneWay}"/>
+                                                    <Run Text="{Binding CreditProfile.OverdueUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='0.00'}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Button Command="{Binding SaveCreditProfileCommand}"
+                                        AutomationProperties.AutomationId="Customers_SaveCreditProfile"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Background="#7C3AED" Foreground="White"
+                                        Height="38" FontSize="12" FontWeight="Bold" Margin="0,0,0,8"
+                                        IsEnabled="{Binding CanEditCreditProfile}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="ContentSave" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBlock Text="GUARDAR PERFIL CREDITICIO" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+
+                                <Button Command="{Binding ToggleCreditBlockCommand}"
+                                        AutomationProperties.AutomationId="Customers_ToggleCreditBlock"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        BorderBrush="#B45309" Foreground="#B45309"
+                                        Height="36" FontSize="12" FontWeight="SemiBold"
+                                        IsEnabled="{Binding CanEditCreditProfile}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0">
+                                            <materialDesign:PackIcon.Style>
+                                                <Style TargetType="materialDesign:PackIcon">
+                                                    <Setter Property="Kind" Value="LockOutline"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsManuallyBlocked}" Value="True">
+                                                            <Setter Property="Kind" Value="LockOpenOutline"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </materialDesign:PackIcon.Style>
+                                        </materialDesign:PackIcon>
+                                        <TextBlock VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="BLOQUEAR CRÉDITO"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsManuallyBlocked}" Value="True">
+                                                            <Setter Property="Text" Value="DESBLOQUEAR CRÉDITO"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Expander>
                     </StackPanel>
+                    </ScrollViewer>
                 </Border>
             </Grid>
         </Grid>
     </Grid>
 </UserControl>
+
+
+

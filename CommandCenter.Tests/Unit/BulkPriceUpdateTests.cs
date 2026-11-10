@@ -120,7 +120,7 @@ public class BulkPriceUpdateTests
     }
 
     [Fact]
-    public async Task PreviewBulkPriceUpdateAsync_IncreasePercentMargin_RoundsMarginAndRecalculatesPrice()
+    public async Task PreviewBulkPriceUpdateAsync_IncreasePercentMargin_AddsPercentagePointsAndRecalculatesPrice()
     {
         var context = TestDatabaseFactory.CreateInventoryDbContext();
         var service = CreateService(context);
@@ -139,12 +139,14 @@ public class BulkPriceUpdateTests
         var row = RowOf(result, created.Id);
         var marginChange = ChangeOf(row, BulkPriceField.RetailMargin);
         Assert.Equal(33.33m, marginChange.BeforeValue);
-        Assert.Equal(36.66m, marginChange.AfterValue); // 33.33 * 1.10 = 36.663 -> AwayFromZero 36.66
+        // Cambio deliberado del mantenedor (spec V0.15): los márgenes operan en PUNTOS PORCENTUALES
+        // aditivos (33.33 + 10 = 43.33), no como porcentaje relativo sobre el margen (36.66).
+        Assert.Equal(43.33m, marginChange.AfterValue);
 
         // S2: el margen recalcula el precio = costo x (1 + margen) con techo.
         var priceChange = ChangeOf(row, BulkPriceField.RetailPrice);
         Assert.Equal(1.34m, priceChange.BeforeValue);
-        Assert.Equal(1.37m, priceChange.AfterValue); // 1.00 * 1.3666 = 1.3666 -> techo 1.37
+        Assert.Equal(1.44m, priceChange.AfterValue); // 1.00 * 1.4333 = 1.4333 -> techo 1.44
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -901,5 +903,31 @@ public class BulkPriceUpdateTests
         var request = Request(new[] { 1 }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 1m));
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.PreviewBulkPriceUpdateAsync(request));
+    }
+
+    [Fact]
+    public async Task BulkUpdatePricesAsync_RetailChange_KeepsPriceUsdMirroringRetailChannel()
+    {
+        var context = TestDatabaseFactory.CreateInventoryDbContext();
+        var service = CreateService(context);
+        await SeedRateAsync(context, 50m);
+        var created = await service.CreateProductFromDtoAsync(new CreateProductDto
+        {
+            Name = "Cemento",
+            SKU = "CEM-BULK-1",
+            CostPriceUSD = 4m,
+            ProfitMarginRetail = 50m,
+            PriceRetailUSD = 6m
+        });
+
+        var request = Request(new[] { created.Id }, Op(BulkPriceField.RetailPrice, BulkPriceMode.SetFixed, 8m));
+        await service.BulkUpdatePricesAsync(request);
+
+        var product = await context.Products.AsNoTracking().SingleAsync(candidate => candidate.Id == created.Id);
+        // Invariante del catálogo: PriceUSD espeja el canal Detal para que POS/grid WPF no
+        // sigan mostrando el precio anterior tras la edición masiva.
+        Assert.Equal(8m, product.PriceRetailUSD);
+        Assert.Equal(8m, product.PriceUSD);
+        Assert.Equal(400m, product.PriceBsS);
     }
 }

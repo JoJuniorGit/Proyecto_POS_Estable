@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:views="clr-namespace:Desktop.Client.Views"
         xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+        xmlns:conv="clr-namespace:Desktop.Client.Converters"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
@@ -21,6 +22,9 @@
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
 
     <Window.Resources>
+        <conv:RoleViewVisibilityConverter x:Key="RoleViewVisibilityConverter"/>
+        <conv:RoleCategoryVisibilityConverter x:Key="RoleCategoryVisibilityConverter"/>
+
         <DataTemplate DataType="{x:Type vm:PosViewModel}">
             <views:PosView/>
         </DataTemplate>
@@ -51,6 +55,9 @@
         <DataTemplate DataType="{x:Type vm:StockKardexViewModel}">
             <views:StockKardexView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:StockCountViewModel}">
+            <views:StockCountView/>
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:LoginViewModel}">
             <views:LoginView/>
         </DataTemplate>
@@ -65,6 +72,21 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:PendingPickupsViewModel}">
             <views:PendingPickupsView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CreditReceivablesViewModel}">
+            <views:CreditReceivablesView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ProfitabilityViewModel}">
+            <views:ProfitabilityView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CreditPaymentDialogViewModel}">
+            <views:CreditPaymentDialog/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CreditStatementDialogViewModel}">
+            <views:CreditStatementDialog/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CreditReturnDialogViewModel}">
+            <views:CreditReturnDialog/>
         </DataTemplate>
     </Window.Resources>
 
@@ -115,60 +137,152 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,8">
                     <StackPanel>
 
-                        <!-- Section: Main -->
-                        <TextBlock Text="MAIN"
-                                   Style="{DynamicResource NavSectionHeaderStyle}"/>
+                        <!-- Sección: Principal (uso diario) -->
+                        <TextBlock Text="PRINCIPAL"
+                                   Style="{DynamicResource NavSectionHeaderStyle}"
+                                   Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleCategoryVisibilityConverter}, ConverterParameter=Principal}"/>
 
-                        <!-- POS (Point of Sale) -->
                         <Button x:Name="BtnPos"
                                 AutomationProperties.AutomationId="Nav_BtnPos"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToPosCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=pos}"
                                 ToolTip="Point of Sale">
                             <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="CashRegister"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Point of Sale"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
+                                <materialDesign:PackIcon Kind="CashRegister" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Point of Sale" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
-                        <!-- Section: Inventory -->
-                        <TextBlock Text="INVENTORY"
-                                   Style="{DynamicResource NavSectionHeaderStyle}"
-                                   Margin="16,12,8,4"/>
+                        <Button x:Name="BtnCashDrawer"
+                                AutomationProperties.AutomationId="Nav_BtnCashDrawer"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToCashDrawerCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=register}"
+                                ToolTip="Cash Drawer &amp; Register">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="PointOfSale" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Register" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
 
-                        <!-- Products / Catalog -->
+                        <Button x:Name="BtnSalesHistory"
+                                AutomationProperties.AutomationId="Nav_BtnSalesHistory"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToSalesHistoryCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=history}"
+                                ToolTip="Sales History">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="History" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Sales History" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Sección: Operaciones -->
+                        <TextBlock Text="OPERACIONES"
+                                   Style="{DynamicResource NavSectionHeaderStyle}"
+                                   Margin="16,12,8,4"
+                                   Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleCategoryVisibilityConverter}, ConverterParameter=Operations}"/>
+
+                        <Button x:Name="BtnPendingOrders"
+                                AutomationProperties.AutomationId="Nav_BtnPendingOrders"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToPendingOrdersCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=pending}"
+                                ToolTip="Cuentas Abiertas (Pedidos en Espera)">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ClipboardClock" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Cuentas Abiertas" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="BtnPendingPickups"
+                                AutomationProperties.AutomationId="Nav_BtnPendingPickups"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToPendingPickupsCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=pickups}"
+                                ToolTip="Retiros Pendientes (Mercancía en Custodia)">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="PackageCheck" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Retiros Pendientes" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="BtnCreditReceivables"
+                                AutomationProperties.AutomationId="Nav_BtnCreditReceivables"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToCreditReceivablesCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=credit}"
+                                ToolTip="Cartera de Cuentas por Cobrar y abonos">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="CashMultiple" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Cuentas por Cobrar" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="BtnDailyClosure"
+                                AutomationProperties.AutomationId="Nav_BtnDailyClosure"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToDailyClosureCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=closing}"
+                                ToolTip="Cierre Diario y Arqueo de Caja">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="CalculatorVariant" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Cierre de Caja" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Sección: Inventario -->
+                        <TextBlock Text="INVENTARIO"
+                                   Style="{DynamicResource NavSectionHeaderStyle}"
+                                   Margin="16,12,8,4"
+                                   Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleCategoryVisibilityConverter}, ConverterParameter=Inventory}"/>
+
                         <Button x:Name="BtnInventory"
                                 AutomationProperties.AutomationId="Nav_BtnInventory"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToInventoryCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=catalog}"
                                 ToolTip="Products &amp; Catalog">
                             <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="PackageVariantClosed"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Catalog"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
+                                <materialDesign:PackIcon Kind="PackageVariantClosed" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Catalog" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
-                        <!-- Import Excel -->
+                        <Button x:Name="BtnStockCount"
+                                AutomationProperties.AutomationId="Nav_BtnStockCount"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToStockCountCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=stock-count}"
+                                ToolTip="Conteo Físico de Inventario">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="FormatListNumbered" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Conteo Físico" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="BtnStockKardex"
+                                AutomationProperties.AutomationId="Nav_BtnStockKardex"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToStockKardexCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=kardex}"
+                                ToolTip="Centro de Auditoría de Inventario (Kardex)">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ClipboardListOutline" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Kardex / Auditoría" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
                         <Button x:Name="BtnImportProducts"
                                 AutomationProperties.AutomationId="Nav_BtnImportProducts"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToImportProductsCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=import}"
                                 ToolTip="Import Products Excel">
                             <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="FileExcel"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Import Products"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
+                                <materialDesign:PackIcon Kind="FileExcel" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Import Products" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -176,166 +290,65 @@
                                 AutomationProperties.AutomationId="Nav_BtnSupplierInvoices"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToSupplierInvoicesCommand}"
-                                IsEnabled="{Binding UserSession.CanMutateCatalog}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=supplier-invoices}"
                                 ToolTip="Revisar y procesar facturas de proveedores">
                             <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="FileDocumentOutline"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Facturas de proveedores"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
+                                <materialDesign:PackIcon Kind="FileDocumentOutline" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Facturas de proveedores" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
-                        <!-- Kardex / Auditoría de Inventario (Admin/Manager) -->
-                        <Button x:Name="BtnStockKardex"
-                                AutomationProperties.AutomationId="Nav_BtnStockKardex"
-                                Style="{DynamicResource NavItemButtonStyle}"
-                                Command="{Binding NavigateToStockKardexCommand}"
-                                IsEnabled="{Binding UserSession.CanMutateCatalog}"
-                                ToolTip="Centro de Auditoría de Inventario (Kardex)">
-                            <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="ClipboardListOutline"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Kardex / Auditoría"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Sales History -->
-                        <Button x:Name="BtnSalesHistory"
-                                AutomationProperties.AutomationId="Nav_BtnSalesHistory"
-                                Style="{DynamicResource NavItemButtonStyle}"
-                                Command="{Binding NavigateToSalesHistoryCommand}"
-                                ToolTip="Sales History">
-                            <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="History"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Sales History"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Cash Register -->
-                        <Button x:Name="BtnCashDrawer"
-                                AutomationProperties.AutomationId="Nav_BtnCashDrawer"
-                                Style="{DynamicResource NavItemButtonStyle}"
-                                Command="{Binding NavigateToCashDrawerCommand}"
-                                ToolTip="Cash Drawer &amp; Register">
-                            <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="PointOfSale"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Register"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Cuentas Abiertas -->
-                        <Button x:Name="BtnPendingOrders"
-                                AutomationProperties.AutomationId="Nav_BtnPendingOrders"
-                                Style="{DynamicResource NavItemButtonStyle}"
-                                Command="{Binding NavigateToPendingOrdersCommand}"
-                                ToolTip="Cuentas Abiertas (Pedidos en Espera)">
-                            <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="ClipboardClock"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Cuentas Abiertas"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Retiros Pendientes -->
-                        <Button x:Name="BtnPendingPickups"
-                                AutomationProperties.AutomationId="Nav_BtnPendingPickups"
-                                Style="{DynamicResource NavItemButtonStyle}"
-                                Command="{Binding NavigateToPendingPickupsCommand}"
-                                ToolTip="Retiros Pendientes (Mercancía en Custodia)">
-                            <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="PackageCheck"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Retiros Pendientes"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Cierre de Caja -->
-                        <Button x:Name="BtnDailyClosure"
-                                AutomationProperties.AutomationId="Nav_BtnDailyClosure"
-                                Style="{DynamicResource NavItemButtonStyle}"
-                                Command="{Binding NavigateToDailyClosureCommand}"
-                                ToolTip="Cierre Diario y Arqueo de Caja">
-                            <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="CalculatorVariant"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Cierre de Caja"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Section: System -->
-                        <TextBlock Text="SYSTEM"
+                        <!-- Sección: Administración -->
+                        <TextBlock Text="ADMINISTRACIÓN"
                                    Style="{DynamicResource NavSectionHeaderStyle}"
-                                   Margin="16,12,8,4"/>
+                                   Margin="16,12,8,4"
+                                   Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleCategoryVisibilityConverter}, ConverterParameter=Administration}"/>
 
-                        <!-- Users Management (Admin Only) -->
                         <Button x:Name="BtnUsersManagement"
                                 AutomationProperties.AutomationId="Nav_BtnUsersManagement"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToUsersManagementCommand}"
-                                Visibility="{Binding UserSession.IsAdmin, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=users}"
                                 ToolTip="Gestión de Usuarios (Admin)">
                             <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="AccountGroup"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Gestión Usuarios"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
+                                <materialDesign:PackIcon Kind="AccountGroup" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Gestión Usuarios" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
-                        <!-- Settings -->
+                        <Button x:Name="BtnProfitability"
+                                AutomationProperties.AutomationId="Nav_BtnProfitability"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToProfitabilityCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=profitability}"
+                                ToolTip="Estado de Resultados y Rentabilidad">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ChartBar" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Rentabilidad" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
                         <Button x:Name="BtnSettings"
                                 AutomationProperties.AutomationId="Nav_BtnSettings"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToSettingsCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=settings}"
                                 ToolTip="System Settings">
                             <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="Cog"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Settings"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
+                                <materialDesign:PackIcon Kind="Cog" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Settings" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
-                        <!-- Exchange Rate -->
                         <Button x:Name="BtnExchangeRate"
                                 AutomationProperties.AutomationId="Nav_BtnExchangeRate"
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToExchangeRateCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=exchange}"
                                 ToolTip="Exchange Rate Configuration">
                             <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="CurrencyUsd"
-                                                         Width="18" Height="18"
-                                                         VerticalAlignment="Center"/>
-                                <TextBlock Text="Exchange Rate"
-                                           Margin="10,0,0,0"
-                                           VerticalAlignment="Center"/>
+                                <materialDesign:PackIcon Kind="CurrencyUsd" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Exchange Rate" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 

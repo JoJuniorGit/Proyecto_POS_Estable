@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Core.Common;
 using Core.DTOs;
 using Core.Helpers;
+using Desktop.Client.Services;
 
 using System;
 using System.Collections.Generic;
@@ -90,7 +91,7 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
     public decimal LineUnitCostUSD { get; }
 
     /// <summary>Etiqueta formateada del costo base unitario para el encabezado del modal.</summary>
-    public string LineUnitCostHeaderText => $"Costo Base Unitario: ${LineUnitCostUSD:N2}";
+    public string LineUnitCostHeaderText => $"Costo Base Unitario: {CurrencyDisplay.PrimaryCurrencySymbol}{LineUnitCostUSD:N2}";
 
     /// <summary>Contexto de solo lectura: costo normalizado en USD y, para facturas Bs.S, costo de la factura.</summary>
     public string CostInfo { get; }
@@ -195,7 +196,8 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
         bool isBsSCurrency,
         Func<string, CancellationToken, Task<IReadOnlyList<ProductDto>>>? searchProductsAsync = null,
         IReadOnlyList<InvoiceProductLinkSeed>? linkSeeds = null,
-        RoundingRuleType globalUsdRoundingRule = RoundingRuleType.ExactMath)
+        RoundingRuleType globalUsdRoundingRule = RoundingRuleType.ExactMath,
+        string localCurrencyLabel = "Bs.S")
     {
         ArgumentNullException.ThrowIfNull(line);
 
@@ -215,8 +217,10 @@ public partial class CreateInvoiceProductDialogViewModel : ObservableValidator, 
         ProductName = effectiveName ?? string.Empty;
         Name = ProductName.Trim();
         LineUnitCostUSD = line.UnitCostUSD > 0m ? line.UnitCostUSD : line.EditUnitCostDocument;
+        // 8.211-T6: the invoice document cost label follows the profile local currency; the
+        // default preserves the historical Bs.S wording for existing callers/tests.
         CostInfo = isBsSCurrency
-            ? $"Costo normalizado: ${line.UnitCostUSD:N2} · Costo factura: Bs.S {line.EditUnitCostDocument:N2} · Cantidad: {line.EditQuantity:N3}"
+            ? $"Costo normalizado: ${line.UnitCostUSD:N2} · Costo factura: {localCurrencyLabel} {line.EditUnitCostDocument:N2} · Cantidad: {line.EditQuantity:N3}"
             : $"Costo normalizado: ${line.UnitCostUSD:N2} · Cantidad: {line.EditQuantity:N3}";
 
         SelectedProducts.CollectionChanged += (_, _) => NotifySelectionChanged();
@@ -884,5 +888,8 @@ public sealed class SelectedProductMarginViewModel : ObservableObject
         _marginWholesaleText = SupplierInvoiceLineViewModel.FormatEditableDecimal(_marginWholesale);
     }
 }
+
+
+
 
 

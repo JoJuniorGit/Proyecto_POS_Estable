@@ -37,11 +37,13 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
             : OverrideSale.TotalUSD - OverrideSale.TotalPaidUSD))
         : TotalUSD;
 
-    public string FinalizeSaleButtonLabel => (IsPendingPickup && IsCustodyAllowed)
-        ? "COBRAR Y ENVIAR A RETIRO"
-        : IsOverrideMode
-            ? (IsFullLiquidation ? "LIQUIDAR CUENTA" : "REGISTRAR ABONO")
-            : "COBRAR Y FINALIZAR";
+    public string FinalizeSaleButtonLabel => IsCreditMode
+        ? "REGISTRAR VENTA A CRÉDITO"
+        : (IsPendingPickup && IsCustodyAllowed)
+            ? "COBRAR Y ENVIAR A RETIRO"
+            : IsOverrideMode
+                ? (IsFullLiquidation ? "LIQUIDAR CUENTA" : "REGISTRAR ABONO")
+                : "COBRAR Y FINALIZAR";
 
     public string CheckoutTitle => IsOverrideMode
         ? $"Liquidar / Abonar — Pedido #{OverrideSale!.Id}"
@@ -123,6 +125,18 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     public decimal RemainingBalanceUsd => IsPreviewFresh
         ? _preview!.RemainingBalanceUSD
         : System.Math.Max(0, TotalUSD - PaidAmountUsd);
+
+    /// <summary>
+    /// Sincronización USD efectivo (ANEXO XII): $ mostrado = inverso del Bs.S EFECTIVO que se
+    /// cobra (TotalAmountLocal / tasa) — mismo criterio con el que AddPayment deriva la pata USD
+    /// de cada pago. Solo display: TotalUSD y RemainingBalanceUsd canónicos siguen rigiendo el
+    /// gate (CanFinalize/IsFullLiquidation no cambian de semántica).
+    /// </summary>
+    public decimal TotalUsdEffective => PricingHelper.ToUSD(TotalAmountLocal, ResolvePreviewRate());
+
+    /// <summary>Restante en USD = inverso del restante Bs.S (servidor con preview fresco; local
+    /// como respaldo de presentación) — elimina el desfase contra la cifra Bs.S que se cobra.</summary>
+    public decimal RemainingUsdEffective => PricingHelper.ToUSD(RemainingBalanceLocal, ResolvePreviewRate());
 
     public decimal RoundingAdjustment => IsPreviewFresh ? _preview!.RoundingAdjustment : 0m;
 
@@ -209,6 +223,270 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         set => SetProperty(ref _focusAmountInput, value);
     }
 
+    // ── Paso 11/12 (F3): modo crédito y perfil de solvencia ──
+
+    private bool _isCreditMode;
+    /// <summary>Contado (por defecto) o Crédito total/mixto. Solo aplica al checkout de una venta nueva.</summary>
+    public bool IsCreditMode
+    {
+        get => _isCreditMode;
+        set
+        {
+            if (SetProperty(ref _isCreditMode, value))
+            {
+                OnIsCreditModeChanged(value);
+            }
+        }
+    }
+
+    public bool CanUseCreditMode => !IsOverrideMode;
+
+    private CreditProfileClientDto? _creditProfile;
+    public CreditProfileClientDto? CreditProfile
+    {
+        get => _creditProfile;
+        private set
+        {
+            if (SetProperty(ref _creditProfile, value))
+            {
+                NotifyCreditDependentProperties();
+            }
+        }
+    }
+
+    private bool _isCreditProfileLoading;
+    public bool IsCreditProfileLoading
+    {
+        get => _isCreditProfileLoading;
+        private set
+        {
+            if (SetProperty(ref _isCreditProfileLoading, value))
+            {
+                NotifyCreditDependentProperties();
+            }
+        }
+    }
+
+    private string? _creditProfileError;
+    public string? CreditProfileError
+    {
+        get => _creditProfileError;
+        private set
+        {
+            if (SetProperty(ref _creditProfileError, value))
+            {
+                NotifyCreditDependentProperties();
+            }
+        }
+    }
+
+    private int _creditProfileVersion;
+
+    /// <summary>Seam determinista de tests: última carga del perfil crediticio.</summary>
+    public Task? PendingCreditProfile { get; private set; }
+
+    public bool HasRegisteredCustomer => _sale.CustomerId.HasValue && !IsDefaultCustomer;
+
+    public string CustomerDisplay => string.IsNullOrWhiteSpace(_sale.CustomerName)
+        ? "Sin cliente"
+        : _sale.CustomerName!;
+
+    /// <summary>
+    /// Monto efectivo que se financia. Con preview fresco rige el saldo canónico del servidor;
+    /// sin preview se deriva como respaldo de presentación (el cierre siempre valida en servidor).
+    /// </summary>
+    public decimal FinancedUSD => IsPreviewFresh
+        ? System.Math.Max(0m, _preview!.RemainingBalanceUSD)
+        : System.Math.Max(0m, System.Math.Round(TotalUsdEffective - PaidAmountUsd, 2, System.MidpointRounding.AwayFromZero));
+
+    public decimal FinancedBsS => IsPreviewFresh
+        ? System.Math.Max(0m, _preview!.RemainingBalanceBsS)
+        : System.Math.Max(0m, TotalAmountLocal - PaidAmountLocal);
+
+    public decimal? AvailableCreditUSD => CreditProfile?.AvailableCreditUSD;
+
+    public System.DateTime? CreditDueDate => CreditProfile == null
+        ? null
+        : System.DateTime.Today.AddDays(CreditProfile.PaymentTermDays);
+
+    public bool IsCreditOverLimit => CreditProfile != null
+        && FinancedUSD > CreditProfile.AvailableCreditUSD + 0.005m;
+
+    public string? CreditOverLimitMessage => IsCreditOverLimit
+        ? $"El monto financiado ($ {FinancedUSD:N2}) excede el crédito disponible ($ {CreditProfile!.AvailableCreditUSD:N2}). Se solicitará autorización de un Administrador o Supervisor."
+        : null;
+
+    public string CreditStatusDisplay => CreditProfile?.StatusLabel ?? "Sin perfil";
+
+    /// <summary>true cuando el perfil del cliente impide operar a crédito (el cupo no bloquea aquí).</summary>
+    public bool IsCreditProfileBlocked => CreditProfile == null
+        || !CreditProfile.IsActive
+        || !CreditProfile.IsCreditEnabled
+        || CreditProfile.Status != Core.Entities.CreditStatus.Active
+        || CreditProfile.OverdueCount > 0;
+
+    /// <summary>Mensaje de bloqueo del modo crédito; null cuando el cliente puede financiar.</summary>
+    public string? CreditValidationMessage
+    {
+        get
+        {
+            if (!IsCreditMode) return null;
+            if (!HasRegisteredCustomer)
+                return "La venta a crédito exige un cliente registrado y con perfil crediticio activo. Seleccione un cliente para continuar.";
+            if (IsCreditProfileLoading)
+                return "Consultando el perfil crediticio del cliente...";
+            if (!string.IsNullOrWhiteSpace(CreditProfileError))
+                return CreditProfileError;
+            if (CreditProfile == null)
+                return "No se pudo consultar el perfil crediticio del cliente.";
+            if (!CreditProfile.IsActive)
+                return "El cliente está inactivo y no puede operar bajo modalidad de crédito.";
+            if (!CreditProfile.IsCreditEnabled)
+                return "El cliente no tiene la línea de crédito habilitada.";
+            if (CreditProfile.Status == Core.Entities.CreditStatus.SuspendedByMora)
+                return "El crédito del cliente está suspendido por mora. Regularice la deuda para rehabilitar la línea.";
+            if (CreditProfile.Status == Core.Entities.CreditStatus.ManuallyBlocked)
+                return "El crédito del cliente está bloqueado manualmente por un administrador.";
+            if (CreditProfile.OverdueCount > 0)
+                return "El cliente presenta obligaciones vencidas (mora) y no puede operar a crédito.";
+            return null;
+        }
+    }
+
+    [RelayCommand]
+    private void UseCashMode()
+    {
+        IsCreditMode = false;
+    }
+
+    [RelayCommand]
+    private void UseCreditMode()
+    {
+        if (CanUseCreditMode)
+        {
+            IsCreditMode = true;
+        }
+    }
+
+    /// <summary>
+    /// Selección/cambio de cliente dentro del checkout cuando el operador activa el modo crédito
+    /// sin un cliente registrado. El cliente se persiste en la venta antes de consultar el perfil.
+    /// </summary>
+    [RelayCommand]
+    private async Task SelectCreditCustomerAsync()
+    {
+        if (_dialogService == null) return;
+
+        var customer = await _dialogService.ShowCustomerPickerAsync();
+        if (customer == null) return;
+
+        try
+        {
+            var updated = await _salesService.UpdateSaleCustomerAsync(_sale.Id, customer.Id);
+            _sale.CustomerId = updated.CustomerId ?? customer.Id;
+            _sale.CustomerName = updated.CustomerName ?? customer.Name;
+            _sale.Customer = updated.Customer;
+            NotifyCreditDependentProperties();
+            TriggerCreditProfileFetch();
+        }
+        catch (System.Exception ex)
+        {
+            ShowError("Cliente", $"No se pudo asignar el cliente a la venta: {ex.Message}");
+        }
+    }
+
+    private void OnIsCreditModeChanged(bool value)
+    {
+        if (value)
+        {
+            IsPendingPickup = false;
+            if (HasRegisteredCustomer)
+            {
+                TriggerCreditProfileFetch();
+            }
+            else
+            {
+                ClearCreditProfile();
+            }
+        }
+        else
+        {
+            ClearCreditProfile();
+        }
+
+        NotifyCreditDependentProperties();
+    }
+
+    private void ClearCreditProfile()
+    {
+        _creditProfileVersion++;
+        PendingCreditProfile = Task.CompletedTask;
+        CreditProfile = null;
+        CreditProfileError = null;
+        IsCreditProfileLoading = false;
+    }
+
+    private void TriggerCreditProfileFetch()
+    {
+        if (_sale.CustomerId is not int customerId || customerId <= 0 || IsDefaultCustomer)
+        {
+            ClearCreditProfile();
+            return;
+        }
+
+        int version = ++_creditProfileVersion;
+        PendingCreditProfile = FetchCreditProfileAsync(customerId, version);
+    }
+
+    private async Task FetchCreditProfileAsync(int customerId, int version)
+    {
+        IsCreditProfileLoading = true;
+        CreditProfileError = null;
+
+        try
+        {
+            var profile = await _salesService.GetCreditProfileAsync(customerId);
+            if (version != _creditProfileVersion || _sale.CustomerId != customerId) return;
+
+            CreditProfile = profile;
+        }
+        catch (System.Exception ex)
+        {
+            if (version != _creditProfileVersion || _sale.CustomerId != customerId) return;
+
+            CreditProfile = null;
+            CreditProfileError = $"No se pudo cargar el perfil crediticio: {ex.Message}";
+        }
+        finally
+        {
+            if (version == _creditProfileVersion && _sale.CustomerId == customerId)
+            {
+                IsCreditProfileLoading = false;
+                NotifyCreditDependentProperties();
+            }
+        }
+    }
+
+    private void NotifyCreditDependentProperties()
+    {
+        OnPropertyChanged(nameof(CustomerDisplay));
+        OnPropertyChanged(nameof(HasRegisteredCustomer));
+        OnPropertyChanged(nameof(CanUseCreditMode));
+        OnPropertyChanged(nameof(FinancedUSD));
+        OnPropertyChanged(nameof(FinancedBsS));
+        OnPropertyChanged(nameof(AvailableCreditUSD));
+        OnPropertyChanged(nameof(CreditDueDate));
+        OnPropertyChanged(nameof(IsCreditOverLimit));
+        OnPropertyChanged(nameof(CreditOverLimitMessage));
+        OnPropertyChanged(nameof(CreditStatusDisplay));
+        OnPropertyChanged(nameof(IsCreditProfileBlocked));
+        OnPropertyChanged(nameof(CreditValidationMessage));
+        OnPropertyChanged(nameof(CanFinalize));
+        OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
+        OnPropertyChanged(nameof(ValidationHelperMessage));
+        FinalizeSaleCommand.NotifyCanExecuteChanged();
+    }
+
     private readonly UserSession? _userSession;
     private readonly IDialogService? _dialogService;
 
@@ -258,7 +536,22 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         OnPropertyChanged(nameof(CanFinalize));
         OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
         OnPropertyChanged(nameof(ValidationHelperMessage));
+        OnPropertyChanged(nameof(CustomerDisplay));
+        OnPropertyChanged(nameof(HasRegisteredCustomer));
+        OnPropertyChanged(nameof(CreditValidationMessage));
         FinalizeSaleCommand.NotifyCanExecuteChanged();
+
+        if (IsCreditMode)
+        {
+            if (HasRegisteredCustomer)
+            {
+                TriggerCreditProfileFetch();
+            }
+            else
+            {
+                ClearCreditProfile();
+            }
+        }
     }
 
     private void RecalculateBalances()
@@ -269,6 +562,8 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         OnPropertyChanged(nameof(RemainingBalanceUsd));
         OnPropertyChanged(nameof(RemainingBalanceLocal));
         OnPropertyChanged(nameof(RoundingAdjustment));
+        OnPropertyChanged(nameof(TotalUsdEffective));
+        OnPropertyChanged(nameof(RemainingUsdEffective));
         OnPropertyChanged(nameof(HasValidPayments));
         OnPropertyChanged(nameof(IsPreviewFresh));
         OnPropertyChanged(nameof(IsFullLiquidation));
@@ -279,6 +574,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
         SetAmountToRemainingBalance();
         TriggerPreviewFetch();
+        NotifyCreditDependentProperties();
         FinalizeSaleCommand.NotifyCanExecuteChanged();
     }
 
@@ -378,6 +674,8 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(RemainingBalanceUsd));
         OnPropertyChanged(nameof(RemainingBalanceLocal));
+        OnPropertyChanged(nameof(TotalUsdEffective));
+        OnPropertyChanged(nameof(RemainingUsdEffective));
         OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
         OnPropertyChanged(nameof(ValidationHelperMessage));
         FinalizeSaleCommand.NotifyCanExecuteChanged();
@@ -394,10 +692,11 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
                 OnPropertyChanged(nameof(PendingPickupErrorMessage));
                 OnPropertyChanged(nameof(IsCustodyAllowed));
                 OnPropertyChanged(nameof(CanFinalize));
-                OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
-                OnPropertyChanged(nameof(ValidationHelperMessage));
-                FinalizeSaleCommand.NotifyCanExecuteChanged();
-            }
+        OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
+        OnPropertyChanged(nameof(ValidationHelperMessage));
+        NotifyCreditDependentProperties();
+        FinalizeSaleCommand.NotifyCanExecuteChanged();
+    }
         }
     }
 
@@ -424,15 +723,34 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         || _sale.CustomerName.ToLower().Contains("general");
     public bool IsCustodyAllowed => IsFullLiquidation && !IsDefaultCustomer;
 
-    public bool CanFinalize => HasValidPayments && 
-        IsPreviewFresh &&
-        (IsOverrideMode ? true : IsFullLiquidation) && 
-        (!IsPendingPickup || IsCustodyAllowed);
+    public bool CanFinalize => IsCreditMode
+        ? CanUseCreditMode
+            && IsPreviewFresh
+            && HasRegisteredCustomer
+            && CreditProfile != null
+            && !IsCreditProfileBlocked
+            && CreditValidationMessage == null
+        : HasValidPayments &&
+            IsPreviewFresh &&
+            (IsOverrideMode ? true : IsFullLiquidation) &&
+            (!IsPendingPickup || IsCustodyAllowed);
 
     public string? ValidationHelperMessage
     {
         get
         {
+            if (IsCreditMode)
+            {
+                if (CreditValidationMessage != null)
+                    return CreditValidationMessage;
+
+                // Misma validación canónica del cobro que el modo contado.
+                if (_previewFailed)
+                    return "No se pudo validar el cobro con el servidor. Verifique la conexión e intente nuevamente (la transacción no puede cerrarse sin la validación canónica).";
+
+                return null;
+            }
+
             if (!HasValidPayments)
                 return "Agregue al menos un método de pago antes de continuar.";
             // Misma prioridad y texto exacto del web cuando falla la validación canónica.
@@ -479,7 +797,13 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         _cts = new System.Threading.CancellationTokenSource();
         try
         {
-            var rawPayments = Payments.Select(p => new SalePaymentDto(p.Dto.PaymentMethodId, p.Dto.Amount, p.AmountBsS, p.Dto.ReferenceNumber));
+            var rawPayments = Payments.Select(p => new SalePaymentDto(p.Dto.PaymentMethodId, p.Dto.Amount, p.AmountBsS, p.Dto.ReferenceNumber)).ToList();
+
+            if (IsCreditMode)
+            {
+                await FinalizeCreditSaleAsync(targetSale, rawPayments);
+                return;
+            }
 
             if (IsOverrideMode)
             {
@@ -543,5 +867,101 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
             _cts = null;
             IsProcessing = false;
         }
+    }
+
+    /// <summary>
+    /// Cierre a crédito: envía solo los pagos iniciales y el remanente queda financiado. El 403 de
+    /// sobregiro se resuelve con el flujo de espera bloqueante y el token de un supervisor.
+    /// </summary>
+    private async Task FinalizeCreditSaleAsync(SaleDto targetSale, IReadOnlyList<SalePaymentDto> payments)
+    {
+        try
+        {
+            int invoiceNumber = await _salesService.CompleteCreditSaleAsync(
+                targetSale.Id,
+                CurrentExchangeRate,
+                payments,
+                _userSession?.CurrentUser?.Id,
+                authorizationToken: null,
+                idempotencyKey: null,
+                cancellationToken: _cts?.Token ?? default);
+
+            CloseAfterCreditSale(invoiceNumber);
+        }
+        catch (CreditOverLimitAuthorizationException ex)
+        {
+            await RunCreditOverLimitAuthorizationAsync(targetSale, payments, ex);
+        }
+    }
+
+    private async Task RunCreditOverLimitAuthorizationAsync(
+        SaleDto targetSale,
+        IReadOnlyList<SalePaymentDto> payments,
+        CreditOverLimitAuthorizationException overLimit)
+    {
+        var dialogService = _dialogService;
+        if (dialogService == null)
+        {
+            return;
+        }
+
+        int? authorizedInvoice = null;
+        AuthorizationWaitResult? result;
+        try
+        {
+            result = await dialogService.ShowAuthorizationWaitAsync(overLimit.Context, async token =>
+            {
+                authorizedInvoice = await _salesService.CompleteCreditSaleAsync(
+                    targetSale.Id,
+                    CurrentExchangeRate,
+                    payments,
+                    _userSession?.CurrentUser?.Id,
+                    authorizationToken: token,
+                    idempotencyKey: null,
+                    cancellationToken: _cts?.Token ?? default);
+            });
+        }
+        catch (System.Exception ex)
+        {
+            ShowError("Autorización", $"No se pudo iniciar la autorización remota: {ex.Message}");
+            return;
+        }
+
+        if (result?.Outcome == AuthorizationWaitOutcome.Granted && authorizedInvoice.HasValue)
+        {
+            CloseAfterCreditSale(authorizedInvoice.Value);
+            return;
+        }
+
+        switch (result?.Outcome)
+        {
+            case AuthorizationWaitOutcome.Rejected:
+                ShowError("Autorización", string.IsNullOrWhiteSpace(result.RejectionReason)
+                    ? AuthorizationWaitViewModel.RejectedMessage
+                    : $"{AuthorizationWaitViewModel.RejectedMessage} {result.RejectionReason}");
+                break;
+
+            case AuthorizationWaitOutcome.Expired:
+                ShowWarning("Autorización", AuthorizationWaitViewModel.ExpiredMessage);
+                break;
+
+            case AuthorizationWaitOutcome.Failed:
+                ShowError("Autorización", string.IsNullOrWhiteSpace(result.Message)
+                    ? "No se pudo iniciar la autorización remota."
+                    : result.Message);
+                break;
+
+            case AuthorizationWaitOutcome.Granted:
+                // La aprobación sin comprobante de cierre no puede dejar el POS en silencio.
+                ShowWarning("Autorización", "La autorización fue concedida, pero la venta no se completó. Intente nuevamente.");
+                break;
+        }
+    }
+
+    private void CloseAfterCreditSale(int invoiceNumber)
+    {
+        _currentIdempotencyKey = null;
+        WeakReferenceMessenger.Default.Unregister<CartUpdatedMessage>(this);
+        _dialogService?.CloseCurrentModal(invoiceNumber);
     }
 }

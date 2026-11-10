@@ -20,11 +20,12 @@ public partial class SupplierInvoiceViewModel
         {
             SupplierRifOrNit = value.RifOrNit ?? string.Empty;
             SupplierCommercialName = value.CommercialName;
-            // 8.167: prefija la moneda recordada del proveedor (nunca la pisa con un default).
-            if (!string.IsNullOrWhiteSpace(value.InvoiceCurrency)
-                && CurrencyOptions.Contains(value.InvoiceCurrency, StringComparer.Ordinal))
+            // 8.167/8.211-T4c2b4d3b: the remembered currency is normalized against the profile
+            // (legacy Bs.S/VES aliases map to the local option) and only selected when present.
+            var rememberedCurrency = NormalizeStoredCurrency(value.InvoiceCurrency);
+            if (rememberedCurrency is not null)
             {
-                SelectedCurrency = value.InvoiceCurrency;
+                SelectedCurrency = rememberedCurrency;
             }
         }
 
@@ -34,6 +35,7 @@ public partial class SupplierInvoiceViewModel
 
     partial void OnSelectedCurrencyChanged(string value)
     {
+        OnPropertyChanged(nameof(IsLocalSecondaryCurrency));
         OnPropertyChanged(nameof(IsBsSCurrency));
         OnPropertyChanged(nameof(DocumentCostHeader));
         OnPropertyChanged(nameof(IsRateInputEnabled));
@@ -44,7 +46,7 @@ public partial class SupplierInvoiceViewModel
         StageInvoiceCommand.NotifyCanExecuteChanged();
         ConfirmInvoiceCommand.NotifyCanExecuteChanged();
 
-        if (IsBsSCurrency)
+        if (IsLocalSecondaryCurrency)
         {
             // 8.172/8.178: la tasa detectada por el OCR prevalece SOLO si el revisor no corrigió la
             // tasa a mano: una corrección manual nunca se revierte al cambiar de moneda.
@@ -364,31 +366,37 @@ public partial class SupplierInvoiceViewModel
     }
 
 
-    /// <summary>Precarga la tasa vigente solo si el usuario aun no escribio una ni el OCR detectó la de la factura (Bs.S).</summary>
+    /// <summary>
+    /// Precarga la tasa vigente solo si el usuario aun no escribio una ni el OCR detectó la de la
+    /// factura. BCV belongs to VES; COP/MXN/EUR require the manual daily pair and are left blank.
+    /// </summary>
     private async Task PrefillAppliedRateAsync()
     {
         try
         {
             var currentRate = await _exchangeRateService.GetCurrentRateAsync();
             if (currentRate.Rate > 0m
-                && IsBsSCurrency
+                && IsLocalSecondaryCurrency
+                && IsVesCurrency(LocalCurrencyOption)
                 && OcrDetectedExchangeRate is null
                 && string.IsNullOrWhiteSpace(AppliedRateText))
             {
                 SetAppliedRateTextProgrammatically(FormatAppliedRateText(currentRate.Rate));
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Sin tasa vigente la factura Bs.S queda bloqueada; el usuario puede escribirla a mano.
+            // Sin tasa vigente la factura local queda bloqueada; el usuario puede escribirla a mano.
+            Core.Logging.AppLogger.LogWarn($"[SupplierInvoice] No se pudo obtener la tasa de cambio vigente: {ex.Message}");
         }
     }
 
     /// <summary>
     /// 8.172/8.176: propaga en vivo la moneda y la tasa aplicada de la cabecera hacia todas las
     /// líneas cargadas en revisión. La moneda VIVA de la cabecera es la fuente de verdad de la
-    /// interpretación (un flip Bs.S ↔ USD reinterpreta el costo factura conservado en cada fila);
-    /// con Bs.S sin tasa válida las filas quedan en (Bs.S, 0) y el confirm permanece bloqueado.
+    /// interpretación (un flip secundaria ↔ primaria reinterpreta el costo factura conservado en
+    /// cada fila); con la secundaria local sin tasa válida las filas quedan en (secundaria, 0) y el
+    /// confirm permanece bloqueado. 8.211-T4c2b4d3b: the primary/Single channel is identity (rate 1).
     /// </summary>
     private void PropagateCurrencyAndRateToLines()
     {
@@ -397,36 +405,59 @@ public partial class SupplierInvoiceViewModel
             return;
         }
 
-        if (IsBsSCurrency)
+        if (IsLocalSecondaryCurrency)
         {
+            var localCurrency = LocalCurrencyOption;
             if (!TryParseAppliedRate(AppliedRateText, out var parsedRate) || parsedRate <= 0m)
             {
-                // 8.176: salvaguarda de división por cero: sin tasa válida la factura Bs.S no puede
-                // normalizar costos; las filas muestran 0,00 (nunca NaN/Infinity) hasta una tasa válida.
-                SyncStagedSnapshot(CurrencyCodes.BsS, appliedRate: null);
+                // 8.176: salvaguarda de división por cero: sin tasa válida la factura de la moneda
+                // secundaria no puede normalizar costos; las filas muestran 0,00 (nunca NaN/Infinity).
+                SyncStagedSnapshot(localCurrency, appliedRate: null);
                 foreach (var line in Lines)
                 {
-                    line.UpdateCurrencyAndRate(CurrencyCodes.BsS, 0m);
+                    line.UpdateCurrencyAndRate(localCurrency, 0m);
                 }
 
                 return;
             }
 
             var normalizedRate = Math.Round(parsedRate, 4, MidpointRounding.AwayFromZero);
-            SyncStagedSnapshot(CurrencyCodes.BsS, normalizedRate);
+            SyncStagedSnapshot(localCurrency, normalizedRate);
             foreach (var line in Lines)
             {
-                line.UpdateCurrencyAndRate(CurrencyCodes.BsS, normalizedRate);
+                line.UpdateCurrencyAndRate(localCurrency, normalizedRate);
             }
 
             return;
         }
 
-        SyncStagedSnapshot(CurrencyCodes.Usd, 1m);
+        var primaryCurrency = PrimaryCurrencyOption;
+        SyncStagedSnapshot(primaryCurrency, 1m);
         foreach (var line in Lines)
         {
-            line.UpdateCurrencyAndRate(CurrencyCodes.Usd, 1m);
+            line.UpdateCurrencyAndRate(primaryCurrency, 1m);
         }
+    }
+
+    /// <summary>
+    /// 8.211-T4c2b4d3b (S9): resolves a supplier's remembered invoice currency against the options
+    /// offered by the active profile. Legacy <c>Bs.S</c>/<c>BsS</c>/<c>VES</c> values map to the VES
+    /// option (presented as Bs.S in Dual); values outside the profile are ignored.
+    /// </summary>
+    private string? NormalizeStoredCurrency(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            return null;
+        }
+
+        if (IsVesCurrency(stored))
+        {
+            return CurrencyOptions.FirstOrDefault(IsVesCurrency);
+        }
+
+        return CurrencyOptions.FirstOrDefault(option =>
+            string.Equals(option, stored.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

@@ -8,6 +8,7 @@
              xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
              xmlns:behaviors="clr-namespace:Desktop.Client.Behaviors"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance Type=vm:DailyClosureViewModel}">
 
@@ -26,6 +27,7 @@
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>   <!-- Header -->
+            <RowDefinition Height="Auto"/>   <!-- Conteo USD -->
             <RowDefinition Height="*"/>      <!-- DataGrid -->
             <RowDefinition Height="Auto"/>   <!-- Summary -->
             <RowDefinition Height="Auto"/>   <!-- Observation -->
@@ -129,9 +131,103 @@
         </Border>
 
         <!-- ═══════════════════════════════════════════
+             RESIDUAL 8.187-8.188: ARQUEO FÍSICO USD (OPCIONAL)
+             El esperado/diferencia solo se muestran a supervisores y fuera del cierre ciego.
+             ═══════════════════════════════════════════ -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource MaterialDesignCardBackground}"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="16,12"
+                Margin="0,0,0,16"
+                Effect="{StaticResource EnterpriseCardShadow}"
+                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Efectivo {0} contado (opcional)'}"
+                               FontSize="12"
+                               FontWeight="SemiBold"
+                               Foreground="#475569"/>
+                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Si se deja vacío se conserva el comportamiento previo del cierre (sin arqueo {0}).'}"
+                               FontSize="11"
+                               Foreground="{DynamicResource MaterialDesignBodyLight}"
+                               Margin="0,2,0,6"/>
+                    <Border Background="#F1F5F9"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1.5"
+                            CornerRadius="4"
+                            Padding="4,2"
+                            Width="180"
+                            HorizontalAlignment="Left">
+                        <TextBox Text="{Binding ActualClosingBalanceUsdText, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.AutomationId="DailyClosure_UsdCountText"
+                                 materialDesign:HintAssist.Hint="0.00"
+                                 TextAlignment="Right"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Padding="6,4"
+                                 FontWeight="Bold"
+                                 FontSize="13"
+                                 Foreground="#1E293B"
+                                 Typography.NumeralAlignment="Tabular"/>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="16,0,0,0"
+                            Visibility="{Binding ShowUsdReconciliation, Converter={StaticResource BoolToVis}}">
+                    <Border Background="#F8FAFC"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14,8"
+                            Margin="0,0,8,0">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='ESPERADO {0}'}"
+                                       FontSize="10" FontWeight="Bold"
+                                       Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                            <TextBlock Text="{Binding ExpectedClosingBalanceUsdDisplay}"
+                                       AutomationProperties.AutomationId="DailyClosure_ExpectedUsdText"
+                                       FontSize="16" FontWeight="Bold"
+                                       Foreground="#5E35B1"
+                                       Margin="0,2,0,0"
+                                       Typography.NumeralAlignment="Tabular"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="#F8FAFC"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="14,8">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='DIFERENCIA {0}'}"
+                                       FontSize="10" FontWeight="Bold"
+                                       Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                            <TextBlock Text="{Binding DifferenceUsdDisplay}"
+                                       AutomationProperties.AutomationId="DailyClosure_DifferenceUsdText"
+                                       FontSize="16" FontWeight="Bold"
+                                       Foreground="#1E293B"
+                                       Margin="0,2,0,0"
+                                       Typography.NumeralAlignment="Tabular"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═══════════════════════════════════════════
              LOADING INDICATOR
              ═══════════════════════════════════════════ -->
-        <ProgressBar Grid.Row="1"
+        <ProgressBar Grid.Row="2"
                      IsIndeterminate="True"
                      VerticalAlignment="Top"
                      Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
@@ -140,7 +236,7 @@
         <!-- ═══════════════════════════════════════════
              2. DATAGRID MODERNO (Sin líneas verticales, headers gris tenue)
              ═══════════════════════════════════════════ -->
-        <Border Grid.Row="1"
+        <Border Grid.Row="2"
                 Background="{DynamicResource MaterialDesignCardBackground}"
                 BorderBrush="#E2E8F0"
                 BorderThickness="1"
@@ -195,8 +291,8 @@
                     </DataGridTextColumn>
 
                     <!-- Col 2: Monto Esperado (Read-only, hidden if blind) -->
-                    <DataGridTextColumn Header="MONTO ESPERADO (BS.S)"
-                                        Binding="{Binding ExpectedAmountBsS, StringFormat={}{0:N2}}"
+                    <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='MONTO ESPERADO ({0})'}"
+                                        Binding="{Binding ExpectedAmountBsS, Converter={StaticResource LocalAmountConverter}}"
                                         IsReadOnly="True"
                                         Width="*"
                                         x:Name="ExpectedColumn">
@@ -218,7 +314,7 @@
                     </DataGridTextColumn>
 
                     <!-- Col 3: Monto Declarado (Input Recuadro con Focus Morado) -->
-                    <DataGridTemplateColumn Header="MONTO DECLARADO (BS.S)" Width="*">
+                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='MONTO DECLARADO ({0})'}" Width="*">
                         <DataGridTemplateColumn.HeaderStyle>
                             <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
                                 <Setter Property="HorizontalContentAlignment" Value="Right"/>
@@ -263,7 +359,7 @@
                     </DataGridTemplateColumn>
 
                     <!-- Col 4: Diferencia (Color Semántico: Rojo, Verde o Gris) -->
-                    <DataGridTemplateColumn Header="DIFERENCIA (BS.S)"
+                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='DIFERENCIA ({0})'}"
                                             Width="*"
                                             x:Name="DifferenceColumn">
                         <DataGridTemplateColumn.HeaderStyle>
@@ -273,7 +369,7 @@
                         </DataGridTemplateColumn.HeaderStyle>
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding DifferenceDisplay}"
+                                <TextBlock Text="{Binding DifferenceBsS, Converter={StaticResource LocalAmountConverter}}"
                                            Foreground="{Binding DifferenceColor}"
                                            FontWeight="Bold"
                                            FontSize="13"
@@ -290,7 +386,7 @@
         <!-- ═══════════════════════════════════════════
              3. SUMMARY TOTALS (Tarjetas Unificadas)
              ═══════════════════════════════════════════ -->
-        <Border Grid.Row="2"
+        <Border Grid.Row="3"
                 Background="{DynamicResource MaterialDesignCardBackground}"
                 BorderBrush="#E2E8F0"
                 BorderThickness="1"
@@ -319,7 +415,7 @@
                                    FontSize="11" FontWeight="Bold"
                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding TotalExpectedBsS, StringFormat=Bs.S {0:N2}}"
+                        <TextBlock Text="{Binding TotalExpectedBsS, Converter={StaticResource LocalAmountConverter}}"
                                    AutomationProperties.AutomationId="DailyClosure_ExpectedTotalText"
                                    FontSize="20" FontWeight="Bold"
                                    HorizontalAlignment="Center"
@@ -342,7 +438,7 @@
                                    FontSize="11" FontWeight="Bold"
                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding TotalActualBsS, StringFormat=Bs.S {0:N2}}"
+                        <TextBlock Text="{Binding TotalActualBsS, Converter={StaticResource LocalAmountConverter}}"
                                    AutomationProperties.AutomationId="DailyClosure_ActualTotalText"
                                    FontSize="20" FontWeight="Bold"
                                    HorizontalAlignment="Center"
@@ -366,7 +462,7 @@
                                    FontSize="11" FontWeight="Bold"
                                    Foreground="{DynamicResource MaterialDesignBodyLight}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding TotalDifferenceBsS, StringFormat=Bs.S {0:N2}}"
+                        <TextBlock Text="{Binding TotalDifferenceBsS, Converter={StaticResource LocalAmountConverter}}"
                                    FontSize="20" FontWeight="ExtraBold"
                                    HorizontalAlignment="Center"
                                    Foreground="{Binding DifferenceStatusColor}"
@@ -390,7 +486,7 @@
         <!-- ═══════════════════════════════════════════
              4. OBSERVATION TEXTAREA (Recuadro Real + Contador)
              ═══════════════════════════════════════════ -->
-        <Border Grid.Row="3"
+        <Border Grid.Row="4"
                 Background="#FFFFFF"
                 BorderBrush="#CBD5E1"
                 BorderThickness="1"
@@ -435,7 +531,7 @@
         <!-- ═══════════════════════════════════════════
              5. FOOTER BUTTONS
              ═══════════════════════════════════════════ -->
-        <StackPanel Grid.Row="4"
+        <StackPanel Grid.Row="5"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,16,0,0">
@@ -484,3 +580,4 @@
         </StackPanel>
     </Grid>
 </UserControl>
+

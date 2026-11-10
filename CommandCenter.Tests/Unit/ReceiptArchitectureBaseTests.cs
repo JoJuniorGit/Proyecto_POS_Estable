@@ -58,6 +58,8 @@ public class ReceiptArchitectureBaseTests
 
         Assert.Equal(90210, context.InvoiceNumber);
         Assert.Equal(10m, context.TotalUSD);
+        // ANEXO XIII: el contexto expone el USD efectivo derivado (730/73 = 10 en este fixture).
+        Assert.Equal(10m, context.EffectiveTotalUSD);
         Assert.Equal(730m, context.TotalBsS);
         Assert.Equal(73m, context.AppliedRate);
         Assert.Equal(-0.50m, context.RoundingAdjustment);
@@ -66,6 +68,30 @@ public class ReceiptArchitectureBaseTests
         Assert.Equal("Producto A", line.ProductName);
         var payment = Assert.Single(context.Payments);
         Assert.Equal("Efectivo", payment.MethodName);
+    }
+    [Fact]
+    public void SaleReceiptContext_WithoutProfile_KeepsLegacyCurrencyDefaults()
+    {
+        var sale = new Sale
+        {
+            Id = 11,
+            InvoiceNumber = 90220,
+            Date = new DateTime(2026, 11, 1, 12, 0, 0, DateTimeKind.Utc),
+            Subtotal = 10m,
+            TotalUSD = 10m,
+            TotalBsS = 730m,
+            AppliedRate = 73m,
+            FinalPaidAmountBsS = 730m
+        };
+
+        var context = SaleReceiptContext.CreateFrom(sale);
+
+        Assert.Equal("USD", context.PrimaryCurrencyCode);
+        Assert.Equal("$", context.PrimaryCurrencySymbol);
+        Assert.Equal("VES", context.SecondaryCurrencyCode);
+        Assert.Equal("Bs.S", context.SecondaryCurrencySymbol);
+        Assert.Equal("Dual", context.MonetaryMode);
+        Assert.False(context.IsSingleCurrency);
     }
 
     [Fact]

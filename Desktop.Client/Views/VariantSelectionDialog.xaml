@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
         mc:Ignorable="d"
         Title="Seleccionar Variante / Sabor" 
         Height="460" Width="600"
@@ -33,10 +34,12 @@
                         <materialDesign:PackIcon Kind="FormatListBulletedType" Width="24" Height="24" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <StackPanel>
                             <TextBlock Text="{Binding ParentProduct.Name}" FontSize="16" FontWeight="Bold" Foreground="White"/>
-                            <TextBlock FontSize="12" Foreground="White" Opacity="0.9">
-                                <Run Text="Precio: $"/><Run Text="{Binding BasePriceUSD, Mode=OneWay, StringFormat={}{0:F2}}"/>
-                                <Run Text=" ("/><Run Text="{Binding BasePriceBsS, Mode=OneWay, StringFormat={}{0:N2}}"/><Run Text=" Bs.S)"/>
-                            </TextBlock>
+                            <StackPanel Orientation="Horizontal" Opacity="0.9">
+                                <TextBlock Text="Precio:" FontSize="12" Foreground="White" Opacity="0.9"/>
+                                <TextBlock Text="{Binding BasePriceUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}}" FontSize="12" Foreground="White" Opacity="0.9" Margin="4,0,0,0"/>
+                                <TextBlock Text="{Binding BasePriceBsS, Mode=OneWay, Converter={StaticResource LocalAmountConverter}}" FontSize="12" Foreground="White" Opacity="0.9" Margin="10,0,0,0"
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
                     <Button HorizontalAlignment="Right" Style="{StaticResource MaterialDesignFlatButton}" 
@@ -93,7 +96,7 @@
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" Margin="10,0" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                        <TextBlock Text="{Binding PriceRetailUSD, StringFormat='${0:F2}'}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource PrimaryHueMidBrush}" HorizontalAlignment="Right"/>
+                                        <TextBlock Text="{Binding PriceRetailUSD, Converter={StaticResource PrimaryAmountConverter}}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource PrimaryHueMidBrush}" HorizontalAlignment="Right"/>
                                         <Border Padding="6,2" CornerRadius="4" Background="#E8F5E9" HorizontalAlignment="Right" Margin="0,2,0,0">
                                             <TextBlock Text="{Binding StockQuantity, StringFormat='{}{0:G29} disp.'}" 
                                                        FontWeight="SemiBold" FontSize="11" Foreground="#2E7D32"/>
@@ -129,3 +132,4 @@
         </Grid>
     </Border>
 </Window>
+

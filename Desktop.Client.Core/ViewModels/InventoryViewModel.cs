@@ -66,7 +66,7 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
 
     private const int PageSize = 25; // Requisito: Paginación de 25 elementos
 
-    private string _selectedCurrency = "Bs.S"; // Requisito: "Bs.S" por defecto al entrar al catálogo
+    private string _selectedCurrency = CurrencyDisplay.LocalCurrencyCode; // Local (secondary in Dual, primary in Single)
     public string SelectedCurrency
     {
         get => _selectedCurrency;
@@ -194,12 +194,19 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
 
             void Apply()
             {
+                // El binding TwoWay del ComboBox empuja SelectedItem = null cuando el ItemsSource
+                // se vacía (Clear). Si no se re-selecciona tras repoblar, el combo queda en blanco.
+                var previousId = _selectedCategoryFilter?.Id;
+
                 CategoryFilterOptions.Clear();
                 CategoryFilterOptions.Add(CategoryOption.AllFilter);
                 foreach (var option in options)
                 {
                     CategoryFilterOptions.Add(option);
                 }
+
+                SelectedCategoryFilter = options.FirstOrDefault(o => o.Id == previousId)
+                    ?? CategoryOption.AllFilter;
             }
 
             if (!_dispatcherInvoker.CheckAccess())
@@ -236,6 +243,12 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         // 8.184-T3 (S4): el modal de producto precarga las políticas globales de redondeo; el
         // contenedor DI ya registra ISettingsService, así que el parámetro opcional se resuelve solo.
         _settingsService = settingsService;
+
+        // RBAC de la barra de edición: re-evaluar los comandos si la sesión cambia en caliente.
+        if (UserSession != null)
+        {
+            UserSession.PropertyChanged += OnUserSessionPropertyChanged;
+        }
 
         WeakReferenceMessenger.Default.Register<ExchangeRateChangedMessage>(this, (r, m) =>
         {
@@ -276,6 +289,30 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             LoadDataAsync(false).SafeFireAndForget("InventoryViewModel.InitialLoad");
             CategoryFilterLoadTask = _categoryService is null ? Task.CompletedTask : LoadCategoryFilterAsync();
         }
+    }
+
+    /// <summary>
+    /// Contrato RBAC de la barra de edición: la sesión legacy (null) conserva el comportamiento
+    /// previo; una sesión creada sin usuario autenticado se bloquea, igual que el Visibility
+    /// CanMutateCatalog del XAML y el guard runtime de <see cref="OpenBulkPriceEdit"/>.
+    /// </summary>
+    private bool CanMutateCatalogBar() => UserSession == null || UserSession.CanMutateCatalog;
+
+    private void OnUserSessionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Services.UserSession.CurrentUser)
+            || e.PropertyName == nameof(Services.UserSession.CanMutateCatalog))
+        {
+            NotifyCatalogMutationCommands();
+        }
+    }
+
+    private void NotifyCatalogMutationCommands()
+    {
+        OpenAddProductCommand.NotifyCanExecuteChanged();
+        OpenBulkPriceEditCommand.NotifyCanExecuteChanged();
+        SelectAllFilteredCommand.NotifyCanExecuteChanged();
+        ClearSelectionCommand.NotifyCanExecuteChanged();
     }
 
     private async Task LoadPricingPoliciesAsync()
@@ -444,7 +481,10 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 UpdateState();
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            ClientStateLogger.LogInfo("Carga de productos cancelada.", nameof(InventoryViewModel));
+        }
         catch (Exception ex)
         {
             ClientStateLogger.LogError($"Fallo al cargar los productos: {ex.Message}", nameof(InventoryViewModel));
@@ -457,8 +497,14 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             {
                 _loadLock.Release();
             }
-            catch (ObjectDisposedException) { }
-            catch (SemaphoreFullException) { }
+            catch (ObjectDisposedException ex)
+            {
+                ClientStateLogger.LogWarning($"_loadLock ya descartado al liberar en LoadProductsAsync: {ex.Message}", nameof(InventoryViewModel));
+            }
+            catch (SemaphoreFullException ex)
+            {
+                ClientStateLogger.LogWarning($"_loadLock ya liberado en LoadProductsAsync: {ex.Message}", nameof(InventoryViewModel));
+            }
         }
     }
 
@@ -523,7 +569,10 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
                 UpdateMerge();
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            ClientStateLogger.LogInfo("Fusión de productos cancelada.", nameof(InventoryViewModel));
+        }
         catch (Exception ex)
         {
             ClientStateLogger.LogError($"Fallo al fusionar los cambios del catálogo: {ex.Message}", nameof(InventoryViewModel));
@@ -536,8 +585,14 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             {
                 _loadLock.Release();
             }
-            catch (ObjectDisposedException) { }
-            catch (SemaphoreFullException) { }
+            catch (ObjectDisposedException ex)
+            {
+                ClientStateLogger.LogWarning($"_loadLock ya descartado al liberar en MergeProductsAsync: {ex.Message}", nameof(InventoryViewModel));
+            }
+            catch (SemaphoreFullException ex)
+            {
+                ClientStateLogger.LogWarning($"_loadLock ya liberado en MergeProductsAsync: {ex.Message}", nameof(InventoryViewModel));
+            }
         }
     }
 
@@ -549,14 +604,26 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
             oldCts?.Cancel();
             oldCts?.Dispose();
         }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException ex)
+        {
+            ClientStateLogger.LogWarning($"CTS ya descartado durante Dispose: {ex.Message}", nameof(InventoryViewModel));
+        }
 
         try
         {
             _loadLock.Dispose();
         }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException ex)
+        {
+            ClientStateLogger.LogWarning($"_loadLock ya descartado durante Dispose: {ex.Message}", nameof(InventoryViewModel));
+        }
+
+        if (UserSession != null)
+        {
+            UserSession.PropertyChanged -= OnUserSessionPropertyChanged;
+        }
 
         WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 }
+

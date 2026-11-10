@@ -19,8 +19,10 @@ public class SalesDbContext : DbContext
     public DbSet<SaleDelivery> SaleDeliveries { get; set; } = null!;
     public DbSet<SaleDeliveryItem> SaleDeliveryItems { get; set; } = null!;
     public DbSet<PaymentMethod> PaymentMethods { get; set; } = null!;
+    public DbSet<PaymentMethodFeeRule> PaymentMethodFeeRules { get; set; } = null!;
     public DbSet<SalePayment> SalePayments { get; set; } = null!;
     public DbSet<CashDrawerSession> CashDrawerSessions { get; set; } = null!;
+    public DbSet<CashDrawerSessionMethodBalance> CashDrawerSessionMethodBalances { get; set; } = null!;
     public DbSet<CashTransaction> CashTransactions { get; set; } = null!;
     public DbSet<DailyClosure> DailyClosures { get; set; } = null!;
     public DbSet<ClosureDetail> ClosureDetails { get; set; } = null!;
@@ -28,6 +30,12 @@ public class SalesDbContext : DbContext
     public DbSet<IdempotentRequest> IdempotentRequests { get; set; } = null!;
     public DbSet<AuthorizationRequest> AuthorizationRequests { get; set; } = null!;
     public DbSet<AuthorizationAudit> AuthorizationAudits { get; set; } = null!;
+    public DbSet<Receivable> Receivables { get; set; } = null!;
+    public DbSet<ReceivablePayment> ReceivablePayments { get; set; } = null!;
+    public DbSet<CreditPaymentAllocation> CreditPaymentAllocations { get; set; } = null!;
+    public DbSet<CreditReturn> CreditReturns { get; set; } = null!;
+    public DbSet<CreditReturnItem> CreditReturnItems { get; set; } = null!;
+    public DbSet<PettyCashExpense> PettyCashExpenses { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -166,6 +174,53 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<Sale>().Property(s => s.TotalBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<Sale>().Property(s => s.SubtotalBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<Sale>().Property(s => s.RoundingAdjustment).HasColumnType("decimal(18,2)");
+
+        // 8.211-T3a (S6): snapshot monetario aditivo. Los defaults de columna backfillean las
+        // filas legacy como USD/VES/Dual sin recalcular montos ni tasas. HasSentinel permite
+        // insertar NULL explícito en la secundaria (modo Single) pese al default de columna:
+        // sin él EF omitiría null en el INSERT y PostgreSQL escribiría "VES".
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.PrimaryCurrencyCode)
+            .IsRequired()
+            .HasMaxLength(3)
+            .HasDefaultValue("USD");
+
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.SecondaryCurrencyCode)
+            .HasMaxLength(3)
+            .HasDefaultValue("VES")
+            .HasSentinel(string.Empty);
+
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.MonetaryMode)
+            .IsRequired()
+            .HasMaxLength(16)
+            .HasDefaultValue("Dual");
+
+        // 8.211-T3c2 (S6): snapshots aditivos de importes. Sin default ni índice: la migración
+        // backfillea las filas legacy desde TotalUSD/TotalBsS sin recalcular montos ni tasas.
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.PrimaryAmount)
+            .HasColumnType("decimal(18,4)");
+
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.SecondaryAmount)
+            .HasColumnType("decimal(18,4)");
+
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.AppliedRateSource)
+            .HasMaxLength(16);
+
+        // Paso 14 (S2): snapshots de la comision de servicio congelados al completar la venta.
+        // Mismos tipos que el resto del sistema: USD 4dp y moneda local 2dp.
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.CommissionAmountUSD)
+            .HasColumnType("decimal(18,4)");
+
+        modelBuilder.Entity<Sale>()
+            .Property(s => s.CommissionAmountLocal)
+            .HasColumnType("decimal(18,2)");
+
         modelBuilder.Entity<SaleItem>().Property(i => i.Quantity).HasColumnType("numeric(18,3)");
         modelBuilder.Entity<SaleItem>().Property(i => i.DeliveredQuantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPrice).HasColumnType("decimal(18,4)");
@@ -179,6 +234,16 @@ modelBuilder.Entity<User>().HasData(
 
         modelBuilder.Entity<Sale>()
             .HasIndex(s => new { s.Status, s.DeliveryStatus });
+
+        // Paso 14 (S3): ventas anuladas por periodo (reversas de comision del periodo).
+        modelBuilder.Entity<Sale>()
+            .HasIndex(s => s.CancelledAtUtc)
+            .HasDatabaseName("IX_Sales_CancelledAtUtc");
+
+        // Paso 14 (S2): agregaciones del Estado de Resultados por tipo de venta y periodo.
+        modelBuilder.Entity<Sale>()
+            .HasIndex(s => new { s.SaleType, s.Status, s.Date })
+            .HasDatabaseName("IX_Sales_SaleType_Status_Date");
 
         modelBuilder.Entity<Sale>()
             .HasIndex(s => s.CustomerId);
@@ -203,6 +268,11 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<SalePayment>()
             .HasIndex(p => p.PaymentMethodId);
 
+        // 8.202-H4 (S8): ventana del Cierre Z por fecha real del pago.
+        modelBuilder.Entity<SalePayment>()
+            .HasIndex(p => p.CreatedAt)
+            .HasDatabaseName("IX_SalePayments_CreatedAt");
+
         modelBuilder.Entity<Sale>()
             .HasIndex(s => s.InvoiceNumber)
             .IsUnique()
@@ -211,12 +281,45 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitPriceBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<SaleItem>().Property(i => i.SubtotalBsS).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<SaleItem>().Property(i => i.UnitCostUSD).HasColumnType("decimal(18,2)");
+        // Paso 14 (S4): snapshot de costo en la moneda del regimen de la venta (4dp).
+        modelBuilder.Entity<SaleItem>().Property(i => i.UnitCostLocal).HasColumnType("decimal(18,4)");
         // 8.185-T2 (S5): regla de efectivo por línea persistida por NOMBRE (estilo 8.184 Product);
         // nullable = línea previa a 8.185 sin política registrada (techo canónico 8.104).
         modelBuilder.Entity<SaleItem>().Property(i => i.RoundingRuleCashBs).HasConversion<string>().HasMaxLength(32);
 
         modelBuilder.Entity<SalePayment>().Property(p => p.AmountBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<SalePayment>().Property(p => p.ExchangeRate).HasColumnType("decimal(18,4)");
+
+        // 8.211-T3b1 (S6): snapshot aditivo de la moneda del abono. Sin default ni índice: la
+        // migración backfillea las filas legacy desde el método persistido (nombre solo fallback).
+        modelBuilder.Entity<SalePayment>()
+            .Property(p => p.CurrencyCode)
+            .HasMaxLength(10);
+
+        // 8.211-T3c2 (S6): importe original en la moneda del medio de pago (aditivo, sin default).
+        modelBuilder.Entity<SalePayment>()
+            .Property(p => p.OriginalAmount)
+            .HasColumnType("decimal(18,4)");
+
+        // Paso 14 (S7): snapshot inmutable de la regla de comision resuelta al cobrar. Sin
+        // cascade: las reglas historicas no se borran si el metodo se desactiva.
+        modelBuilder.Entity<SalePayment>()
+            .HasOne(payment => payment.PaymentMethodFeeRule)
+            .WithMany()
+            .HasForeignKey(payment => payment.PaymentMethodFeeRuleId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("FK_SalePayments_PaymentMethodFeeRules");
+
+        modelBuilder.Entity<SalePayment>()
+            .HasIndex(payment => payment.PaymentMethodFeeRuleId)
+            .HasDatabaseName("IX_SalePayments_PaymentMethodFeeRuleId");
+
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeePercentage).HasColumnType("decimal(9,4)");
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeeFixedAmount).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeeCurrencyCode).HasMaxLength(10);
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeeAmountUsd).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeeAmountLocal).HasColumnType("decimal(18,2)");
+        modelBuilder.Entity<SalePayment>().Property(payment => payment.FeeRate).HasColumnType("decimal(18,4)");
 
         // Cash Drawer Configurations
         modelBuilder.Entity<CashDrawerSession>()
@@ -248,14 +351,64 @@ modelBuilder.Entity<User>().HasData(
             .HasIndex(t => t.PaymentMethodId)
             .HasDatabaseName("IX_CashTransactions_PaymentMethodId");
 
+        // 8.188-T1 (Paso 13, S6): el movimiento (Expense original o reversa Income) apunta al
+        // gasto de caja chica con FK Restrict dedicada; el indice sirve al listado del turno.
+        modelBuilder.Entity<CashTransaction>()
+            .HasOne(t => t.PettyCashExpense)
+            .WithMany(expense => expense.CashTransactions)
+            .HasForeignKey(t => t.PettyCashExpenseId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<CashTransaction>()
+            .HasIndex(t => t.PettyCashExpenseId)
+            .HasDatabaseName("IX_CashTransactions_PettyCashExpenseId");
+
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceLocal).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningExchangeRate).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingBalanceLocal).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingExchangeRate).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<CashDrawerSession>().Property(s => s.OpeningBalanceUsd).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<CashDrawerSession>().Property(s => s.ClosingBalanceUsd).HasColumnType("decimal(18,4)");
 
-        modelBuilder.Entity<CashTransaction>().Property(t => t.AmountUsd).HasColumnType("decimal(18,2)");
+        // 8.212-WU1: one row per physical payment method in the session snapshot.
+        modelBuilder.Entity<CashDrawerSessionMethodBalance>(entity =>
+        {
+            entity.HasKey(balance => balance.Id);
+            entity.Property(balance => balance.PaymentMethodName).HasMaxLength(150).IsRequired();
+            entity.Property(balance => balance.CurrencyCode).HasMaxLength(10).IsRequired();
+            entity.Property(balance => balance.OpeningAmount).HasColumnType("decimal(18,4)");
+            entity.Property(balance => balance.ClosingAmount).HasColumnType("decimal(18,4)");
+            entity.Property(balance => balance.CreatedAtUtc).HasDefaultValueSql("now()");
+
+            entity.HasOne(balance => balance.Session)
+                .WithMany(session => session.MethodBalances)
+                .HasForeignKey(balance => balance.CashDrawerSessionId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_CashDrawerSessionMethodBalances_Session");
+
+            entity.HasOne(balance => balance.PaymentMethod)
+                .WithMany()
+                .HasForeignKey(balance => balance.PaymentMethodId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_CashDrawerSessionMethodBalances_PaymentMethod");
+
+            entity.HasIndex(balance => new { balance.CashDrawerSessionId, balance.PaymentMethodId })
+                .IsUnique()
+                .HasDatabaseName("IX_CashDrawerSessionMethodBalances_SessionId_PaymentMethodId");
+
+            entity.HasIndex(balance => balance.PaymentMethodId)
+                .HasDatabaseName("IX_CashDrawerSessionMethodBalances_PaymentMethodId");
+        });
+
+        // H4 (cierre 8.188): el libro de caja conserva el cuarto decimal del USD nominal (la
+        // columna era numeric(18,2) y el alta de caja chica escribe 4dp: se perdia el 4to decimal
+        // en Postgres). La anotacion [Column] de la entidad queda obsoleta: fluida prevalece.
+        modelBuilder.Entity<CashTransaction>().Property(t => t.AmountUsd).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashTransaction>().Property(t => t.ExchangeRate).HasColumnType("decimal(18,4)");
         modelBuilder.Entity<CashTransaction>().Property(t => t.AmountLocal).HasColumnType("decimal(18,2)");
+
+        // 8.211-T3b3 (S6): snapshot de la moneda fisica del movimiento (aditivo, sin indice).
+        modelBuilder.Entity<CashTransaction>().Property(t => t.CurrencyCode).HasMaxLength(10);
 
         // Daily Closure Configurations
         modelBuilder.Entity<DailyClosure>()
@@ -267,8 +420,25 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<DailyClosure>().Property(dc => dc.TotalExpectedBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<DailyClosure>().Property(dc => dc.TotalActualBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<DailyClosure>().Property(dc => dc.TotalDifferenceBsS).HasColumnType("decimal(18,2)");
+
+        // Residual 8.187-8.188: arqueo USD del cierre diario (nominal 4dp, nullable).
+        modelBuilder.Entity<DailyClosure>().Property(dc => dc.ExpectedClosingBalanceUsd).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<DailyClosure>().Property(dc => dc.ActualClosingBalanceUsd).HasColumnType("decimal(18,4)");
+        modelBuilder.Entity<DailyClosure>().Property(dc => dc.DifferenceUsd).HasColumnType("decimal(18,4)");
         // 8.149 (SRE-02): un único cierre por fecha (guard transaccional + índice único).
         modelBuilder.Entity<DailyClosure>().HasIndex(dc => dc.ClosureDate).IsUnique();
+
+        // Quick win 8.188 (Paso 13): el cierre ancla su renglon OPEX a la sesion de caja que
+        // cierra (FK Restrict: una sesion con cierre no se borra). Cierres legados: SessionId null.
+        modelBuilder.Entity<DailyClosure>()
+            .HasOne(dc => dc.Session)
+            .WithMany()
+            .HasForeignKey(dc => dc.SessionId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<DailyClosure>()
+            .HasIndex(dc => dc.SessionId)
+            .HasDatabaseName("IX_DailyClosures_SessionId");
 
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.ExpectedAmountBsS).HasColumnType("decimal(18,2)");
         modelBuilder.Entity<ClosureDetail>().Property(cd => cd.ActualAmountBsS).HasColumnType("decimal(18,2)");
@@ -278,6 +448,32 @@ modelBuilder.Entity<User>().HasData(
         modelBuilder.Entity<PaymentMethod>()
             .Property(p => p.IsDeleted)
             .HasDefaultValue(false);
+
+        // 8.201: moneda persistida de la gaveta. Nullable para filas legadas; la migración
+        // backfillea por la regla histórica del nombre y luego los renombres no la alteran.
+        modelBuilder.Entity<PaymentMethod>()
+            .Property(p => p.Currency)
+            .HasMaxLength(10);
+
+        // Paso 14 (S7): reglas de comision de medios de pago con vigencia. La comision es un
+        // costo del negocio: cada cobro snapshotan la regla resuelta y no la re-leen.
+        modelBuilder.Entity<PaymentMethodFeeRule>(entity =>
+        {
+            entity.HasOne(rule => rule.PaymentMethod)
+                .WithMany()
+                .HasForeignKey(rule => rule.PaymentMethodId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_PaymentMethodFeeRules_PaymentMethods");
+
+            // Una unica regla por metodo y fecha de inicio de vigencia.
+            entity.HasIndex(rule => new { rule.PaymentMethodId, rule.EffectiveFromUtc })
+                .IsUnique()
+                .HasDatabaseName("IX_PaymentMethodFeeRules_PaymentMethodId_EffectiveFromUtc");
+
+            entity.Property(rule => rule.Percentage).HasColumnType("decimal(9,4)");
+            entity.Property(rule => rule.FixedAmount).HasColumnType("decimal(18,2)");
+            entity.Property(rule => rule.CurrencyCode).HasMaxLength(10).IsRequired();
+        });
 
         if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
         {
@@ -291,6 +487,8 @@ modelBuilder.Entity<User>().HasData(
         // Tokens de concurrencia basados en `xmin` de PostgreSQL (hallazgo 8.2-A1).
         // `xmin` es una pseudo-columna de sistema que toda tabla PostgreSQL expone, por lo
         // que se configura en caliente sin DDL adicional y se omite en SQLite (tests).
+        // Paso 11/12 (F1): Customer (perfil crediticio) y Receivable (saldo CxC) se editan
+        // concurrentemente desde caja/administracion, por lo que entran al mismo regimen.
         if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
         {
             modelBuilder.Entity<Sale>()
@@ -310,12 +508,32 @@ modelBuilder.Entity<User>().HasData(
                 .HasColumnType("xid")
                 .ValueGeneratedOnAddOrUpdate()
                 .IsConcurrencyToken();
+
+            modelBuilder.Entity<Customer>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+
+            modelBuilder.Entity<Receivable>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
+
+            // Paso 14 (S7): las reglas de comision se editan desde Configuracion mientras las
+            // ventas las resuelven; xmin evita pisar una vigencia recien cambiada.
+            modelBuilder.Entity<PaymentMethodFeeRule>()
+                .Property<uint>("xmin")
+                .HasColumnType("xid")
+                .ValueGeneratedOnAddOrUpdate()
+                .IsConcurrencyToken();
         }
 
         // Seed initial payment methods
         modelBuilder.Entity<PaymentMethod>().HasData(
-            new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true, IsDeleted = false },
-            new PaymentMethod { Id = 2, Name = "Card", IsActive = true, RequiresReference = true, IsCash = false, IsDeleted = false }
+            new PaymentMethod { Id = 1, Name = "Cash", IsActive = true, RequiresReference = false, IsCash = true, IsDeleted = false, Currency = PaymentMethodCurrencyResolver.LocalCurrency },
+            new PaymentMethod { Id = 2, Name = "Card", IsActive = true, RequiresReference = true, IsCash = false, IsDeleted = false, Currency = PaymentMethodCurrencyResolver.LocalCurrency }
         );
 
         // Sequences for consecutive invoice numbers (H-SAL-1 / A2) and atomic DisplayOrder (PostgreSQL)
@@ -328,6 +546,17 @@ modelBuilder.Entity<User>().HasData(
             modelBuilder.HasSequence<int>("paymentmethod_displayorder_seq")
                 .StartsAt(1)
                 .IncrementsBy(1);
+
+            // 8.188-T1 (Paso 13, S6): correlativo unico del vale de caja chica
+            // (presentacion VCC-000001). El default de la columna se declara solo para
+            // Npgsql: en SQLite (tests) los correlativos se fijan explicitamente.
+            modelBuilder.HasSequence<long>("petty_cash_voucher_seq")
+                .StartsAt(1)
+                .IncrementsBy(1);
+
+            modelBuilder.Entity<PettyCashExpense>()
+                .Property(expense => expense.VoucherNumber)
+                .HasDefaultValueSql("nextval('petty_cash_voucher_seq')");
         }
 
         // OutboxMessages Configuration
@@ -404,6 +633,287 @@ modelBuilder.Entity<User>().HasData(
         {
             entity.HasIndex(audit => audit.RequestId)
                 .HasDatabaseName("IX_AuthorizationAudits_RequestId");
+        });
+
+        // Paso 11 + 12 (F1): dominio CxC bimonetario. La obligacion se denomina en USD 4dp
+        // con snapshot de la tasa de emision; los abonos congelan la tasa del dia. Sin cascade
+        // delete en ninguna relacion: la integridad contable exige bajas explicitas y auditadas.
+        modelBuilder.Entity<Receivable>(entity =>
+        {
+            entity.HasOne(receivable => receivable.Sale)
+                .WithOne()
+                .HasForeignKey<Receivable>(receivable => receivable.SaleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(receivable => receivable.Customer)
+                .WithMany()
+                .HasForeignKey(receivable => receivable.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Una factura a credito genera a lo sumo una obligacion.
+            entity.HasIndex(receivable => receivable.SaleId)
+                .IsUnique()
+                .HasDatabaseName("IX_Receivables_SaleId");
+
+            entity.HasIndex(receivable => new { receivable.CustomerId, receivable.Status })
+                .HasDatabaseName("IX_Receivables_CustomerId_Status");
+
+            entity.HasIndex(receivable => new { receivable.DueDateUtc, receivable.Status })
+                .HasDatabaseName("IX_Receivables_DueDateUtc_Status");
+
+            entity.Property(receivable => receivable.OriginalUSD).HasColumnType("decimal(18,4)");
+            entity.Property(receivable => receivable.BalanceUSD).HasColumnType("decimal(18,4)");
+            entity.Property(receivable => receivable.OriginalBsS).HasColumnType("decimal(18,2)");
+            entity.Property(receivable => receivable.HistoricalRate).HasColumnType("decimal(18,4)");
+        });
+
+        modelBuilder.Entity<ReceivablePayment>(entity =>
+        {
+            entity.HasOne(payment => payment.Customer)
+                .WithMany()
+                .HasForeignKey(payment => payment.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(payment => payment.CashTransaction)
+                .WithMany()
+                .HasForeignKey(payment => payment.CashTransactionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(payment => payment.PaymentMethod)
+                .WithMany()
+                .HasForeignKey(payment => payment.PaymentMethodId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(payment => payment.ReceivedByUser)
+                .WithMany()
+                .HasForeignKey(payment => payment.ReceivedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasMany(payment => payment.Allocations)
+                .WithOne(allocation => allocation.ReceivablePayment)
+                .HasForeignKey(allocation => allocation.ReceivablePaymentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(payment => payment.CashTransactionId)
+                .HasDatabaseName("IX_ReceivablePayments_CashTransactionId");
+
+            entity.HasIndex(payment => new { payment.CustomerId, payment.ReceivedAtUtc })
+                .HasDatabaseName("IX_ReceivablePayments_CustomerId_ReceivedAtUtc");
+
+            // Idempotencia del cobro: unica solo cuando la clave existe (NULL multiple permitido).
+            entity.HasIndex(payment => payment.IdempotencyKey)
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL")
+                .HasDatabaseName("IX_ReceivablePayments_IdempotencyKey");
+
+            entity.HasIndex(payment => payment.PaymentMethodId)
+                .HasDatabaseName("IX_ReceivablePayments_PaymentMethodId");
+
+            // 8.202-H4 (S8): ventana del Cierre Z por fecha real del abono CxC.
+            entity.HasIndex(payment => payment.ReceivedAtUtc)
+                .HasDatabaseName("IX_ReceivablePayments_ReceivedAtUtc");
+
+            entity.HasIndex(payment => payment.ReceivedByUserId)
+                .HasDatabaseName("IX_ReceivablePayments_ReceivedByUserId");
+
+            // Paso 14 (S7): snapshot inmutable de la regla de comision resuelta al recibir el
+            // abono. Sin cascade: las reglas historicas no se borran si el metodo se desactiva.
+            entity.HasOne(payment => payment.PaymentMethodFeeRule)
+                .WithMany()
+                .HasForeignKey(payment => payment.PaymentMethodFeeRuleId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_ReceivablePayments_PaymentMethodFeeRules");
+
+            entity.HasIndex(payment => payment.PaymentMethodFeeRuleId)
+                .HasDatabaseName("IX_ReceivablePayments_PaymentMethodFeeRuleId");
+
+            entity.Property(payment => payment.FeePercentage).HasColumnType("decimal(9,4)");
+            entity.Property(payment => payment.FeeFixedAmount).HasColumnType("decimal(18,2)");
+            entity.Property(payment => payment.FeeCurrencyCode).HasMaxLength(10);
+            entity.Property(payment => payment.FeeAmountUsd).HasColumnType("decimal(18,4)");
+            entity.Property(payment => payment.FeeAmountLocal).HasColumnType("decimal(18,2)");
+            entity.Property(payment => payment.FeeRate).HasColumnType("decimal(18,4)");
+
+            entity.Property(payment => payment.AmountUSD).HasColumnType("decimal(18,4)");
+            entity.Property(payment => payment.AmountBsS).HasColumnType("decimal(18,2)");
+            entity.Property(payment => payment.PaymentRate).HasColumnType("decimal(18,4)");
+            entity.Property(payment => payment.FxDifferenceBsS).HasColumnType("decimal(18,2)");
+        });
+
+        modelBuilder.Entity<CreditPaymentAllocation>(entity =>
+        {
+            entity.HasOne(allocation => allocation.Receivable)
+                .WithMany(receivable => receivable.PaymentAllocations)
+                .HasForeignKey(allocation => allocation.ReceivableId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(allocation => allocation.ReceivableId)
+                .HasDatabaseName("IX_CreditPaymentAllocations_ReceivableId");
+
+            // Una misma obligacion no puede recibir dos imputaciones del mismo abono.
+            entity.HasIndex(allocation => new { allocation.ReceivablePaymentId, allocation.ReceivableId })
+                .IsUnique()
+                .HasDatabaseName("IX_CreditPaymentAllocations_ReceivablePaymentId_ReceivableId");
+
+            entity.Property(allocation => allocation.AmountUSD).HasColumnType("decimal(18,4)");
+            entity.Property(allocation => allocation.AmountBsS).HasColumnType("decimal(18,2)");
+            entity.Property(allocation => allocation.FxDifferenceBsS).HasColumnType("decimal(18,2)");
+        });
+
+        // T3b2 (Paso 11/12, S5/S7): devoluciones y anulaciones de ventas a credito. Sin cascade
+        // delete: la traza contable exige bajas explicitas y auditadas; el reembolso del overpago
+        // referencia la transaccion de caja (Expense, origen CreditRefund).
+        modelBuilder.Entity<CreditReturn>(entity =>
+        {
+            entity.HasOne(creditReturn => creditReturn.Sale)
+                .WithMany()
+                .HasForeignKey(creditReturn => creditReturn.SaleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(creditReturn => creditReturn.Receivable)
+                .WithMany()
+                .HasForeignKey(creditReturn => creditReturn.ReceivableId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(creditReturn => creditReturn.Customer)
+                .WithMany()
+                .HasForeignKey(creditReturn => creditReturn.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(creditReturn => creditReturn.CashTransaction)
+                .WithMany()
+                .HasForeignKey(creditReturn => creditReturn.CashTransactionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(creditReturn => creditReturn.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(creditReturn => creditReturn.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasMany(creditReturn => creditReturn.Items)
+                .WithOne(item => item.CreditReturn)
+                .HasForeignKey(item => item.CreditReturnId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Idempotencia de la devolucion: unica solo cuando la clave existe.
+            entity.HasIndex(creditReturn => creditReturn.IdempotencyKey)
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL")
+                .HasDatabaseName("IX_CreditReturns_IdempotencyKey");
+
+            // Paso 14 (S6): ventana de devoluciones del periodo consultado.
+            entity.HasIndex(creditReturn => creditReturn.CreatedAtUtc)
+                .HasDatabaseName("IX_CreditReturns_CreatedAtUtc");
+
+            entity.Property(creditReturn => creditReturn.ReturnedUSD).HasColumnType("decimal(18,4)");
+            entity.Property(creditReturn => creditReturn.RefundedUSD).HasColumnType("decimal(18,4)");
+            entity.Property(creditReturn => creditReturn.RefundedBsS).HasColumnType("decimal(18,2)");
+            entity.Property(creditReturn => creditReturn.RefundRate).HasColumnType("decimal(18,4)");
+        });
+
+        modelBuilder.Entity<CreditReturnItem>(entity =>
+        {
+            entity.HasOne(item => item.SaleItem)
+                .WithMany()
+                .HasForeignKey(item => item.SaleItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasIndex(item => item.CreditReturnId)
+                .HasDatabaseName("IX_CreditReturnItems_CreditReturnId");
+
+            entity.HasIndex(item => item.SaleItemId)
+                .HasDatabaseName("IX_CreditReturnItems_SaleItemId");
+
+            entity.Property(item => item.Quantity).HasColumnType("numeric(18,3)");
+            entity.Property(item => item.AmountUSD).HasColumnType("decimal(18,4)");
+        });
+
+        // T1 (Paso 13 / 8.188, S2/S6): gastos operativos de caja chica. El gasto pertenece a la
+        // sesion de caja (FK Restrict obligatoria) y su libro transaccional vive en CashTransaction
+        // (PettyCashExpenseId); sin cascade delete: la anulacion es logica y auditada.
+        modelBuilder.Entity<PettyCashExpense>(entity =>
+        {
+            entity.HasOne(expense => expense.Session)
+                .WithMany()
+                .HasForeignKey(expense => expense.SessionId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Trazabilidad de usuarios (creador/autorizador/anulador) y de la autorizacion
+            // jerarquica consumida; sin navegaciones: los nombres no se snapshotean aqui.
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(expense => expense.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(expense => expense.AuthorizedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(expense => expense.CancelledByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // H3 (cierre 8.188): supervisor que aprobo la anulacion (nullable; solo se completa
+            // cuando hubo autorizacion jerarquica con un aprobador distinto del ejecutor).
+            entity.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(expense => expense.CancellationAuthorizedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne<AuthorizationRequest>()
+                .WithMany()
+                .HasForeignKey(expense => expense.AuthorizationRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Correlativo unico del vale (VCC-000001).
+            entity.HasIndex(expense => expense.VoucherNumber)
+                .IsUnique()
+                .HasDatabaseName("IX_PettyCashExpenses_VoucherNumber");
+
+            entity.HasIndex(expense => expense.SessionId)
+                .HasDatabaseName("IX_PettyCashExpenses_SessionId");
+
+            // Arqueo/cierre: gastos vigentes de la sesion (el renglon OPEX solo suma Active).
+            entity.HasIndex(expense => new { expense.SessionId, expense.Status })
+                .HasDatabaseName("IX_PettyCashExpenses_SessionId_Status");
+
+            entity.HasIndex(expense => expense.CreatedByUserId)
+                .HasDatabaseName("IX_PettyCashExpenses_CreatedByUserId");
+
+            // 8.202-H4 (S8): ventana del Cierre Z por fecha de registro del gasto.
+            entity.HasIndex(expense => expense.CreatedAtUtc)
+                .HasDatabaseName("IX_PettyCashExpenses_CreatedAtUtc");
+
+            entity.HasIndex(expense => expense.AuthorizedByUserId)
+                .HasDatabaseName("IX_PettyCashExpenses_AuthorizedByUserId");
+
+            entity.HasIndex(expense => expense.CancelledByUserId)
+                .HasDatabaseName("IX_PettyCashExpenses_CancelledByUserId");
+
+            entity.HasIndex(expense => expense.CancellationAuthorizedByUserId)
+                .HasDatabaseName("IX_PettyCashExpenses_CancellationAuthorizedByUserId");
+
+            entity.HasIndex(expense => expense.AuthorizationRequestId)
+                .HasDatabaseName("IX_PettyCashExpenses_AuthorizationRequestId");
+
+            entity.Property(expense => expense.AmountBsS).HasColumnType("decimal(18,2)");
+            entity.Property(expense => expense.AmountUsd).HasColumnType("decimal(18,4)");
+            entity.Property(expense => expense.HistoricalRate).HasColumnType("decimal(18,4)");
+
+            entity.Property(expense => expense.Concept).IsRequired().HasMaxLength(500);
+            entity.Property(expense => expense.Beneficiary).IsRequired().HasMaxLength(150);
+            entity.Property(expense => expense.ReferenceNumber).IsRequired().HasMaxLength(100);
+            entity.Property(expense => expense.CancellationReason).HasMaxLength(500);
+
+            // T2a (S3): idempotencia del registro; unica solo cuando la clave existe
+            // (NULL multiple permitido), mismo contrato de ReceivablePayments/CreditReturns.
+            entity.Property(expense => expense.IdempotencyKey).HasMaxLength(100);
+            entity.HasIndex(expense => expense.IdempotencyKey)
+                .IsUnique()
+                .HasFilter("\"IdempotencyKey\" IS NOT NULL")
+                .HasDatabaseName("IX_PettyCashExpenses_IdempotencyKey");
         });
     }
 }

@@ -33,13 +33,38 @@ public interface IAuthorizationCoordinator
         string username,
         string password,
         string? reason = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        int? callerUserId = null,
+        bool callerIsElevated = false);
 
     Task<AuthorizationConsumeResult> ConsumeAsync(
         string rawToken,
         int saleId,
         int? actingUserId,
         ManualPriceOverrideContext operation,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T3b1 (F2b, S4): consumo single-use del token de la excepción de sobregiro (accion
+    /// CreditOverLimit). Espeja <see cref="ConsumeAsync"/> pero liga el token al contexto de
+    /// crédito (cliente, venta, monto financiado, crédito disponible) en lugar del producto.
+    /// </summary>
+    Task<AuthorizationConsumeResult> ConsumeCreditOverLimitAsync(
+        string rawToken,
+        int saleId,
+        int? actingUserId,
+        CreditOverLimitContext operation,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T2a (Paso 13, S4): consumo single-use del token del egreso de caja chica (accion
+    /// PettyCashExpense). Liga el token al contexto exacto (sesión, moneda, montos bimonetarios,
+    /// categoría) sin venta asociada; en éxito expone la solicitud y el autorizador.
+    /// </summary>
+    Task<AuthorizationConsumeResult> ConsumePettyCashExpenseAsync(
+        string rawToken,
+        int? actingUserId,
+        PettyCashExpenseAuthorizationContext operation,
         CancellationToken cancellationToken = default);
 
     Task<int> ExpireStaleAsync(CancellationToken cancellationToken = default);
@@ -74,7 +99,9 @@ public interface IAuthorizationCoordinator
 
 /// <summary>
 /// 8.150 (T3): resultado de consumo expuesto a T5; agrega InvalidToken a los desenlaces del
-/// servicio para que la capa protegida no conozca el contrato del token.
+/// servicio para que la capa protegida no conozca el contrato del token. T2a (Paso 13): en el
+/// consumo del gasto de caja chica viajan además la solicitud consumida y el supervisor
+/// autorizador, para completar <c>AuthorizedByUserId</c>/<c>AuthorizationRequestId</c>.
 /// </summary>
 public enum AuthorizationConsumeStatus
 {
@@ -90,7 +117,11 @@ public enum AuthorizationConsumeStatus
     TokenExpired
 }
 
-public sealed record AuthorizationConsumeResult(AuthorizationConsumeStatus Status, string? Message = null);
+public sealed record AuthorizationConsumeResult(
+    AuthorizationConsumeStatus Status,
+    string? Message = null,
+    int? RequestId = null,
+    int? AuthorizedByUserId = null);
 
 /// <summary>
 /// 8.150 (T4): estado + token recuperable expuestos por el GET REST. El token solo se completa

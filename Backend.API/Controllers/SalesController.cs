@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Backend.API.Attributes;
 using Backend.API.Services;
 using Core.DTOs;
 using Core.Logging;
@@ -11,6 +12,7 @@ using System.Threading.Tasks;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
@@ -153,6 +155,7 @@ public partial class SalesController : ControllerBase
         }
     }
 
+    [RequireSecurityStampValidation]
     [HttpPost("{id}/items")]
     public async Task<ActionResult<SaleDto>> AddItemAsync(int id, [FromBody] AddItemRequest request, CancellationToken cancellationToken = default)
     {
@@ -219,8 +222,19 @@ public partial class SalesController : ControllerBase
 
         try
         {
-            var sale = await _salesService.AddItemAsync(id, request.ProductId, request.Quantity, request.ExchangeRate, request.CustomUnitPriceUsd, request.CustomUnitPriceLocal, isAuthorized, GetActorUserId(), cancellationToken);
-            await _idempotencyResolver.RegisterSuccessAsync(resolved, requestPath, System.Text.Json.JsonSerializer.Serialize(sale), cancellationToken);
+            var sale = await _salesService.AddItemAsync(
+                id,
+                request.ProductId,
+                request.Quantity,
+                request.ExchangeRate,
+                request.CustomUnitPriceUsd,
+                request.CustomUnitPriceLocal,
+                isAuthorized,
+                GetActorUserId(),
+                cancellationToken,
+                resolved.Key,
+                resolved.PayloadHash,
+                requestPath);
 
             if (Response?.Headers != null)
             {
@@ -235,6 +249,7 @@ public partial class SalesController : ControllerBase
         }
     }
 
+    [RequireSecurityStampValidation]
     [HttpDelete("{id}/items/{itemId}")]
     public async Task<ActionResult<SaleDto>> RemoveItemAsync(int id, int itemId, [FromQuery] string exchangeRate, CancellationToken cancellationToken = default)
     {
@@ -247,6 +262,7 @@ public partial class SalesController : ControllerBase
         return Ok(sale);
     }
 
+    [RequireSecurityStampValidation]
     [HttpPut("{id}/items/{itemId}")]
     public async Task<ActionResult<SaleDto>> UpdateItemQuantityAsync(int id, int itemId, [FromBody] UpdateQuantityRequest request, CancellationToken cancellationToken = default)
     {
@@ -259,6 +275,7 @@ public partial class SalesController : ControllerBase
         return Ok(sale);
     }
 
+    [RequireSecurityStampValidation]
     [HttpPut("{id}/exchange-rate")]
     public async Task<ActionResult<SaleDto>> UpdateExchangeRateAsync(int id, [FromQuery] string exchangeRate, CancellationToken cancellationToken = default)
     {

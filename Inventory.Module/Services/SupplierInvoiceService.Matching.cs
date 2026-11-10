@@ -168,12 +168,9 @@ public partial class SupplierInvoiceService
 
         var candidatesByName = new Dictionary<string, List<SupplierProductSimilarityCandidate>>(StringComparer.Ordinal);
         var allCandidateIds = new HashSet<int>();
-        foreach (var productName in distinctNames)
+
+        void AddCandidates(string productName, IReadOnlyList<SupplierProductSimilarityCandidate> candidates)
         {
-            var candidates = await _similaritySearch.FindCandidatesAsync(
-                productName,
-                similarityThreshold,
-                cancellationToken);
             var eligibleCandidates = candidates
                 .Where(candidate => candidate.ProductId > 0
                     && double.IsFinite(candidate.Similarity)
@@ -185,13 +182,37 @@ public partial class SupplierInvoiceService
 
             if (eligibleCandidates.Count == 0)
             {
-                continue;
+                return;
             }
 
             candidatesByName[productName] = eligibleCandidates;
             foreach (var candidate in eligibleCandidates)
             {
                 allCandidateIds.Add(candidate.ProductId);
+            }
+        }
+
+        if (_similaritySearch is PostgresSupplierProductSimilaritySearch postgresSearch)
+        {
+            var batch = await postgresSearch.FindCandidatesBatchAsync(
+                distinctNames,
+                similarityThreshold,
+                cancellationToken);
+            foreach (var (productName, candidates) in batch)
+            {
+                AddCandidates(productName, candidates);
+            }
+        }
+        else
+        {
+            // Fallback para tests y proveedores alternativos: mantiene el contrato existente.
+            foreach (var productName in distinctNames)
+            {
+                var candidates = await _similaritySearch.FindCandidatesAsync(
+                    productName,
+                    similarityThreshold,
+                    cancellationToken);
+                AddCandidates(productName, candidates);
             }
         }
 
@@ -338,4 +359,77 @@ public sealed class PostgresSupplierProductSimilaritySearch : ISupplierProductSi
             .Select(candidate => new SupplierProductSimilarityCandidate(candidate.Id, candidate.Similarity))
             .ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// PERF-R01: resuelve todos los nombres en UNA consulta con <c>unnest</c> y el índice GIN,
+    /// en lugar de abrir una consulta por cada nombre distinto.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<SupplierProductSimilarityCandidate>>> FindCandidatesBatchAsync(
+        IReadOnlyList<string> productNames,
+        double minimumSimilarity,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(productNames);
+        if (!double.IsFinite(minimumSimilarity) || minimumSimilarity is < 0d or > 1d)
+        {
+            throw new ArgumentOutOfRangeException(nameof(minimumSimilarity));
+        }
+
+        if (_context.Database.ProviderName != "Npgsql.EntityFrameworkCore.PostgreSQL")
+        {
+            throw new InvalidOperationException("Product name similarity search requires PostgreSQL pg_trgm.");
+        }
+
+        var names = productNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (names.Length == 0)
+        {
+            return new Dictionary<string, IReadOnlyList<SupplierProductSimilarityCandidate>>(StringComparer.Ordinal);
+        }
+
+        const string sql = """
+            WITH ranked AS (
+                SELECT n.name AS "SearchName",
+                       p."Id" AS "ProductId",
+                       similarity(p."Name", n.name) AS "Similarity",
+                       ROW_NUMBER() OVER (
+                           PARTITION BY n.name
+                           ORDER BY similarity(p."Name", n.name) DESC, p."Id") AS rn
+                FROM unnest({0}::text[]) AS n(name)
+                JOIN "Products" p ON p."Name" % n.name
+                WHERE p."IsDeleted" = FALSE
+                  AND p."IsActive" = TRUE
+                  AND p."IsGroupHeader" = FALSE
+                  AND similarity(p."Name", n.name) >= {1}
+            )
+            SELECT "SearchName", "ProductId", "Similarity"
+            FROM ranked
+            WHERE rn <= {2}
+            ORDER BY "SearchName", "Similarity" DESC, "ProductId"
+            """;
+
+        var rows = await _context.Database
+            .SqlQueryRaw<SimilarityBatchRow>(sql, names, minimumSimilarity, MaxSimilarityCandidates)
+            .ToListAsync(cancellationToken);
+
+        var grouped = new Dictionary<string, List<SupplierProductSimilarityCandidate>>(StringComparer.Ordinal);
+        foreach (var row in rows)
+        {
+            if (!grouped.TryGetValue(row.SearchName, out var candidates))
+            {
+                candidates = new List<SupplierProductSimilarityCandidate>();
+                grouped[row.SearchName] = candidates;
+            }
+            candidates.Add(new SupplierProductSimilarityCandidate(row.ProductId, row.Similarity));
+        }
+
+        return grouped.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<SupplierProductSimilarityCandidate>)pair.Value,
+            StringComparer.Ordinal);
+    }
+
+    private sealed record SimilarityBatchRow(string SearchName, int ProductId, double Similarity);
 }

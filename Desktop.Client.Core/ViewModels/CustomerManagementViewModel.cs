@@ -37,13 +37,32 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEditing))]
     [NotifyPropertyChangedFor(nameof(IsDefaultCustomer))]
+    [NotifyPropertyChangedFor(nameof(CanViewCreditProfile))]
+    [NotifyPropertyChangedFor(nameof(CanEditCreditProfile))]
     private CustomerDto? _selectedCustomer;
 
     public bool IsEditing => SelectedCustomer != null;
     public bool IsDefaultCustomer => SelectedCustomer?.IsDefault == true || SelectedCustomer?.CedulaOrRif.Equals("V-00000000", StringComparison.OrdinalIgnoreCase) == true;
 
-    // RBAC: Cashiers cannot create, edit, deactivate, or delete customers
+    // RBAC: las operaciones administrativas del cliente (activación/eliminación) y la escritura
+    // del perfil crediticio son exclusivas de Admin/Manager.
     public bool CanMutate => _userSession.CurrentUser != null && _userSession.CurrentUser.Role != UserRole.Cashier;
+
+    /// <summary>
+    /// 8.188 (segregación de funciones): el cajero puede crear clientes y actualizar sus datos de
+    /// contacto (cédula/RIF, nombre, teléfono); el crédito y la activación/eliminación siguen
+    /// reservados a Admin/Manager. Driver queda fuera por su bloqueo operativo.
+    /// </summary>
+    public bool CanManageCustomerContact => _userSession.CurrentUser != null
+        && _userSession.CurrentUser.Role != UserRole.Driver;
+
+    /// <summary>
+    /// 8.188: visibilidad del panel crediticio. El cajero nunca ve los parámetros de crédito (el
+    /// panel se oculta por completo, no solo se deshabilita); Admin/Manager conservan la lectura
+    /// del perfil, incluido el estado suspendido por mora donde la edición queda deshabilitada
+    /// aparte por <see cref="CanEditCreditProfile"/>.
+    /// </summary>
+    public bool CanViewCreditProfile => CanMutate && IsEditing;
 
     public ObservableCollection<CustomerDto> Customers { get; } = new();
 
@@ -53,6 +72,66 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _phone = string.Empty;
     [ObservableProperty] private string _creditLimitText = "0.00";
     [ObservableProperty] private bool _isActive = true;
+
+    // ── Perfil crediticio (Paso 11, S1/S4) ──
+    [ObservableProperty] private bool _isCreditEnabled;
+    [ObservableProperty] private string _paymentTermDaysText = "30";
+    [ObservableProperty] private string _creditGraceDaysText = "0";
+    [ObservableProperty] private string _creditNotes = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEditCreditProfile))]
+    [NotifyPropertyChangedFor(nameof(CreditStatusLabel))]
+    [NotifyPropertyChangedFor(nameof(IsManuallyBlocked))]
+    private Core.Entities.CreditStatus _creditStatus = Core.Entities.CreditStatus.Active;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCreditProfile))]
+    [NotifyPropertyChangedFor(nameof(CanEditCreditProfile))]
+    [NotifyPropertyChangedFor(nameof(HasOpenPortfolio))]
+    [NotifyPropertyChangedFor(nameof(CanDeleteCustomer))]
+    [NotifyPropertyChangedFor(nameof(CreditStatusLabel))]
+    private CreditProfileClientDto? _creditProfile;
+
+    [ObservableProperty] private bool _isCreditProfileLoading;
+    [ObservableProperty] private string? _creditProfileError;
+
+    /// <summary>Seam determinista de tests: última carga del perfil crediticio del cliente.</summary>
+    public Task? PendingCreditProfile { get; private set; }
+
+    private int _creditProfileVersion;
+
+    public bool HasCreditProfile => CreditProfile != null;
+
+    /// <summary>
+    /// 8.188: cartera abierta conocida por el VM (deuda vigente del perfil cargado, umbral de
+    /// polvo decimal 0.005 USD). El bloqueo definitivo —incluido el historial ya pagado y los
+    /// abonos— vive en el servidor: este indicador solo adelanta la inhabilitación visual.
+    /// </summary>
+    public bool HasOpenPortfolio => CreditProfile != null && CreditProfile.CurrentDebtUSD > 0.005m;
+
+    /// <summary>Eliminación física reservada a Admin/Manager y deshabilitada con cartera abierta conocida.</summary>
+    public bool CanDeleteCustomer => CanMutate && !HasOpenPortfolio;
+
+    public bool IsManuallyBlocked => CreditStatus == Core.Entities.CreditStatus.ManuallyBlocked;
+
+    public string CreditStatusLabel => CreditStatus switch
+    {
+        Core.Entities.CreditStatus.Active => "Activo",
+        Core.Entities.CreditStatus.SuspendedByMora => "Suspendido por Mora",
+        Core.Entities.CreditStatus.ManuallyBlocked => "Bloqueado Manualmente",
+        _ => "Sin perfil"
+    };
+
+    /// <summary>
+    /// Solo Admin/Manager pueden editar el perfil. Un cliente suspendido por mora no admite
+    /// escritura manual de estado (el sistema lo administra); el bloqueo manual sí es reversible.
+    /// </summary>
+    public bool CanEditCreditProfile => CanMutate
+        && IsEditing
+        && !IsDefaultCustomer
+        && CreditProfile != null
+        && CreditStatus != Core.Entities.CreditStatus.SuspendedByMora;
 
     // Dynamic Validation Indicators & Length Tracking
     [ObservableProperty] private bool _isCedulaValid;
@@ -107,6 +186,14 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
             Phone = value.Phone;
             CreditLimitText = value.CreditLimitUSD.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
             IsActive = value.IsActive;
+
+            // El perfil crediticio llega por GET aparte; se limpia cualquier estado del cliente
+            // anterior antes de consultar el nuevo para no mostrar métricas cruzadas.
+            ClearCreditProfileFields();
+            if (!IsDefaultCustomer)
+            {
+                TriggerCreditProfileFetch(value.Id);
+            }
         }
         else
         {
@@ -198,33 +285,6 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
         IsPhoneValid = digits.Length == 11 && ValidPhonePrefixes.Contains(digits.Substring(0, 4));
     }
 
-    // ── Controlled Input: Credit Limit (ATM Shift Effect 0.0x) ──
-    partial void OnCreditLimitTextChanged(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value) || value == "0" || value == "0.00")
-        {
-            if (value != "0.00") CreditLimitText = "0.00";
-            return;
-        }
-
-        string digits = Regex.Replace(value, @"\D", "").TrimStart('0');
-        if (string.IsNullOrEmpty(digits))
-        {
-            if (value != "0.00") CreditLimitText = "0.00";
-            return;
-        }
-
-        if (long.TryParse(digits, out long cents))
-        {
-            decimal dollars = cents / 100.00m;
-            string formatted = dollars.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-            if (value != formatted)
-            {
-                CreditLimitText = formatted;
-            }
-        }
-    }
-
     partial void OnNameChanged(string value)
     {
         OnPropertyChanged(nameof(NameLength));
@@ -313,6 +373,219 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
         {
             CurrentPage++;
             await LoadCustomersAsync();
+        }
+    }
+
+    // ── Perfil crediticio (Paso 11, S1/S4) ──
+
+    private void ClearCreditProfileFields()
+    {
+        _creditProfileVersion++;
+        PendingCreditProfile = Task.CompletedTask;
+        CreditProfile = null;
+        CreditProfileError = null;
+        IsCreditProfileLoading = false;
+        IsCreditEnabled = false;
+        PaymentTermDaysText = "30";
+        CreditGraceDaysText = "0";
+        CreditNotes = string.Empty;
+        CreditStatus = Core.Entities.CreditStatus.Active;
+    }
+
+    private void TriggerCreditProfileFetch(int customerId)
+    {
+        int version = ++_creditProfileVersion;
+        PendingCreditProfile = LoadCreditProfileAsync(customerId, version);
+    }
+
+    private async Task LoadCreditProfileAsync(int customerId, int version)
+    {
+        IsCreditProfileLoading = true;
+        CreditProfileError = null;
+
+        try
+        {
+            var profile = await _salesService.GetCreditProfileAsync(customerId);
+            if (version != _creditProfileVersion || SelectedCustomer?.Id != customerId) return;
+
+            ApplyCreditProfile(profile);
+        }
+        catch (Exception ex)
+        {
+            if (version != _creditProfileVersion || SelectedCustomer?.Id != customerId) return;
+
+            CreditProfile = null;
+            CreditProfileError = $"No se pudo cargar el perfil crediticio: {ex.Message}";
+        }
+        finally
+        {
+            if (version == _creditProfileVersion && SelectedCustomer?.Id == customerId)
+            {
+                IsCreditProfileLoading = false;
+            }
+        }
+    }
+
+    private void ApplyCreditProfile(CreditProfileClientDto profile)
+    {
+        CreditProfile = profile;
+        IsCreditEnabled = profile.IsCreditEnabled;
+        CreditLimitText = profile.CreditLimitUSD.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+        PaymentTermDaysText = profile.PaymentTermDays.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        CreditGraceDaysText = profile.CreditGraceDays.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        CreditNotes = profile.CreditNotes ?? string.Empty;
+        CreditStatus = profile.Status;
+    }
+
+    /// <summary>
+    /// Valida y construye el contrato de escritura. El estado manual nunca envía
+    /// SuspendedByMora: ese estado pertenece al job de mora del servidor.
+    /// </summary>
+    private bool TryBuildCreditProfileRequest(out CreditProfileUpdateClientDto request)
+    {
+        request = new CreditProfileUpdateClientDto();
+
+        if (!decimal.TryParse(CreditLimitText, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out decimal creditLimit)
+            || creditLimit < 0m)
+        {
+            _dialogService.ShowWarning("Perfil Crediticio", "El límite de crédito debe ser un monto no negativo.");
+            return false;
+        }
+
+        if (!int.TryParse(PaymentTermDaysText, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out int paymentTermDays)
+            || paymentTermDays < 1 || paymentTermDays > 365)
+        {
+            _dialogService.ShowWarning("Perfil Crediticio", "El plazo de pago debe estar entre 1 y 365 días continuos.");
+            return false;
+        }
+
+        if (!int.TryParse(CreditGraceDaysText, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out int graceDays)
+            || graceDays < 0)
+        {
+            _dialogService.ShowWarning("Perfil Crediticio", "Los días de gracia no pueden ser negativos.");
+            return false;
+        }
+
+        string? notes = string.IsNullOrWhiteSpace(CreditNotes) ? null : CreditNotes.Trim();
+        if (notes is { Length: > 1000 })
+        {
+            _dialogService.ShowWarning("Perfil Crediticio", "Las notas crediticias no pueden exceder 1000 caracteres.");
+            return false;
+        }
+
+        request = new CreditProfileUpdateClientDto
+        {
+            IsCreditEnabled = IsCreditEnabled,
+            CreditLimitUSD = creditLimit,
+            PaymentTermDays = paymentTermDays,
+            CreditGraceDays = graceDays,
+            CreditNotes = notes,
+            Status = IsManuallyBlocked
+                ? Core.Entities.CreditStatus.ManuallyBlocked
+                : Core.Entities.CreditStatus.Active
+        };
+        return true;
+    }
+
+    [RelayCommand]
+    public async Task SaveCreditProfileAsync()
+    {
+        if (SelectedCustomer == null || CreditProfile == null)
+        {
+            _dialogService.ShowWarning("Perfil Crediticio", "Seleccione un cliente para editar su perfil crediticio.");
+            return;
+        }
+
+        if (!CanMutate)
+        {
+            _dialogService.ShowWarning("Acceso Denegado", "Los cajeros no tienen permisos para modificar el perfil crediticio.");
+            return;
+        }
+
+        if (CreditStatus == Core.Entities.CreditStatus.SuspendedByMora)
+        {
+            _dialogService.ShowWarning("Perfil Crediticio", "El crédito está suspendido por mora y es administrado por el sistema. Regularice la deuda para rehabilitar la línea.");
+            return;
+        }
+
+        if (!TryBuildCreditProfileRequest(out var request)) return;
+
+        IsLoading = true;
+        try
+        {
+            var updated = await _salesService.UpdateCreditProfileAsync(SelectedCustomer.Id, request);
+            ApplyCreditProfile(updated);
+            _dialogService.ShowSuccessDialog("Perfil crediticio actualizado correctamente.");
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Perfil Crediticio", ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task ToggleCreditBlockAsync()
+    {
+        if (SelectedCustomer == null || CreditProfile == null)
+        {
+            _dialogService.ShowWarning("Perfil Crediticio", "Seleccione un cliente para modificar su bloqueo crediticio.");
+            return;
+        }
+
+        if (!CanMutate)
+        {
+            _dialogService.ShowWarning("Acceso Denegado", "Los cajeros no tienen permisos para bloquear o desbloquear el crédito.");
+            return;
+        }
+
+        if (CreditStatus == Core.Entities.CreditStatus.SuspendedByMora)
+        {
+            _dialogService.ShowWarning("Perfil Crediticio", "El crédito está suspendido por mora y es administrado por el sistema. Regularice la deuda para rehabilitar la línea.");
+            return;
+        }
+
+        if (IsDefaultCustomer)
+        {
+            _dialogService.ShowWarning("Operación No Permitida", "No se puede configurar crédito para el cliente Consumidor Final.");
+            return;
+        }
+
+        bool blocking = !IsManuallyBlocked;
+        bool confirmed = _dialogService.ShowConfirm(
+            blocking ? "Bloquear Crédito" : "Desbloquear Crédito",
+            blocking
+                ? $"¿Desea bloquear manualmente el crédito del cliente '{Name}'? El historial se conserva."
+                : $"¿Desea desbloquear manualmente el crédito del cliente '{Name}'?");
+        if (!confirmed) return;
+
+        if (!TryBuildCreditProfileRequest(out var request)) return;
+        request.Status = blocking
+            ? Core.Entities.CreditStatus.ManuallyBlocked
+            : Core.Entities.CreditStatus.Active;
+
+        IsLoading = true;
+        try
+        {
+            var updated = await _salesService.UpdateCreditProfileAsync(SelectedCustomer.Id, request);
+            ApplyCreditProfile(updated);
+            _dialogService.ShowSuccessDialog(blocking
+                ? "Crédito bloqueado manualmente. El historial del cliente se conserva."
+                : "Crédito desbloqueado correctamente.");
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Perfil Crediticio", ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 

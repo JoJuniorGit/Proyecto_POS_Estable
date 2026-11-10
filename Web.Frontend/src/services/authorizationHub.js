@@ -15,6 +15,14 @@ export const AUTHORIZATION_EVENT_NAMES = Object.freeze({
 
 export const DEFAULT_RECONNECT_DELAYS = Object.freeze([0, 2000, 5000, 10000, 30000]);
 
+// Core.Entities.AuthorizationActionType (convencion del repo: el transporte usa el valor entero).
+export const AUTHORIZATION_ACTION_TYPES = Object.freeze({
+  ManualPriceOverride: 1,
+  SaleCancellation: 2,
+  CreditOverLimit: 3,
+  PettyCashExpense: 4,
+});
+
 // Campos del contrato RequestAuthorizationContract: el contexto de UI jamas viaja crudo.
 const REQUEST_CONTRACT_FIELDS = Object.freeze([
   'saleId',
@@ -26,7 +34,29 @@ const REQUEST_CONTRACT_FIELDS = Object.freeze([
   'terminal',
 ]);
 
+// Residual 3 (8.188, S4): contexto PettyCashExpense del contrato. El gasto no tiene venta
+// (saleId se omite: `[Range(1, int.MaxValue)]` rechazaria el 0) y el hash del token liga la
+// sesion, la divisa, ambos montos bimonetarios y la categoria exactos del 403.
+const PETTY_CASH_REQUEST_CONTRACT_FIELDS = Object.freeze([
+  'pettyCashSessionId',
+  'pettyCashCurrency',
+  'pettyCashAmountBsS',
+  'pettyCashAmountUsd',
+  'pettyCashCategory',
+  'terminal',
+]);
+
 export function buildAuthorizationRequestPayload(context = {}) {
+  if (Number(context?.actionType) === AUTHORIZATION_ACTION_TYPES.PettyCashExpense) {
+    const payload = { actionType: AUTHORIZATION_ACTION_TYPES.PettyCashExpense };
+    for (const field of PETTY_CASH_REQUEST_CONTRACT_FIELDS) {
+      payload[field] = context[field] ?? null;
+    }
+    return payload;
+  }
+
+  // Sin actionType explicito (o con acciones historicas) se conserva el contrato de siete
+  // claves del override manual: los clientes previos no cambian de payload.
   const payload = {};
   for (const field of REQUEST_CONTRACT_FIELDS) {
     payload[field] = context[field] ?? null;

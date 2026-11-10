@@ -6,6 +6,7 @@
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              mc:Ignorable="d"
              Background="#F1F5F9"
              d:DataContext="{d:DesignInstance Type=vm:PendingPickupsViewModel}">
@@ -168,7 +169,7 @@
                                         VerticalAlignment="Center">
                                     <TextBlock Foreground="#5E35B1" FontWeight="Bold" FontSize="12">
                                         <Run Text="Factura N° "/>
-                                        <Run Text="{Binding InvoiceNumber, StringFormat='{}{0:D5}', FallbackValue='—'}"/>
+                                        <Run Text="{Binding InvoiceNumber, StringFormat='{}{0:D5}', FallbackValue='—', Mode=OneWay}"/>
                                     </TextBlock>
                                 </Border>
 
@@ -219,11 +220,12 @@
 
                                 <!-- Montos Totales en Bs.S y USD alineados a la derecha -->
                                 <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding TotalBsS, StringFormat='{}{0:N2} Bs.S'}"
+                                    <TextBlock Text="{Binding TotalBsS, Converter={StaticResource LocalAmountConverter}}"
                                                FontWeight="Bold" FontSize="16" HorizontalAlignment="Right"
                                                TextAlignment="Right"
                                                Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
-                                    <TextBlock Text="{Binding TotalUSD, StringFormat='${0:N2} USD'}"
+                                    <TextBlock Text="{Binding EffectiveTotalUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                                FontSize="12" Foreground="#64748B" HorizontalAlignment="Right"
                                                TextAlignment="Right"
                                                Typography.NumeralAlignment="Tabular" Margin="0,3,0,0"/>
@@ -252,7 +254,7 @@
                                     <materialDesign:PackIcon Kind="CalendarCheckOutline" Width="15" Height="15" VerticalAlignment="Center" Foreground="#94A3B8"/>
                                     <TextBlock FontSize="12" Foreground="#475569" Margin="6,0,0,0" VerticalAlignment="Center">
                                         <Run Text="Pagado: "/>
-                                        <Run Text="{Binding Date, StringFormat='{}{0:dd/MM/yy HH:mm}'}" FontWeight="SemiBold" Foreground="#1E293B"/>
+                                        <Run Text="{Binding Date, StringFormat='{}{0:dd/MM/yy HH:mm}', Mode=OneWay}" FontWeight="SemiBold" Foreground="#1E293B"/>
                                     </TextBlock>
                                 </StackPanel>
                             </WrapPanel>
@@ -289,8 +291,8 @@
                                         <TextBlock Grid.Column="1" Text="CANT." FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
                                         <TextBlock Grid.Column="2" Text="ENTREGADO" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
                                         <TextBlock Grid.Column="3" Text="PENDIENTE" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
-                                        <TextBlock Grid.Column="4" Text="P. UNIT. BS.S" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Right"/>
-                                        <TextBlock Grid.Column="5" Text="SUBTOTAL BS.S" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                                        <TextBlock Grid.Column="4" Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='P. UNIT. {0}'}" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Right"/>
+                                        <TextBlock Grid.Column="5" Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='SUBTOTAL {0}'}" FontSize="11" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Right"/>
                                     </Grid>
 
                                     <!-- Lista de Productos -->
@@ -314,10 +316,10 @@
                                                                FontSize="12" Foreground="#475569" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                     <TextBlock Grid.Column="3" Text="{Binding PendingQuantity, StringFormat='{}{0:0.###}'}"
                                                                FontSize="12" Foreground="#475569" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    <TextBlock Grid.Column="4" Text="{Binding UnitPriceBsS, StringFormat='Bs.S {0:N2}'}"
+                                                    <TextBlock Grid.Column="4" Text="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}}"
                                                                FontSize="12" Foreground="#475569" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                                Typography.NumeralAlignment="Tabular"/>
-                                                    <TextBlock Grid.Column="5" Text="{Binding SubtotalBsS, StringFormat='Bs.S {0:N2}'}"
+                                                    <TextBlock Grid.Column="5" Text="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}}"
                                                                FontSize="12" FontWeight="SemiBold" Foreground="#0F172A" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                                Typography.NumeralAlignment="Tabular"/>
                                                 </Grid>
@@ -387,3 +389,4 @@
         </StackPanel>
     </Grid>
 </UserControl>
+

@@ -305,63 +305,52 @@ public class SupplierInvoiceApplyIntegrationTests
     [Fact]
     public async Task ConfirmAsync_ReloadsProductAndRetriesXminConflict_WhenPostgresIsConfigured()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            return;
-        }
+        // Carril: base AISLADA con schema Inventory migrado; sin conexión utilizable falla EXPLÍCITO
+        // (nunca silent-pass) y la base apuntada por la cadena base no se escribe.
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(
+            applyMigrations: false,
+            applyInventoryMigrations: true);
 
-        await TestSchemaBootstrap.EnsureSharedSchemaAsync(connectionString);
         var suffix = Guid.NewGuid().ToString("N");
         var sku = $"APPLY-CONC-{suffix}";
         var normalizedSupplierName = $"APPLY CONCURRENCY SUPPLIER {suffix}";
-        var invoiceId = 0;
-        var productId = 0;
 
-        try
+        await using var context = database.CreateInventoryDbContext();
+        var product = CreateProduct(sku, 4m, 6m, 20m);
+        var invoice = await AddInvoiceAsync(context, normalizedSupplierName, CreateLine(product, 2m, 11m));
+        var line = Assert.Single(invoice.Lines);
+        var productId = product.Id;
+
+        var concurrentUpdateCount = 0;
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.SetupGet(user => user.UserId).Returns(() =>
         {
-            await using var context = CreatePostgresContext(connectionString);
-            var product = CreateProduct(sku, 4m, 6m, 20m);
-            var invoice = await AddInvoiceAsync(context, normalizedSupplierName, CreateLine(product, 2m, 11m));
-            var line = Assert.Single(invoice.Lines);
-            invoiceId = invoice.Id;
-            productId = product.Id;
-
-            var concurrentUpdateCount = 0;
-            var currentUser = new Mock<ICurrentUserService>();
-            currentUser.SetupGet(user => user.UserId).Returns(() =>
+            if (Interlocked.Exchange(ref concurrentUpdateCount, 1) == 0)
             {
-                if (Interlocked.Exchange(ref concurrentUpdateCount, 1) == 0)
-                {
-                    using var concurrentContext = CreatePostgresContext(connectionString);
-                    var concurrentProduct = concurrentContext.Products.Single(candidate => candidate.Id == productId);
-                    concurrentProduct.Description = "Concurrent catalog edit";
-                    concurrentContext.SaveChanges();
-                }
+                using var concurrentContext = database.CreateInventoryDbContext();
+                var concurrentProduct = concurrentContext.Products.Single(candidate => candidate.Id == productId);
+                concurrentProduct.Description = "Concurrent catalog edit";
+                concurrentContext.SaveChanges();
+            }
 
-                return "supplier-invoice-concurrency-user";
-            });
-            var service = CreateService(context, currentUser.Object);
+            return "supplier-invoice-concurrency-user";
+        });
+        var service = CreateService(context, currentUser.Object);
 
-            var result = await service.ConfirmAsync(invoiceId, new ConfirmSupplierInvoiceRequestDto(new[]
-            {
-                new ConfirmLineDto(line.Id, true, null, null)
-            }));
-
-            Assert.Equal(nameof(SupplierInvoiceStatus.Applied), result.Status);
-            Assert.Equal(1, concurrentUpdateCount);
-            await using var verificationContext = CreatePostgresContext(connectionString);
-            var savedProduct = await verificationContext.Products.AsNoTracking().SingleAsync(candidate => candidate.Id == productId);
-            Assert.Equal("Concurrent catalog edit", savedProduct.Description);
-            Assert.Equal(11m, savedProduct.CostPriceUSD);
-            Assert.Equal(8m, savedProduct.StockQuantity);
-            var movement = await verificationContext.StockMovements.AsNoTracking().SingleAsync(candidate => candidate.ProductId == productId);
-            Assert.Equal("supplier-invoice-concurrency-user", movement.UserId);
-        }
-        finally
+        var result = await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
         {
-            await RemovePostgresTestRowsAsync(connectionString, sku, normalizedSupplierName, productId, invoiceId);
-        }
+            new ConfirmLineDto(line.Id, true, null, null)
+        }));
+
+        Assert.Equal(nameof(SupplierInvoiceStatus.Applied), result.Status);
+        Assert.Equal(1, concurrentUpdateCount);
+        await using var verificationContext = database.CreateInventoryDbContext();
+        var savedProduct = await verificationContext.Products.AsNoTracking().SingleAsync(candidate => candidate.Id == productId);
+        Assert.Equal("Concurrent catalog edit", savedProduct.Description);
+        Assert.Equal(11m, savedProduct.CostPriceUSD);
+        Assert.Equal(8m, savedProduct.StockQuantity);
+        var movement = await verificationContext.StockMovements.AsNoTracking().SingleAsync(candidate => candidate.ProductId == productId);
+        Assert.Equal("supplier-invoice-concurrency-user", movement.UserId);
     }
 
     [Fact]
@@ -370,64 +359,51 @@ public class SupplierInvoiceApplyIntegrationTests
         // 8.155/W1: dos líneas aprobadas resuelven al MISMO producto y la primera sufre un conflicto
         // xmin. Tras el retry, el caché de precarga debe quedarse con la instancia fresca; si
         // conserva la detachada, la segunda línea rompe el confirm (INSERT duplicado del producto).
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            return;
-        }
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(
+            applyMigrations: false,
+            applyInventoryMigrations: true);
 
-        await TestSchemaBootstrap.EnsureSharedSchemaAsync(connectionString);
         var suffix = Guid.NewGuid().ToString("N");
         var sku = $"APPLY-SHARED-{suffix}";
         var normalizedSupplierName = $"APPLY SHARED PRODUCT SUPPLIER {suffix}";
-        var invoiceId = 0;
-        var productId = 0;
 
-        try
+        await using var context = database.CreateInventoryDbContext();
+        var product = CreateProduct(sku, 4m, 6m, 20m);
+        var firstLine = CreateLine(product, 1m, 7m);
+        var secondLine = CreateLine(product, 2m, 8m);
+        var invoice = await AddInvoiceAsync(context, normalizedSupplierName, firstLine, secondLine);
+        var lines = invoice.Lines.OrderBy(line => line.Id).ToList();
+        var productId = product.Id;
+
+        var concurrentUpdateCount = 0;
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.SetupGet(user => user.UserId).Returns(() =>
         {
-            await using var context = CreatePostgresContext(connectionString);
-            var product = CreateProduct(sku, 4m, 6m, 20m);
-            var firstLine = CreateLine(product, 1m, 7m);
-            var secondLine = CreateLine(product, 2m, 8m);
-            var invoice = await AddInvoiceAsync(context, normalizedSupplierName, firstLine, secondLine);
-            var lines = invoice.Lines.OrderBy(line => line.Id).ToList();
-            invoiceId = invoice.Id;
-            productId = product.Id;
-
-            var concurrentUpdateCount = 0;
-            var currentUser = new Mock<ICurrentUserService>();
-            currentUser.SetupGet(user => user.UserId).Returns(() =>
+            if (Interlocked.Exchange(ref concurrentUpdateCount, 1) == 0)
             {
-                if (Interlocked.Exchange(ref concurrentUpdateCount, 1) == 0)
-                {
-                    using var concurrentContext = CreatePostgresContext(connectionString);
-                    var concurrentProduct = concurrentContext.Products.Single(candidate => candidate.Id == productId);
-                    concurrentProduct.Description = "Concurrent catalog edit (shared product)";
-                    concurrentContext.SaveChanges();
-                }
+                using var concurrentContext = database.CreateInventoryDbContext();
+                var concurrentProduct = concurrentContext.Products.Single(candidate => candidate.Id == productId);
+                concurrentProduct.Description = "Concurrent catalog edit (shared product)";
+                concurrentContext.SaveChanges();
+            }
 
-                return "supplier-invoice-shared-product-user";
-            });
-            var service = CreateService(context, currentUser.Object);
+            return "supplier-invoice-shared-product-user";
+        });
+        var service = CreateService(context, currentUser.Object);
 
-            var result = await service.ConfirmAsync(invoiceId, new ConfirmSupplierInvoiceRequestDto(new[]
-            {
-                new ConfirmLineDto(lines[0].Id, true, null, null),
-                new ConfirmLineDto(lines[1].Id, true, null, null)
-            }));
-
-            Assert.Equal(nameof(SupplierInvoiceStatus.Applied), result.Status);
-            Assert.Equal(1, concurrentUpdateCount);
-            await using var verificationContext = CreatePostgresContext(connectionString);
-            var savedProduct = await verificationContext.Products.AsNoTracking().SingleAsync(candidate => candidate.Id == productId);
-            Assert.Equal("Concurrent catalog edit (shared product)", savedProduct.Description);
-            Assert.Equal(6m + 1m + 2m, savedProduct.StockQuantity);
-            Assert.Equal(2, await verificationContext.StockMovements.CountAsync(movement => movement.ProductId == productId));
-        }
-        finally
+        var result = await service.ConfirmAsync(invoice.Id, new ConfirmSupplierInvoiceRequestDto(new[]
         {
-            await RemovePostgresTestRowsAsync(connectionString, sku, normalizedSupplierName, productId, invoiceId);
-        }
+            new ConfirmLineDto(lines[0].Id, true, null, null),
+            new ConfirmLineDto(lines[1].Id, true, null, null)
+        }));
+
+        Assert.Equal(nameof(SupplierInvoiceStatus.Applied), result.Status);
+        Assert.Equal(1, concurrentUpdateCount);
+        await using var verificationContext = database.CreateInventoryDbContext();
+        var savedProduct = await verificationContext.Products.AsNoTracking().SingleAsync(candidate => candidate.Id == productId);
+        Assert.Equal("Concurrent catalog edit (shared product)", savedProduct.Description);
+        Assert.Equal(6m + 1m + 2m, savedProduct.StockQuantity);
+        Assert.Equal(2, await verificationContext.StockMovements.CountAsync(movement => movement.ProductId == productId));
     }
 
     [Fact]
@@ -583,54 +559,10 @@ public class SupplierInvoiceApplyIntegrationTests
         MatchMethod = MatchMethod.None
     };
 
-    private static InventoryDbContext CreatePostgresContext(string connectionString) => new(
-        new DbContextOptionsBuilder<InventoryDbContext>()
-            .UseNpgsql(connectionString, postgres => postgres.EnableRetryOnFailure(3))
-            .Options);
-
     private static InventoryDbContext CreateSqliteInventoryDbContext(SqliteConnection connection) => new(
         new DbContextOptionsBuilder<InventoryDbContext>()
             .UseSqlite(connection)
             .Options);
-
-    private static async Task RemovePostgresTestRowsAsync(
-        string connectionString,
-        string sku,
-        string normalizedSupplierName,
-        int productId,
-        int invoiceId)
-    {
-        await using var context = CreatePostgresContext(connectionString);
-        var supplier = await context.Suppliers.FirstOrDefaultAsync(candidate => candidate.NormalizedCommercialName == normalizedSupplierName);
-        var invoice = invoiceId == 0
-            ? supplier is null
-                ? null
-                : await context.SupplierInvoices.Include(candidate => candidate.Lines)
-                    .FirstOrDefaultAsync(candidate => candidate.SupplierId == supplier.Id)
-            : await context.SupplierInvoices.Include(candidate => candidate.Lines)
-                .FirstOrDefaultAsync(candidate => candidate.Id == invoiceId);
-        if (invoice is not null)
-        {
-            context.SupplierInvoices.Remove(invoice);
-        }
-
-        var product = productId == 0
-            ? await context.Products.FirstOrDefaultAsync(candidate => candidate.SKU == sku)
-            : await context.Products.FirstOrDefaultAsync(candidate => candidate.Id == productId);
-        if (product is not null)
-        {
-            var movements = await context.StockMovements.Where(movement => movement.ProductId == product.Id).ToListAsync();
-            context.StockMovements.RemoveRange(movements);
-            context.Products.Remove(product);
-        }
-
-        if (supplier is not null)
-        {
-            context.Suppliers.Remove(supplier);
-        }
-
-        await context.SaveChangesAsync();
-    }
 
     private sealed class TestAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
     {

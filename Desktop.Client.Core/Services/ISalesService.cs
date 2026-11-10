@@ -17,6 +17,18 @@ public class PendingPickupClientDto
     public string CustomerPhone { get; set; } = string.Empty;
     public decimal TotalUSD { get; set; }
     public decimal TotalBsS { get; set; }
+    public decimal AppliedRate { get; set; }
+
+    /// <summary>
+    /// Sincronizacion USD efectivo (ANEXO XV): inverso del Bs.S EFECTIVO a la tasa anclada —
+    /// el $ de los retiros/cuentas abiertas es el monto realmente transado. Derivacion local
+    /// (misma formula de Sale.EffectiveTotalUSD) sobre los campos deserializados.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public decimal EffectiveTotalUSD => TotalBsS <= 0m || AppliedRate <= 0m
+        ? TotalUSD
+        : System.Math.Round(TotalBsS / AppliedRate, 4, System.MidpointRounding.AwayFromZero);
+
     public decimal TotalUnits { get; set; }
     public decimal DeliveredUnits { get; set; }
     public string DeliveryStatus { get; set; } = "PendingPickup";
@@ -132,6 +144,16 @@ public class SaleHistoryDto
     public decimal TotalUSD { get; set; }
     public decimal AppliedRate { get; set; }
     public decimal TotalBsS { get; set; }
+
+    /// <summary>
+    /// Sincronizacion USD efectivo (ANEXO XIII): inverso del Bs.S EFECTIVO a la tasa anclada —
+    /// el $ del historial es el monto realmente transado, no la suma canonica de precios base.
+    /// Derivacion local (misma formula de Sale.EffectiveTotalUSD) sobre los campos deserializados.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public decimal EffectiveTotalUSD => TotalBsS <= 0m || AppliedRate <= 0m
+        ? TotalUSD
+        : System.Math.Round(TotalBsS / AppliedRate, 4, System.MidpointRounding.AwayFromZero);
     public string Status { get; set; } = string.Empty;
     public decimal FinalPaidAmountBsS { get; set; }
     public int? CashierId { get; set; }
@@ -197,6 +219,62 @@ public interface ISalesService
     Task<byte[]> GetDeliveryNoteAsync(int saleId, int deliveryId, CancellationToken cancellationToken = default);
     Task UpdateSaleItemsAsync(int saleId, IEnumerable<UpdateSaleItemDto> items, decimal exchangeRate);
     Task<byte[]?> GetReceiptAsync(int saleId);
+
+    // ── Paso 11/12 (F3): crédito CxC ──
+
+    /// <summary>Perfil crediticio del cliente (cupo, deuda, disponible, utilización, plazo, mora).</summary>
+    Task<CreditProfileClientDto> GetCreditProfileAsync(int customerId, CancellationToken cancellationToken = default);
+
+    /// <summary>Escritura administrativa del perfil crediticio (Admin/Manager en el backend).</summary>
+    Task<CreditProfileClientDto> UpdateCreditProfileAsync(
+        int customerId,
+        CreditProfileUpdateClientDto request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Estado de cuenta dual: perfil + cartera + historial de abonos con FX realizado.</summary>
+    Task<CreditStatementClientDto> GetCreditStatementAsync(int customerId, CancellationToken cancellationToken = default);
+
+    /// <summary>Cartera global CxC con filtros por cliente, estado, mora y búsqueda.</summary>
+    Task<CreditReceivablesClientDto> GetCreditReceivablesAsync(
+        CreditReceivablesFilterClientDto filter,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cierra la venta a crédito (total o mixta). Un 403 de sobregiro se traduce a
+    /// <see cref="CreditOverLimitAuthorizationException"/> con el contexto exacto del hub; el
+    /// reintento autorizado viaja con el token en X-Authorization-Token.
+    /// </summary>
+    Task<int> CompleteCreditSaleAsync(
+        int saleId,
+        decimal exchangeRate,
+        IEnumerable<SalePaymentDto> payments,
+        int? cashierId = null,
+        string? authorizationToken = null,
+        string? idempotencyKey = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Registra un abono CxC (FIFO o facturas explícitas); la tasa la resuelve el servidor.</summary>
+    Task<CreditPaymentResultClientDto> RegisterCreditPaymentAsync(
+        CreditPaymentRequestClientDto request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Anula una venta a crédito sin abonos (restituye stock y cupo; sin movimiento de caja).</summary>
+    Task<CreditCancelClientResultDto> CancelCreditSaleAsync(
+        int saleId,
+        string? reason,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Registra la devolución total o parcial de una venta a crédito.</summary>
+    Task<CreditReturnClientResultDto> RegisterCreditReturnAsync(
+        int saleId,
+        CreditReturnRequestClientDto request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Comprobante PDF de venta a crédito; null cuando la venta no existe (404).</summary>
+    Task<byte[]?> GetCreditSaleReceiptAsync(int saleId, CancellationToken cancellationToken = default);
+
+    /// <summary>Comprobante PDF de abono; null cuando el abono no existe (404).</summary>
+    Task<byte[]?> GetCreditPaymentReceiptAsync(int paymentId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>DTO for updating an item quantity in a pending/OnHold sale.</summary>

@@ -158,7 +158,8 @@ public class CancellationPropagationTests
         drawerService.Setup(s => s.AddTransactionAsync(
                 It.IsAny<int>(), It.IsAny<CashTransactionType>(), It.IsAny<CashTransactionSource>(),
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<string>(),
-                It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Sales.Module.DTOs.CashTransactionIdempotency?>()))
             .ReturnsAsync(new CashTransactionResponseDto { Id = 1, SessionId = 3 });
 
         var settings = new Mock<ISystemSettingsService>();
@@ -186,7 +187,8 @@ public class CancellationPropagationTests
         Assert.IsType<OkObjectResult>(result.Result);
         drawerService.Verify(s => s.AddTransactionAsync(
             3, CashTransactionType.Income, CashTransactionSource.ManualAdjustment,
-            100m, 2m, 50m, "Ingreso manual", null, true, null, cts.Token), Times.Once);
+            100m, 2m, 50m, "Ingreso manual", null, true, null, cts.Token,
+            It.IsAny<Sales.Module.DTOs.CashTransactionIdempotency?>()), Times.Once);
     }
 
     [Fact]
@@ -200,7 +202,8 @@ public class CancellationPropagationTests
         drawerService.Setup(s => s.AddTransactionAsync(
                 It.IsAny<int>(), It.IsAny<CashTransactionType>(), It.IsAny<CashTransactionSource>(),
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<string>(),
-                It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+                It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Sales.Module.DTOs.CashTransactionIdempotency?>()))
             .ReturnsAsync(new CashTransactionResponseDto { Id = 1, SessionId = 3 });
 
         var settings = new Mock<ISystemSettingsService>();
@@ -242,7 +245,8 @@ public class CancellationPropagationTests
         drawerService.Verify(s => s.AddTransactionAsync(
             3, CashTransactionType.Expense, CashTransactionSource.CashAdvance,
             It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<string>(),
-            It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), cts.Token), Times.Once);
+            It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), cts.Token,
+            It.IsAny<Sales.Module.DTOs.CashTransactionIdempotency?>()), Times.Once);
     }
 
     [Fact]

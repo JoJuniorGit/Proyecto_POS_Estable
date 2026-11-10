@@ -9,4 +9,7 @@ public sealed record CreateClosureCommand(
     DateTime ClosureDateUtc,
     string? UserId,
     string? Observation,
-    IReadOnlyList<DeclaredPaymentAmount> Declarations);
+    IReadOnlyList<DeclaredPaymentAmount> Declarations,
+    // Residual 8.187-8.188: conteo fisico USD opcional del cierre diario. null conserva el
+    // contrato previo (no se persiste arqueo USD).
+    decimal? ActualClosingBalanceUsd = null);

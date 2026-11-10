@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -69,6 +70,13 @@ public sealed class FullStackFixture : IDisposable
 
     public const decimal BootstrapExchangeRate = 50.00m;
 
+    /// <summary>
+    /// 8.212-WU6: the method-aware cash advance requires an explicit transfer commission in
+    /// SystemSettings. The isolated E2E database is created from scratch, so the harness seeds
+    /// the same 7% default used by the production settings before exercising the flow.
+    /// </summary>
+    public const decimal BootstrapTransferCommissionPct = 7m;
+
     private const string ClientSettingsRelativePath = "ProyectoPOS\\client_settings.json";
     private const int HealthTimeoutSeconds = 90;
     private const int BackendOutputTailChars = 8000;
@@ -112,6 +120,11 @@ public sealed class FullStackFixture : IDisposable
     public int BackendPort { get; }
 
     public string? DatabaseName { get; }
+
+    /// <summary>Conexión a la base AISLADA del test (solo válida después de InitializeAsync).</summary>
+    public string DatabaseConnectionString => string.IsNullOrWhiteSpace(_derivedConnectionString)
+        ? throw new InvalidOperationException("La base aislada del harness no está inicializada.")
+        : _derivedConnectionString;
 
     public string BackendBaseAddress => _backendBaseAddress;
 
@@ -183,6 +196,7 @@ public sealed class FullStackFixture : IDisposable
             StartBackend();
             await WaitForBackendHealthyAsync(cancellationToken);
             await VerifyIsolatedDatabaseInitializedAsync(cancellationToken);
+            await EnsureCashAdvanceCommissionAsync(cancellationToken);
             Bootstrap = await BootstrapStateAsync(cancellationToken);
             NeutralizeClientSettings();
             LaunchClient();
@@ -348,11 +362,18 @@ public sealed class FullStackFixture : IDisposable
 
     private static string FindBackendExecutable()
     {
-        var baseDir = AppContext.BaseDirectory;
+        // Raíz por marcador: el harness también se ejecuta desde CommandCenter.Tests (WU1).
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "CommandCenter.slnx")))
+        {
+            root = root.Parent;
+        }
+
+        var baseDir = root?.FullName ?? AppContext.BaseDirectory;
         var candidates = new[]
         {
-            Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\..\Backend.API\bin\Release\net10.0\Backend.API.exe")),
-            Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\..\Backend.API\bin\Debug\net10.0\Backend.API.exe"))
+            Path.Combine(baseDir, @"Backend.API\bin\Release\net10.0\Backend.API.exe"),
+            Path.Combine(baseDir, @"Backend.API\bin\Debug\net10.0\Backend.API.exe")
         };
 
         foreach (var candidate in candidates)
@@ -429,6 +450,24 @@ public sealed class FullStackFixture : IDisposable
                 "Posible override de ConnectionStrings__DefaultConnection en Backend.API\\.env (DotNetEnv pisa las " +
                 "variables del proceso en Development).");
         }
+    }
+
+    private async Task EnsureCashAdvanceCommissionAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(_derivedConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO "SystemSettings" ("Key", "Value", "LastUpdated")
+            VALUES ('CashAdvance.TransferCommissionPct', @value, NOW())
+            ON CONFLICT ("Key") DO UPDATE
+            SET "Value" = EXCLUDED."Value", "LastUpdated" = EXCLUDED."LastUpdated";
+            """;
+        command.Parameters.AddWithValue(
+            "value",
+            BootstrapTransferCommissionPct.ToString(CultureInfo.InvariantCulture));
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task<E2eBootstrapState> BootstrapStateAsync(CancellationToken cancellationToken)

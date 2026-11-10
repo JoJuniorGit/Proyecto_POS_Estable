@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.DTOs;
+using Core.Entities;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
@@ -39,6 +41,7 @@ public class BulkPriceEditPricingPoliciesTests
 
         Assert.Equal(RoundingRuleType.UsdPsychological, vm.RetailRoundingRule);
         Assert.Equal(RoundingRuleType.UsdPsychological, vm.WholesaleRoundingRule);
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep5, vm.CashBsRoundingRule);
         Assert.True(vm.EnforceMinimumMarginFloor);
         // La preselección no inventa una vista previa.
         Assert.False(vm.HasPreview);
@@ -54,8 +57,72 @@ public class BulkPriceEditPricingPoliciesTests
 
         Assert.Equal(RoundingRuleType.ExactMath, vm.RetailRoundingRule);
         Assert.Equal(RoundingRuleType.ExactMath, vm.WholesaleRoundingRule);
+        Assert.Equal(RoundingRuleType.ExactMath, vm.CashBsRoundingRule);
         Assert.False(vm.EnforceMinimumMarginFloor);
         Assert.False(vm.HasPreview);
+    }
+
+    [Fact]
+    public async Task Preview_WithSeededPolicies_SendsGlobalBaselinesInRequest()
+    {
+        BulkPriceUpdateRequestDto? captured = null;
+        var productService = new Mock<IProductService>();
+        productService
+            .Setup(s => s.PreviewBulkPricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>()))
+            .Callback((BulkPriceUpdateRequestDto request, CancellationToken _) => captured = request)
+            .ReturnsAsync(new BulkPriceUpdateResultDto());
+
+        var vm = new BulkPriceEditDialogViewModel(productService.Object, Mock.Of<IDialogService>(), Selection(), GlobalPolicies());
+        var row = vm.Operations.Single(r => r.Field == BulkPriceField.RetailPrice);
+        row.IsEnabled = true;
+        row.ValueText = "2";
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+
+        // Spec V0.15: los baselines globales sembrados viajan para que "null hereda global" compare
+        // contra el valor correcto en el motor (sin materializar política cuando es equivalente).
+        Assert.NotNull(captured);
+        Assert.Equal(RoundingRuleType.UsdPsychological, captured!.GlobalUsdRoundingRule);
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep5, captured.GlobalCashBsRoundingRule);
+    }
+
+    [Fact]
+    public async Task TouchFlags_CompareAgainstSeededGlobals_NotJustExactMath()
+    {
+        BulkPriceUpdateRequestDto? captured = null;
+        var productService = new Mock<IProductService>();
+        productService
+            .Setup(s => s.PreviewBulkPricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>()))
+            .Callback((BulkPriceUpdateRequestDto request, CancellationToken _) => captured = request)
+            .ReturnsAsync(new BulkPriceUpdateResultDto());
+
+        // Sección 1 pura con políticas sembradas (psicológico/Step5): el seed manda, sin touch.
+        var vm = new BulkPriceEditDialogViewModel(productService.Object, Mock.Of<IDialogService>(), Selection(), GlobalPolicies());
+        var row = vm.Operations.Single(r => r.Field == BulkPriceField.RetailPrice);
+        row.IsEnabled = true;
+        row.ValueText = "2";
+
+        Assert.False(vm.TouchRetailUsdPolicy);
+        Assert.False(vm.TouchWholesaleUsdPolicy);
+        Assert.False(vm.TouchCashBsPolicy);
+
+        await vm.PreviewCommand.ExecuteAsync(null);
+        Assert.NotNull(captured);
+        Assert.False(captured!.TouchRetailUsdPolicy);
+        Assert.False(captured.TouchWholesaleUsdPolicy);
+        Assert.False(captured.TouchCashBsPolicy);
+
+        // Solo Redondeo con las reglas sembradas activas: touch en las tres capas.
+        captured = null;
+        var soloVm = new BulkPriceEditDialogViewModel(productService.Object, Mock.Of<IDialogService>(), Selection(), GlobalPolicies());
+        Assert.True(soloVm.TouchRetailUsdPolicy);
+        Assert.True(soloVm.TouchWholesaleUsdPolicy);
+        Assert.True(soloVm.TouchCashBsPolicy);
+
+        await soloVm.PreviewCommand.ExecuteAsync(null);
+        Assert.NotNull(captured);
+        Assert.True(captured!.TouchRetailUsdPolicy);
+        Assert.True(captured.TouchCashBsPolicy);
     }
 
     [Fact]
@@ -77,6 +144,7 @@ public class BulkPriceEditPricingPoliciesTests
         Assert.NotNull(opened);
         Assert.Equal(RoundingRuleType.UsdPsychological, opened!.RetailRoundingRule);
         Assert.Equal(RoundingRuleType.UsdPsychological, opened.WholesaleRoundingRule);
+        Assert.Equal(RoundingRuleType.VesCashFriendlyStep5, opened.CashBsRoundingRule);
         Assert.True(opened.EnforceMinimumMarginFloor);
         // 8.185-T4 (S2): el catálogo suma una lectura al iniciar el VM (Bs.S efectivo de las filas);
         // la apertura del diálogo conserva su lectura fresca propia (molde 8.184: al menos una).
@@ -159,10 +227,14 @@ public class BulkPriceEditPricingPoliciesTests
 
         var dialog = new Mock<IDialogService>();
 
+        // Migración RBAC: OpenBulkPriceEdit exige CanMutateCatalog; el camino positivo usa Admin.
+        var session = new UserSession();
+        session.CurrentUser = new UserDto { Id = 1, Name = "Admin", Role = UserRole.Admin };
+
         var vm = new InventoryViewModel(
             productService.Object,
             exchangeRateService.Object,
-            userSession: null,
+            session,
             dialog.Object,
             settingsService: settingsService);
         WeakReferenceMessenger.Default.UnregisterAll(vm);

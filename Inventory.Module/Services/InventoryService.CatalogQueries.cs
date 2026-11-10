@@ -61,6 +61,8 @@ public partial class InventoryService
                     ConsolidatedStock = p.IsGroupHeader
                         ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                         : p.StockQuantity,
+                    // 8.186-T1 (S1): el canal Mayor necesita la bandera real para gatear el efectivo.
+                    HasWholesale = p.HasWholesale,
                     RoundingRuleCashBs = p.RoundingRuleCashBs
                 })
                 .FirstOrDefaultAsync(token);
@@ -68,6 +70,8 @@ public partial class InventoryService
             if (exactSkuMatch != null)
             {
                 exactSkuMatch.RoundingRuleCashBs ??= defaultCashRule;
+                // 8.186-T1 (S1/S3): efectivo Bs.S proyectado en la misma pasada (tasa/toggle una vez).
+                await ProjectEffectiveBsSBatchAsync(new List<Core.DTOs.ProductQuickInfoDto> { exactSkuMatch }, defaultCashRule, token);
                 return new List<Core.DTOs.ProductQuickInfoDto> { exactSkuMatch };
             }
 
@@ -113,6 +117,8 @@ public partial class InventoryService
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                     : p.StockQuantity,
+                // 8.186-T1 (S1): el canal Mayor necesita la bandera real para gatear el efectivo.
+                HasWholesale = p.HasWholesale,
                 RoundingRuleCashBs = p.RoundingRuleCashBs
             })
             .ToListAsync(token);
@@ -121,6 +127,9 @@ public partial class InventoryService
         {
             item.RoundingRuleCashBs ??= defaultCashRule;
         }
+
+        // 8.186-T1 (S1/S3): proyección server-side del efectivo con UNA lectura de tasa/regla/toggle.
+        await ProjectEffectiveBsSBatchAsync(items, defaultCashRule, token);
 
         return items;
     }
@@ -238,14 +247,40 @@ public partial class InventoryService
                 ConsolidatedStock = p.IsGroupHeader
                     ? (p.IsStockShared ? p.StockQuantity : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m))
                     : p.StockQuantity,
-                // 8.179-T1 (S3): subconsulta EF al junction (Product no tiene navegación inversa).
-                Categories = _context.ProductCategories
-                    .Where(pc => pc.ProductId == p.Id)
-                    .OrderBy(pc => pc.Category.Name)
-                    .Select(pc => new Core.DTOs.CategoryRefDto(pc.CategoryId, pc.Category.Name))
-                    .ToList(),
+                // 8.192: Batch loading de categorias posterior para evitar subconsulta correlacionada N+1
             })
             .ToListAsync(token);
+
+        // 8.192: Carga en lote de categorias asociadas para los items de la pagina actual
+        if (items.Count > 0)
+        {
+            var productIds = items.Select(x => x.Id).ToList();
+            var categoryLinks = await _context.ProductCategories.AsNoTracking()
+                .Where(pc => productIds.Contains(pc.ProductId))
+                .OrderBy(pc => pc.Category.Name)
+                .Select(pc => new { pc.ProductId, Category = new Core.DTOs.CategoryRefDto(pc.CategoryId, pc.Category.Name) })
+                .ToListAsync(token);
+
+            var categoryLookup = categoryLinks
+                .GroupBy(x => x.ProductId)
+                .ToDictionary(g => g.Key, g => (IReadOnlyList<Core.DTOs.CategoryRefDto>)g.Select(x => x.Category).ToList());
+
+            foreach (var item in items)
+            {
+                if (categoryLookup.TryGetValue(item.Id, out var cats))
+                {
+                    item.Categories = cats;
+                }
+            }
+        }
+
+        // 8.186-T1 (S1/S3): proyección server-side del efectivo Detal/Mayor para la grilla web con
+        // UNA lectura de regla/tasa/toggle por request (la regla cruda ya viaja en el DTO).
+        if (items.Count > 0)
+        {
+            var defaultCashRule = await ResolveDefaultCashRoundingRuleAsync();
+            await ProjectEffectiveBsSBatchAsync(items, defaultCashRule, token);
+        }
 
         return new Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>
         {
@@ -253,6 +288,104 @@ public partial class InventoryService
             TotalCount = totalCount,
             HasMore = (page * pageSize) < totalCount
         };
+    }
+
+    /// <summary>
+    /// Paso 14 (F2-WU4, F2-S4): productos del filtro de categoría. El subárbol se resuelve con el
+    /// mismo BFS en memoria que el resto del catálogo; <paramref name="includeSubtree"/> false
+    /// limita la búsqueda a la categoría raíz. Los Ids devueltos son distintos y ordenados para
+    /// que el filtro sea determinista entre proveedores.
+    /// </summary>
+    public async Task<IReadOnlyList<int>> GetProductIdsByCategoryAsync(
+        IReadOnlyCollection<int> categoryIds,
+        bool includeSubtree,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(categoryIds);
+        if (categoryIds.Count == 0)
+        {
+            return Array.Empty<int>();
+        }
+
+        var resolvedCategoryIds = new HashSet<int>();
+        foreach (var categoryId in categoryIds.Distinct())
+        {
+            if (!includeSubtree)
+            {
+                resolvedCategoryIds.Add(categoryId);
+                continue;
+            }
+
+            // ResolveCategorySubtreeIdsAsync includes the root and returns an empty set when the
+            // category does not exist, so unknown ids never magnify the report.
+            foreach (var subtreeId in await ResolveCategorySubtreeIdsAsync(categoryId, cancellationToken))
+            {
+                resolvedCategoryIds.Add(subtreeId);
+            }
+        }
+
+        if (resolvedCategoryIds.Count == 0)
+        {
+            return Array.Empty<int>();
+        }
+
+        var productIds = await _context.ProductCategories.AsNoTracking()
+            .Where(link => resolvedCategoryIds.Contains(link.CategoryId))
+            .Select(link => link.ProductId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        productIds.Sort();
+        return productIds;
+    }
+
+    /// <summary>
+    /// Paso 14 (F2-WU4, F2-S4): nombre y categoría de cada producto para los desgloses. Cuando un
+    /// producto pertenece a varias categorías se elige la de menor Id para que el reporte no
+    /// cambie de categoría entre corridas; los productos sin categoría se devuelven con los
+    /// campos de categoría en null.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<int, Core.DTOs.ProfitabilityProductInfoDto>> GetProductCategoryInfoAsync(
+        IReadOnlyCollection<int> productIds,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+        var ids = productIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return new Dictionary<int, Core.DTOs.ProfitabilityProductInfoDto>();
+        }
+
+        var products = await _context.Products.AsNoTracking()
+            .Where(product => ids.Contains(product.Id))
+            .Select(product => new { product.Id, product.Name })
+            .ToListAsync(cancellationToken);
+
+        var links = await _context.ProductCategories.AsNoTracking()
+            .Where(link => ids.Contains(link.ProductId))
+            .Select(link => new { link.ProductId, link.CategoryId, link.Category.Name })
+            .ToListAsync(cancellationToken);
+
+        var firstCategoryByProduct = links
+            .GroupBy(link => link.ProductId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderBy(link => link.CategoryId).First());
+
+        var info = new Dictionary<int, Core.DTOs.ProfitabilityProductInfoDto>(products.Count);
+        foreach (var product in products)
+        {
+            firstCategoryByProduct.TryGetValue(product.Id, out var category);
+            info[product.Id] = new Core.DTOs.ProfitabilityProductInfoDto
+            {
+                ProductId = product.Id,
+                ProductName = product.Name,
+                CategoryId = category?.CategoryId,
+                CategoryName = category?.Name
+            };
+        }
+
+        return info;
     }
 
     // 8.179-T1 (S4): set categoría + descendientes calculado en memoria (BFS) para ser

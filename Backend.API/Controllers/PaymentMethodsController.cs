@@ -3,8 +3,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Sales.Module.Interfaces;
 
+using Backend.API.Attributes;
+
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize(Roles = "Admin,Manager,Cashier")]
 [ApiController]
 [Route("api/[controller]")]
@@ -58,7 +61,9 @@ public class PaymentMethodsController : ControllerBase
             RequiresReference = dto.RequiresReference,
             IsCash = dto.IsCash,
             DisplayOrder = dto.DisplayOrder,
-            IsActive = dto.IsActive
+            IsActive = dto.IsActive,
+            // Vacío = derivar del nombre; una moneda explícita manda.
+            Currency = dto.Currency ?? string.Empty
         };
 
         var created = await _paymentService.CreateAsync(methodDto, cancellationToken);
@@ -84,7 +89,9 @@ public class PaymentMethodsController : ControllerBase
                 RequiresReference = dto.RequiresReference,
                 IsCash = dto.IsCash,
                 DisplayOrder = dto.DisplayOrder,
-                IsActive = dto.IsActive
+                IsActive = dto.IsActive,
+                // Vacío = conservar la moneda persistida (un renombre no la cambia).
+                Currency = dto.Currency ?? string.Empty
             };
 
             var updated = await _paymentService.UpdateAsync(methodDto, cancellationToken);

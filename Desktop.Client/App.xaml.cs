@@ -107,7 +107,22 @@ public partial class App : Application
 
     private void RecordUnhandledException(string fileCategory, string logContext, Exception ex)
     {
-        try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] " + fileCategory + ": " + ex.Message + "\n" + ex.StackTrace + "\n\n"); } catch { }
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append('[').Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).Append("] ")
+              .Append(fileCategory).Append(": ").Append(ex.GetType().FullName).Append(": ")
+              .Append(ex.Message).Append('\n').Append(ex.StackTrace).Append('\n');
+
+            for (var inner = ex.InnerException; inner != null; inner = inner.InnerException)
+            {
+                sb.Append("--- Inner: ").Append(inner.GetType().FullName).Append(": ")
+                  .Append(inner.Message).Append('\n').Append(inner.StackTrace).Append('\n');
+            }
+
+            File.AppendAllText(_crashPath, sb.ToString() + "\n");
+        }
+        catch { }
         Core.Logging.AppLogger.LogCrash(ex, logContext);
     }
 
@@ -148,6 +163,10 @@ public partial class App : Application
             }
             else
             {
+                // HTTPS end-to-end en la LAN: certificados públicos se validan normalmente;
+                // certificados locales/autofirmados se aceptan solo por el pin TOFU del host.
+                clientBuilder.ConfigurePrimaryHttpMessageHandler(
+                    CertificatePinning.CreateHttpClientHandler);
                 clientBuilder.AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
             }
         }
@@ -157,7 +176,16 @@ public partial class App : Application
         var baseAddressStr = clientSettings.ServerBaseAddress;
         if (string.IsNullOrWhiteSpace(baseAddressStr) || baseAddressStr == "http://localhost:5000/")
         {
-            baseAddressStr = builder.Configuration["BackendSettings:BaseAddress"] ?? "http://localhost:5000/";
+            baseAddressStr = builder.Configuration["BackendSettings:BaseAddress"] ?? "https://localhost:5001/";
+        }
+        if (!isE2E)
+        {
+            var secureAddress = ServerPortResolver.NormalizeHttpsAddress(baseAddressStr);
+            if (!string.Equals(secureAddress, baseAddressStr, StringComparison.OrdinalIgnoreCase))
+            {
+                settingsStore.UpdateServerAddress(secureAddress, clientSettings.LastKnownServerMachineName);
+            }
+            baseAddressStr = secureAddress;
         }
         if (!baseAddressStr.EndsWith("/")) baseAddressStr += "/";
         var baseAddressUri = new Uri(baseAddressStr);
@@ -171,7 +199,14 @@ public partial class App : Application
         {
             client.BaseAddress = baseAddressUri;
         });
-        if (isE2E) healthClient.ConfigurePrimaryHttpMessageHandler<E2EMockHttpMessageHandler>();
+        if (isE2E)
+        {
+            healthClient.ConfigurePrimaryHttpMessageHandler<E2EMockHttpMessageHandler>();
+        }
+        else
+        {
+            healthClient.ConfigurePrimaryHttpMessageHandler(CertificatePinning.CreateHttpClientHandler);
+        }
 
         builder.Services.AddSingleton<IHealthPollingService>(sp =>
             new HealthPollingService(
@@ -198,6 +233,12 @@ public partial class App : Application
 
         // 8.177-T3 (S2/S3): cliente del Centro de Auditoría de Kardex (mismo pipeline HTTP).
         ConfigureClient(builder.Services.AddHttpClient<IStockKardexClientService, StockKardexClientService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
+        // Conteo físico ciego (8.180): misma base HTTP y pipeline de sesión/seguridad.
+        ConfigureClient(builder.Services.AddHttpClient<IStockCountClientService, StockCountClientService>(client =>
         {
             client.BaseAddress = baseAddressUri;
         }));
@@ -264,6 +305,7 @@ public partial class App : Application
         builder.Services.AddSingleton<PosViewModel>();
         builder.Services.AddSingleton<InventoryViewModel>();
         builder.Services.AddSingleton<StockKardexViewModel>();
+        builder.Services.AddSingleton<StockCountViewModel>();
         builder.Services.AddSingleton<SalesHistoryViewModel>();
         builder.Services.AddSingleton<PendingOrdersViewModel>(sp => new Desktop.Client.ViewModels.PendingOrdersViewModel(
             sp.GetRequiredService<Desktop.Client.Services.ISalesService>(),
@@ -275,6 +317,9 @@ public partial class App : Application
 
         builder.Services.AddSingleton<PendingPickupsViewModel>();
 
+        // T4 (F3): cartera CxC, abonos y estado de cuenta (Admin/Manager/Cashier).
+        builder.Services.AddSingleton<CreditReceivablesViewModel>();
+
         builder.Services.AddSingleton<SettingsViewModel>();
         builder.Services.AddSingleton<ExchangeRateViewModel>();
 
@@ -285,6 +330,19 @@ public partial class App : Application
         }));
 
         ConfigureClient(builder.Services.AddHttpClient<ISettingsService, SettingsService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
+        // F4-WU1 (Paso 14): Estado de Resultados y reglas de comisión (mismo pipeline de sesión).
+        ConfigureClient(builder.Services.AddHttpClient<IProfitabilityClientService, ProfitabilityClientService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
+        // 8.211-T4c1 (S9): perfil monetario read-only para la presentación WPF. Comparte el
+        // pipeline HTTP configurado (base address, pinning, sesión y resiliencia).
+        ConfigureClient(builder.Services.AddHttpClient<IClientMonetaryProfileService, ClientMonetaryProfileService>(client =>
         {
             client.BaseAddress = baseAddressUri;
         }));
@@ -316,6 +374,7 @@ public partial class App : Application
         builder.Services.AddSingleton<CashDrawerViewModel>();
         builder.Services.AddSingleton<ImportProductsViewModel>();
         builder.Services.AddSingleton<SupplierInvoiceViewModel>();
+        builder.Services.AddSingleton<ProfitabilityViewModel>();
 
         // Main Window Registration
         builder.Services.AddSingleton<MainWindow>();
@@ -399,6 +458,33 @@ public partial class App : Application
             {
                 Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadCurrencyFormat");
                 CurrencyDisplay.SetFromSetting(null);
+            }
+
+            // 8.211-T6-U12b: install the profile-change listener before applying the profile so
+            // every later profile refresh re-evaluates amount bindings in open windows.
+            CurrencyBindingRefresher.Install();
+
+            // 8.211-T4c1 (S9): perfil monetario activo (modo/códigos/símbolos) para la presentación.
+            // Lectura read-only best-effort con timeout duro de 2s: si falla o expira, CurrencyDisplay
+            // conserva los defaults Dual USD/VES y MainWindow.Show() no se retrasa.
+            try
+            {
+                var monetaryProfileService = _host.Services.GetRequiredService<IClientMonetaryProfileService>();
+                using var monetaryProfileCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
+                var monetaryProfile = await monetaryProfileService.GetAsync(monetaryProfileCts.Token);
+                if (monetaryProfile is null)
+                {
+                    Core.Logging.AppLogger.LogWarn(
+                        "No se pudo cargar el perfil monetario; se usan los defaults Dual USD/VES.",
+                        "App.OnStartup.LoadMonetaryProfile");
+                }
+
+                CurrencyDisplay.SetMonetaryProfile(monetaryProfile);
+            }
+            catch (Exception ex)
+            {
+                Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadMonetaryProfile");
+                CurrencyDisplay.SetMonetaryProfile(null);
             }
 
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
@@ -543,3 +629,4 @@ public partial class App : Application
         base.OnExit(e);
     }
 }
+

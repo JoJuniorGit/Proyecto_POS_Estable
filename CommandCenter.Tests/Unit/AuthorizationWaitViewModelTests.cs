@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Core.Entities;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using Moq;
@@ -43,11 +44,16 @@ public class AuthorizationWaitViewModelTests
 
     private sealed class Harness
     {
-        public Harness(int requestId = DefaultRequestId, DateTimeOffset? expiresAt = null, Func<string, Task>? retryAction = null)
+        public Harness(
+            int requestId = DefaultRequestId,
+            DateTimeOffset? expiresAt = null,
+            Func<string, Task>? retryAction = null,
+            IAuthorizationRequestContext? context = null)
         {
+            Context = context ?? DefaultContext;
             Hub = new Mock<IAuthorizationHubService>();
             Timer = new FakeCountdownTimer();
-            Hub.Setup(h => h.RequestAuthorizationAsync(It.IsAny<AuthorizationRequestContext>()))
+            Hub.Setup(h => h.RequestAuthorizationAsync(It.IsAny<IAuthorizationRequestContext>()))
                 .ReturnsAsync(new AuthorizationRequestInfo(requestId, expiresAt ?? Start.AddSeconds(60)));
             Hub.Setup(h => h.GetStatusAsync(It.IsAny<int>()))
                 .ReturnsAsync((AuthorizationStatusInfo?)null);
@@ -69,11 +75,12 @@ public class AuthorizationWaitViewModelTests
         public Mock<IAuthorizationHubService> Hub { get; }
         public FakeCountdownTimer Timer { get; }
         public AuthorizationWaitViewModel Vm { get; }
+        public IAuthorizationRequestContext Context { get; }
         public List<string> RetriedTokens { get; } = new();
         public List<bool> CloseResults { get; } = new();
         public DateTimeOffset Now { get; set; } = Start;
 
-        public static AuthorizationRequestContext Context => new()
+        public static AuthorizationRequestContext DefaultContext => new()
         {
             SaleId = 77,
             ProductId = 5,
@@ -513,5 +520,89 @@ public class AuthorizationWaitViewModelTests
 
         Assert.Contains("Producto", summary);
         Assert.Contains("#5", summary);
+    }
+
+    // ── Contexto CreditOverLimit (T4-prep, Paso 11 S4) ───────────────────
+
+    private static CreditOverLimitAuthorizationRequestContext CreditContext() => new()
+    {
+        SaleId = 88,
+        CustomerId = 55,
+        CustomerName = "Maria Perez",
+        FinancedUSD = 120.50m,
+        AvailableCreditUSD = 50m,
+        Terminal = "Caja-01"
+    };
+
+    [Fact]
+    public async Task Start_WithCreditOverLimitContext_RequestsTheSameCreditContext()
+    {
+        var context = CreditContext();
+        var h = new Harness(context: context);
+
+        await h.Vm.StartCommand.ExecuteAsync(null);
+
+        Assert.Equal(AuthorizationWaitPhase.Waiting, h.Vm.Phase);
+        Assert.Same(context, h.Vm.OperationContext);
+        Assert.Equal("#88", h.Vm.SaleNumberDisplay);
+        Assert.Contains("Maria Perez", h.Vm.OperationSummary);
+        Assert.Contains("#88", h.Vm.OperationSummary);
+        Assert.Contains("120.50", h.Vm.OperationSummary);
+        Assert.Equal("Maria Perez", h.Vm.CustomerDisplay);
+        Assert.Equal("$ 120.50", h.Vm.FinancedAmountDisplay);
+        Assert.Equal("$ 50.00", h.Vm.AvailableCreditDisplay);
+        h.Hub.Verify(x => x.RequestAuthorizationAsync(
+            It.Is<IAuthorizationRequestContext>(candidate =>
+                candidate.ActionType == AuthorizationActionType.CreditOverLimit &&
+                candidate.SaleId == 88)), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreditOverLimit_ApprovedResolution_RetriesWithTokenAndClosesOnce()
+    {
+        var h = new Harness(context: CreditContext());
+        await h.Vm.StartCommand.ExecuteAsync(null);
+
+        h.RaiseResolved(DefaultRequestId, approved: true, token: "credit-tok");
+        h.RaiseResolved(DefaultRequestId, approved: true, token: "credit-tok");
+
+        Assert.Equal(new[] { "credit-tok" }, h.RetriedTokens);
+        Assert.Equal(new[] { true }, h.CloseResults);
+        Assert.Equal(AuthorizationWaitPhase.Granted, h.Vm.Phase);
+    }
+
+    [Fact]
+    public async Task CreditOverLimit_RejectedResolution_ShowsReasonWithoutRetry()
+    {
+        var h = new Harness(context: CreditContext());
+        await h.Vm.StartCommand.ExecuteAsync(null);
+
+        h.RaiseResolved(DefaultRequestId, approved: false, reason: "Cupo excedido sin garantía");
+
+        Assert.Equal(AuthorizationWaitPhase.Rejected, h.Vm.Phase);
+        Assert.Equal("Cupo excedido sin garantía", h.Vm.RejectionReason);
+        Assert.Empty(h.RetriedTokens);
+        Assert.Empty(h.CloseResults);
+    }
+
+    [Fact]
+    public async Task CreditOverLimit_Timeout_ExpiresAndRetryCreatesNewRequest()
+    {
+        var h = new Harness(context: CreditContext(), expiresAt: Start.AddSeconds(30));
+        await h.Vm.StartCommand.ExecuteAsync(null);
+
+        h.Now = Start.AddSeconds(31);
+        h.Timer.RaiseTick();
+
+        Assert.Equal(AuthorizationWaitPhase.Expired, h.Vm.Phase);
+
+        h.Hub.SetupSequence(x => x.RequestAuthorizationAsync(It.IsAny<IAuthorizationRequestContext>()))
+            .ReturnsAsync(new AuthorizationRequestInfo(99, Start.AddSeconds(90)));
+
+        await h.Vm.RetryCommand.ExecuteAsync(null);
+
+        Assert.Equal(AuthorizationWaitPhase.Waiting, h.Vm.Phase);
+        Assert.Equal(59, h.Vm.RemainingSeconds);
+        h.Hub.Verify(x => x.RequestAuthorizationAsync(It.IsAny<IAuthorizationRequestContext>()), Times.Exactly(2));
     }
 }

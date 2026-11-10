@@ -30,7 +30,7 @@ public class PairingQrViewModelTests
     }
 
     [Fact]
-    public void UseHttps_WhenToggledFalse_UpdatesPortAndUrlsToHttp()
+    public void UseHttps_WhenUnavailable_DisablesRemoteQrInsteadOfAdvertisingHttp()
     {
         using var client = new HttpClient();
         using var vm = new PairingQrViewModel(client);
@@ -38,8 +38,9 @@ public class PairingQrViewModelTests
         vm.UseHttps = false;
 
         Assert.Equal(5000, vm.ActivePort);
-        Assert.Equal("http://127.0.0.1:5000", vm.FullUrl);
-        Assert.Equal("http://127.0.0.1:5000/?paired=true", vm.QrPayload);
+        Assert.Equal(string.Empty, vm.FullUrl);
+        Assert.Equal(string.Empty, vm.QrPayload);
+        Assert.Contains("deshabilitó el QR remoto", vm.HttpsStatusText);
     }
 
     [Fact]

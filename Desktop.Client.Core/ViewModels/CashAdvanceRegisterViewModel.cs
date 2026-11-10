@@ -33,6 +33,9 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
     private PaymentMethodDto? _selectedPaymentMethod;
 
     [ObservableProperty]
+    private PhysicalMethodBalanceClientDto? _selectedDispensedCashMethod;
+
+    [ObservableProperty]
     private string _errorMessage = string.Empty;
 
     [ObservableProperty]
@@ -40,7 +43,18 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
 
     public ObservableCollection<PaymentMethodDto> ElectronicPaymentMethods { get; } = new();
 
-    public CashAdvanceRegisterViewModel(List<PaymentMethodDto> paymentMethods, decimal? availableCashLocal, decimal exchangeRate = 1.0m, ICashDrawerService? cashDrawer = null)
+    public ObservableCollection<PhysicalMethodBalanceClientDto> PhysicalCashMethods { get; } = new();
+
+    public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
+
+    public bool HasPhysicalCashMethods => PhysicalCashMethods.Count > 0;
+
+    public CashAdvanceRegisterViewModel(
+        List<PaymentMethodDto> paymentMethods,
+        decimal? availableCashLocal,
+        decimal exchangeRate = 1.0m,
+        ICashDrawerService? cashDrawer = null,
+        IReadOnlyList<PhysicalMethodBalanceClientDto>? physicalCashMethods = null)
     {
         _cashDrawerService = cashDrawer;
         AvailableCashLocal = availableCashLocal;
@@ -57,7 +71,18 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
             ElectronicPaymentMethods.Add(pm);
         }
 
+        if (physicalCashMethods is not null)
+        {
+            foreach (var method in physicalCashMethods.OrderBy(method => method.PaymentMethodId))
+            {
+                PhysicalCashMethods.Add(method);
+            }
+        }
+
         SelectedPaymentMethod = ElectronicPaymentMethods.FirstOrDefault();
+        SelectedDispensedCashMethod = PhysicalCashMethods.Count == 1
+            ? PhysicalCashMethods[0]
+            : PhysicalCashMethods.FirstOrDefault(method => method.CanDispense);
         ValidateInputs();
     }
 
@@ -71,6 +96,39 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
     /// operador (no-supervisores); con valor conserva el formato N0 que muestra el diálogo.
     /// </summary>
     public string AvailableCashDisplay => AvailableCashLocal is decimal available ? MoneyFormat.N0(available) : "—";
+
+    public string SelectedDispensedMethodDisplay => SelectedDispensedCashMethod is { } method
+        ? $"{method.Name} ({method.CurrencyCode})"
+        : "-";
+
+    public string DispensedAvailableDisplay => SelectedDispensedCashMethod is { } method
+        ? FormatMethodAmount(method, method.CurrentBalance)
+        : "-";
+
+    public decimal? ProjectedBalance => SelectedDispensedCashMethod is { } method
+        ? method.CurrentBalance - RequestedAmountBsS
+        : null;
+
+    public string RequestedAmountDisplay => SelectedDispensedCashMethod is { } method
+        ? FormatMethodAmount(method, RequestedAmountBsS)
+        : MoneyFormat.N2(RequestedAmountBsS);
+
+    public string ProjectedBalanceDisplay => SelectedDispensedCashMethod is { } method
+        ? $"Existencia actual: {FormatMethodAmount(method, method.CurrentBalance)} -> Existencia tras el avance: {FormatMethodAmount(method, ProjectedBalance ?? method.CurrentBalance)}"
+        : string.Empty;
+
+    public bool HasSufficientDispensedBalance => SelectedDispensedCashMethod is not { } method
+        || RequestedAmountBsS <= method.CurrentBalance;
+
+    private static string FormatMethodAmount(PhysicalMethodBalanceClientDto method, decimal amount)
+    {
+        var symbol = string.IsNullOrWhiteSpace(method.CurrencySymbol)
+            ? CurrencyDisplay.SymbolFor(method.CurrencyCode)
+            : method.CurrencySymbol;
+        return string.IsNullOrWhiteSpace(symbol)
+            ? MoneyFormat.N2(amount)
+            : $"{symbol}{MoneyFormat.N2(amount)}";
+    }
 
     public decimal? CommissionAmountBsS => CommissionPercentage is decimal percentage
         ? Math.Round(RequestedAmountBsS * (percentage / 100.0m), 2, MidpointRounding.AwayFromZero)
@@ -87,7 +145,11 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
     // 8.153 (SEC-06): el tope local se aplica solo cuando el efectivo disponible es visible
     // (supervisores); con null el rechazo definitivo proviene del servidor.
     public bool CanConfirm => RequestedAmountBsS > 0
-        && (AvailableCashLocal is not decimal cap || RequestedAmountBsS <= cap)
+        && (!HasPhysicalCashMethods || SelectedDispensedCashMethod != null)
+        && HasSufficientDispensedBalance
+        && (!HasPhysicalCashMethods
+            ? (AvailableCashLocal is not decimal cap || RequestedAmountBsS <= cap)
+            : true)
         && SelectedPaymentMethod != null
         && CommissionPercentage > 0
         && string.IsNullOrEmpty(ErrorMessage);
@@ -140,6 +202,12 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
         NotifyCalculationsChanged();
     }
 
+    partial void OnSelectedDispensedCashMethodChanged(PhysicalMethodBalanceClientDto? value)
+    {
+        NotifyCalculationsChanged();
+        ValidateInputs();
+    }
+
     private void NotifyCalculationsChanged()
     {
         OnPropertyChanged(nameof(IsTransfer));
@@ -147,6 +215,12 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
         OnPropertyChanged(nameof(CommissionAmountBsS));
         OnPropertyChanged(nameof(TotalToChargeBsS));
         OnPropertyChanged(nameof(TotalToChargeUSD));
+        OnPropertyChanged(nameof(SelectedDispensedMethodDisplay));
+        OnPropertyChanged(nameof(DispensedAvailableDisplay));
+        OnPropertyChanged(nameof(ProjectedBalance));
+        OnPropertyChanged(nameof(ProjectedBalanceDisplay));
+        OnPropertyChanged(nameof(RequestedAmountDisplay));
+        OnPropertyChanged(nameof(HasSufficientDispensedBalance));
         OnPropertyChanged(nameof(CanConfirm));
     }
 
@@ -156,9 +230,28 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
         {
             ErrorMessage = "Ingrese un monto mayor a cero.";
         }
-        else if (AvailableCashLocal is decimal availableCap && RequestedAmountBsS > availableCap)
+        else if (HasPhysicalCashMethods && SelectedDispensedCashMethod is null)
         {
-            ErrorMessage = $"El monto supera el efectivo en caja ({MoneyFormat.N2(availableCap)} Bs.S).";
+            ErrorMessage = "Seleccione el método físico que entrega el efectivo.";
+        }
+        else if (SelectedDispensedCashMethod is { IsActive: false } inactiveMethod)
+        {
+            ErrorMessage = $"El método físico {inactiveMethod.Name} ({inactiveMethod.CurrencyCode}) no está activo para dispensar.";
+        }
+        else if (SelectedDispensedCashMethod is { } method && !HasSufficientDispensedBalance)
+        {
+            ErrorMessage = $"Existencia insuficiente en {method.Name} ({method.CurrencyCode}): disponible {FormatMethodAmount(method, method.CurrentBalance)}, requerido {FormatMethodAmount(method, RequestedAmountBsS)}.";
+        }
+        else if (!HasPhysicalCashMethods
+            && AvailableCashLocal is decimal availableCap
+            && RequestedAmountBsS > availableCap)
+        {
+            // Single has no secondary currency: the ISO code identifies the local drawer.
+            // Dual keeps the configured local symbol to preserve the existing message shape.
+            var currencyLabel = CurrencyDisplay.IsSingle
+                ? CurrencyDisplay.LocalCurrencyCode
+                : CurrencyDisplay.LocalCurrencySymbol;
+            ErrorMessage = $"El monto supera el efectivo en caja ({MoneyFormat.N2(availableCap)} {currencyLabel}).";
         }
         else if (SelectedPaymentMethod == null)
         {
@@ -170,6 +263,7 @@ public partial class CashAdvanceRegisterViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(ErrorMessage));
+        OnPropertyChanged(nameof(HasError));
         OnPropertyChanged(nameof(CanConfirm));
     }
 

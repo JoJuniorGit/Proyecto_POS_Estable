@@ -43,8 +43,10 @@ public partial class CheckoutViewModel
         // 8.185-T5 (S4/S5): validación dual-dominio espejo del gate del servidor (T3): rechazar
         // solo si el monto excede el saldo restante en USD Y en Bs.S — cubrir el total efectivo
         // del carrito no es sobrepago aunque difiera de la cuota canónica en USD.
-        bool exceedsUsd = amountUsd > RemainingBalanceUsd + 0.05m;
-        bool exceedsBsS = amountBsS > RemainingBalanceLocal + (0.05m * CurrentExchangeRate);
+        // CLEAN-05-RES: el saldo restante ya viene del preview canónico del servidor; no se
+        // suma una tolerancia local fija que podría aceptar un sobrepago real.
+        bool exceedsUsd = amountUsd > RemainingBalanceUsd;
+        bool exceedsBsS = amountBsS > RemainingBalanceLocal;
         if (exceedsUsd && exceedsBsS)
         {
             ShowWarning("Monto Excedido", "El monto ingresado excede el saldo restante de la venta.");

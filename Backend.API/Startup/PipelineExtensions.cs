@@ -14,7 +14,11 @@ namespace Backend.API.Startup;
 /// </summary>
 public static class PipelineExtensions
 {
-    public static WebApplication ConfigureBackendPipeline(this WebApplication app, System.Security.Cryptography.X509Certificates.X509Certificate2? httpsCert, int httpsPort)
+    public static WebApplication ConfigureBackendPipeline(
+        this WebApplication app,
+        System.Security.Cryptography.X509Certificates.X509Certificate2? httpsCert,
+        int httpsPort,
+        bool behindReverseProxy = false)
     {
         // 8.7-L2: validación del encabezado Host contra la whitelist calculada (AllowedHosts).
         // Debe ejecutarse antes del manejo de encabezados reenviados para no confiar en Host externos.
@@ -31,24 +35,23 @@ public static class PipelineExtensions
         // Security Headers (M-07)
         app.UseMiddleware<Backend.API.Middleware.SecurityHeadersMiddleware>();
 
-        // 8.7-B10: Con certificado presente, en Producción se fuerza HTTPS para el cliente Web:
-        //  - HSTS dirige al browser a HTTPS desde la primera respuesta segura.
-        //  - Redirección 307 HTTP→HTTPS para request con X-Client-Platform: Web (preserva el body
-        //    del login). El escritorio (desktop) sigue sobre HTTP en LAN por compatibilidad, y la
-        //    cookie pos_jwt solo se marca Secure cuando el request es HTTPS.
-        if (httpsCert != null && !app.Environment.IsDevelopment())
+        // H-02: con certificado activo, toda conexión remota HTTP (Web y Desktop) recibe 307 a
+        // HTTPS, que preserva método/body. HTTP queda permitido solo en loopback para desarrollo
+        // y automatización local. Detrás de proxy, UseForwardedHeaders ya fijó el esquema real.
+        if (httpsCert != null || behindReverseProxy)
         {
-            app.UseHsts();
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseHsts();
+            }
+
             app.Use(async (context, next) =>
             {
-                var platform = context.Request.Headers["X-Client-Platform"].ToString();
-                if (!context.Request.IsHttps
-                    && string.Equals(platform, "Web", StringComparison.OrdinalIgnoreCase))
+                if (HttpsRedirectPolicy.ShouldRedirect(context))
                 {
-                    var host = context.Request.Host.Host;
-                    var target = $"https://{host}:{httpsPort}{context.Request.Path}{context.Request.QueryString}";
+                    var target = HttpsRedirectPolicy.BuildTarget(context, httpsPort);
                     context.Response.StatusCode = Microsoft.AspNetCore.Http.StatusCodes.Status307TemporaryRedirect;
-                    context.Response.Headers.Location = target;
+                    context.Response.Headers.Location = target.ToString();
                     return;
                 }
                 await next();

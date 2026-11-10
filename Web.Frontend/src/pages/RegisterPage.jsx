@@ -8,19 +8,37 @@ import {
   Loader2, 
   RefreshCw, 
   ShieldAlert, 
-  TrendingUp, 
-  TrendingDown, 
+  TrendingUp,
+  TrendingDown,
   Clock,
-  CheckCircle
+  CheckCircle,
+  Wallet,
+  Lock,
+  AlertCircle
 } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
 import { useAuth } from '../context/AuthContext';
-import { formatBsS, formatUSD, formatNumberEs, formatDate } from '../utils/formatters';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../utils/monetaryProfile';
+import { formatNumberEs, formatDate } from '../utils/formatters';
 import './RegisterPage.css';
 
 import CashInModal from '../components/register/CashInModal';
 import CashOutModal from '../components/register/CashOutModal';
 import CashAdvanceModal from '../components/register/CashAdvanceModal';
+import PettyCashPanel from '../components/register/PettyCashPanel';
+import PettyCashExpenseModal from '../components/register/PettyCashExpenseModal';
+import PettyCashCancelModal from '../components/register/PettyCashCancelModal';
+import CashDrawerCloseModal from '../components/register/CashDrawerCloseModal';
+import CashDrawerOpenModal from '../components/register/CashDrawerOpenModal';
+import { getPettyCashExpenses, getPettyCashPhysicalBalances } from '../services/pettyCashApi';
+import { getPhysicalMethodBalances } from '../services/cashDrawerApi';
+import {
+  canCloseCashDrawerSession,
+  canUsePettyCash,
+  resolveLocalCurrencyProfile,
+  buildCashDrawerSessionSummary,
+} from '../components/register/registerFormLogic';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
 import { normalizeRole } from '../navigation/roleViews';
@@ -37,12 +55,27 @@ export default function RegisterPage() {
 function RegisterPageContent() {
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
-  
+  const {
+    profile,
+    primaryCurrencyCode,
+    formatPrimary,
+    formatSecondary,
+  } = useMonetaryProfile();
+  const { isDual, label: localCurrencyLabel } = resolveLocalCurrencyProfile(profile);
+  const primaryCurrencyLabel = displayCurrencyCode(primaryCurrencyCode);
+
   const isAdmin = normalizeRole(user?.role) === 'Admin';
+  // T5 (Paso 13 / 8.188): roles de la caja chica (Admin/Manager/Cashier) y del cierre de la
+  // sesión (solo supervisión). El gate del servidor sigue siendo la autoridad final.
+  const role = normalizeRole(user?.role);
+  const showPettyCash = canUsePettyCash(role);
+  const showCloseCashDrawer = canCloseCashDrawerSession(role);
 
   const [session, setSession] = useState(null);
+  const [physicalMethodBalances, setPhysicalMethodBalances] = useState([]);
   const [historyTransactions, setHistoryTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   // Discrete filter states for movements
   const [typeFilter, setTypeFilter] = useState('all'); // 'all', 'income', 'expense'
@@ -63,8 +96,53 @@ function RegisterPageContent() {
   const [isCashOutOpen, setIsCashOutOpen] = useState(false);
   const [isCashAdvanceOpen, setIsCashAdvanceOpen] = useState(false);
 
+  // Caja chica del turno (T5): listado, saldos físicos y modales de registro/anulación.
+  const [pettyCashExpenses, setPettyCashExpenses] = useState([]);
+  const [pettyCashBalances, setPettyCashBalances] = useState(null);
+  const [pettyCashLoading, setPettyCashLoading] = useState(false);
+  const [isPettyCashPanelOpen, setIsPettyCashPanelOpen] = useState(false);
+  const [isPettyCashExpenseOpen, setIsPettyCashExpenseOpen] = useState(false);
+  const [cancelTargetExpense, setCancelTargetExpense] = useState(null);
+  const [isCloseCashDrawerOpen, setIsCloseCashDrawerOpen] = useState(false);
+  const [isOpenCashDrawerOpen, setIsOpenCashDrawerOpen] = useState(false);
+
+  // Los gastos del turno se recargan junto con la sesión (el registro/anulación se reflejan de
+  // inmediato). Los saldos físicos por gaveta solo se piden a supervisión: el Cashier conserva el
+  // arqueo ciego y el servidor sigue validando la liquidez al registrar.
+  const loadPettyCash = useCallback(async (sessionId) => {
+    if (!sessionId || !showPettyCash) {
+      setPettyCashExpenses([]);
+      setPettyCashBalances(null);
+      return;
+    }
+
+    setPettyCashLoading(true);
+    try {
+      const rows = await getPettyCashExpenses(sessionId);
+      setPettyCashExpenses(Array.isArray(rows) ? rows : []);
+
+      if (showCloseCashDrawer) {
+        try {
+          setPettyCashBalances(await getPettyCashPhysicalBalances(sessionId));
+        } catch (balancesErr) {
+          console.warn('[RegisterPage] No se pudieron cargar los saldos físicos de caja:', balancesErr);
+          setPettyCashBalances(null);
+        }
+      } else {
+        setPettyCashBalances(null);
+      }
+    } catch (err) {
+      console.warn('[RegisterPage] No se pudieron cargar los gastos de caja chica:', err);
+      setPettyCashExpenses([]);
+      setPettyCashBalances(null);
+    } finally {
+      setPettyCashLoading(false);
+    }
+  }, [showPettyCash, showCloseCashDrawer]);
+
   const loadSession = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const [sessionData, historyData] = await Promise.all([
         api.get('/api/cashdrawer/active-session'),
@@ -75,33 +153,78 @@ function RegisterPageContent() {
       ]);
       setSession(sessionData);
       setHistoryTransactions(historyData || []);
+
+      let balances = Array.isArray(sessionData?.physicalMethodBalances)
+        ? sessionData.physicalMethodBalances
+        : null;
+      if (!balances && sessionData?.id) {
+        try {
+          balances = await getPhysicalMethodBalances(sessionData.id);
+        } catch (balancesErr) {
+          console.warn('[RegisterPage] No se pudieron cargar los saldos por método físico:', balancesErr);
+          balances = [];
+        }
+      }
+      setPhysicalMethodBalances(balances || []);
+
+      await loadPettyCash(sessionData?.id);
     } catch (err) {
       console.error('[RegisterPage] Error al obtener sesión de caja:', err);
+      const status = err?.status;
+      const message = status === 404 || status === 204
+        ? 'No hay una sesión de caja activa.'
+        : status >= 500
+          ? 'El servidor no está disponible. Intente nuevamente en unos segundos.'
+          : (err?.message || 'Error al obtener la información de la sesión de caja');
+      setLoadError(message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadPettyCash]);
 
   useEffect(() => {
     loadSession();
   }, [loadSession]);
 
+  // 8.212-WU5: the server publishes CashDrawerChanged after a committed drawer operation.
+  useEffect(() => {
+    const handleCashDrawerChanged = () => {
+      loadSession();
+    };
+    window.addEventListener('onCashDrawerChanged', handleCashDrawerChanged);
+    return () => window.removeEventListener('onCashDrawerChanged', handleCashDrawerChanged);
+  }, [loadSession]);
+
   // Derived state calculations
   const transactions = useMemo(() => session?.transactions || [], [session]);
-  const openingBsS = session?.openingBalanceLocal || 0;
-  
-  // Physical cash income & expense totals
-  const { totalIncomeBsS, totalExpenseBsS } = useMemo(() => ({
-    totalIncomeBsS: transactions
-      .filter(t => t.type === 0 && t.source !== CashTransactionSource.Opening && t.isPhysicalCash)
-      .reduce((sum, t) => sum + (t.amountLocal || 0), 0),
-    totalExpenseBsS: transactions
-      .filter(t => t.type === 1 && t.isPhysicalCash)
-      .reduce((sum, t) => sum + (t.amountLocal || 0), 0)
-  }), [transactions]);
 
-  const expectedCashBsS = openingBsS + totalIncomeBsS - totalExpenseBsS;
-  const expectedCashUsd = (exchangeRate && exchangeRate > 0) ? expectedCashBsS / exchangeRate : 0;
+  // Resumen por moneda: el backend es la fuente de verdad. El helper cliente queda solo como
+  // fallback para respuestas legacy que aún no traen currencySummaries.
+  const sessionCurrencySummary = useMemo(() => {
+    const backendRows = Array.isArray(session?.currencySummaries)
+      ? session.currencySummaries
+      : null;
+
+    if (backendRows && backendRows.length > 0) {
+      return backendRows.map((row) => ({
+        code: row.currencyCode,
+        label: displayCurrencyCode(row.currencyCode),
+        symbol: row.currencySymbol || displayCurrencyCode(row.currencyCode),
+        opening: Number(row.openingBalance) || 0,
+        income: Number(row.totalPhysicalInflows) || 0,
+        expense: Number(row.totalPhysicalOutflows) || 0,
+        expected: Number(row.expectedCashBalance) || 0,
+        isLocal: row.isLocal === true,
+      }));
+    }
+
+    return buildCashDrawerSessionSummary(profile, session, transactions);
+  }, [profile, session, transactions]);
+
+  // El efectivo local disponible para retiros/adelantos/cierre sale de la fila local,
+  // no de una suma global que mezcle montos USD convertidos.
+  const localCurrencySummary = sessionCurrencySummary.find((currency) => currency.isLocal);
+  const expectedCashBsS = localCurrencySummary?.expected ?? 0;
 
   // Last 7 received incomes (sorted most recent first)
   const recentIncomes = useMemo(() => [...transactions]
@@ -160,7 +283,11 @@ function RegisterPageContent() {
             ) : (
               <span className="badge badge-secondary">SIN SESIÓN ABIERTA</span>
             )}
-            <span className="text-xs text-muted">Tasa Actual: {formatBsS(exchangeRate || 0)} / USD</span>
+            {isDual && (
+              <span className="text-xs text-muted">
+                Tasa Actual: {formatSecondary(exchangeRate || 0)} / {primaryCurrencyLabel}
+              </span>
+            )}
           </div>
         </div>
 
@@ -174,6 +301,18 @@ function RegisterPageContent() {
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Actualizar
           </button>
+
+          {!session && (
+            <button
+              type="button"
+              className="btn btn-primary flex-align-center justify-content-center gap-2 register-action-btn"
+              onClick={() => setIsOpenCashDrawerOpen(true)}
+              disabled={loading || !(Number(exchangeRate) > 0)}
+              title={`Declarar el fondo inicial en ${localCurrencyLabel}${isDual ? ` y ${primaryCurrencyLabel}` : ''} y abrir la sesión`}
+            >
+              <Landmark size={18} /> ABRIR CAJA
+            </button>
+          )}
 
           <button
             type="button"
@@ -203,6 +342,32 @@ function RegisterPageContent() {
           >
             <FastForward size={18} /> Adelanto Efectivo
           </button>
+
+          {showPettyCash && (
+            <button
+              type="button"
+              className={`btn ${isPettyCashPanelOpen ? 'btn-primary' : 'btn-outline'} flex-align-center justify-content-center gap-2 register-action-btn`}
+              onClick={() => setIsPettyCashPanelOpen((open) => !open)}
+              disabled={!session}
+              title="Registrar y consultar gastos de caja chica del turno"
+            >
+              <Wallet size={18} /> CAJA CHICA
+            </button>
+          )}
+
+          {showCloseCashDrawer && (
+            <button
+              type="button"
+              className="btn btn-outline flex-align-center justify-content-center gap-2 register-action-btn"
+              onClick={() => setIsCloseCashDrawerOpen(true)}
+              disabled={!session}
+              title={isDual
+                ? `Arqueo y cierre de la sesión de caja (conteo ${primaryCurrencyLabel} opcional)`
+                : 'Arqueo y cierre de la sesión de caja'}
+            >
+              <Lock size={18} /> CERRAR CAJA
+            </button>
+          )}
         </div>
       </div>
 
@@ -216,6 +381,13 @@ function RegisterPageContent() {
         </div>
       )}
 
+      {loadError && (
+        <div className="alert alert-danger mb-4 flex-align-center gap-2" role="alert">
+          <AlertCircle size={18} className="flex-shrink-0" />
+          <span>{loadError}</span>
+        </div>
+      )}
+
       {loading && !session ? (
         <div className="p-5 text-center text-muted card shadow-sm">
           <Loader2 className="animate-spin mb-2 inline-block" size={32} />
@@ -223,84 +395,105 @@ function RegisterPageContent() {
         </div>
       ) : (
         <>
-          {/* ── Requisito 3: Tarjetas de Resumen (Espaciado Tipográfico Garantizado entre Número y Divisa Bs.S) ── */}
-          <div className="grid w-full gap-4 reg-summary-grid">
-            
-            {/* Tarjeta 1: EFECTIVO ESPERADO EN CAJA */}
-            <div className="card shadow-sm p-4 bg-surface flex-between flex-align-center reg-card-indigo">
-              <div className="flex-1 pr-3 flex flex-column justify-content-between">
-                <span className="stat-label text-xs font-bold text-muted uppercase tracking-wider block mb-1">
-                  EFECTIVO ESPERADO EN CAJA
-                </span>
-                
-                {/* Requisito 3: Espaciado en la divisa (26,673.74 Bs.S) */}
-                <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
-                  <span className="text-3xl font-extrabold color-primary">
-                    {formatNumberEs(expectedCashBsS, 2)}
-                  </span>
-                  <span className="text-base font-bold color-primary reg-currency-gap">
-                    Bs.S
-                  </span>
+          {/* ── T5 (Paso 13 / 8.188): panel de caja chica del turno (paridad WPF) ── */}
+          {showPettyCash && isPettyCashPanelOpen && (
+            <PettyCashPanel
+              expenses={pettyCashExpenses}
+              balances={pettyCashBalances}
+              canViewBalances={showCloseCashDrawer}
+              loading={pettyCashLoading}
+              onRegister={() => setIsPettyCashExpenseOpen(true)}
+              onCancelExpense={(expense) => setCancelTargetExpense(expense)}
+              onRefresh={() => loadPettyCash(session?.id)}
+              onClose={() => setIsPettyCashPanelOpen(false)}
+            />
+          )}
+
+          {/* Resumen por moneda: una fila de 3 tarjetas por cada moneda activa. */}
+          <div className="card shadow-sm p-4 bg-surface mb-4 reg-fullwidth">
+            <div className="flex-between flex-align-center mb-3">
+              <h3 className="card-title text-base font-bold flex-align-center gap-2 m-0">
+                <Landmark size={20} className="color-primary" />
+                RESUMEN POR MONEDA
+              </h3>
+              <span className="text-xs text-muted">Sesión actual</span>
+            </div>
+
+            <div className="reg-currency-summary-rows">
+              {sessionCurrencySummary.map((currency) => (
+                <div
+                  key={currency.code}
+                  className={`reg-currency-summary-row ${currency.isLocal ? 'is-local' : ''}`}
+                >
+                  <div className="reg-currency-summary-row-header">
+                    <span className="font-bold text-sm">{currency.label}</span>
+                    {currency.isLocal && (
+                      <span className="reg-currency-local-badge">MONEDA LOCAL</span>
+                    )}
+                  </div>
+
+                  <div className="grid w-full gap-4 reg-currency-summary-cards">
+                    <div className="card shadow-sm p-4 bg-surface flex-between flex-align-center reg-card-indigo">
+                      <div className="flex-1 pr-3 flex flex-column justify-content-between">
+                        <span className="stat-label text-xs font-bold text-muted uppercase tracking-wider block mb-1">
+                          EFECTIVO ESPERADO EN CAJA ({currency.label})
+                        </span>
+                        <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
+                          <span className="text-3xl font-extrabold color-primary">
+                            {formatNumberEs(currency.expected, 2)}
+                          </span>
+                          <span className="text-base font-bold color-primary reg-currency-gap">
+                            {currency.symbol}
+                          </span>
+                        </div>
+                        <div className="text-xs font-semibold text-muted">
+                          Fondo inicial: {currency.symbol} {formatNumberEs(currency.opening, 2)}
+                        </div>
+                      </div>
+                      <div className="flex-align-center justify-content-center p-2 rounded-lg flex-shrink-0 reg-card-icon-circle">
+                        <Landmark size={26} className="color-primary" />
+                      </div>
+                    </div>
+
+                    <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between reg-card-green">
+                      <div className="flex-align-center gap-2 mb-1">
+                        <TrendingUp size={18} className="color-success flex-shrink-0" />
+                        <span className="stat-label text-xs font-bold uppercase tracking-wider reg-label-green">
+                          TOTAL INGRESOS ({currency.label})
+                        </span>
+                      </div>
+                      <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
+                        <span className="text-2xl font-extrabold color-success">
+                          {formatNumberEs(currency.income, 2)}
+                        </span>
+                        <span className="text-sm font-bold color-success reg-currency-gap">
+                          {currency.symbol}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted font-medium">Acumulado en sesión</div>
+                    </div>
+
+                    <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between reg-card-red">
+                      <div className="flex-align-center gap-2 mb-1">
+                        <TrendingDown size={18} className="color-danger flex-shrink-0" />
+                        <span className="stat-label text-xs font-bold uppercase tracking-wider reg-label-red">
+                          TOTAL EGRESOS ({currency.label})
+                        </span>
+                      </div>
+                      <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
+                        <span className="text-2xl font-extrabold color-danger">
+                          {formatNumberEs(currency.expense, 2)}
+                        </span>
+                        <span className="text-sm font-bold color-danger reg-currency-gap">
+                          {currency.symbol}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted font-medium">Retiros y salidas</div>
+                    </div>
+                  </div>
                 </div>
-
-                <div className="text-xs font-semibold text-muted">
-                  $ {formatNumberEs(expectedCashUsd, 2)} USD
-                </div>
-              </div>
-
-              <div className="flex-align-center justify-content-center p-2 rounded-lg flex-shrink-0 reg-card-icon-circle">
-                <Landmark size={26} className="color-primary" />
-              </div>
+              ))}
             </div>
-
-            {/* Tarjeta 2: TOTAL INGRESOS EN EFECTIVO */}
-            <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between reg-card-green">
-              <div className="flex-align-center gap-2 mb-1">
-                <TrendingUp size={18} className="color-success flex-shrink-0" />
-                <span className="stat-label text-xs font-bold uppercase tracking-wider reg-label-green">
-                  TOTAL INGRESOS EN EFECTIVO
-                </span>
-              </div>
-
-              {/* Requisito 3: Espaciado en la divisa */}
-              <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
-                <span className="text-2xl font-extrabold color-success">
-                  {formatNumberEs(totalIncomeBsS, 2)}
-                </span>
-                <span className="text-sm font-bold color-success reg-currency-gap">
-                  Bs.S
-                </span>
-              </div>
-
-              <div className="text-xs text-muted font-medium">
-                Acumulado en sesión
-              </div>
-            </div>
-
-            {/* Tarjeta 3: TOTAL EGRESOS EN EFECTIVO */}
-            <div className="card shadow-sm p-4 bg-surface flex flex-column justify-content-between reg-card-red">
-              <div className="flex-align-center gap-2 mb-1">
-                <TrendingDown size={18} className="color-danger flex-shrink-0" />
-                <span className="stat-label text-xs font-bold uppercase tracking-wider reg-label-red">
-                  TOTAL EGRESOS EN EFECTIVO
-                </span>
-              </div>
-
-              {/* Requisito 3: Espaciado en la divisa */}
-              <div className="stat-val mb-1 flex-align-baseline gap-2 text-nowrap">
-                <span className="text-2xl font-extrabold color-danger">
-                  {formatNumberEs(totalExpenseBsS, 2)}
-                </span>
-                <span className="text-sm font-bold color-danger reg-currency-gap">
-                  Bs.S
-                </span>
-              </div>
-
-              <div className="text-xs text-muted font-medium">
-                Retiros y salidas
-              </div>
-            </div>
-
           </div>
 
           <div className="grid grid-1 gap-4">
@@ -352,11 +545,13 @@ function RegisterPageContent() {
 
                         <div className="flex-align-baseline gap-2 pt-2 border-top w-100 flex-wrap text-left">
                           <span className="font-extrabold text-sm color-success text-nowrap">
-                            {formatBsS(tx.amountLocal)}
+                            {formatSecondary(tx.amountLocal)}
                           </span>
-                          <span className="text-xs text-muted font-medium text-nowrap">
-                            &nbsp;({formatUSD(amountUsd)})
-                          </span>
+                          {isDual && (
+                            <span className="text-xs text-muted font-medium text-nowrap">
+                              &nbsp;({formatPrimary(amountUsd)})
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -440,11 +635,13 @@ function RegisterPageContent() {
                           <th className="reg-th-origin">Origen</th>
                           <th className="reg-th-concept">Concepto / Detalle</th>
                           <th className="text-right reg-th-amount">
-                            MONTO (BS.S)
+                            MONTO ({localCurrencyLabel.toUpperCase()})
                           </th>
-                          <th className="text-right reg-th-usd">
-                            EQUIV. (USD)
-                          </th>
+                          {isDual && (
+                            <th className="text-right reg-th-usd">
+                              EQUIV. ({primaryCurrencyLabel})
+                            </th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -491,15 +688,17 @@ function RegisterPageContent() {
                                 {conceptStr}
                               </td>
 
-                              {/* Monto Bs.S (Alineado a la derecha) */}
+                              {/* Monto local (Alineado a la derecha) */}
                               <td className={`text-right font-extrabold text-sm ${isIncome ? 'color-success' : 'color-danger'} reg-amount-cell`}>
-                                {isIncome ? '+' : '-'}{formatBsS(tx.amountLocal)}
+                                {isIncome ? '+' : '-'}{formatSecondary(tx.amountLocal)}
                               </td>
 
-                              {/* Equiv USD (Alineado a la derecha) */}
-                              <td className="text-right text-xs text-muted font-medium reg-amount-cell">
-                                {formatUSD(amountUsd)}
-                              </td>
+                              {/* Equivalencia primaria (Alineado a la derecha) */}
+                              {isDual && (
+                                <td className="text-right text-xs text-muted font-medium reg-amount-cell">
+                                  {formatPrimary(amountUsd)}
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -555,6 +754,50 @@ function RegisterPageContent() {
         availableCashBsS={expectedCashBsS}
         exchangeRate={exchangeRate}
         user={user}
+        physicalMethodBalances={physicalMethodBalances}
+        onSuccess={loadSession}
+      />
+
+      {/* T5 (Paso 13 / 8.188): registro/anulación de caja chica y cierre de la sesión con
+          conteo USD opcional. Estas acciones no recalculan políticas: el servidor decide. */}
+      {showPettyCash && (
+        <PettyCashExpenseModal
+          isOpen={isPettyCashExpenseOpen}
+          onClose={() => setIsPettyCashExpenseOpen(false)}
+          sessionId={session?.id}
+          exchangeRate={exchangeRate}
+          role={role}
+          onSuccess={loadSession}
+        />
+      )}
+
+      {showPettyCash && (
+        <PettyCashCancelModal
+          isOpen={Boolean(cancelTargetExpense)}
+          onClose={() => setCancelTargetExpense(null)}
+          expense={cancelTargetExpense}
+          role={role}
+          onSuccess={loadSession}
+        />
+      )}
+
+      {showCloseCashDrawer && (
+        <CashDrawerCloseModal
+          isOpen={isCloseCashDrawerOpen}
+          onClose={() => setIsCloseCashDrawerOpen(false)}
+          exchangeRate={exchangeRate}
+          expectedCashBsS={expectedCashBsS}
+          expectedCashUsd={pettyCashBalances?.usd ?? null}
+          physicalMethodBalances={physicalMethodBalances}
+          role={role}
+          onSuccess={loadSession}
+        />
+      )}
+
+      <CashDrawerOpenModal
+        isOpen={isOpenCashDrawerOpen}
+        onClose={() => setIsOpenCashDrawerOpen(false)}
+        exchangeRate={exchangeRate}
         onSuccess={loadSession}
       />
     </div>

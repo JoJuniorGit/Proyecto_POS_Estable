@@ -32,6 +32,13 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     private readonly IFilePickerDialog _filePicker;
     private readonly IExchangeRateService _exchangeRateService;
     private readonly ISettingsService? _settingsService;
+
+    // 8.211-T4c2b4d3b (S9): snapshot of the active presentation profile taken when the surface is
+    // opened. The combo, labels, rate gating and line propagation resolve from these values instead
+    // of the legacy hardcoded USD/Bs.S pair.
+    private readonly bool _hasSecondaryCurrency;
+    private readonly string _primaryCurrencyOption;
+    private readonly string _localCurrencyOption;
     private int _disposed;
     private bool _isCreatingProduct;
     private bool _isUpdatingBulkApproval;
@@ -50,7 +57,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     public bool CanMutateCatalog => UserSession.CanMutateCatalog;
     public ObservableCollection<SupplierInvoiceColumnMappingItem> ColumnMappings { get; } = new();
     public ObservableCollection<SupplierInvoiceLineViewModel> Lines { get; } = new();
-    public IReadOnlyList<string> CurrencyOptions { get; } = new[] { CurrencyCodes.Usd, CurrencyCodes.BsS };
+    public IReadOnlyList<string> CurrencyOptions { get; }
 
     [ObservableProperty]
     private bool _isBusy;
@@ -120,11 +127,48 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private RoundingRuleType _roundingRule = RoundingRuleType.ExactMath;
 
-    public bool IsBsSCurrency => string.Equals(SelectedCurrency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
-    public bool IsBsSInvoice => string.Equals(StagedInvoice?.Currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase);
+    /// <summary>8.211-T4c2b4d3b (S9): true only in Dual with a distinct secondary currency.</summary>
+    public bool HasSecondaryCurrency => _hasSecondaryCurrency;
+
+    /// <summary>Primary currency offered by the profile (identity rate in Single and Dual).</summary>
+    public string PrimaryCurrencyOption => _primaryCurrencyOption;
+
+    /// <summary>
+    /// Local-currency option shown in the combo: the secondary in Dual (VES keeps its legacy
+    /// <c>Bs.S</c> presentation) and the primary in Single.
+    /// </summary>
+    public string LocalCurrencyOption => _localCurrencyOption;
+
+    /// <summary>
+    /// 8.176/8.211-T4c2b4d3b: the live header selection is the profile local secondary. VES/BsS/Bs.S
+    /// aliases compare as the same currency; Single never counts as a secondary.
+    /// </summary>
+    public bool IsLocalSecondaryCurrency => _hasSecondaryCurrency && CurrencyEquals(SelectedCurrency, _localCurrencyOption);
+
+    /// <summary>Compatibility alias kept for the existing Dual USD/VES review flows.</summary>
+    public bool IsBsSCurrency => IsLocalSecondaryCurrency;
+
+    /// <summary>The staged invoice was interpreted with the profile local secondary currency.</summary>
+    public bool IsLocalSecondaryInvoice => _hasSecondaryCurrency && CurrencyEquals(StagedInvoice?.Currency, _localCurrencyOption);
+
+    /// <summary>Compatibility alias kept for the existing supplier/OCR review flows.</summary>
+    public bool IsBsSInvoice => IsLocalSecondaryInvoice;
 
     /// <summary>8.164/8.176: encabezado del costo de factura editable; acompaña la moneda viva de la cabecera.</summary>
-    public string DocumentCostHeader => IsBsSCurrency ? "Costo factura (Bs.S)" : "Costo factura (USD)";
+    public string DocumentCostHeader => $"Costo factura ({DisplayCurrencyCode(SelectedCurrency)})";
+
+    /// <summary>8.211-T4c2b4d3b (S9): primary cost column header derived from the profile primary code.</summary>
+    public string PrimaryCostHeader => $"Costo {PrimaryCurrencyOption}";
+
+    /// <summary>8.211-T4c2b4d3b (S9): rate label for the profile local currency (hidden in Single).</summary>
+    public string AppliedRateLabel => $"Tasa aplicada ({DisplayCurrencyCode(LocalCurrencyOption)})";
+
+    /// <summary>8.211-T4c2b4d3b (S9): validation copy names the local currency instead of Bs.S.</summary>
+    public string RateValidationMessage =>
+        $"Indique una tasa mayor que cero para facturas en {DisplayCurrencyCode(LocalCurrencyOption)}.";
+
+    /// <summary>8.211-T4c2b4d3b (S9): the rate input only exists when a secondary currency is configured.</summary>
+    public bool ShowRateInput => HasSecondaryCurrency;
 
     /// <summary>8.168: oculta el campo de ruta de archivo cuando está vacío o en flujo OCR.</summary>
     public bool HasSelectedFilePath => !string.IsNullOrWhiteSpace(SelectedFilePath) && !IsOcrSource;
@@ -218,12 +262,12 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Factura Bs.S exige una tasa aplicada válida (&gt; 0); en USD la tasa se normaliza a 1.</summary>
-    public bool HasValidAppliedRate => !IsBsSCurrency || (TryParseAppliedRate(AppliedRateText, out var rate) && rate > 0m);
+    /// <summary>8.211-T4c2b4d3b: only the profile local secondary requires a positive rate; the primary is identity (rate 1).</summary>
+    public bool HasValidAppliedRate => !IsLocalSecondaryCurrency || (TryParseAppliedRate(AppliedRateText, out var rate) && rate > 0m);
 
-    public bool ShowRateValidationHint => IsBsSCurrency && !HasValidAppliedRate;
+    public bool ShowRateValidationHint => IsLocalSecondaryCurrency && !HasValidAppliedRate;
     public bool IsCurrencyInputEnabled => CanMutateCatalog && !IsBusy;
-    public bool IsRateInputEnabled => IsCurrencyInputEnabled && IsBsSCurrency;
+    public bool IsRateInputEnabled => IsCurrencyInputEnabled && IsLocalSecondaryCurrency;
     public bool IsRoundingRuleInputEnabled => CanMutateCatalog && !IsBusy;
 
     public bool CanLoadInvoice => CanMutateCatalog && !IsBusy;
@@ -258,6 +302,19 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         _dialogService = dialogService;
         _filePicker = filePicker;
         _exchangeRateService = exchangeRateService;
+
+        // 8.211-T4c2b4d3b (S9): the combo and labels are resolved once from the active profile.
+        // Single offers exactly the primary; Dual always offers USD (identity) plus the secondary.
+        _hasSecondaryCurrency = CurrencyDisplay.Mode == MonetaryMode.Dual
+            && !string.IsNullOrWhiteSpace(CurrencyDisplay.SecondaryCurrencyCode)
+            && !CurrencyEquals(CurrencyDisplay.SecondaryCurrencyCode, CurrencyCodes.Usd);
+        _primaryCurrencyOption = CurrencyDisplay.PrimaryCurrencyCode;
+        _localCurrencyOption = _hasSecondaryCurrency
+            ? ToCurrencyOption(CurrencyDisplay.SecondaryCurrencyCode)
+            : _primaryCurrencyOption;
+        CurrencyOptions = BuildCurrencyOptions();
+        SelectedCurrency = _hasSecondaryCurrency ? CurrencyCodes.Usd : _primaryCurrencyOption;
+
         UserSession.PropertyChanged += OnUserSessionPropertyChanged;
         Lines.CollectionChanged += (_, _) => NotifyMetricsChanged();
 
@@ -318,6 +375,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     partial void OnStagedInvoiceChanged(SupplierInvoiceDetailDto? value)
     {
         OnPropertyChanged(nameof(CanConfirmInvoice));
+        OnPropertyChanged(nameof(IsLocalSecondaryInvoice));
         OnPropertyChanged(nameof(IsBsSInvoice));
         OnPropertyChanged(nameof(DocumentCostHeader));
         ConfirmInvoiceCommand.NotifyCanExecuteChanged();
@@ -489,7 +547,7 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
     {
         var supplier = SelectedSupplier
             ?? throw new InvalidOperationException("Seleccione un proveedor antes de preparar la factura.");
-        var appliedRate = IsBsSCurrency
+        var appliedRate = IsLocalSecondaryCurrency
             ? (TryParseAppliedRate(AppliedRateText, out var parsedRate) ? parsedRate : 0m)
             : 1m;
         var request = new StageSupplierInvoiceRequestDto(
@@ -563,13 +621,15 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         StatusMessage = "Procesando la factura aprobada...";
         try
         {
-            // 8.172/8.176: el confirm transporta la tasa ajustada (Bs.S) y la moneda viva de la
+            // 8.172/8.176: el confirm transporta la tasa ajustada (secundaria) y la moneda viva de la
             // cabecera para que el backend procese exactamente la interpretación que muestra la tabla.
-            decimal? confirmAppliedRate = IsBsSCurrency
-                && TryParseAppliedRate(AppliedRateText, out var parsedConfirmRate)
-                && parsedConfirmRate > 0m
-                ? Math.Round(parsedConfirmRate, 4, MidpointRounding.AwayFromZero)
-                : null;
+            // 8.211-T4c2b4d3b: the primary/Single channel is identity, so it always sends rate 1.
+            decimal? confirmAppliedRate = IsLocalSecondaryCurrency
+                ? (TryParseAppliedRate(AppliedRateText, out var parsedConfirmRate)
+                    && parsedConfirmRate > 0m
+                    ? Math.Round(parsedConfirmRate, 4, MidpointRounding.AwayFromZero)
+                    : null)
+                : 1m;
             var request = new ConfirmSupplierInvoiceRequestDto(
                 approvedLines.Select(line => line.ToConfirmLine()).ToArray(),
                 confirmAppliedRate,
@@ -602,12 +662,12 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         // recargar la factura (aislamiento del flujo "Actualizar"); la interpretación viva se
         // propaga a las filas y al snapshot al final de la carga.
 
-        if (IsBsSCurrency && string.IsNullOrWhiteSpace(AppliedRateText) && invoice.AppliedRate > 0m)
+        if (IsLocalSecondaryCurrency && string.IsNullOrWhiteSpace(AppliedRateText) && invoice.AppliedRate > 0m)
         {
             SetAppliedRateTextProgrammatically(FormatAppliedRateText(invoice.AppliedRate));
         }
 
-        var effectiveRate = (IsBsSCurrency || IsBsSInvoice)
+        var effectiveRate = (IsLocalSecondaryCurrency || IsLocalSecondaryInvoice)
             && TryParseAppliedRate(AppliedRateText, out var parsedRate)
             && parsedRate > 0m
             ? Math.Round(parsedRate, 4, MidpointRounding.AwayFromZero)
@@ -637,8 +697,8 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
         RefreshCommandStates();
 
         // 8.178: inyecta el estado VIVO de la cabecera (moneda/tasa corregida por el revisor) en
-        // las filas recién cargadas y en el snapshot local; con Bs.S sin tasa válida las filas
-        // quedan en (Bs.S, 0) y el confirm permanece bloqueado.
+        // las filas recién cargadas y en el snapshot local; con la secundaria local sin tasa válida
+        // las filas quedan en (secundaria, 0) y el confirm permanece bloqueado.
         PropagateCurrencyAndRateToLines();
     }
 
@@ -819,6 +879,62 @@ public partial class SupplierInvoiceViewModel : ObservableObject, IDisposable
 
     private void ShowAccessDenied() =>
         _dialogService.ShowWarning("Acceso denegado", "El rol actual no puede modificar el catálogo de productos.");
+
+    private IReadOnlyList<string> BuildCurrencyOptions()
+    {
+        if (!_hasSecondaryCurrency)
+        {
+            return new[] { _primaryCurrencyOption };
+        }
+
+        var options = new List<string>(2) { CurrencyCodes.Usd };
+        if (!string.Equals(_localCurrencyOption, CurrencyCodes.Usd, StringComparison.Ordinal))
+        {
+            options.Add(_localCurrencyOption);
+        }
+
+        return options;
+    }
+
+    /// <summary>
+    /// 8.211-T4c2b4d3b (S9): VES keeps the legacy <c>Bs.S</c> presentation in the invoice surface;
+    /// any other profile code is shown as its ISO code.
+    /// </summary>
+    private static string ToCurrencyOption(string? code)
+    {
+        if (IsVesCurrency(code))
+        {
+            return CurrencyCodes.BsS;
+        }
+
+        return string.IsNullOrWhiteSpace(code)
+            ? CurrencyCodes.Usd
+            : code.Trim().ToUpperInvariant();
+    }
+
+    internal static string DisplayCurrencyCode(string? code) => ToCurrencyOption(code);
+
+    internal static bool IsVesCurrency(string? code) =>
+        !string.IsNullOrWhiteSpace(code)
+        && (code.Trim().Equals("VES", StringComparison.OrdinalIgnoreCase)
+            || code.Trim().Equals("BsS", StringComparison.OrdinalIgnoreCase)
+            || code.Trim().Equals(CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase));
+
+    private static bool CurrencyEquals(string? left, string? right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            NormalizeCurrencyAlias(left),
+            NormalizeCurrencyAlias(right),
+            StringComparison.Ordinal);
+    }
+
+    private static string NormalizeCurrencyAlias(string code) =>
+        IsVesCurrency(code) ? CurrencyCodes.BsS : code.Trim().ToUpperInvariant();
 
     private static string? NormalizeInput(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();

@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance vm:StockKardexViewModel}"
              Background="#F1F5F9"
@@ -306,19 +307,19 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="Entradas (USD)" Foreground="#64748B" FontSize="12" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Entradas ({0})'}" Foreground="#64748B" FontSize="12" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding EntriesValueDisplay}" AutomationProperties.AutomationId="StockKardex_KpiEntries"
                                    Foreground="#047857" FontSize="22" FontWeight="Bold"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="3">
-                        <TextBlock Text="Mermas / Salidas (USD)" Foreground="#64748B" FontSize="12" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Mermas / Salidas ({0})'}" Foreground="#64748B" FontSize="12" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding LossesValueDisplay}" AutomationProperties.AutomationId="StockKardex_KpiLosses"
                                    Foreground="#B91C1C" FontSize="22" FontWeight="Bold"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="4">
-                        <TextBlock Text="Balance Neto (USD)" Foreground="#64748B" FontSize="12" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Balance Neto ({0})'}" Foreground="#64748B" FontSize="12" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding NetValueDisplay}" AutomationProperties.AutomationId="StockKardex_KpiNet"
                                    Foreground="#5E35B1" FontSize="22" FontWeight="Bold"/>
                     </StackPanel>
@@ -377,10 +378,10 @@
                     <DataGridTextColumn Header="STOCK RESULT." Binding="{Binding NewStockText}" Width="100"
                                         HeaderStyle="{StaticResource KardexRightHeaderStyle}"
                                         ElementStyle="{StaticResource KardexRightElementStyle}"/>
-                    <DataGridTextColumn Header="COSTO USD" Binding="{Binding UnitCostDisplay}" Width="90"
+                    <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='COSTO {0}'}" Binding="{Binding UnitCostDisplay}" Width="90"
                                         HeaderStyle="{StaticResource KardexRightHeaderStyle}"
                                         ElementStyle="{StaticResource KardexRightElementStyle}"/>
-                    <DataGridTextColumn Header="VALOR USD" Binding="{Binding TotalValueDisplay}" Width="90"
+                    <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='VALOR {0}'}" Binding="{Binding TotalValueDisplay}" Width="90"
                                         HeaderStyle="{StaticResource KardexRightHeaderStyle}"
                                         ElementStyle="{StaticResource KardexRightElementStyle}" FontWeight="Bold"/>
 
@@ -468,3 +469,5 @@
         </DockPanel>
     </Grid>
 </UserControl>
+
+

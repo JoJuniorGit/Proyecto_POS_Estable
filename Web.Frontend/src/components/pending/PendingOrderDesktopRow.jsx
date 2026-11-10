@@ -1,8 +1,17 @@
 import { ChevronDown, ChevronRight, CheckCircle, Edit2, LockOpen, ShieldCheck } from 'lucide-react';
-import { formatNumberEs, formatBsS, formatUSD, formatQuantity } from '../../utils/formatters';
+import { formatNumberEs, formatQuantity, effectiveTotalUsd } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { displayCurrencyCode } from '../../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../register/registerFormLogic';
 import PendingOrderLockBadge from './PendingOrderLockBadge';
 
 export default function PendingOrderDesktopRow({ sale, isExpanded, lockInfo, isElevated, onToggle, onCheckout, onEdit, onForceRelease }) {
+  const { profile, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const local = resolveLocalCurrencyProfile(profile);
+  const { isDual } = local;
+  const primaryLabel = displayCurrencyCode(profile.primaryCurrencyCode) || 'USD';
+  const localLabel = local.label || 'Bs.S';
+
   return (
     <>
       <tr
@@ -34,11 +43,13 @@ export default function PendingOrderDesktopRow({ sale, isExpanded, lockInfo, isE
 
         <td className="text-right text-nowrap">
           <div className="amount-bss font-bold total-bss-highlight ppo-total-bss">
-            {formatBsS(sale.totalBsS)}
+            {formatSecondary(sale.totalBsS)}
           </div>
-          <div className="amount-usd ppo-usd-sub">
-            {formatUSD(sale.totalUSD)}
-          </div>
+          {isDual && (
+            <div className="amount-usd ppo-usd-sub">
+              {formatPrimary(effectiveTotalUsd(sale))}
+            </div>
+          )}
         </td>
 
         <td className="text-right" onClick={(e) => e.stopPropagation()}>
@@ -98,8 +109,8 @@ export default function PendingOrderDesktopRow({ sale, isExpanded, lockInfo, isE
                       <tr key={item.id} className="border-bottom-dashed">
                         <td className="ppo-cell-pad">{item.displayProductName || (item.unitOfMeasure && item.unitOfMeasure !== 'Und' ? `${item.productName} (${item.unitOfMeasure})` : item.productName)}</td>
                         <td className="text-right text-nowrap">{formatQuantity(item.quantity)}</td>
-                        <td className="amount-bss text-right text-nowrap">{formatBsS(item.unitPriceBsS)}</td>
-                        <td className="amount-bss text-right text-nowrap font-semibold">{formatBsS(item.subtotalBsS)}</td>
+                        <td className="amount-bss text-right text-nowrap">{formatSecondary(item.unitPriceBsS)}</td>
+                        <td className="amount-bss text-right text-nowrap font-semibold">{formatSecondary(item.subtotalBsS)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -119,9 +130,13 @@ export default function PendingOrderDesktopRow({ sale, isExpanded, lockInfo, isE
                       <tr className="border-bottom ppo-detail-throw">
                         <th>Fecha</th>
                         <th>Método</th>
-                        <th className="text-right">Monto Bs.S</th>
-                        <th className="text-right">Tasa Usada</th>
-                        <th className="text-right">Abono USD</th>
+                        <th className="text-right">Monto {localLabel}</th>
+                        {isDual && (
+                          <>
+                            <th className="text-right">Tasa Usada</th>
+                            <th className="text-right">Abono {primaryLabel}</th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -129,9 +144,13 @@ export default function PendingOrderDesktopRow({ sale, isExpanded, lockInfo, isE
                         <tr key={p.id} className="border-bottom-dashed">
                           <td className="ppo-cell-pad">{new Date(p.createdAt || sale.date).toLocaleDateString()}</td>
                           <td>{p.paymentMethodName}</td>
-                          <td className="amount-bss text-right text-nowrap">{formatBsS(p.amountBsS)}</td>
-                          <td className="text-right text-nowrap">{formatNumberEs(p.exchangeRate)} Bs/$</td>
-                          <td className="amount-usd text-right text-nowrap font-bold">+{formatUSD(p.amount)}</td>
+                          <td className="amount-bss text-right text-nowrap">{formatSecondary(p.amountBsS)}</td>
+                          {isDual && (
+                            <>
+                              <td className="text-right text-nowrap">{formatNumberEs(p.exchangeRate)} {localLabel}/{primaryLabel}</td>
+                              <td className="amount-usd text-right text-nowrap font-bold">+{formatPrimary(p.amount)}</td>
+                            </>
+                          )}
                         </tr>
                       ))}
                     </tbody>

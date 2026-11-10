@@ -4,6 +4,7 @@ using Core.Interfaces;
 using Core.Logging;
 using Core.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Sales.Module.Data;
 using System;
 using System.Text.RegularExpressions;
@@ -18,11 +19,16 @@ public class AuthService : IAuthService
 
     private readonly SalesDbContext _db;
     private readonly IPasswordPolicyService _passwordPolicyService;
+    private readonly ILogger<AuthService>? _logger;
 
-    public AuthService(SalesDbContext db, IPasswordPolicyService? passwordPolicyService = null)
+    public AuthService(
+        SalesDbContext db,
+        IPasswordPolicyService? passwordPolicyService = null,
+        ILogger<AuthService>? logger = null)
     {
         _db = db;
         _passwordPolicyService = passwordPolicyService ?? new Core.Services.PasswordPolicyService();
+        _logger = logger;
     }
 
     // AUD-12: this lookup MUST keep change tracking. The returned entity is mutated by the login
@@ -49,13 +55,16 @@ public class AuthService : IAuthService
         if (user == null)
         {
             PasswordHasher.VerifyPassword(password, _dummyPasswordHash);
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{obfCedula}' no encontrado.");
+            _logger?.LogWarning("Intento fallido de inicio de sesión: usuario {Username} no encontrado.", obfCedula);
             return new AuthenticationResult(AuthenticationOutcome.InvalidCredentials);
         }
 
         if (LoginLockoutPolicy.IsLockedOut(user, DateTime.UtcNow))
         {
-            AppLogger.LogWarn($"[AUTH] Intento de acceso a cuenta bloqueada: Usuario '{obfCedula}'. Bloqueada hasta {user.LockoutEndUtc!.Value:O}.");
+            _logger?.LogWarning(
+                "Intento de acceso a cuenta bloqueada: usuario {Username}, bloqueada hasta {LockoutEndUtc}.",
+                obfCedula,
+                user.LockoutEndUtc);
             return new AuthenticationResult(AuthenticationOutcome.InvalidCredentials);
         }
 
@@ -63,13 +72,13 @@ public class AuthService : IAuthService
 
         if (!user.IsActive)
         {
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{obfCedula}': Usuario inactivo.");
+            _logger?.LogWarning("Intento fallido de inicio de sesión: usuario {Username} inactivo.", obfCedula);
             return new AuthenticationResult(AuthenticationOutcome.InvalidCredentials);
         }
 
         if (string.IsNullOrWhiteSpace(user.PasswordHash))
         {
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión: Usuario '{obfCedula}' no tiene contraseña configurada.");
+            _logger?.LogWarning("Intento fallido de inicio de sesión: usuario {Username} sin contraseña configurada.", obfCedula);
             return new AuthenticationResult(AuthenticationOutcome.InvalidCredentials);
         }
 
@@ -79,10 +88,18 @@ public class AuthService : IAuthService
         {
             if (LoginLockoutPolicy.RegisterFailedAttempt(user, DateTime.UtcNow))
             {
-                AppLogger.LogWarn($"[AUTH] Usuario '{obfCedula}' alcanzó {LoginLockoutPolicy.MaxFailedAttempts} intentos fallidos. Cuenta bloqueada por {LoginLockoutPolicy.LockoutMinutes} minutos.");
+                _logger?.LogWarning(
+                    "Usuario {Username} alcanzó {MaxAttempts} intentos fallidos; cuenta bloqueada por {LockoutMinutes} minutos.",
+                    obfCedula,
+                    LoginLockoutPolicy.MaxFailedAttempts,
+                    LoginLockoutPolicy.LockoutMinutes);
             }
             await _db.SaveChangesAsync(cancellationToken);
-            AppLogger.LogStart($"[AUTH] Intento fallido de inicio de sesión para Usuario '{obfCedula}': Contraseña incorrecta (Intento {user.AccessFailedCount}/{LoginLockoutPolicy.MaxFailedAttempts}).");
+            _logger?.LogWarning(
+                "Contraseña incorrecta para usuario {Username} (intento {Attempt}/{MaxAttempts}).",
+                obfCedula,
+                user.AccessFailedCount,
+                LoginLockoutPolicy.MaxFailedAttempts);
             return new AuthenticationResult(AuthenticationOutcome.InvalidCredentials);
         }
 
@@ -92,6 +109,13 @@ public class AuthService : IAuthService
         {
             user.SecurityStamp = Guid.NewGuid().ToString("N");
         }
+
+        // 8.204: rehash transparente de credenciales emitidas con la política anterior.
+        if (PasswordHasher.NeedsRehash(user.PasswordHash))
+        {
+            user.PasswordHash = PasswordHasher.HashPassword(password);
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
 
         if (user.MustChangePassword)
@@ -113,7 +137,9 @@ public class AuthService : IAuthService
 
         if (LoginLockoutPolicy.IsLockedOut(user, DateTime.UtcNow))
         {
-            AppLogger.LogWarn($"[AUTH] Intento de cambio de contraseña denegado: Usuario '{ObfuscateCedula(user.Username)}' bloqueado temporalmente.");
+            _logger?.LogWarning(
+                "Cambio de contraseña denegado: usuario {Username} bloqueado temporalmente.",
+                ObfuscateCedula(user.Username));
             return new PasswordChangeResult(PasswordChangeOutcome.InvalidCredentials);
         }
 
@@ -128,10 +154,20 @@ public class AuthService : IAuthService
         {
             if (LoginLockoutPolicy.RegisterFailedAttempt(user, DateTime.UtcNow))
             {
-                AppLogger.LogSecurityAudit($"[ACCOUNT_LOCKED] Usuario={ObfuscateCedula(user.Username)} bloqueado por {LoginLockoutPolicy.LockoutMinutes} min tras fallos en change-password.");
+                AppLogger.LogStructuredSecurity(
+                    "ACCOUNT_LOCKED",
+                    user.Id,
+                    "auth/change-password",
+                    (string?)null,
+                    "Lockout",
+                    new { Username = ObfuscateCedula(user.Username), LockoutMinutes = LoginLockoutPolicy.LockoutMinutes });
             }
             await _db.SaveChangesAsync(cancellationToken);
-            AppLogger.LogStart($"[AUTH] Intento fallido en change-password para Usuario '{ObfuscateCedula(user.Username)}': Contraseña incorrecta (Intento {user.AccessFailedCount}/{LoginLockoutPolicy.MaxFailedAttempts}).");
+            _logger?.LogWarning(
+                "Contraseña actual incorrecta en change-password para usuario {Username} (intento {Attempt}/{MaxAttempts}).",
+                ObfuscateCedula(user.Username),
+                user.AccessFailedCount,
+                LoginLockoutPolicy.MaxFailedAttempts);
             return new PasswordChangeResult(PasswordChangeOutcome.InvalidCredentials);
         }
 
@@ -158,7 +194,13 @@ public class AuthService : IAuthService
             }
         });
 
-        AppLogger.LogSecurityAudit($"[PASSWORD_CHANGED] UserId={user.Id}, Username={ObfuscateCedula(user.Username)}, Timestamp={DateTime.UtcNow:O}");
+        AppLogger.LogStructuredSecurity(
+            "PASSWORD_CHANGED",
+            user.Id,
+            "auth/change-password",
+            (string?)null,
+            "PasswordChanged",
+            new { Username = ObfuscateCedula(user.Username) });
         return new PasswordChangeResult(PasswordChangeOutcome.Success, user.Id);
     }
 

@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:converters="clr-namespace:Desktop.Client.Converters"
+        xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -23,10 +24,66 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
         <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
-        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+
+        <!-- Headers de la grilla comparativa: alineados a la IZQUIERDA (misma alineación que las
+             celdas) con wrap real (sin truncar con "..."). -->
+        <Style x:Key="BulkPriceLeftHeader" TargetType="DataGridColumnHeader"
+               BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Padding" Value="6,5"/>
+            <Setter Property="ContentTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Left"
+                                   LineHeight="15"
+                                   LineStackingStrategy="BlockLineHeight"/>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Estado visual por fila de operación: input atenuado y borde suave mientras la operación
+             está apagada; el DataTrigger usa el mismo path que el CheckBox de la fila (IsEnabled). -->
+        <Style x:Key="BulkPriceRowCombo" TargetType="ComboBox"
+               BasedOn="{StaticResource MaterialDesignOutlinedComboBox}">
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                    <Setter Property="Opacity" Value="0.55"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="BulkPriceRowInput" TargetType="TextBox"
+               BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                    <Setter Property="Opacity" Value="0.55"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Spec V0.15: borde en reposo unificado de la tarjeta 2 (mirror de la sección 1); el morado
+             queda reservado para el focus/dropdown del template Material. -->
+        <Style x:Key="BulkPriceSettingsCombo" TargetType="ComboBox"
+               BasedOn="{StaticResource MaterialDesignOutlinedComboBox}">
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+        </Style>
+
+        <Style x:Key="BulkPriceSettingsInput" TargetType="TextBox"
+               BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+        </Style>
     </Window.Resources>
 
-    <Grid Margin="20">
+    <Grid Margin="16,12,16,12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -35,200 +92,268 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- HEADER -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,14">
-            <TextBlock Text="Edición masiva de precios"
-                       Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
-                       FontWeight="Bold"/>
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <materialDesign:PackIcon Kind="CheckAll" Width="16" Height="16" Foreground="#5E35B1" VerticalAlignment="Center" Margin="0,0,6,0"/>
+        <!-- HEADER: subtítulo (selección) en la misma línea del título para ganar altura de grilla. -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,8">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Edición masiva de precios"
+                           Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
+                           FontWeight="Bold"
+                           VerticalAlignment="Center"/>
+                <materialDesign:PackIcon Kind="CheckAll" Width="16" Height="16" Foreground="#5E35B1" VerticalAlignment="Center" Margin="14,0,6,0"/>
                 <TextBlock Text="{Binding SelectionSummary}"
                            FontWeight="SemiBold"
                            Foreground="#1E293B"
                            VerticalAlignment="Center"
                            AutomationProperties.AutomationId="BulkPriceEdit_SelectionSummary"/>
             </StackPanel>
-            <TextBlock Text="Configure una o más operaciones, genere la vista previa y aplique los cambios (la actualización es atómica: todo o nada)."
+            <TextBlock Text="Configure las operaciones y/o el redondeo, genere la vista previa y aplique los cambios (la actualización es atómica: todo o nada)."
                        Style="{DynamicResource MaterialDesignCaptionTextBlock}"
                        Foreground="{DynamicResource MaterialDesignBodyLight}"
                        TextWrapping="Wrap"
-                       Margin="0,6,0,0"/>
+                       Margin="0,4,0,0"/>
         </StackPanel>
 
-        <!-- OPERACIONES -->
-        <Border Grid.Row="1"
-                BorderBrush="#E2E8F0"
-                BorderThickness="1"
-                CornerRadius="8"
-                Padding="12"
-                Background="#F8FAFC"
-                Margin="0,0,0,12">
-            <StackPanel>
-                <TextBlock Text="1. Operaciones por campo"
-                           FontWeight="SemiBold"
-                           Foreground="#334155"
-                           Margin="0,0,0,10"/>
+        <!-- CONFIGURACIÓN EN DOS COLUMNAS: 1. Operaciones (1.3*) | 2. Redondeo y margen (*) -->
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.3*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
 
-                <ItemsControl ItemsSource="{Binding Operations}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="28"/>
-                                    <ColumnDefinition Width="140"/>
-                                    <ColumnDefinition Width="180"/>
-                                    <ColumnDefinition Width="150"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <CheckBox Grid.Column="0"
-                                          IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                          VerticalAlignment="Center"
-                                          ToolTip="Activar esta operación"/>
-
-                                <TextBlock Grid.Column="1"
-                                           Text="{Binding Label}"
-                                           FontWeight="SemiBold"
-                                           FontSize="12"
-                                           Foreground="#1E293B"
-                                           VerticalAlignment="Center"/>
-
-                                <ComboBox Grid.Column="2"
-                                          ItemsSource="{Binding ModeOptions}"
-                                          SelectedValue="{Binding SelectedMode, Mode=TwoWay}"
-                                          SelectedValuePath="Mode"
-                                          DisplayMemberPath="Label"
-                                          Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                                          Height="32"
-                                          Padding="8,2"
-                                          Margin="0,0,10,0"
-                                          AutomationProperties.AutomationId="BulkPriceEdit_ModeCombo"/>
-
-                                <TextBox Grid.Column="3"
-                                         Text="{Binding ValueText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                                         materialDesign:HintAssist.Hint="Valor"
-                                         materialDesign:HintAssist.IsFloating="True"
-                                         Height="32"
-                                         Padding="8,2"
-                                         Margin="0,0,10,0"
-                                         AutomationProperties.AutomationId="BulkPriceEdit_ValueInput"/>
-
-                                <TextBlock Grid.Column="4"
-                                           Text="{Binding ValueHint}"
-                                           FontSize="11"
-                                           Foreground="#64748B"
-                                           VerticalAlignment="Center"
-                                           TextWrapping="Wrap"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-
-                <!-- 8.182-T2 (S6): redondeo comercial/psicológico por canal + protección del piso de
-                     margen. El piso solo aplica con el toggle activo, piso > 0 y costo > 0. -->
-                <Separator Margin="0,4,0,12" Background="#E2E8F0"/>
-
-                <TextBlock Text="2. Redondeo y protección de margen"
-                           FontWeight="SemiBold"
-                           Foreground="#334155"
-                           Margin="0,0,0,10"/>
-
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="290"/>
-                        <ColumnDefinition Width="130"/>
-                        <ColumnDefinition Width="150"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <CheckBox Grid.Row="0" Grid.ColumnSpan="5"
-                              Content="Proteger piso de margen"
-                              IsChecked="{Binding EnforceMinimumMarginFloor, Mode=TwoWay}"
-                              VerticalAlignment="Center"
-                              Margin="0,0,0,8"
-                              AutomationProperties.AutomationId="BulkPriceEdit_MarginFloorToggle"
-                              ToolTip="Si el redondeo deja el precio por debajo del piso configurado, se usa el siguiente escalón superior (requiere costo y piso mayores a cero)."/>
-
-                    <TextBlock Grid.Row="1" Grid.Column="0"
-                               Text="Redondeo Detal"
+            <!-- COLUMNA 0: operaciones por campo -->
+            <Border Grid.Column="0"
+                    BorderBrush="#E2E8F0"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="10"
+                    Background="#F8FAFC">
+                <StackPanel>
+                    <TextBlock Text="1. Operaciones por campo"
                                FontWeight="SemiBold"
-                               FontSize="12"
-                               Foreground="#1E293B"
-                               VerticalAlignment="Center"/>
-                    <ComboBox Grid.Row="1" Grid.Column="1"
-                              ItemsSource="{Binding RoundingRuleOptions}"
-                              SelectedValue="{Binding RetailRoundingRule, Mode=TwoWay}"
-                              SelectedValuePath="Rule"
-                              DisplayMemberPath="Label"
-                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                              Height="32"
-                              Padding="8,2"
-                              Margin="0,0,10,8"
-                              AutomationProperties.AutomationId="BulkPriceEdit_RetailRoundingCombo"/>
-                    <TextBlock Grid.Row="1" Grid.Column="2"
-                               Text="Piso Detal (%)"
-                               FontWeight="SemiBold"
-                               FontSize="12"
-                               Foreground="#1E293B"
-                               VerticalAlignment="Center"/>
-                    <TextBox Grid.Row="1" Grid.Column="3"
-                             Text="{Binding RetailMarginFloorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             IsEnabled="{Binding EnforceMinimumMarginFloor}"
-                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                             materialDesign:HintAssist.Hint="Ej. 25"
-                             materialDesign:HintAssist.IsFloating="True"
-                             Height="32"
-                             Padding="8,2"
-                             Margin="0,0,10,8"
-                             AutomationProperties.AutomationId="BulkPriceEdit_RetailMarginFloorInput"/>
+                               Foreground="#334155"
+                               Margin="0,0,0,8"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0"
-                               Text="Redondeo Mayor"
+                    <ItemsControl ItemsSource="{Binding Operations}"
+                                  Grid.IsSharedSizeScope="True">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28"/>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="BulkOpsLabel"/>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="BulkOpsMode"/>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="BulkOpsValue"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <CheckBox Grid.Column="0"
+                                              IsChecked="{Binding IsEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              VerticalAlignment="Center"
+                                              ToolTip="Activar esta operación"/>
+
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding Label}"
+                                               FontWeight="SemiBold"
+                                               FontSize="12"
+                                               Foreground="#1E293B"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,10,0"/>
+
+                                    <ComboBox Grid.Column="2"
+                                              ItemsSource="{Binding ModeOptions}"
+                                              SelectedValue="{Binding SelectedMode, Mode=TwoWay}"
+                                              SelectedValuePath="Mode"
+                                              DisplayMemberPath="Label"
+                                              Style="{StaticResource BulkPriceRowCombo}"
+                                              Height="32"
+                                              MinWidth="132"
+                                              Padding="8,2"
+                                              Margin="0,0,10,0"
+                                              AutomationProperties.AutomationId="BulkPriceEdit_ModeCombo"/>
+
+                                    <TextBox Grid.Column="3"
+                                             Text="{Binding ValueText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource BulkPriceRowInput}"
+                                             materialDesign:HintAssist.Hint="Valor"
+                                             materialDesign:HintAssist.IsFloating="True"
+                                             Height="32"
+                                             MinWidth="120"
+                                             Padding="8,2"
+                                             Margin="0,0,10,0"
+                                             AutomationProperties.AutomationId="BulkPriceEdit_ValueInput"/>
+
+                                    <TextBlock Grid.Column="4"
+                                               Text="{Binding ValueHint}"
+                                               FontSize="11"
+                                               Foreground="#64748B"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="Wrap"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- COLUMNA 1: redondeo por canal y protección del piso de margen -->
+            <Border Grid.Column="1"
+                    Margin="12,0,0,0"
+                    BorderBrush="#E2E8F0"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="10"
+                    Background="#F8FAFC">
+                <StackPanel>
+                    <TextBlock Text="2. Redondeo y protección de margen"
                                FontWeight="SemiBold"
-                               FontSize="12"
-                               Foreground="#1E293B"
-                               VerticalAlignment="Center"/>
-                    <ComboBox Grid.Row="2" Grid.Column="1"
-                              ItemsSource="{Binding RoundingRuleOptions}"
-                              SelectedValue="{Binding WholesaleRoundingRule, Mode=TwoWay}"
-                              SelectedValuePath="Rule"
-                              DisplayMemberPath="Label"
-                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                              Height="32"
-                              Padding="8,2"
-                              Margin="0,0,10,0"
-                              AutomationProperties.AutomationId="BulkPriceEdit_WholesaleRoundingCombo"/>
-                    <TextBlock Grid.Row="2" Grid.Column="2"
-                               Text="Piso Mayor (%)"
-                               FontWeight="SemiBold"
-                               FontSize="12"
-                               Foreground="#1E293B"
-                               VerticalAlignment="Center"/>
-                    <TextBox Grid.Row="2" Grid.Column="3"
-                             Text="{Binding WholesaleMarginFloorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             IsEnabled="{Binding EnforceMinimumMarginFloor}"
-                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                             materialDesign:HintAssist.Hint="Ej. 15"
-                             materialDesign:HintAssist.IsFloating="True"
-                             Height="32"
-                             Padding="8,2"
-                             AutomationProperties.AutomationId="BulkPriceEdit_WholesaleMarginFloorInput"/>
-                </Grid>
-            </StackPanel>
-        </Border>
+                               Foreground="#334155"
+                               Margin="0,0,0,8"/>
+
+                    <!-- 8.182-T2 (S6) + Spec V0.15 (compactación): capas separadas — arriba el redondeo
+                         USD por canal con su piso EN LA MISMA FILA (visible solo con psicológico +
+                         protección); abajo la proyección Bs.S de efectivo. Columnas compartidas para
+                         alinear etiquetas entre filas. -->
+                    <Grid Grid.IsSharedSizeScope="True">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="BulkSettingsLabel"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="BulkFloorLabel"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <CheckBox Grid.Row="0" Grid.ColumnSpan="4"
+                                  Content="Proteger piso de margen"
+                                  IsChecked="{Binding EnforceMinimumMarginFloor, Mode=TwoWay}"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,0,8"
+                                  AutomationProperties.AutomationId="BulkPriceEdit_MarginFloorToggle"
+                                  ToolTip="Si el redondeo deja el precio por debajo del piso configurado, se usa el siguiente escalón superior (requiere costo y piso mayores a cero)."/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0"
+                                   Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Redondeo Detal ({0})'}"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Foreground="#1E293B"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,10,6"/>
+                        <ComboBox Grid.Row="1" Grid.Column="1"
+                                  ItemsSource="{Binding UsdRoundingRuleOptions}"
+                                  SelectedValue="{Binding RetailRoundingRule, Mode=TwoWay}"
+                                  SelectedValuePath="Rule"
+                                  DisplayMemberPath="Label"
+                                  Style="{StaticResource BulkPriceSettingsCombo}"
+                                  Height="32"
+                                  Padding="8,2"
+                                  Margin="0,0,8,6"
+                                  AutomationProperties.AutomationId="BulkPriceEdit_RetailRoundingCombo"/>
+                        <TextBlock Grid.Row="1" Grid.Column="2"
+                                   Text="Piso Detal (%)"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Foreground="#1E293B"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,6"
+                                   Visibility="{Binding ShowRetailFloorInput, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        <TextBox Grid.Row="1" Grid.Column="3"
+                                 Text="{Binding RetailMarginFloorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{Binding EnforceMinimumMarginFloor}"
+                                 Style="{StaticResource BulkPriceSettingsInput}"
+                                 materialDesign:HintAssist.Hint="Ej. 25"
+                                 materialDesign:HintAssist.IsFloating="True"
+                                 Height="32"
+                                 MinWidth="76"
+                                 Padding="8,2"
+                                 Margin="0,0,0,6"
+                                 Visibility="{Binding ShowRetailFloorInput, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                 AutomationProperties.AutomationId="BulkPriceEdit_RetailMarginFloorInput"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0"
+                                   Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Redondeo Mayor ({0})'}"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Foreground="#1E293B"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,10,6"/>
+                        <ComboBox Grid.Row="2" Grid.Column="1"
+                                  ItemsSource="{Binding UsdRoundingRuleOptions}"
+                                  SelectedValue="{Binding WholesaleRoundingRule, Mode=TwoWay}"
+                                  SelectedValuePath="Rule"
+                                  DisplayMemberPath="Label"
+                                  Style="{StaticResource BulkPriceSettingsCombo}"
+                                  Height="32"
+                                  Padding="8,2"
+                                  Margin="0,0,8,6"
+                                  AutomationProperties.AutomationId="BulkPriceEdit_WholesaleRoundingCombo"/>
+                        <TextBlock Grid.Row="2" Grid.Column="2"
+                                   Text="Piso Mayor (%)"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Foreground="#1E293B"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,8,6"
+                                   Visibility="{Binding ShowWholesaleFloorInput, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        <TextBox Grid.Row="2" Grid.Column="3"
+                                 Text="{Binding WholesaleMarginFloorText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 IsEnabled="{Binding EnforceMinimumMarginFloor}"
+                                 Style="{StaticResource BulkPriceSettingsInput}"
+                                 materialDesign:HintAssist.Hint="Ej. 15"
+                                 materialDesign:HintAssist.IsFloating="True"
+                                 Height="32"
+                                 MinWidth="76"
+                                 Padding="8,2"
+                                 Margin="0,0,0,6"
+                                 Visibility="{Binding ShowWholesaleFloorInput, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                 AutomationProperties.AutomationId="BulkPriceEdit_WholesaleMarginFloorInput"/>
+
+                        <!-- Separador sutil entre capas: redondeo USD (arriba) vs proyección Bs.S (abajo). -->
+                        <Rectangle Grid.Row="3" Grid.ColumnSpan="4"
+                                   Height="1"
+                                   Fill="#E2E8F0"
+                                   Margin="0,0,0,8"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0"
+                                   Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Redondeo {0} (Proyección)'}"
+                                   FontWeight="SemiBold"
+                                   FontSize="12"
+                                   Foreground="#1E293B"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,10,6"/>
+                        <ComboBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3"
+                                  ItemsSource="{Binding CashBsRoundingRuleOptions}"
+                                  SelectedValue="{Binding CashBsRoundingRule, Mode=TwoWay}"
+                                  SelectedValuePath="Rule"
+                                  DisplayMemberPath="Label"
+                                  Style="{StaticResource BulkPriceSettingsCombo}"
+                                  Height="32"
+                                  Padding="8,2"
+                                  Margin="0,0,0,6"
+                                  AutomationProperties.AutomationId="BulkPriceEdit_CashBsRoundingCombo"/>
+
+                        <TextBlock Grid.Row="5" Grid.ColumnSpan="4"
+                                   Text="Calcula en caliente la columna de efectivo local (PROY.) por techo — no modifica el precio de la moneda principal."
+                                   FontSize="11"
+                                   Foreground="#64748B"
+                                   TextWrapping="Wrap"
+                                   Margin="0,2,0,0"
+                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
 
         <!-- ACCIONES DE PREVIEW -->
-        <Grid Grid.Row="2" Margin="0,0,0,10">
+        <Grid Grid.Row="2" Margin="0,0,0,6">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Command="{Binding PreviewCommand}"
-                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                        IsEnabled="{Binding CanPreview}"
                         Style="{DynamicResource MaterialDesignRaisedButton}"
                         Background="#5E35B1"
                         BorderBrush="#5E35B1"
@@ -258,11 +383,59 @@
                            FontWeight="SemiBold"
                            Foreground="#475569"
                            VerticalAlignment="Center"
-                           Margin="0,0,14,0"/>
-                <TextBlock Text="{Binding ExchangeRateSummary}"
-                           FontSize="12"
-                           Foreground="#64748B"
-                           VerticalAlignment="Center"/>
+                           Margin="0,0,14,0"
+                           Visibility="{Binding PreviewSummary, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}"/>
+
+                <!-- Aviso de tasa ausente como badge ámbar Material 3 (el texto aplicado queda en gris). -->
+                <Border CornerRadius="8"
+                        Padding="10,4"
+                        BorderThickness="1"
+                        VerticalAlignment="Center">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="BorderBrush" Value="Transparent"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ExchangeRate}" Value="0">
+                                    <Setter Property="Background" Value="#FFFBEB"/>
+                                    <Setter Property="BorderBrush" Value="#FDE68A"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="AlertCircleOutline"
+                                                 Width="15" Height="15"
+                                                 Margin="0,0,6,0"
+                                                 Foreground="#92400E"
+                                                 VerticalAlignment="Center">
+                            <materialDesign:PackIcon.Style>
+                                <Style TargetType="materialDesign:PackIcon">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ExchangeRate}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </materialDesign:PackIcon.Style>
+                        </materialDesign:PackIcon>
+                        <TextBlock Text="{Binding ExchangeRateSummary}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#64748B"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ExchangeRate}" Value="0">
+                                            <Setter Property="Foreground" Value="#92400E"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </Grid>
 
@@ -281,104 +454,81 @@
                           HeadersVisibility="Column"
                           GridLinesVisibility="Horizontal"
                           HorizontalGridLinesBrush="#E2E8F0"
-                          ColumnHeaderHeight="36"
-                          MinRowHeight="34"
+                          ColumnHeaderHeight="52"
+                          ColumnHeaderStyle="{StaticResource BulkPriceLeftHeader}"
+                          MinRowHeight="44"
                           BorderThickness="0"
                           Background="#FFFFFF"
                           VirtualizingStackPanel.IsVirtualizing="True"
                           VirtualizingStackPanel.VirtualizationMode="Recycling"
                           AutomationProperties.AutomationId="BulkPriceEdit_PreviewGrid">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="PRODUCTO" Binding="{Binding Name}" Width="140"/>
-                        <DataGridTextColumn Header="SKU" Binding="{Binding SKU}" Width="85"/>
-                        <DataGridTemplateColumn Header="ESTADO" Width="135">
+                        <!-- Spec V0.15 (tabla consolidada): PRODUCTO con SKU secundario debajo. -->
+                        <DataGridTemplateColumn Header="PRODUCTO" Width="168">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding StatusText}"
-                                               Foreground="{Binding StatusColor}"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               TextWrapping="Wrap"
-                                               VerticalAlignment="Center"
-                                               Margin="0,4"/>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,4">
+                                        <TextBlock Text="{Binding Name}"
+                                                   FontWeight="Bold"
+                                                   FontSize="11"
+                                                   Foreground="#1E293B"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding SKU}"
+                                                   FontSize="10"
+                                                   Foreground="#64748B"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="ANTES → DESPUÉS (USD / BS.S)" Width="*">
+                        <!-- Spec V0.15: badge compacto en píldora (verde Actualiza / gris Omitido con
+                             motivo corto en UNA línea / rojo Error); el detalle completo va en el tooltip. -->
+                        <DataGridTemplateColumn Header="ESTADO" Width="132">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding ChangesSummary}"
+                                    <Border CornerRadius="10"
+                                            Padding="8,2"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            Margin="0,4"
+                                            Background="{Binding StatusBadgeBackground}"
+                                            ToolTip="{Binding StatusToolTip}">
+                                        <TextBlock Text="{Binding StatusBadgeText}"
+                                                   Foreground="{Binding StatusBadgeForeground}"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   MaxWidth="108"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='PRECIO {0} (ANTES → DESPUÉS)'}" Width="*" MinWidth="150">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding UsdTransitionText}"
                                                FontFamily="Consolas, Courier New, monospace"
                                                FontSize="11"
                                                Foreground="#1E293B"
                                                TextWrapping="Wrap"
                                                VerticalAlignment="Center"
-                                               Margin="0,4"/>
+                                               Margin="0,4"
+                                               AutomationProperties.AutomationId="BulkPriceEdit_UsdTransitionCell"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <!-- 8.182-T2 (S6): columnas nuevas del preview — traza del redondeo
-                             ("Matemático", "Redondeado" y "Δ Redondeo" en la unidad de la regla del
-                             canal) y márgenes efectivos (solo cuando el backend los informa). -->
-                        <DataGridTemplateColumn Header="MATEMÁTICO" Width="110">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding MathText}"
-                                               FontFamily="Consolas, Courier New, monospace"
-                                               FontSize="11"
-                                               Foreground="#475569"
-                                               TextWrapping="Wrap"
-                                               VerticalAlignment="Center"
-                                               Margin="0,4"
-                                               AutomationProperties.AutomationId="BulkPriceEdit_MathCell"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="REDONDEADO" Width="110">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding RoundedText}"
-                                               FontFamily="Consolas, Courier New, monospace"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Foreground="#1E293B"
-                                               TextWrapping="Wrap"
-                                               VerticalAlignment="Center"
-                                               Margin="0,4"
-                                               AutomationProperties.AutomationId="BulkPriceEdit_RoundedCell"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="Δ REDONDEO" Width="100">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding RoundingDeltaText}"
-                                               FontFamily="Consolas, Courier New, monospace"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Foreground="#5E35B1"
-                                               TextWrapping="Wrap"
-                                               VerticalAlignment="Center"
-                                               Margin="0,4"
-                                               AutomationProperties.AutomationId="BulkPriceEdit_RoundingDeltaCell"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <!-- 8.183-T2 (R4): proyección en caliente del Bs.S de efectivo (regla VES del
-                             canal + tasa del día). Es informativa y NUNCA se persiste: el PriceBsS
-                             guardado sigue siendo el canónico 8.104. -->
-                        <DataGridTemplateColumn Width="110">
-                            <DataGridTemplateColumn.HeaderTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="BS.S EFECTIVO (PROY.)"
-                                               VerticalAlignment="Center"
-                                               ToolTip="Proyección con la tasa del día y la regla de efectivo del canal. NO se persiste: el Bs.S guardado es el canónico 8.104."/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.HeaderTemplate>
+                        <!-- 8.183-T2 (R4) + Spec V0.15: proyección en caliente del Bs.S de efectivo con
+                             el delta de redondeo entre paréntesis y el matemático exacto en ToolTip.
+                             Es informativa y NUNCA se persiste: el PriceBsS guardado sigue siendo el
+                             canónico 8.104. -->
+                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='{}{0} EFECTIVO (PROY.)'}"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                                Width="*" MinWidth="170">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding CashFriendlyText}"
+                                               ToolTip="{Binding CashFriendlyToolTip}"
                                                FontFamily="Consolas, Courier New, monospace"
                                                FontSize="11"
                                                FontWeight="SemiBold"
@@ -390,36 +540,25 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="MARGEN DETAL %" Width="95">
+
+                        <!-- Spec V0.15: márgenes efectivos por canal consolidados en una celda. -->
+                        <DataGridTemplateColumn Header="MARGEN EFECTIVO %" Width="130">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding EffectiveRetailMarginText}"
+                                    <TextBlock Text="{Binding EffectiveMarginsText}"
                                                FontSize="11"
                                                Foreground="#1E293B"
-                                               HorizontalAlignment="Right"
+                                               TextWrapping="Wrap"
                                                VerticalAlignment="Center"
                                                Margin="0,4"
-                                               AutomationProperties.AutomationId="BulkPriceEdit_EffectiveRetailMarginCell"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="MARGEN MAYOR %" Width="95">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding EffectiveWholesaleMarginText}"
-                                               FontSize="11"
-                                               Foreground="#1E293B"
-                                               HorizontalAlignment="Right"
-                                               VerticalAlignment="Center"
-                                               Margin="0,4"
-                                               AutomationProperties.AutomationId="BulkPriceEdit_EffectiveWholesaleMarginCell"/>
+                                               AutomationProperties.AutomationId="BulkPriceEdit_EffectiveMarginsCell"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <TextBlock Text="Genere la vista previa para ver la comparación Antes vs Después, la traza de redondeo, los márgenes efectivos, los omitidos con su motivo y los totales."
+                <TextBlock Text="Genere la vista previa para ver la comparación Antes vs Después, la proyección en moneda local, los márgenes efectivos y los omitidos con su motivo (la traza de redondeo va en ToolTip)."
                            Foreground="#94A3B8"
                            FontSize="12"
                            HorizontalAlignment="Center"
@@ -427,12 +566,12 @@
                            TextWrapping="Wrap"
                            MaxWidth="420"
                            TextAlignment="Center"
-                           Visibility="{Binding HasPreview, Converter={StaticResource InverseBooleanConverter}, FallbackValue=Visible}"/>
+                           Visibility="{Binding HasPreviewItems, Converter={StaticResource InverseBooleanToVisibilityConverter}, FallbackValue=Visible}"/>
             </Grid>
         </Border>
 
         <!-- FOOTER -->
-        <Grid Grid.Row="4" Margin="0,12,0,0">
+        <Grid Grid.Row="4" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -445,10 +584,21 @@
                            TextWrapping="Wrap"
                            Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}"/>
                 <TextBlock Text="{Binding StatusMessage}"
-                           Foreground="#16A34A"
                            TextWrapping="Wrap"
                            Margin="0,4,0,0"
-                           Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}"/>
+                           Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="#16A34A"/>
+                            <Style.Triggers>
+                                <!-- Spec V0.15: ámbar cuando la vista previa no trae cambios aplicables. -->
+                                <DataTrigger Binding="{Binding StatusMessageIsWarning}" Value="True">
+                                    <Setter Property="Foreground" Value="#B45309"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
@@ -479,3 +629,4 @@
         </Grid>
     </Grid>
 </Window>
+

@@ -1,5 +1,6 @@
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -9,6 +10,17 @@ public class CashAdvanceResultDto
 {
     public CashTransactionResponseDto ExpenseTransaction { get; set; } = null!;
     public CashTransactionResponseDto IncomeTransaction { get; set; } = null!;
+
+    // 8.212-WU3: explicit dispenser/receiver sides. Legacy fields remain below.
+    public int? DispensedCashPaymentMethodId { get; set; }
+    public string? DispensedCurrencyCode { get; set; }
+    public decimal DispensedAmount { get; set; }
+    public int? ReceivedPaymentMethodId { get; set; }
+    public string? ReceivedCurrencyCode { get; set; }
+    public decimal ReceivedAmount { get; set; }
+    public decimal ReceivedCommissionAmount { get; set; }
+    public decimal ReceivedTotalAmount { get; set; }
+
     public decimal RequestedAmountLocal { get; set; }
     public decimal CommissionAmountLocal { get; set; }
     public decimal TotalChargedLocal { get; set; }
@@ -21,9 +33,16 @@ public interface ICashDrawerService
 {
     Task<CashDrawerSessionResponseDto?> GetActiveSessionAsync(CancellationToken cancellationToken = default);
     Task<CashDrawerSessionResponseDto?> GetActiveSessionWithTransactionsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 8.202-H1 (S2): toma el advisory lock de la sesión y revalida que siga <c>Open</c> antes de
+    /// permitir una escritura en la gaveta. Debe invocarse dentro de una transacción relacional
+    /// ambiente para que el lock viva hasta el commit; fuera de Npgsql valida el estado sin lock.
+    /// </summary>
+    Task<CashDrawerSessionResponseDto> LockOpenSessionForWriteAsync(int sessionId, CancellationToken cancellationToken = default);
     Task<CashDrawerSessionResponseDto> GetOrCreateActiveSessionAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default);
-    Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default);
-    Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default);
+    Task<CashDrawerSessionResponseDto> OpenSessionAsync(decimal openingBalanceLocal, decimal currentExchangeRate, CancellationToken cancellationToken = default, decimal openingBalanceUsd = 0m, IReadOnlyList<Sales.Module.DTOs.OpenSessionMethodBalanceRequest>? requestedMethodBalances = null);
+    Task<CashDrawerSessionResponseDto> CloseSessionAsync(decimal actualClosingBalanceLocal, decimal currentExchangeRate, decimal? actualClosingBalanceUsd = null, CancellationToken cancellationToken = default);
     Task RolloverSessionAfterClosureAsync(decimal currentExchangeRate, CancellationToken cancellationToken = default);
 
     Task<CashTransactionResponseDto> AddTransactionAsync(
@@ -37,7 +56,9 @@ public interface ICashDrawerService
         int? referenceId = null,
         bool isPhysicalCash = true,
         int? paymentMethodId = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        CashTransactionIdempotency? idempotency = null,
+        string? resolvedCurrencyCode = null);
 
     Task<CashTransactionResponseDto> RecordSaleChangeAsync(
         int sessionId,
@@ -51,6 +72,22 @@ public interface ICashDrawerService
         CancellationToken cancellationToken = default);
 
     Task<decimal> GetCurrentBalanceLocalAsync(int sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 8.212-WU2: saldo físico por método de pago capturado al abrir la sesión. Cada movimiento se
+    /// atribuye a su <c>PaymentMethodId</c> exacto y se valora con el snapshot de moneda del
+    /// movimiento; <c>CanDispense</c> es solo orientativo.
+    /// </summary>
+    Task<IReadOnlyList<PhysicalMethodBalanceDto>> GetPhysicalMethodBalancesAsync(int sessionId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// T2a (Paso 13, S2/S3): saldo fisico teorico del turno en la moneda indicada. Apertura de esa
+    /// moneda + cobros fisicos del bucket de su metodo de pago − salidas fisicas del mismo bucket.
+    /// El bucket se decide por la moneda canonica del metodo (PaymentMethod.Currency); los
+    /// movimientos sin metodo caen en Bs.S y el efectivo no fisico nunca cuenta.
+    /// </summary>
+    Task<decimal> GetPhysicalBalanceAsync(int sessionId, PettyCashCurrency currency, CancellationToken cancellationToken = default);
+
     Task<System.Collections.Generic.List<CashTransactionResponseDto>> GetHistoryAsync(int limit = 300, CancellationToken cancellationToken = default);
     Task<Core.DTOs.PagedResultDto<CashTransactionResponseDto>> GetHistoryPagedAsync(int page = 1, int pageSize = 50, CancellationToken cancellationToken = default);
 }

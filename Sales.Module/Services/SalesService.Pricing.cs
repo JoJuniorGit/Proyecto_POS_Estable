@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Core.Helpers;
@@ -20,8 +22,14 @@ public partial class SalesService
         if (sale.Status != SaleStatus.Pending && sale.Status != SaleStatus.OnHold) 
             throw new InvalidOperationException("No se puede modificar una venta ya finalizada.");
 
-        sale.AppliedRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "UpdateExchangeRate", referenceId: sale.Id);
-        await RecalculateTotalAsync(sale);
+        // 8.211-T3c3d (S4/S5): manual pair snapshots at 4dp but calculates with the 8dp rate.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        decimal anchoredRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "UpdateExchangeRate", referenceId: sale.Id);
+        sale.AppliedRate = RoundSnapshotRate(anchoredRate, monetaryProfile);
+        await RecalculateTotalAsync(
+            sale,
+            cancellationToken: cancellationToken,
+            calculationRate: ResolveCalculationRate(anchoredRate, monetaryProfile));
         await _context.SaveChangesAsync(cancellationToken);
         return MapToDto(sale);
     }
@@ -41,6 +49,11 @@ public partial class SalesService
         const int batchSize = 200;
         int totalUpdated = 0;
         int lastId = 0;
+        // 8.211-T3c3d (S4/S5): the bulk rate update freezes the schema snapshot (4dp manual /
+        // 2dp BCV) but keeps the 8dp manual input as the calculation rate for every page.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        decimal snapshotRate = RoundSnapshotRate(newExchangeRate, monetaryProfile);
+        decimal? calculationRate = ResolveCalculationRate(newExchangeRate, monetaryProfile);
 
         while (true)
         {
@@ -79,11 +92,10 @@ public partial class SalesService
                     }
                 }
 
-                var roundedRate = PricingCalculator.RoundExchangeRateCeiling(newExchangeRate);
                 foreach (var sale in batch)
                 {
-                    sale.AppliedRate = roundedRate;
-                    await RecalculateTotalAsync(sale, batchProducts);
+                    sale.AppliedRate = snapshotRate;
+                    await RecalculateTotalAsync(sale, batchProducts, cancellationToken, calculationRate);
                 }
 
                 batchCount = batch.Count;
@@ -136,7 +148,7 @@ public partial class SalesService
         }
 
         sale.PriceListType = priceListType;
-        await RecalculateTotalAsync(sale);
+        await RecalculateTotalAsync(sale, cancellationToken: cancellationToken);
 
         if (sale.Status == SaleStatus.OnHold && sale.Payments.Any())
         {
@@ -151,8 +163,19 @@ public partial class SalesService
         return MapToDto(sale);
     }
 
-    private async Task RecalculateTotalAsync(Sale sale, Dictionary<int, SaleProductInfoDto>? preloadedProducts = null)
+    /// <summary>
+    /// 8.211-T3c3d (S4/S5): recomputes the sale totals. <paramref name="calculationRate"/> is the
+    /// explicit calculation rate (8dp for a manual pair); when null the persisted
+    /// <see cref="Sale.AppliedRate"/> snapshot is used, preserving legacy BCV behavior.
+    /// </summary>
+    private async Task RecalculateTotalAsync(
+        Sale sale,
+        Dictionary<int, SaleProductInfoDto>? preloadedProducts = null,
+        CancellationToken cancellationToken = default,
+        decimal? calculationRate = null)
     {
+        decimal effectiveRate = calculationRate ?? sale.AppliedRate;
+
         if (sale.Items != null && sale.Items.Any())
         {
             var products = preloadedProducts ?? new Dictionary<int, SaleProductInfoDto>();
@@ -170,8 +193,18 @@ public partial class SalesService
             // 8.185-T2 (S5): la regla cash viaja en el snapshot de la línea; el toggle vigente se
             // lee UNA vez y solo si alguna línea no-custom tiene política cash (ExactMath/null ⇒
             // techo canónico 8.104 como hoy, S7 default-safe).
+            // 8.211-T3c3c1 (S5): las reglas cash-friendly son VES-específicas. El perfil vigente
+            // (o el snapshot de la venta completada) decide si se aplican; el resto usa 2dp.
+            bool hasCashFriendlyLine = sale.Items.Any(i => !i.IsCustomPrice && IsCashFriendlyRule(i.RoundingRuleCashBs));
+            bool useVesCashRules = false;
+            if (hasCashFriendlyLine)
+            {
+                var pricingSecondary = await ResolvePricingSecondaryCurrencyAsync(sale, cancellationToken);
+                useVesCashRules = string.Equals(pricingSecondary, "VES", StringComparison.Ordinal);
+            }
+
             bool neverRoundDown = true;
-            if (sale.Items.Any(i => !i.IsCustomPrice && IsCashFriendlyRule(i.RoundingRuleCashBs)))
+            if (useVesCashRules)
             {
                 neverRoundDown = await ResolveNeverRoundDownAsync();
             }
@@ -213,7 +246,7 @@ public partial class SalesService
                     throw new KeyNotFoundException($"Producto #{item.ProductId} no encontrado en la base de datos.");
                 }
 
-                item.UnitPriceBsS = ApplyCashRoundingPolicy(item, sale.AppliedRate, neverRoundDown);
+                item.UnitPriceBsS = ApplyCashRoundingPolicy(item, effectiveRate, neverRoundDown, useVesCashRules);
                 item.Subtotal = Math.Round(item.Quantity * item.UnitPrice, 4, MidpointRounding.AwayFromZero);
                 item.SubtotalBsS = PricingCalculator.RoundToDigital(item.Quantity * item.UnitPriceBsS);
             }
@@ -224,10 +257,61 @@ public partial class SalesService
             sale.TotalUSD = Math.Round(sale.Subtotal, 2, MidpointRounding.AwayFromZero);
             sale.TotalBsS = PricingCalculator.RoundToDigital(sale.SubtotalBsS);
         }
-        else if (sale.AppliedRate > 0)
+        else if (effectiveRate > 0)
         {
-            sale.TotalBsS = PricingCalculator.RoundToDigital(sale.TotalUSD * sale.AppliedRate);
+            sale.TotalBsS = PricingCalculator.RoundToDigital(sale.TotalUSD * effectiveRate);
             sale.SubtotalBsS = sale.TotalBsS;
+        }
+    }
+
+    /// <summary>
+    /// 8.211-T3c3c1 (S5): pricing currency for the secondary domain. Completed sales use their
+    /// historical snapshot; pending/on-hold sales prefer the active profile (Single ⇒ null,
+    /// Dual ⇒ normalized secondary) and fall back to the snapshot if the profile read fails.
+    /// The caller only invokes this when a VES cash-friendly rule is actually present.
+    /// </summary>
+    private async Task<string?> ResolvePricingSecondaryCurrencyAsync(Sale sale, CancellationToken cancellationToken)
+    {
+        if (sale.Status == SaleStatus.Completed)
+        {
+            return CurrencyCodeNormalizer.NormalizeToIso(sale.SecondaryCurrencyCode);
+        }
+
+        if (_monetaryProfileService is null)
+        {
+            // Legacy compositions have no profile: Single never applies VES rules; Dual keeps the
+            // historical USD/VES default.
+            if (string.Equals(sale.MonetaryMode, "Single", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return CurrencyCodeNormalizer.NormalizeToIso(sale.SecondaryCurrencyCode) ?? "VES";
+        }
+
+        try
+        {
+            var profile = await _monetaryProfileService.GetAsync(cancellationToken);
+            if (profile.Mode == MonetaryMode.Single)
+            {
+                return null;
+            }
+
+            return CurrencyCodeNormalizer.NormalizeToIso(profile.SecondaryCurrencyCode) ?? "VES";
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "[SalesService] No se pudo leer el perfil monetario al recalcular la venta #{SaleId}; se usa el snapshot de la venta.", sale.Id);
+            if (string.Equals(sale.MonetaryMode, "Single", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            return CurrencyCodeNormalizer.NormalizeToIso(sale.SecondaryCurrencyCode) ?? "VES";
         }
     }
 
@@ -238,9 +322,17 @@ public partial class SalesService
     /// neverRoundDown ⇒ escalón inmediato superior). Único punto de derivación por línea: lo
     /// consume RecalculateTotalAsync y lo espeja CheckoutCalculationService en el preview.
     /// </summary>
-    internal static decimal ApplyCashRoundingPolicy(decimal unitPriceUsd, bool isCustomPrice, RoundingRuleType? roundingRuleCashBs, decimal appliedRate, bool neverRoundDown)
+    internal static decimal ApplyCashRoundingPolicy(
+        decimal unitPriceUsd,
+        bool isCustomPrice,
+        RoundingRuleType? roundingRuleCashBs,
+        decimal appliedRate,
+        bool neverRoundDown,
+        bool useVesCashRules = true)
     {
-        if (!isCustomPrice && IsCashFriendlyRule(roundingRuleCashBs))
+        // 8.211-T3c3c1 (S5): VES-only cash-friendly rules. Any other pricing currency keeps the
+        // canonical 2dp ceiling even when the item carries a VES rule from its snapshot.
+        if (useVesCashRules && !isCustomPrice && IsCashFriendlyRule(roundingRuleCashBs))
         {
             var projected = PricingRoundingPolicy.ProjectCashFriendlyBsS(
                 unitPriceUsd,
@@ -257,8 +349,18 @@ public partial class SalesService
         return PricingCalculator.ToBsSCeiling(unitPriceUsd, appliedRate);
     }
 
-    private static decimal ApplyCashRoundingPolicy(SaleItem item, decimal appliedRate, bool neverRoundDown) =>
-        ApplyCashRoundingPolicy(item.UnitPrice, item.IsCustomPrice, item.RoundingRuleCashBs, appliedRate, neverRoundDown);
+    private static decimal ApplyCashRoundingPolicy(
+        SaleItem item,
+        decimal appliedRate,
+        bool neverRoundDown,
+        bool useVesCashRules = true) =>
+        ApplyCashRoundingPolicy(
+            item.UnitPrice,
+            item.IsCustomPrice,
+            item.RoundingRuleCashBs,
+            appliedRate,
+            neverRoundDown,
+            useVesCashRules);
 
     private void ValidateHoldSaleTotal(Sale sale)
     {

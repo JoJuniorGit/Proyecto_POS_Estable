@@ -15,6 +15,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 {
     private readonly IPaymentService _paymentService;
     private readonly ISettingsService _settingsService;
+    private readonly IProfitabilityClientService? _profitabilityService;
     private readonly IConnectionManager? _connectionManager;
     private EventHandler<ConnectionStatusEventArgs>? _connectionStatusHandler;
     private bool _isDialogOpen;
@@ -35,7 +36,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private string _currentServerAddress = "http://localhost:5000/";
+    private string _currentServerAddress = "https://localhost:5001/";
 
     [ObservableProperty]
     private string _connectionStatusText = "Conectado";
@@ -45,6 +46,11 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _allowNegativeStock;
+
+    // S1/S9: apartado activo de Configuración. Es estado de presentación puro: el setter no
+    // dispara cargas ni persiste nada; EnsureLoadedAsync sigue siendo la única fuente de carga.
+    [ObservableProperty]
+    private int _selectedSettingsSectionIndex;
 
     public ObservableCollection<PaymentMethodDto> PaymentMethods { get; } = new();
     public ObservableCollection<TimeZoneInfo> AvailableTimeZones { get; } = new();
@@ -71,10 +77,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         UserSession? userSession = null,
         IDialogService? dialogService = null,
         IConnectionManager? connectionManager = null,
-        IDispatcherInvoker? dispatcherInvoker = null)
+        IDispatcherInvoker? dispatcherInvoker = null,
+        IProfitabilityClientService? profitabilityService = null)
     {
         _paymentService = paymentService;
         _settingsService = settingsService;
+        _profitabilityService = profitabilityService;
         UserSession = userSession;
         _dialogService = dialogService;
         _connectionManager = connectionManager;
@@ -106,6 +114,10 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             await LoadAllowNegativeStockAsync();
             // 8.184-T4 (S2): políticas globales de precios y redondeo (fallback silencioso a defaults).
             await LoadPricingPoliciesAsync();
+            // Comisiones del adelanto de efectivo (lectura Admin/Manager; escritura solo Admin).
+            await LoadCashAdvanceCommissionAsync();
+            // F4-WU1: reglas de comisión de medios de pago (Admin-only, misma política del endpoint F3).
+            await LoadPaymentMethodFeeRulesAsync();
             _hasLoaded = true;
         }
     }
@@ -147,6 +159,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             {
                 PaymentMethods.Add(m);
             }
+
+            SyncFeeEligiblePaymentMethods();
         }
         catch (Exception ex)
         {
@@ -212,6 +226,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                     IsActive = updated.IsActive,
                     RequiresReference = updated.RequiresReference,
                     IsCash = updated.IsCash,
+                    Currency = updated.Currency,
                     DisplayOrder = updated.DisplayOrder,
                     IsDeleted = updated.IsDeleted
                 };
@@ -300,7 +315,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                     IsActive = updated.IsActive,
                     RequiresReference = updated.RequiresReference,
                     IsCash = updated.IsCash,
-                    DisplayOrder = updated.DisplayOrder
+                    Currency = updated.Currency,
+                    DisplayOrder = updated.DisplayOrder,
+                    IsDeleted = updated.IsDeleted
                 };
             }
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());

@@ -1,3 +1,5 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Backend.API.Controllers;
 using Backend.API.Hubs;
 using Backend.API.Services;
@@ -22,7 +24,8 @@ public static class ControllerFactory
         ICurrentUserService currentUserService,
         InventoryDbContext inventoryContext,
         CashAdvanceCoordinator cashAdvanceCoordinator,
-        IUserService? userService = null)
+        IUserService? userService = null,
+        IMonetaryProfileService? monetaryProfileService = null)
         => new(
             cashDrawerService,
             settingsService,
@@ -30,7 +33,8 @@ public static class ControllerFactory
             userService ?? new UserService(db),
             currentUserService,
             new TimeZoneProvider(settingsService),
-            cashAdvanceCoordinator);
+            cashAdvanceCoordinator,
+            monetaryProfileService: monetaryProfileService);
 
     public static ExchangeRateController CreateExchangeRateController(
         InventoryDbContext context,
@@ -47,14 +51,40 @@ public static class ControllerFactory
         InventoryDbContext context,
         ICurrentUserService currentUserService,
         ISystemSettingsService settingsService,
-        IHubContext<ExchangeRateHub>? hubContext = null)
+        IHubContext<ExchangeRateHub>? hubContext = null,
+        IMonetaryTransitionGuard? transitionGuard = null,
+        IMonetaryPaymentMethodSeeder? paymentMethodSeeder = null)
         => new(
             settingsService,
             currentUserService,
             new ExchangeRateHistoryService(context),
             new ExchangeRateWriteService(context, new InventoryService(context), hubContext: hubContext),
             new TimeZoneProvider(settingsService),
-            hubContext);
+            hubContext,
+            monetaryProfileService: new MonetaryProfileService(settingsService),
+            currencyRateService: new CurrencyRateService(context),
+            monetaryTransitionGuard: transitionGuard ?? EmptyInstallTransitionGuard.Instance,
+            monetaryPaymentMethodSeeder: paymentMethodSeeder);
+
+    /// <summary>
+    /// 8.211-T3c3a: existing settings tests run against empty in-memory installs, where the
+    /// production transition guard reports no financial data. The wiring-failure (null guard)
+    /// branch is covered by a dedicated test that builds the controller directly.
+    /// </summary>
+    private sealed class EmptyInstallTransitionGuard : IMonetaryTransitionGuard
+    {
+        public static readonly EmptyInstallTransitionGuard Instance = new();
+
+        private EmptyInstallTransitionGuard()
+        {
+        }
+
+        public Task<bool> HasFinancialDataAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(false);
+
+        public Task<IAsyncDisposable?> AcquireTransitionLockAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IAsyncDisposable?>(null);
+    }
 
     public static UsersController CreateUsersController(
         SalesDbContext db,

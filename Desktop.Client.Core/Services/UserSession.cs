@@ -13,6 +13,8 @@ public partial class UserSession : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsAdmin))]
     [NotifyPropertyChangedFor(nameof(IsManager))]
     [NotifyPropertyChangedFor(nameof(IsCashier))]
+    [NotifyPropertyChangedFor(nameof(IsDriver))]
+    [NotifyPropertyChangedFor(nameof(IsNotDriver))]
     [NotifyPropertyChangedFor(nameof(CanMutateCatalog))]
     [NotifyPropertyChangedFor(nameof(CanMutateSettings))]
     [NotifyPropertyChangedFor(nameof(CanMutateExchangeRate))]
@@ -38,6 +40,10 @@ public partial class UserSession : ObservableObject
     public bool IsAdmin => CurrentUser != null && CurrentUser.Role == UserRole.Admin;
     public bool IsManager => CurrentUser != null && CurrentUser.Role == UserRole.Manager;
     public bool IsCashier => CurrentUser != null && CurrentUser.Role == UserRole.Cashier;
+    public bool IsDriver => CurrentUser != null && CurrentUser.Role == UserRole.Driver;
+
+    /// <summary>True for every authenticated role except Driver; used by the WPF shell guards.</summary>
+    public bool IsNotDriver => CurrentUser != null && CurrentUser.Role != UserRole.Driver;
 
     public bool CanMutateCatalog => CurrentUser != null && (CurrentUser.Role == UserRole.Admin || CurrentUser.Role == UserRole.Manager);
     public bool CanMutateSettings => CurrentUser != null && CurrentUser.Role == UserRole.Admin;

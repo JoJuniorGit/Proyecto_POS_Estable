@@ -359,7 +359,7 @@ public class CheckoutAndPaymentTests
         var baseTime = DateTime.UtcNow.Date.AddHours(10); // 10:00 AM today
         var sale = new Sale { Id = 10, Status = SaleStatus.Completed, Date = baseTime };
         context.Sales.Add(sale);
-        context.SalePayments.Add(new SalePayment { SaleId = 10, PaymentMethodId = 1, AmountBsS = 500m });
+        context.SalePayments.Add(new SalePayment { SaleId = 10, PaymentMethodId = 1, AmountBsS = 500m, CreatedAt = baseTime });
         await context.SaveChangesAsync();
 
         var service = DailyClosureTestHelper.CreateService(context);
@@ -393,7 +393,7 @@ public class CheckoutAndPaymentTests
         var baseTime = DateTime.UtcNow.Date.AddHours(10); // 10:00 AM today
         var saleOld = new Sale { Id = 11, Status = SaleStatus.Completed, Date = baseTime };
         context.Sales.Add(saleOld);
-        context.SalePayments.Add(new SalePayment { SaleId = 11, PaymentMethodId = 1, AmountBsS = 300m });
+        context.SalePayments.Add(new SalePayment { SaleId = 11, PaymentMethodId = 1, AmountBsS = 300m, CreatedAt = baseTime });
         await context.SaveChangesAsync();
 
         var service = DailyClosureTestHelper.CreateService(context);
@@ -412,7 +412,7 @@ public class CheckoutAndPaymentTests
         // Register new sale at 14:00 PM (after closure)
         var saleNew = new Sale { Id = 12, Status = SaleStatus.Completed, Date = baseTime.AddHours(4) };
         context.Sales.Add(saleNew);
-        context.SalePayments.Add(new SalePayment { SaleId = 12, PaymentMethodId = 1, AmountBsS = 200m });
+        context.SalePayments.Add(new SalePayment { SaleId = 12, PaymentMethodId = 1, AmountBsS = 200m, CreatedAt = baseTime.AddHours(4) });
         await context.SaveChangesAsync();
 
         // Query expected totals at 15:00 PM
@@ -630,5 +630,50 @@ public class CheckoutAndPaymentTests
         Assert.DoesNotContain("1.500,00", raw);
         // 8.143: la diff balanceada también sigue el ajuste (sin literales "0,00" fijos).
         Assert.DoesNotContain("0,00", raw);
+    }
+
+    [Fact]
+    public void GeneratePdf_WithCopLocalLabel_UsesCopHeadersInsteadOfBsS()
+    {
+        var closure = new DailyClosure
+        {
+            Id = 45,
+            ClosureDate = DateTime.UtcNow,
+            UserId = "Admin Test",
+            Observation = "V-12345678",
+            TotalActualBsS = 40000m,
+            TotalExpectedBsS = 40000m,
+            TotalDifferenceBsS = 0m,
+            Details = new List<ClosureDetail>
+            {
+                new()
+                {
+                    PaymentMethodId = 1,
+                    PaymentMethodName = "Pago COP",
+                    PaymentMethod = new PaymentMethod
+                    {
+                        Id = 1,
+                        Name = "Pago COP",
+                        Currency = "COP",
+                        IsCash = false,
+                        IsActive = true
+                    },
+                    ActualAmountBsS = 40000m,
+                    ExpectedAmountBsS = 40000m,
+                    DifferenceBsS = 0m
+                }
+            }
+        };
+
+        byte[] pdfBytes = ClosurePdfGenerator.GeneratePdf(
+            ShiftReportMapper.MapClosure(closure),
+            isBlind: false,
+            format: MoneyDisplayFormat.Venezuelan,
+            localCurrencyLabel: "COP");
+
+        string raw = System.Text.Encoding.ASCII.GetString(pdfBytes);
+        Assert.Contains(@"MONTO DECLARADO \(COP\)", raw);
+        Assert.Contains(@"TOTAL DECLARADO:   COP", raw);
+        Assert.DoesNotContain("Bs.S", raw);
     }
 }

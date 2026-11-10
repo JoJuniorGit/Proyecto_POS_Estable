@@ -45,53 +45,56 @@ public sealed class TesseractOcrEngine : IOcrEngine, IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return await Task.Run(() => Recognize(image, cancellationToken), cancellationToken).ConfigureAwait(false);
-    }
-
-    private OcrPage Recognize(OcrImage image, CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        _processGate.Wait(cancellationToken);
+        // 8.202-H4 (S9): la espera del gate es asíncrona (no bloquea un hilo del pool) y el
+        // trabajo CPU-bound de Tesseract sigue aislado en Task.Run.
+        await _processGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            using var pix = Pix.LoadFromMemory(image.EncodedBytes);
-            using var page = _engine.Value.Process(pix);
-            using var iterator = page.GetIterator();
-            var words = new List<OcrWord>();
-
-            iterator.Begin();
-            do
-            {
-                if (!iterator.TryGetBoundingBox(PageIteratorLevel.Word, out var bounds))
-                {
-                    continue;
-                }
-
-                var text = iterator.GetText(PageIteratorLevel.Word);
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    continue;
-                }
-
-                var confidence = Math.Clamp(iterator.GetConfidence(PageIteratorLevel.Word), 0f, 100f);
-                words.Add(new OcrWord(
-                    text.Trim(),
-                    bounds.X1,
-                    bounds.Y1,
-                    bounds.Width,
-                    bounds.Height,
-                    confidence));
-            }
-            while (iterator.Next(PageIteratorLevel.Word));
-
-            return new OcrPage(words);
+            return await Task.Run(() => RecognizeCore(image, cancellationToken), cancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
             _processGate.Release();
         }
+    }
+
+    private OcrPage RecognizeCore(OcrImage image, CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var pix = Pix.LoadFromMemory(image.EncodedBytes);
+        using var page = _engine.Value.Process(pix);
+        using var iterator = page.GetIterator();
+        var words = new List<OcrWord>();
+
+        iterator.Begin();
+        do
+        {
+            if (!iterator.TryGetBoundingBox(PageIteratorLevel.Word, out var bounds))
+            {
+                continue;
+            }
+
+            var text = iterator.GetText(PageIteratorLevel.Word);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                continue;
+            }
+
+            var confidence = Math.Clamp(iterator.GetConfidence(PageIteratorLevel.Word), 0f, 100f);
+            words.Add(new OcrWord(
+                text.Trim(),
+                bounds.X1,
+                bounds.Y1,
+                bounds.Width,
+                bounds.Height,
+                confidence));
+        }
+        while (iterator.Next(PageIteratorLevel.Word));
+
+        return new OcrPage(words);
     }
 
     private TesseractEngine CreateEngine()

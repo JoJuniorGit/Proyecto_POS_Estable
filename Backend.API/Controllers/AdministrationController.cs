@@ -1,3 +1,4 @@
+using Backend.API.Attributes;
 using Backend.API.DTOs;
 using Backend.API.Services;
 using Core.Interfaces;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize]
 [ApiController]
 [Route("api/administration")]

@@ -1,0 +1,123 @@
+using System;
+using System.IO;
+using System.Linq;
+using Xunit;
+
+namespace CommandCenter.Tests.Unit;
+
+/// <summary>
+/// 8.211-T6-U19: static XAML contract audit. Every WPF profile binding must target the
+/// observable MonetaryProfilePresenter; static CurrencyDisplay bindings would freeze at view
+/// construction and defeat the refresh pipeline.
+/// </summary>
+public class XamlMonetaryBindingAuditTests
+{
+    private static string ResolveViewsDirectory()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            var candidate = Path.Combine(current.FullName, "Desktop.Client", "Views");
+            if (Directory.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            current = current.Parent;
+        }
+
+        throw new DirectoryNotFoundException("No se encontró Desktop.Client/Views desde el directorio de pruebas.");
+    }
+    [Fact]
+    public void AppStartup_InstallsTheCurrencyBindingRefresher()
+    {
+        var views = ResolveViewsDirectory();
+        var appPath = Path.Combine(Path.GetDirectoryName(views)!, "App.xaml.cs");
+        Assert.True(File.Exists(appPath), $"No se encontró {appPath}.");
+
+        var source = File.ReadAllText(appPath);
+        Assert.Contains("CurrencyBindingRefresher.Install();", source, StringComparison.Ordinal);
+    }
+    [Fact]
+    public void WpfViews_DoNotUseStaticCurrencyDisplayBindings()
+    {
+        var views = ResolveViewsDirectory();
+
+        var offenders = Directory.EnumerateFiles(views, "*.xaml")
+            .Where(file => File.ReadAllText(file).Contains("x:Static core:CurrencyDisplay", StringComparison.Ordinal))
+            .Select(Path.GetFileName)
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            $"Vistas con binding estático de moneda: {string.Join(", ", offenders)}");
+    }
+
+    [Fact]
+    public void WpfViews_UseTheObservablePresenterForProfileLabels()
+    {
+        var views = ResolveViewsDirectory();
+        var count = Directory.EnumerateFiles(views, "*.xaml")
+            .Count(file => File.ReadAllText(file).Contains("MonetaryProfilePresenter.Instance", StringComparison.Ordinal));
+
+        Assert.True(count > 0, "Ninguna vista WPF usa MonetaryProfilePresenter.Instance.");
+    }
+
+    [Fact]
+    public void RunTextBindings_ToTheReadOnlyPresenter_AreOneWay()
+    {
+        var views = ResolveViewsDirectory();
+        var offenders = Directory.EnumerateFiles(views, "*.xaml")
+            .SelectMany(file => System.Text.RegularExpressions.Regex
+                .Matches(
+                    File.ReadAllText(file),
+                    "<Run\\b[^>]*MonetaryProfilePresenter\\.Instance[^>]*>",
+                    System.Text.RegularExpressions.RegexOptions.Singleline)
+                .Select(match => (File: Path.GetFileName(file), Markup: match.Value)))
+            .Where(match => !match.Markup.Contains("Mode=OneWay", StringComparison.Ordinal))
+            .Select(match => $"{match.File}: {match.Markup}")
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            $"Run.Text usa TwoWay por defecto y el presenter es de solo lectura: {string.Join(" | ", offenders)}");
+    }
+
+    [Fact]
+    public void InventoryPriceCells_UseComplementaryDualAndSingleVisibility()
+    {
+        var views = ResolveViewsDirectory();
+        var source = File.ReadAllText(Path.Combine(views, "InventoryView.xaml"));
+
+        Assert.DoesNotContain(
+            "Path=IsSingle, Converter={StaticResource InverseBooleanToVisibilityConverter}",
+            source,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            2,
+            System.Text.RegularExpressions.Regex.Matches(
+                source,
+                "Path=IsSingle, Converter=\\{StaticResource BooleanToVisibilityConverter\\}").Count);
+    }
+
+    [Fact]
+    public void RunTextBindings_AreAlwaysOneWay()
+    {
+        var views = ResolveViewsDirectory();
+        var offenders = Directory.EnumerateFiles(views, "*.xaml")
+            .SelectMany(file => System.Text.RegularExpressions.Regex
+                .Matches(
+                    File.ReadAllText(file),
+                    "<Run\\b[^>]*\\bText=\"\\{Binding[^>]*>",
+                    System.Text.RegularExpressions.RegexOptions.Singleline)
+                .Select(match => (File: Path.GetFileName(file), Markup: match.Value)))
+            .Where(match => !match.Markup.Contains("Mode=OneWay", StringComparison.Ordinal))
+            .Select(match => $"{match.File}: {match.Markup}")
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            $"Run.Text es de presentación y debe usar Mode=OneWay: {string.Join(" | ", offenders)}");
+    }
+}
+

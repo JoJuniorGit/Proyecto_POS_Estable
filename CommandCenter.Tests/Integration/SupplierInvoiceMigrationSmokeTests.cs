@@ -1,17 +1,24 @@
-using System;
 using System.Linq;
 using System.Threading.Tasks;
+using CommandCenter.Tests.Integration;
 using Core.Common;
 using Core.Entities;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Storage;
 using Xunit;
 
 namespace CommandCenter.Tests.Integration;
 
+/// <summary>
+/// Smoke del esquema de proveedores: el modelo expone los mapeos obligatorios y la cadena de
+/// migraciones de Inventory crea tablas/índices/columnas con la forma esperada. La verificación
+/// migratoria corre contra una base AISLADA por test del carril <see cref="PostgresTestLane"/>
+/// (creada vacía y eliminada al final); antes usaba el nombre fijo pos_supplier_test con
+/// TEST_POSTGRES_CONNECTION opcional y retornaba en silencio sin la variable (silent-pass).
+/// Sin conexión utilizable el lane falla EXPLÍCITO.
+/// </summary>
+[Trait("Category", "RequiresDocker")]
 [Collection(PostgresRealCollection.Name)]
 public class SupplierInvoiceMigrationSmokeTests
 {
@@ -37,7 +44,7 @@ public class SupplierInvoiceMigrationSmokeTests
         Assert.Equal(ValueGenerated.OnAddOrUpdate, invoiceVersion.ValueGenerated);
 
         var lineType = model.FindEntityType(typeof(SupplierInvoiceLine))!;
-        Assert.Equal("numeric(18,2)", lineType.FindProperty(nameof(SupplierInvoiceLine.UnitCostUSD))!.GetColumnType());
+        Assert.Equal("numeric(18,4)", lineType.FindProperty(nameof(SupplierInvoiceLine.UnitCostUSD))!.GetColumnType());
         Assert.Equal("numeric(18,3)", lineType.FindProperty(nameof(SupplierInvoiceLine.Quantity))!.GetColumnType());
 
         // 8.146 multi-moneda: snapshot de moneda/tasa por documento + costo en moneda de la factura.
@@ -53,9 +60,9 @@ public class SupplierInvoiceMigrationSmokeTests
         Assert.Equal(1m, appliedRate.GetDefaultValue());
 
         var unitCostDocument = lineType.FindProperty(nameof(SupplierInvoiceLine.UnitCostDocument))!;
-        Assert.Equal("numeric(18,2)", unitCostDocument.GetColumnType());
+        Assert.Equal("numeric(18,4)", unitCostDocument.GetColumnType());
         Assert.Equal(18, unitCostDocument.GetPrecision());
-        Assert.Equal(2, unitCostDocument.GetScale());
+        Assert.Equal(4, unitCostDocument.GetScale());
         Assert.Equal(0m, unitCostDocument.GetDefaultValue());
 
         // 8.147-T5/D10: confianzas OCR nullable numeric(5,2), sin default.
@@ -84,40 +91,12 @@ public class SupplierInvoiceMigrationSmokeTests
     [Fact]
     public async Task Migration_AddsSupplierSchema_WithoutChangingExistingProducts()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString)) return;
-
-        // 8.144: migrar sobre una BD aislada propia (patron pos_smoke/pos_zero). Migrar la
-        // pos_test compartida colisiona con las tablas pre-creadas por otros tests (42P07
-        // "Products already exists"): esa BD no tiene historial EF.
-        var supplierSmokeDatabaseName =
-            Environment.GetEnvironmentVariable("SMOKE_DB_SUFFIX") is { Length: > 0 } suffix
-                ? $"pos_supplier_{suffix}"
-                : "pos_supplier_test";
-        var connectionBuilder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
-        {
-            Database = supplierSmokeDatabaseName
-        };
-
-        var options = new DbContextOptionsBuilder<InventoryDbContext>()
-            .UseNpgsql(connectionBuilder.ConnectionString)
-            .Options;
-
-        await using var context = new InventoryDbContext(options);
-
-        // La BD aislada puede no existir aun (EF la crea al migrar); crearla vacia primero
-        // para poder snapshotear Products antes de aplicar las migraciones.
-        var databaseCreator = context.Database.GetService<IRelationalDatabaseCreator>();
-        if (!await databaseCreator.ExistsAsync())
-        {
-            await databaseCreator.CreateAsync();
-        }
-
-        var productsTableExists = await context.Database.SqlQueryRaw<int>(
-            "SELECT COUNT(*)::int AS \"Value\" FROM information_schema.tables " +
-            "WHERE table_schema = 'public' AND table_name = 'Products'")
-            .SingleAsync();
-        var productsBefore = productsTableExists == 0 ? null : await GetProductSnapshotAsync(context);
+        // La base aislada nace vacía: la cadena completa de migraciones se aplica sobre ella y las
+        // aserciones de esquema son el contrato. El snapshot comparativo de Products de la versión
+        // anterior solo aplicaba al nombre fijo pos_supplier_test (base legacy reutilizada), que la
+        // aislación elimina por diseño.
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(applyMigrations: false);
+        await using var context = database.CreateInventoryDbContext();
 
         await context.Database.MigrateAsync();
 
@@ -176,7 +155,13 @@ public class SupplierInvoiceMigrationSmokeTests
             "FROM information_schema.columns WHERE table_schema = 'public' " +
             "AND table_name = 'SupplierInvoiceLines' AND column_name = 'UnitCostDocument'")
             .SingleAsync();
-        Assert.Equal("numeric:18:2", documentCostColumnShape);
+        Assert.Equal("numeric:18:4", documentCostColumnShape);
+        var normalizedCostColumnShape = await context.Database.SqlQueryRaw<string>(
+            "SELECT data_type || ':' || numeric_precision::text || ':' || numeric_scale::text AS \"Value\" " +
+            "FROM information_schema.columns WHERE table_schema = 'public' " +
+            "AND table_name = 'SupplierInvoiceLines' AND column_name = 'UnitCostUSD'")
+            .SingleAsync();
+        Assert.Equal("numeric:18:4", normalizedCostColumnShape);
 
         var backfilledLinesMismatch = await context.Database.SqlQueryRaw<int>(
             "SELECT COUNT(*)::int AS \"Value\" FROM \"SupplierInvoiceLines\" " +
@@ -200,16 +185,6 @@ public class SupplierInvoiceMigrationSmokeTests
             "AND is_nullable = 'YES' AND column_default IS NULL")
             .SingleAsync();
         Assert.Equal(3, ocrConfidenceShapedColumnCount);
-
-        if (productsBefore is not null)
-        {
-            Assert.Equal(productsBefore, await GetProductSnapshotAsync(context));
-        }
     }
-
-    private static Task<string> GetProductSnapshotAsync(InventoryDbContext context) =>
-        context.Database.SqlQueryRaw<string>(
-            "SELECT COALESCE(jsonb_agg(to_jsonb(p) ORDER BY p.\"Id\"), '[]'::jsonb)::text AS \"Value\" " +
-            "FROM \"Products\" AS p")
-            .SingleAsync();
 }
+
