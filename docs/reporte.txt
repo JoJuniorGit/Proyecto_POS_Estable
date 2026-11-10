@@ -17940,3 +17940,92 @@ D4. Single se mantiene como regimen identidad (AppliedRate=1): UnitCostLocal
     acompana el contrato existente; no se re-convierte en F2.
 ================================================================================
 
+================================================================================
+ANEXO LXII - PASO 14 F2: PROFITABILITY SERVICE - 2026-11-10
+================================================================================
+
+A. CAMBIOS
+A1. Contratos y ventana temporal:
+    - DTOs `ProfitabilitySummaryDto`, `ProfitabilityAccruedDto`, `ProfitabilityRealizedDto`,
+      `ProfitabilityCoverageDto`, `ProfitabilityBreakdownDto`, filtros, series, metodos,
+      productos/categorias, vendedores y alertas.
+    - `ProfitabilityTimeWindow`: presets Hoy/Ayer/Semana/Mes/Custom en la Zona Horaria Global
+      a limites UTC estrictos `[fromUtc, toUtc)`, con conversion DST-safe.
+    - `ProfitabilityService` registrado en DI; reporte Dual en USD y Single en la moneda
+      primaria con snapshots locales.
+A2. Batch fee lookup:
+    - `PaymentMethodFeeResolver.LoadRuleContextsAsync` carga metodos y reglas activas en dos
+      consultas; checkout multipago, lote de abonos y abonos iniciales de hold calculan el
+      snapshot por pago en memoria. Se elimino el N+1 de esos loops.
+A3. Motor Devengado (`ProfitabilityService.Accrued.cs`):
+    - Ventas brutas de mercancia con `InvoiceNumber`, fecha en ventana y guarda de anulacion;
+      anulaciones y devoluciones en el periodo del evento; `KnownCostRevenue`/`KnownCogs` a
+      nivel linea; `UnknownCostRevenue` fuera del margen bruto; `UnknownCostLinesCount` bruto.
+    - Comisiones de avance, caja chica con reversas, fees de `SalePayment`/`ReceivablePayment`
+      con reversa S10 por venta anulada, `FxDifference` informativo, utilidad neta y margenes.
+    - Cobertura de costos y fees; efectivo excluido de la base de cobertura (sin fee aplicable).
+    - Cancelacion y devolucion en la misma ventana netean sin doble conteo; ventas OnHold sin
+      invoice excluidas; `Sale.AppliedRate` usado para devoluciones Single.
+A4. Motor Percibido (`ProfitabilityService.Realized.cs`):
+    - Cobros `SalePayment` + asignaciones `CreditPaymentAllocation`; reembolsos
+      `CreditReturn.RefundedUSD/BsS`; `RealizedCogs = CobroImputado * (CMV_Neto_Factura /
+      Total_Neto_Factura)` solo con cobertura 100%; `UnknownCostCollectedRevenue` separado.
+    - Prorrateo por producto con ingreso original seleccionado y CMV neto seleccionado;
+      `FxDifference` una vez por `ReceivablePayment`; comisiones, caja chica y fees con filtros
+      de metodo; utilidad neta realizada y margenes.
+A5. Desgloses y filtros (`ProfitabilityService.Breakdown.*.cs`):
+    - Series por hora/dia/semana/mes en la Zona Horaria Global, agregadas por timestamp del
+      evento y con relleno de periodos vacios; DST spring-forward seguro.
+    - Metodos de pago con fees, cobertura y reversas S10 reconciliadas con el total.
+    - Ranking de productos/categorias y vendedores con tie-breakers deterministas.
+    - Alertas `MARGIN_EROSION` Warning/Critical a 5/10 pp contra el periodo anterior.
+    - Filtro de categoria con subarbol via `IInventoryService.GetProductIdsByCategoryAsync`
+      e interseccion con `ProductIds`; fail-closed si falta el catalogo.
+    - `ProfitabilityService.Breakdown` dividido en seis partials <=500 lineas.
+A6. Sin recargo al cliente: fees solo como costo del negocio; no se alteran totales, checkout,
+    comprobantes ni DTOs de cobro.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Suite completa `CommandCenter.Tests` con `TEST_POSTGRES_CONNECTION`: 4349 superados,
+    0 fallidos, 0 omitidos (5m 29s).
+B3. `ProfitabilityPostgresTests` (PostgreSQL real, base aislada): 2/2.
+    - Escenario Dual USD/VES: venta A 100/5000 costo 60 fee 1,0000/50,00; venta B costo
+      desconocido pago efectivo 50/2500; avance C comision 10/500 fee 5,1000/255,00; venta D
+      anulada en ventana fee 2,0000/100,00; credito E 40/2000 fee 0,4000/20,00 y FX 400;
+      devolucion A 10/500; caja chica 5/250.
+    - Accrued: bruto 250, anulaciones 50, devoluciones 10, neto 190, conocido 140, desconocido
+      50, CMV 94, utilidad bruta 46 (32,8571 %), comisiones 10, caja chica 5, fees 4,50,
+      utilidad neta 46,50, FX informativo 8; cobertura costo 73,6842 %, fee 100 % (base 650).
+    - Realized: cobros 180, conocido 130, desconocido 50, CMV 84, utilidad bruta 46 (35,3846 %),
+      FX 8, comisiones 10, caja chica 5, fees 4,50, utilidad neta 54,50.
+    - Desgloses: card 650/fee 4,50, efectivo 50; productos E 40/A 36/B 0/D -30; vendedor unico
+      190/46; serie de un dia 190/46,50 y 180/54,50.
+    - Precision: `FeeAmountUsd` 18,4 y `FeeAmountLocal` 18,2 con 1.0000|50.00, 5.1000|255.00,
+      2.0000|100.00, 0.4000|20.00; `Percentage` 9,4; 3 FKs y migraciones F1 en historial.
+B4. EXPLAIN (ANALYZE, BUFFERS) con `enable_seqscan=off`: Index Scan en
+    `IX_Sales_SaleType_Status_Date`, `IX_SalePayments_CreatedAt`,
+    `IX_ReceivablePayments_ReceivedAtUtc`, `IX_CreditReturns_CreatedAtUtc` y
+    `IX_PettyCashExpenses_CreatedAtUtc`; sin Seq Scan.
+B5. Filtro focalizado Profitability*: 67/67. Drift `MigrationIndexDriftTests` +
+    `PendingModelChangesTests`: 4/4.
+
+C. COMMITS
+C1. 323b15b feat(paso-14): add profitability contracts and batch fee lookup.
+C2. 631713d feat(paso-14): add accrued profitability engine.
+C3. 1340e34 feat(paso-14): add realized profitability engine.
+C4. 6dd3c02 feat(paso-14): add profitability breakdowns and filters.
+C5. WU5: integracion PostgreSQL y cierre de F2 (commit de este ANEXO).
+
+D. PENDIENTE / RIESGOS
+D1. F3 (API, RBAC y exportacion PDF/XLSX/CSV) y F4 (UI) no forman parte de F2.
+D2. `ProfitabilityService.Accrued.cs` y `.Realized.cs` superan la guia de 500 lineas; deuda de
+    mantenibilidad para un refactor posterior.
+D3. El desglose por metodo no aplica filtros de cajero/tipo/canal a fees/FX de CxC; el total
+    realizado si los aplica. Residual documentado.
+D4. EXPLAIN usa un seed pequeno con `enable_seqscan=off`: prueba que los indices existen y son
+    usables, no el costo real a escala.
+D5. La atribucion de anulaciones/devoluciones es por periodo del evento; una venta de periodo
+    previo anulada en la ventana aparece como contribucion negativa de producto/categoria.
+================================================================================
+
