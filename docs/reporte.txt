@@ -18096,3 +18096,53 @@ D3. El `EXPLAIN ANALYZE` de F2 usa un seed pequeno con `enable_seqscan=off`: cer
     indices existen y son usables, no el costo real a escala.
 ================================================================================
 
+================================================================================
+ANEXO LXIV - PASO 14 F4: UI WPF/WEB DE RENTABILIDAD - 2026-11-10
+================================================================================
+
+A. CAMBIOS
+A1. WPF:
+    - `ProfitabilityView`/`ProfitabilityViewModel` con KPI cards (Utilidad Devengada headline,
+      Utilidad Percibida secundaria, ventas, CMV, utilidad bruta, margen, comisiones, FX,
+      caja chica, fees y utilidad neta), toggle Devengado/Percibido/Ambos, banner de cobertura,
+      graficos nativos, tablas y alertas.
+    - `ProfitabilityClientService` + DTOs; exportacion CSV/XLSX/PDF via endpoint F3 y guardado
+      de archivo.
+    - Navegacion `Profitability` solo Admin/Manager; Cashier/Driver sin acceso.
+    - Gestion de reglas de comision en Settings, seccion Metodos de Pago y Caja, solo Admin.
+A2. Web:
+    - `profitabilityApi.js`, `ProfitabilityPage` y estilos; ruta/nav Admin/Manager; Cashier
+      redirigido. KPIs, toggle, cobertura, SVG/CSS nativo, tablas, alertas y exportaciones.
+    - `PaymentMethodFeeRules` dentro del dominio de metodos de pago de Settings, solo Admin,
+      con validacion y baja logica.
+A3. Invariantes: sin librerias externas de graficos; sin recargo al cliente; reportes de solo
+    lectura; exportaciones server-side con RBAC.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Suite completa .NET con `TEST_POSTGRES_CONNECTION`: 4406 superados, 0 fallidos, 0 omitidos
+    (5m 51s).
+B3. WPF focalizado (ProfitabilityViewModel, SettingsPaymentMethodFees, WpfNavigationPolicy,
+    CashDrawer/Settings/MainViewModel): 220/220.
+B4. Web: `npm test` 799/799; `npm run lint` limpio; `npm run build` exitoso, con chunks
+    `ProfitabilityPage` y assets servidos desde `Backend.API/wwwroot`.
+B5. Tests nuevos Web: profitabilityApi 16, ProfitabilityPage 13, PaymentMethodFeeRules 12,
+    roleViews/Sidebar 23; RBAC Admin/Manager, Cashier 403/redirect, export y fee CRUD.
+
+C. COMMITS
+C1. 5071d91 feat(paso-14): add WPF profitability dashboard.
+C2. 5ec7c0a feat(paso-14): add Web profitability dashboard.
+C3. WU3: verificacion UI y cierre de F4 (commit de este ANEXO).
+
+D. PENDIENTE / RIESGOS
+D1. No se inspecciono visualmente la ventana WPF en ejecucion; compila y los ViewModel tests
+    pasan.
+D2. El click real de descarga Web no corre en navegador E2E; se valida a nivel de servicio y
+    markup SSR. F5 puede agregar browser E2E.
+D3. Las opciones de filtros Web se acumulan desde breakdowns cargados, no desde catalogos
+    completos; categorias/productos sin ventas en el periodo no aparecen.
+D4. `ProfitabilityPage.jsx` (~941 lineas), `PaymentMethodFeeRules.jsx` (~596 lineas) y algunos
+    archivos WPF superan la guia de 500 lineas; deuda de mantenibilidad.
+D5. `Backend.API/wwwroot` se regenero con el build Web y se versiono junto con la UI.
+================================================================================
+
