@@ -11,8 +11,8 @@ namespace Sales.Module.Services;
 
 /// <summary>
 /// Paso 14 (F2-S1/S4): fachada del Estado de Resultados. Resuelve el contexto (ventana UTC, zona
-/// horaria y moneda de reporte) e integra el motor devengado de WU2; el bloque percibido y los
-/// desgloses se incorporan en WU3/WU4 sobre las mismas dependencias.
+/// horaria y moneda de reporte) e integra los motores devengado y percibido; los desgloses se
+/// incorporan en WU4 sobre las mismas dependencias.
 /// </summary>
 public partial class ProfitabilityService : IProfitabilityService
 {
@@ -66,9 +66,14 @@ public partial class ProfitabilityService : IProfitabilityService
             window,
             reportCurrency,
             cancellationToken);
+        var realizedResult = await BuildRealizedAsync(
+            filter,
+            window,
+            reportCurrency,
+            cancellationToken);
 
-        // WU3-WU4 fill the realized block and breakdowns; the empty structures keep the response
-        // contract stable while those engines land.
+        // WU4 fills the breakdowns; the empty structures keep the response contract stable while
+        // those engines land.
         return new ProfitabilitySummaryDto
         {
             FromUtc = window.FromUtc,
@@ -81,7 +86,7 @@ public partial class ProfitabilityService : IProfitabilityService
             GeneratedAtUtc = DateTime.UtcNow,
             GlobalCostsNote = ProfitabilitySummaryDto.GlobalCostsNoteText,
             Accrued = accruedResult.Accrued,
-            Realized = new ProfitabilityRealizedDto(),
+            Realized = realizedResult,
             Coverage = accruedResult.Coverage,
             Breakdown = new ProfitabilityBreakdownDto(),
             Alerts = Array.Empty<ProfitabilityAlertDto>()
