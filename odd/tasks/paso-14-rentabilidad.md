@@ -71,7 +71,7 @@ F1 se ejecuta en orden `F1-WU1` → `F1-WU6`. Al cerrar se presenta: build 0/0, 
 - F1-WU2 | S2/S3/S10 | Service wiring de `SaleType`/comisión/`CancelledAtUtc`, corrección de `SaleId` en `CashTransactions` y backfill correctivo de comisión | delegated | completed (commit 59ba573)
 - F1-WU3 | S4/S9 | `UnitCostLocal`, helper de snapshot Single/Dual | delegated | completed (commit 33b3aaf)
 - F1-WU4 | S7/S10 | `PaymentMethodFeeRule`, snapshots, resolver y wiring en pagos | delegated | completed (commit d31f9c0)
-- F1-WU5 | S6 | Índice `CreditReturn.CreatedAtUtc` e integración PostgreSQL | delegated | completed (commit pending)
+- F1-WU5 | S6 | Índice `CreditReturn.CreatedAtUtc` e integración PostgreSQL | delegated | completed (commit a49765a)
 - F1-WU6 | S1-S12 | Verificación integral F1 y evidencia | delegated | pending
 
 ## Log
