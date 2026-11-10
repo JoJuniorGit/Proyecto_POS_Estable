@@ -26,6 +26,7 @@ public static class WpfNavigationPolicy
     public const string Credit = "credit";
     public const string Catalog = "catalog";
     public const string History = "history";
+    public const string Profitability = "profitability";
     public const string Register = "register";
     public const string Closing = "closing";
     public const string StockCount = "stock-count";
@@ -38,7 +39,7 @@ public static class WpfNavigationPolicy
 
     private static readonly string[] AllViews =
     {
-        Pos, Pending, Pickups, Credit, Catalog, History, Register, Closing,
+        Pos, Pending, Pickups, Credit, Catalog, History, Profitability, Register, Closing,
         StockCount, Kardex, Import, SupplierInvoices, Settings, Exchange, Users
     };
 
@@ -63,7 +64,7 @@ public static class WpfNavigationPolicy
             {
                 Catalog, StockCount, Kardex, Import, SupplierInvoices
             },
-            [WpfNavigationCategory.Administration] = new[] { Users, Settings, Exchange }
+            [WpfNavigationCategory.Administration] = new[] { Users, Settings, Exchange, Profitability }
         };
 
     public static bool CanAccess(UserRole? role, string? view)

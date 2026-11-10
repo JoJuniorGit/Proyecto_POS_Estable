@@ -44,6 +44,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly StockKardexViewModel? _stockKardexViewModel;
     private readonly StockCountViewModel? _stockCountViewModel;
     private readonly CreditReceivablesViewModel? _creditReceivablesViewModel;
+    private readonly ProfitabilityViewModel? _profitabilityViewModel;
 
     private readonly IHealthPollingService? _healthPollingService;
     private readonly IExchangeRateService? _exchangeRateService;
@@ -72,7 +73,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         AuthorizationNotificationViewModel? authorizationNotificationViewModel = null,
         StockKardexViewModel? stockKardexViewModel = null,
         StockCountViewModel? stockCountViewModel = null,
-        CreditReceivablesViewModel? creditReceivablesViewModel = null)
+        CreditReceivablesViewModel? creditReceivablesViewModel = null,
+        ProfitabilityViewModel? profitabilityViewModel = null)
     {
         UserSession = userSession;
         _loginViewModel = loginViewModel;
@@ -92,6 +94,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _stockKardexViewModel = stockKardexViewModel;
         _stockCountViewModel = stockCountViewModel;
         _creditReceivablesViewModel = creditReceivablesViewModel;
+        _profitabilityViewModel = profitabilityViewModel;
         _healthPollingService = healthPollingService;
         _dialogService = dialogService;
         _exchangeRateService = exchangeRateService;
@@ -185,7 +188,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _authorizationNotificationViewModel,
             _stockKardexViewModel,
             _stockCountViewModel,
-            _creditReceivablesViewModel
+            _creditReceivablesViewModel,
+            _profitabilityViewModel
         };
 
         foreach (var vm in viewModels)
@@ -384,6 +388,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Title = "CUENTAS POR COBRAR (CxC)";
         CurrentViewModel = _creditReceivablesViewModel;
         _creditReceivablesViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToCreditReceivables");
+    }
+
+    [RelayCommand]
+    private void NavigateToProfitability()
+    {
+        if (!CanNavigate(WpfNavigationPolicy.Profitability) || _profitabilityViewModel == null) return;
+        Title = "RENTABILIDAD";
+        CurrentViewModel = _profitabilityViewModel;
+        _profitabilityViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToProfitability");
     }
 
     [RelayCommand]

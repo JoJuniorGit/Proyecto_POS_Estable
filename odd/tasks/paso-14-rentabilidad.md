@@ -152,6 +152,40 @@ Los reportes descargables incluyen el desglose de gastos de Caja Chica por categ
 - F3-WU3 | F3-S3/F3-S5 | Generador PDF 1.4 nativo y endpoint unificado | delegated | completed (commit 0eb43b9)
 - F3-WU4 | F3-S4 | Integración HTTP/RBAC, contenido de exports y cierre ANEXO LXIII | delegated | completed (commit b14f5cf)
 
+## F4 Specs
+
+### F4-S1 — WPF: Dashboard de Rentabilidad
+Nueva vista `ProfitabilityView`/`ProfitabilityViewModel`, visible solo para `Admin`/`Manager`.
+KPIs: **Utilidad Devengada** como headline, **Utilidad Percibida en Caja** como secundario, ventas netas, CMV, utilidad bruta, margen, comisiones de servicio, FX, caja chica, comisiones de medios de pago y utilidad neta.
+Conmutador Devengado / Percibido / Ambos para gráficos y tablas.
+Banner de cobertura: costo/fee, ingreso desconocido, líneas desconocidas y pagos sin fee configurado.
+Gráficos con primitivas nativas WPF (`Canvas`, `Polyline`, `Path`, `Rectangle`), sin paquetes de terceros.
+Tablas por método, producto/categoría, vendedor y serie temporal; botones de exportación CSV/XLSX/PDF contra el endpoint F3.
+Gestión de reglas de comisión en Settings, sección **Métodos de Pago y Caja**, solo `Admin`, con CRUD y validaciones.
+
+### F4-S2 — Web: Dashboard de Rentabilidad
+Nueva `ProfitabilityPage`, ruta y navegación para `Admin`/`Manager`.
+Mismos KPIs, conmutador, banner de cobertura, tablas y exportaciones.
+Gráficos con SVG/CSS nativos, sin librerías de charts.
+Gestión de reglas de comisión dentro del dominio de métodos de pago de Settings, solo `Admin`.
+Diseño responsive y consistente con los tokens existentes (`var(--bg-surface)`, `var(--text-primary)`, `var(--border)`, `var(--bg-hover)`).
+
+### F4-S3 — Invariantes
+La UI es de solo lectura sobre la rentabilidad; las comisiones siguen siendo costo del negocio y nunca se agregan al checkout ni al cliente.
+Las exportaciones usan el endpoint server-side F3 y respetan RBAC.
+No se introducen librerías externas de gráficos.
+
+### F4-S4 — Verificación
+Tests de ViewModel WPF y de componentes/servicios Web; `dotnet build`, `npm test`, `npm run lint`, `npm run build`.
+Evidencia de navegación por rol, filtros, toggle, cobertura, exportaciones y CRUD de fees.
+ANEXO LXIV y actualización del documento de tracking.
+
+## F4 Tasks
+
+- F4-WU1 | F4-S1/F4-S3 | WPF: servicio cliente, ViewModel, vista, navegación, gráficos, export y fee config | delegated | completed (commit pending)
+- F4-WU2 | F4-S2/F4-S3 | Web: API client, página, ruta/nav, gráficos SVG/CSS, export y fee config | delegated | pending
+- F4-WU3 | F4-S4 | Verificación UI, regresión y ANEXO LXIV | delegated | pending
+
 ## Log
 
 - L1 (2026-11-09): pedido verbatim del mantenedor:
@@ -239,3 +273,7 @@ Los reportes descargables incluyen el desglose de gastos de Caja Chica por categ
 - L24 (2026-11-10): **F3-WU4 COMPLETADA (work unit local, sin commit)**. Nuevo `ProfitabilityExportHttpTests` (traits `RequiresDocker` + `PostgresRealCollection`, base aislada vía `AuthorizationEndToEndApplication` sin ventas): Admin y Manager obtienen 200 en `GET /api/profitability/export?format=csv|xlsx|pdf` con Content-Type exacto (`text/csv`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `application/pdf`), Content-Disposition con la extensión y contenido no vacío; Cashier 403, anónimo 401, formato inválido 400. Contenido verificado sobre el pipeline real: CSV con BOM `EF BB BF`, `;`, `RESUMEN DEVENGADO` y `CAJA CHICA POR CATEGORIA`; XLSX abierto con ClosedXML con las cuatro pestañas (`Resumen Ejecutivo`, `Por Producto y Categoría`, `Medios de Pago`, `Caja Chica por Categoría`); PDF ASCII que inicia `%PDF-1.4` y contiene `%%EOF`. Evidencia: build Release 0/0; filtro focalizado HTTP/RBAC/export/PDF 15/15 (32 s); suite completa con `TEST_POSTGRES_CONNECTION` **4382/4382, 0 skipped, 5m20s**; drift 4/4. ANEXO LXIII registrado en `docs/reporte.txt`. Se corrigió en el mismo documento la referencia de commit de WU3 (`0eb43b9`). Residuales: F4 UI pendiente; `ProfitabilityExportService` 700 líneas y `ProfitabilityPdfGenerator` 659 líneas (>500); el `EXPLAIN ANALYZE` de F2 usa seed pequeño con `enable_seqscan=off`.
 
 - L25 (2026-11-10): **F3 CERRADA**. Verificación final: build Release 0/0; suite completa `CommandCenter.Tests` con `TEST_POSTGRES_CONNECTION` **4382/4382, 0 skipped, 5m20s**; focalizados HTTP/RBAC/export/PDF 15/15; drift 4/4. ANEXO LXIII registrado. Commits: `b238146` (WU1), `2b9a3ad` (WU2), `0eb43b9` (WU3), `b14f5cf` (WU4). Decisión de Caja Chica: **sí**, los reportes CSV/XLSX/PDF incluyen el desglose por categoría como sección/pestaña de detalle; el KPI global no se prorratea. F3 cerrada; F4 (UI) es el siguiente alcance. Residuales: `ProfitabilityExportService` 700 líneas, `ProfitabilityPdfGenerator` 659 líneas, `EXPLAIN` con seed pequeño, y filtros de cajero/tipo/canal no aplicados a fees/FX de CxC en el desglose por método.
+
+- L26 (2026-11-10): **F4 aprobada y en ejecución**. UI WPF/Web de rentabilidad: F4-WU1 WPF (servicio cliente, ViewModel, vista, navegación Admin/Manager, KPI cards, toggle, cobertura, gráficos nativos, tablas, export y fee config en Settings), F4-WU2 Web (API client, página, ruta/nav, SVG/CSS nativo, export y fee config), F4-WU3 verificación UI/regresión y ANEXO LXIV. Sin librerías externas de gráficos y sin recargo al cliente.
+
+- L27 (2026-11-10): **F4-WU1 COMPLETADA (work unit local, sin commit)**. Nuevo `IProfitabilityClientService`/`ProfitabilityClientService` + DTOs cliente camelCase con query de presets/fechas/categorías/productos/métodos/cajero/tipo/lista/agrupación, export binario con Content-Disposition y CRUD de reglas de comisión. `ProfitabilityViewModel` (parciales de gráficos y export) mapea KPIs devengados/percibidos, banner de cobertura, series y tablas, toggle Devengado/Percibido/Ambos, estados loading/error/empty, export CSV/XLSX/PDF vía `IFilePickerDialog` y guard de rol Admin/Manager. `ProfitabilityView` usa primitivas nativas WPF (Rectangle/ItemsControl) sin librerías de charts; navegación y DataTemplate en `MainWindow` con `WpfNavigationPolicy.Profitability` (Admin/Manager; Cashier/Driver bloqueados). Settings incorpora la tarjeta **Métodos de Pago y Caja** con CRUD Admin-only de `PaymentMethodFeeRule`, validaciones locales (porcentaje/fijo/vigencia/moneda), baja lógica y Manager/Cashier sin acceso al endpoint Admin-only. Evidencia: RED por compilación faltante de los nuevos contratos; GREEN build Release 0/0; `ProfitabilityViewModelTests` + `SettingsPaymentMethodFeesViewModelTests` + `WpfNavigationPolicy` **60/60**; regresión `CashDrawer|SettingsViewModel|MainViewModel` **159/160** con un único fallo ambiental (`CashDrawerMethodBalanceMigrationTests` exige `TEST_POSTGRES_CONNECTION`, no configurada en esta sesión); el mismo filtro sin ese test PostgreSQL da **159/159**. Sin commit.

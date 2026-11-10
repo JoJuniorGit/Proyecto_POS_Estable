@@ -15,6 +15,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 {
     private readonly IPaymentService _paymentService;
     private readonly ISettingsService _settingsService;
+    private readonly IProfitabilityClientService? _profitabilityService;
     private readonly IConnectionManager? _connectionManager;
     private EventHandler<ConnectionStatusEventArgs>? _connectionStatusHandler;
     private bool _isDialogOpen;
@@ -76,10 +77,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         UserSession? userSession = null,
         IDialogService? dialogService = null,
         IConnectionManager? connectionManager = null,
-        IDispatcherInvoker? dispatcherInvoker = null)
+        IDispatcherInvoker? dispatcherInvoker = null,
+        IProfitabilityClientService? profitabilityService = null)
     {
         _paymentService = paymentService;
         _settingsService = settingsService;
+        _profitabilityService = profitabilityService;
         UserSession = userSession;
         _dialogService = dialogService;
         _connectionManager = connectionManager;
@@ -113,6 +116,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             await LoadPricingPoliciesAsync();
             // Comisiones del adelanto de efectivo (lectura Admin/Manager; escritura solo Admin).
             await LoadCashAdvanceCommissionAsync();
+            // F4-WU1: reglas de comisión de medios de pago (Admin-only, misma política del endpoint F3).
+            await LoadPaymentMethodFeeRulesAsync();
             _hasLoaded = true;
         }
     }
@@ -154,6 +159,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             {
                 PaymentMethods.Add(m);
             }
+
+            SyncFeeEligiblePaymentMethods();
         }
         catch (Exception ex)
         {

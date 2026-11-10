@@ -334,6 +334,12 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }));
 
+        // F4-WU1 (Paso 14): Estado de Resultados y reglas de comisión (mismo pipeline de sesión).
+        ConfigureClient(builder.Services.AddHttpClient<IProfitabilityClientService, ProfitabilityClientService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
         // 8.211-T4c1 (S9): perfil monetario read-only para la presentación WPF. Comparte el
         // pipeline HTTP configurado (base address, pinning, sesión y resiliencia).
         ConfigureClient(builder.Services.AddHttpClient<IClientMonetaryProfileService, ClientMonetaryProfileService>(client =>
@@ -368,6 +374,7 @@ public partial class App : Application
         builder.Services.AddSingleton<CashDrawerViewModel>();
         builder.Services.AddSingleton<ImportProductsViewModel>();
         builder.Services.AddSingleton<SupplierInvoiceViewModel>();
+        builder.Services.AddSingleton<ProfitabilityViewModel>();
 
         // Main Window Registration
         builder.Services.AddSingleton<MainWindow>();

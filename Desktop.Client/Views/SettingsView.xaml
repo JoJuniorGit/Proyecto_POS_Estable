@@ -281,11 +281,9 @@
             <!-- APARTADO 2: MÉTODOS DE PAGO Y CAJA -->
             <TabItem Header="Métodos de Pago y Caja"
                      AutomationProperties.AutomationId="Settings_Section_Payments">
-                <Grid Margin="20,0,0,0" AutomationProperties.AutomationId="Settings_SectionContent_Payments">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="20,0,0,0" AutomationProperties.AutomationId="Settings_SectionContent_Payments">
 
                     <!-- Parámetros operativos de caja: comisiones de adelanto -->
                     <Border Grid.Row="0"
@@ -639,7 +637,219 @@
                             </controls:PerformantDataGrid>
                         </Grid>
                     </Border>
-                </Grid>
+
+                    <!-- F4-WU1 (Paso 14): reglas de comisión de medios de pago (solo Admin).
+                         La comisión es costo del negocio y nunca se agrega al cliente. -->
+                    <Border Background="{DynamicResource MaterialDesignPaper}"
+                            BorderBrush="{DynamicResource MaterialDesignDivider}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="20"
+                            Margin="0,0,0,20"
+                            AutomationProperties.AutomationId="Settings_PaymentMethodFeesCard"
+                            Visibility="{Binding CanEditPaymentMethodFeeRules, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <materialDesign:PackIcon Kind="Percent"
+                                                                 Width="24" Height="24"
+                                                                 Foreground="{DynamicResource PrimaryHueMidBrush}"
+                                                                 VerticalAlignment="Center"
+                                                                 Margin="0,0,10,0" />
+                                        <TextBlock Text="Comisiones de Medios de Pago"
+                                                   Style="{DynamicResource MaterialDesignHeadline6TextBlock}"
+                                                   FontWeight="Bold"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock Text="Costo del negocio por cobros electrónicos. Nunca se suma al cliente ni al checkout."
+                                               Style="{DynamicResource MaterialDesignCaptionTextBlock}"
+                                               Opacity="0.7"
+                                               Margin="34,4,0,0" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Command="{Binding NewFeeRuleCommand}"
+                                            AutomationProperties.AutomationId="Settings_NewPaymentMethodFeeButton"
+                                            Style="{DynamicResource MaterialDesignRaisedButton}"
+                                            Height="38"
+                                            Padding="14,0"
+                                            Margin="0,0,10,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <materialDesign:PackIcon Kind="Plus" Width="20" Height="20"
+                                                                     VerticalAlignment="Center" Margin="0,0,6,0" />
+                                            <TextBlock Text="Nueva Regla" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}"
+                                                 Value="0"
+                                                 IsIndeterminate="True"
+                                                 Visibility="{Binding IsFeeRuleLoading, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}"
+                                                 Width="20" Height="20" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="{Binding FeeRuleStatus}"
+                                       Visibility="{Binding HasFeeRuleStatus, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                       Foreground="#B45309"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,12" />
+
+                            <Border Background="#F8FAFC"
+                                    BorderBrush="#E2E8F0"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Padding="14"
+                                    Margin="0,0,0,14"
+                                    Visibility="{Binding IsFeeRuleFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <WrapPanel>
+                                        <StackPanel Width="240" Margin="0,0,12,10">
+                                            <TextBlock Text="Método de pago" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                            <ComboBox ItemsSource="{Binding FeeEligiblePaymentMethods}"
+                                                      DisplayMemberPath="Name"
+                                                      SelectedItem="{Binding SelectedFeePaymentMethod, Mode=TwoWay}"
+                                                      IsEnabled="{Binding IsNewFeeRule}"
+                                                      Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                                      MinHeight="44" />
+                                        </StackPanel>
+
+                                        <StackPanel Width="170" Margin="0,0,12,10">
+                                            <TextBlock Text="Tipo de comisión" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                            <ComboBox ItemsSource="{Binding FeeTypeOptions}"
+                                                      DisplayMemberPath="DisplayName"
+                                                      SelectedItem="{Binding SelectedFeeTypeOption, Mode=TwoWay}"
+                                                      Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                                      MinHeight="44" />
+                                        </StackPanel>
+
+                                        <StackPanel Width="130" Margin="0,0,12,10"
+                                                    Visibility="{Binding ShowFeePercentage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock Text="Porcentaje (%)" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                            <TextBox Text="{Binding FeePercentageText, UpdateSourceTrigger=PropertyChanged}"
+                                                     materialDesign:HintAssist.Hint="Ej: 1,5"
+                                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                                     MinHeight="44" VerticalContentAlignment="Center" />
+                                        </StackPanel>
+
+                                        <StackPanel Width="130" Margin="0,0,12,10"
+                                                    Visibility="{Binding ShowFeeFixedAmount, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock Text="Monto fijo" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                            <TextBox Text="{Binding FeeFixedAmountText, UpdateSourceTrigger=PropertyChanged}"
+                                                     materialDesign:HintAssist.Hint="Ej: 0,30"
+                                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                                     MinHeight="44" VerticalContentAlignment="Center" />
+                                        </StackPanel>
+
+                                        <StackPanel Width="110" Margin="0,0,12,10">
+                                            <TextBlock Text="Moneda" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                            <ComboBox ItemsSource="{Binding FeeCurrencyOptions}"
+                                                      SelectedItem="{Binding FeeCurrencyCode, Mode=TwoWay}"
+                                                      Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                                      MinHeight="44" />
+                                        </StackPanel>
+
+                                        <StackPanel Width="150" Margin="0,0,12,10">
+                                            <TextBlock Text="Vigente desde" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                            <DatePicker SelectedDate="{Binding FeeEffectiveFromDate, Mode=TwoWay}"
+                                                        MinHeight="44" />
+                                        </StackPanel>
+
+                                        <StackPanel Width="150" Margin="0,0,12,10">
+                                            <TextBlock Text="Vigente hasta" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                            <DatePicker SelectedDate="{Binding FeeEffectiveToDate, Mode=TwoWay}"
+                                                        MinHeight="44" />
+                                        </StackPanel>
+
+                                        <StackPanel Width="100" Margin="0,0,12,10" VerticalAlignment="Center">
+                                            <TextBlock Text="Activa" FontWeight="SemiBold" Margin="0,0,0,6" />
+                                            <CheckBox IsChecked="{Binding IsFeeRuleActive, Mode=TwoWay}"
+                                                      VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </WrapPanel>
+
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Cancelar"
+                                                Command="{Binding CancelFeeRuleEditCommand}"
+                                                Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                                Height="36" Padding="16,0" Margin="0,0,8,0" />
+                                        <Button Content="Guardar Regla"
+                                                Command="{Binding SaveFeeRuleCommand}"
+                                                IsEnabled="{Binding CanSaveFeeRule}"
+                                                Style="{DynamicResource MaterialDesignRaisedButton}"
+                                                Height="36" Padding="16,0" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <controls:PerformantDataGrid ItemsSource="{Binding PaymentMethodFeeRules}"
+                                                         AutomationProperties.AutomationId="Settings_PaymentMethodFeesGrid"
+                                                         AutoGenerateColumns="False"
+                                                         CanUserAddRows="False"
+                                                         CanUserDeleteRows="False"
+                                                         GridLinesVisibility="Horizontal"
+                                                         HeadersVisibility="Column"
+                                                         ColumnHeaderHeight="40"
+                                                         RowHeight="42"
+                                                         MinHeight="220"
+                                                         BorderThickness="1"
+                                                         BorderBrush="{DynamicResource MaterialDesignDivider}"
+                                                         Background="Transparent">
+                                <controls:PerformantDataGrid.RowStyle>
+                                    <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                <Setter Property="Opacity" Value="0.55" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </controls:PerformantDataGrid.RowStyle>
+
+                                <controls:PerformantDataGrid.Columns>
+                                    <DataGridTextColumn Header="Método" Binding="{Binding PaymentMethodName}" Width="*" />
+                                    <DataGridTextColumn Header="Tipo" Binding="{Binding FeeTypeDisplay}" Width="Auto" />
+                                    <DataGridTextColumn Header="Valor" Binding="{Binding FeeValueDisplay}" Width="Auto" />
+                                    <DataGridTextColumn Header="Moneda" Binding="{Binding CurrencyCode}" Width="Auto" />
+                                    <DataGridTextColumn Header="Desde" Binding="{Binding EffectiveFromDisplay}" Width="Auto" />
+                                    <DataGridTextColumn Header="Hasta" Binding="{Binding EffectiveToDisplay}" Width="Auto" />
+                                    <DataGridTextColumn Header="Estado" Binding="{Binding StatusDisplay}" Width="Auto" />
+                                    <DataGridTemplateColumn Header="Acciones" Width="Auto">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                    <Button Command="{Binding DataContext.EditFeeRuleCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{DynamicResource MaterialDesignIconButton}"
+                                                            ToolTip="Editar regla de comisión"
+                                                            Width="30" Height="30">
+                                                        <materialDesign:PackIcon Kind="Pencil" Width="16" Height="16" />
+                                                    </Button>
+                                                    <Button Command="{Binding DataContext.DeleteFeeRuleCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            IsEnabled="{Binding IsActive}"
+                                                            Style="{DynamicResource MaterialDesignIconButton}"
+                                                            Foreground="#DC2626"
+                                                            ToolTip="Desactivar regla de comisión"
+                                                            Width="30" Height="30">
+                                                        <materialDesign:PackIcon Kind="Delete" Width="16" Height="16" />
+                                                    </Button>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </controls:PerformantDataGrid.Columns>
+                            </controls:PerformantDataGrid>
+                        </StackPanel>
+                    </Border>
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- APARTADO 3: INVENTARIO Y REGLAS DE VENTA -->

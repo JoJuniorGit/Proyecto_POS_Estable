@@ -76,6 +76,9 @@
         <DataTemplate DataType="{x:Type vm:CreditReceivablesViewModel}">
             <views:CreditReceivablesView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ProfitabilityViewModel}">
+            <views:ProfitabilityView/>
+        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:CreditPaymentDialogViewModel}">
             <views:CreditPaymentDialog/>
         </DataTemplate>
@@ -310,6 +313,18 @@
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="AccountGroup" Width="18" Height="18" VerticalAlignment="Center"/>
                                 <TextBlock Text="Gestión Usuarios" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="BtnProfitability"
+                                AutomationProperties.AutomationId="Nav_BtnProfitability"
+                                Style="{DynamicResource NavItemButtonStyle}"
+                                Command="{Binding NavigateToProfitabilityCommand}"
+                                Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=profitability}"
+                                ToolTip="Estado de Resultados y Rentabilidad">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ChartBar" Width="18" Height="18" VerticalAlignment="Center"/>
+                                <TextBlock Text="Rentabilidad" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
