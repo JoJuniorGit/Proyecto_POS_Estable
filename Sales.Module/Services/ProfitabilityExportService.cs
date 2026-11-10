@@ -6,6 +6,7 @@ using Sales.Module.Data;
 using Sales.Module.DTOs.Profitability;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
+using Sales.Module.Receipts;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -17,16 +18,17 @@ using System.Threading.Tasks;
 namespace Sales.Module.Services;
 
 /// <summary>
-/// Paso 14 (F3-WU2, F3-S2/F3-S5): exportación CSV/XLSX del Estado de Resultados. Reutiliza el
-/// resumen del motor de rentabilidad y agrega el detalle de Caja Chica por categoría dentro de la
-/// misma ventana UTC que resolvió el resumen. El CSV usa UTF-8 con BOM, delimitador ';' y escape
-/// de fórmulas (CWE-1236); el XLSX usa ClosedXML con las cuatro pestañas aprobadas.
+/// Paso 14 (F3-WU3, F3-S2/F3-S3/F3-S5): exportación CSV/XLSX/PDF del Estado de Resultados.
+/// Reutiliza el resumen del motor de rentabilidad y agrega el detalle de Caja Chica por categoría
+/// dentro de la misma ventana UTC que resolvió el resumen. El CSV usa UTF-8 con BOM, delimitador
+/// ';' y escape de fórmulas (CWE-1236); el XLSX usa ClosedXML con las cuatro pestañas aprobadas;
+/// el PDF usa el generador nativo 1.4 con bloques comparativos y pie "Página X de Y".
 /// </summary>
 public sealed class ProfitabilityExportService : IProfitabilityExportService
 {
     private const string CsvContentType = "text/csv; charset=utf-8";
     private const string XlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    private const string PdfPendingMessage = "El formato PDF se habilita en F3-WU3.";
+    private const string PdfContentType = "application/pdf";
 
     private readonly IProfitabilityService _profitabilityService;
     private readonly SalesDbContext _context;
@@ -56,12 +58,7 @@ public sealed class ProfitabilityExportService : IProfitabilityExportService
         ArgumentNullException.ThrowIfNull(context);
 
         var normalizedFormat = (format ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalizedFormat == "pdf")
-        {
-            throw new NotSupportedException(PdfPendingMessage);
-        }
-
-        if (normalizedFormat is not ("csv" or "xlsx"))
+        if (normalizedFormat is not ("csv" or "xlsx" or "pdf"))
         {
             throw new ArgumentException(
                 $"Formato de exportación no soportado: '{format}'. Formatos válidos: csv, xlsx, pdf.",
@@ -74,17 +71,50 @@ public sealed class ProfitabilityExportService : IProfitabilityExportService
         var generatedLocal = ConvertToLocal(context.GeneratedAtUtc, timeZone);
         var fileName = BuildFileName(summary, timeZone, normalizedFormat);
 
-        var content = normalizedFormat == "csv"
-            ? BuildCsv(summary, pettyCashRows, context, generatedLocal)
-            : BuildXlsx(summary, pettyCashRows, context, generatedLocal);
+        byte[] content;
+        string contentType;
+        switch (normalizedFormat)
+        {
+            case "csv":
+                content = BuildCsv(summary, pettyCashRows, context, generatedLocal);
+                contentType = CsvContentType;
+                break;
+            case "xlsx":
+                content = BuildXlsx(summary, pettyCashRows, context, generatedLocal);
+                contentType = XlsxContentType;
+                break;
+            default:
+                content = ProfitabilityPdfGenerator.BuildPdf(BuildPdfContext(summary, pettyCashRows, context, timeZone));
+                contentType = PdfContentType;
+                break;
+        }
 
         return new ProfitabilityExportFile
         {
             Content = content,
-            ContentType = normalizedFormat == "csv" ? CsvContentType : XlsxContentType,
+            ContentType = contentType,
             FileName = fileName
         };
     }
+
+    private static ProfitabilityPdfContext BuildPdfContext(
+        ProfitabilitySummaryDto summary,
+        IReadOnlyList<PettyCashCategoryRow> pettyCashRows,
+        ProfitabilityExportContext context,
+        TimeZoneInfo timeZone) => new()
+    {
+        Summary = summary,
+        Export = context,
+        TimeZone = timeZone,
+        PettyCashCategories = pettyCashRows
+            .Select(row => new ProfitabilityPdfCategoryRow(
+                row.CategoryName,
+                row.Count,
+                row.AmountUsd,
+                row.AmountBsS,
+                row.ReportAmount))
+            .ToList()
+    };
 
     private async Task<IReadOnlyList<PettyCashCategoryRow>> LoadPettyCashByCategoryAsync(
         ProfitabilitySummaryDto summary,

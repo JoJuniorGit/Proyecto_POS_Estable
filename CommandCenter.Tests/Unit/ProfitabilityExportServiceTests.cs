@@ -189,6 +189,7 @@ public class ProfitabilityExportServiceTests
     [Theory]
     [InlineData("CSV", "text/csv; charset=utf-8")]
     [InlineData(" XLSX ", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
+    [InlineData("PDF", "application/pdf")]
     public async Task ExportAsync_NormalizesFormatName(string format, string expectedContentType)
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
@@ -200,15 +201,27 @@ public class ProfitabilityExportServiceTests
     }
 
     [Fact]
-    public async Task ExportAsync_Pdf_ThrowsPendingMessageForF3Wu3()
+    public async Task ExportAsync_Pdf_ProducesNativePdfWithFootnoteAndPettyCashDetail()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
+        SeedPettyCash(context);
+        await context.SaveChangesAsync();
+
         var (service, _) = CreateService(context, CreateSummary());
 
-        var exception = await Assert.ThrowsAsync<NotSupportedException>(
-            () => service.ExportAsync(CreateFilter(), "pdf", CreateContext()));
+        var file = await service.ExportAsync(CreateFilter(), "pdf", CreateContext());
 
-        Assert.Equal("El formato PDF se habilita en F3-WU3.", exception.Message);
+        Assert.Equal("application/pdf", file.ContentType);
+        Assert.Equal("Estado_Resultados_20261102_20261102.pdf", file.FileName);
+        Assert.NotEmpty(file.Content);
+
+        var text = Encoding.ASCII.GetString(file.Content);
+        Assert.StartsWith("%PDF-1.4", text);
+        Assert.Contains("%%EOF", text);
+        Assert.Contains("Estado de Resultados", text);
+        Assert.Contains("Comercializadora Demo", text);
+        Assert.Contains("Varios", text);
+        Assert.Contains("InsumosLimpieza", text);
     }
 
     [Fact]

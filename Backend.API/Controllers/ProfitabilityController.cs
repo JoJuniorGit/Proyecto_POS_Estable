@@ -86,8 +86,8 @@ public sealed class ProfitabilityController : ControllerBase
     }
 
     /// <summary>
-    /// Paso 14 (F3-S2): exportación unificada del Estado de Resultados. CSV y XLSX están
-    /// disponibles ya; el PDF se habilita en F3-WU3 y hasta entonces responde 400.
+    /// Paso 14 (F3-S3): exportación unificada del Estado de Resultados en CSV, XLSX o PDF. Los
+    /// formatos no soportados responden 400 antes de resolver el resumen.
     /// </summary>
     [HttpGet("export")]
     public async Task<IActionResult> ExportAsync(
@@ -99,11 +99,6 @@ public sealed class ProfitabilityController : ControllerBase
         if (normalizedFormat is not ("csv" or "xlsx" or "pdf"))
         {
             return this.ApiBadRequest("Formato de exportación inválido. Formatos válidos: csv, xlsx, pdf.");
-        }
-
-        if (normalizedFormat == "pdf")
-        {
-            return this.ApiBadRequest("El formato PDF se habilita en F3-WU3.");
         }
 
         try
