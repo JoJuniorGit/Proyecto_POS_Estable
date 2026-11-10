@@ -26,6 +26,7 @@ public partial class SalesService
         // 8.211-T3c3b2 (S7): Single add-payment support is deferred; reject before any mutation.
         var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
         EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+        string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
 
         Sale? sale = null;
         if (!_context.Database.IsRelational())
@@ -98,6 +99,18 @@ public partial class SalesService
                 OriginalAmount = ResolveOriginalAmount(input.AmountUsd, input.AmountBsS, currencyCode)
             };
 
+            // Paso 14 (S7): la comision es un costo del negocio; solo se snapshotea en el abono.
+            var feeSnapshot = await ResolvePaymentMethodFeeAsync(
+                input.Method,
+                request.PaymentMethodId,
+                paymentEntity.CreatedAt,
+                input.AmountUsd,
+                input.AmountBsS,
+                input.Rate,
+                localCurrencyCode,
+                cancellationToken);
+            paymentEntity.ApplyFeeSnapshot(feeSnapshot);
+
             _context.SalePayments.Add(paymentEntity);
 
             // Si es efectivo y monto positivo, registrar en sesión activa de caja
@@ -168,6 +181,7 @@ public partial class SalesService
         // 8.211-T3c3b2 (S7): Single batch add-payment support is deferred; reject before mutation.
         var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
         EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+        string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
 
         Sale? sale = null;
         if (!_context.Database.IsRelational())
@@ -266,6 +280,19 @@ public partial class SalesService
                         CurrencyCode = currencyCode,
                         OriginalAmount = ResolveOriginalAmount(input.AmountUsd, input.AmountBsS, currencyCode)
                     };
+
+                    // Paso 14 (S7): snapshot de comision por cada abono del lote. El lote sigue
+                    // siendo la unica transaccion: la comision no altera montos ni caja.
+                    var feeSnapshot = await ResolvePaymentMethodFeeAsync(
+                        input.Method,
+                        request.PaymentMethodId,
+                        paymentEntity.CreatedAt,
+                        input.AmountUsd,
+                        input.AmountBsS,
+                        input.Rate,
+                        localCurrencyCode,
+                        cancellationToken);
+                    paymentEntity.ApplyFeeSnapshot(feeSnapshot);
 
                     _context.SalePayments.Add(paymentEntity);
 

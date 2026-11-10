@@ -44,6 +44,7 @@ public partial class SalesService
         // moneda no debe consumir un consecutivo ni dejar trabajo parcial.
         var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
         EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+        string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
 
         var paymentMethod = await _context.PaymentMethods
             .AsNoTracking()
@@ -213,6 +214,19 @@ public partial class SalesService
             CurrencyCode = currencyCode,
             OriginalAmount = ResolveOriginalAmount(totalChargedUSD, totalChargedLocal, currencyCode)
         };
+
+        // Paso 14 (S7): la comision del medio se calcula sobre el total cobrado (capital +
+        // comision de servicio). El capital sigue siendo movimiento de tesoreria, no ingreso.
+        var feeSnapshot = await ResolvePaymentMethodFeeAsync(
+            paymentMethod,
+            paymentMethodId,
+            payment.CreatedAt,
+            totalChargedUSD,
+            totalChargedLocal,
+            anchoredRate,
+            localCurrencyCode,
+            cancellationToken);
+        payment.ApplyFeeSnapshot(feeSnapshot);
 
         _context.SalePayments.Add(payment);
         await _context.SaveChangesAsync(cancellationToken);

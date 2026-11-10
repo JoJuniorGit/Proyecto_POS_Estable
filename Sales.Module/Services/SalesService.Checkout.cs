@@ -260,6 +260,47 @@ public partial class SalesService
     }
 
     /// <summary>
+    /// Paso 14 (S7): resolves the immutable fee snapshot for a payment about to be persisted.
+    /// A missing payment-method row is a legacy empty catalog (the flow already tolerates it and
+    /// no rule can reference the method): the snapshot stays <see cref="PaymentMethodFeeSnapshot.None"/>.
+    /// When the row exists the resolver enforces cash and configuration rules.
+    /// </summary>
+    private async Task<PaymentMethodFeeSnapshot> ResolvePaymentMethodFeeAsync(
+        PaymentMethod? knownPaymentMethod,
+        int paymentMethodId,
+        DateTime paymentDateUtc,
+        decimal amountUsd,
+        decimal amountLocal,
+        decimal rate,
+        string localCurrencyCode,
+        CancellationToken cancellationToken)
+    {
+        if (knownPaymentMethod is null)
+        {
+            return PaymentMethodFeeSnapshot.None;
+        }
+
+        return await PaymentMethodFeeResolver.ResolveAsync(
+            _context,
+            paymentMethodId,
+            paymentDateUtc,
+            amountUsd,
+            amountLocal,
+            rate,
+            localCurrencyCode,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Paso 14 (S7): local currency of the frozen monetary regime, used by the fee resolver.
+    /// </summary>
+    private static string ResolveLocalCurrencyCode(MonetaryProfileSnapshot profile)
+        => PaymentMethodFeeResolver.ResolveLocalCurrencyCode(
+            profile.MonetaryMode,
+            profile.PrimaryCurrencyCode,
+            profile.SecondaryCurrencyCode);
+
+    /// <summary>
     /// 8.211-T4a (S10/F4a): perfil para etiquetar el recibo impreso tras el commit. Cualquier
     /// fallo degrada al default del contexto (códigos snapshot + símbolos ASCII por código) sin
     /// afectar la venta; por eso se lee con un token no cancelable después de confirmar.
@@ -603,6 +644,7 @@ public partial class SalesService
 
             if (payments != null && payments.Any())
             {
+                string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
                 foreach (var p in payments)
                 {
                     var (amountUsd, amountLocal) = ResolveConsistentPaymentAmounts(p.Amount, p.AmountLocal, exchangeRate);
@@ -624,6 +666,20 @@ public partial class SalesService
                         CurrencyCode = currencyCode,
                         OriginalAmount = ResolveOriginalAmount(amountUsd, amountLocal, currencyCode)
                     };
+
+                    // Paso 14 (S7): la comision es un costo del negocio; se congela aqui y no
+                    // participa de los totales, la tasa ni el vuelto que se cobra al cliente.
+                    var feeSnapshot = await ResolvePaymentMethodFeeAsync(
+                        paymentMethod,
+                        p.PaymentMethodId,
+                        paymentEntity.CreatedAt,
+                        amountUsd,
+                        amountLocal,
+                        exchangeRate,
+                        localCurrencyCode,
+                        cancellationToken);
+                    paymentEntity.ApplyFeeSnapshot(feeSnapshot);
+
                     sale.Payments.Add(paymentEntity);
 
                     if (amountUsd > 0 && paymentMethod != null && paymentMethod.IsCash)

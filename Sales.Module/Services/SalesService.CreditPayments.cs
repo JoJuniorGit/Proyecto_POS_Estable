@@ -89,6 +89,7 @@ public partial class SalesService
                 // source and the method-currency authority.
                 var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
                 EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: true);
+                string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
 
                 var customer = await _context.Customers
                     .AsNoTracking()
@@ -224,6 +225,19 @@ public partial class SalesService
                     ReceivedByUserId = actingUserId ?? request.ReceivedByUserId,
                     CashTransaction = cashTransaction
                 };
+
+                // Paso 14 (S7): comision congelada del abono CxC; no modifica lo imputado ni la caja.
+                var feeSnapshot = await ResolvePaymentMethodFeeAsync(
+                    paymentMethod,
+                    request.PaymentMethodId,
+                    payment.ReceivedAtUtc,
+                    allocatedUsd,
+                    allocatedBsS,
+                    snapshotPaymentRate,
+                    localCurrencyCode,
+                    cancellationToken);
+                payment.ApplyFeeSnapshot(feeSnapshot);
+
                 foreach (var allocation in allocations)
                 {
                     payment.Allocations.Add(allocation);

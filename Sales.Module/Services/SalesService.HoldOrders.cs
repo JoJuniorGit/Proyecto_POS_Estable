@@ -54,6 +54,7 @@ public partial class SalesService
         var preparedInitialEntries = new List<(SalePayment Payment, CashTransaction? CashTx)>();
         if (paymentsToProcess.Any())
         {
+            string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
             var pMethodIds = paymentsToProcess.Select(p => p.PaymentMethodId).Distinct().ToList();
             var pMethodsDict = await _context.PaymentMethods
                 .AsNoTracking()
@@ -113,6 +114,18 @@ public partial class SalesService
                     CurrencyCode = currencyCode,
                     OriginalAmount = ResolveOriginalAmount(resolvedAmountUsd, resolvedAmountBsS, currencyCode)
                 };
+
+                // Paso 14 (S7): comision congelada del abono inicial; jamas modifica el monto.
+                var feeSnapshot = await ResolvePaymentMethodFeeAsync(
+                    pMethodForValidation,
+                    payment.PaymentMethodId,
+                    initialPaymentEntity.CreatedAt,
+                    resolvedAmountUsd,
+                    resolvedAmountBsS,
+                    rate,
+                    localCurrencyCode,
+                    cancellationToken);
+                initialPaymentEntity.ApplyFeeSnapshot(feeSnapshot);
 
                 sale.Payments.Add(initialPaymentEntity);
 
@@ -189,7 +202,19 @@ public partial class SalesService
                         ReferenceNumber = prepPayment.ReferenceNumber,
                         CreatedAt = prepPayment.CreatedAt,
                         CurrencyCode = prepPayment.CurrencyCode,
-                        OriginalAmount = prepPayment.OriginalAmount
+                        OriginalAmount = prepPayment.OriginalAmount,
+                        // Paso 14 (S7): el reintento copia el snapshot congelado; nunca re-resuelve
+                        // la regla (una reconfiguracion concurrente no debe reescribir el cobro).
+                        PaymentMethodFeeRuleId = prepPayment.PaymentMethodFeeRuleId,
+                        FeeType = prepPayment.FeeType,
+                        FeePercentage = prepPayment.FeePercentage,
+                        FeeFixedAmount = prepPayment.FeeFixedAmount,
+                        FeeCurrencyCode = prepPayment.FeeCurrencyCode,
+                        FeeAmountUsd = prepPayment.FeeAmountUsd,
+                        FeeAmountLocal = prepPayment.FeeAmountLocal,
+                        FeeRate = prepPayment.FeeRate,
+                        FeeConfigured = prepPayment.FeeConfigured,
+                        FeeRuleEffectiveFromUtc = prepPayment.FeeRuleEffectiveFromUtc
                     };
                     sale.Payments.Add(clonedPayment);
                     if (prepCashTx != null)
