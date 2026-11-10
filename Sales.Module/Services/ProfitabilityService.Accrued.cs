@@ -95,8 +95,15 @@ public partial class ProfitabilityService
             filteredSales, fromUtc, toUtc, isSingle, cancellationToken);
         var pettyCashExpenses = await LoadPettyCashExpensesAsync(
             fromUtc, toUtc, isSingle, cancellationToken);
-        var feeRows = await LoadFeeRowsAsync(fromUtc, toUtc, cancellationToken);
-        var reversalRows = await LoadFeeReversalRowsAsync(fromUtc, toUtc, cancellationToken);
+        // F2-WU4: the method filter must reach the fee headline so a method-filtered report
+        // reconciles with the realized/breakdown semantics. Without a filter the behavior is
+        // unchanged.
+        var paymentMethodIds = filter.PaymentMethodIds ?? Array.Empty<int>();
+        var hasPaymentMethodFilter = paymentMethodIds.Count > 0;
+        var feeRows = await LoadFeeRowsAsync(
+            fromUtc, toUtc, paymentMethodIds, hasPaymentMethodFilter, cancellationToken);
+        var reversalRows = await LoadFeeReversalRowsAsync(
+            fromUtc, toUtc, paymentMethodIds, hasPaymentMethodFilter, cancellationToken);
 
         var paymentMethodFees = feeRows.Sum(row => FeeAmount(row, isSingle))
             - reversalRows.Sum(row => FeeAmount(row, isSingle));
@@ -253,7 +260,6 @@ public partial class ProfitabilityService
             select new ReturnAmountRow
             {
                 ReturnedUSD = creditReturn.ReturnedUSD,
-                RefundRate = creditReturn.RefundRate,
                 AppliedRate = sale.AppliedRate
             };
 
@@ -282,7 +288,6 @@ public partial class ProfitabilityService
                 ProductId = saleItem.ProductId,
                 Quantity = returnItem.Quantity,
                 AmountUSD = returnItem.AmountUSD,
-                RefundRate = creditReturn.RefundRate,
                 AppliedRate = sale.AppliedRate,
                 ItemQuantity = saleItem.Quantity,
                 ItemSubtotal = saleItem.Subtotal,
@@ -388,10 +393,19 @@ public partial class ProfitabilityService
     private async Task<List<FeeRow>> LoadFeeRowsAsync(
         DateTime fromUtc,
         DateTime toUtc,
+        IReadOnlyList<int> paymentMethodIds,
+        bool hasPaymentMethodFilter,
         CancellationToken cancellationToken)
     {
+        var salePaymentSource = _context.SalePayments.AsNoTracking();
+        if (hasPaymentMethodFilter)
+        {
+            salePaymentSource = salePaymentSource.Where(payment =>
+                paymentMethodIds.Contains(payment.PaymentMethodId));
+        }
+
         var salePayments = await (
-                from payment in _context.SalePayments.AsNoTracking()
+                from payment in salePaymentSource
                 join method in _context.PaymentMethods.AsNoTracking()
                     on payment.PaymentMethodId equals method.Id into methods
                 from method in methods.DefaultIfEmpty()
@@ -410,8 +424,16 @@ public partial class ProfitabilityService
                 })
             .ToListAsync(cancellationToken);
 
+        var receivablePaymentSource = _context.ReceivablePayments.AsNoTracking();
+        if (hasPaymentMethodFilter)
+        {
+            receivablePaymentSource = receivablePaymentSource.Where(payment =>
+                payment.PaymentMethodId.HasValue
+                && paymentMethodIds.Contains(payment.PaymentMethodId.Value));
+        }
+
         var receivablePayments = await (
-                from payment in _context.ReceivablePayments.AsNoTracking()
+                from payment in receivablePaymentSource
                 join method in _context.PaymentMethods.AsNoTracking()
                     on payment.PaymentMethodId equals (int?)method.Id into methods
                 from method in methods.DefaultIfEmpty()
@@ -436,20 +458,31 @@ public partial class ProfitabilityService
     private async Task<List<FeeRow>> LoadFeeReversalRowsAsync(
         DateTime fromUtc,
         DateTime toUtc,
+        IReadOnlyList<int> paymentMethodIds,
+        bool hasPaymentMethodFilter,
         CancellationToken cancellationToken)
     {
         // F2-S2/S10: exactly the SalePayments of issued sales whose CancelledAtUtc falls in the
         // window. Merchandise returns do not reverse the acquirer fee because the electronic
         // collection itself is not reversed, and cancelled OnHold orders without an invoice never
-        // had a completed collection to reverse.
+        // had a completed collection to reverse. The payment-method filter applies to the original
+        // payment method of the reversal.
+        var paymentSource = _context.SalePayments.AsNoTracking();
+        if (hasPaymentMethodFilter)
+        {
+            paymentSource = paymentSource.Where(payment =>
+                paymentMethodIds.Contains(payment.PaymentMethodId));
+        }
+
         return await (
-                from payment in _context.SalePayments.AsNoTracking()
+                from payment in paymentSource
                 join sale in _context.Sales.AsNoTracking() on payment.SaleId equals sale.Id
                 where sale.InvoiceNumber != null
                     && sale.CancelledAtUtc >= fromUtc
                     && sale.CancelledAtUtc < toUtc
                 select new FeeRow
                 {
+                    PaymentMethodId = payment.PaymentMethodId,
                     Amount = 0m,
                     AmountLocal = 0m,
                     FeeUsd = payment.FeeAmountUsd,
@@ -535,16 +568,15 @@ public partial class ProfitabilityService
 
     private static decimal ReturnAmount(ReturnAmountRow row, bool isSingle)
     {
-        return isSingle
-            ? row.ReturnedUSD * (row.RefundRate ?? row.AppliedRate)
-            : row.ReturnedUSD;
+        // F2-WU4: Single returned invoice revenue uses the immutable sale snapshot
+        // (Sale.AppliedRate), not CreditReturn.RefundRate (the cash-refund rate), matching the
+        // realized and breakdown engines. RefundedBsS stays the cash refund.
+        return isSingle ? row.ReturnedUSD * row.AppliedRate : row.ReturnedUSD;
     }
 
     private static decimal ReturnAmount(ReturnItemRow row, bool isSingle)
     {
-        return isSingle
-            ? row.AmountUSD * (row.RefundRate ?? row.AppliedRate)
-            : row.AmountUSD;
+        return isSingle ? row.AmountUSD * row.AppliedRate : row.AmountUSD;
     }
 
     private static decimal ReturnItemRevenue(ReturnItemRow row, bool isSingle)
@@ -628,8 +660,6 @@ public partial class ProfitabilityService
     {
         public decimal ReturnedUSD { get; init; }
 
-        public decimal? RefundRate { get; init; }
-
         public decimal AppliedRate { get; init; }
     }
 
@@ -642,8 +672,6 @@ public partial class ProfitabilityService
         public decimal Quantity { get; init; }
 
         public decimal AmountUSD { get; init; }
-
-        public decimal? RefundRate { get; init; }
 
         public decimal AppliedRate { get; init; }
 

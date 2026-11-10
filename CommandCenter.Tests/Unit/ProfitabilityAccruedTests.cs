@@ -576,10 +576,12 @@ public class ProfitabilityAccruedTests
         var filter = CreateWindowFilter();
         filter.CategoryIds = new[] { 7 };
 
-        var exception = await Assert.ThrowsAsync<NotSupportedException>(
+        // F2-WU4: the category filter is resolved through IInventoryService. Direct compositions
+        // without the catalog fail closed instead of returning unfiltered data.
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => CreateService(context, MonetaryMode.Dual).GetSummaryAsync(filter));
 
-        Assert.Equal("El filtro por categoría se habilita en F2-WU4.", exception.Message);
+        Assert.Equal("El catálogo de productos no está disponible para resolver el filtro por categoría.", exception.Message);
     }
 
     private static ProfitabilityFilterDto CreateWindowFilter() => new()

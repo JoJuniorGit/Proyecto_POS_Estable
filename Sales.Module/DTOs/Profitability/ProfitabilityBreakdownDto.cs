@@ -47,12 +47,23 @@ public sealed record PaymentMethodBreakdownDto
 
     public decimal CollectedAmount { get; init; }
 
+    /// <summary>Comisión neta del método en el período (incluye reversas S10 por anulación).</summary>
     public decimal FeeAmount { get; init; }
 
+    /// <summary>
+    /// Base de cobertura: monto cobrado por el método con regla de comisión conocida. No es el
+    /// importe de la comisión; la comisión efectiva vive en <see cref="FeeAmount"/>.
+    /// </summary>
     public decimal KnownFeeAmount { get; init; }
 
+    /// <summary>
+    /// Base de cobertura: monto cobrado por el método sin regla de comisión conocida. No es un
+    /// importe de comisión desconocido; expresa qué porción de <see cref="CollectedAmount"/> no
+    /// pudo asociarse a una regla vigente.
+    /// </summary>
     public decimal UnknownFeeAmount { get; init; }
 
+    /// <summary>Porcentaje de la base de cobro con regla de comisión conocida (0-100).</summary>
     public decimal FeeCoveragePercent { get; init; }
 }
 
@@ -61,6 +72,7 @@ public sealed record PaymentMethodBreakdownDto
 /// </summary>
 public sealed record CategoryBreakdownDto
 {
+    /// <summary>Id de categoría; 0 identifica el grupo sintético "Sin categoría".</summary>
     public int CategoryId { get; init; }
 
     public string CategoryName { get; init; } = string.Empty;
@@ -85,6 +97,11 @@ public sealed record ProductBreakdownDto
 
     public string ProductName { get; init; } = string.Empty;
 
+    /// <summary>Categoría de reporte del producto; null = sin categoría.</summary>
+    public int? CategoryId { get; init; }
+
+    public string? CategoryName { get; init; }
+
     public decimal QuantitySold { get; init; }
 
     public decimal Revenue { get; init; }
@@ -101,7 +118,8 @@ public sealed record ProductBreakdownDto
 /// </summary>
 public sealed record SellerBreakdownDto
 {
-    public int CashierId { get; init; }
+    /// <summary>Cajero de la venta; null = venta sin cajero asignado.</summary>
+    public int? CashierId { get; init; }
 
     public string CashierName { get; init; } = string.Empty;
 

@@ -290,6 +290,104 @@ public partial class InventoryService
         };
     }
 
+    /// <summary>
+    /// Paso 14 (F2-WU4, F2-S4): productos del filtro de categoría. El subárbol se resuelve con el
+    /// mismo BFS en memoria que el resto del catálogo; <paramref name="includeSubtree"/> false
+    /// limita la búsqueda a la categoría raíz. Los Ids devueltos son distintos y ordenados para
+    /// que el filtro sea determinista entre proveedores.
+    /// </summary>
+    public async Task<IReadOnlyList<int>> GetProductIdsByCategoryAsync(
+        IReadOnlyCollection<int> categoryIds,
+        bool includeSubtree,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(categoryIds);
+        if (categoryIds.Count == 0)
+        {
+            return Array.Empty<int>();
+        }
+
+        var resolvedCategoryIds = new HashSet<int>();
+        foreach (var categoryId in categoryIds.Distinct())
+        {
+            if (!includeSubtree)
+            {
+                resolvedCategoryIds.Add(categoryId);
+                continue;
+            }
+
+            // ResolveCategorySubtreeIdsAsync includes the root and returns an empty set when the
+            // category does not exist, so unknown ids never magnify the report.
+            foreach (var subtreeId in await ResolveCategorySubtreeIdsAsync(categoryId, cancellationToken))
+            {
+                resolvedCategoryIds.Add(subtreeId);
+            }
+        }
+
+        if (resolvedCategoryIds.Count == 0)
+        {
+            return Array.Empty<int>();
+        }
+
+        var productIds = await _context.ProductCategories.AsNoTracking()
+            .Where(link => resolvedCategoryIds.Contains(link.CategoryId))
+            .Select(link => link.ProductId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        productIds.Sort();
+        return productIds;
+    }
+
+    /// <summary>
+    /// Paso 14 (F2-WU4, F2-S4): nombre y categoría de cada producto para los desgloses. Cuando un
+    /// producto pertenece a varias categorías se elige la de menor Id para que el reporte no
+    /// cambie de categoría entre corridas; los productos sin categoría se devuelven con los
+    /// campos de categoría en null.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<int, Core.DTOs.ProfitabilityProductInfoDto>> GetProductCategoryInfoAsync(
+        IReadOnlyCollection<int> productIds,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+        var ids = productIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return new Dictionary<int, Core.DTOs.ProfitabilityProductInfoDto>();
+        }
+
+        var products = await _context.Products.AsNoTracking()
+            .Where(product => ids.Contains(product.Id))
+            .Select(product => new { product.Id, product.Name })
+            .ToListAsync(cancellationToken);
+
+        var links = await _context.ProductCategories.AsNoTracking()
+            .Where(link => ids.Contains(link.ProductId))
+            .Select(link => new { link.ProductId, link.CategoryId, link.Category.Name })
+            .ToListAsync(cancellationToken);
+
+        var firstCategoryByProduct = links
+            .GroupBy(link => link.ProductId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderBy(link => link.CategoryId).First());
+
+        var info = new Dictionary<int, Core.DTOs.ProfitabilityProductInfoDto>(products.Count);
+        foreach (var product in products)
+        {
+            firstCategoryByProduct.TryGetValue(product.Id, out var category);
+            info[product.Id] = new Core.DTOs.ProfitabilityProductInfoDto
+            {
+                ProductId = product.Id,
+                ProductName = product.Name,
+                CategoryId = category?.CategoryId,
+                CategoryName = category?.Name
+            };
+        }
+
+        return info;
+    }
+
     // 8.179-T1 (S4): set categoría + descendientes calculado en memoria (BFS) para ser
     // provider-agnóstico (InMemory/SQLite/PostgreSQL) sin CTE recursivo. Categoría desconocida → vacío.
     private async Task<List<int>> ResolveCategorySubtreeIdsAsync(int categoryId, System.Threading.CancellationToken cancellationToken)

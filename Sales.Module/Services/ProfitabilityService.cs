@@ -4,6 +4,8 @@ using Sales.Module.Data;
 using Sales.Module.DTOs.Profitability;
 using Sales.Module.Interfaces;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,22 +13,30 @@ namespace Sales.Module.Services;
 
 /// <summary>
 /// Paso 14 (F2-S1/S4): fachada del Estado de Resultados. Resuelve el contexto (ventana UTC, zona
-/// horaria y moneda de reporte) e integra los motores devengado y percibido; los desgloses se
-/// incorporan en WU4 sobre las mismas dependencias.
+/// horaria y moneda de reporte), traduce el filtro de categoría con el catálogo de inventario e
+/// integra los motores devengado, percibido, los desgloses y las alertas de erosión de margen.
 /// </summary>
 public partial class ProfitabilityService : IProfitabilityService
 {
+    // F2-WU4: a category filter that resolves to no products must mean an empty sales scope, not
+    // "no product filter". This id cannot collide with a real product and keeps the engines intact.
+    private static readonly IReadOnlyList<int> EmptyProductScope = new[] { int.MinValue };
+
     private readonly SalesDbContext _context;
     private readonly ITimeZoneProvider _timeZoneProvider;
     // Dual reports in USD; Single reports in its primary currency. Optional so direct test
     // compositions and installations without the monetary profile keep the historical USD/VES
     // behavior instead of failing the report.
     private readonly IMonetaryProfileService? _monetaryProfileService;
+    // F2-WU4: optional catalog dependency. Direct compositions without it keep working for every
+    // report except a category filter, which fails closed with a clear configuration message.
+    private readonly IInventoryService? _inventoryService;
 
     public ProfitabilityService(
         SalesDbContext context,
         ITimeZoneProvider timeZoneProvider,
-        IMonetaryProfileService? monetaryProfileService = null)
+        IMonetaryProfileService? monetaryProfileService = null,
+        IInventoryService? inventoryService = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(timeZoneProvider);
@@ -34,6 +44,7 @@ public partial class ProfitabilityService : IProfitabilityService
         _context = context;
         _timeZoneProvider = timeZoneProvider;
         _monetaryProfileService = monetaryProfileService;
+        _inventoryService = inventoryService;
     }
 
     /// <summary>
@@ -48,12 +59,9 @@ public partial class ProfitabilityService : IProfitabilityService
     {
         ArgumentNullException.ThrowIfNull(filter);
 
-        // F2-WU4 owns the category catalog (including the subtree). Until then the filter fails
-        // explicitly instead of silently returning unfiltered data.
-        if (filter.CategoryIds is { Count: > 0 })
-        {
-            throw new NotSupportedException("El filtro por categoría se habilita en F2-WU4.");
-        }
+        // F2-WU4: the category catalog is resolved before any engine runs; downstream engines
+        // receive only effective product ids and never see CategoryIds.
+        var effectiveFilter = await ResolveEffectiveFilterAsync(filter, cancellationToken);
 
         var window = await ProfitabilityTimeWindow.ResolveAsync(
             filter,
@@ -62,18 +70,27 @@ public partial class ProfitabilityService : IProfitabilityService
 
         var reportCurrency = await ResolveReportCurrencyAsync(cancellationToken);
         var accruedResult = await BuildAccruedAsync(
-            filter,
+            effectiveFilter,
             window,
             reportCurrency,
             cancellationToken);
         var realizedResult = await BuildRealizedAsync(
-            filter,
+            effectiveFilter,
             window,
             reportCurrency,
             cancellationToken);
+        var breakdown = await BuildBreakdownAsync(
+            effectiveFilter,
+            window,
+            reportCurrency,
+            cancellationToken);
+        var alerts = await BuildAlertsAsync(
+            effectiveFilter,
+            window,
+            reportCurrency,
+            accruedResult.Accrued.GrossMarginPercent,
+            cancellationToken);
 
-        // WU4 fills the breakdowns; the empty structures keep the response contract stable while
-        // those engines land.
         return new ProfitabilitySummaryDto
         {
             FromUtc = window.FromUtc,
@@ -88,10 +105,71 @@ public partial class ProfitabilityService : IProfitabilityService
             Accrued = accruedResult.Accrued,
             Realized = realizedResult,
             Coverage = accruedResult.Coverage,
-            Breakdown = new ProfitabilityBreakdownDto(),
-            Alerts = Array.Empty<ProfitabilityAlertDto>()
+            Breakdown = breakdown,
+            Alerts = alerts
         };
     }
+
+    private async Task<ProfitabilityFilterDto> ResolveEffectiveFilterAsync(
+        ProfitabilityFilterDto filter,
+        CancellationToken cancellationToken)
+    {
+        if (filter.CategoryIds is not { Count: > 0 })
+        {
+            return filter;
+        }
+
+        if (_inventoryService is null)
+        {
+            throw new InvalidOperationException(
+                "El catálogo de productos no está disponible para resolver el filtro por categoría.");
+        }
+
+        var categoryProductIds = await _inventoryService.GetProductIdsByCategoryAsync(
+            filter.CategoryIds,
+            filter.IncludeCategorySubtree,
+            cancellationToken);
+
+        IReadOnlyList<int> effectiveProductIds;
+        if (filter.ProductIds is { Count: > 0 } productIds)
+        {
+            var categorySet = new HashSet<int>(categoryProductIds);
+            effectiveProductIds = productIds
+                .Where(categorySet.Contains)
+                .Distinct()
+                .ToList();
+        }
+        else
+        {
+            effectiveProductIds = categoryProductIds;
+        }
+
+        if (effectiveProductIds.Count == 0)
+        {
+            effectiveProductIds = EmptyProductScope;
+        }
+
+        return CopyFilterWithProductIds(filter, effectiveProductIds);
+    }
+
+    private static ProfitabilityFilterDto CopyFilterWithProductIds(
+        ProfitabilityFilterDto filter,
+        IReadOnlyList<int> productIds) => new()
+    {
+        Preset = filter.Preset,
+        FromDate = filter.FromDate,
+        ToDate = filter.ToDate,
+        // F2-WU4: the engines work on effective product ids; keeping the raw category ids would
+        // make downstream code re-resolve the catalog or reject the filter.
+        CategoryIds = null,
+        IncludeCategorySubtree = filter.IncludeCategorySubtree,
+        ProductIds = productIds,
+        PaymentMethodIds = filter.PaymentMethodIds,
+        CashierId = filter.CashierId,
+        SaleType = filter.SaleType,
+        PriceListType = filter.PriceListType,
+        GroupBy = filter.GroupBy
+    };
 
     private async Task<ReportCurrencyContext> ResolveReportCurrencyAsync(CancellationToken cancellationToken)
     {
