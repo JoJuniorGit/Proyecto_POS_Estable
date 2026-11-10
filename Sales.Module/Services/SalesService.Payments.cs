@@ -256,6 +256,14 @@ public partial class SalesService
                     computedInputs.Add((request, input));
                 }
 
+                // Paso 14 (F2-S5): contextos de comision del lote cargados una sola vez para
+                // todos los metodos distintos; cada abono calcula su snapshot en memoria.
+                var feeRuleContexts = await PaymentMethodFeeResolver.LoadRuleContextsAsync(
+                    _context,
+                    computedInputs.Select(item => item.Request.PaymentMethodId).Distinct().ToList(),
+                    DateTime.UtcNow,
+                    cancellationToken);
+
                 CashDrawerSessionResponseDto? activeSession = null;
                 var firstCashInput = computedInputs.FirstOrDefault(ci => ci.Input.Method != null && ci.Input.Method.IsCash && ci.Input.AmountUsd > 0);
                 if (firstCashInput.Input != null && _cashDrawerService != null)
@@ -281,17 +289,17 @@ public partial class SalesService
                         OriginalAmount = ResolveOriginalAmount(input.AmountUsd, input.AmountBsS, currencyCode)
                     };
 
-                    // Paso 14 (S7): snapshot de comision por cada abono del lote. El lote sigue
-                    // siendo la unica transaccion: la comision no altera montos ni caja.
-                    var feeSnapshot = await ResolvePaymentMethodFeeAsync(
-                        input.Method,
-                        request.PaymentMethodId,
-                        paymentEntity.CreatedAt,
-                        input.AmountUsd,
-                        input.AmountBsS,
-                        input.Rate,
-                        localCurrencyCode,
-                        cancellationToken);
+                    // Paso 14 (S7/F2-S5): snapshot de comision por cada abono del lote, calculado
+                    // desde el contexto precargado. El lote sigue siendo la unica transaccion:
+                    // la comision no altera montos ni caja.
+                    var feeSnapshot = feeRuleContexts.TryGetValue(request.PaymentMethodId, out var feeRuleContext)
+                        ? PaymentMethodFeeResolver.ComputeSnapshot(
+                            feeRuleContext,
+                            input.AmountUsd,
+                            input.AmountBsS,
+                            input.Rate,
+                            localCurrencyCode)
+                        : PaymentMethodFeeSnapshot.None;
                     paymentEntity.ApplyFeeSnapshot(feeSnapshot);
 
                     _context.SalePayments.Add(paymentEntity);

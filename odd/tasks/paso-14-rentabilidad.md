@@ -74,6 +74,46 @@ F1 se ejecuta en orden `F1-WU1` → `F1-WU6`. Al cerrar se presenta: build 0/0, 
 - F1-WU5 | S6 | Índice `CreditReturn.CreatedAtUtc` e integración PostgreSQL | delegated | completed (commit a49765a)
 - F1-WU6 | S1-S12 | Verificación integral F1 y evidencia | delegated | completed (commit 837a898)
 
+## F2 Specs
+
+### F2-S1 — Ventanas UTC por Zona Horaria Global
+Los cortes `Hoy`, `Ayer`, `Semana`, `Mes` y el rango `[FromDate, ToDate]` se interpretan en la Zona Horaria Global configurada en Settings y se convierten a límites UTC estrictos `[fromUtc, toUtc)`.
+Todas las consultas usan comparaciones directas `>= fromUtc` y `< toUtc` sobre `Date`, `CancelledAtUtc`, `CreatedAt`, `ReceivedAtUtc` y `CreatedAtUtc`, sin funciones SQL sobre columnas indexadas.
+
+### F2-S2 — Bloque Devengado (`Accrued`)
+`VentasBrutasMercancia` suma `Sale.EffectiveTotalUSD` (fallback a `TotalUSD` si `0` en legacy) en `Dual`, o el total local en `Single`, donde `SaleType == Merchandise`, `Sale.Date ∈ [fromUtc, toUtc)` y `(CancelledAtUtc IS NULL OR CancelledAtUtc >= fromUtc)`.
+`Anulaciones` y `Devoluciones` restan en el período del evento (`CancelledAtUtc ∈ [fromUtc, toUtc)` y `CreditReturn.CreatedAtUtc ∈ [fromUtc, toUtc)`).
+`GrossProfit = KnownCostRevenue - KnownCogs`, excluyendo `UnknownCostRevenue` del margen bruto.
+`PaymentMethodFees` suma comisiones de `SalePayment` y `ReceivablePayment` del período menos las reversas de comisión de los `SalePayment` cuyas ventas tengan `CancelledAtUtc ∈ [fromUtc, toUtc)`.
+`NetProfitAccrued = GrossProfit + ServiceCommissions - PettyCashExpenses - PaymentMethodFees`; `FxDifference` realizado se expone como renglón informativo, sin sumarlo al neto devengado.
+
+### F2-S3 — Bloque Percibido en Caja (`Realized`)
+`RealizedCogs` se prorratea por factura de mercancía con cobertura de costo del 100%: `CobroImputado * (CMV_Neto_Factura / Total_Neto_Factura)`, usando `CreditPaymentAllocation.AmountUSD` (o equivalente local en `Single`) para abonos CxC y descontando `CreditReturn.RefundedUSD`.
+`RealizedGrossProfit = KnownCostCollectedRevenue - RealizedCogs`; `UnknownCostCollectedRevenue` queda separado fuera del margen.
+`NetProfitRealized = RealizedGrossProfit + RealizedServiceCommissions + RealizedFxDifference - RealizedPettyCashExpenses - RealizedPaymentMethodFees`.
+
+### F2-S4 — Desgloses, Filtros y Multi-Régimen
+Serie temporal agrupada por hora, día, semana o mes.
+Desglose por método de pago con comisiones de adquirente y `FeeCoveragePercent`.
+Ranking de productos y categorías por contribución monetaria y margen.
+Alertas de erosión de margen.
+Filtros combinables por rango de fecha, categoría (incluyendo subárbol), vendedor/cajero y canal/tipo.
+Al filtrar por categoría o producto, el DTO aclara que `PettyCashExpenses`, `ServiceCommissions` y `PaymentMethodFees` son gastos/ingresos globales de operación y no se prorratean artificialmente por artículo.
+En `Single` los KPIs se expresan en la `PrimaryCurrencyCode` usando snapshots locales; en `Dual` la cabeza es USD con equivalentes locales cuando aplique.
+
+### F2-S5 — Integración PostgreSQL, Batch Fee Lookup y Evidencia
+La suite de integración de F2 corre sobre PostgreSQL real e inserta `PaymentMethodFeeRule`, `SalePayment`, `ReceivablePayment`, un avance de efectivo y una anulación para certificar FKs, precisión `18,4`/`18,2` y lectura agregada desde `ProfitabilityService`.
+El `PaymentMethodFeeResolver` incorpora resolución en bloque por conjunto de `PaymentMethodId` para checkout multipago y lote de abonos, eliminando el lookup N+1 por línea.
+F2-WU5 incluye `EXPLAIN ANALYZE` de consultas clave y regresión completa.
+
+## F2 Tasks
+
+- F2-WU1 | F2-S1/F2-S5 | DTOs, filtros, helper de ventana UTC, batch fee resolver y tests | delegated | completed (commit pending)
+- F2-WU2 | F2-S2 | Motor devengado, cobertura de costos/comisiones y reversas por anulación | delegated | pending
+- F2-WU3 | F2-S3 | Motor percibido con prorrateo de CMV, asignaciones CxC, FX y reembolsos | delegated | pending
+- F2-WU4 | F2-S4 | Series, desgloses, filtros de categoría/producto/vendedor, alertas y Multi-Régimen | delegated | pending
+- F2-WU5 | F2-S5 | Integración PostgreSQL real, fee inserts, EXPLAIN ANALYZE y regresión completa | delegated | pending
+
 ## Log
 
 - L1 (2026-11-09): pedido verbatim del mantenedor:
@@ -126,3 +166,16 @@ F1 se ejecuta en orden `F1-WU1` → `F1-WU6`. Al cerrar se presenta: build 0/0, 
 - L11 (2026-11-09): **F1-WU5 re-ejecutada y cerrada por el padre**. Con `TEST_POSTGRES_CONNECTION` local: build Release 0/0; `ProfitabilityFoundationMigrationSmokeTests` 1/1; drift 4/4. La prueba crea una base descartable, migra al nivel previo, siembra datos legacy, aplica WU1+WU2, verifica esquema/índices/FKs/backfills y vuelve a aplicar `MigrateAsync()` sin duplicar historial. Es un work unit test-only: no cambia comportamiento productivo ni migraciones.
 
 - L12 (2026-11-09): **F1-WU6 COMPLETADA**. Verificación integral: build Release 0/0; suite completa `CommandCenter.Tests` con `TEST_POSTGRES_CONNECTION` **4262/4262, 0 skipped, 4m52s**; smoke PostgreSQL 1/1; drift 4/4. Se corrigió un mock de `CashDrawerCashAdvanceSecurityTests` que no incluía el nuevo parámetro opcional `receivedCommissionUsd` de `ISalesService.CreateCashAdvanceSaleAsync` (7/7 tras el fix). Backfill verificado: avance `SaleType=1`/comisión 70,00 local y 1,4000 USD; mercancía `UnitCostLocal=100,0000`; anulada `CancelledAtUtc=Date`; migración aplicada dos veces sin duplicar historial. ANEXO LXI registrado. Sin cambios de comportamiento productivo adicionales.
+
+- L13 (2026-11-09): pedido verbatim del mantenedor (F2):
+
+  > F1 queda aprobada con los 4262/4262 tests en verde y la verificación de migración e idempotencia en PostgreSQL aislado. No hace falta pausar para revisar el diff: **arranca directamente con F2 (`ProfitabilityService`) bajo TDD (RED -> GREEN)**.
+  >
+  > 1. **Integración Real en PostgreSQL para Comisiones (`PaymentMethodFeeRule` + Pagos):** Incluye en la suite de integración de F2 sobre PostgreSQL real la inserción completa de reglas de comisión, `SalePayment` y `ReceivablePayment` (incluyendo un avance de efectivo y una anulación) para certificar tanto las FKs/precisión `18,4`/`18,2` como la lectura agregada desde `ProfitabilityService`.
+  > 2. **Eliminación del Lookup N+1 en `PaymentMethodFeeResolver`:** Agrega resolución en bloque (batch lookup por conjunto de `PaymentMethodId` para el timestamp del cobro) en checkout multipago y lote de abonos para evitar consultas N+1 por cada línea de pago.
+  >
+  > Invariantes obligatorias: ventanas temporales por Zona Horaria Global a límites UTC `[fromUtc, toUtc)`; bloque `Accrued` con `VentasBrutasMercancia` sobre `Sale.EffectiveTotalUSD` (fallback `TotalUSD` legacy) o total local en `Single`, `Anulaciones`/`Devoluciones` en el período del evento, `GrossProfit = KnownCostRevenue - KnownCogs` excluyendo `UnknownCostRevenue`, `PaymentMethodFees` menos reversas de `SalePayment` de ventas anuladas en el período, y `NetProfitAccrued = GrossProfit + ServiceCommissions - PettyCashExpenses - PaymentMethodFees` con `FxDifference` realizado informativo; bloque `Realized` con `RealizedCogs = CobroImputado * (CMV_Neto_Factura / Total_Neto_Factura)` sobre facturas con cobertura 100%, `RealizedGrossProfit = KnownCostCollectedRevenue - RealizedCogs`, `UnknownCostCollectedRevenue` separado y `NetProfitRealized = RealizedGrossProfit + RealizedServiceCommissions + RealizedFxDifference - RealizedPettyCashExpenses - RealizedPaymentMethodFees`; desgloses por serie temporal, método de pago con `FeeCoveragePercent`, ranking de productos/categorías, alertas de erosión de margen, filtros por fecha/categoría con subárbol/vendedor/canal y nota de costos globales no prorrateados; soporte `Single` y `Dual`.
+  >
+  > Secuencia: **F2-WU1** DTOs/filtros/ventana UTC/batch fee resolver; **F2-WU2** motor Devengado + cobertura + reversas; **F2-WU3** motor Percibido con prorrateo, CxC, FX y reembolsos; **F2-WU4** series, desgloses, filtros, alertas y Multi-Régimen; **F2-WU5** integración PostgreSQL real, fee inserts, `EXPLAIN ANALYZE` y regresión completa. Ejecuta F2 de principio a fin y presenta la evidencia completa al cerrar `F2-WU5` antes de pasar a `F3 (API, RBAC y Exportación)`.
+
+- L14 (2026-11-09): **F2-WU1 COMPLETADA**. Se agregaron los contratos `Sales.Module/DTOs/Profitability/` (filtros, summary, bloques accrued/realized/coverage, breakdowns y alertas), `ProfitabilityTimeWindow` con presets Hoy/Ayer/Semana/Mes/Custom en la Zona Horaria Global a límites UTC `[fromUtc, toUtc)`, el servicio `IProfitabilityService`/`ProfitabilityService` (ventana + moneda de reporte Dual USD / Single primaria, nota exacta de costos globales) y el batch fee resolver de dos consultas. Checkout multipago, lote de abonos y abonos iniciales de hold cargan los contextos una sola vez; se eliminó el lookup N+1 de esos loops. Evidencia: RED por compilación faltante de DTOs/servicio; GREEN 101/101 focalizados + drift 4/4; build Release 0/0. Verificación independiente: pass-with-findings; se corrigió el `TimeZoneId` efectivo ante fallback, se agregaron tests DST y de fallback de zona inválida, y un test de conteo de consultas que prueba exactamente 2 queries del batch loader. Los motores devengado/percibido y los desgloses quedan para WU2-WU4; el timestamp del batch es único por lote.

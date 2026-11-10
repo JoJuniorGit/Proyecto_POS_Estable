@@ -76,6 +76,9 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<IMonetaryTransitionGuard, MonetaryTransitionGuard>();
         // 8.211-T2b (S5): conversión central con identidad exacta y precisión por moneda destino.
         builder.Services.AddScoped<IMonetaryConversionService, MonetaryConversionService>();
+        // Paso 14 (F2-S1/S4): Estado de Resultados con ventana UTC de la Zona Horaria Global y
+        // moneda de reporte según el régimen (Dual USD / Single primaria).
+        builder.Services.AddScoped<Sales.Module.Interfaces.IProfitabilityService, Sales.Module.Services.ProfitabilityService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
         builder.Services.AddScoped<IExchangeRateHistoryService, ExchangeRateHistoryService>();
         builder.Services.AddScoped<IInventoryHealthProbe, InventoryHealthProbe>();

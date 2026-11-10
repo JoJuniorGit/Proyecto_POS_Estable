@@ -645,6 +645,16 @@ public partial class SalesService
             if (payments != null && payments.Any())
             {
                 string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
+
+                // Paso 14 (F2-S5): una sola carga de contextos de comision para todo el
+                // multipago; cada linea calcula su snapshot con la matematica compartida del
+                // resolver en lugar de consultar el metodo/regla por pago.
+                var feeRuleContexts = await PaymentMethodFeeResolver.LoadRuleContextsAsync(
+                    _context,
+                    payments.Select(p => p.PaymentMethodId).Distinct().ToList(),
+                    DateTime.UtcNow,
+                    cancellationToken);
+
                 foreach (var p in payments)
                 {
                     var (amountUsd, amountLocal) = ResolveConsistentPaymentAmounts(p.Amount, p.AmountLocal, exchangeRate);
@@ -667,17 +677,17 @@ public partial class SalesService
                         OriginalAmount = ResolveOriginalAmount(amountUsd, amountLocal, currencyCode)
                     };
 
-                    // Paso 14 (S7): la comision es un costo del negocio; se congela aqui y no
-                    // participa de los totales, la tasa ni el vuelto que se cobra al cliente.
-                    var feeSnapshot = await ResolvePaymentMethodFeeAsync(
-                        paymentMethod,
-                        p.PaymentMethodId,
-                        paymentEntity.CreatedAt,
-                        amountUsd,
-                        amountLocal,
-                        exchangeRate,
-                        localCurrencyCode,
-                        cancellationToken);
+                    // Paso 14 (S7/F2-S5): la comision es un costo del negocio; se congela aqui y
+                    // no participa de los totales, la tasa ni el vuelto que se cobra al cliente.
+                    // Un contexto ausente (catalogo legacy) conserva el snapshot None.
+                    var feeSnapshot = feeRuleContexts.TryGetValue(p.PaymentMethodId, out var feeRuleContext)
+                        ? PaymentMethodFeeResolver.ComputeSnapshot(
+                            feeRuleContext,
+                            amountUsd,
+                            amountLocal,
+                            exchangeRate,
+                            localCurrencyCode)
+                        : PaymentMethodFeeSnapshot.None;
                     paymentEntity.ApplyFeeSnapshot(feeSnapshot);
 
                     sale.Payments.Add(paymentEntity);

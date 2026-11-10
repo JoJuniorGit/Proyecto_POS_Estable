@@ -63,6 +63,15 @@ public partial class SalesService
                 .ToDictionaryAsync(pm => pm.Id, cancellationToken);
             bool hasConfiguredPaymentMethods = pMethodsDict.Count > 0 || await _context.PaymentMethods.AsNoTracking().IgnoreQueryFilters().AnyAsync(cancellationToken);
 
+            // Paso 14 (F2-S5): contextos de comision del abono inicial cargados una sola vez
+            // para todos los metodos distintos del hold; cada pago calcula su snapshot en
+            // memoria. Un contexto ausente (catalogo legacy) conserva el snapshot None.
+            var feeRuleContexts = await PaymentMethodFeeResolver.LoadRuleContextsAsync(
+                _context,
+                pMethodIds,
+                DateTime.UtcNow,
+                cancellationToken);
+
             foreach (var payment in paymentsToProcess)
             {
                 // 8.7-B2: Rechazo de montos negativos en abonos (misma política que CompleteSale).
@@ -115,16 +124,16 @@ public partial class SalesService
                     OriginalAmount = ResolveOriginalAmount(resolvedAmountUsd, resolvedAmountBsS, currencyCode)
                 };
 
-                // Paso 14 (S7): comision congelada del abono inicial; jamas modifica el monto.
-                var feeSnapshot = await ResolvePaymentMethodFeeAsync(
-                    pMethodForValidation,
-                    payment.PaymentMethodId,
-                    initialPaymentEntity.CreatedAt,
-                    resolvedAmountUsd,
-                    resolvedAmountBsS,
-                    rate,
-                    localCurrencyCode,
-                    cancellationToken);
+                // Paso 14 (S7/F2-S5): comision congelada del abono inicial; jamas modifica el
+                // monto. Se calcula desde el contexto precargado, sin lookup por pago.
+                var feeSnapshot = feeRuleContexts.TryGetValue(payment.PaymentMethodId, out var feeRuleContext)
+                    ? PaymentMethodFeeResolver.ComputeSnapshot(
+                        feeRuleContext,
+                        resolvedAmountUsd,
+                        resolvedAmountBsS,
+                        rate,
+                        localCurrencyCode)
+                    : PaymentMethodFeeSnapshot.None;
                 initialPaymentEntity.ApplyFeeSnapshot(feeSnapshot);
 
                 sale.Payments.Add(initialPaymentEntity);

@@ -41,65 +41,117 @@ public sealed record PaymentMethodFeeSnapshot(
 }
 
 /// <summary>
-/// Paso 14 (S7): resuelve la regla de comision vigente para un cobro. El resultado se congela en
-/// el pago (<see cref="SalePayment"/> o <see cref="ReceivablePayment"/>) al crearse; las reglas
+/// Paso 14 (F2-S5): contexto de comision cargado en bloque para un metodo de pago. <see cref="Rule"/>
+/// es null cuando el metodo es efectivo o no tiene regla activa; ambos casos resuelven None.
+/// </summary>
+public sealed record PaymentMethodFeeRuleContext(
+    int PaymentMethodId,
+    bool IsCash,
+    PaymentMethodFeeRule? Rule);
+
+/// <summary>
+/// Paso 14 (S7/F2-S5): resuelve la regla de comision vigente para un cobro. El resultado se congela
+/// en el pago (<see cref="SalePayment"/> o <see cref="ReceivablePayment"/>) al crearse; las reglas
 /// historicas no se re-leen. La conversion usa la tasa snapshot del pago: USD conserva 4dp y la
-/// moneda local 2dp, sin alterar jamas el monto cobrado al cliente.
+/// moneda local 2dp, sin alterar jamas el monto cobrado al cliente. La carga en bloque elimina el
+/// lookup N+1 del checkout multipago y del lote de abonos.
 /// </summary>
 public static class PaymentMethodFeeResolver
 {
     private const string UsdCurrencyCode = "USD";
 
-    public static async Task<PaymentMethodFeeSnapshot> ResolveAsync(
+    /// <summary>
+    /// Paso 14 (F2-S5): carga en dos consultas (metodos + reglas activas) los contextos de todas
+    /// las lineas de pago de un checkout multipago o lote de abonos. Los metodos inexistentes o
+    /// eliminados se omiten: el llamador conserva el comportamiento legacy (snapshot None) para
+    /// catalogos vacios. Un metodo efectivo jamas valida solapamientos porque no genera comision.
+    /// </summary>
+    public static async Task<IReadOnlyDictionary<int, PaymentMethodFeeRuleContext>> LoadRuleContextsAsync(
         SalesDbContext context,
-        int paymentMethodId,
+        IReadOnlyCollection<int> paymentMethodIds,
         DateTime paymentDateUtc,
-        decimal amountUsd,
-        decimal amountLocal,
-        decimal rate,
-        string localCurrencyCode,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(paymentMethodIds);
 
-        var paymentMethod = await context.PaymentMethods
-            .AsNoTracking()
-            .FirstOrDefaultAsync(
-                method => method.Id == paymentMethodId && !method.IsDeleted,
-                cancellationToken);
-
-        if (paymentMethod is null)
+        var methodIds = paymentMethodIds.Distinct().ToList();
+        if (methodIds.Count == 0)
         {
-            throw new InvalidOperationException(
-                $"No se encontró el método de pago (Id={paymentMethodId}) configurado para resolver la comisión. Verifique la configuración de métodos de pago.");
+            return new Dictionary<int, PaymentMethodFeeRuleContext>();
         }
 
-        // El efectivo nunca genera comision, aunque exista una regla configurada por error.
-        if (paymentMethod.IsCash)
-        {
-            return PaymentMethodFeeSnapshot.None;
-        }
-
-        var activeRules = await context.PaymentMethodFeeRules
+        var paymentMethods = await context.PaymentMethods
             .AsNoTracking()
-            .Where(rule => rule.PaymentMethodId == paymentMethodId
-                && rule.IsActive
-                && rule.EffectiveFromUtc <= paymentDateUtc
-                && (rule.EffectiveToUtc == null || rule.EffectiveToUtc > paymentDateUtc))
+            .Where(method => methodIds.Contains(method.Id) && !method.IsDeleted)
             .ToListAsync(cancellationToken);
 
-        if (activeRules.Count == 0)
+        if (paymentMethods.Count == 0)
+        {
+            return new Dictionary<int, PaymentMethodFeeRuleContext>();
+        }
+
+        var nonCashMethodIds = paymentMethods
+            .Where(method => !method.IsCash)
+            .Select(method => method.Id)
+            .ToList();
+
+        var activeRulesByMethod = new Dictionary<int, PaymentMethodFeeRule>();
+        if (nonCashMethodIds.Count > 0)
+        {
+            var activeRules = await context.PaymentMethodFeeRules
+                .AsNoTracking()
+                .Where(rule => nonCashMethodIds.Contains(rule.PaymentMethodId)
+                    && rule.IsActive
+                    && rule.EffectiveFromUtc <= paymentDateUtc
+                    && (rule.EffectiveToUtc == null || rule.EffectiveToUtc > paymentDateUtc))
+                .ToListAsync(cancellationToken);
+
+            foreach (var rulesByMethod in activeRules.GroupBy(rule => rule.PaymentMethodId))
+            {
+                var rules = rulesByMethod.ToList();
+                if (rules.Count > 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Hay más de una regla de comisión activa para el método de pago (Id={rulesByMethod.Key}) en la fecha {paymentDateUtc:O}. Corrija las vigencias configuradas.");
+                }
+
+                activeRulesByMethod[rulesByMethod.Key] = rules[0];
+            }
+        }
+
+        var contexts = new Dictionary<int, PaymentMethodFeeRuleContext>(paymentMethods.Count);
+        foreach (var paymentMethod in paymentMethods)
+        {
+            activeRulesByMethod.TryGetValue(paymentMethod.Id, out var activeRule);
+            contexts[paymentMethod.Id] = new PaymentMethodFeeRuleContext(
+                paymentMethod.Id,
+                paymentMethod.IsCash,
+                paymentMethod.IsCash ? null : activeRule);
+        }
+
+        return contexts;
+    }
+
+    /// <summary>
+    /// Paso 14 (F2-S5): calcula el snapshot de un pago desde el contexto precargado. La validacion
+    /// de configuracion y la precision 4dp USD / 2dp local son identicas al resolver individual.
+    /// </summary>
+    public static PaymentMethodFeeSnapshot ComputeSnapshot(
+        PaymentMethodFeeRuleContext context,
+        decimal amountUsd,
+        decimal amountLocal,
+        decimal rate,
+        string localCurrencyCode)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (context.IsCash || context.Rule is null)
         {
             return PaymentMethodFeeSnapshot.None;
         }
 
-        if (activeRules.Count > 1)
-        {
-            throw new InvalidOperationException(
-                $"Hay más de una regla de comisión activa para el método de pago (Id={paymentMethodId}) en la fecha {paymentDateUtc:O}. Corrija las vigencias configuradas.");
-        }
-
-        var rule = activeRules[0];
+        var rule = context.Rule;
         string ruleCurrencyCode = CurrencyCodeNormalizer.NormalizeToIso(rule.CurrencyCode) ?? rule.CurrencyCode;
         string normalizedLocalCurrencyCode = CurrencyCodeNormalizer.NormalizeToIso(localCurrencyCode) ?? localCurrencyCode;
 
@@ -151,6 +203,33 @@ public static class PaymentMethodFeeResolver
             FeeRate: rate,
             FeeConfigured: true,
             FeeRuleEffectiveFromUtc: rule.EffectiveFromUtc);
+    }
+
+    public static async Task<PaymentMethodFeeSnapshot> ResolveAsync(
+        SalesDbContext context,
+        int paymentMethodId,
+        DateTime paymentDateUtc,
+        decimal amountUsd,
+        decimal amountLocal,
+        decimal rate,
+        string localCurrencyCode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        var contexts = await LoadRuleContextsAsync(
+            context,
+            new[] { paymentMethodId },
+            paymentDateUtc,
+            cancellationToken);
+
+        if (!contexts.TryGetValue(paymentMethodId, out var ruleContext))
+        {
+            throw new InvalidOperationException(
+                $"No se encontró el método de pago (Id={paymentMethodId}) configurado para resolver la comisión. Verifique la configuración de métodos de pago.");
+        }
+
+        return ComputeSnapshot(ruleContext, amountUsd, amountLocal, rate, localCurrencyCode);
     }
 
     /// <summary>
