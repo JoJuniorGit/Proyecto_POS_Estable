@@ -17928,7 +17928,7 @@ C2. 59ba573 feat(paso-14): persist cash advance commission snapshots.
 C3. 33b3aaf feat(paso-14): materialize local cost snapshots.
 C4. d31f9c0 feat(paso-14): persist payment method fee snapshots.
 C5. a49765a test(paso-14): add profitability migration smoke test.
-C6. WU6: cierre de verificacion (commit de este ANEXO).
+C6. 837a898 test(paso-14): close F1 verification (incluye este ANEXO).
 
 D. PENDIENTE / RIESGOS
 D1. F2 ProfitabilityService (devengado/percibido, cobertura, reversas) no forma
