@@ -1,0 +1,89 @@
+/* F4-WU2 (Paso 14): tarjeta Admin-only de reglas de comisión de medios de pago. */
+:root .pmf-card {
+  border-color: var(--border);
+}
+
+:root .pmf-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+:root .pmf-heading {
+  min-width: 0;
+}
+
+:root .pmf-subtitle {
+  margin: 4px 0 0;
+  max-width: 620px;
+}
+
+:root .pmf-status {
+  margin-bottom: 12px;
+}
+
+:root .pmf-form {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-primary);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+:root .pmf-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+:root .pmf-active-field {
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+:root .pmf-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+:root .pmf-table-wrapper {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+:root .pmf-state-cell {
+  padding: 18px 12px;
+}
+
+:root .pmf-row-inactive {
+  opacity: 0.6;
+}
+
+:root .pmf-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  :root .pmf-header {
+    align-items: stretch;
+  }
+
+  :root .pmf-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  :root .pmf-form-actions {
+    justify-content: stretch;
+  }
+
+  :root .pmf-form-actions .btn {
+    flex: 1;
+  }
+}

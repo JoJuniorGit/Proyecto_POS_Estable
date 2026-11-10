@@ -22,6 +22,7 @@ import AccessDenied from './navigation/AccessDenied';
 const PosPage = lazy(() => import('./pages/PosPage'));
 const CatalogPage = lazy(() => import('./pages/CatalogPage'));
 const HistoryPage = lazy(() => import('./pages/HistoryPage'));
+const ProfitabilityPage = lazy(() => import('./pages/ProfitabilityPage'));
 const PendingOrdersPage = lazy(() => import('./pages/PendingOrdersPage'));
 const PendingPickupsPage = lazy(() => import('./pages/PendingPickupsPage'));
 const CreditReceivablesPage = lazy(() => import('./pages/CreditReceivablesPage'));
@@ -181,6 +182,8 @@ function MainApp() {
         return <CatalogPage />;
       case 'history':
         return <HistoryPage />;
+      case 'profitability':
+        return <ProfitabilityPage />;
       case 'pending':
         return <PendingOrdersPage onNavigate={handleNavigate} />;
       case 'pickups':

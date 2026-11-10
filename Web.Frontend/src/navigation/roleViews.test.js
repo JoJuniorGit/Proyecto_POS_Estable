@@ -43,6 +43,24 @@ describe('roleViews role→view matrix [8.130]', () => {
     }
   });
 
+  it('keeps profitability restricted to Admin and Manager', () => {
+    assert.strictEqual(canAccessView('Admin', 'profitability'), true);
+    assert.strictEqual(canAccessView('Manager', 'profitability'), true);
+    assert.strictEqual(canAccessView(3, 'profitability'), true);
+    assert.strictEqual(canAccessView(2, 'profitability'), true);
+    assert.strictEqual(canAccessView('Cashier', 'profitability'), false);
+    assert.strictEqual(canAccessView('Driver', 'profitability'), false);
+    assert.strictEqual(canAccessView(null, 'profitability'), false);
+    assert.deepStrictEqual(resolveAccessibleView('Cashier', 'profitability'), {
+      allowed: false,
+      view: 'pos',
+    });
+    assert.deepStrictEqual(resolveAccessibleView('Manager', 'profitability'), {
+      allowed: true,
+      view: 'profitability',
+    });
+  });
+
   it('normalizes role names case-insensitively and trims whitespace', () => {
     assert.strictEqual(normalizeRole('Admin'), 'Admin');
     assert.strictEqual(normalizeRole('  manager '), 'Manager');

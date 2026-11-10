@@ -10,6 +10,7 @@ import {
   ClipboardList,
   Settings,
   DollarSign,
+  TrendingUp,
   User,
   LogOut,
 } from 'lucide-react';
@@ -35,6 +36,12 @@ const NAV_SECTIONS = [
       { id: 'history', label: 'Historial Ventas', icon: History },
       { id: 'register', label: 'Caja', icon: Landmark },
       { id: 'closing', label: 'Cierre Diario', icon: ClipboardCheck },
+    ],
+  },
+  {
+    label: 'ANÁLISIS',
+    items: [
+      { id: 'profitability', label: 'Rentabilidad', icon: TrendingUp },
     ],
   },
   {

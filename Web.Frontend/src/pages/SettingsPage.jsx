@@ -7,6 +7,7 @@ import ConfirmModal from '../components/ui/ConfirmModal';
 import SettingsPairing from './SettingsPairing';
 import SettingsCurrencyFormat from './SettingsCurrencyFormat';
 import SettingsPaymentMethods from './SettingsPaymentMethods';
+import PaymentMethodFeeRules from '../components/settings/PaymentMethodFeeRules';
 import { SETTINGS_SECTIONS, resolveTabIndex } from './settingsSections';
 import RoleGuard from '../navigation/RoleGuard';
 import './SettingsPage.css';
@@ -179,6 +180,7 @@ function SettingsPageContent() {
               loadMethods={loadMethods}
               loadingMethods={loadingMethods}
             />
+            <PaymentMethodFeeRules methods={methods} setMessage={setMessage} />
           </section>
 
           <section
