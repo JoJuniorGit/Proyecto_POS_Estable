@@ -18015,7 +18015,7 @@ C1. 323b15b feat(paso-14): add profitability contracts and batch fee lookup.
 C2. 631713d feat(paso-14): add accrued profitability engine.
 C3. 1340e34 feat(paso-14): add realized profitability engine.
 C4. 6dd3c02 feat(paso-14): add profitability breakdowns and filters.
-C5. WU5: integracion PostgreSQL y cierre de F2 (commit de este ANEXO).
+C5. fa045cc test(paso-14): add profitability PostgreSQL integration (incluye este ANEXO).
 
 D. PENDIENTE / RIESGOS
 D1. F3 (API, RBAC y exportacion PDF/XLSX/CSV) y F4 (UI) no forman parte de F2.
