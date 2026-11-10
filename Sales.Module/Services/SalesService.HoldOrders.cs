@@ -240,6 +240,9 @@ public partial class SalesService
                 sale.PrimaryCurrencyCode = monetaryProfile.PrimaryCurrencyCode;
                 sale.SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode;
                 sale.MonetaryMode = monetaryProfile.MonetaryMode;
+                // Paso 14 (S4/S9): este camino completa la venta sin pasar por CompleteSaleCoreAsync,
+                // por lo que materializa el costo local con la misma tasa snapshot de la venta.
+                ApplyLocalCostSnapshots(sale);
                 ClearHoldClaim(sale);
 
                 // Synchronous stock deduction

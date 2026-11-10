@@ -238,6 +238,28 @@ public partial class SalesService
     }
 
     /// <summary>
+    /// Paso 14 (S4/S9): materializes the cost snapshot in the transaction currency at completion.
+    /// Uses only the immutable sale snapshot (<see cref="Sale.AppliedRate"/>) and the line's
+    /// <see cref="SaleItem.UnitCostUSD"/>: in Dual it converts USD to the secondary/local currency,
+    /// in Single it converts USD to the primary currency (identity). Never reads the current
+    /// product cost or an external rate; unknown cost stays null.
+    /// </summary>
+    private static void ApplyLocalCostSnapshots(Sale sale)
+    {
+        if (sale.AppliedRate <= 0m)
+        {
+            return;
+        }
+
+        foreach (var item in sale.Items)
+        {
+            item.UnitCostLocal = item.UnitCostUSD.HasValue
+                ? Math.Round(item.UnitCostUSD.Value * sale.AppliedRate, 4, MidpointRounding.AwayFromZero)
+                : null;
+        }
+    }
+
+    /// <summary>
     /// 8.211-T4a (S10/F4a): perfil para etiquetar el recibo impreso tras el commit. Cualquier
     /// fallo degrada al default del contexto (códigos snapshot + símbolos ASCII por código) sin
     /// afectar la venta; por eso se lee con un token no cancelable después de confirmar.
@@ -751,6 +773,10 @@ public partial class SalesService
             sale.SecondaryAmount = monetaryProfile.MonetaryMode == "Dual" ? sale.TotalBsS : null;
             sale.AppliedRateSource = ResolveAppliedRateSource(monetaryProfile);
             sale.FinalPaidAmountBsS = sale.Payments.Sum(p => p.AmountBsS);
+
+            // Paso 14 (S4/S9): costo local inmutable de cada línea con la tasa snapshot de la
+            // venta. Solo se materializa al completar; las ediciones pendientes no lo escriben.
+            ApplyLocalCostSnapshots(sale);
 
             // 8.149 (SEC-01): `roundingAdjustment` queda en la firma por compatibilidad del contrato (API/WPF),
             // pero se ignora: el ajuste se recalcula contra los pagos persistidos, espejo exacto del checkout-preview.
