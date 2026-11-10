@@ -110,7 +110,7 @@ F2-WU5 incluye `EXPLAIN ANALYZE` de consultas clave y regresión completa.
 
 - F2-WU1 | F2-S1/F2-S5 | DTOs, filtros, helper de ventana UTC, batch fee resolver y tests | delegated | completed (commit 323b15b)
 - F2-WU2 | F2-S2 | Motor devengado, cobertura de costos/comisiones y reversas por anulación | delegated | completed (commit 631713d)
-- F2-WU3 | F2-S3 | Motor percibido con prorrateo de CMV, asignaciones CxC, FX y reembolsos | delegated | completed (commit pending)
+- F2-WU3 | F2-S3 | Motor percibido con prorrateo de CMV, asignaciones CxC, FX y reembolsos | delegated | completed (commit 1340e34)
 - F2-WU4 | F2-S4 | Series, desgloses, filtros de categoría/producto/vendedor, alertas y Multi-Régimen | delegated | pending
 - F2-WU5 | F2-S5 | Integración PostgreSQL real, fee inserts, EXPLAIN ANALYZE y regresión completa | delegated | pending
 
