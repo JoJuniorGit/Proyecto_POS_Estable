@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   HandCoins,
   Plus,
@@ -7,6 +7,7 @@ import {
   FileText,
   CircleX,
   Loader2,
+  Search,
 } from 'lucide-react';
 import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
 import { displayCurrencyCode } from '../../utils/monetaryProfile';
@@ -44,6 +45,7 @@ export default function PettyCashPanel({
   onRefresh,
   onClose,
   onDownloadVoucher,
+  dedicated = false,
 }) {
   const {
     profile,
@@ -55,8 +57,31 @@ export default function PettyCashPanel({
   const showUsd = isDual && profileIncludesCurrency(profile, 'USD');
   const [voucherError, setVoucherError] = useState('');
   const [downloadingId, setDownloadingId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [search, setSearch] = useState('');
 
   const summary = summarizePettyCashExpenses(expenses);
+  const filteredExpenses = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return expenses.filter((expense) => {
+      const isCancelled = Number(expense.status) === PettyCashStatus.Cancelled;
+      if (statusFilter === 'active' && isCancelled) return false;
+      if (statusFilter === 'cancelled' && !isCancelled) return false;
+      if (!term) return true;
+
+      const haystack = [
+        getPettyCashVoucherCode(expense),
+        expense.concept,
+        expense.beneficiary,
+        expense.referenceNumber,
+        getPettyCashCategoryLabel(expense.category),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [expenses, search, statusFilter]);
   const balanceBsSDisplay = canViewBalances && balances ? formatSecondary(balances.bsS) : '—';
   const balanceUsdDisplay = canViewBalances && balances ? formatPrimary(balances.usd) : '—';
   const expenseCurrencyLabel = (currency) => (
@@ -93,7 +118,7 @@ export default function PettyCashPanel({
   }
 
   return (
-    <section className="card shadow-sm p-4 bg-surface mb-4 pc-panel">
+    <section className={`card shadow-sm p-4 bg-surface mb-4 pc-panel${dedicated ? ' pc-panel-dedicated' : ''}`}>
       <div className="pc-panel-header">
         <div className="pc-title-group">
           <h3 className="pc-title flex-align-center gap-2 m-0 text-base font-bold">
@@ -122,11 +147,72 @@ export default function PettyCashPanel({
             type="button"
             className="btn btn-outline pc-icon-btn"
             onClick={onClose}
-            title="Ocultar panel de caja chica"
+            title={dedicated ? 'Volver a movimientos de caja' : 'Ocultar panel de caja chica'}
           >
             <X size={16} />
           </button>
         </div>
+      </div>
+
+      <div className="pc-kpis">
+        <div className="pc-kpi">
+          <span className="pc-kpi-label">GASTOS ACTIVOS</span>
+          <span className="pc-kpi-value">{summary.activeCount}</span>
+          <span className="pc-kpi-hint">del turno</span>
+        </div>
+        <div className="pc-kpi">
+          <span className="pc-kpi-label">TOTAL ACTIVO {localCurrencyLabel.toUpperCase()}</span>
+          <span className="pc-kpi-value pc-kpi-money">{formatSecondary(summary.totalBsS)}</span>
+          <span className="pc-kpi-hint">solo gastos activos</span>
+        </div>
+        {showUsd && (
+          <div className="pc-kpi">
+            <span className="pc-kpi-label">TOTAL ACTIVO {usdCurrencyLabel}</span>
+            <span className="pc-kpi-value pc-kpi-money">{formatPrimary(summary.totalUsd)}</span>
+            <span className="pc-kpi-hint">equivalente del turno</span>
+          </div>
+        )}
+        <div className="pc-kpi pc-kpi-muted">
+          <span className="pc-kpi-label">ANULADOS</span>
+          <span className="pc-kpi-value">{summary.cancelledCount}</span>
+          <span className="pc-kpi-hint">no afectan el saldo</span>
+        </div>
+      </div>
+
+      <div className="pc-toolbar">
+        <div className="pc-filter-chips" role="group" aria-label="Filtrar gastos de caja chica">
+          <button
+            type="button"
+            className={`pc-filter-chip${statusFilter === 'all' ? ' is-active' : ''}`}
+            onClick={() => setStatusFilter('all')}
+          >
+            Todos <span>{summary.totalCount}</span>
+          </button>
+          <button
+            type="button"
+            className={`pc-filter-chip${statusFilter === 'active' ? ' is-active' : ''}`}
+            onClick={() => setStatusFilter('active')}
+          >
+            Activos <span>{summary.activeCount}</span>
+          </button>
+          <button
+            type="button"
+            className={`pc-filter-chip${statusFilter === 'cancelled' ? ' is-active' : ''}`}
+            onClick={() => setStatusFilter('cancelled')}
+          >
+            Anulados <span>{summary.cancelledCount}</span>
+          </button>
+        </div>
+        <label className="pc-search">
+          <Search size={15} className="pc-search-icon" />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar vale, concepto o beneficiario..."
+            aria-label="Buscar gasto de caja chica"
+          />
+        </label>
       </div>
 
       <div className="pc-balances">
@@ -151,9 +237,11 @@ export default function PettyCashPanel({
         <div className="alert alert-danger text-xs p-2 mb-2">{voucherError}</div>
       )}
 
-      {expenses.length === 0 ? (
+      {filteredExpenses.length === 0 ? (
         <div className="p-4 text-center text-muted border border-dashed rounded">
-          No hay gastos de caja chica registrados en este turno.
+          {expenses.length === 0
+            ? 'No hay gastos de caja chica registrados en este turno.'
+            : 'No hay gastos que coincidan con el filtro o la búsqueda.'}
         </div>
       ) : (
         <div className="pc-table-wrapper custom-scrollbar">
@@ -172,7 +260,7 @@ export default function PettyCashPanel({
               </tr>
             </thead>
             <tbody>
-              {expenses.map((expense) => {
+              {filteredExpenses.map((expense) => {
                 const isCancelled = Number(expense.status) === PettyCashStatus.Cancelled;
 
                 return (

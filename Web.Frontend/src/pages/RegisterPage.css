@@ -245,3 +245,68 @@
 :root .reg-method-balance-disabled {
   opacity: 0.55;
 }
+/* Subsección de Caja: Movimientos / Caja Chica. Mantiene la navegación dentro del módulo. */
+:root .register-subnav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border, #E2E8F0);
+}
+
+:root .register-subnav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--text-muted, #64748B);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+:root .register-subnav-btn:hover {
+  background: var(--bg-hover, #F8FAFC);
+  color: var(--text-primary, #0F172A);
+}
+
+:root .register-subnav-btn.is-active {
+  background: var(--bg-surface, #FFFFFF);
+  border-color: var(--border, #E2E8F0);
+  border-bottom-color: var(--primary-color, #6366F1);
+  color: var(--primary-color, #6366F1);
+}
+
+:root .register-subnav-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #FEF3C7;
+  color: #92400E;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+@media (max-width: 640px) {
+  :root .register-subnav {
+    gap: 2px;
+  }
+
+  :root .register-subnav-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 0 8px;
+  }
+}

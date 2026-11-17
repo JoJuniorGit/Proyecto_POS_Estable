@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Net.Http;
@@ -43,6 +44,24 @@ public partial class CashDrawerViewModel
 
     public bool HasPettyCashExpenses => PettyCashExpenses.Count > 0;
 
+    /// <summary>La subsección Caja Chica oculta movimientos/últimos ingresos mientras está activa.</summary>
+    public bool IsCashMovementsSectionVisible => !IsPettyCashPanelOpen;
+
+    private IReadOnlyList<PettyCashExpenseRowViewModel> ActivePettyCashRows => PettyCashExpenses
+        .Where(row => row.Expense.Status == PettyCashStatusClient.Active)
+        .ToList();
+
+    public int PettyCashActiveCount => ActivePettyCashRows.Count;
+
+    public int PettyCashCancelledCount => PettyCashExpenses.Count(row =>
+        row.Expense.Status == PettyCashStatusClient.Cancelled);
+
+    public string PettyCashActiveTotalBsSDisplay =>
+        CurrencyDisplay.FormatSecondary(ActivePettyCashRows.Sum(row => row.Expense.AmountBsS));
+
+    public string PettyCashActiveTotalUsdDisplay =>
+        CurrencyDisplay.FormatPrimary(ActivePettyCashRows.Sum(row => row.Expense.AmountUsd));
+
     /// <summary>Local amount first; the primary duplicate is only rendered in Dual.</summary>
     public string PettyCashPhysicalBalanceBsSDisplay => CanViewTheoreticalBalance
         ? CurrencyDisplay.FormatSecondary(PettyCashPhysicalBalanceBsS)
@@ -56,15 +75,10 @@ public partial class CashDrawerViewModel
     {
         get
         {
-            var active = PettyCashExpenses
-                .Where(row => row.Expense.Status == PettyCashStatusClient.Active)
-                .ToList();
-            decimal totalBsS = active.Sum(row => row.Expense.AmountBsS);
-            decimal totalUsd = active.Sum(row => row.Expense.AmountUsd);
-            var localTotal = $"{active.Count} activo(s) · {CurrencyDisplay.FormatSecondary(totalBsS)}";
+            var localTotal = $"{PettyCashActiveCount} activo(s) · {PettyCashActiveTotalBsSDisplay}";
             return CurrencyDisplay.IsSingle
                 ? localTotal
-                : $"{localTotal} · {CurrencyDisplay.FormatPrimary(totalUsd)}";
+                : $"{localTotal} · {PettyCashActiveTotalUsdDisplay}";
         }
     }
 
@@ -80,15 +94,19 @@ public partial class CashDrawerViewModel
             return;
         }
 
-        IsPettyCashPanelOpen = !IsPettyCashPanelOpen;
-        if (IsPettyCashPanelOpen)
-        {
-            await LoadPettyCashAsync();
-        }
+        IsPettyCashPanelOpen = true;
+        await LoadPettyCashAsync();
     }
+
+    /// <summary>Vuelve a la subsección Movimientos sin cerrar la sesión de caja.</summary>
+    [RelayCommand]
+    private void ShowCashMovementsSection() => IsPettyCashPanelOpen = false;
 
     [RelayCommand]
     private async Task RefreshPettyCashAsync() => await LoadPettyCashAsync();
+
+    partial void OnIsPettyCashPanelOpenChanged(bool value)
+        => OnPropertyChanged(nameof(IsCashMovementsSectionVisible));
 
     /// <summary>
     /// Carga los gastos del turno y, solo para supervisores, los saldos físicos por moneda. El
@@ -310,6 +328,10 @@ public partial class CashDrawerViewModel
     {
         OnPropertyChanged(nameof(HasPettyCashExpenses));
         OnPropertyChanged(nameof(PettyCashSummary));
+        OnPropertyChanged(nameof(PettyCashActiveCount));
+        OnPropertyChanged(nameof(PettyCashCancelledCount));
+        OnPropertyChanged(nameof(PettyCashActiveTotalBsSDisplay));
+        OnPropertyChanged(nameof(PettyCashActiveTotalUsdDisplay));
     }
 
     partial void OnPettyCashPhysicalBalanceBsSChanged(decimal value) =>

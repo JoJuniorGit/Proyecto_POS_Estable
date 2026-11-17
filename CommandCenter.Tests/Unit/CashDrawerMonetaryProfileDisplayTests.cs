@@ -131,6 +131,53 @@ public class CashDrawerMonetaryProfileDisplayTests
     }
 
     [Fact]
+    public void PettyCashSection_NavigationAndSummary_UseOnlyActiveExpenses()
+    {
+        var previousFormat = CurrencyDisplay.Current;
+        try
+        {
+            CurrencyDisplay.Current = MoneyDisplayFormat.Venezuelan;
+            ApplyDualProfile();
+            var viewModel = CreateDrawer();
+            SeedCashDrawer(viewModel);
+            viewModel.PettyCashExpenses.Add(new PettyCashExpenseRowViewModel(new PettyCashExpenseClientDto
+            {
+                Id = 8,
+                VoucherNumber = 8,
+                SessionId = 1,
+                Category = PettyCashCategoryClient.Varios,
+                Currency = PettyCashCurrencyClient.BsS,
+                AmountBsS = 500m,
+                AmountUsd = 10m,
+                HistoricalRate = 50m,
+                Concept = "Anulado",
+                Beneficiary = "Proveedor",
+                Status = PettyCashStatusClient.Cancelled
+            }));
+
+            Assert.False(viewModel.IsPettyCashPanelOpen);
+            Assert.True(viewModel.IsCashMovementsSectionVisible);
+            Assert.Equal(1, viewModel.PettyCashActiveCount);
+            Assert.Equal(1, viewModel.PettyCashCancelledCount);
+            Assert.Equal("Bs.S 1.000,00", viewModel.PettyCashActiveTotalBsSDisplay);
+            Assert.Equal("$ 20,00", viewModel.PettyCashActiveTotalUsdDisplay);
+            Assert.Contains("1 activo(s)", viewModel.PettyCashSummary);
+
+            viewModel.IsPettyCashPanelOpen = true;
+            Assert.False(viewModel.IsCashMovementsSectionVisible);
+
+            viewModel.ShowCashMovementsSectionCommand.Execute(null);
+            Assert.False(viewModel.IsPettyCashPanelOpen);
+            Assert.True(viewModel.IsCashMovementsSectionVisible);
+        }
+        finally
+        {
+            CurrencyDisplay.Current = previousFormat;
+            CurrencyDisplay.SetMonetaryProfile(null);
+        }
+    }
+
+    [Fact]
     public void SingleEurProfile_FormatsLocalAmountsInPrimaryAndCollapsesTheDuplicateLine()
     {
         var previousFormat = CurrencyDisplay.Current;

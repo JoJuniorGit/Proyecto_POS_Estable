@@ -460,11 +460,14 @@ export function getPettyCashCreatedAtDisplay(createdAtUtc) {
 
 /** Resumen del panel: solo los gastos Active cuentan (los anulados netean en 0). */
 export function summarizePettyCashExpenses(expenses = []) {
-  const active = (Array.isArray(expenses) ? expenses : [])
-    .filter((expense) => Number(expense?.status) === PettyCashStatus.Active);
+  const rows = Array.isArray(expenses) ? expenses : [];
+  const active = rows.filter((expense) => Number(expense?.status) === PettyCashStatus.Active);
+  const cancelled = rows.filter((expense) => Number(expense?.status) === PettyCashStatus.Cancelled);
 
   return {
     activeCount: active.length,
+    cancelledCount: cancelled.length,
+    totalCount: rows.length,
     totalBsS: roundHalfAwayFromZero(active.reduce((sum, expense) => sum + (Number(expense?.amountBsS) || 0), 0), 2),
     totalUsd: roundHalfAwayFromZero(active.reduce((sum, expense) => sum + (Number(expense?.amountUsd) || 0), 0), 2),
   };

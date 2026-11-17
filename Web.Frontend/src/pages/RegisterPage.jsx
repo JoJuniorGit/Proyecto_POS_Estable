@@ -38,6 +38,7 @@ import {
   canUsePettyCash,
   resolveLocalCurrencyProfile,
   buildCashDrawerSessionSummary,
+  summarizePettyCashExpenses,
 } from '../components/register/registerFormLogic';
 import Pagination from '../components/ui/Pagination';
 import RoleGuard from '../navigation/RoleGuard';
@@ -105,6 +106,14 @@ function RegisterPageContent() {
   const [cancelTargetExpense, setCancelTargetExpense] = useState(null);
   const [isCloseCashDrawerOpen, setIsCloseCashDrawerOpen] = useState(false);
   const [isOpenCashDrawerOpen, setIsOpenCashDrawerOpen] = useState(false);
+  const pettyCashSummary = summarizePettyCashExpenses(pettyCashExpenses);
+
+  // Si la sesión o el permiso desaparecen, no dejar la subsección activa sin contenido.
+  useEffect(() => {
+    if (!showPettyCash || !session?.id) {
+      setIsPettyCashPanelOpen(false);
+    }
+  }, [showPettyCash, session?.id]);
 
   // Los gastos del turno se recargan junto con la sesión (el registro/anulación se reflejan de
   // inmediato). Los saldos físicos por gaveta solo se piden a supervisión: el Cashier conserva el
@@ -347,9 +356,12 @@ function RegisterPageContent() {
             <button
               type="button"
               className={`btn ${isPettyCashPanelOpen ? 'btn-primary' : 'btn-outline'} flex-align-center justify-content-center gap-2 register-action-btn`}
-              onClick={() => setIsPettyCashPanelOpen((open) => !open)}
+              onClick={() => {
+                setIsPettyCashPanelOpen(true);
+                loadPettyCash(session?.id);
+              }}
               disabled={!session}
-              title="Registrar y consultar gastos de caja chica del turno"
+              title="Abrir la subsección de caja chica del turno"
             >
               <Wallet size={18} /> CAJA CHICA
             </button>
@@ -388,6 +400,33 @@ function RegisterPageContent() {
         </div>
       )}
 
+      {showPettyCash && session && (
+        <nav className="register-subnav" aria-label="Secciones de caja">
+          <button
+            type="button"
+            className={`register-subnav-btn${!isPettyCashPanelOpen ? ' is-active' : ''}`}
+            onClick={() => setIsPettyCashPanelOpen(false)}
+            aria-current={!isPettyCashPanelOpen ? 'page' : undefined}
+          >
+            <Landmark size={16} />
+            Movimientos de caja
+          </button>
+          <button
+            type="button"
+            className={`register-subnav-btn${isPettyCashPanelOpen ? ' is-active' : ''}`}
+            onClick={() => {
+              setIsPettyCashPanelOpen(true);
+              loadPettyCash(session.id);
+            }}
+            aria-current={isPettyCashPanelOpen ? 'page' : undefined}
+          >
+            <Wallet size={16} />
+            Caja chica
+            <span className="register-subnav-count">{pettyCashSummary.activeCount}</span>
+          </button>
+        </nav>
+      )}
+
       {loading && !session ? (
         <div className="p-5 text-center text-muted card shadow-sm">
           <Loader2 className="animate-spin mb-2 inline-block" size={32} />
@@ -406,9 +445,12 @@ function RegisterPageContent() {
               onCancelExpense={(expense) => setCancelTargetExpense(expense)}
               onRefresh={() => loadPettyCash(session?.id)}
               onClose={() => setIsPettyCashPanelOpen(false)}
+              dedicated
             />
           )}
 
+          {!isPettyCashPanelOpen && (
+            <>
           {/* Resumen por moneda: una fila de 3 tarjetas por cada moneda activa. */}
           <div className="card shadow-sm p-4 bg-surface mb-4 reg-fullwidth">
             <div className="flex-between flex-align-center mb-3">
@@ -724,6 +766,8 @@ function RegisterPageContent() {
             </div>
 
           </div>
+            </>
+          )}
         </>
       )}
 

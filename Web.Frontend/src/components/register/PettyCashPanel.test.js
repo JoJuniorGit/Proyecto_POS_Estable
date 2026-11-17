@@ -114,4 +114,16 @@ describe('PettyCashPanel [T5]', () => {
 
     assert.match(html, /No hay gastos de caja chica registrados en este turno\./);
   });
+
+  it('5. renders the dedicated summary, filters and search for the Caja Chica subsection', () => {
+    const html = render({ dedicated: true });
+
+    assert.match(html, /pc-panel-dedicated/);
+    assert.match(html, /GASTOS ACTIVOS/);
+    assert.match(html, /TOTAL ACTIVO BS\.S/);
+    assert.match(html, /ANULADOS/);
+    assert.match(html, /Buscar vale, concepto o beneficiario/);
+    assert.match(html, /Activos/);
+    assert.match(html, /Anulados/);
+  });
 });

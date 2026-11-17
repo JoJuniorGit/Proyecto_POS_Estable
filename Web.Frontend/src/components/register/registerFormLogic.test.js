@@ -190,6 +190,8 @@ describe('registerFormLogic — presentación del listado', () => {
     ]);
 
     assert.strictEqual(summary.activeCount, 2);
+    assert.strictEqual(summary.cancelledCount, 1);
+    assert.strictEqual(summary.totalCount, 3);
     assert.strictEqual(summary.totalBsS, 2190);
     assert.strictEqual(summary.totalUsd, 60);
   });

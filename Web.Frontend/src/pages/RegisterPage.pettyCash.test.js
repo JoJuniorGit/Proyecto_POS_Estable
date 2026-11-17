@@ -83,5 +83,7 @@ describe('RegisterPage — caja chica y cierre de sesión [T5]', () => {
     assert.match(source, /CashDrawerCloseModal/);
     assert.match(source, /canUsePettyCash/);
     assert.match(source, /canCloseCashDrawerSession/);
+    assert.match(source, /register-subnav/);
+    assert.match(source, /dedicated/);
   });
 });
