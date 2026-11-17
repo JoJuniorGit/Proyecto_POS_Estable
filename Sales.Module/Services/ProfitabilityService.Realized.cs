@@ -280,6 +280,10 @@ public partial class ProfitabilityService
             filteredSales, fromUtc, toUtc, isSingle, cancellationToken);
         var pettyCashExpenses = await LoadPettyCashExpensesAsync(
             fromUtc, toUtc, isSingle, cancellationToken);
+        // P0 (S3): same global period cost as the accrued block. The realized engine does not
+        // prune it by product or payment-method filters.
+        var operatingExpenses = await LoadOperatingExpensesAsync(
+            window, reportCurrency, cancellationToken);
         var fxDifference = fxRows.Sum(row => RealizedFx(row, isSingle));
         var paymentMethodFees = saleFeeRows.Sum(row => RealizedFee(row, isSingle))
             + receivableFeeRows.Sum(row => RealizedFee(row, isSingle))
@@ -291,7 +295,7 @@ public partial class ProfitabilityService
             ? realizedGrossProfit / knownCollected * 100m
             : 0m;
         var netProfit = realizedGrossProfit + serviceCommissions + fxDifference
-            - pettyCashExpenses - paymentMethodFees;
+            - pettyCashExpenses - paymentMethodFees - operatingExpenses;
         var netMarginPercent = knownCollected > 0m
             ? netProfit / knownCollected * 100m
             : 0m;
@@ -308,6 +312,7 @@ public partial class ProfitabilityService
             FxDifference = fxDifference,
             PettyCashExpenses = pettyCashExpenses,
             PaymentMethodFees = paymentMethodFees,
+            OperatingExpenses = operatingExpenses,
             NetProfit = netProfit,
             NetMarginPercent = netMarginPercent
         };

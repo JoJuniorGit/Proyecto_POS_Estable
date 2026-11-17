@@ -90,6 +90,8 @@ public class ProfitabilityExportServiceTests
         Assert.Contains("Cobertura de Costos (%);73.68", text);
         Assert.Contains("Cobertura de Comisiones (%);100.00", text);
         Assert.Contains("Líneas con Costo Desconocido;1", text);
+        // P0 (S3): the monthly operating expense line is exported in both blocks.
+        Assert.Contains("Gastos Operativos;0.0000", text);
 
         // Product/category rows: formula-injection escaping and currency formatting.
         Assert.Contains("10;'=SUM(A1);1;'=Categoria;2;100.0000;60.0000;40.0000;40.00", text);
@@ -144,6 +146,8 @@ public class ProfitabilityExportServiceTests
         Assert.Equal(-11.65m, ValueNextTo(executive, "Utilidad Neta").GetValue<decimal>());
         Assert.Equal(180m, ValueNextTo(executive, "Cobros Totales").GetValue<decimal>());
         Assert.Equal(73.6842m, ValueNextTo(executive, "Cobertura de Costos (%)").GetValue<decimal>());
+        // P0 (S3): the operating expense row is part of the executive summary.
+        Assert.Equal(0m, ValueNextTo(executive, "Gastos Operativos").GetValue<decimal>());
 
         var header = FindCell(executive, "Concepto");
         Assert.True(header.Style.Font.Bold);

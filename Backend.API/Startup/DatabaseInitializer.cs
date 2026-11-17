@@ -524,6 +524,7 @@ END $$;");
             }
 
             EnsureDefaultPaymentMethods(salesDb);
+            EnsureP0CommissionAndOperatingExpenseDefaults(salesDb);
         }
         catch (System.Exception ex)
         {
@@ -620,5 +621,177 @@ END $$;");
             salesDb.SaveChanges();
             AppLogger.LogStart("[Seed] Ensured default payment methods (Efectivo, Tarjeta PDV, Transferencia/Pago Movil, Divisas USD).");
         }
+    }
+
+    /// <summary>
+    /// P0 (S2/S4): converge la configuracion real del punto de venta. Asegura los metodos digitales
+    /// TDD/TDC/BIOpago con sus reglas activas (0.75%, 2.50%, 2.70%), y los dos gastos operativos
+    /// mensuales ($1.60 mantenimiento de cuenta TDC y $41.12 gastos del POS). Es idempotente: no
+    /// renombra, borra ni desactiva metodos historicos, no sobrescribe una regla activa existente y
+    /// usa la descripcion exacta como clave natural de los gastos.
+    /// </summary>
+    internal static void EnsureP0CommissionAndOperatingExpenseDefaults(Sales.Module.Data.SalesDbContext salesDb)
+    {
+        ArgumentNullException.ThrowIfNull(salesDb);
+
+        var effectiveFromUtc = DateTime.UtcNow.Date;
+        // The recurring charge starts with the current Venezuelan month; do not apply the P0
+        // configuration retroactively to prior months.
+        var venezuelaToday = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
+        var effectiveFromDate = new DateOnly(venezuelaToday.Year, venezuelaToday.Month, 1);
+        var existingMethods = salesDb.PaymentMethods
+            .Where(method => !method.IsDeleted)
+            .ToList();
+        var nextDisplayOrder = existingMethods.Count == 0
+            ? 1
+            : existingMethods.Max(method => method.DisplayOrder) + 1;
+
+        // 1) Metodos digitales reales. Un metodo existente con el mismo nombre se conserva tal
+        // cual: la semilla nunca renombra, borra ni desactiva filas historicas.
+        var methodsByName = new Dictionary<string, PaymentMethod>(StringComparer.OrdinalIgnoreCase);
+        var methodsChanged = false;
+        foreach (var (name, _) in P0CommissionMethods)
+        {
+            var method = existingMethods.FirstOrDefault(candidate =>
+                string.Equals(candidate.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
+
+            if (method is null)
+            {
+                method = new PaymentMethod
+                {
+                    Name = name,
+                    IsActive = true,
+                    IsCash = false,
+                    RequiresReference = true,
+                    DisplayOrder = nextDisplayOrder++,
+                    IsDeleted = false,
+                    Currency = Sales.Module.PaymentMethodCurrencyResolver.LocalCurrency
+                };
+                salesDb.PaymentMethods.Add(method);
+                existingMethods.Add(method);
+                methodsChanged = true;
+            }
+
+            methodsByName[name] = method;
+        }
+
+        if (methodsChanged)
+        {
+            // Los Ids son necesarios para asociar reglas y gastos: se persisten antes de seguir.
+            salesDb.SaveChanges();
+            AppLogger.LogStart("[Seed] Ensured P0 payment methods (TDD, TDC, BIOpago).");
+        }
+
+        // 2) Reglas activas por transaccion. Una regla activa existente es configuracion del
+        // administrador y no se toca; jamas se asigna comision a efectivo ni al metodo generico
+        // legacy "Tarjeta (Punto de Venta)".
+        var rulesChanged = false;
+        foreach (var (name, percentage) in P0CommissionMethods)
+        {
+            var method = methodsByName[name];
+            if (method.IsCash || method.IsDeleted)
+            {
+                continue;
+            }
+
+            var hasActiveRule = salesDb.PaymentMethodFeeRules.Any(rule =>
+                rule.PaymentMethodId == method.Id && rule.IsActive);
+            if (hasActiveRule)
+            {
+                continue;
+            }
+
+            // El indice unico (PaymentMethodId, EffectiveFromUtc) impide duplicar la fecha de
+            // inicio. Si ya existe una fila inactiva con esa fecha, se preserva y no se duplica.
+            var sameDayRuleExists = salesDb.PaymentMethodFeeRules.Any(rule =>
+                rule.PaymentMethodId == method.Id && rule.EffectiveFromUtc == effectiveFromUtc);
+            if (sameDayRuleExists)
+            {
+                continue;
+            }
+
+            var now = DateTime.UtcNow;
+            salesDb.PaymentMethodFeeRules.Add(new PaymentMethodFeeRule
+            {
+                PaymentMethodId = method.Id,
+                FeeType = PaymentMethodFeeType.Percentage,
+                Percentage = percentage,
+                FixedAmount = null,
+                CurrencyCode = "USD",
+                EffectiveFromUtc = effectiveFromUtc,
+                EffectiveToUtc = null,
+                IsActive = true,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            });
+            rulesChanged = true;
+        }
+
+        if (rulesChanged)
+        {
+            salesDb.SaveChanges();
+            AppLogger.LogStart("[Seed] Ensured P0 payment method commission rules (TDD 0.75%, TDC 2.50%, BIOpago 2.70%).");
+        }
+
+        // 3) Gastos operativos mensuales. La descripcion exacta es la clave de idempotencia: si ya
+        // existe un gasto activo equivalente, se omite.
+        var expensesChanged = EnsureOperatingExpense(
+            salesDb,
+            "Mantenimiento de cuenta TDC",
+            monthlyAmountUsd: 1.60m,
+            paymentMethodId: methodsByName["Tarjeta de Crédito (TDC)"].Id,
+            effectiveFromDate);
+        expensesChanged |= EnsureOperatingExpense(
+            salesDb,
+            "Gastos mensuales del POS",
+            monthlyAmountUsd: 41.12m,
+            paymentMethodId: null,
+            effectiveFromDate);
+
+        if (expensesChanged)
+        {
+            salesDb.SaveChanges();
+            AppLogger.LogStart("[Seed] Ensured P0 monthly operating expenses (TDC maintenance $1.60, POS $41.12).");
+        }
+    }
+
+    private static readonly (string Name, decimal Percentage)[] P0CommissionMethods =
+    {
+        ("Tarjeta de Débito (TDD)", 0.75m),
+        ("Tarjeta de Crédito (TDC)", 2.50m),
+        ("BIOpago", 2.70m)
+    };
+
+    private static bool EnsureOperatingExpense(
+        Sales.Module.Data.SalesDbContext salesDb,
+        string description,
+        decimal monthlyAmountUsd,
+        int? paymentMethodId,
+        DateOnly effectiveFromDate)
+    {
+        // Any row with the canonical description is the idempotency key, including an inactive
+        // one: a restart must not resurrect a charge the admin deliberately disabled.
+        var alreadyExists = salesDb.OperatingExpenses.Any(expense =>
+            expense.Description == description);
+        if (alreadyExists)
+        {
+            return false;
+        }
+
+        var now = DateTime.UtcNow;
+        salesDb.OperatingExpenses.Add(new OperatingExpense
+        {
+            Description = description,
+            MonthlyAmountUsd = monthlyAmountUsd,
+            MonthlyAmountLocal = null,
+            LocalCurrencyCode = null,
+            PaymentMethodId = paymentMethodId,
+            EffectiveFromDate = effectiveFromDate,
+            EffectiveToDate = null,
+            IsActive = true,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        });
+        return true;
     }
 }

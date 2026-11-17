@@ -209,6 +209,7 @@ function PaymentMethodFeeRulesCard({ methods = [], setMessage }) {
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [form, setForm] = useState(() => createEmptyForm(methods, profile, null));
 
   const eligibleMethods = useMemo(
@@ -224,6 +225,12 @@ function PaymentMethodFeeRulesCard({ methods = [], setMessage }) {
       : profile?.primaryCurrencyCode;
     return [...new Set(['USD', localCode].filter(Boolean))];
   }, [profile]);
+
+  useEffect(() => {
+    const onFeesUpdated = () => setReloadToken((value) => value + 1);
+    window.addEventListener('onPaymentMethodFeesUpdated', onFeesUpdated);
+    return () => window.removeEventListener('onPaymentMethodFeesUpdated', onFeesUpdated);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -248,7 +255,7 @@ function PaymentMethodFeeRulesCard({ methods = [], setMessage }) {
       active = false;
       controller.abort();
     };
-  }, []);
+  }, [reloadToken]);
 
   const updateField = (field) => (event) => {
     const value = event.target.type === 'checkbox'

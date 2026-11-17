@@ -142,6 +142,8 @@ public partial class ProfitabilityViewModel : ObservableObject, IDisposable
 
     public string ComisionesMediosDisplay => FormatMoney(_summary?.Accrued.PaymentMethodFees ?? 0m);
 
+    public string GastosOperativosDisplay => FormatMoney(_summary?.Accrued.OperatingExpenses ?? 0m);
+
     public string UtilidadNetaDisplay => FormatMoney(AccruedNetProfitValue);
 
     public string MargenNetoDisplay => FormatPercent(_summary?.Accrued.NetMarginPercent ?? 0m);
@@ -354,6 +356,7 @@ public partial class ProfitabilityViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(FxDisplay));
         OnPropertyChanged(nameof(CajaChicaDisplay));
         OnPropertyChanged(nameof(ComisionesMediosDisplay));
+        OnPropertyChanged(nameof(GastosOperativosDisplay));
         OnPropertyChanged(nameof(UtilidadNetaDisplay));
         OnPropertyChanged(nameof(MargenNetoDisplay));
         OnPropertyChanged(nameof(CostCoverageDisplay));

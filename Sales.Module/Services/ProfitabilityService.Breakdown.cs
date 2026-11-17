@@ -28,7 +28,7 @@ public partial class ProfitabilityService
         var isSingle = reportCurrency.Mode == MonetaryMode.Single;
         var timeZone = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
 
-        var series = await BuildSeriesAsync(filter, window, timeZone, isSingle, cancellationToken);
+        var series = await BuildSeriesAsync(filter, window, timeZone, reportCurrency, cancellationToken);
         var paymentMethods = await BuildPaymentMethodBreakdownAsync(filter, window, isSingle, cancellationToken);
         var (products, categories) = await BuildProductAndCategoryBreakdownAsync(
             filter, window, isSingle, cancellationToken);

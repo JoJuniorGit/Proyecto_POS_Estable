@@ -1,12 +1,72 @@
 import { useState } from 'react';
 import { CreditCard, Plus, Loader2, Trash2 } from 'lucide-react';
 import { createPaymentMethod, updatePaymentMethod, deletePaymentMethod } from '../services/paymentApi';
+import { PAYMENT_METHOD_FEE_TYPE } from '../services/profitabilityApi';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import { parseAmount } from '../utils/formatters';
 import ConfirmModal from '../components/ui/ConfirmModal';
 
+const FEE_TYPE_PERCENTAGE = PAYMENT_METHOD_FEE_TYPE.Percentage;
+const FEE_TYPE_FIXED = PAYMENT_METHOD_FEE_TYPE.Fixed;
+const FEE_TYPE_COMBINED = PAYMENT_METHOD_FEE_TYPE.PercentagePlusFixed;
+
+const FEE_TYPE_OPTIONS = [
+  { value: FEE_TYPE_PERCENTAGE, label: 'Porcentaje (%)' },
+  { value: FEE_TYPE_FIXED, label: 'Monto fijo por transacción' },
+  { value: FEE_TYPE_COMBINED, label: 'Porcentaje + fijo' },
+];
+
+/**
+ * Builds the optional commission block for the payment-method create request. Cash methods and
+ * 0/0 never send a commission; the backend creates the fee rule atomically with the method.
+ */
+export function buildPaymentMethodCommission({
+  isCash,
+  feeType,
+  percentage,
+  fixedAmount,
+  currencyCode,
+}) {
+  const type = Number(feeType);
+  const parsedPercentage = type === FEE_TYPE_FIXED ? null : parseAmount(percentage);
+  const parsedFixedAmount = type === FEE_TYPE_PERCENTAGE
+    ? null
+    : (String(fixedAmount ?? '').trim() ? parseAmount(fixedAmount) : 0);
+  const hasPositiveAmount = (parsedPercentage ?? 0) > 0 || (parsedFixedAmount ?? 0) > 0;
+  const hasPositiveCommission = !isCash && hasPositiveAmount;
+
+  return {
+    feeType: type,
+    percentage: parsedPercentage,
+    fixedAmount: parsedFixedAmount,
+    hasPositiveAmount,
+    hasPositiveCommission,
+    commission: hasPositiveCommission
+      ? {
+          feeType: type,
+          percentage: parsedPercentage,
+          fixedAmount: parsedFixedAmount,
+          currencyCode: String(currencyCode ?? '').trim(),
+          isActive: true,
+        }
+      : null,
+  };
+}
+
 export default function SettingsPaymentMethods({ methods, setMethods, setMessage, loadMethods, loadingMethods }) {
+  const { profile } = useMonetaryProfile();
+  const localCurrency = profile?.mode === 'Dual'
+    ? profile?.secondaryCurrencyCode
+    : profile?.primaryCurrencyCode;
+  const feeCurrencyOptions = Array.from(new Set(['USD', localCurrency].filter(Boolean)));
+
   const [newMethodName, setNewMethodName] = useState('');
   const [newMethodIsCash, setNewMethodIsCash] = useState(false);
   const [newMethodRequiresRef, setNewMethodRequiresRef] = useState(false);
+  const [newMethodFeeType, setNewMethodFeeType] = useState(FEE_TYPE_PERCENTAGE);
+  const [newMethodPercentage, setNewMethodPercentage] = useState('');
+  const [newMethodFixedAmount, setNewMethodFixedAmount] = useState('');
+  const [newMethodFeeCurrency, setNewMethodFeeCurrency] = useState('USD');
   const [methodToDelete, setMethodToDelete] = useState(null);
 
   const handleToggleCash = async (method) => {
@@ -70,19 +130,61 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
     e.preventDefault();
     if (!newMethodName.trim()) return;
 
+    const {
+      feeType,
+      percentage,
+      fixedAmount,
+      hasPositiveAmount,
+      hasPositiveCommission,
+      commission,
+    } = buildPaymentMethodCommission({
+      isCash: newMethodIsCash,
+      feeType: newMethodFeeType,
+      percentage: newMethodPercentage,
+      fixedAmount: newMethodFixedAmount,
+      currencyCode: newMethodFeeCurrency,
+    });
+
+    if (newMethodIsCash && hasPositiveAmount) {
+      setMessage({ type: 'danger', text: 'Un método de efectivo no puede tener comisión mayor que cero.' });
+      return;
+    }
+
+    if (!newMethodIsCash && hasPositiveCommission) {
+      if ((feeType === FEE_TYPE_PERCENTAGE || feeType === FEE_TYPE_COMBINED)
+        && !(percentage > 0 && percentage <= 100)) {
+        setMessage({ type: 'danger', text: 'El porcentaje de comisión debe ser mayor que 0 y menor o igual a 100.' });
+        return;
+      }
+      if (feeType === FEE_TYPE_FIXED && !(fixedAmount > 0)) {
+        setMessage({ type: 'danger', text: 'El monto fijo por transacción debe ser mayor que 0.' });
+        return;
+      }
+      if (!newMethodFeeCurrency) {
+        setMessage({ type: 'danger', text: 'La moneda de la comisión es obligatoria.' });
+        return;
+      }
+    }
+
     try {
       const dto = {
         name: newMethodName.trim(),
         isActive: true,
         isCash: newMethodIsCash,
         requiresReference: newMethodRequiresRef,
+        commission,
       };
       await createPaymentMethod(dto);
       setNewMethodName('');
       setNewMethodIsCash(false);
       setNewMethodRequiresRef(false);
+      setNewMethodFeeType(FEE_TYPE_PERCENTAGE);
+      setNewMethodPercentage('');
+      setNewMethodFixedAmount('');
+      setNewMethodFeeCurrency('USD');
       setMessage({ type: 'success', text: 'Nuevo método de pago agregado correctamente.' });
       loadMethods();
+      window.dispatchEvent(new CustomEvent('onPaymentMethodFeesUpdated'));
     } catch (err) {
       console.error('[SettingsPage] Error agregando método:', err);
       setMessage({ type: 'danger', text: err?.message || 'Error al crear método de pago.' });
@@ -245,6 +347,69 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
 
       <form onSubmit={handleAddMethod} className="border-top pt-3 mt-2">
         <h4 className="font-bold mb-3 text-sm sm:text-base">Agregar Nuevo Método de Pago</h4>
+
+        <div className="border rounded-lg p-3 mb-3">
+          <div className="font-bold text-sm mb-1">Comisión del método (opcional)</div>
+          <p className="text-xs text-muted mb-2">
+            Es un costo del negocio y no se suma al cliente. El mantenimiento de cuenta y los gastos mensuales del POS no se ingresan acá: se registran como gasto operativo del período.
+          </p>
+          <div className="form-row align-end flex-wrap gap-3">
+            <div className="form-group mb-0">
+              <label className="form-label text-xs text-muted mb-1 block">Tipo de comisión</label>
+              <select
+                className="form-input"
+                value={newMethodFeeType}
+                onChange={(e) => setNewMethodFeeType(Number(e.target.value))}
+                disabled={newMethodIsCash}
+              >
+                {FEE_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group mb-0">
+              <label className="form-label text-xs text-muted mb-1 block">Porcentaje (%)</label>
+              <input
+                type="number"
+                className="form-input"
+                min="0"
+                max="100"
+                step="0.01"
+                placeholder="0.75"
+                value={newMethodPercentage}
+                onChange={(e) => setNewMethodPercentage(e.target.value)}
+                disabled={newMethodIsCash || newMethodFeeType === FEE_TYPE_FIXED}
+              />
+            </div>
+            <div className="form-group mb-0">
+              <label className="form-label text-xs text-muted mb-1 block">Fijo por transacción</label>
+              <input
+                type="number"
+                className="form-input"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={newMethodFixedAmount}
+                onChange={(e) => setNewMethodFixedAmount(e.target.value)}
+                disabled={newMethodIsCash || newMethodFeeType === FEE_TYPE_PERCENTAGE}
+              />
+            </div>
+            <div className="form-group mb-0">
+              <label className="form-label text-xs text-muted mb-1 block">Moneda de la comisión</label>
+              <select
+                className="form-input"
+                value={newMethodFeeCurrency}
+                onChange={(e) => setNewMethodFeeCurrency(e.target.value)}
+                disabled={newMethodIsCash}
+              >
+                {feeCurrencyOptions.map((code) => (
+                  <option key={code} value={code}>{code}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
         <div className="form-row align-end flex-wrap gap-3">
           <div className="form-group flex-2 mb-0 set-form-name">
             <label className="form-label text-xs text-muted mb-1 block">Nombre del Método</label>
@@ -262,7 +427,13 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
               <input
                 type="checkbox"
                 checked={newMethodIsCash}
-                onChange={(e) => setNewMethodIsCash(e.target.checked)}
+                onChange={(e) => {
+                  setNewMethodIsCash(e.target.checked);
+                  if (e.target.checked) {
+                    setNewMethodPercentage('');
+                    setNewMethodFixedAmount('');
+                  }
+                }}
               />
               <span>Es Efectivo (Físico)</span>
             </label>

@@ -14,7 +14,7 @@ public sealed record ProfitabilitySummaryDto
     /// operación se informan sin prorrateo artificial entre artículos.
     /// </summary>
     public const string GlobalCostsNoteText =
-        "PettyCashExpenses, ServiceCommissions y PaymentMethodFees son gastos/ingresos globales de operación y no se prorratean artificialmente por artículo.";
+        "PettyCashExpenses, OperatingExpenses, ServiceCommissions y PaymentMethodFees son gastos/ingresos globales de operación y no se prorratean artificialmente por artículo.";
 
     public DateTime FromUtc { get; init; }
 

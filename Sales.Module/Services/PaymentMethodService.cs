@@ -278,8 +278,11 @@ public class PaymentMethodService : IPaymentMethodService
         bool hasSales = await _context.SalePayments.AnyAsync(sp => sp.PaymentMethodId == id, cancellationToken);
         bool hasClosures = await _context.ClosureDetails.AnyAsync(cd => cd.PaymentMethodId == id, cancellationToken);
         bool hasCashTransactions = await _context.CashTransactions.AnyAsync(ct => ct.PaymentMethodId == id, cancellationToken);
+        // The optional OperatingExpense FK is Restrict: a method referenced by a recurring charge
+        // must be soft-deleted instead of hitting a foreign-key error on the hard-delete path.
+        bool hasOperatingExpenses = await _context.OperatingExpenses.AnyAsync(expense => expense.PaymentMethodId == id, cancellationToken);
 
-        bool hasBeenUsed = hasSales || hasClosures || hasCashTransactions;
+        bool hasBeenUsed = hasSales || hasClosures || hasCashTransactions || hasOperatingExpenses;
 
         if (hasBeenUsed)
         {

@@ -367,6 +367,11 @@ public static class ProfitabilityPdfGenerator
                 Money(accrued.PaymentMethodFees),
                 Money(realized.PaymentMethodFees),
                 false);
+            yield return (
+                "Gastos Operativos",
+                Money(accrued.OperatingExpenses),
+                Money(realized.OperatingExpenses),
+                false);
             yield return ("Utilidad Neta", Money(accrued.NetProfit), Money(realized.NetProfit), true);
             yield return ("Margen Neto (%)", Percent(accrued.NetMarginPercent), Percent(realized.NetMarginPercent), false);
         }

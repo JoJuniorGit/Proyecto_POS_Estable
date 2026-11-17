@@ -1,3 +1,4 @@
+using Core.DTOs;
 using Microsoft.EntityFrameworkCore;
 using Sales.Module.DTOs.Profitability;
 using Sales.Module.Entities;
@@ -21,11 +22,21 @@ public partial class ProfitabilityService
         ProfitabilityFilterDto filter,
         ProfitabilityTimeWindowResult window,
         TimeZoneInfo timeZone,
-        bool isSingle,
+        ReportCurrencyContext reportCurrency,
         CancellationToken cancellationToken)
     {
+        var isSingle = reportCurrency.Mode == MonetaryMode.Single;
         var buckets = new Dictionary<DateTime, SeriesAccumulator>();
-        var hasAnyEvent = await AddAccruedSeriesEventsAsync(
+
+        // P0 (S3): the monthly operating expenses are global period costs. They are loaded once
+        // and assigned to every series point so an expense-only period still produces a timeline
+        // and the series net profit reconciles with the headline.
+        var operatingExpenses = await LoadOperatingExpenseRowsAsync(reportCurrency, cancellationToken);
+        var (windowFromDate, windowToExclusiveDate) = ResolveLocalDateRange(window, timeZone);
+        var hasAnyEvent = SumProratedOperatingExpenses(
+            operatingExpenses, windowFromDate, windowToExclusiveDate) > 0m;
+
+        hasAnyEvent |= await AddAccruedSeriesEventsAsync(
             buckets, filter, window, timeZone, isSingle, cancellationToken);
         hasAnyEvent |= await AddRealizedSeriesEventsAsync(
             buckets, filter, window, timeZone, isSingle, cancellationToken);
@@ -37,7 +48,7 @@ public partial class ProfitabilityService
             return Array.Empty<ProfitabilitySeriesPointDto>();
         }
 
-        return FillSeriesPoints(buckets, window, timeZone, filter.GroupBy);
+        return FillSeriesPoints(buckets, window, timeZone, filter.GroupBy, operatingExpenses);
     }
 
     private async Task<bool> AddAccruedSeriesEventsAsync(
@@ -271,13 +282,15 @@ public partial class ProfitabilityService
     }
 
     private static IReadOnlyList<ProfitabilitySeriesPointDto> FillSeriesPoints(
-        IReadOnlyDictionary<DateTime, SeriesAccumulator> buckets,
+        IDictionary<DateTime, SeriesAccumulator> buckets,
         ProfitabilityTimeWindowResult window,
         TimeZoneInfo timeZone,
-        ProfitabilityGroupBy groupBy)
+        ProfitabilityGroupBy groupBy,
+        IReadOnlyList<OperatingExpenseRow> operatingExpenses)
     {
         var localFrom = TimeZoneInfo.ConvertTimeFromUtc(EnsureUtc(window.FromUtc), timeZone);
         var localLast = TimeZoneInfo.ConvertTimeFromUtc(EnsureUtc(window.ToUtc).AddTicks(-1), timeZone);
+        var (windowFromDate, windowToExclusiveDate) = ResolveLocalDateRange(window, timeZone);
         var cursor = LocalPeriodStart(localFrom, groupBy);
         var last = LocalPeriodStart(localLast, groupBy);
         var points = new List<ProfitabilitySeriesPointDto>();
@@ -293,21 +306,102 @@ public partial class ProfitabilityService
             }
 
             var periodStartUtc = LocalPeriodToUtc(cursor, timeZone);
-            buckets.TryGetValue(periodStartUtc, out var accumulator);
+            var nextCursor = AdvanceLocalPeriod(cursor, groupBy);
+            var operatingExpense = OperatingExpenseForSeriesBucket(
+                operatingExpenses,
+                cursor,
+                nextCursor,
+                windowFromDate,
+                windowToExclusiveDate,
+                groupBy);
+
+            if (!buckets.TryGetValue(periodStartUtc, out var accumulator))
+            {
+                accumulator = new SeriesAccumulator();
+                buckets[periodStartUtc] = accumulator;
+            }
+
+            // Operating expenses are a global period cost: they reduce both the accrued and the
+            // realized net profit and never affect net sales or collected revenue.
+            accumulator.AccruedNetProfit -= operatingExpense;
+            accumulator.RealizedNetProfit -= operatingExpense;
+
             points.Add(new ProfitabilitySeriesPointDto
             {
                 PeriodStartUtc = periodStartUtc,
                 Label = SeriesLabel(cursor, groupBy),
-                AccruedNetProfit = accumulator?.AccruedNetProfit ?? 0m,
-                RealizedNetProfit = accumulator?.RealizedNetProfit ?? 0m,
-                AccruedNetSales = accumulator?.AccruedNetSales ?? 0m,
-                RealizedCollectedRevenue = accumulator?.RealizedCollectedRevenue ?? 0m
+                AccruedNetProfit = accumulator.AccruedNetProfit,
+                RealizedNetProfit = accumulator.RealizedNetProfit,
+                AccruedNetSales = accumulator.AccruedNetSales,
+                RealizedCollectedRevenue = accumulator.RealizedCollectedRevenue
             });
 
-            cursor = AdvanceLocalPeriod(cursor, groupBy);
+            cursor = nextCursor;
         }
 
         return points;
+    }
+
+    private static decimal OperatingExpenseForSeriesBucket(
+        IReadOnlyList<OperatingExpenseRow> expenses,
+        DateTime cursorLocal,
+        DateTime nextLocal,
+        DateOnly windowFromDate,
+        DateOnly windowToExclusiveDate,
+        ProfitabilityGroupBy groupBy)
+    {
+        if (expenses.Count == 0)
+        {
+            return 0m;
+        }
+
+        if (groupBy == ProfitabilityGroupBy.Hour)
+        {
+            // The headline prorates a recurring expense by local calendar day. Distribute that
+            // day evenly across the 24 hourly points so the hourly series sums to the same cost.
+            var date = DateOnly.FromDateTime(cursorLocal);
+            if (date < windowFromDate || date >= windowToExclusiveDate)
+            {
+                return 0m;
+            }
+
+            return SumProratedOperatingExpenses(expenses, date, date.AddDays(1)) / 24m;
+        }
+
+        var bucketFrom = DateOnly.FromDateTime(cursorLocal);
+        var bucketToExclusive = DateOnly.FromDateTime(nextLocal);
+        var from = bucketFrom > windowFromDate ? bucketFrom : windowFromDate;
+        var to = bucketToExclusive < windowToExclusiveDate ? bucketToExclusive : windowToExclusiveDate;
+        return to > from ? SumProratedOperatingExpenses(expenses, from, to) : 0m;
+    }
+
+    private static decimal SumProratedOperatingExpenses(
+        IReadOnlyList<OperatingExpenseRow> expenses,
+        DateOnly fromDate,
+        DateOnly toExclusiveDate)
+    {
+        if (toExclusiveDate <= fromDate)
+        {
+            return 0m;
+        }
+
+        var total = 0m;
+        foreach (var expense in expenses)
+        {
+            if (expense.EffectiveFromDate >= toExclusiveDate)
+            {
+                continue;
+            }
+
+            if (expense.EffectiveToDate.HasValue && expense.EffectiveToDate.Value < fromDate)
+            {
+                continue;
+            }
+
+            total += ProrateByCalendarMonth(expense, expense.MonthlyAmount, fromDate, toExclusiveDate);
+        }
+
+        return total;
     }
 
     private static DateTime PeriodStartUtc(

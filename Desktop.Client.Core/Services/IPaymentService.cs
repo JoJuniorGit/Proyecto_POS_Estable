@@ -64,6 +64,26 @@ public partial class PaymentMethodDto : ObservableObject
         get => _isDeleted;
         set => SetProperty(ref _isDeleted, value);
     }
+
+    /// <summary>
+    /// P0 (S1): comisión opcional capturada al crear el método. El backend crea el método y su
+    /// PaymentMethodFeeRule en la misma operación lógica; una comisión 0/0 no se envía.
+    /// </summary>
+    public PaymentMethodCommissionClientDto? Commission { get; set; }
+}
+
+public sealed class PaymentMethodCommissionClientDto
+{
+    /// <summary>0=Percentage, 1=Fixed, 2=PercentagePlusFixed (contrato del backend).</summary>
+    public int FeeType { get; set; }
+
+    public decimal? Percentage { get; set; }
+
+    public decimal? FixedAmount { get; set; }
+
+    public string CurrencyCode { get; set; } = "USD";
+
+    public bool IsActive { get; set; } = true;
 }
 
 public interface IPaymentService

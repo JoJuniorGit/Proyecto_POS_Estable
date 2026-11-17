@@ -133,6 +133,8 @@ public sealed class ProfitabilityAccruedClientDto
 
     public decimal PaymentMethodFees { get; set; }
 
+    public decimal OperatingExpenses { get; set; }
+
     public decimal NetProfit { get; set; }
 
     public decimal NetMarginPercent { get; set; }
@@ -159,6 +161,8 @@ public sealed class ProfitabilityRealizedClientDto
     public decimal PettyCashExpenses { get; set; }
 
     public decimal PaymentMethodFees { get; set; }
+
+    public decimal OperatingExpenses { get; set; }
 
     public decimal NetProfit { get; set; }
 

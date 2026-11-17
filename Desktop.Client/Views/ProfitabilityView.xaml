@@ -241,6 +241,12 @@
                         <TextBlock Text="{Binding ComisionesMediosDisplay}" Style="{StaticResource KpiValueStyle}" Foreground="#B45309" />
                     </StackPanel>
                 </Border>
+                <Border Style="{StaticResource KpiCardStyle}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="GASTOS OPERATIVOS" Style="{StaticResource KpiLabelStyle}" />
+                        <TextBlock Text="{Binding GastosOperativosDisplay}" Style="{StaticResource KpiValueStyle}" Foreground="#B45309" />
+                    </StackPanel>
+                </Border>
 
                 <Border Style="{StaticResource KpiCardStyle}">
                     <StackPanel>

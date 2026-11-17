@@ -17,6 +17,14 @@ public interface IDialogService
     void ShowInfo(string title, string message);
     void ShowMessage(string title, string message) => ShowWarning(title, message);
     Task<string?> ShowTextInputAsync(string prompt, string hint);
+
+    /// <summary>
+    /// P0 (S1): alta de método de pago con su comisión opcional. La implementación headless
+    /// devuelve null (alta cancelada), igual que los demás diálogos sin UI.
+    /// </summary>
+    Task<PaymentMethodDto?> ShowPaymentMethodCreationDialogAsync() =>
+        Task.FromResult<PaymentMethodDto?>(null);
+
     Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync();
     decimal? ShowCashAdvanceDialog();
 

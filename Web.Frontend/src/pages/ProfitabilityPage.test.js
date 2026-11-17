@@ -25,7 +25,7 @@ const SUMMARY = {
   isSingleCurrency: false,
   generatedAtUtc: '2026-11-10T15:00:00Z',
   globalCostsNote:
-    'PettyCashExpenses, ServiceCommissions y PaymentMethodFees son gastos/ingresos globales de operación y no se prorratean artificialmente por artículo.',
+    'PettyCashExpenses, OperatingExpenses, ServiceCommissions y PaymentMethodFees son gastos/ingresos globales de operación y no se prorratean artificialmente por artículo.',
   accrued: {
     grossSales: 2000,
     cancellations: 50,
@@ -40,8 +40,9 @@ const SUMMARY = {
     fxDifferenceInformational: 30,
     pettyCashExpenses: 45,
     paymentMethodFees: 25,
-    netProfit: 650,
-    netMarginPercent: 35.14,
+    operatingExpenses: 60,
+    netProfit: 590,
+    netMarginPercent: 31.89,
   },
   realized: {
     collectedRevenue: 1600,
@@ -54,8 +55,9 @@ const SUMMARY = {
     fxDifference: 20,
     pettyCashExpenses: 45,
     paymentMethodFees: 20,
-    netProfit: 565,
-    netMarginPercent: 35.31,
+    operatingExpenses: 60,
+    netProfit: 505,
+    netMarginPercent: 31.56,
   },
   coverage: {
     costCoveragePercent: 81.08,
@@ -250,9 +252,9 @@ describe('ProfitabilityDashboard — KPIs, toggle and coverage', () => {
     const html = renderDashboard();
 
     assert.match(html, /UTILIDAD DEVENGADA/);
-    assert.match(html, /\$ 650,00/);
+    assert.match(html, /\$ 590,00/);
     assert.match(html, /UTILIDAD PERCIBIDA EN CAJA/);
-    assert.match(html, /\$ 565,00/);
+    assert.match(html, /\$ 505,00/);
     assert.match(html, /VENTAS NETAS/);
     assert.match(html, /\$ 1\.850,00/);
     assert.match(html, /CMV/);
@@ -264,6 +266,7 @@ describe('ProfitabilityDashboard — KPIs, toggle and coverage', () => {
     assert.match(html, /DIFERENCIA FX \(INFORMATIVA\)/);
     assert.match(html, /CAJA CHICA/);
     assert.match(html, /COMISIONES DE MEDIOS DE PAGO/);
+    assert.match(html, /GASTOS OPERATIVOS/);
     assert.match(html, /UTILIDAD NETA/);
   });
 

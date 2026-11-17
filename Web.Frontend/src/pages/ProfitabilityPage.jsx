@@ -495,6 +495,7 @@ export function ProfitabilityDashboard({
         <KpiCard label="DIFERENCIA FX (INFORMATIVA)" value={money(accrued.fxDifferenceInformational)} />
         <KpiCard label="CAJA CHICA" value={money(accrued.pettyCashExpenses)} />
         <KpiCard label="COMISIONES DE MEDIOS DE PAGO" value={money(accrued.paymentMethodFees)} />
+        <KpiCard label="GASTOS OPERATIVOS" value={money(accrued.operatingExpenses)} />
         <KpiCard label="UTILIDAD NETA" value={money(accrued.netProfit)} />
         <KpiCard label="MARGEN NETO" value={percent(accrued.netMarginPercent)} />
       </section>

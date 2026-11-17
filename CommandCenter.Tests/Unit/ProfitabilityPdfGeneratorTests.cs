@@ -57,6 +57,7 @@ public class ProfitabilityPdfGeneratorTests
         Assert.Contains("Ingreso con Costo Conocido", content);
         Assert.Contains("Comisiones de Servicio", content);
         Assert.Contains("Comisiones de Medios de Pago", content);
+        Assert.Contains("Gastos Operativos", content);
         Assert.Contains("-11.6500", content);
 
         Assert.Contains("CAJA CHICA POR CATEGORIA", content);
@@ -98,7 +99,10 @@ public class ProfitabilityPdfGeneratorTests
         Assert.Contains("80.00", content);
         Assert.Contains("500.00", content);
         Assert.DoesNotContain("80.0000", content);
-        Assert.Contains("Página 1 de 1", Readable(content));
+        // P0 (S3): the comparative table gained the "Gastos Operativos" row, so the minimal
+        // single-currency report now flows into a second page; the footer numbers both pages.
+        Assert.Contains("Página 1 de 2", Readable(content));
+        Assert.Contains("Página 2 de 2", Readable(content));
     }
 
     private static ProfitabilityPdfContext CreateContext(

@@ -817,6 +817,58 @@ namespace Sales.Module.Migrations
                     b.ToTable("DailyClosures");
                 });
 
+            modelBuilder.Entity("Sales.Module.Entities.OperatingExpense", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateOnly>("EffectiveFromDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("EffectiveToDate")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LocalCurrencyCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<decimal?>("MonthlyAmountLocal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("MonthlyAmountUsd")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("PaymentMethodId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentMethodId")
+                        .HasDatabaseName("IX_OperatingExpenses_PaymentMethodId");
+
+                    b.HasIndex("IsActive", "EffectiveFromDate")
+                        .HasDatabaseName("IX_OperatingExpenses_IsActive_EffectiveFromDate");
+
+                    b.ToTable("OperatingExpenses", (string)null);
+                });
+
             modelBuilder.Entity("Sales.Module.Entities.PaymentMethod", b =>
                 {
                     b.Property<int>("Id")
@@ -1749,6 +1801,17 @@ namespace Sales.Module.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Session");
+                });
+
+            modelBuilder.Entity("Sales.Module.Entities.OperatingExpense", b =>
+                {
+                    b.HasOne("Sales.Module.Entities.PaymentMethod", "PaymentMethod")
+                        .WithMany()
+                        .HasForeignKey("PaymentMethodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_OperatingExpenses_PaymentMethods");
+
+                    b.Navigation("PaymentMethod");
                 });
 
             modelBuilder.Entity("Sales.Module.Entities.PaymentMethodFeeRule", b =>

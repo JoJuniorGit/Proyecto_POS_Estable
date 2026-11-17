@@ -223,6 +223,7 @@ public sealed class ProfitabilityExportService : IProfitabilityExportService
         AppendMoneyRow(sb, "Diferencia FX (Informativa)", accrued.FxDifferenceInformational, summary);
         AppendMoneyRow(sb, "Caja Chica", accrued.PettyCashExpenses, summary);
         AppendMoneyRow(sb, "Comisiones de Medios de Pago", accrued.PaymentMethodFees, summary);
+        AppendMoneyRow(sb, "Gastos Operativos", accrued.OperatingExpenses, summary);
         AppendMoneyRow(sb, "Utilidad Neta", accrued.NetProfit, summary);
         AppendPercentRow(sb, "Margen Neto (%)", accrued.NetMarginPercent);
 
@@ -240,6 +241,7 @@ public sealed class ProfitabilityExportService : IProfitabilityExportService
         AppendMoneyRow(sb, "Diferencia FX", realized.FxDifference, summary);
         AppendMoneyRow(sb, "Caja Chica", realized.PettyCashExpenses, summary);
         AppendMoneyRow(sb, "Comisiones de Medios de Pago", realized.PaymentMethodFees, summary);
+        AppendMoneyRow(sb, "Gastos Operativos", realized.OperatingExpenses, summary);
         AppendMoneyRow(sb, "Utilidad Neta", realized.NetProfit, summary);
         AppendPercentRow(sb, "Margen Neto (%)", realized.NetMarginPercent);
 
@@ -389,6 +391,7 @@ public sealed class ProfitabilityExportService : IProfitabilityExportService
             ("Diferencia FX (Informativa)", accrued.FxDifferenceInformational),
             ("Caja Chica", accrued.PettyCashExpenses),
             ("Comisiones de Medios de Pago", accrued.PaymentMethodFees),
+            ("Gastos Operativos", accrued.OperatingExpenses),
             ("Utilidad Neta", accrued.NetProfit)
         });
         row = WritePercentRow(worksheet, row, "Margen Bruto (%)", accrued.GrossMarginPercent);
@@ -409,6 +412,7 @@ public sealed class ProfitabilityExportService : IProfitabilityExportService
             ("Diferencia FX", realized.FxDifference),
             ("Caja Chica", realized.PettyCashExpenses),
             ("Comisiones de Medios de Pago", realized.PaymentMethodFees),
+            ("Gastos Operativos", realized.OperatingExpenses),
             ("Utilidad Neta", realized.NetProfit)
         });
         row = WritePercentRow(worksheet, row, "Margen Bruto Percibido (%)", realized.RealizedGrossMarginPercent);

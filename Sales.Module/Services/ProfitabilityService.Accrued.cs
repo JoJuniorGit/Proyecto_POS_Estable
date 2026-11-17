@@ -95,6 +95,10 @@ public partial class ProfitabilityService
             filteredSales, fromUtc, toUtc, isSingle, cancellationToken);
         var pettyCashExpenses = await LoadPettyCashExpensesAsync(
             fromUtc, toUtc, isSingle, cancellationToken);
+        // P0 (S3): monthly operating expenses are a global period cost, prorated by active
+        // calendar days. Product/payment-method filters never prune this line.
+        var operatingExpenses = await LoadOperatingExpensesAsync(
+            window, reportCurrency, cancellationToken);
         // F2-WU4: the method filter must reach the fee headline so a method-filtered report
         // reconciles with the realized/breakdown semantics. Without a filter the behavior is
         // unchanged.
@@ -111,7 +115,8 @@ public partial class ProfitabilityService
 
         var netSales = grossSales - cancellations - returns;
         var grossProfit = revenue.KnownRevenue - revenue.KnownCogs;
-        var netProfit = grossProfit + serviceCommissions - pettyCashExpenses - paymentMethodFees;
+        var netProfit = grossProfit + serviceCommissions - pettyCashExpenses - paymentMethodFees
+            - operatingExpenses;
         var grossMarginPercent = revenue.KnownRevenue > 0m
             ? grossProfit / revenue.KnownRevenue * 100m
             : 0m;
@@ -168,6 +173,7 @@ public partial class ProfitabilityService
                 FxDifferenceInformational = fxDifference,
                 PettyCashExpenses = pettyCashExpenses,
                 PaymentMethodFees = paymentMethodFees,
+                OperatingExpenses = operatingExpenses,
                 NetProfit = netProfit,
                 NetMarginPercent = netMarginPercent
             },

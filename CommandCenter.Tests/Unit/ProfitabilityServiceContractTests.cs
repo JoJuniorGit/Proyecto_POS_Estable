@@ -18,7 +18,7 @@ public class ProfitabilityServiceContractTests
 {
     private const string TimeZoneId = "Profitability/UTC-4";
     private const string GlobalCostsNote =
-        "PettyCashExpenses, ServiceCommissions y PaymentMethodFees son gastos/ingresos globales de operación y no se prorratean artificialmente por artículo.";
+        "PettyCashExpenses, OperatingExpenses, ServiceCommissions y PaymentMethodFees son gastos/ingresos globales de operación y no se prorratean artificialmente por artículo.";
 
     private static readonly TimeZoneInfo FixedTimeZone = TimeZoneInfo.CreateCustomTimeZone(
         TimeZoneId,

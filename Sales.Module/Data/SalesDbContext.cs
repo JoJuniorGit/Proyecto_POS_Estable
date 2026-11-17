@@ -20,6 +20,7 @@ public class SalesDbContext : DbContext
     public DbSet<SaleDeliveryItem> SaleDeliveryItems { get; set; } = null!;
     public DbSet<PaymentMethod> PaymentMethods { get; set; } = null!;
     public DbSet<PaymentMethodFeeRule> PaymentMethodFeeRules { get; set; } = null!;
+    public DbSet<OperatingExpense> OperatingExpenses { get; set; } = null!;
     public DbSet<SalePayment> SalePayments { get; set; } = null!;
     public DbSet<CashDrawerSession> CashDrawerSessions { get; set; } = null!;
     public DbSet<CashDrawerSessionMethodBalance> CashDrawerSessionMethodBalances { get; set; } = null!;
@@ -473,6 +474,34 @@ modelBuilder.Entity<User>().HasData(
             entity.Property(rule => rule.Percentage).HasColumnType("decimal(9,4)");
             entity.Property(rule => rule.FixedAmount).HasColumnType("decimal(18,2)");
             entity.Property(rule => rule.CurrencyCode).HasMaxLength(10).IsRequired();
+        });
+
+        // P0 (S3): gastos operativos mensuales recurrentes. Son un costo global del periodo: el
+        // reporte los prorratea por dias calendario activos y no los imputa a productos ni a
+        // medios de pago. La FK es opcional (gasto global) y Restrict para conservar la
+        // trazabilidad si el metodo asociado se elimina.
+        modelBuilder.Entity<OperatingExpense>(entity =>
+        {
+            entity.ToTable("OperatingExpenses");
+            entity.HasKey(expense => expense.Id);
+
+            entity.Property(expense => expense.Description).HasMaxLength(100).IsRequired();
+            entity.Property(expense => expense.MonthlyAmountUsd).HasColumnType("decimal(18,2)");
+            entity.Property(expense => expense.MonthlyAmountLocal).HasColumnType("decimal(18,2)");
+            entity.Property(expense => expense.LocalCurrencyCode).HasMaxLength(10);
+
+            entity.HasOne(expense => expense.PaymentMethod)
+                .WithMany()
+                .HasForeignKey(expense => expense.PaymentMethodId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("FK_OperatingExpenses_PaymentMethods");
+
+            // Vigencia del cargo: el reporte filtra los activos que solapan la ventana.
+            entity.HasIndex(expense => new { expense.IsActive, expense.EffectiveFromDate })
+                .HasDatabaseName("IX_OperatingExpenses_IsActive_EffectiveFromDate");
+
+            entity.HasIndex(expense => expense.PaymentMethodId)
+                .HasDatabaseName("IX_OperatingExpenses_PaymentMethodId");
         });
 
         if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")

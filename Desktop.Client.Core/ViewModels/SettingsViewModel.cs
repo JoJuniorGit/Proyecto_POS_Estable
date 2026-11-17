@@ -246,10 +246,10 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private async Task AddNewMethodAsync()
     {
         if (_dialogService == null) return;
-        var newName = await _dialogService.ShowTextInputAsync(
-            "Ingrese el nombre del nuevo método de pago (ej. Cheque, Transferencia, Criptomoneda):",
-            "Nombre del Método");
+        var method = await _dialogService.ShowPaymentMethodCreationDialogAsync();
+        if (method == null) return;
 
+        var newName = method.Name.Trim();
         if (string.IsNullOrWhiteSpace(newName)) return;
 
         if (PaymentMethods.Any(p => p.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
@@ -260,17 +260,16 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         try
         {
-            var method = new PaymentMethodDto
-            {
-                Name = newName,
-                IsActive = true,
-                RequiresReference = false,
-                IsCash = false // Digital por defecto
-            };
-
+            method.Name = newName;
+            method.IsActive = true;
             var created = await _paymentService.CreateAsync(method);
             PaymentMethods.Add(created);
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
+
+            if (CanEditPaymentMethodFeeRules)
+            {
+                await LoadPaymentMethodFeeRulesAsync();
+            }
         }
         catch (Exception ex)
         {

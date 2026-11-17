@@ -20,6 +20,38 @@ public partial class WpfDialogService
         return result as string;
     }
 
+    /// <summary>
+    /// P0 (S1): alta de método de pago con nombre, tipo, referencia y comisión opcional. La
+    /// ventana valida localmente y devuelve el DTO; el backend crea la regla en la misma operación.
+    /// </summary>
+    public System.Threading.Tasks.Task<PaymentMethodDto?> ShowPaymentMethodCreationDialogAsync()
+    {
+        if (Application.Current == null)
+        {
+            return System.Threading.Tasks.Task.FromResult<PaymentMethodDto?>(null);
+        }
+
+        PaymentMethodDto? result = null;
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var dialog = new PaymentMethodCreationDialog
+            {
+                Owner = Application.Current.MainWindow,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
+            };
+            if (dialog.ShowDialog() == true)
+            {
+                result = dialog.Result;
+            }
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return System.Threading.Tasks.Task.FromResult(result);
+    }
+
     public System.Threading.Tasks.Task<(bool success, string currentPassword, string newPassword)?> ShowChangePasswordDialogAsync()
     {
         if (Application.Current == null)

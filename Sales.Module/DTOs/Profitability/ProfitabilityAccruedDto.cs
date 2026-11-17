@@ -32,6 +32,12 @@ public sealed record ProfitabilityAccruedDto
 
     public decimal PaymentMethodFees { get; init; }
 
+    /// <summary>
+    /// P0 (S3): gastos operativos mensuales prorrateados por dias calendario activos en la
+    /// ventana. Es un costo global del periodo y se resta de <see cref="NetProfit"/>.
+    /// </summary>
+    public decimal OperatingExpenses { get; init; }
+
     public decimal NetProfit { get; init; }
 
     public decimal NetMarginPercent { get; init; }
