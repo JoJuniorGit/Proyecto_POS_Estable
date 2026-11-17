@@ -18202,3 +18202,149 @@ D3. La base aislada del E2E arranca sin ventas: los KPIs se validan en cero y la
 D4. `Backend.API/wwwroot` no cambio con el build de F5.
 ================================================================================
 
+================================================================================
+ANEXO LXVI - FALLBACK OFICIAL DOLARAPI Y REGLA DE FIN DE SEMANA - 2026-11-15
+================================================================================
+
+A. CAMBIOS
+A1. `BcvScraperService` incorpora el fallback oficial en este orden:
+    BCV HTML -> DolarApi oficial actual -> historico oficial de DolarApi.
+    Si todas las fuentes fallan, devuelve null y el job conserva la tasa activa.
+A2. Cada respaldo usa un timeout independiente de 6 s (`BcvSettings:FallbackTimeoutSeconds`,
+    default 6). El intento principal contra BCV conserva `BcvSettings:TimeoutSeconds`.
+A3. Regla de fin de semana: sabado y domingo no se persiste la tasa del viernes. Si la
+    cotizacion oficial actual de DolarApi ya tiene una fecha futura, se usa esa; si no, se
+    toma la primera fecha oficial futura del historico (lunes o la siguiente oficial
+    publicada). Si no existe una fecha futura, se devuelve null y se preserva la tasa activa.
+A4. Se valida que la tasa sea mayor que 0 y menor que 1.000.000, se aplica el redondeo
+    ceiling a 2 decimales y se registra la fuente resuelta. Se agregan 9 tests unitarios
+    para BCV, DolarApi actual, historico, fin de semana, rate invalida, fallo total y timeout.
+A5. `appsettings.json` y `appsettings.Production.json` exponen
+    `BcvSettings:FallbackTimeoutSeconds = 6`.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Focalizados nuevos: `BcvScraperServiceTests` 9/9.
+B3. Regresion del job: `ExchangeRateJobTests` 31/31.
+B4. Suite completa `CommandCenter.Tests` (Release, con `--artifacts-path` por procesos
+    locales bloqueando `bin`): 4355 superados, 60 fallidos, 0 omitidos. Los 60 fallidos
+    pertenecen al carril PostgreSQL real por `TEST_POSTGRES_CONNECTION` no configurada;
+    el resto de la suite, incluidos los 9 tests nuevos, paso. Un intento posterior con la
+    credencial de CI (`postgres/root`) fue rechazado por el PostgreSQL local con 28P01,
+    por lo que la suite completa sigue pendiente de la credencial local correcta.
+B5. APIs verificadas el 2026-11-15: DolarApi oficial 911,6243 (2026-11-13); historico
+    oficial con 914,02 para 2026-11-16; paralelo 1.074,089734; CriptoYa bid 1.076;
+    Yadio 1.074,741204; Binance P2P mediana ~1.075,5. `dolar-vzla.../history` respondio
+    404 y no se usa. Solo se persiste la via oficial; el paralelo/P2P queda fuera del
+    alcance de esta opcion.
+
+C. COMMITS
+C1. Pendiente de commit y push; el PR #39 no se modifica sin autorizacion.
+
+D. PENDIENTE / RIESGOS
+D1. La regla de fin de semana depende de que DolarApi publique la siguiente fecha oficial
+    en el historico. Si no la publica, se preserva la tasa activa en lugar de reutilizar
+    la del viernes.
+D2. El scraping HTML del BCV sigue siendo la fuente primaria. Si en fin de semana el portal
+    responde con la tasa del viernes, esa respuesta prevalece sobre DolarApi; la regla de
+    lunes/siguiente oficial se aplica al fallback de DolarApi, segun el pedido.
+D3. La suite completa en PostgreSQL queda pendiente hasta contar con
+    `TEST_POSTGRES_CONNECTION`; el fallo es ambiental, no del cambio.
+D4. `ExchangeRateHistory` no registra la fuente de la cotizacion. En esta opcion no se
+    persisten tasas paralelas/P2P, por lo que no se requiere migracion.
+================================================================================
+
+================================================================================
+ANEXO LXVII - P0 COMISIONES REALES Y GASTOS OPERATIVOS - 2026-11-15
+================================================================================
+
+A. CAMBIOS
+A1. Alta de metodos de pago con comision opcional (S1): `CreatePaymentMethodDto.Commission`
+    acepta tipo, porcentaje, fijo por transaccion, moneda y vigencia. El backend crea el
+    metodo y su `PaymentMethodFeeRule` en la misma operacion logica; 0%/0 no crea regla y
+    efectivo con comision positiva se rechaza sin dejar filas.
+A2. Semilla idempotente (S2/S4): metodos digitales `Tarjeta de Debito (TDD)`,
+    `Tarjeta de Credito (TDC)` y `BIOpago`; reglas activas TDD 0,75%, TDC 2,50% y
+    BIOpago 2,70%, todas en USD. Transferencia/Pago Movil/Efectivo/Divisas quedan en 0%
+    por ausencia de regla. No se renombran ni borran metodos historicos; el generico
+    `Tarjeta (Punto de Venta)` se conserva.
+A3. Gasto operativo mensual (S3): nueva entidad/tabla `OperatingExpenses`
+    (migracion `20261115190249_AddOperatingExpensesRevP0`), con monto USD, monto local
+    opcional, vigencia y asociacion opcional a metodo. Semilla: mantenimiento de cuenta
+    TDC USD 1,60/mes y gastos mensuales del POS USD 41,12/mes.
+A4. Rentabilidad: `OperatingExpenses` se prorratea por dias calendario activos en la zona
+    del reporte, se resta en `NetProfit` Devengado y Percibido, se incluye en la serie
+    temporal, en CSV/XLSX/PDF y en las notas de costos globales. No se prorratea por
+    producto ni por metodo.
+A5. UI: el formulario Web y el nuevo dialogo WPF de alta incluyen el apartado de comision
+    (tipo, porcentaje, fijo por transaccion, moneda) con la nota de que el mantenimiento
+    y los gastos mensuales no son cargos por venta. Web/WPF muestran el KPI
+    `GASTOS OPERATIVOS` en rentabilidad.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. P0 focalizado ampliado .NET: 99/99 (23 tests nuevos de esquema, semilla, alta con comision,
+    prorrateo, serie, export/PDF y ViewModel WPF).
+B3. Web: `npm test` 804/804; `npm run lint` limpio; `npm run build` exitoso.
+B4. WPF: `dotnet build Desktop.Client` 0/0; `SettingsViewModel_AddNewMethodAsync` 2/2.
+B5. `PendingModelChangesTests` y `MigrationIndexDriftTests` verdes. El carril PostgreSQL
+    real no se ejecuto: falta `TEST_POSTGRES_CONNECTION`; 7 tests de ese carril quedan
+    pendientes de la credencial local.
+B6. La migracion no tiene backfill: es aditiva y no reescribe historicos.
+
+C. COMMITS
+C1. Pendiente de commit y push; el PR #39 no se modifica sin autorizacion.
+
+D. PENDIENTE / RIESGOS
+D1. El gasto operativo se expresa en USD en reportes Dual. En Single solo aporta si el
+    registro tiene `MonthlyAmountLocal` con la moneda del reporte; la semilla deja ese
+    campo nulo y no inventa una tasa. Queda pendiente definir la conversion local.
+D2. No hay UI de administracion de `OperatingExpenses`; la semilla P0 es la fuente actual.
+D3. El metodo generico `Tarjeta (Punto de Venta)` sigue activo y sin regla. La operacion
+    debe usar TDD/TDC; desactivar el generico es una decision administrativa.
+D4. La suite completa .NET sigue pendiente hasta contar con `TEST_POSTGRES_CONNECTION`;
+    el fallo es ambiental, no del cambio.
+D5. `OperatingExpenses` no se prorratea por producto/metodo; es un costo global del
+    periodo, consistente con la nota de costos globales.
+================================================================================
+
+
+
+================================================================================
+ANEXO LXVIII - CAJA CHICA COMO SUBSECCION DEDICADA - 2026-11-15
+================================================================================
+
+A. CAMBIOS
+A1. Web (`RegisterPage` / `PettyCashPanel`): subnavegación `Movimientos de caja` /
+    `Caja chica` dentro de Caja. Al activar Caja Chica se ocultan resumen de moneda,
+    últimos ingresos y tabla de movimientos; se muestra el panel dedicado con:
+    - KPIs de gastos activos, total activo local, total activo USD (solo Dual) y anulados.
+    - Filtros Todos/Activos/Anulados y búsqueda por vale, concepto, beneficiario o categoría.
+    - Listado completo, saldos físicos autorizados, descarga de vale y anulación.
+    - Botón de cierre que vuelve a Movimientos y botón del encabezado que abre la subsección.
+A2. WPF (`CashDrawerView` / `CashDrawerViewModel.PettyCash`): subsección con pestañas
+    `MOVIMIENTOS` y `CAJA CHICA`, selección visual con el acento del módulo, KPIs de
+    resumen, saldos físicos, listado virtualizado y acciones existentes. Al activar Caja
+    Chica se colapsan últimos ingresos y movimientos; el botón de cierre vuelve a Movimientos.
+A3. Sin cambios de endpoints, autorización, snapshots, arqueo ni reglas de caja chica.
+    El arqueo ciego se mantiene: los saldos físicos solo se muestran a Admin/Manager.
+A4. Tests nuevos/actualizados: resumen de activos/anulados, filtros y búsqueda Web,
+    subnavegación y prueba WPF de conteos, totales y comando de retorno.
+
+B. EVIDENCIA
+B1. Web: `npm test` 805/805, `npm run lint` limpio y `npm run build` exitoso.
+B2. WPF: build Release 0/0; suite focalizada de caja 22/22 (incluye la prueba nueva de subsección).
+B3. No se modificaron backend, migraciones ni contratos HTTP.
+
+C. COMMITS
+C1. Pendiente de commit y push; el PR #39 no se modifica sin autorizacion.
+
+D. PENDIENTE / RIESGOS
+D1. La suite .NET completa sigue dependiendo de `TEST_POSTGRES_CONNECTION`; el carril
+    PostgreSQL real no se ejecuto en esta sesion.
+D2. La inspeccion visual WPF del layout final (KPI cards y tabla a 1024x720) queda pendiente.
+D3. Los filtros/busqueda se implementaron en Web; WPF conserva el listado completo del turno.
+D4. El working tree acumula los cambios P0, el fallback BCV y esta subseccion; los commits
+    deben separarse por work unit.
+================================================================================
+
