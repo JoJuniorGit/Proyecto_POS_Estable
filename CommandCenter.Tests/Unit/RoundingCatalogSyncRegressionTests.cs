@@ -19,6 +19,7 @@ namespace CommandCenter.Tests.Unit;
 /// RoundingRuleUsd/RoundingRuleCashBs hacia el listado paginado. Cubre además el refresh in-place
 /// (UpdateFromDto) que conservaba la regla vieja tras un merge de catálogo.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class RoundingCatalogSyncRegressionTests
 {
     private static InventoryService CreateService(InventoryDbContext context)

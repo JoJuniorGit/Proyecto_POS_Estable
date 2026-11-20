@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Core.Diagnostics;
 using Core.Logging;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
@@ -104,12 +105,33 @@ public static class DatabaseInitializer
             return false;
         }
 
-        // 3) Aplicar migraciones (crea el esquema y __EFMigrationsHistory). Abortar si fallan.
+        StartupTimeline.Mark("Backend.Db.Probe.Done");
+
+        // 3) Verificar migraciones pendientes antes de ejecutar el pipeline pesado.
+        //    Si el esquema ya está al día, se evita el viaje completo de MigrateAsync.
         try
         {
-            AppLogger.LogStart("Running EF Core Database Migrations asynchronously...");
-            await invDb.Database.MigrateAsync();
-            await salesDb.Database.MigrateAsync();
+            var pendingInventoryTask = invDb.Database.GetPendingMigrationsAsync();
+            var pendingSalesTask = salesDb.Database.GetPendingMigrationsAsync();
+            await Task.WhenAll(pendingInventoryTask, pendingSalesTask);
+
+            var pendingInventory = (await pendingInventoryTask).ToList();
+            var pendingSales = (await pendingSalesTask).ToList();
+            AppLogger.LogStart(
+                $"[START] Migraciones pendientes: Inventory={pendingInventory.Count}, Sales={pendingSales.Count}.");
+
+            if (pendingInventory.Count > 0 || pendingSales.Count > 0)
+            {
+                AppLogger.LogStart("Running EF Core Database Migrations asynchronously...");
+                await invDb.Database.MigrateAsync();
+                await salesDb.Database.MigrateAsync();
+            }
+            else
+            {
+                AppLogger.LogStart("[START] Esquema al día; se omite MigrateAsync.");
+            }
+
+            StartupTimeline.Mark("Backend.Db.Migrations.Done");
 
             // 8.7-B8 (segregación): bloque de CONVERGENCIA LEGACY idempotente (information_schema),
             // solo alcanza a BD instaladas ANTES de que existieran estas migraciones EF. 8.12-B1/B2/B3:
@@ -335,6 +357,7 @@ END $$;");
             }
 
             AppLogger.LogStart("EF Core Database Migrations applied successfully.");
+            StartupTimeline.Mark("Backend.Db.Convergence.Done");
         }
         catch (System.Exception ex)
         {
@@ -535,6 +558,7 @@ END $$;");
             return false;
         }
 
+        StartupTimeline.Mark("Backend.Db.Seeds.Done");
         return true;
     }
 

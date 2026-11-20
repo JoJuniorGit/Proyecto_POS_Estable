@@ -148,7 +148,12 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             _userSession.SessionChanged += OnSessionChanged;
         }
 
-        InitializeAsync().SafeFireAndForget("ExchangeRateService.Initialize");
+        // Sin sesion no hay motivo para pedir tasa ni abrir SignalR antes del Login. La carga
+        // inicial la dispara el ViewModel que la necesita al entrar a su vista (POS/Pickups).
+        if (_userSession?.IsLoggedIn == true)
+        {
+            InitializeAsync().SafeFireAndForget("ExchangeRateService.Initialize");
+        }
     }
 
     public static Func<Task<string?>> CreateAccessTokenProvider(Uri hubUri, UserSession? userSession)

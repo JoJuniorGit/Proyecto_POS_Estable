@@ -16,6 +16,7 @@ namespace CommandCenter.Tests.Unit;
 /// 8.185-T4 (S2b): Ajustes emite las políticas recién persistidas SOLO tras un PUT exitoso; el
 /// payload completo permite que Catálogo y POS apliquen regla/toggle en memoria — 0 consultas.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.WeakMessengerStateCollection.Name)]
 public class EffectivePriceVesPoliciesRefreshTests
 {
     private sealed class PoliciesListener

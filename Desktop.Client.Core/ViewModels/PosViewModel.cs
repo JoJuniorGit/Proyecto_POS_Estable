@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
 using Core.DTOs;
+using Core.Diagnostics;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using System;
@@ -280,23 +281,36 @@ public partial class PosViewModel : ObservableObject, IDisposable
         try
         {
             if (_userSession != null && !_userSession.IsLoggedIn) return;
+            StartupTimeline.Mark("Wpf.Pos.Initialize.Start");
 
+            // Tasa y metodos de pago son independientes: se lanzan juntos y se aplican al
+            // terminar ambos. La recuperacion/creacion de venta conserva su orden posterior.
+            Task<(decimal Rate, DateTime? LastUpdated)>? rateTask = null;
             if (CurrentExchangeRate <= 0)
             {
-                await _exchangeRateService.GetCurrentRateAsync();
-                OnPropertyChanged(nameof(CurrentExchangeRate));
-                OnPropertyChanged(nameof(IsRateOutdated));
+                rateTask = _exchangeRateService.GetCurrentRateAsync();
             }
 
-            if (ActivePaymentMethods.Count == 0)
+            Task? methodsTask = ActivePaymentMethods.Count == 0
+                ? LoadPaymentMethodsAsync()
+                : null;
+
+            await Task.WhenAll(
+                rateTask ?? Task.CompletedTask,
+                methodsTask ?? Task.CompletedTask);
+
+            if (rateTask != null)
             {
-                await LoadPaymentMethodsAsync();
+                OnPropertyChanged(nameof(CurrentExchangeRate));
+                OnPropertyChanged(nameof(IsRateOutdated));
             }
 
             if (Cart.CurrentSale == null)
             {
                 await RestoreOrStartSaleAsync();
             }
+
+            StartupTimeline.Mark("Wpf.Pos.Initialize.Done");
         }
         finally
         {

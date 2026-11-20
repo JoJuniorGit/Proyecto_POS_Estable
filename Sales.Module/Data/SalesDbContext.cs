@@ -262,6 +262,18 @@ modelBuilder.Entity<User>().HasData(
             .HasIndex(i => i.ProductId)
             .HasDatabaseName("IX_SaleItems_ProductId");
 
+        // Paso 15 (S7): la rotacion filtra por producto y resuelve la fecha de la venta; el indice
+        // compuesto evita volver a la tabla para el join SaleItems -> Sales.
+        modelBuilder.Entity<SaleItem>()
+            .HasIndex(i => new { i.ProductId, i.SaleId })
+            .HasDatabaseName("IX_SaleItems_ProductId_SaleId");
+
+        // Paso 15 (S7): ventana de ventas emitidas por fecha, tipo y factura. InvoiceNumber se
+        // incluye para que el filtro de venta valida se resuelva dentro del indice.
+        modelBuilder.Entity<Sale>()
+            .HasIndex(s => new { s.Date, s.SaleType, s.InvoiceNumber })
+            .HasDatabaseName("IX_Sales_Date_SaleType_InvoiceNumber");
+
         modelBuilder.Entity<SalePayment>()
             .HasIndex(p => p.SaleId)
             .HasDatabaseName("IX_SalePayments_SaleId");

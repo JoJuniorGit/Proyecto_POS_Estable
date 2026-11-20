@@ -197,6 +197,8 @@
 
                     <DataGrid ItemsSource="{Binding Sessions}"
                               AutomationProperties.AutomationId="StockCount_SessionGrid"
+                              MaxHeight="320" ScrollViewer.CanContentScroll="True"
+                              VirtualizingPanel.ScrollUnit="Pixel"
                               Style="{StaticResource ScGridStyle}">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="NOMBRE" Binding="{Binding Name}" Width="*" HeaderStyle="{StaticResource ScHeaderStyle}"/>
@@ -291,6 +293,8 @@
 
                     <DataGrid ItemsSource="{Binding Items}"
                               AutomationProperties.AutomationId="StockCount_ItemsGrid"
+                              MaxHeight="360" ScrollViewer.CanContentScroll="True"
+                              VirtualizingPanel.ScrollUnit="Pixel"
                               Style="{StaticResource ScGridStyle}">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="SKU" Binding="{Binding Sku}" Width="120" HeaderStyle="{StaticResource ScHeaderStyle}"/>
@@ -386,6 +390,8 @@
 
                             <DataGrid ItemsSource="{Binding ReviewItems}"
                                       AutomationProperties.AutomationId="StockCount_ReviewGrid"
+                                      MaxHeight="360" ScrollViewer.CanContentScroll="True"
+                                      VirtualizingPanel.ScrollUnit="Pixel"
                                       Style="{StaticResource ScGridStyle}">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="SKU" Binding="{Binding Sku}" Width="110" HeaderStyle="{StaticResource ScHeaderStyle}"/>

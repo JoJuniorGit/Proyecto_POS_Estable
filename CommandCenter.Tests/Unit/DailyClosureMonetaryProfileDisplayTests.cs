@@ -20,6 +20,7 @@ namespace CommandCenter.Tests.Unit;
 /// collapses the local display to the primary currency and hides the USD reconciliation duplicate.
 /// Raw decimals, closure payloads, parsing, commands and authorization rules stay unchanged.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class DailyClosureMonetaryProfileDisplayTests
 {
     private static void ApplyDualProfile() => CurrencyDisplay.SetMonetaryProfile(new MonetaryProfileDto

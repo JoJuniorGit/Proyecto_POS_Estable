@@ -1,3 +1,4 @@
+using Core.Diagnostics;
 using Core.Logging;
 using Backend.API.Services;
 using Backend.API.Startup;
@@ -24,6 +25,7 @@ try
     }
 
     AppLogger.LogStart("Backend API initialization starting...");
+    StartupTimeline.Mark("Backend.Program.Start");
 
     var builder = WebApplication.CreateBuilder(args);
 
@@ -174,19 +176,63 @@ try
     // Registro de servicios del backend (DI, EF, JWT, CORS, rate limiting, etc.)
     builder.AddBackendServices(connectionString);
 
-    var app = builder.Build();
-
-    // Composición del pipeline HTTP
-    app.ConfigureBackendPipeline(httpsCert, httpsPort, reverseProxyEnabled);
-
-    // Ensure Database Exists, Migrations and Seed Data (fail-fast: abort startup on any failure)
-    if (!await Backend.API.Startup.DatabaseInitializer.InitializeAsync(app, connectionString))
+    var deferDatabaseInitialization = builder.Configuration.GetValue<bool>("Startup:DeferDatabaseInitialization");
+    if (deferDatabaseInitialization)
     {
-        return; // NO seguir arrancando: evita servir peticiones con estado inconsistente
+        StartupReadiness.MarkNotReady();
     }
 
-    AppLogger.LogStart("Backend API started successfully listening on configured ports.");
-    app.Run();
+    var app = builder.Build();
+    StartupTimeline.Mark("Backend.Build.Done");
+
+    // Composici�n del pipeline HTTP
+    app.ConfigureBackendPipeline(httpsCert, httpsPort, reverseProxyEnabled);
+    StartupTimeline.Mark("Backend.Pipeline.Done");
+
+    // Ensure Database Exists, Migrations and Seed Data (fail-fast: abort startup on any failure)
+    StartupTimeline.Mark("Backend.DatabaseInit.Start");
+    if (!deferDatabaseInitialization)
+    {
+        if (!await Backend.API.Startup.DatabaseInitializer.InitializeAsync(app, connectionString))
+        {
+            return; // NO seguir arrancando: evita servir peticiones con estado inconsistente
+        }
+
+        StartupReadiness.MarkReady();
+        StartupTimeline.Mark("Backend.DatabaseInit.Done");
+        app.Lifetime.ApplicationStarted.Register(() => StartupTimeline.Mark("Backend.Kestrel.Ready"));
+        AppLogger.LogStart("Backend API started successfully listening on configured ports.");
+        app.Run();
+        return;
+    }
+
+    // Arranque diferido (Producción): Kestrel abre ya; health/version-check responden y el
+    // resto recibe 503 hasta que las migraciones, convergencia y seeds terminen.
+    app.Lifetime.ApplicationStarted.Register(() => StartupTimeline.Mark("Backend.Kestrel.Ready"));
+    await app.StartAsync();
+    StartupTimeline.Mark("Backend.Kestrel.Started");
+    AppLogger.LogStart("Kestrel escuchando; inicialización de base de datos en curso.");
+
+    try
+    {
+        if (!await Backend.API.Startup.DatabaseInitializer.InitializeAsync(app, connectionString))
+        {
+            StartupReadiness.MarkFailed(new InvalidOperationException("La inicialización de base de datos falló."));
+            await app.StopAsync();
+            return;
+        }
+
+        StartupReadiness.MarkReady();
+        StartupTimeline.Mark("Backend.DatabaseInit.Done");
+        AppLogger.LogStart("Backend API started successfully listening on configured ports.");
+        await app.WaitForShutdownAsync();
+    }
+    catch
+    {
+        StartupReadiness.MarkFailed(new InvalidOperationException("La inicialización de base de datos falló."));
+        await app.StopAsync();
+        throw;
+    }
 }
 catch (Exception fatalEx)
 {

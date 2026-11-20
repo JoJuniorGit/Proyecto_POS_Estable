@@ -40,8 +40,8 @@
         <!-- POS-UI-842: sombra sutil y estilos de grilla alineados con las tarjetas enterprise. -->
         <DropShadowEffect x:Key="EnterpriseCardShadow"
                           Color="#000000"
-                          BlurRadius="10"
-                          Opacity="0.05"
+                          BlurRadius="8"
+                          Opacity="0.04"
                           Direction="270"
                           ShadowDepth="2"/>
 
@@ -102,18 +102,15 @@
     </UserControl.Resources>
 
     <Grid>
-        <!-- POS-UI-842: la pagina scrollea solo si la altura minima de la grilla ya no entra
-             en el viewport; en pantallas grandes la fila * sigue absorbiendo el espacio libre. -->
-        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="24">
-            <Grid MinHeight="{Binding RelativeSource={RelativeSource AncestorType=ScrollViewer}, Path=ViewportHeight}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>   <!-- Header -->
-                    <RowDefinition Height="Auto"/>   <!-- KPI Cards -->
-                    <RowDefinition Height="Auto"/>   <!-- Cash sub-navigation -->
-                    <RowDefinition Height="Auto"/>   <!-- Petty Cash Panel / dedicated subsection -->
-                    <RowDefinition Height="Auto"/>   <!-- Top Recent Incomes Panel (movements section) -->
-                    <RowDefinition Height="*"/>      <!-- Transaction DataGrid -->
-                </Grid.RowDefinitions>
+        <!-- POS-UI-843: sin scroll global. Las filas fijas (header, KPIs y pestañas) quedan
+             compactas y la fila * aloja la subsección activa con scroll interno propio. -->
+        <Grid Margin="24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>   <!-- Header -->
+                <RowDefinition Height="Auto"/>   <!-- KPI Cards -->
+                <RowDefinition Height="Auto"/>   <!-- Cash sub-navigation -->
+                <RowDefinition Height="*"/>      <!-- Active section: movements or petty cash -->
+            </Grid.RowDefinitions>
 
                 <!-- ══════════════════════════════════════════
                      ROW 0: HEADER CONTROLS
@@ -212,17 +209,53 @@
                 <!-- ══════════════════════════════════════════
                      ROW 1: SUMMARY BY ACTIVE CURRENCY
                      ══════════════════════════════════════════ -->
-                <ItemsControl Grid.Row="1" Margin="0,0,0,20" ItemsSource="{Binding CurrencySummaries}">
+                <ItemsControl Grid.Row="1" Margin="0,0,0,8" ItemsSource="{Binding CurrencySummaries}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Margin="0,0,0,14">
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <TextBlock Text="{Binding DisplayLabel}" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBody}" VerticalAlignment="Center"/>
-                                    <Border Background="{DynamicResource PrimaryHueMidBrush}" CornerRadius="8" Padding="6,1" Margin="8,0,0,0"
-                                            Visibility="{Binding IsLocal, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <TextBlock Text="LOCAL" FontSize="9" FontWeight="Bold" Foreground="White"/>
-                                    </Border>
-                                </StackPanel>
+                            <StackPanel Margin="0,0,0,6">
+                                <Border HorizontalAlignment="Left" CornerRadius="12" Padding="10,3" Margin="0,0,0,4">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#E2E8F0"/>
+                                            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                            <Setter Property="BorderThickness" Value="1"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsLocal}" Value="True">
+                                                    <Setter Property="Background" Value="#EDE9FE"/>
+                                                    <Setter Property="BorderBrush" Value="#DDD6FE"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding DisplayLabel}" FontSize="12" FontWeight="Bold" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#1E293B"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsLocal}" Value="True">
+                                                            <Setter Property="Foreground" Value="#5B21B6"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value=" · DIVISA"/>
+                                                    <Setter Property="Foreground" Value="#1E293B"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsLocal}" Value="True">
+                                                            <Setter Property="Text" Value=" · MONEDA LOCAL"/>
+                                                            <Setter Property="Foreground" Value="#5B21B6"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
 
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -234,57 +267,63 @@
                                     </Grid.ColumnDefinitions>
 
                                     <!-- Expected cash -->
-                                    <Border Grid.Column="0" Padding="20,16" CornerRadius="10" Background="{DynamicResource MaterialDesignPaper}" Effect="{DynamicResource MaterialDesignShadowDepth1}">
+                                    <Border Grid.Column="0" Padding="14,10" CornerRadius="10"
+                                            Background="#FFFFFF" BorderBrush="#6D28D9" BorderThickness="4,1,1,1"
+                                            Effect="{StaticResource EnterpriseCardShadow}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                                <TextBlock Text="EFECTIVO ESPERADO EN CAJA" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" Opacity="0.8"/>
-                                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                                    <TextBlock Text="{Binding FormattedExpected}" FontSize="34" FontWeight="ExtraBold" Foreground="{DynamicResource PrimaryHueMidBrush}" Style="{StaticResource LocalExpectedAutomationStyle}"/>
-                                                    <TextBlock Text="{Binding CurrencySymbol}" FontSize="16" FontWeight="Bold" VerticalAlignment="Bottom" Margin="6,0,0,8" Foreground="{DynamicResource PrimaryHueMidBrush}"/>
+                                                <TextBlock Text="EFECTIVO ESPERADO EN CAJA" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                    <TextBlock Text="{Binding FormattedExpected}" FontSize="26" FontWeight="ExtraBold" Foreground="#6D28D9" Style="{StaticResource LocalExpectedAutomationStyle}"/>
+                                                    <TextBlock Text="{Binding CurrencySymbol}" FontSize="12" FontWeight="Bold" VerticalAlignment="Bottom" Margin="4,0,0,5" Foreground="#6D28D9"/>
                                                 </StackPanel>
-                                                <TextBlock FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,2,0,0">
+                                                <TextBlock FontSize="10" Foreground="#64748B" Margin="0,1,0,0">
                                                     <Run Text="Fondo inicial: "/>
                                                     <Run Text="{Binding CurrencySymbol, Mode=OneWay}"/>
                                                     <Run Text="{Binding FormattedOpening, Mode=OneWay}"/>
                                                 </TextBlock>
                                             </StackPanel>
-                                            <Border Grid.Column="1" Width="48" Height="48" CornerRadius="24" Background="{DynamicResource PrimaryHueLightBrush}" VerticalAlignment="Center">
-                                                <materialDesign:PackIcon Kind="Bank" Width="26" Height="26" Foreground="{DynamicResource PrimaryHueMidBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            <Border Grid.Column="1" Width="36" Height="36" CornerRadius="8" Background="#F1F5F9" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="Bank" Width="20" Height="20" Foreground="#475569" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
                                         </Grid>
                                     </Border>
 
                                     <!-- Incomes -->
-                                    <Border Grid.Column="2" Padding="18,16" CornerRadius="10" Background="{DynamicResource MaterialDesignPaper}" Effect="{DynamicResource MaterialDesignShadowDepth1}">
+                                    <Border Grid.Column="2" Padding="14,10" CornerRadius="10"
+                                            Background="#FFFFFF" BorderBrush="#16A34A" BorderThickness="4,1,1,1"
+                                            Effect="{StaticResource EnterpriseCardShadow}">
                                         <StackPanel VerticalAlignment="Center">
                                             <StackPanel Orientation="Horizontal">
-                                                <materialDesign:PackIcon Kind="ArrowDownThick" Width="18" Height="18" Foreground="#27AE60" VerticalAlignment="Center"/>
-                                                <TextBlock Text="TOTAL INGRESOS" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                                <materialDesign:PackIcon Kind="ArrowDownThick" Width="16" Height="16" Foreground="#16A34A" VerticalAlignment="Center"/>
+                                                <TextBlock Text="TOTAL INGRESOS" FontSize="10" FontWeight="Bold" Foreground="#64748B" Margin="6,0,0,0" VerticalAlignment="Center"/>
                                             </StackPanel>
-                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                                <TextBlock Text="{Binding FormattedInflows}" FontSize="22" FontWeight="Bold" Foreground="#27AE60" Style="{StaticResource LocalIncomeAutomationStyle}"/>
-                                                <TextBlock Text="{Binding CurrencySymbol}" FontSize="13" FontWeight="Bold" Foreground="#27AE60" VerticalAlignment="Bottom" Margin="4,0,0,2"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <TextBlock Text="{Binding FormattedInflows}" FontSize="18" FontWeight="Bold" Foreground="#16A34A" Style="{StaticResource LocalIncomeAutomationStyle}"/>
+                                                <TextBlock Text="{Binding CurrencySymbol}" FontSize="11" FontWeight="Bold" Foreground="#16A34A" VerticalAlignment="Bottom" Margin="4,0,0,1"/>
                                             </StackPanel>
-                                            <TextBlock Text="Acumulado en sesión" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,2,0,0"/>
+                                            <TextBlock Text="Acumulado en sesión" FontSize="10" Foreground="#64748B" Margin="0,1,0,0"/>
                                         </StackPanel>
                                     </Border>
 
                                     <!-- Expenses -->
-                                    <Border Grid.Column="4" Padding="18,16" CornerRadius="10" Background="{DynamicResource MaterialDesignPaper}" Effect="{DynamicResource MaterialDesignShadowDepth1}">
+                                    <Border Grid.Column="4" Padding="14,10" CornerRadius="10"
+                                            Background="#FFFFFF" BorderBrush="#DC2626" BorderThickness="4,1,1,1"
+                                            Effect="{StaticResource EnterpriseCardShadow}">
                                         <StackPanel VerticalAlignment="Center">
                                             <StackPanel Orientation="Horizontal">
-                                                <materialDesign:PackIcon Kind="ArrowUpThick" Width="18" Height="18" Foreground="#C0392B" VerticalAlignment="Center"/>
-                                                <TextBlock Text="TOTAL EGRESOS" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                                                <materialDesign:PackIcon Kind="ArrowUpThick" Width="16" Height="16" Foreground="#DC2626" VerticalAlignment="Center"/>
+                                                <TextBlock Text="TOTAL EGRESOS" FontSize="10" FontWeight="Bold" Foreground="#64748B" Margin="6,0,0,0" VerticalAlignment="Center"/>
                                             </StackPanel>
-                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                                <TextBlock Text="{Binding FormattedOutflows}" FontSize="22" FontWeight="Bold" Foreground="#C0392B" Style="{StaticResource LocalExpenseAutomationStyle}"/>
-                                                <TextBlock Text="{Binding CurrencySymbol}" FontSize="13" FontWeight="Bold" Foreground="#C0392B" VerticalAlignment="Bottom" Margin="4,0,0,2"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <TextBlock Text="{Binding FormattedOutflows}" FontSize="18" FontWeight="Bold" Foreground="#DC2626" Style="{StaticResource LocalExpenseAutomationStyle}"/>
+                                                <TextBlock Text="{Binding CurrencySymbol}" FontSize="11" FontWeight="Bold" Foreground="#DC2626" VerticalAlignment="Bottom" Margin="4,0,0,1"/>
                                             </StackPanel>
-                                            <TextBlock Text="Retiros y salidas" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,2,0,0"/>
+                                            <TextBlock Text="Retiros y salidas" FontSize="10" Foreground="#64748B" Margin="0,1,0,0"/>
                                         </StackPanel>
                                     </Border>
                                 </Grid>
@@ -298,29 +337,37 @@
                      ══════════════════════════════════════════ -->
                 <!-- Subsección de Caja: Movimientos / Caja Chica. La navegación vive dentro del
                      módulo y no saca al operador del contexto de la sesión activa. -->
-                <Border Grid.Row="2" Margin="0,0,0,12"
-                        Background="{DynamicResource MaterialDesignPaper}"
-                        BorderBrush="#E2E8F0" BorderThickness="0,0,0,1"
-                        Padding="0,0,0,4">
+                <Border Grid.Row="2" Margin="0,0,0,10" Padding="4"
+                        Background="#F1F5F9" BorderBrush="#E2E8F0" BorderThickness="1"
+                        CornerRadius="10" HorizontalAlignment="Left">
                     <StackPanel Orientation="Horizontal">
                         <Button Command="{Binding ShowCashMovementsSectionCommand}"
                                 AutomationProperties.AutomationId="CashDrawer_SectionMovements"
-                                Margin="0,0,6,0" Padding="14,8">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
-                                    <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBodyLight}"/>
-                                    <Setter Property="BorderBrush" Value="Transparent"/>
-                                    <Setter Property="BorderThickness" Value="0,0,0,2"/>
-                                    <Style.Triggers>
+                                FocusVisualStyle="{x:Null}" Padding="16,7">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="TabPill" Background="Transparent" CornerRadius="7"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
                                         <DataTrigger Binding="{Binding IsPettyCashPanelOpen}" Value="False">
-                                            <Setter Property="Foreground" Value="{DynamicResource PrimaryHueMidBrush}"/>
-                                            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryHueMidBrush}"/>
+                                            <Setter TargetName="TabPill" Property="Background" Value="#FFFFFF"/>
+                                            <Setter TargetName="TabPill" Property="Effect" Value="{StaticResource EnterpriseCardShadow}"/>
+                                            <Setter Property="Foreground" Value="#6D28D9"/>
                                         </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
+                                        <DataTrigger Binding="{Binding IsPettyCashPanelOpen}" Value="True">
+                                            <Setter Property="Foreground" Value="#64748B"/>
+                                        </DataTrigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="TabPill" Property="Background" Value="#FFFFFF"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
                             <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="FormatListBulleted" Width="17" Height="17" VerticalAlignment="Center"/>
+                                <materialDesign:PackIcon Kind="FormatListBulleted" Width="16" Height="16" VerticalAlignment="Center"/>
                                 <TextBlock Text="MOVIMIENTOS" FontSize="11" FontWeight="Bold" Margin="6,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
@@ -328,22 +375,31 @@
                         <Button Command="{Binding TogglePettyCashPanelCommand}"
                                 AutomationProperties.AutomationId="CashDrawer_SectionPettyCash"
                                 IsEnabled="{Binding CanUsePettyCash}"
-                                Padding="14,8">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
-                                    <Setter Property="Foreground" Value="{DynamicResource MaterialDesignBodyLight}"/>
-                                    <Setter Property="BorderBrush" Value="Transparent"/>
-                                    <Setter Property="BorderThickness" Value="0,0,0,2"/>
-                                    <Style.Triggers>
+                                FocusVisualStyle="{x:Null}" Padding="16,7" Margin="2,0,0,0">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="TabPill" Background="Transparent" CornerRadius="7"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
                                         <DataTrigger Binding="{Binding IsPettyCashPanelOpen}" Value="True">
-                                            <Setter Property="Foreground" Value="#B45309"/>
-                                            <Setter Property="BorderBrush" Value="#B45309"/>
+                                            <Setter TargetName="TabPill" Property="Background" Value="#FFFFFF"/>
+                                            <Setter TargetName="TabPill" Property="Effect" Value="{StaticResource EnterpriseCardShadow}"/>
+                                            <Setter Property="Foreground" Value="#6D28D9"/>
                                         </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
+                                        <DataTrigger Binding="{Binding IsPettyCashPanelOpen}" Value="False">
+                                            <Setter Property="Foreground" Value="#64748B"/>
+                                        </DataTrigger>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="TabPill" Property="Background" Value="#FFFFFF"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
                             <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="CashMinus" Width="17" Height="17" VerticalAlignment="Center"/>
+                                <materialDesign:PackIcon Kind="CashMinus" Width="16" Height="16" VerticalAlignment="Center"/>
                                 <TextBlock Text="CAJA CHICA" FontSize="11" FontWeight="Bold" Margin="6,0,0,0" VerticalAlignment="Center"/>
                                 <Border Background="#FEF3C7" CornerRadius="9" Padding="6,1" Margin="7,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding PettyCashActiveCount}" FontSize="10" FontWeight="Bold" Foreground="#92400E"/>
@@ -353,11 +409,20 @@
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="3" Margin="0,0,0,20"
+                <Grid Grid.Row="3">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Grid.RowSpan="2" Margin="0,0,0,20"
                         AutomationProperties.AutomationId="CashDrawer_PettyCashPanel"
-                        Background="{DynamicResource MaterialDesignPaper}"
-                        CornerRadius="10" Padding="16,14"
-                        Effect="{DynamicResource MaterialDesignShadowDepth1}"
+                        Background="#FFFFFF"
+                        BorderBrush="#E2E8F0"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        Padding="0"
+                        Effect="{StaticResource EnterpriseCardShadow}"
                         Visibility="{Binding IsPettyCashPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Grid>
                         <Grid.RowDefinitions>
@@ -365,10 +430,12 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
                         <!-- Título + acciones -->
-                        <Grid Grid.Row="0" Margin="0,0,0,12">
+                        <Grid Grid.Row="0" Margin="16,12,16,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -409,7 +476,7 @@
 
                         <!-- Saldos físicos del turno (arqueo ciego para no supervisores) -->
                         <!-- Resumen detallado de la subsección Caja Chica. -->
-                        <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,10">
+                        <UniformGrid Grid.Row="1" Columns="4" Margin="16,0,16,10">
                             <Border Style="{StaticResource PettyCashKpiCardStyle}">
                                 <StackPanel>
                                     <TextBlock Text="GASTOS ACTIVOS" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
@@ -441,7 +508,85 @@
                             </Border>
                         </UniformGrid>
 
-                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,10">
+                        <!-- Barra de control de Caja Chica: mismos chips y búsqueda que Movimientos. -->
+                        <Grid Grid.Row="2" Margin="16,0,16,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Command="{Binding SetPettyCashFilterCommand}"
+                                        CommandParameter="{x:Static vm:PettyCashSectionFilter.All}"
+                                        AutomationProperties.AutomationId="CashDrawer_PettyCashFilterAll"
+                                        Margin="0,0,4,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MovementFilterChipStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PettyCashFilter}" Value="{x:Static vm:PettyCashSectionFilter.All}">
+                                                    <Setter Property="Background" Value="#EDE9FE"/>
+                                                    <Setter Property="Foreground" Value="#5B21B6"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                    <TextBlock Text="Todos"/>
+                                </Button>
+                                <Button Command="{Binding SetPettyCashFilterCommand}"
+                                        CommandParameter="{x:Static vm:PettyCashSectionFilter.Active}"
+                                        AutomationProperties.AutomationId="CashDrawer_PettyCashFilterActive"
+                                        Margin="0,0,4,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MovementFilterChipStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PettyCashFilter}" Value="{x:Static vm:PettyCashSectionFilter.Active}">
+                                                    <Setter Property="Background" Value="#DCFCE7"/>
+                                                    <Setter Property="Foreground" Value="#166534"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                    <TextBlock Text="Activos"/>
+                                </Button>
+                                <Button Command="{Binding SetPettyCashFilterCommand}"
+                                        CommandParameter="{x:Static vm:PettyCashSectionFilter.Cancelled}"
+                                        AutomationProperties.AutomationId="CashDrawer_PettyCashFilterCancelled">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MovementFilterChipStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PettyCashFilter}" Value="{x:Static vm:PettyCashSectionFilter.Cancelled}">
+                                                    <Setter Property="Background" Value="#FEE2E2"/>
+                                                    <Setter Property="Foreground" Value="#B91C1C"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                    <TextBlock Text="Anulados"/>
+                                </Button>
+                            </StackPanel>
+
+                            <Border Grid.Column="1" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                    CornerRadius="8" Height="38" Width="280">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18"
+                                                             Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,2,0"/>
+                                    <TextBox Grid.Column="1"
+                                             AutomationProperties.AutomationId="CashDrawer_PettyCashSearchInput"
+                                             Text="{Binding PettyCashSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             materialDesign:HintAssist.Hint="Buscar vale, concepto o beneficiario..."
+                                             materialDesign:TextFieldAssist.HasClearButton="True"
+                                             BorderThickness="0" Background="Transparent"
+                                             VerticalAlignment="Center" FontSize="12" Foreground="#1E293B"
+                                             Padding="6,0,10,0"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="16,0,16,10">
                             <materialDesign:PackIcon Kind="ScaleBalance" Width="16" Height="16" Foreground="{DynamicResource MaterialDesignBodyLight}" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Efectivo físico {0}:'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="6,0,0,0" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding PettyCashPhysicalBalanceBsSDisplay}"
@@ -459,14 +604,33 @@
                         </StackPanel>
 
                         <!-- Listado virtualizado del turno -->
-                        <controls:PerformantDataGrid Grid.Row="3"
+                        <controls:PerformantDataGrid Grid.Row="4"
                                   AutomationProperties.AutomationId="CashDrawer_PettyCashGrid"
-                                  ItemsSource="{Binding PettyCashExpenses}"
+                                  ItemsSource="{Binding FilteredPettyCashExpenses}"
                                   AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True"
-                                  MaxHeight="520" RowHeight="46"
+                                  SelectionUnit="FullRow" SelectionMode="Single"
+                                  HeadersVisibility="Column"
+                                  GridLinesVisibility="Horizontal"
+                                  HorizontalGridLinesBrush="#F1F5F9"
+                                  VerticalGridLinesBrush="Transparent"
+                                  RowHeaderWidth="0"
+                                  RowHeight="46"
+                                  ColumnHeaderHeight="40"
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  Background="#FFFFFF"
+                                  RowBackground="#FFFFFF"
+                                  BorderThickness="0"
+                                  EnableRowVirtualization="True"
+                                  EnableColumnVirtualization="True"
                                   VirtualizingStackPanel.IsVirtualizing="True"
                                   VirtualizingStackPanel.VirtualizationMode="Recycling"
-                                  VirtualizingPanel.ScrollUnit="Pixel">
+                                  VirtualizingPanel.ScrollUnit="Pixel"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                  materialDesign:DataGridAssist.CellPadding="14,6,14,6"
+                                  materialDesign:DataGridAssist.ColumnHeaderPadding="14,10,14,10">
+                            <controls:PerformantDataGrid.ColumnHeaderStyle>
+                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource StandardHeaderStyle}"/>
+                            </controls:PerformantDataGrid.ColumnHeaderStyle>
                             <controls:PerformantDataGrid.Columns>
                                 <DataGridTextColumn Header="VALE" Binding="{Binding VoucherCode}" Width="90"/>
                                 <DataGridTextColumn Header="FECHA / HORA" Binding="{Binding CreatedAtDisplay}" Width="130"/>
@@ -489,11 +653,33 @@
                                                     Binding="{Binding Expense.AmountUsd, Converter={StaticResource PrimaryAmountConverter}}"
                                                     Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
                                                     Width="110"/>
-                                <DataGridTemplateColumn Header="ESTADO" Width="90">
+                                <DataGridTemplateColumn Header="ESTADO" Width="100">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="Bold"
-                                                       Foreground="{Binding StatusColor}" VerticalAlignment="Center"/>
+                                            <Border CornerRadius="10" Padding="10,3" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#DCFCE7"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding CanCancel}" Value="False">
+                                                                <Setter Property="Background" Value="#FEE2E2"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Text="{Binding StatusLabel}" FontSize="10" FontWeight="Bold">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="#166534"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding CanCancel}" Value="False">
+                                                                    <Setter Property="Foreground" Value="#B91C1C"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
@@ -524,19 +710,39 @@
                             </controls:PerformantDataGrid.Columns>
                         </controls:PerformantDataGrid>
 
-                        <TextBlock Grid.Row="3" Text="No hay gastos de caja chica registrados en este turno."
+                        <TextBlock Grid.Row="4" Text="{Binding PettyCashEmptyMessage}"
                                    FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                   HorizontalAlignment="Center" Margin="0,20,0,20"
-                                   Visibility="{Binding HasPettyCashExpenses, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                                   HorizontalAlignment="Center" Margin="0,28,0,28"
+                                   Visibility="{Binding HasFilteredPettyCashExpenses, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+
+                        <!-- Footer de la tarjeta: mismo lenguaje que el paginador de Movimientos. -->
+                        <Border Grid.Row="5" Background="#FFFFFF" BorderBrush="#E2E8F0"
+                                BorderThickness="0,1,0,0" Padding="16,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" FontSize="11" Foreground="#64748B" VerticalAlignment="Center">
+                                    <Run Text="Mostrando"/>
+                                    <Run Text="{Binding FilteredPettyCashExpenses.Count, Mode=OneWay}" FontWeight="Bold"/>
+                                    <Run Text="de"/>
+                                    <Run Text="{Binding PettyCashExpenses.Count, Mode=OneWay}" FontWeight="Bold"/>
+                                    <Run Text="gastos del turno"/>
+                                </TextBlock>
+                                <TextBlock Grid.Column="1" Text="{Binding PettyCashSummary}" FontSize="11"
+                                           FontWeight="SemiBold" Foreground="#B45309" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
                     </Grid>
                 </Border>
 
                 <!-- ══════════════════════════════════════════
                      ROW 3: TOP RECENT INCOMES PANEL (COMPACTO)
                      ══════════════════════════════════════════ -->
-                <Border Grid.Row="4" Margin="0,0,0,12"
+                <Border Grid.Row="0" Margin="0,0,0,8"
                         Background="{DynamicResource MaterialDesignPaper}"
-                        CornerRadius="10" Padding="16,10"
+                        CornerRadius="10" Padding="16,6"
                         BorderBrush="#E2E8F0" BorderThickness="1"
                         Effect="{StaticResource EnterpriseCardShadow}">
                     <Border.Style>
@@ -575,6 +781,7 @@
                             <Button Grid.Column="1"
                                     Command="{Binding ToggleRecentIncomesCommand}"
                                     AutomationProperties.AutomationId="CashDrawer_ToggleRecentIncomesButton"
+                                    FocusVisualStyle="{x:Null}"
                                     Style="{DynamicResource MaterialDesignIconButton}"
                                     Width="30" Height="30" Padding="0"
                                     ToolTip="Mostrar u ocultar los últimos ingresos recibidos">
@@ -591,7 +798,7 @@
 
                         <!-- Cards horizontal scroll container for recent incomes (Evita compresión y cortes) -->
                         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Focusable="False"
-                                      MaxHeight="84" Margin="0,8,0,0"
+                                      MaxHeight="78" Margin="0,6,0,0"
                                       Visibility="{Binding IsRecentIncomesExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <ItemsControl ItemsSource="{Binding RecentIncomes}">
                                 <ItemsControl.ItemsPanel>
@@ -601,8 +808,8 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="#FFFFFF" CornerRadius="8" Padding="12,8" Margin="0,0,10,0"
-                                                BorderBrush="#ABEBC6" BorderThickness="1" MinWidth="160">
+                                        <Border Background="#FFFFFF" CornerRadius="8" Padding="10,7" Margin="0,0,10,0"
+                                                BorderBrush="#ABEBC6" BorderThickness="1" Width="210">
                                             <Grid>
                                                 <Grid.RowDefinitions>
                                                     <RowDefinition Height="Auto"/>
@@ -613,10 +820,11 @@
                                                 <!-- Invoice Number / Description (Gris Oscuro / Sólido #1E293B, Centrado) -->
                                                 <TextBlock Grid.Row="0"
                                                            Text="{Binding FormattedInvoiceNumber}"
+                                                           ToolTip="{Binding FormattedInvoiceNumber}"
                                                            FontWeight="Bold" FontSize="12"
                                                            Foreground="#1E293B"
                                                            TextAlignment="Center"
-                                                           HorizontalAlignment="Center"
+                                                           HorizontalAlignment="Stretch"
                                                            TextTrimming="CharacterEllipsis"/>
 
                                                 <!-- Time (Gris claro, Centrado) -->
@@ -650,7 +858,7 @@
                 <!-- ══════════════════════════════════════════
                      ROW 4: TRANSACTION LIST (TARJETA MODERNA)
                      ══════════════════════════════════════════ -->
-                <Border Grid.Row="5"
+                <Border Grid.Row="1"
                         Background="#FFFFFF"
                         BorderBrush="#E2E8F0"
                         BorderThickness="1"
@@ -764,9 +972,8 @@
                                   HorizontalGridLinesBrush="#F1F5F9"
                                   VerticalGridLinesBrush="Transparent"
                               RowHeaderWidth="0"
-                              MinHeight="{Binding MovementsGridMinHeight}"
-                              MaxHeight="{Binding MovementsGridMinHeight}"
-                              VerticalAlignment="Top"
+                              MinHeight="240"
+                              VerticalAlignment="Stretch"
                               RowHeight="{Binding MovementGridRowHeight}"
                               ColumnHeaderHeight="{Binding MovementGridColumnHeaderHeight}"
                               ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -972,8 +1179,8 @@
                     </Grid>
                 </Border>
 
+                </Grid>
             </Grid>
-        </ScrollViewer>
 
         <!-- 8.201 (S1): apertura dual de caja (fondo Bs.S + USD). Overlay solo sin sesión. -->
         <Border Background="#66000000"

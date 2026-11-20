@@ -13,6 +13,7 @@ namespace CommandCenter.Tests.Unit;
 /// WPF Settings permissions and validation for the cash advance commission card. Admin can save;
 /// Manager can read but never writes; out-of-range values never reach the API.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public sealed class SettingsCashAdvanceCommissionViewModelTests
 {
     private readonly Mock<IPaymentService> _paymentService = new();

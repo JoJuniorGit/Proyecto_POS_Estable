@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Common;
+using Core.Diagnostics;
 using Desktop.Client.Navigation;
 using Desktop.Client.Services;
 using System;
@@ -22,33 +23,41 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public object CurrentViewModel
     {
         get => _currentViewModel;
-        set => SetProperty(ref _currentViewModel, value);
+        set
+        {
+            if (SetProperty(ref _currentViewModel, value))
+            {
+                StartupTimeline.Mark($"Wpf.View.{value?.GetType().Name ?? "null"}");
+            }
+        }
     }
 
     public UserSession? UserSession { get; }
 
     private readonly LoginViewModel? _loginViewModel;
-    private readonly PosViewModel? _posViewModel;
-    private readonly InventoryViewModel? _inventoryViewModel;
-    private readonly SalesHistoryViewModel? _salesHistoryViewModel;
-    private readonly PendingOrdersViewModel? _pendingOrdersViewModel;
-    private readonly PendingPickupsViewModel? _pendingPickupsViewModel;
-    private readonly SettingsViewModel? _settingsViewModel;
-    private readonly ExchangeRateViewModel? _exchangeRateViewModel;
-    private readonly CashDrawerViewModel? _cashDrawerViewModel;
-    private readonly ImportProductsViewModel? _importProductsViewModel;
-    private readonly SupplierInvoiceViewModel? _supplierInvoiceViewModel;
-    private readonly DailyClosureViewModel? _dailyClosureViewModel;
-    private readonly UsersManagementViewModel? _usersManagementViewModel;
-    private readonly AuthorizationNotificationViewModel? _authorizationNotificationViewModel;
-    private readonly StockKardexViewModel? _stockKardexViewModel;
-    private readonly StockCountViewModel? _stockCountViewModel;
-    private readonly CreditReceivablesViewModel? _creditReceivablesViewModel;
-    private readonly ProfitabilityViewModel? _profitabilityViewModel;
+    private PosViewModel? _posViewModel;
+    private InventoryViewModel? _inventoryViewModel;
+    private SalesHistoryViewModel? _salesHistoryViewModel;
+    private PendingOrdersViewModel? _pendingOrdersViewModel;
+    private PendingPickupsViewModel? _pendingPickupsViewModel;
+    private SettingsViewModel? _settingsViewModel;
+    private ExchangeRateViewModel? _exchangeRateViewModel;
+    private CashDrawerViewModel? _cashDrawerViewModel;
+    private ImportProductsViewModel? _importProductsViewModel;
+    private SupplierInvoiceViewModel? _supplierInvoiceViewModel;
+    private DailyClosureViewModel? _dailyClosureViewModel;
+    private UsersManagementViewModel? _usersManagementViewModel;
+    private AuthorizationNotificationViewModel? _authorizationNotificationViewModel;
+    private StockKardexViewModel? _stockKardexViewModel;
+    private StockCountViewModel? _stockCountViewModel;
+    private CreditReceivablesViewModel? _creditReceivablesViewModel;
+    private ProfitabilityViewModel? _profitabilityViewModel;
 
     private readonly IHealthPollingService? _healthPollingService;
     private readonly IExchangeRateService? _exchangeRateService;
     private readonly IDialogService? _dialogService;
+    private readonly IServiceProvider? _serviceProvider;
+    private bool _authorizationNotificationSubscribed;
     private int _disposed;
     private int _notificationDialogOpen;
 
@@ -74,7 +83,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         StockKardexViewModel? stockKardexViewModel = null,
         StockCountViewModel? stockCountViewModel = null,
         CreditReceivablesViewModel? creditReceivablesViewModel = null,
-        ProfitabilityViewModel? profitabilityViewModel = null)
+        ProfitabilityViewModel? profitabilityViewModel = null,
+        IServiceProvider? serviceProvider = null)
     {
         UserSession = userSession;
         _loginViewModel = loginViewModel;
@@ -95,17 +105,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _stockCountViewModel = stockCountViewModel;
         _creditReceivablesViewModel = creditReceivablesViewModel;
         _profitabilityViewModel = profitabilityViewModel;
-        _healthPollingService = healthPollingService;
-        _dialogService = dialogService;
-        _exchangeRateService = exchangeRateService;
+        _serviceProvider = serviceProvider;
+        _healthPollingService = healthPollingService
+            ?? serviceProvider?.GetService(typeof(IHealthPollingService)) as IHealthPollingService;
+        _dialogService = dialogService
+            ?? serviceProvider?.GetService(typeof(IDialogService)) as IDialogService;
+        _exchangeRateService = exchangeRateService
+            ?? serviceProvider?.GetService(typeof(IExchangeRateService)) as IExchangeRateService;
 
         if (_healthPollingService != null) _healthPollingService.OnHealthRecovered += OnHealthRecovered;
         if (_loginViewModel != null) _loginViewModel.LoginSuccess += OnLoginSuccess;
         if (UserSession != null) UserSession.SessionChanged += OnSessionChanged;
-        if (_authorizationNotificationViewModel != null)
-        {
-            _authorizationNotificationViewModel.StateChanged += OnAuthorizationNotificationStateChanged;
-        }
 
         if (UserSession != null && !UserSession.IsLoggedIn)
         {
@@ -116,26 +126,43 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // Un Driver no puede abrir POS: su landing permitido es Retiros Pendientes.
             var fallbackView = WpfNavigationPolicy.GetFallbackView(UserSession?.CurrentUser?.Role);
-            if (fallbackView == WpfNavigationPolicy.Pickups && _pendingPickupsViewModel != null)
+            var pickups = ResolveViewModel(ref _pendingPickupsViewModel);
+            if (fallbackView == WpfNavigationPolicy.Pickups && pickups != null)
             {
-                _currentViewModel = _pendingPickupsViewModel;
+                _currentViewModel = pickups;
                 _title = "RETIROS PENDIENTES";
-                _pendingPickupsViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.InitialDriverInit");
+                pickups.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.InitialDriverInit");
             }
             else
             {
-                _currentViewModel = _posViewModel ?? new object();
+                var pos = ResolveViewModel(ref _posViewModel);
+                _currentViewModel = pos ?? new object();
                 _title = "POINT OF SALE";
-                if (_posViewModel != null)
+                if (pos != null)
                 {
-                    _posViewModel.InitializeForSessionAsync().SafeFireAndForget("MainViewModel.InitialPosInit");
+                    pos.InitializeForSessionAsync().SafeFireAndForget("MainViewModel.InitialPosInit");
                 }
             }
         }
 
         // 8.150 (T10): la sesion restaurada en el arranque tambien debe activar el canal de
-        // notificaciones admin si el rol es elevado.
-        SyncAuthorizationNotificationSession();
+        // notificaciones admin si el rol es elevado. Sin sesion no se resuelve el VM de
+        // notificaciones: se crea recien al loguear un rol elevado.
+        if (UserSession?.IsLoggedIn == true)
+        {
+            SyncAuthorizationNotificationSession();
+        }
+    }
+
+    private T? ResolveViewModel<T>(ref T? field) where T : class
+    {
+        if (field != null)
+        {
+            return field;
+        }
+
+        field = _serviceProvider?.GetService(typeof(T)) as T;
+        return field;
     }
 
     private void OnHealthRecovered(object? sender, System.EventArgs e)
@@ -165,6 +192,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (_authorizationNotificationViewModel != null)
         {
             _authorizationNotificationViewModel.StateChanged -= OnAuthorizationNotificationStateChanged;
+            _authorizationNotificationSubscribed = false;
         }
 
         // Disponer los ViewModels hijo que implementan IDisposable (cancela sus CTSes y
@@ -208,21 +236,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task OnLoginSuccessAsync()
     {
-        if (_exchangeRateService != null)
-        {
-            try
-            {
-                await _exchangeRateService.GetCurrentRateAsync();
-            }
-            catch { }
-        }
+        StartupTimeline.Mark("Wpf.Login.Success");
+
         var fallbackView = WpfNavigationPolicy.GetFallbackView(UserSession?.CurrentUser?.Role);
         if (fallbackView == WpfNavigationPolicy.Pickups)
         {
+            // El conductor no abre POS; su vista necesita la tasa para mostrar importes.
+            if (_exchangeRateService != null)
+            {
+                try
+                {
+                    await _exchangeRateService.GetCurrentRateAsync();
+                }
+                catch { }
+            }
+
             NavigateToPendingPickups();
         }
         else
         {
+            // POS es el dueno de su carga inicial de tasa; no bloqueamos el cambio de shell.
             NavigateToPos();
         }
     }
@@ -249,10 +282,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void SyncAuthorizationNotificationSession()
     {
-        var notificationViewModel = _authorizationNotificationViewModel;
+        var notificationViewModel = ResolveViewModel(ref _authorizationNotificationViewModel);
         if (notificationViewModel == null)
         {
             return;
+        }
+
+        if (!_authorizationNotificationSubscribed)
+        {
+            notificationViewModel.StateChanged += OnAuthorizationNotificationStateChanged;
+            _authorizationNotificationSubscribed = true;
         }
 
         var isElevated = UserSession?.IsLoggedIn == true && (UserSession.IsAdmin || UserSession.IsManager);

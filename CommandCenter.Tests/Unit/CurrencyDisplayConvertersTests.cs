@@ -11,6 +11,7 @@ namespace CommandCenter.Tests.Unit;
 // 8.211-T4c2b1 (S9): los convertidores WPF de CheckoutDialog resuelven símbolos, montos y
 // visibilidad desde el perfil activo de CurrencyDisplay. El formato numérico sigue delegado
 // en CurrencyDisplay.Number y no se duplica aquí.
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class CurrencyDisplayConvertersTests
 {
     [Fact]

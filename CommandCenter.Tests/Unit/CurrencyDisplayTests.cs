@@ -11,6 +11,7 @@ namespace CommandCenter.Tests.Unit;
 // e independiente de la cultura del SO donde corra el proceso.
 // 8.211-T4c1 (S9): el estado del perfil monetario (modo/códigos/símbolos) vive en la misma
 // clase y debe degradar a los defaults Dual USD/VES sin romper el formato numérico existente.
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class CurrencyDisplayTests
 {
     [Theory]

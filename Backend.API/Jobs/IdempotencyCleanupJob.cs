@@ -28,6 +28,7 @@ public class IdempotencyCleanupJob : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await Backend.API.Startup.StartupReadiness.WaitUntilReadyAsync(stoppingToken);
         _logger.LogInformation("[IDEMPOTENCY_CLEANUP] Servicio de purga programada iniciado con intervalo de {Interval}.", _interval);
 
         // Esperar un breve periodo tras el arranque inicial del servidor

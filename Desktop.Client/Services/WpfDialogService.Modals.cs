@@ -822,9 +822,10 @@ public partial class WpfDialogService
         Action openDialog = () =>
         {
             var dialog = new BulkPriceEditDialog(viewModel);
-            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            var owner = ResolveActiveOwnerWindow();
+            if (owner != null)
             {
-                dialog.Owner = Application.Current.MainWindow;
+                dialog.Owner = owner;
             }
 
             applied = dialog.ShowDialog() == true;
@@ -834,6 +835,34 @@ public partial class WpfDialogService
         else Application.Current.Dispatcher.Invoke(openDialog);
 
         return applied;
+    }
+
+    /// <summary>
+    /// Paso 15 (S6): informe ejecutivo de rotacion. El propio dialogo abre el Paso 9 con los IDs
+    /// de stock muerto; al cerrar, el llamador solo necesita saber si hubo precios aplicados.
+    /// </summary>
+    public bool ShowInventoryHealthDialog(ViewModels.InventoryHealthViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (Application.Current == null) return false;
+
+        using var _ = TrackModal();
+        Action openDialog = () =>
+        {
+            var dialog = new InventoryHealthDialog(viewModel);
+            var owner = ResolveActiveOwnerWindow();
+            if (owner != null)
+            {
+                dialog.Owner = owner;
+            }
+
+            dialog.ShowDialog();
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return viewModel.HasAppliedPriceChanges;
     }
 
     /// <summary>
@@ -935,6 +964,30 @@ public partial class WpfDialogService
         else Application.Current.Dispatcher.Invoke(openDialog);
 
         return System.Threading.Tasks.Task.FromResult(result);
+    }
+
+    /// <summary>
+    /// Los modales anidados (reporte de inventario -> Paso 9) deben quedar owned por la ventana
+    /// activa; MainWindow esta deshabilitada mientras el primer modal esta abierto.
+    /// </summary>
+    private static Window? ResolveActiveOwnerWindow()
+    {
+        if (Application.Current == null)
+        {
+            return null;
+        }
+
+        foreach (Window window in Application.Current.Windows)
+        {
+            if (window.IsActive && window.IsVisible)
+            {
+                return window;
+            }
+        }
+
+        return Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible
+            ? Application.Current.MainWindow
+            : null;
     }
 }
 

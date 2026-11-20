@@ -449,8 +449,10 @@
                         <TextBlock Text="Categorías" FontWeight="Bold" FontSize="14" Margin="0,0,0,8" />
                         <DataGrid ItemsSource="{Binding CategoryRows}" AutoGenerateColumns="False"
                                   CanUserAddRows="False" HeadersVisibility="Column" RowHeight="32"
+                                  MaxHeight="320" ScrollViewer.CanContentScroll="True"
                                   VirtualizingStackPanel.IsVirtualizing="True"
                                   VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                  VirtualizingPanel.ScrollUnit="Pixel"
                                   GridLinesVisibility="Horizontal" Background="Transparent" BorderThickness="0">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Categoría" Binding="{Binding Name}" Width="*" />
@@ -468,8 +470,10 @@
                         <TextBlock Text="Vendedores / cajeros" FontWeight="Bold" FontSize="14" Margin="0,0,0,8" />
                         <DataGrid ItemsSource="{Binding SellerRows}" AutoGenerateColumns="False"
                                   CanUserAddRows="False" HeadersVisibility="Column" RowHeight="32"
+                                  MaxHeight="320" ScrollViewer.CanContentScroll="True"
                                   VirtualizingStackPanel.IsVirtualizing="True"
                                   VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                  VirtualizingPanel.ScrollUnit="Pixel"
                                   GridLinesVisibility="Horizontal" Background="Transparent" BorderThickness="0">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Cajero" Binding="{Binding Name}" Width="*" />

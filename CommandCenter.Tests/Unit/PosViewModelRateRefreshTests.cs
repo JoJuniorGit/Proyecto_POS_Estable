@@ -18,6 +18,7 @@ namespace CommandCenter.Tests.Unit;
 /// snapshot viejo del DTO) y regenerar sugerencias al recibir ExchangeRateChangedMessage,
 /// porque los DTO de sugerencias no son observables.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.WeakMessengerStateCollection.Name)]
 public class PosViewModelRateRefreshTests
 {
     private static async Task<bool> WaitUntilAsync(Func<bool> condition, int timeoutMs = 3000)

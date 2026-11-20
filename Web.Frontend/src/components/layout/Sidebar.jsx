@@ -11,6 +11,7 @@ import {
   Settings,
   DollarSign,
   TrendingUp,
+  BarChart3,
   User,
   LogOut,
 } from 'lucide-react';
@@ -42,6 +43,7 @@ const NAV_SECTIONS = [
     label: 'ANÁLISIS',
     items: [
       { id: 'profitability', label: 'Rentabilidad', icon: TrendingUp },
+      { id: 'inventory-health', label: 'Salud de Inventario', icon: BarChart3 },
     ],
   },
   {

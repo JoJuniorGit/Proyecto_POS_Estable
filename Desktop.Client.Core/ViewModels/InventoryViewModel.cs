@@ -23,6 +23,9 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     private readonly IDispatcherInvoker _dispatcherInvoker;
     private readonly ICategoryService? _categoryService;
     private readonly ISettingsService? _settingsService;
+    // Paso 15: el reporte vive en un dialogo dedicado; null mantiene las composiciones de tests
+    // existentes sin abrir la funcionalidad.
+    private readonly IInventoryRotationService? _inventoryRotationService;
     private CancellationTokenSource? _cancellationTokenSource;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
 
@@ -232,10 +235,12 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
         IDialogService? dialogService = null,
         IDispatcherInvoker? dispatcherInvoker = null,
         ICategoryService? categoryService = null,
-        ISettingsService? settingsService = null)
+        ISettingsService? settingsService = null,
+        IInventoryRotationService? inventoryRotationService = null)
     {
         _productService = productService;
         _exchangeRateService = exchangeRateService;
+        _inventoryRotationService = inventoryRotationService;
         UserSession = userSession;
         _dialogService = dialogService;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
@@ -311,6 +316,8 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
     {
         OpenAddProductCommand.NotifyCanExecuteChanged();
         OpenBulkPriceEditCommand.NotifyCanExecuteChanged();
+        OpenInventoryHealthCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanUseInventoryHealth));
         SelectAllFilteredCommand.NotifyCanExecuteChanged();
         ClearSelectionCommand.NotifyCanExecuteChanged();
     }
@@ -358,19 +365,19 @@ public partial class InventoryViewModel : ObservableObject, IDisposable
 
     public async Task EnsureLoadedAsync()
     {
-        if ((UserSession == null || UserSession.IsLoggedIn) && !Products.Any())
+        if (UserSession != null && !UserSession.IsLoggedIn)
         {
-            await LoadDataAsync(false);
+            return;
         }
+
+        // Productos y filtro de categorías son lecturas independientes: se solapan.
+        var dataTask = Products.Any() ? Task.CompletedTask : LoadDataAsync(false);
 
         // 8.179-T2 (fix verificación B2): en un arranque con login fresco el constructor corre ANTES
         // del login y no carga el filtro de categorías; al entrar a la vista se carga (o refresca)
         // aquí para que el combo nunca quede vacío en ese flujo.
-        if (UserSession == null || UserSession.IsLoggedIn)
-        {
-            CategoryFilterLoadTask = _categoryService is null ? Task.CompletedTask : LoadCategoryFilterAsync();
-            await CategoryFilterLoadTask;
-        }
+        CategoryFilterLoadTask = _categoryService is null ? Task.CompletedTask : LoadCategoryFilterAsync();
+        await Task.WhenAll(dataTask, CategoryFilterLoadTask);
     }
 
     [RelayCommand]

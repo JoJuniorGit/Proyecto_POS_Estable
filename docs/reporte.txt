@@ -18323,9 +18323,11 @@ A1. Web (`RegisterPage` / `PettyCashPanel`): subnavegación `Movimientos de caja
     - Listado completo, saldos físicos autorizados, descarga de vale y anulación.
     - Botón de cierre que vuelve a Movimientos y botón del encabezado que abre la subsección.
 A2. WPF (`CashDrawerView` / `CashDrawerViewModel.PettyCash`): subsección con pestañas
-    `MOVIMIENTOS` y `CAJA CHICA`, selección visual con el acento del módulo, KPIs de
-    resumen, saldos físicos, listado virtualizado y acciones existentes. Al activar Caja
-    Chica se colapsan últimos ingresos y movimientos; el botón de cierre vuelve a Movimientos.
+    `MOVIMIENTOS` y `CAJA CHICA`, tarjeta blanca con el mismo lenguaje visual que Movimientos
+    (header, badge, acciones, chips de filtro y búsqueda, grilla con headers estándar,
+    badges de estado y footer de resumen), KPIs de resumen, saldos físicos, listado
+    virtualizado y acciones existentes. Al activar Caja Chica se colapsan últimos ingresos
+    y movimientos; el botón de cierre vuelve a Movimientos.
 A3. Sin cambios de endpoints, autorización, snapshots, arqueo ni reglas de caja chica.
     El arqueo ciego se mantiene: los saldos físicos solo se muestran a Admin/Manager.
 A4. Tests nuevos/actualizados: resumen de activos/anulados, filtros y búsqueda Web,
@@ -18333,7 +18335,7 @@ A4. Tests nuevos/actualizados: resumen de activos/anulados, filtros y búsqueda 
 
 B. EVIDENCIA
 B1. Web: `npm test` 805/805, `npm run lint` limpio y `npm run build` exitoso.
-B2. WPF: build Release 0/0; suite focalizada de caja 22/22 (incluye la prueba nueva de subsección).
+B2. WPF: build Release 0/0; suite focalizada de caja 22/22 (incluye filtros/búsqueda y la prueba nueva de subsección).
 B3. No se modificaron backend, migraciones ni contratos HTTP.
 
 C. COMMITS
@@ -18348,3 +18350,198 @@ D4. El working tree acumula los cambios P0, el fallback BCV y esta subseccion; l
     deben separarse por work unit.
 ================================================================================
 
+
+================================================================================
+ANEXO LXIX - POS-UI-843: COMPACTACION Y PULIDO DE CAJA DE TIENDA - 2026-11-15
+================================================================================
+
+A. CAMBIOS
+A1. Se elimino el `ScrollViewer` global de `CashDrawerView`. El header, los KPIs y las
+    pestanas quedan en filas Auto; la subseccion activa ocupa la fila `*` y tiene scroll
+    interno propio (grilla de movimientos o grilla de caja chica).
+A2. KPIs por moneda compactados: padding vertical reducido, montos de 34/22 a 26/18,
+    iconos de 48 a 36, sombra enterprise `BlurRadius=8/Opacity=0.04`, fondo blanco puro,
+    borde 1px y acento izquierdo violeta/verde/rojo por tipo de tarjeta. El icono del banco
+    se envolvio en un badge 36x36 con fondo #F1F5F9 e icono #475569.
+A3. Encabezados por moneda convertidos en pildoras: `Bs.S · MONEDA LOCAL` con fondo
+    #EDE9FE y texto #5B21B6; `USD · DIVISA` con fondo #E2E8F0 y texto #1E293B. Se elimino
+    el badge LOCAL claro sobre claro.
+A4. Pestañas MOVIMIENTOS/CAJA CHICA convertidas a segmented control con pildora blanca
+    elevada, texto #6D28D9 para la activa y #64748B para la inactiva; se retiro el foco
+    punteado nativo de las pestañas.
+A5. Tarjetas de ultimos ingresos con ancho fijo de 210px, titulo con ellipsis y ToolTip,
+    panel colapsado por defecto y boton de colapso sin `FocusVisualStyle`.
+A6. Sin cambios en logica de negocio, comandos, endpoints ni bindings de datos. Se retiro
+    el binding de altura fija de la grilla de movimientos para que la fila `*` y el scroll
+    interno gobiernen la altura visible.
+
+B. EVIDENCIA
+B1. `dotnet build Desktop.Client -c Release`: 0 advertencias, 0 errores.
+B2. Suite focalizada de caja: 22/22 superados.
+B3. Sin cambios en backend, Web ni contratos.
+
+C. COMMITS
+C1. Pendiente de commit y push; el PR #39 no se modifica sin autorizacion.
+
+D. PENDIENTE / RIESGOS
+D1. La inspeccion visual en 1366x768 y 1920x1080 queda pendiente de una corrida manual;
+    el layout se diseno para que la grilla tenga scroll interno y no global.
+D2. La fila de movimientos conserva `MinHeight=240`; en ventanas muy bajas la grilla
+    prioriza el scroll interno sobre mostrar 8 filas completas.
+================================================================================
+
+
+================================================================================
+ANEXO LXX - PASO 15: ROTACION DE INVENTARIO Y STOCK MUERTO - 2026-11-16
+================================================================================
+
+A. CAMBIOS
+A1. Backend (`Core`, `Sales.Module`, `Inventory.Module`, `Backend.API`):
+    - DTOs de reporte, filtros, resumen, producto, categoria y seleccion de stock muerto.
+    - `InventoryRotationCalculator` puro: velocidad, dias promedio, bandas Alta/Media/Baja/
+      Stock Muerto, capital inmovilizado y agregados por categoria.
+    - `InventoryRotationService` con agregaciones SQL sobre ventas emitidas de mercancia
+      (`SaleType=Merchandise`, `InvoiceNumber != null`, `Status=Completed`, `CancelledAtUtc` nulo).
+    - `IInventoryService.GetInventoryRotationProductsAsync` entrega el snapshot de catalogo
+      sin acoplar Sales.Module a Inventory.Module.
+    - Endpoints `GET /api/inventory-rotation/report` y `/dead-stock-ids` con
+      `RequireAdminOrManager` + security stamp.
+    - Migracion idempotente `20261117022102_AddInventoryRotationIndexes`:
+      `IX_Sales_Date_SaleType_InvoiceNumber`, `IX_SaleItems_ProductId_SaleId`.
+A2. WPF:
+    - Boton "Salud de inventario" en Inventario (solo Admin/Manager).
+    - `InventoryHealthDialog`: KPI cards, barras nativas, tabla de productos, tabla de
+      categorias, filtros, paginacion y estado de carga/error.
+    - Boton "Aplicar Promocion / Descuento" que abre el dialogo del Paso 9 con seleccion
+      explicita de IDs de stock muerto (maximo 1000).
+A3. Web:
+    - Pagina `inventory-health` en el grupo Analisis, visible solo para Admin/Manager.
+    - Filtros por categoria/ventana/umbral/busqueda/rotacion; KPIs y barras CSS.
+    - Tablas de productos y categorias; puente directo a `POST /api/products/bulk-prices/apply`
+      con `RetailPrice` + `DecreasePercent` para la seleccion de stock muerto.
+A4. Sin cambios en el motor de precios del Paso 9 ni en snapshots historicos.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 advertencias, 0 errores.
+B2. Tests focalizados: calculadora 5/5, servicio 4/4, snapshot catalogo 2/2,
+    controlador 3/3, view model WPF 4/4.
+B3. Suite .NET completa: 4395 superados; 60 fallos del carril PostgreSQL real por
+    `TEST_POSTGRES_CONNECTION` no configurado. No hubo fallos funcionales fuera de ese carril.
+B4. Web: `npm test` 810/810, `npm run lint` limpio, `npm run build` exitoso.
+B5. Migracion revisada con DDL idempotente; no se aplico en PostgreSQL local por la misma
+    limitacion de conexion.
+
+C. COMMITS
+C1. Pendiente de commit y push; el PR #39 no se modifica sin autorizacion.
+
+D. PENDIENTE / RIESGOS
+D1. Validar el carril PostgreSQL real en un entorno con `TEST_POSTGRES_CONNECTION`.
+D2. Inspeccion visual WPF del dialogo a 1366x768 y 1920x1080; inspeccion Web movil/escritorio.
+D3. El working tree incluye los cambios no commiteados de POS-UI-843; separar work units antes
+    de cualquier commit.
+D4. La rotacion usa ventas brutas emitidas (sin netear devoluciones); si se requiere rotacion
+    neta, debe agregarse una fase que reste `CreditReturns` por producto.
+================================================================================
+
+================================================================================
+ANEXO LXXI - OPTIMIZACION DE ARRANQUE Y NAVEGACION - 2026-11-17
+================================================================================
+
+A. CAMBIOS
+A1. Se agrego `Core.Diagnostics.StartupTimeline` con marcas monotonicas por
+    `Stopwatch`, habilitadas solo con `POS_STARTUP_TIMING=1`. Instrumenta backend
+    (build, pipeline, probe, migraciones, convergencia, seeds, Kestrel) y WPF
+    (host, version, sesion, MainWindow, display, cambio de vista).
+A2. WPF: la carga de formato de moneda y perfil monetario se movio despues de
+    `MainWindow.Show()` y corre en paralelo. La validacion de version y la
+    restauracion de sesion siguen siendo gates previos; el login no pierde el
+    lockout por incompatibilidad.
+A3. Se paralelizaron cargas independientes en `SettingsViewModel`,
+    `PendingOrdersViewModel`, `StockCountViewModel`, `PosViewModel` y
+    `CashDrawerViewModel`. La tasa de cambio se carga una sola vez en la
+    transicion Login -> POS.
+A4. `ProfitabilityView` y `StockCountView`: los DataGrid grandes reciben altura
+    maxima finita y `ScrollViewer.CanContentScroll`/`ScrollUnit=Pixel` para que
+    su ScrollViewer interno vuelva a virtualizar filas.
+A5. `CreditMoraJob` espera 10 s antes de su primer barrido.
+    `AuthorizationExpiryJob` espera 5 s configurables
+    (`Authorization:StartupDelaySeconds`); los tests usan 0 para conservar sus
+    esperas cortas.
+A6. `MainWindow` cachea una instancia de vista por ViewModel y reutiliza el arbol
+    XAML ya cargado al navegar; conserva los DataTemplates implicitos como fallback.
+A7. `ExchangeRateService` ya no dispara GET de tasa ni abre SignalR sin sesion;
+    `LoginViewModel` dejo de duplicar el probe de `ConnectionManager`.
+A8. Sin cambios en RBAC, precios, calculos financieros, contratos HTTP,
+    migraciones de negocio ni reglas de venta.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. WPF E2E: 11/11.
+B3. Suite .NET completa: 4398 superados; 60 fallos exclusivamente del carril
+    PostgreSQL real por falta de `TEST_POSTGRES_CONNECTION`.
+B4. Tests focalizados de Settings/CashDrawer/Pos/MainViewModel/Authorization:
+    sin fallos funcionales; solo fallos de entorno PostgreSQL.
+
+C. COMMITS
+C1. Pendiente de commit y push; no se elimino ningun archivo.
+
+D. PENDIENTE / RIESGOS
+D1. Falta medir el antes/despues con `POS_STARTUP_TIMING=1` en 10 arranques
+    frios y 5 calientes; las mejoras de composicion estan implementadas pero
+    el baseline numerico queda pendiente.
+D2. Migraciones/convergencia/seeds siguen en el camino critico del backend.
+    Moverlos requiere readiness gate y pruebas de integracion.
+D3. `MainViewModel` sigue construyendo los 18 ViewModels antes de Login.
+D4. El shell sigue recreando la vista en cada cambio de `CurrentViewModel`.
+D5. La virtualizacion se mitigo con altura finita; el rediseno completo de
+    Profitability/StockCount queda para una fase posterior.
+================================================================================
+
+ANEXO LXXII - OPTIMIZACION INTEGRAL WU1-WU3 - 2026-11-18
+================================================================================
+
+A. CAMBIOS
+A1. WU1: Directory.Build.props habilita UseSharedCompilation, BuildInParallel y
+    ProduceReferenceAssembly. build-release.ps1 hace un solo restore RID y los
+    tres publish usan --no-restore; -Fast desactiva ReadyToRun/analyzers y pasa
+    -DFastBuild=1 a ISCC. setup.iss usa lzma2/fast, CompressionThreads=auto,
+    SolidCompression=no, zip/1 en FastBuild y nocompression para assets .br/.gz.
+A2. WU2: PostgresTestLane crea una plantilla migrada una vez por proceso y los
+    tests con migraciones la clonan con CREATE DATABASE ... TEMPLATE. Los tests
+    de migracion desde cero conservan base vacia. Se limpian plantillas huerfanas.
+A3. WU2: xUnit corre en paralelo; CurrencyDisplayState, WeakMessengerState,
+    PostgresReal y FullStackSerial quedan serializadas por estado/recurso fisico.
+A4. WU3: el backend soporta arranque diferido opt-in
+    (Startup:DeferDatabaseInitialization). Kestrel abre antes de migrar; health
+    y version-check responden, el resto recibe 503; los jobs esperan readiness.
+    DatabaseInitializer verifica migraciones pendientes antes de MigrateAsync.
+A5. WU3: InventoryViewModel y UsersManagementViewModel solapan lecturas
+    independientes con Task.WhenAll. El detalle de SalesHistory usa
+    virtualizacion con altura finita; Profitability/StockCount conservan su
+    mitigacion con MaxHeight + ScrollUnit=Pixel.
+A6. Sin cambios en RBAC, precios, calculos financieros, contratos HTTP ni
+    migraciones de negocio. Cobertura de tests intacta (4458).
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release --no-restore`: 0/0, 4.9s.
+B2. Suite completa con PostgreSQL real: 4458/4458, 203.8-209.6s (3 corridas verdes).
+B3. WPF E2E: 11/11, 50.8s.
+B4. Instalador normal: 41.9s, 154.9 MB, 0 warnings; pipeline 97.8s.
+    -Fast: 33.3s, 193.5 MB, 0 warnings; pipeline 79s.
+B5. Backend en base nueva: puerto 12.34s -> 2.19s; health 12.91s -> 11.88s
+    (la primera migracion domina el health). Base ya migrada: puerto 5.71s -> 2.60s;
+    health 6.10s -> 5.95s. Durante el arranque diferido API/health responden 503
+    hasta readiness.
+B6. Carril PostgreSQL aislado: 129.5s -> 106.4s.
+
+C. COMMITS
+C1. Pendiente de commit y push. No se elimino ningun archivo de usuario.
+
+D. RIESGOS / PENDIENTE
+D1. El arranque diferido esta activo en appsettings.Production.json; Development
+    y tests conservan el orden clasico para no alterar WebApplicationFactory.
+D2. El rediseno visual completo de Profitability/StockCount sigue pendiente; la
+    virtualizacion esta mitigada con altura finita.
+D3. La plantilla PostgreSQL y las colecciones serializadas agregan estado de
+    proceso; la limpieza de plantillas huerfanas es best-effort por PID.
+================================================================================

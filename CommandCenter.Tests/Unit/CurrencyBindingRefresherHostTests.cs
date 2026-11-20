@@ -18,6 +18,7 @@ namespace CommandCenter.Tests.Unit;
 /// private refresh walk directly so it does not create a process-wide Application (which would
 /// change the behavior of later WPF dialog tests).
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class CurrencyBindingRefresherHostTests
 {
     [Fact]

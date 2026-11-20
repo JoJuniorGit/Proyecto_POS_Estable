@@ -19,6 +19,7 @@ namespace CommandCenter.Tests.Unit;
 /// (override del artículo ?? política global + toggle de piso) y se refresca por mensajes en
 /// memoria — 0 consultas por fila.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.WeakMessengerStateCollection.Name)]
 public class ProductItemViewModelRoundingTests
 {
     private static async Task<bool> WaitUntilAsync(Func<bool> condition, int timeoutMs = 3000)

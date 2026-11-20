@@ -18,6 +18,7 @@ namespace CommandCenter.Tests.Integration;
 /// <c>E2E_POSTGRES_CONNECTION</c> exactamente como el resto de la suite: sin la variable local
 /// retorna en silencio; en CI el fixture falla cerrado.
 /// </summary>
+[Collection(FullStackSerialCollection.Name)]
 public class FullStackHubWebSocketTests : IClassFixture<FullStackFixture>
 {
     private const string AuthorizationHubPath = "hubs/authorization";

@@ -18,7 +18,12 @@ public class AuthorizationExpiryJobTests
 {
     private static IConfiguration BuildConfiguration(int? expirySweepSeconds)
     {
-        var values = new Dictionary<string, string?>();
+        var values = new Dictionary<string, string?>
+        {
+            // Los tests verifican el loop, no el warm-up de arranque: el delay de produccion
+            // se desactiva explicitamente para conservar las esperas cortas de la suite.
+            ["Authorization:StartupDelaySeconds"] = "0"
+        };
         if (expirySweepSeconds.HasValue)
         {
             values["Authorization:ExpirySweepSeconds"] = expirySweepSeconds.Value.ToString();

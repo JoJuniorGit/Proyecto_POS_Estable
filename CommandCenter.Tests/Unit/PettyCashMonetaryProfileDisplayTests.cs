@@ -9,6 +9,7 @@ namespace CommandCenter.Tests.Unit;
 
 // 8.211-T6-U7: AmountUsd keeps its legacy name but is presented as the profile primary
 // currency. Single mode must not leak the old USD/Bs.S pair into petty-cash summaries.
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class PettyCashMonetaryProfileDisplayTests
 {
     [Fact]

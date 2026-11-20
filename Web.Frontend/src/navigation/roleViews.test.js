@@ -61,6 +61,16 @@ describe('roleViews role→view matrix [8.130]', () => {
     });
   });
 
+  it('keeps inventory health restricted to Admin and Manager', () => {
+    assert.strictEqual(canAccessView('Admin', 'inventory-health'), true);
+    assert.strictEqual(canAccessView('Manager', 'inventory-health'), true);
+    assert.strictEqual(canAccessView(3, 'inventory-health'), true);
+    assert.strictEqual(canAccessView(2, 'inventory-health'), true);
+    assert.strictEqual(canAccessView('Cashier', 'inventory-health'), false);
+    assert.strictEqual(canAccessView('Driver', 'inventory-health'), false);
+    assert.strictEqual(canAccessView(null, 'inventory-health'), false);
+  });
+
   it('normalizes role names case-insensitively and trims whitespace', () => {
     assert.strictEqual(normalizeRole('Admin'), 'Admin');
     assert.strictEqual(normalizeRole('  manager '), 'Manager');

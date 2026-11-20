@@ -90,8 +90,8 @@ public partial class UsersManagementViewModel : ObservableObject, IDisposable
 
     public async Task EnsureLoadedAsync()
     {
-        await LoadUsersAsync();
-        await CustomerViewModel.InitializeAsync();
+        // Usuarios y clientes son lecturas independientes de la misma pantalla.
+        await Task.WhenAll(LoadUsersAsync(), CustomerViewModel.InitializeAsync());
     }
 
     [RelayCommand]

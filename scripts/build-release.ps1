@@ -1,6 +1,13 @@
 # =====================================================================
 # Script de Compilación y Publicación Autónoma (.NET Self-Contained)
+# Uso: .\build-release.ps1 [-Fast]
+#   -Fast: desactiva ReadyToRun y analyzers en publish, y compila el
+#          instalador Inno Setup con compresión zip/1 (#ifdef FastBuild).
 # =====================================================================
+
+param(
+    [switch]$Fast
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -104,7 +111,7 @@ try {
     }
     Start-Sleep -Milliseconds 300
 
-    Write-Host "[1/7] Limpiando carpetas de salida preexistentes..." -ForegroundColor Cyan
+    Write-Host "[1/8] Limpiando carpetas de salida preexistentes..." -ForegroundColor Cyan
     # El lock de ejecución única debe estar tomado antes de borrar cualquier artefacto.
     if (-not $lockStream) {
         throw "build-release abortado: el lock de ejecución única no está tomado; no se limpia nada."
@@ -117,7 +124,7 @@ try {
     New-Item -ItemType Directory -Path "$rootDir\publish\DesktopClient" | Out-Null
     New-Item -ItemType Directory -Path "$rootDir\publish\UpdaterService" | Out-Null
 
-    Write-Host "[2/7] Compilando React Web.Frontend en Backend.API/wwwroot..." -ForegroundColor Cyan
+    Write-Host "[2/8] Compilando React Web.Frontend en Backend.API/wwwroot..." -ForegroundColor Cyan
     Set-Location "$rootDir\Web.Frontend"
     if (Test-Path "package.json") {
         npm run build
@@ -140,8 +147,22 @@ try {
     }
     Write-Host "Bundle web OK: index.html + $($assetFiles.Count) assets en wwwroot." -ForegroundColor Green
 
-    Write-Host "[3/7] Publicando Backend.API (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
-    dotnet publish "$rootDir\Backend.API\Backend.API.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\BackendAPI"
+    $publishOptimizationArgs = @()
+    if ($Fast) {
+        $publishOptimizationArgs += '-p:PublishReadyToRun=false'
+        $publishOptimizationArgs += '-p:RunAnalyzers=false'
+        Write-Host "Modo Fast activo: publish sin ReadyToRun ni analyzers." -ForegroundColor Yellow
+    }
+
+    # Un solo restore RID para los tres publish; evita que cada publish vuelva a restaurar.
+    Write-Host "[3/8] Restaurando dependencias para win-x64 (una sola vez)..." -ForegroundColor Cyan
+    dotnet restore "$rootDir\CommandCenter.slnx" -r win-x64
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet restore falló para win-x64 (exit $LASTEXITCODE)."
+    }
+
+    Write-Host "[4/8] Publicando Backend.API (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
+    dotnet publish "$rootDir\Backend.API\Backend.API.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true --no-restore @publishOptimizationArgs -o "$rootDir\publish\BackendAPI"
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet publish falló para Backend.API (exit $LASTEXITCODE)."
     }
@@ -150,8 +171,8 @@ try {
         throw "No se generó $backendExe tras dotnet publish."
     }
 
-    Write-Host "[4/7] Publicando Desktop.Client (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
-    dotnet publish "$rootDir\Desktop.Client\Desktop.Client.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\DesktopClient"
+    Write-Host "[5/8] Publicando Desktop.Client (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
+    dotnet publish "$rootDir\Desktop.Client\Desktop.Client.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true --no-restore @publishOptimizationArgs -o "$rootDir\publish\DesktopClient"
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet publish falló para Desktop.Client (exit $LASTEXITCODE)."
     }
@@ -160,8 +181,8 @@ try {
         throw "No se generó $desktopExe tras dotnet publish."
     }
 
-    Write-Host "[5/7] Publicando UpdaterService (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
-    dotnet publish "$rootDir\UpdaterService\UpdaterService.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o "$rootDir\publish\UpdaterService"
+    Write-Host "[6/8] Publicando UpdaterService (.NET win-x64 Self-Contained)..." -ForegroundColor Cyan
+    dotnet publish "$rootDir\UpdaterService\UpdaterService.csproj" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true --no-restore @publishOptimizationArgs -o "$rootDir\publish\UpdaterService"
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet publish falló para UpdaterService (exit $LASTEXITCODE)."
     }
@@ -177,7 +198,7 @@ try {
     # credenciales conocidos (p. ej. PosHttpsDev2026! o la clave JWT dev histórica). Si un
     # publish stale o un cambio deja escapar estos valores, el build se ABORTA antes de
     # empaquetar el instalador que recibiría un cliente.
-    Write-Host "[6/7] Escaneando publish/ por secretos conocidos..." -ForegroundColor Cyan
+    Write-Host "[7/8] Escaneando publish/ por secretos conocidos..." -ForegroundColor Cyan
     $forbiddenLiterals = @('PosHttpsDev2026!', 'ddf95c83c01224202681eee4525087512ece338e47f4c4897b6c5d72459b8795')
     $forbiddenPatterns = @('"Password"\s*:\s*"[^"]+"', '"Key"\s*:\s*"[^"]+"')
     $leakLines = @()
@@ -239,7 +260,7 @@ try {
         }
     }
     if ($testConn) {
-        Write-Host "[7/7] Ejecutando smoke de migracion (IMP-1 / MigratedSchema) contra TEST_POSTGRES_CONNECTION..." -ForegroundColor Cyan
+        Write-Host "[8/8] Ejecutando smoke de migracion (IMP-1 / MigratedSchema) contra TEST_POSTGRES_CONNECTION..." -ForegroundColor Cyan
         $env:TEST_POSTGRES_CONNECTION = $testConn
         dotnet test "$rootDir\CommandCenter.Tests\CommandCenter.Tests.csproj" -c Release --no-build --filter "FullyQualifiedName~MigratedSchema" 2>&1 | Select-Object -Last 3
         if ($LASTEXITCODE -ne 0) {
@@ -247,10 +268,26 @@ try {
         }
         Write-Host "Smoke de migracion OK." -ForegroundColor Green
     } else {
-        Write-Host "[7/7] Smoke de migracion omitido (TEST_POSTGRES_CONNECTION no definida)." -ForegroundColor Yellow
+        Write-Host "[8/8] Smoke de migracion omitido (TEST_POSTGRES_CONNECTION no definida)." -ForegroundColor Yellow
     }
 
+    # ISCC_PATH sigue siendo la fuente principal; si no está definido, se autodetecta
+    # Inno Setup 7/6 para que el pipeline no omita el instalador en un puesto estándar.
     $iscc = $env:ISCC_PATH
+    if (-not $iscc -or -not (Test-Path $iscc)) {
+        $programFiles = [Environment]::GetFolderPath('ProgramFiles')
+        $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
+        $isccCandidates = @()
+        if ($programFiles) {
+            $isccCandidates += Join-Path $programFiles 'Inno Setup 7\ISCC.exe'
+            $isccCandidates += Join-Path $programFiles 'Inno Setup 6\ISCC.exe'
+        }
+        if ($programFilesX86) {
+            $isccCandidates += Join-Path $programFilesX86 'Inno Setup 7\ISCC.exe'
+            $isccCandidates += Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'
+        }
+        $iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    }
     if ($iscc -and (Test-Path $iscc)) {
         $setupIss = Join-Path $rootDir "installer\setup.iss"
 
@@ -266,8 +303,30 @@ try {
 
         $installerOutput = Join-Path $rootDir "dist_installer"
         New-Item -ItemType Directory -Path $installerOutput -Force | Out-Null
-        Write-Host "Compilando instalador con Inno Setup (ISCC)..." -ForegroundColor Cyan
-        & $iscc "/O$installerOutput" $setupIss
+        $isccArgs = @("/O$installerOutput")
+        # ISCC.exe no publica FileVersion (0.0.0.0); se detecta por su ruta estándar
+        # y, si hace falta, por la cabecera de /?.
+        $isccMajor = 7
+        if ($iscc -match 'Inno Setup\s+(\d+)') {
+            $isccMajor = [int]$Matches[1]
+        } else {
+            $isccHeader = (& $iscc /? 2>&1 | Select-Object -First 1) -join ' '
+            if ($isccHeader -match 'Inno Setup\s+(\d+)') {
+                $isccMajor = [int]$Matches[1]
+            }
+        }
+        if ($isccMajor -lt 7) {
+            # Inno Setup 6 aún acepta LZMAUseSeparateProcess; Inno 7 lo ignora y avisa.
+            $isccArgs += '-DInnoSetup6=1'
+        }
+        if ($Fast) {
+            $isccArgs += '-DFastBuild=1'
+            Write-Host "Compilando instalador con Inno Setup (ISCC, FastBuild=zip/1)..." -ForegroundColor Cyan
+        } else {
+            Write-Host "Compilando instalador con Inno Setup (ISCC, lzma2/fast)..." -ForegroundColor Cyan
+        }
+        $isccArgs += $setupIss
+        & $iscc @isccArgs
         if ($LASTEXITCODE -ne 0) {
             throw "iscc.exe fallo al compilar el instalador (codigo $LASTEXITCODE)."
         }

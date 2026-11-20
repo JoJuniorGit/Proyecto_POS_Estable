@@ -135,7 +135,18 @@ public class ConcurrencyPhase4Tests
         string logFile = Core.Logging.AppLogger.SecurityAuditLogPath;
         Assert.True(System.IO.File.Exists(logFile));
 
-        var lines = await System.IO.File.ReadAllLinesAsync(logFile);
+        // El sink asíncrono de otra clase puede estar escribiendo el mismo archivo.
+        using var stream = new System.IO.FileStream(
+            logFile,
+            System.IO.FileMode.Open,
+            System.IO.FileAccess.Read,
+            System.IO.FileShare.ReadWrite);
+        using var reader = new System.IO.StreamReader(stream);
+        var lines = new System.Collections.Generic.List<string>();
+        while (await reader.ReadLineAsync() is { } line)
+        {
+            lines.Add(line);
+        }
         var matchingLine = System.Linq.Enumerable.LastOrDefault(lines, l => l.Contains(action));
         Assert.NotNull(matchingLine);
 

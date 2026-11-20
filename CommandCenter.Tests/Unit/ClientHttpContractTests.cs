@@ -998,11 +998,8 @@ public class ClientHttpContractTests
         var service = new ExchangeRateService(client);
         try
         {
-            // El constructor dispara un GET inicial a api/exchange-rate/today (InitializeAsync);
-            // se espera a que aterrice y se limpia para capturar solo la llamada bajo prueba.
-            await handler.WaitForCountAsync(1);
-            handler.Clear();
-
+            // Sin sesion el servicio ya no dispara un GET inicial; cada llamada bajo prueba
+            // captura exactamente su propia request.
             await invoke(service);
 
             AssertRequest(Assert.Single(handler.Requests), method, path, typeof(ExchangeRateController), actionName, expectedQueryKeys);
@@ -1086,8 +1083,6 @@ public class ClientHttpContractShapeTests
         var service = new ExchangeRateService(client);
         try
         {
-            await handler.WaitForCountAsync(1);
-
             var (rate, lastUpdated) = await service.GetCurrentRateAsync();
 
             Assert.Equal(36.75m, rate);

@@ -210,7 +210,27 @@
                 
                 <!-- 3. Acciones del catálogo a la derecha — compactas para no recortarse -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
-                    <!-- Actualizar: solo ícono -->
+                    <!-- Paso 15: informe ejecutivo de rotacion y stock muerto -->
+                    <Button Command="{Binding OpenInventoryHealthCommand}"
+                            AutomationProperties.AutomationId="Inventory_HealthButton"
+                            Background="#FFFFFF"
+                            BorderBrush="#CBD5E1"
+                            BorderThickness="1"
+                            Foreground="#475569"
+                            Visibility="{Binding CanUseInventoryHealth, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            ToolTipService.InitialShowDelay="150"
+                            ToolTipService.BetweenShowDelay="50"
+                            ToolTipService.ShowDuration="8000"
+                            ToolTip="Salud de inventario: rotacion, stock muerto y capital inmovilizado"
+                            Width="38"
+                            Height="38"
+                            Padding="0"
+                            Margin="0,0,8,0"
+                            materialDesign:ButtonAssist.CornerRadius="6">
+                        <materialDesign:PackIcon Kind="ChartBoxOutline" Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Button>
+
+                    <!-- Actualizar: solo icono -->
                     <Button Command="{Binding RefreshCommand}"
                             AutomationProperties.AutomationId="Inventory_RefreshButton"
                             Background="#FFFFFF"

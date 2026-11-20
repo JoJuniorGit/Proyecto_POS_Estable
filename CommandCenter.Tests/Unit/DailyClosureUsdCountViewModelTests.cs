@@ -15,6 +15,7 @@ namespace CommandCenter.Tests.Unit;
 /// Residual 8.187-8.188: el cierre diario WPF acepta un conteo USD opcional y muestra el arqueo
 /// USD (esperado/diferencia) solo cuando el rol supervisor y el modo no ciego lo permiten.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class DailyClosureUsdCountViewModelTests
 {
     private readonly Mock<IDailyClosureClientService> _closureService = new();

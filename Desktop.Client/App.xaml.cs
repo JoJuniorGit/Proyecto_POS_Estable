@@ -1,3 +1,4 @@
+using Core.Diagnostics;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using System.IO;
@@ -226,6 +227,12 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }));
 
+        // Paso 15: reporte de rotacion/stock muerto y puente de IDs al dialogo del Paso 9.
+        ConfigureClient(builder.Services.AddHttpClient<IInventoryRotationService, InventoryRotationService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
         ConfigureClient(builder.Services.AddHttpClient("Categories", client =>
         {
             client.BaseAddress = baseAddressUri;
@@ -389,9 +396,11 @@ public partial class App : Application
         try
         {
             Core.Logging.AppLogger.LogStart("WPF Desktop Client initializing...");
+            StartupTimeline.Mark("Wpf.OnStartup.Start");
 
             _host = CreateAndStartHost(e.Args);
             await _host.StartAsync();
+            StartupTimeline.Mark("Wpf.Host.Started");
 
             var versionService = _host.Services.GetRequiredService<IVersionCheckService>();
             // 8.9-M12: timeout de 5s en el arranque — si el servidor no responde, se continúa
@@ -415,6 +424,7 @@ public partial class App : Application
                 return;
             }
 
+            StartupTimeline.Mark("Wpf.VersionCheck.Done");
             Core.Logging.AppLogger.LogStart("WPF Desktop Client version check passed. Displaying MainWindow.");
 
             // Restaurar sesión previa resguardada en DPAPI (H-DCC-11 / R7)
@@ -442,58 +452,77 @@ public partial class App : Application
                 Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.RestoreToken");
             }
 
-            // 8.143: el formato de moneda configurado server-side (Venezolano/Internacional) debe
-            // honrarse en el display del WPF. Carga best-effort con timeout acotado: un backend
-            // caído no debe demorar MainWindow.Show() más allá de 2s; si falla o expira, queda Venezuelan.
-            try
-            {
-                var settingsService = _host.Services.GetRequiredService<ISettingsService>();
-                CurrencyDisplay.SetFromSetting(await settingsService.GetCurrencyFormatAsync().WaitAsync(TimeSpan.FromSeconds(2)));
-            }
-            catch (TimeoutException)
-            {
-                CurrencyDisplay.SetFromSetting(null);
-            }
-            catch (Exception ex)
-            {
-                Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadCurrencyFormat");
-                CurrencyDisplay.SetFromSetting(null);
-            }
+            StartupTimeline.Mark("Wpf.SessionReady");
 
             // 8.211-T6-U12b: install the profile-change listener before applying the profile so
             // every later profile refresh re-evaluates amount bindings in open windows.
             CurrencyBindingRefresher.Install();
 
-            // 8.211-T4c1 (S9): perfil monetario activo (modo/códigos/símbolos) para la presentación.
-            // Lectura read-only best-effort con timeout duro de 2s: si falla o expira, CurrencyDisplay
-            // conserva los defaults Dual USD/VES y MainWindow.Show() no se retrasa.
-            try
-            {
-                var monetaryProfileService = _host.Services.GetRequiredService<IClientMonetaryProfileService>();
-                using var monetaryProfileCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
-                var monetaryProfile = await monetaryProfileService.GetAsync(monetaryProfileCts.Token);
-                if (monetaryProfile is null)
-                {
-                    Core.Logging.AppLogger.LogWarn(
-                        "No se pudo cargar el perfil monetario; se usan los defaults Dual USD/VES.",
-                        "App.OnStartup.LoadMonetaryProfile");
-                }
-
-                CurrencyDisplay.SetMonetaryProfile(monetaryProfile);
-            }
-            catch (Exception ex)
-            {
-                Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadMonetaryProfile");
-                CurrencyDisplay.SetMonetaryProfile(null);
-            }
-
+            // El primer paint no espera lecturas de presentacion. El formato y el perfil se
+            // aplican despues de mostrar Login/Shell y refrescan los bindings con los mensajes
+            // existentes; si el backend no responde, quedan los defaults Dual USD/VES.
+            var settingsService = _host.Services.GetRequiredService<ISettingsService>();
+            var monetaryProfileService = _host.Services.GetRequiredService<IClientMonetaryProfileService>();
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
+            StartupTimeline.Mark("Wpf.MainWindow.Shown");
+
+            _ = LoadDisplaySettingsAfterShowAsync(settingsService, monetaryProfileService);
         }
         catch (Exception fatalEx)
         {
             Core.Logging.AppLogger.LogCrash(fatalEx, "WpfDesktop.OnStartupFatal");
             throw;
+        }
+    }
+
+    private static async Task LoadDisplaySettingsAfterShowAsync(
+        ISettingsService settingsService,
+        IClientMonetaryProfileService monetaryProfileService)
+    {
+        var currencyTask = LoadCurrencyFormatAsync(settingsService);
+        var profileTask = LoadMonetaryProfileAsync(monetaryProfileService);
+        await Task.WhenAll(currencyTask, profileTask);
+        StartupTimeline.Mark("Wpf.DisplaySettings.Loaded");
+    }
+
+    private static async Task LoadCurrencyFormatAsync(ISettingsService settingsService)
+    {
+        try
+        {
+            CurrencyDisplay.SetFromSetting(
+                await settingsService.GetCurrencyFormatAsync().WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        catch (TimeoutException)
+        {
+            CurrencyDisplay.SetFromSetting(null);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadCurrencyFormat");
+            CurrencyDisplay.SetFromSetting(null);
+        }
+    }
+
+    private static async Task LoadMonetaryProfileAsync(IClientMonetaryProfileService monetaryProfileService)
+    {
+        try
+        {
+            using var monetaryProfileCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
+            var monetaryProfile = await monetaryProfileService.GetAsync(monetaryProfileCts.Token);
+            if (monetaryProfile is null)
+            {
+                Core.Logging.AppLogger.LogWarn(
+                    "No se pudo cargar el perfil monetario; se usan los defaults Dual USD/VES.",
+                    "App.OnStartup.LoadMonetaryProfile");
+            }
+
+            CurrencyDisplay.SetMonetaryProfile(monetaryProfile);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadMonetaryProfile");
+            CurrencyDisplay.SetMonetaryProfile(null);
         }
     }
 

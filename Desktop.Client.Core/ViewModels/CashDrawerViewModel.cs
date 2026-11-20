@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
+using Core.Diagnostics;
 using Core.Helpers;
 using Desktop.Client.Services;
 using System;
@@ -444,12 +445,19 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
 
         try
         {
+            StartupTimeline.Mark("Wpf.CashDrawer.Load.Start");
             ActiveSession = await _cashDrawerService.GetActiveSessionAsync();
-            await LoadPhysicalMethodBalancesAsync();
 
-            // Historial persistente: movimientos físicos de TODAS las sesiones (activa y cerradas),
-            // para conservar la trazabilidad de las sesiones previas tras el cierre de caja.
-            var history = await _cashDrawerService.GetHistoryAsync(HistoryWindowSize);
+            // Despues de resolver la sesion activa, balances/historial/saldo son independientes.
+            var historyTask = _cashDrawerService.GetHistoryAsync(HistoryWindowSize);
+            var physicalTask = LoadPhysicalMethodBalancesAsync();
+            var balanceTask = ActiveSession != null && CanViewTheoreticalBalance
+                ? _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id)
+                : Task.FromResult(0m);
+
+            await Task.WhenAll(historyTask, physicalTask, balanceTask);
+
+            var history = await historyTask;
             _allPhysicalTransactions.Clear();
             if (history != null && history.Count > 0)
             {
@@ -459,9 +467,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             if (ActiveSession != null)
             {
                 // 8.153 (SEC-06): el fetch del saldo teórico existe solo para supervisores.
-                CurrentBalanceBsS = CanViewTheoreticalBalance
-                    ? await _cashDrawerService.GetCurrentBalanceLocalAsync(ActiveSession.Id)
-                    : 0;
+                CurrentBalanceBsS = await balanceTask;
                 RecentIncomes.Clear();
                 if (ActiveSession.Transactions != null)
                 {
@@ -485,6 +491,7 @@ public partial class CashDrawerViewModel : ObservableObject, IDisposable
             }
             ApplyTransactionFilter();
             UpdateFormattedBalances();
+            StartupTimeline.Mark("Wpf.CashDrawer.Load.Done");
 
             // T4 (Paso 13 / 8.188, S1): el panel de caja chica conserva el turno sincronizado.
             if (IsPettyCashPanelOpen)

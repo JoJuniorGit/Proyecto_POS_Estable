@@ -45,7 +45,18 @@ public class CreditMoraJob : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await Backend.API.Startup.StartupReadiness.WaitUntilReadyAsync(stoppingToken);
         _logger.LogInformation("[CREDIT_MORA] Barrido programado de cartera CxC iniciado con intervalo de {Interval}.", _interval);
+
+        // No competir con Kestrel ni con el primer request durante el arranque en frio.
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
 
         using var timer = new PeriodicTimer(_interval);
 

@@ -1,0 +1,491 @@
+<Window x:Class="Desktop.Client.Views.InventoryHealthDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        mc:Ignorable="d"
+        TextElement.Foreground="#1E293B"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Auto"
+        Background="#F1F5F9"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        Title="Salud de inventario"
+        Height="860" Width="1360"
+        MinHeight="680" MinWidth="1080"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        PreviewKeyDown="InventoryHealthDialog_PreviewKeyDown"
+        AutomationProperties.AutomationId="InventoryHealthDialog">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <Style x:Key="HealthCard" TargetType="Border">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="14"/>
+        </Style>
+
+        <Style x:Key="KpiLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <Style x:Key="KpiValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="22"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#0F172A"/>
+            <Setter Property="Margin" Value="0,2,0,0"/>
+        </Style>
+
+        <Style x:Key="HealthHeader" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        </Style>
+
+        <Style x:Key="HealthCell" TargetType="DataGridCell">
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="HealthRow" TargetType="DataGridRow">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="MinHeight" Value="40"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#F8FAFC"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Salud de inventario"
+                           FontSize="24" FontWeight="Bold" Foreground="#0F172A"/>
+                <TextBlock Text="Rotacion comercial, stock muerto y capital inmovilizado"
+                           FontSize="12" Foreground="#64748B" Margin="0,3,0,0"/>
+                <TextBlock Text="{Binding FilterSummary}"
+                           FontSize="11" Foreground="#94A3B8" Margin="0,6,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Command="{Binding RefreshCommand}"
+                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                        Height="36" Padding="14,0" Margin="0,0,8,0"
+                        ToolTip="Recargar reporte (F5)">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Refresh" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock Text="Actualizar" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+                <Button Command="{Binding CloseCommand}"
+                        Style="{DynamicResource MaterialDesignFlatButton}"
+                        Height="36" Width="36" Padding="0"
+                        ToolTip="Cerrar">
+                    <materialDesign:PackIcon Kind="Close" Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Filters -->
+        <Border Grid.Row="1" Style="{StaticResource HealthCard}" Margin="0,0,0,12" Padding="12,10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*" MinWidth="180" MaxWidth="320"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                    <TextBlock Text="Categoria" Style="{StaticResource KpiLabel}" Margin="0,0,0,3"/>
+                    <ComboBox ItemsSource="{Binding CategoryFilterOptions}"
+                              SelectedItem="{Binding SelectedCategoryFilter, Mode=TwoWay}"
+                              DisplayMemberPath="Path"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              Height="36" MinWidth="170"
+                              AutomationProperties.AutomationId="InventoryHealth_CategoryFilter"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                    <TextBlock Text="Ventana de ventas" Style="{StaticResource KpiLabel}" Margin="0,0,0,3"/>
+                    <ComboBox ItemsSource="{Binding SalesWindowDayOptions}"
+                              SelectedItem="{Binding SalesWindowDays, Mode=TwoWay}"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              Height="36" Width="120"
+                              AutomationProperties.AutomationId="InventoryHealth_SalesWindow"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Margin="0,0,12,0">
+                    <TextBlock Text="Stock muerto desde" Style="{StaticResource KpiLabel}" Margin="0,0,0,3"/>
+                    <ComboBox ItemsSource="{Binding DeadStockDayOptions}"
+                              SelectedItem="{Binding DeadStockDays, Mode=TwoWay}"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              Height="36" Width="120"
+                              AutomationProperties.AutomationId="InventoryHealth_DeadStockDays"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="3" Margin="0,0,12,0">
+                    <TextBlock Text="Producto o SKU" Style="{StaticResource KpiLabel}" Margin="0,0,0,3"/>
+                    <TextBox Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                             materialDesign:HintAssist.Hint="Buscar..."
+                             materialDesign:TextFieldAssist.HasClearButton="True"
+                             Height="36"
+                             AutomationProperties.AutomationId="InventoryHealth_Search"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="4" Margin="0,0,12,0">
+                    <TextBlock Text="Rotacion" Style="{StaticResource KpiLabel}" Margin="0,0,0,3"/>
+                    <ComboBox ItemsSource="{Binding RotationClassOptions}"
+                              SelectedItem="{Binding SelectedRotationClassOption, Mode=TwoWay}"
+                              DisplayMemberPath="Label"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              Height="36" Width="160"
+                              AutomationProperties.AutomationId="InventoryHealth_RotationClass"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="5" VerticalAlignment="Bottom" Orientation="Horizontal">
+                    <Button Command="{Binding RefreshCommand}"
+                            Style="{DynamicResource MaterialDesignOutlinedButton}"
+                            Height="36" Padding="14,0" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Filter" Width="17" Height="17" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Aplicar filtros" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding ApplyPromotionCommand}"
+                            Background="#5E35B1" BorderBrush="#5E35B1" Foreground="#FFFFFF"
+                            Style="{DynamicResource MaterialDesignRaisedButton}"
+                            Height="36" Padding="14,0"
+                            ToolTip="Abrir Edicion Multiple de Precios con los productos en stock muerto">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="TagOutline" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Aplicar Promocion / Descuento" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <Border Grid.Row="1" Grid.ColumnSpan="6"
+                        Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1"
+                        CornerRadius="6" Padding="10,7" Margin="0,10,0,0"
+                        Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding ErrorMessage}" Foreground="#B91C1C" FontSize="12" TextWrapping="Wrap"/>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Executive cards and distribution chart -->
+        <Grid Grid.Row="2" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2.2*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+
+            <UniformGrid Grid.Column="0" Columns="2" Rows="2" Margin="0,0,12,0">
+                <Border Style="{StaticResource HealthCard}" Margin="0,0,8,8">
+                    <StackPanel>
+                        <TextBlock Text="ALTA ROTACION" Style="{StaticResource KpiLabel}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                            <TextBlock Text="{Binding Summary.HighRotationCount}" Style="{StaticResource KpiValue}" Foreground="#15803D"/>
+                            <TextBlock Text="{Binding Summary.HighRotationPercent, StringFormat={}{0:N1}%}"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="#16A34A"
+                                       VerticalAlignment="Bottom" Margin="8,0,0,4"/>
+                        </StackPanel>
+                        <ProgressBar Value="{Binding Summary.HighRotationPercent}" Maximum="100" Height="7"
+                                     Background="#DCFCE7" Foreground="#22C55E" BorderThickness="0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource HealthCard}" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="MEDIA ROTACION" Style="{StaticResource KpiLabel}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                            <TextBlock Text="{Binding Summary.MediumRotationCount}" Style="{StaticResource KpiValue}" Foreground="#B45309"/>
+                            <TextBlock Text="{Binding Summary.MediumRotationPercent, StringFormat={}{0:N1}%}"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="#D97706"
+                                       VerticalAlignment="Bottom" Margin="8,0,0,4"/>
+                        </StackPanel>
+                        <ProgressBar Value="{Binding Summary.MediumRotationPercent}" Maximum="100" Height="7"
+                                     Background="#FEF3C7" Foreground="#F59E0B" BorderThickness="0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource HealthCard}" Margin="0,0,8,0">
+                    <StackPanel>
+                        <TextBlock Text="STOCK MUERTO" Style="{StaticResource KpiLabel}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                            <TextBlock Text="{Binding Summary.DeadStockCount}" Style="{StaticResource KpiValue}" Foreground="#B91C1C"/>
+                            <TextBlock Text="{Binding Summary.DeadStockPercent, StringFormat={}{0:N1}%}"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="#DC2626"
+                                       VerticalAlignment="Bottom" Margin="8,0,0,4"/>
+                        </StackPanel>
+                        <ProgressBar Value="{Binding Summary.DeadStockPercent}" Maximum="100" Height="7"
+                                     Background="#FEE2E2" Foreground="#EF4444" BorderThickness="0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource HealthCard}">
+                    <StackPanel>
+                        <TextBlock Text="CAPITAL INMOVILIZADO" Style="{StaticResource KpiLabel}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                            <TextBlock Text="{Binding Summary.ImmobilizedCapitalUsd, StringFormat='${0:N2}'}" Style="{StaticResource KpiValue}" Foreground="#B91C1C"/>
+                            <TextBlock Text="{Binding Summary.ImmobilizedCapitalPercent, StringFormat='{}{0:N1}% del inventario'}"
+                                       FontSize="11" FontWeight="SemiBold" Foreground="#DC2626"
+                                       VerticalAlignment="Bottom" Margin="8,0,0,4"/>
+                        </StackPanel>
+                        <ProgressBar Value="{Binding Summary.ImmobilizedCapitalPercent}" Maximum="100" Height="7"
+                                     Background="#FEE2E2" Foreground="#B91C1C" BorderThickness="0"/>
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <Border Grid.Column="1" Style="{StaticResource HealthCard}">
+                <StackPanel>
+                    <TextBlock Text="Distribucion del inventario" FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"/>
+                    <TextBlock Text="{Binding Summary.TotalProducts, StringFormat='{}{0} productos analizados'}"
+                               FontSize="11" Foreground="#64748B" Margin="0,2,0,12"/>
+
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="88"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="48"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Alta" Foreground="#15803D" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <ProgressBar Grid.Column="1" Value="{Binding Summary.HighRotationPercent}" Maximum="100"
+                                     Height="8" Background="#DCFCE7" Foreground="#22C55E" BorderThickness="0" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{Binding Summary.HighRotationPercent, StringFormat={}{0:N0}%}"
+                                   FontSize="11" Foreground="#15803D" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="88"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="48"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Media" Foreground="#B45309" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <ProgressBar Grid.Column="1" Value="{Binding Summary.MediumRotationPercent}" Maximum="100"
+                                     Height="8" Background="#FEF3C7" Foreground="#F59E0B" BorderThickness="0" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{Binding Summary.MediumRotationPercent, StringFormat={}{0:N0}%}"
+                                   FontSize="11" Foreground="#B45309" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="88"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="48"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Baja" Foreground="#475569" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <ProgressBar Grid.Column="1" Value="{Binding Summary.LowRotationPercent}" Maximum="100"
+                                     Height="8" Background="#E2E8F0" Foreground="#64748B" BorderThickness="0" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{Binding Summary.LowRotationPercent, StringFormat={}{0:N0}%}"
+                                   FontSize="11" Foreground="#475569" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid Margin="0,0,0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="88"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="48"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Inmovilizado" Foreground="#B91C1C" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <ProgressBar Grid.Column="1" Value="{Binding Summary.ImmobilizedCapitalPercent}" Maximum="100"
+                                     Height="8" Background="#FEE2E2" Foreground="#EF4444" BorderThickness="0" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="2" Text="{Binding Summary.ImmobilizedCapitalPercent, StringFormat={}{0:N0}%}"
+                                   FontSize="11" Foreground="#B91C1C" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Separator Background="#E2E8F0" Margin="0,10,0,8"/>
+                    <TextBlock Text="{Binding Summary.TotalInventoryValueUsd, StringFormat='Valor total: ${0:N2}'}"
+                               FontSize="11" Foreground="#475569"/>
+                    <TextBlock Text="{Binding GeneratedAtText}" FontSize="10" Foreground="#94A3B8" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Data -->
+        <TabControl Grid.Row="3" Background="Transparent" BorderThickness="0"
+                    AutomationProperties.AutomationId="InventoryHealth_Tabs">
+            <TabItem Header="Productos">
+                <Border Style="{StaticResource HealthCard}" Padding="0">
+                    <DataGrid ItemsSource="{Binding Products}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#F1F5F9"
+                              RowHeaderWidth="0"
+                              ColumnHeaderStyle="{StaticResource HealthHeader}"
+                              CellStyle="{StaticResource HealthCell}"
+                              RowStyle="{StaticResource HealthRow}"
+                              Background="#FFFFFF"
+                              BorderThickness="0"
+                              AutomationProperties.AutomationId="InventoryHealth_ProductsGrid">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="PRODUCTO" Width="*" MinWidth="220">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#0F172A" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding SKU}" FontSize="10" Foreground="#94A3B8" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="CATEGORIA" Binding="{Binding CategoryName}" Width="130"/>
+                            <DataGridTextColumn Header="STOCK" Binding="{Binding StockQuantity, StringFormat={}{0:N2}}" Width="78">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="VALOR USD" Binding="{Binding InventoryValueUsd, StringFormat={}{0:N2}}" Width="95">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="VENDIDOS" Binding="{Binding UnitsSold, StringFormat={}{0:N1}}" Width="82">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="VEL./DIA" Binding="{Binding SalesVelocityPerDay, StringFormat={}{0:N3}}" Width="82">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="DIAS INV." Binding="{Binding AverageInventoryDays, StringFormat={}{0:N1}, TargetNullValue=—}" Width="82">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="ULTIMA VENTA" Binding="{Binding LastSaleDateUtc, StringFormat={}{0:dd/MM/yyyy}, TargetNullValue=—}" Width="100"/>
+                            <DataGridTextColumn Header="DIAS SIN VENTA" Binding="{Binding DaysSinceLastSale}" Width="105">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTemplateColumn Header="ESTADO" Width="92">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="9" Padding="8,3" HorizontalAlignment="Left">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#E2E8F0"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding RotationClass}" Value="High">
+                                                            <Setter Property="Background" Value="#DCFCE7"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding RotationClass}" Value="Medium">
+                                                            <Setter Property="Background" Value="#FEF3C7"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding RotationClass}" Value="DeadStock">
+                                                            <Setter Property="Background" Value="#FEE2E2"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding RotationClassLabel}" FontSize="10" FontWeight="SemiBold" Foreground="#334155"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="Categorias">
+                <Border Style="{StaticResource HealthCard}" Padding="0">
+                    <DataGrid ItemsSource="{Binding Categories}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              CanUserAddRows="False"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#F1F5F9"
+                              RowHeaderWidth="0"
+                              ColumnHeaderStyle="{StaticResource HealthHeader}"
+                              CellStyle="{StaticResource HealthCell}"
+                              RowStyle="{StaticResource HealthRow}"
+                              Background="#FFFFFF"
+                              BorderThickness="0"
+                              AutomationProperties.AutomationId="InventoryHealth_CategoriesGrid">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="CATEGORIA" Binding="{Binding CategoryName}" Width="*" MinWidth="220"/>
+                            <DataGridTextColumn Header="PRODUCTOS" Binding="{Binding ProductCount}" Width="95"/>
+                            <DataGridTextColumn Header="STOCK" Binding="{Binding StockQuantity, StringFormat={}{0:N2}}" Width="95"/>
+                            <DataGridTextColumn Header="VALOR USD" Binding="{Binding InventoryValueUsd, StringFormat={}{0:N2}}" Width="105"/>
+                            <DataGridTextColumn Header="VENDIDOS" Binding="{Binding UnitsSold, StringFormat={}{0:N1}}" Width="95"/>
+                            <DataGridTextColumn Header="DIAS INV." Binding="{Binding AverageInventoryDays, StringFormat={}{0:N1}, TargetNullValue=—}" Width="95"/>
+                            <DataGridTextColumn Header="MUERTOS" Binding="{Binding DeadStockCount}" Width="85"/>
+                            <DataGridTextColumn Header="CAPITAL INMOV." Binding="{Binding ImmobilizedCapitalUsd, StringFormat={}{0:N2}}" Width="125"/>
+                            <DataGridTextColumn Header="ESTADO" Binding="{Binding RotationClassLabel}" Width="90"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+            </TabItem>
+        </TabControl>
+
+        <!-- Footer -->
+        <Grid Grid.Row="4" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="{Binding PageSummary}" Foreground="#64748B" FontSize="11" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Command="{Binding PreviousPageCommand}" Style="{DynamicResource MaterialDesignOutlinedButton}"
+                        Height="32" Padding="12,0" Margin="0,0,8,0" Content="Anterior"/>
+                <Button Command="{Binding NextPageCommand}" Style="{DynamicResource MaterialDesignOutlinedButton}"
+                        Height="32" Padding="12,0" Content="Siguiente"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Loading overlay -->
+        <Border Grid.RowSpan="5" Background="#B3F1F5F9"
+                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ProgressBar IsIndeterminate="True" Width="180" Height="5" Foreground="#5E35B1"/>
+                <TextBlock Text="Calculando rotacion de inventario..."
+                           Foreground="#475569" FontSize="12" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

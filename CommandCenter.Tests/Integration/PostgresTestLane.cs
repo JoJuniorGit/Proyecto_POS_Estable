@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
@@ -185,6 +186,11 @@ internal static class PostgresTestLane
 internal sealed class IsolatedPostgresDatabase : IAsyncDisposable
 {
     private const string DatabasePrefix = "cc_pg_lane_";
+    private const string TemplatePrefix = "cc_pg_template_";
+
+    private static readonly SemaphoreSlim TemplateGate = new(1, 1);
+    private static string? _migratedTemplateName;
+    private static string? _templateBaseConnectionString;
 
     private bool _disposed;
 
@@ -233,11 +239,17 @@ internal sealed class IsolatedPostgresDatabase : IAsyncDisposable
     {
         var connection = PostgresTestLane.RequireResolution();
         string databaseName = DatabasePrefix + Guid.NewGuid().ToString("N");
+        string? templateName = applyMigrations
+            ? await EnsureTemplateAsync(connection, cancellationToken)
+            : null;
 
         await using (var maintenance = new NpgsqlConnection(PostgresTestLane.BuildMaintenanceConnectionString(connection.ConnectionString)))
         {
             await maintenance.OpenAsync(cancellationToken);
-            await using var create = new NpgsqlCommand($"CREATE DATABASE \"{databaseName}\"", maintenance);
+            string createSql = templateName is null
+                ? $"CREATE DATABASE \"{databaseName}\""
+                : $"CREATE DATABASE \"{databaseName}\" WITH TEMPLATE \"{templateName}\"";
+            await using var create = new NpgsqlCommand(createSql, maintenance);
             await create.ExecuteNonQueryAsync(cancellationToken);
         }
 
@@ -247,19 +259,11 @@ internal sealed class IsolatedPostgresDatabase : IAsyncDisposable
 
         try
         {
-            if (applyMigrations || seedStandardSalesData)
+            if (seedStandardSalesData)
             {
                 await using var context = database.CreateSalesDbContext();
-                if (applyMigrations)
-                {
-                    await context.Database.MigrateAsync(cancellationToken);
-                }
-
-                if (seedStandardSalesData)
-                {
-                    await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
-                    await AlignSerialSequencesAsync(context, cancellationToken);
-                }
+                await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+                await AlignSerialSequencesAsync(context, cancellationToken);
             }
 
             if (applyInventoryMigrations)
@@ -275,6 +279,190 @@ internal sealed class IsolatedPostgresDatabase : IAsyncDisposable
             await database.DisposeAsync();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Crea una base plantilla migrada una sola vez por proceso. Los tests que piden
+    /// migraciones clonan esa plantilla con CREATE DATABASE ... TEMPLATE; solo los tests
+    /// que validan migraciones desde cero (applyMigrations:false) crean una base vacía.
+    /// </summary>
+    private static async Task<string> EnsureTemplateAsync(
+        PostgresLaneConnection connection,
+        CancellationToken cancellationToken)
+    {
+        if (_migratedTemplateName is not null
+            && string.Equals(_templateBaseConnectionString, connection.ConnectionString, StringComparison.Ordinal))
+        {
+            return _migratedTemplateName;
+        }
+
+        await TemplateGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_migratedTemplateName is not null
+                && string.Equals(_templateBaseConnectionString, connection.ConnectionString, StringComparison.Ordinal))
+            {
+                return _migratedTemplateName;
+            }
+
+            await CleanupStaleTemplatesAsync(connection.ConnectionString, cancellationToken);
+
+            string templateName = TemplatePrefix + Environment.ProcessId + "_" + Guid.NewGuid().ToString("N");
+            await CreateDatabaseAsync(connection.ConnectionString, templateName, cancellationToken);
+
+            try
+            {
+                string templateConnectionString = PostgresTestLane.BuildDatabaseConnectionString(
+                    connection.ConnectionString,
+                    templateName);
+                var options = new DbContextOptionsBuilder<SalesDbContext>()
+                    .UseNpgsql(templateConnectionString)
+                    .Options;
+
+                await using (var context = new SalesDbContext(options))
+                {
+                    await context.Database.MigrateAsync(cancellationToken);
+                }
+
+                // La plantilla debe quedar sin conexiones pooled antes de clonarla.
+                NpgsqlConnection.ClearAllPools();
+                _templateBaseConnectionString = connection.ConnectionString;
+                _migratedTemplateName = templateName;
+                RegisterTemplateCleanup(templateName, connection.ConnectionString);
+                return templateName;
+            }
+            catch
+            {
+                await DropDatabaseAsync(connection.ConnectionString, templateName);
+                throw;
+            }
+        }
+        finally
+        {
+            TemplateGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Limpia plantillas de procesos que ya terminaron. No toca plantillas de procesos vivos:
+    /// una corrida concurrente puede estar clonándolas.
+    /// </summary>
+    private static async Task CleanupStaleTemplatesAsync(
+        string baseConnectionString,
+        CancellationToken cancellationToken)
+    {
+        await using var maintenance = new NpgsqlConnection(
+            PostgresTestLane.BuildMaintenanceConnectionString(baseConnectionString));
+        await maintenance.OpenAsync(cancellationToken);
+
+        var staleTemplates = new List<string>();
+        await using (var list = new NpgsqlCommand(
+            "SELECT datname FROM pg_database WHERE datname LIKE 'cc_pg_template_%'",
+            maintenance))
+        await using (var reader = await list.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                string databaseName = reader.GetString(0);
+                if (TryGetTemplateProcessId(databaseName, out int processId)
+                    && !IsProcessAlive(processId))
+                {
+                    staleTemplates.Add(databaseName);
+                }
+            }
+        }
+
+        foreach (string databaseName in staleTemplates)
+        {
+            await using var drop = new NpgsqlCommand(
+                $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)",
+                maintenance);
+            await drop.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private static bool TryGetTemplateProcessId(string databaseName, out int processId)
+    {
+        processId = 0;
+        const string seededPrefix = "cc_pg_template_seed_";
+        const string migratedPrefix = "cc_pg_template_";
+        string? suffix = databaseName.StartsWith(seededPrefix, StringComparison.Ordinal)
+            ? databaseName.Substring(seededPrefix.Length)
+            : databaseName.StartsWith(migratedPrefix, StringComparison.Ordinal)
+                ? databaseName.Substring(migratedPrefix.Length)
+                : null;
+
+        if (suffix is null)
+        {
+            return false;
+        }
+
+        int separator = suffix.IndexOf('_');
+        return separator > 0
+            && int.TryParse(suffix.AsSpan(0, separator), out processId);
+    }
+
+    private static bool IsProcessAlive(int processId)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task CreateDatabaseAsync(
+        string baseConnectionString,
+        string databaseName,
+        CancellationToken cancellationToken)
+    {
+        await using var maintenance = new NpgsqlConnection(
+            PostgresTestLane.BuildMaintenanceConnectionString(baseConnectionString));
+        await maintenance.OpenAsync(cancellationToken);
+        await using var create = new NpgsqlCommand($"CREATE DATABASE \"{databaseName}\"", maintenance);
+        await create.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task DropDatabaseAsync(string baseConnectionString, string databaseName)
+    {
+        NpgsqlConnection.ClearAllPools();
+        await using var maintenance = new NpgsqlConnection(
+            PostgresTestLane.BuildMaintenanceConnectionString(baseConnectionString));
+        await maintenance.OpenAsync();
+        await using var drop = new NpgsqlCommand(
+            $"DROP DATABASE IF EXISTS \"{databaseName}\" WITH (FORCE)",
+            maintenance);
+        await drop.ExecuteNonQueryAsync();
+    }
+
+    private static void RegisterTemplateCleanup(string templateName, string baseConnectionString)
+    {
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try
+            {
+                NpgsqlConnection.ClearAllPools();
+                using var maintenance = new NpgsqlConnection(
+                    PostgresTestLane.BuildMaintenanceConnectionString(baseConnectionString));
+                maintenance.Open();
+                using var drop = new NpgsqlCommand(
+                    $"DROP DATABASE IF EXISTS \"{templateName}\" WITH (FORCE)",
+                    maintenance);
+                drop.ExecuteNonQuery();
+            }
+            catch
+            {
+                // Limpieza best-effort: el template no debe romper el cierre del testhost.
+            }
+        };
     }
 
     public async ValueTask DisposeAsync()

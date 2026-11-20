@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Core.Common;
+using Core.Diagnostics;
 using Core.DTOs;
 using Core.Entities;
 using Core.Helpers;
@@ -193,8 +194,9 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
         }
 
         _hasLoaded = true;
-        await LoadCategoriesAsync();
-        await LoadSessionsAsync();
+        StartupTimeline.Mark("Wpf.StockCount.Load.Start");
+        await Task.WhenAll(LoadCategoriesAsync(), LoadSessionsAsync());
+        StartupTimeline.Mark("Wpf.StockCount.Load.Done");
     }
 
     [RelayCommand]

@@ -57,6 +57,19 @@ public interface IInventoryService
     Task<IReadOnlyDictionary<int, Core.DTOs.ProfitabilityProductInfoDto>> GetProductCategoryInfoAsync(
         IReadOnlyCollection<int> productIds,
         System.Threading.CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Paso 15 (S1-S3): snapshot de catalogo para el reporte de rotacion. <paramref name="productIds"/>
+    /// nulo significa todo el universo; una coleccion vacia devuelve vacio. Excluye productos
+    /// borrados, avances de efectivo y cabeceras de grupo; incluye inactivos para no ocultar capital
+    /// retenido. El nombre de categoria es la primera asignacion por CategoryId, igual que
+    /// <see cref="GetProductCategoryInfoAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<Core.DTOs.InventoryRotationProductSnapshotDto>> GetInventoryRotationProductsAsync(
+        IReadOnlyCollection<int>? productIds,
+        string? searchText,
+        System.Threading.CancellationToken cancellationToken = default);
+
     Task EnrollInTransactionAsync(System.Data.Common.DbTransaction transaction, System.Threading.CancellationToken cancellationToken = default);
     /// <summary>Restaura la conexión propia del scope tras una transacción compartida (8.7-B7).</summary>
     Task DetachFromTransactionAsync(System.Threading.CancellationToken cancellationToken = default);

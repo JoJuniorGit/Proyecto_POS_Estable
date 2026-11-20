@@ -20,6 +20,7 @@ namespace CommandCenter.Tests.Unit;
 /// la regla cash por línea es el snapshot resuelto por el servidor al agregar, el toggle
 /// (nunca-hacia-abajo) se refresca por políticas y la tasa se recalcula en memoria.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.WeakMessengerStateCollection.Name)]
 public class PriceVesSurfaceParityTests
 {
     private const decimal Rate = 36.50m;

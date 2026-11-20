@@ -81,6 +81,8 @@ public static class ServiceCollectionExtensions
         builder.Services.AddScoped<Sales.Module.Interfaces.IProfitabilityService, Sales.Module.Services.ProfitabilityService>();
         // Paso 14 (F3-S2/F3-S5): exportacion server-side CSV/XLSX con detalle de Caja Chica.
         builder.Services.AddScoped<Sales.Module.Interfaces.IProfitabilityExportService, Sales.Module.Services.ProfitabilityExportService>();
+        // Paso 15 (S1-S7): rotacion y stock muerto on-demand; el catalogo se resuelve por IInventoryService.
+        builder.Services.AddScoped<Sales.Module.Interfaces.IInventoryRotationService, Sales.Module.Services.InventoryRotationService>();
         builder.Services.AddScoped<ITimeZoneProvider, Core.Services.TimeZoneProvider>();
         builder.Services.AddScoped<IExchangeRateHistoryService, ExchangeRateHistoryService>();
         builder.Services.AddScoped<IInventoryHealthProbe, InventoryHealthProbe>();

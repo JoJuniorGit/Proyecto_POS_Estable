@@ -30,6 +30,10 @@
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- El harness full-stack vive en el proyecto E2E; se compila también aquí para los tests de
        integración/unitarios que se degradaron desde la cúpula E2E (WU1). -->
   <ItemGroup>

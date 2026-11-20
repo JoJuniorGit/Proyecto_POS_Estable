@@ -30,6 +30,7 @@ public class BcvExchangeRateJob : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await Backend.API.Startup.StartupReadiness.WaitUntilReadyAsync(stoppingToken);
         // 8.16-B09/B10: la sincronizacion automatica del BCV es CONFIGURABLE.
         // "BcvSettings:AutoSyncIntervalMinutes" (default 120 = 2h); un valor <= 0 desactiva
         // el ciclo periodico (modo manual exclusivo, diseno declarado del BCV).

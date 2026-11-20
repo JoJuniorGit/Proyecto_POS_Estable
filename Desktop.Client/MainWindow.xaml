@@ -363,7 +363,9 @@
              ════════════════════════════════════════ -->
         <materialDesign:DialogHost Identifier="RootDialog">
             <!-- The currently active View (e.g. POS or Inventory or Login) -->
-            <ContentControl Content="{Binding CurrentViewModel}"/>
+            <!-- Cache de vistas: MainWindow.xaml.cs reutiliza la instancia por ViewModel para
+                 no reconstruir el arbol XAML en cada cambio de vista. -->
+            <ContentControl x:Name="MainContent"/>
         </materialDesign:DialogHost>
 
     </materialDesign:DrawerHost>

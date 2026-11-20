@@ -388,6 +388,94 @@ public partial class InventoryService
         return info;
     }
 
+    // Paso 15 (S1-S3): snapshot de catalogo del reporte de rotacion. Dos consultas acotadas
+    // (productos + puente de categorias), sin cargar entidades completas ni navegar variantes.
+    public async Task<IReadOnlyList<Core.DTOs.InventoryRotationProductSnapshotDto>> GetInventoryRotationProductsAsync(
+        IReadOnlyCollection<int>? productIds,
+        string? searchText,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        if (productIds is { Count: 0 })
+        {
+            return Array.Empty<Core.DTOs.InventoryRotationProductSnapshotDto>();
+        }
+
+        IQueryable<Product> query = _context.Products.AsNoTracking()
+            .Where(product => !product.IsDeleted && !product.IsCashAdvance && !product.IsGroupHeader);
+
+        if (productIds is not null)
+        {
+            var ids = productIds.Distinct().ToList();
+            query = query.Where(product => ids.Contains(product.Id));
+        }
+
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            var term = searchText.Trim().ToLowerInvariant();
+            if (_context.Database.IsNpgsql())
+            {
+                query = query.Where(product =>
+                    EF.Functions.ILike(product.Name, $"%{term}%") ||
+                    EF.Functions.ILike(product.SKU, $"%{term}%"));
+            }
+            else
+            {
+                query = query.Where(product =>
+                    product.Name.ToLower().Contains(term) ||
+                    product.SKU.ToLower().Contains(term));
+            }
+        }
+
+        var products = await query
+            .Select(product => new
+            {
+                ProductId = product.Id,
+                product.SKU,
+                product.Name,
+                product.IsActive,
+                product.StockQuantity,
+                product.CostPriceUSD,
+                product.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        if (products.Count == 0)
+        {
+            return Array.Empty<Core.DTOs.InventoryRotationProductSnapshotDto>();
+        }
+
+        var productIdSet = products.Select(product => product.ProductId).ToList();
+        var links = await _context.ProductCategories.AsNoTracking()
+            .Where(link => productIdSet.Contains(link.ProductId))
+            .Select(link => new { link.ProductId, link.CategoryId, link.Category.Name })
+            .ToListAsync(cancellationToken);
+
+        var firstCategoryByProduct = links
+            .GroupBy(link => link.ProductId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderBy(link => link.CategoryId).First());
+
+        return products
+            .Select(product =>
+            {
+                firstCategoryByProduct.TryGetValue(product.ProductId, out var category);
+                return new Core.DTOs.InventoryRotationProductSnapshotDto
+                {
+                    ProductId = product.ProductId,
+                    SKU = product.SKU,
+                    Name = product.Name,
+                    CategoryId = category?.CategoryId,
+                    CategoryName = category?.Name,
+                    IsActive = product.IsActive,
+                    StockQuantity = product.StockQuantity,
+                    CostPriceUsd = product.CostPriceUSD,
+                    CreatedAtUtc = DateTime.SpecifyKind(product.CreatedAt, DateTimeKind.Utc)
+                };
+            })
+            .ToList();
+    }
+
     // 8.179-T1 (S4): set categoría + descendientes calculado en memoria (BFS) para ser
     // provider-agnóstico (InMemory/SQLite/PostgreSQL) sin CTE recursivo. Categoría desconocida → vacío.
     private async Task<List<int>> ResolveCategorySubtreeIdsAsync(int categoryId, System.Threading.CancellationToken cancellationToken)

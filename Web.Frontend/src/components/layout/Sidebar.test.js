@@ -30,6 +30,7 @@ const ALL_LABELS = [
   'Conteo físico',
   'Historial Ventas',
   'Rentabilidad',
+  'Salud de Inventario',
   'Caja',
   'Cierre Diario',
   'Configuración',

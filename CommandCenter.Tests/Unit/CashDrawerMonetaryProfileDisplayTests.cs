@@ -19,6 +19,7 @@ namespace CommandCenter.Tests.Unit;
 /// collapses every local amount to the primary currency and hides the duplicate line. Raw
 /// decimal properties, calculations and commands stay unchanged.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class CashDrawerMonetaryProfileDisplayTests
 {
     private static void ApplyDualProfile() => CurrencyDisplay.SetMonetaryProfile(new MonetaryProfileDto
@@ -162,6 +163,24 @@ public class CashDrawerMonetaryProfileDisplayTests
             Assert.Equal("Bs.S 1.000,00", viewModel.PettyCashActiveTotalBsSDisplay);
             Assert.Equal("$ 20,00", viewModel.PettyCashActiveTotalUsdDisplay);
             Assert.Contains("1 activo(s)", viewModel.PettyCashSummary);
+            Assert.Equal(2, viewModel.FilteredPettyCashExpenses.Count);
+
+            viewModel.PettyCashFilter = PettyCashSectionFilter.Active;
+            Assert.Single(viewModel.FilteredPettyCashExpenses);
+            Assert.Equal(PettyCashStatusClient.Active, viewModel.FilteredPettyCashExpenses[0].Expense.Status);
+
+            viewModel.PettyCashFilter = PettyCashSectionFilter.Cancelled;
+            Assert.Single(viewModel.FilteredPettyCashExpenses);
+            Assert.Equal(PettyCashStatusClient.Cancelled, viewModel.FilteredPettyCashExpenses[0].Expense.Status);
+
+            viewModel.PettyCashFilter = PettyCashSectionFilter.All;
+            viewModel.PettyCashSearchText = "Detergente";
+            Assert.Single(viewModel.FilteredPettyCashExpenses);
+            Assert.Equal("Detergente", viewModel.FilteredPettyCashExpenses[0].Expense.Concept);
+
+            viewModel.PettyCashSearchText = "sin coincidencias";
+            Assert.Empty(viewModel.FilteredPettyCashExpenses);
+            Assert.False(viewModel.HasFilteredPettyCashExpenses);
 
             viewModel.IsPettyCashPanelOpen = true;
             Assert.False(viewModel.IsCashMovementsSectionVisible);

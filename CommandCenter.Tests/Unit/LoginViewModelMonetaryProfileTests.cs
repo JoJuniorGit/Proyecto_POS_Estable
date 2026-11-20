@@ -9,6 +9,7 @@ using Xunit;
 
 namespace CommandCenter.Tests.Unit;
 
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class LoginViewModelMonetaryProfileTests
 {
     [Fact]

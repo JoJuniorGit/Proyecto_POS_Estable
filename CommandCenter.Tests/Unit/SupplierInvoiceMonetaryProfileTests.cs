@@ -15,6 +15,7 @@ namespace CommandCenter.Tests.Unit;
 /// 8.211-T4c2b4d3b (S9): the supplier invoice surface resolves its document currencies, rate
 /// gating and labels from the active monetary profile instead of the legacy hardcoded USD/Bs.S pair.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public sealed class SupplierInvoiceMonetaryProfileTests
 {
     [Fact]

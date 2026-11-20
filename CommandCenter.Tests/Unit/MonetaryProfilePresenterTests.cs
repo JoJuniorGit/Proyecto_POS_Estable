@@ -7,6 +7,7 @@ using Xunit;
 namespace CommandCenter.Tests.Unit;
 
 // 8.211-T6-U12: WPF binds to an observable presenter so profile refreshes notify open views.
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class MonetaryProfilePresenterTests
 {
     [Fact]

@@ -1,0 +1,364 @@
+/* Paso 15: informe ejecutivo de rotacion. Solo primitivas CSS y tokens del sistema. */
+:root .inventory-health-page {
+  max-width: 1420px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+:root .ih-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+:root .ih-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+:root .ih-subtitle {
+  max-width: 780px;
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+:root .ih-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+:root .ih-filters {
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+:root .ih-filter-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+:root .ih-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+
+:root .ih-field > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+:root .ih-field .form-input,
+:root .ih-field .form-select {
+  min-height: 36px;
+  padding: 0.35rem 0.6rem;
+}
+
+:root .ih-field-search {
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+
+:root .ih-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--danger, #fecaca);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--danger, #ef4444) 10%, transparent);
+  color: var(--danger, #b91c1c);
+  font-size: 0.82rem;
+}
+
+:root .ih-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+:root .ih-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 13px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+:root .ih-kpi-high { border-left-color: #16a34a; }
+:root .ih-kpi-medium { border-left-color: #d97706; }
+:root .ih-kpi-dead { border-left-color: #dc2626; }
+:root .ih-kpi-capital { border-left-color: #991b1b; }
+
+:root .ih-kpi-label {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+:root .ih-kpi strong {
+  font-size: 1.6rem;
+  line-height: 1.1;
+  color: var(--text-primary);
+}
+
+:root .ih-kpi > span:last-of-type {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+:root .ih-bar {
+  height: 7px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg-hover);
+}
+
+:root .ih-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #22c55e;
+}
+
+:root .ih-kpi-medium .ih-bar > i { background: #f59e0b; }
+:root .ih-kpi-dead .ih-bar > i,
+:root .ih-kpi-capital .ih-bar > i { background: #ef4444; }
+
+:root .ih-chart-card {
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+:root .ih-chart-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+:root .ih-chart-header h2,
+:root .ih-table-header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+:root .ih-chart-header p,
+:root .ih-table-header span {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+:root .ih-chart-header > span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+:root .ih-chart-rows {
+  display: grid;
+  gap: 9px;
+}
+
+:root .ih-chart-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 62px;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.78rem;
+}
+
+:root .ih-chart-row > span {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+:root .ih-chart-row > strong {
+  text-align: right;
+  font-size: 0.75rem;
+}
+
+:root .ih-bar-high > i { background: #22c55e; }
+:root .ih-bar-medium > i { background: #f59e0b; }
+:root .ih-bar-low > i { background: #64748b; }
+:root .ih-bar-dead > i { background: #ef4444; }
+
+:root .ih-table-card {
+  padding: 0;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+:root .ih-table-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+:root .ih-table-scroll {
+  overflow-x: auto;
+}
+
+:root .ih-table {
+  min-width: 980px;
+}
+
+:root .ih-table th,
+:root .ih-table td {
+  white-space: nowrap;
+}
+
+:root .ih-table td small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+:root .ih-right {
+  text-align: right !important;
+}
+
+:root .ih-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+:root .ih-badge-high { background: #dcfce7; color: #15803d; }
+:root .ih-badge-medium { background: #fef3c7; color: #b45309; }
+:root .ih-badge-low { background: var(--bg-hover); color: var(--text-muted); }
+:root .ih-badge-dead { background: #fee2e2; color: #b91c1c; }
+
+:root .ih-empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+:root .ih-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+:root .ih-pagination > div {
+  display: flex;
+  gap: 8px;
+}
+
+:root .ih-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+:root .ih-spin {
+  animation: ih-spin 0.9s linear infinite;
+}
+
+@keyframes ih-spin {
+  to { transform: rotate(360deg); }
+}
+
+:root .ih-promotion-modal {
+  max-width: 480px;
+}
+
+:root .ih-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+:root .ih-notice {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  padding: 11px 16px;
+  border: 1px solid var(--success);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--success);
+  box-shadow: var(--shadow-md);
+  font-size: 0.85rem;
+}
+
+:root .ih-footer-note {
+  max-width: 1420px;
+  margin: 0 auto;
+  padding: 0 16px 18px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  :root .inventory-health-page {
+    padding: 10px;
+  }
+
+  :root .ih-header-actions {
+    width: 100%;
+  }
+
+  :root .ih-header-actions .btn {
+    flex: 1;
+  }
+
+  :root .ih-field {
+    width: 100%;
+    min-width: 0;
+  }
+
+  :root .ih-field-search {
+    max-width: none;
+  }
+
+  :root .ih-chart-row {
+    grid-template-columns: 72px minmax(0, 1fr) 54px;
+  }
+}

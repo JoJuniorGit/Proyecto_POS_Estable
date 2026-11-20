@@ -39,6 +39,18 @@ public class HealthController : ControllerBase
     [HttpGet("api/health")]
     public async Task<IActionResult> CheckHealthAsync(CancellationToken cancellationToken = default)
     {
+        if (!Backend.API.Startup.StartupReadiness.IsReady)
+        {
+            return StatusCode((int)HttpStatusCode.ServiceUnavailable, new HealthStatusDto
+            {
+                Status = "Starting",
+                Service = "Proyecto_POS_Server",
+                Database = "Initializing",
+                Message = "La base de datos se está inicializando. Reintente en unos segundos.",
+                Timestamp = DateTime.UtcNow.ToString("o")
+            });
+        }
+
         try
         {
             bool canConnect = await _salesHealthProbe.CanConnectAsync(cancellationToken);

@@ -113,7 +113,8 @@ public partial class LoginViewModel : ObservableObject, IDisposable
             };
             _connectionManager.ConnectionStatusChanged += _connectionStatusHandler;
             UpdateConnectionDisplay();
-            _connectionManager.InitializeAsync().SafeFireAndForget("LoginViewModel.InitializeConnection");
+            // ConnectionManager ya inicia su probe en el constructor; no duplicar la llamada
+            // antes del Login.
         }
     }
 

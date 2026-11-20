@@ -8,6 +8,7 @@ using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Linq;
 using Core.Common;
+using Core.Diagnostics;
 
 namespace Desktop.Client.ViewModels;
 
@@ -108,17 +109,20 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         if (_hasLoaded) return;
         if (UserSession == null || UserSession.IsLoggedIn)
         {
-            await LoadMethodsAsync();
-            await LoadTimeZonesAsync();
-            await LoadCurrencyFormatAsync();
-            await LoadAllowNegativeStockAsync();
-            // 8.184-T4 (S2): políticas globales de precios y redondeo (fallback silencioso a defaults).
-            await LoadPricingPoliciesAsync();
-            // Comisiones del adelanto de efectivo (lectura Admin/Manager; escritura solo Admin).
-            await LoadCashAdvanceCommissionAsync();
-            // F4-WU1: reglas de comisión de medios de pago (Admin-only, misma política del endpoint F3).
-            await LoadPaymentMethodFeeRulesAsync();
+            StartupTimeline.Mark("Wpf.Settings.Load.Start");
+            await Task.WhenAll(
+                LoadMethodsAsync(),
+                LoadTimeZonesAsync(),
+                LoadCurrencyFormatAsync(),
+                LoadAllowNegativeStockAsync(),
+                // 8.184-T4 (S2): pol�ticas globales de precios y redondeo (fallback silencioso a defaults).
+                LoadPricingPoliciesAsync(),
+                // Comisiones del adelanto de efectivo (lectura Admin/Manager; escritura solo Admin).
+                LoadCashAdvanceCommissionAsync(),
+                // F4-WU1: reglas de comisi�n de medios de pago (Admin-only, misma pol�tica del endpoint F3).
+                LoadPaymentMethodFeeRulesAsync());
             _hasLoaded = true;
+            StartupTimeline.Mark("Wpf.Settings.Load.Done");
         }
     }
 

@@ -34,6 +34,7 @@ public class OutboxProcessorJob : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await Backend.API.Startup.StartupReadiness.WaitUntilReadyAsync(stoppingToken);
         _logger.LogInformation("[OutboxProcessor] Background Service iniciado con ciclo de polling de 2 segundos.");
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
 

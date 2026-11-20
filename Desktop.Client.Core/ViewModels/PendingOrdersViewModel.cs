@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using Core.DTOs;
+using Core.Diagnostics;
 using Core.Logging;
 using System;
 using System.Collections.Generic;
@@ -119,10 +120,15 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
         SuccessMessage = null;
         try
         {
-            var rateInfo = await _exchangeRateService.GetCurrentRateAsync();
+            StartupTimeline.Mark("Wpf.PendingOrders.Load.Start");
+            var rateTask = _exchangeRateService.GetCurrentRateAsync();
+            var salesTask = _salesService.GetPendingSalesPagedAsync(PageSize, 0);
+            await Task.WhenAll(rateTask, salesTask);
+
+            var rateInfo = await rateTask;
             if (rateInfo.Rate > 0) CurrentExchangeRate = rateInfo.Rate;
 
-            var (list, totalCount) = await _salesService.GetPendingSalesPagedAsync(PageSize, 0);
+            var (list, totalCount) = await salesTask;
             if (generation != _loadGeneration) return;
             _totalCount = totalCount;
             PendingSales.Clear();

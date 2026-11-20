@@ -35,6 +35,9 @@ public static class PipelineExtensions
         // Security Headers (M-07)
         app.UseMiddleware<Backend.API.Middleware.SecurityHeadersMiddleware>();
 
+        // Arranque diferido: Kestrel escucha antes de que la base esté lista.
+        app.UseMiddleware<Backend.API.Middleware.StartupReadinessMiddleware>();
+
         // H-02: con certificado activo, toda conexión remota HTTP (Web y Desktop) recibe 307 a
         // HTTPS, que preserva método/body. HTTP queda permitido solo en loopback para desarrollo
         // y automatización local. Detrás de proxy, UseForwardedHeaders ya fijó el esquema real.

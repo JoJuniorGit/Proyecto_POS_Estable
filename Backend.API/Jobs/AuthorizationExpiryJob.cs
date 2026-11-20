@@ -18,10 +18,12 @@ namespace Backend.API.Jobs;
 public class AuthorizationExpiryJob : BackgroundService
 {
     private const int DefaultSweepSeconds = 5;
+    private const int DefaultStartupDelaySeconds = 5;
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<AuthorizationExpiryJob> _logger;
     private readonly TimeSpan _sweepInterval;
+    private readonly TimeSpan _startupDelay;
 
     public AuthorizationExpiryJob(
         IServiceScopeFactory scopeFactory,
@@ -39,11 +41,26 @@ public class AuthorizationExpiryJob : BackgroundService
         // transformar la configuracion en un bucle sin espera.
         var configuredSeconds = configuration.GetValue<int?>("Authorization:ExpirySweepSeconds") ?? DefaultSweepSeconds;
         _sweepInterval = TimeSpan.FromSeconds(configuredSeconds > 0 ? configuredSeconds : DefaultSweepSeconds);
+
+        var configuredStartupDelay = configuration.GetValue<int?>("Authorization:StartupDelaySeconds") ?? DefaultStartupDelaySeconds;
+        _startupDelay = TimeSpan.FromSeconds(configuredStartupDelay >= 0 ? configuredStartupDelay : DefaultStartupDelaySeconds);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await Backend.API.Startup.StartupReadiness.WaitUntilReadyAsync(stoppingToken);
         _logger.LogInformation("[AUTHORIZATION_EXPIRY] Servicio de barrido de autorizaciones vencidas iniciado con intervalo de {Interval}.", _sweepInterval);
+
+        // La expiracion perezosa de resolve/consume sigue vigente; este primer barrido puede
+        // esperar a que Kestrel quede listo sin cambiar la semantica de seguridad.
+        try
+        {
+            await Task.Delay(_startupDelay, stoppingToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {

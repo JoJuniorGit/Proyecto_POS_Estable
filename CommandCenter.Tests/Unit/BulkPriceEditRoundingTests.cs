@@ -18,6 +18,7 @@ namespace CommandCenter.Tests.Unit;
 /// invalidación de la vista previa al editar la configuración. Los tests 8.181 del diálogo
 /// permanecen intactos.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class BulkPriceEditRoundingTests
 {
     private readonly Mock<IProductService> _productServiceMock = new();

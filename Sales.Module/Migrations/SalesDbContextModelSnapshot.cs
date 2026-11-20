@@ -1416,6 +1416,9 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("Status", "DeliveryStatus");
 
+                    b.HasIndex("Date", "SaleType", "InvoiceNumber")
+                        .HasDatabaseName("IX_Sales_Date_SaleType_InvoiceNumber");
+
                     b.HasIndex("SaleType", "Status", "Date")
                         .HasDatabaseName("IX_Sales_SaleType_Status_Date");
 
@@ -1555,6 +1558,9 @@ namespace Sales.Module.Migrations
 
                     b.HasIndex("SaleId")
                         .HasDatabaseName("IX_SaleItems_SaleId");
+
+                    b.HasIndex("ProductId", "SaleId")
+                        .HasDatabaseName("IX_SaleItems_ProductId_SaleId");
 
                     b.ToTable("SaleItems");
                 });

@@ -55,6 +55,13 @@ public interface IDialogService
     bool ShowBulkPriceEditDialog(ViewModels.BulkPriceEditDialogViewModel viewModel) => false;
 
     /// <summary>
+    /// Paso 15 (S6): informe ejecutivo de salud del inventario con acceso al puente de liquidacion
+    /// del Paso 9. Devuelve true cuando se aplico una promocion de precios, para refrescar el
+    /// catalogo. La implementacion headless equivale a "sin cambios".
+    /// </summary>
+    bool ShowInventoryHealthDialog(ViewModels.InventoryHealthViewModel viewModel) => false;
+
+    /// <summary>
     /// 8.146-T5 (S4): modal de captura del código de barras universal al crear un producto desde una línea de factura.
     /// Implementación por defecto sin UI (stubs headless): null equivale a diálogo cancelado, igual que
     /// <see cref="ShowPartialDeliveryDialogAsync"/>.

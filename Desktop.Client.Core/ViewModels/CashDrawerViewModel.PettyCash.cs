@@ -22,6 +22,15 @@ public partial class CashDrawerViewModel
 
     public ObservableCollection<PettyCashExpenseRowViewModel> PettyCashExpenses { get; } = new();
 
+    /// <summary>Vista filtrada del turno para que la grilla se comporte como Movimientos.</summary>
+    public ObservableCollection<PettyCashExpenseRowViewModel> FilteredPettyCashExpenses { get; } = new();
+
+    [ObservableProperty]
+    private PettyCashSectionFilter _pettyCashFilter = PettyCashSectionFilter.All;
+
+    [ObservableProperty]
+    private string _pettyCashSearchText = string.Empty;
+
     [ObservableProperty]
     private bool _isPettyCashPanelOpen;
 
@@ -43,6 +52,12 @@ public partial class CashDrawerViewModel
         && (_userSession?.IsAdmin == true || _userSession?.IsManager == true);
 
     public bool HasPettyCashExpenses => PettyCashExpenses.Count > 0;
+
+    public bool HasFilteredPettyCashExpenses => FilteredPettyCashExpenses.Count > 0;
+
+    public string PettyCashEmptyMessage => HasPettyCashExpenses
+        ? "No hay gastos que coincidan con el filtro o la búsqueda."
+        : "No hay gastos de caja chica registrados en este turno.";
 
     /// <summary>La subsección Caja Chica oculta movimientos/últimos ingresos mientras está activa.</summary>
     public bool IsCashMovementsSectionVisible => !IsPettyCashPanelOpen;
@@ -101,6 +116,9 @@ public partial class CashDrawerViewModel
     /// <summary>Vuelve a la subsección Movimientos sin cerrar la sesión de caja.</summary>
     [RelayCommand]
     private void ShowCashMovementsSection() => IsPettyCashPanelOpen = false;
+
+    [RelayCommand]
+    private void SetPettyCashFilter(PettyCashSectionFilter filter) => PettyCashFilter = filter;
 
     [RelayCommand]
     private async Task RefreshPettyCashAsync() => await LoadPettyCashAsync();
@@ -326,13 +344,56 @@ public partial class CashDrawerViewModel
 
     private void NotifyPettyCashChanged()
     {
+        ApplyPettyCashFilter();
         OnPropertyChanged(nameof(HasPettyCashExpenses));
+        OnPropertyChanged(nameof(HasFilteredPettyCashExpenses));
+        OnPropertyChanged(nameof(PettyCashEmptyMessage));
         OnPropertyChanged(nameof(PettyCashSummary));
         OnPropertyChanged(nameof(PettyCashActiveCount));
         OnPropertyChanged(nameof(PettyCashCancelledCount));
         OnPropertyChanged(nameof(PettyCashActiveTotalBsSDisplay));
         OnPropertyChanged(nameof(PettyCashActiveTotalUsdDisplay));
     }
+
+    private void ApplyPettyCashFilter()
+    {
+        var term = (PettyCashSearchText ?? string.Empty).Trim();
+        var filtered = PettyCashExpenses.Where(row =>
+        {
+            if (PettyCashFilter == PettyCashSectionFilter.Active
+                && row.Expense.Status != PettyCashStatusClient.Active)
+            {
+                return false;
+            }
+
+            if (PettyCashFilter == PettyCashSectionFilter.Cancelled
+                && row.Expense.Status != PettyCashStatusClient.Cancelled)
+            {
+                return false;
+            }
+
+            if (term.Length == 0)
+            {
+                return true;
+            }
+
+            var searchable = $"{row.VoucherCode} {row.CategoryLabel} {row.ConceptDisplay} {row.BeneficiaryDisplay} {row.ReferenceDisplay}";
+            return searchable.Contains(term, StringComparison.OrdinalIgnoreCase);
+        }).ToList();
+
+        FilteredPettyCashExpenses.Clear();
+        foreach (var row in filtered)
+        {
+            FilteredPettyCashExpenses.Add(row);
+        }
+
+        OnPropertyChanged(nameof(HasFilteredPettyCashExpenses));
+        OnPropertyChanged(nameof(PettyCashEmptyMessage));
+    }
+
+    partial void OnPettyCashFilterChanged(PettyCashSectionFilter value) => ApplyPettyCashFilter();
+
+    partial void OnPettyCashSearchTextChanged(string value) => ApplyPettyCashFilter();
 
     partial void OnPettyCashPhysicalBalanceBsSChanged(decimal value) =>
         OnPropertyChanged(nameof(PettyCashPhysicalBalanceBsSDisplay));
@@ -353,4 +414,12 @@ public partial class CashDrawerViewModel
         await System.IO.File.WriteAllBytesAsync(path, bytes);
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
     }
+}
+
+/// <summary>Filtro de la subsección Caja Chica (misma semántica que los chips de Movimientos).</summary>
+public enum PettyCashSectionFilter
+{
+    All = 0,
+    Active = 1,
+    Cancelled = 2
 }
