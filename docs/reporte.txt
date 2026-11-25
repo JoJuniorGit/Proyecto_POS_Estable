@@ -18623,3 +18623,42 @@ D1. WU3: selector WPF/Web, aviso visual de 409 y validacion final de clientes.
 D2. El mensaje de fuera de alcance se expone tal cual al operador; Web/WPF lo
     distinguen por status/mensaje en WU3.
 ================================================================================
+
+ANEXO LXXV - CONTEO FISICO: ALCANCE POR PRODUCTOS (WU3 WPF/WEB) - 2026-11-25
+================================================================================
+
+A. CAMBIOS
+A1. WPF: nuevo ProductPickerDialogViewModel + ProductPickerDialog reutilizable
+    con busqueda paginada por nombre/SKU, filtro por categoria, seleccion
+    multiple, chips, contador N/1000 y tope. Solo muestra SKU/nombre: no expone
+    stock, costo ni precio (conteo ciego).
+A2. WPF: el formulario de nueva sesion habilita Todo / Por categoria /
+    Productos seleccionados, transfiere la seleccion al alta, muestra chips y
+    exige al menos un producto para Products. El scan pinta el 409 de fuera de
+    alcance en ambar con icono y mensaje del backend.
+A3. Web: nuevo ProductPickerModal reutilizable con busqueda debounced,
+    categoria, paginacion, chips y contador. El alta envia scopeType y
+    scopeProductIds; la lista/detalle usan scopeDisplay; el scan muestra un
+    aviso scope (role=alert) para el 409 de fuera de alcance.
+A4. stockCountApi/createStockCount transporta scopeType/scopeCategoryId/
+    scopeProductIds/notes; productsApi agrega getProductsPaged. wwwroot
+    regenerado por Vite.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET completa con `TEST_POSTGRES_CONNECTION` local: 4486/4486,
+    0 skipped, 3m18s.
+B3. Web: `npm test` 818/818; `npm run lint` limpio; `npm run build` exitoso.
+B4. WPF ViewModel/picker tests incluidos en la suite; E2E full-stack no se
+    ejecuto (requiere entorno E2E_POSTGRES_CONNECTION y stack completo).
+
+C. COMMITS
+C1. Commit local de WU3 en la rama V0.15; sin push.
+
+D. PENDIENTE / RIESGOS
+D1. La UI WPF no se inspecciono visualmente; queda verificacion manual de la
+    ventana del selector y del aviso ambar.
+D2. El selector Web pagina de a 50 productos y filtra no contables en cliente;
+    el total del pie incluye productos activos que pueden no ser seleccionables.
+D3. El E2E full-stack sigue gateado por entorno y no cubre aun el alta Products.
+================================================================================

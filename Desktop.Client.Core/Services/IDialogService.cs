@@ -47,6 +47,12 @@ public interface IDialogService
     bool ShowCategoryManagementDialog(ViewModels.CategoryManagementDialogViewModel viewModel) => false;
 
     /// <summary>
+    /// WU3: selector modal reutilizable de productos para el alcance Products del conteo. La
+    /// implementación headless devuelve false (selección cancelada).
+    /// </summary>
+    bool ShowProductPickerDialog(ViewModels.ProductPickerDialogViewModel viewModel) => false;
+
+    /// <summary>
     /// 8.181-T2 (S5): diálogo modal de edición masiva de precios del catálogo (configuración de
     /// operaciones, vista previa "Antes vs Después" y aplicación con confirmación). Devuelve true
     /// cuando la actualización se aplicó y persistió, para que el catálogo se refresque.

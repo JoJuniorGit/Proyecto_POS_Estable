@@ -85,7 +85,7 @@ public sealed class StockCountViewModelTests
             .ReturnsAsync("5");
     }
 
-    private StockCountViewModel CreateViewModel(UserRole? role = null)
+    private StockCountViewModel CreateViewModel(UserRole? role = null, IProductService? productService = null)
     {
         UserSession? session = null;
         if (role.HasValue)
@@ -96,7 +96,12 @@ public sealed class StockCountViewModelTests
             };
         }
 
-        return new StockCountViewModel(_service.Object, _categories.Object, _dialogs.Object, session);
+        return new StockCountViewModel(
+            _service.Object,
+            _categories.Object,
+            _dialogs.Object,
+            session,
+            productService: productService);
     }
 
     private static StockCountSessionDto CreateSession(int id, StockCountStatus status, int itemsCount = 0)
@@ -325,5 +330,186 @@ public sealed class StockCountViewModelTests
         _service.Verify(
             service => service.RemoveItemAsync(1, 10, It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task SessionSearch_FiltersSessionsByName()
+    {
+        _service
+            .Setup(service => service.ListAsync(It.IsAny<StockCountStatus?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<StockCountSessionDto>
+            {
+                CreateSession(1, StockCountStatus.Open),
+                CreateSession(2, StockCountStatus.Open)
+            });
+        var vm = CreateViewModel(UserRole.Admin);
+        await vm.EnsureLoadedAsync();
+
+        Assert.Equal(2, vm.FilteredSessions.Count);
+
+        vm.SessionSearchText = "Sesión 2";
+
+        var row = Assert.Single(vm.FilteredSessions);
+        Assert.Equal(2, row.Id);
+        Assert.False(vm.HasNoVisibleSessions);
+        Assert.False(vm.HasNoSearchResults);
+
+        vm.SessionSearchText = string.Empty;
+
+        Assert.Equal(2, vm.FilteredSessions.Count);
+    }
+
+    [Fact]
+    public async Task SessionSearch_NoMatches_DoesNotLookLikeAnEmptyList()
+    {
+        var vm = CreateViewModel(UserRole.Admin);
+        await vm.EnsureLoadedAsync();
+
+        vm.SessionSearchText = "no-existe";
+
+        Assert.Empty(vm.FilteredSessions);
+        Assert.True(vm.HasNoVisibleSessions);
+        Assert.True(vm.HasNoSearchResults);
+        Assert.False(vm.HasNoSessions);
+    }
+
+    [Fact]
+    public void CreatePanel_StartsCollapsed_AndHidesTheOpenCta()
+    {
+        var vm = CreateViewModel(UserRole.Admin);
+
+        Assert.False(vm.IsCreatePanelOpen);
+        Assert.True(vm.CanOpenCreatePanel);
+        Assert.Equal("0 / 300", vm.CreateNotesCounterText);
+
+        vm.CreateNotes = "abc";
+        Assert.Equal("3 / 300", vm.CreateNotesCounterText);
+
+        vm.OpenCreatePanelCommand.Execute(null);
+
+        Assert.True(vm.IsCreatePanelOpen);
+        Assert.False(vm.CanOpenCreatePanel);
+
+        vm.CancelCreateCommand.Execute(null);
+
+        Assert.False(vm.IsCreatePanelOpen);
+        Assert.True(vm.CanOpenCreatePanel);
+    }
+
+    [Fact]
+    public void Cashier_CannotOpenTheCreatePanel()
+    {
+        var vm = CreateViewModel(UserRole.Cashier);
+
+        Assert.False(vm.CanOpenCreatePanel);
+    }
+
+    [Fact]
+    public async Task SelectingSession_ClosesTheCreatePanel()
+    {
+        var vm = CreateViewModel(UserRole.Admin);
+        await vm.EnsureLoadedAsync();
+        vm.OpenCreatePanelCommand.Execute(null);
+
+        await vm.SelectSessionCommand.ExecuteAsync(vm.Sessions.Single());
+
+        Assert.False(vm.IsCreatePanelOpen);
+        Assert.True(vm.HasSelectedSession);
+    }
+
+    [Fact]
+    public void ScopeTypeOptions_ExposeAllCategoryAndProducts()
+    {
+        var vm = CreateViewModel(UserRole.Admin);
+
+        Assert.Equal(
+            new[] { StockCountScopeType.All, StockCountScopeType.Category, StockCountScopeType.Products },
+            vm.ScopeTypeOptions.Select(option => option.Value).ToArray());
+        Assert.Equal(StockCountScopeType.All, vm.SelectedCreateScopeType.Value);
+        Assert.True(vm.IsCreateScopeValid);
+    }
+
+    [Fact]
+    public void ProductScope_RequiresAtLeastOneSelectedProduct()
+    {
+        var vm = CreateViewModel(UserRole.Admin);
+        vm.OpenCreatePanelCommand.Execute(null);
+        vm.SelectedCreateScopeType = vm.ScopeTypeOptions.Single(option => option.Value == StockCountScopeType.Products);
+
+        Assert.False(vm.HasCreateScopeProducts);
+        Assert.False(vm.IsCreateScopeValid);
+        Assert.False(vm.CanCreateSession);
+        Assert.Equal("0 / 1000", vm.CreateScopeProductCountText);
+
+        vm.CreateScopeProducts.Add(new ProductPickerSelection(10, "SKU-1", "Harina"));
+
+        Assert.True(vm.HasCreateScopeProducts);
+        Assert.True(vm.IsCreateScopeValid);
+        Assert.True(vm.CanCreateSession);
+        Assert.Equal("1 / 1000", vm.CreateScopeProductCountText);
+    }
+
+    [Fact]
+    public void ProductPickerCommand_TransfersSelectionIntoTheCreateForm()
+    {
+        var productService = new Mock<IProductService>();
+        var vm = CreateViewModel(UserRole.Admin, productService.Object);
+        vm.OpenCreatePanelCommand.Execute(null);
+        vm.SelectedCreateScopeType = vm.ScopeTypeOptions.Single(option => option.Value == StockCountScopeType.Products);
+
+        _dialogs
+            .Setup(dialog => dialog.ShowProductPickerDialog(It.IsAny<ProductPickerDialogViewModel>()))
+            .Callback<ProductPickerDialogViewModel>(picker => picker.SelectedProducts.Add(
+                new ProductPickerSelection(10, "SKU-1", "Harina")))
+            .Returns(true);
+
+        vm.OpenCreateScopeProductPickerCommand.Execute(null);
+
+        var selected = Assert.Single(vm.CreateScopeProducts);
+        Assert.Equal(10, selected.Id);
+        Assert.Equal("1 / 1000", vm.CreateScopeProductCountText);
+    }
+
+    [Fact]
+    public async Task Create_ProductScope_SendsScopeTypeAndSelectedIds()
+    {
+        var productService = new Mock<IProductService>();
+        var vm = CreateViewModel(UserRole.Admin, productService.Object);
+        await vm.EnsureLoadedAsync();
+        vm.OpenCreatePanelCommand.Execute(null);
+        vm.SelectedCreateScopeType = vm.ScopeTypeOptions.Single(option => option.Value == StockCountScopeType.Products);
+        vm.CreateScopeProducts.Add(new ProductPickerSelection(10, "SKU-1", "Harina"));
+        vm.CreateName = "Conteo focalizado";
+
+        await vm.SubmitCreateCommand.ExecuteAsync(null);
+
+        _service.Verify(service => service.CreateAsync(
+            It.Is<CreateStockCountRequestDto>(request =>
+                request.ScopeType == StockCountScopeType.Products &&
+                request.ScopeCategoryId == null &&
+                request.ScopeProductIds != null &&
+                request.ScopeProductIds.SequenceEqual(new[] { 10 })),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Scan_OutOfScope409_FlagsAmberScopeWarning()
+    {
+        _service
+            .Setup(service => service.ScanAsync(1, "SKU-OUT", It.IsAny<decimal>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException(
+                "El producto 'Fuera' (SKU SKU-OUT) no pertenece a los productos seleccionados de la sesión de conteo #1."));
+        var vm = CreateViewModel(UserRole.Cashier);
+        await vm.EnsureLoadedAsync();
+        await vm.SelectSessionCommand.ExecuteAsync(vm.Sessions.Single());
+        vm.ScanCode = "SKU-OUT";
+
+        await vm.ScanCommand.ExecuteAsync(null);
+
+        Assert.True(vm.ScanFeedbackIsError);
+        Assert.True(vm.ScanFeedbackIsScopeViolation);
+        Assert.Equal("#B45309", vm.ScanFeedbackColor);
+        Assert.Contains("productos seleccionados", vm.ScanFeedback);
     }
 }

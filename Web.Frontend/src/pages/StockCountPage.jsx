@@ -5,12 +5,14 @@ import {
   CheckCircle2,
   ClipboardList,
   Eye,
+  ListChecks,
   Loader2,
   Minus,
   Plus,
   RefreshCw,
   ScanLine,
   Trash2,
+  X,
   XCircle,
 } from 'lucide-react';
 import {
@@ -31,6 +33,7 @@ import { normalizeRole } from '../navigation/roleViews';
 import RoleGuard from '../navigation/RoleGuard';
 import BarcodeScannerModal from '../components/pos/BarcodeScannerModal';
 import ConfirmModal from '../components/ui/ConfirmModal';
+import ProductPickerModal from '../components/stockcount/ProductPickerModal';
 import { formatDate, formatQuantity, formatTime, formatUSD } from '../utils/formatters';
 import './StockCountPage.css';
 
@@ -106,6 +109,60 @@ export function getDifferenceTone(value) {
   return 'even';
 }
 
+export const STOCK_COUNT_SCOPE = Object.freeze({
+  All: 0,
+  Category: 1,
+  Products: 2,
+});
+
+export const MAX_SCOPE_PRODUCTS = 1000;
+
+/** Etiqueta de alcance compartida: el backend ya calcula scopeDisplay. */
+export function resolveStockCountScopeDisplay(session) {
+  return session?.scopeDisplay || session?.scopeCategoryPath || 'Todo el inventario';
+}
+
+/** Body limpio del alta: exclusividad por scopeType y lista solo para Products. */
+export function buildStockCountCreatePayload({
+  name,
+  scopeType,
+  scopeCategoryId,
+  scopeProducts,
+  notes,
+}) {
+  const numericScope = Number(scopeType);
+  const resolvedScope =
+    numericScope === STOCK_COUNT_SCOPE.Category || numericScope === STOCK_COUNT_SCOPE.Products
+      ? numericScope
+      : STOCK_COUNT_SCOPE.All;
+  const numericCategory = Number(scopeCategoryId);
+  const productIds =
+    resolvedScope === STOCK_COUNT_SCOPE.Products && Array.isArray(scopeProducts)
+      ? scopeProducts
+          .map((product) => Number(product?.id))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      : null;
+
+  return {
+    name: String(name ?? '').trim(),
+    scopeType: resolvedScope,
+    scopeCategoryId:
+      resolvedScope === STOCK_COUNT_SCOPE.Category &&
+      Number.isInteger(numericCategory) &&
+      numericCategory > 0
+        ? numericCategory
+        : null,
+    scopeProductIds: productIds,
+    notes: String(notes ?? '').trim() || null,
+  };
+}
+
+/** 409 del backend cuando el SKU escaneado quedó fuera del alcance Products. */
+export function isOutOfScopeScanError(error) {
+  if (error?.status !== 409) return false;
+  return /productos seleccionados|alcance de la sesi[oó]n/i.test(error?.message || '');
+}
+
 /**
  * Puente entre el POST /scan y el resolver del HUD del escáner: consume la MISMA promesa ya
  * lanzada (identidad por código), garantizando un único POST por escaneo.
@@ -143,6 +200,9 @@ function StockCountPageContent() {
   const [itemPendingId, setItemPendingId] = useState(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', scopeCategoryId: '', notes: '' });
+  const [createScopeType, setCreateScopeType] = useState(STOCK_COUNT_SCOPE.All);
+  const [scopeProducts, setScopeProducts] = useState([]);
+  const [isProductPickerOpen, setIsProductPickerOpen] = useState(false);
   const [createError, setCreateError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -250,9 +310,12 @@ function StockCountPageContent() {
           return item;
         })
         .catch((err) => {
+          const outOfScope = isOutOfScopeScanError(err);
           setScanFeedback({
-            type: 'error',
-            text: err?.message || `No se pudo procesar el código ${code}.`,
+            type: outOfScope ? 'scope' : 'error',
+            text: outOfScope
+              ? `Fuera de alcance: ${err?.message || 'el producto no pertenece a esta sesión.'}`
+              : err?.message || `No se pudo procesar el código ${code}.`,
           });
           throw err;
         });
@@ -351,6 +414,9 @@ function StockCountPageContent() {
 
   const handleOpenCreate = () => {
     setCreateForm({ name: '', scopeCategoryId: '', notes: '' });
+    setCreateScopeType(STOCK_COUNT_SCOPE.All);
+    setScopeProducts([]);
+    setIsProductPickerOpen(false);
     setCreateError(null);
     setIsCreateOpen(true);
   };
@@ -362,15 +428,35 @@ function StockCountPageContent() {
       setCreateError('Ingrese un nombre para la sesión.');
       return;
     }
+
+    if (createScopeType === STOCK_COUNT_SCOPE.Category && !createForm.scopeCategoryId) {
+      setCreateError('Seleccione una categoría para el alcance.');
+      return;
+    }
+
+    if (createScopeType === STOCK_COUNT_SCOPE.Products && scopeProducts.length === 0) {
+      setCreateError('Seleccione al menos un producto para el alcance.');
+      return;
+    }
+
+    if (scopeProducts.length > MAX_SCOPE_PRODUCTS) {
+      setCreateError(`La selección no puede exceder ${MAX_SCOPE_PRODUCTS} productos.`);
+      return;
+    }
+
     setIsCreating(true);
     setCreateError(null);
     try {
-      const created = await createStockCount({
+      const payload = buildStockCountCreatePayload({
         name,
-        scopeCategoryId: createForm.scopeCategoryId ? Number(createForm.scopeCategoryId) : null,
-        notes: createForm.notes.trim() ? createForm.notes.trim() : null,
+        scopeType: createScopeType,
+        scopeCategoryId: createForm.scopeCategoryId,
+        scopeProducts,
+        notes: createForm.notes,
       });
+      const created = await createStockCount(payload);
       setIsCreateOpen(false);
+      setIsProductPickerOpen(false);
       await loadSessions(statusFilter);
       if (created?.id) setSelectedSessionId(created.id);
     } catch (err) {
@@ -522,23 +608,81 @@ function StockCountPageContent() {
                 />
               </div>
               <div className="form-group">
-                <label className="form-label" htmlFor="sc-create-scope">
-                  Categoría (opcional, incluye subcategorías)
+                <label className="form-label" htmlFor="sc-create-scope-type">
+                  Alcance
                 </label>
                 <select
-                  id="sc-create-scope"
+                  id="sc-create-scope-type"
                   className="form-select"
-                  value={createForm.scopeCategoryId}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, scopeCategoryId: e.target.value }))}
+                  value={createScopeType}
+                  onChange={(e) => setCreateScopeType(Number(e.target.value))}
                 >
-                  <option value="">Todo el inventario</option>
-                  {categoryOptions.map((option) => (
-                    <option key={option.value} value={option.value} title={option.path}>
-                      {option.label}
-                    </option>
-                  ))}
+                  <option value={STOCK_COUNT_SCOPE.All}>Todo el inventario</option>
+                  <option value={STOCK_COUNT_SCOPE.Category}>Por categoría</option>
+                  <option value={STOCK_COUNT_SCOPE.Products}>Productos seleccionados</option>
                 </select>
               </div>
+              {createScopeType === STOCK_COUNT_SCOPE.Category && (
+                <div className="form-group">
+                  <label className="form-label" htmlFor="sc-create-scope">
+                    Categoría (incluye subcategorías)
+                  </label>
+                  <select
+                    id="sc-create-scope"
+                    className="form-select"
+                    value={createForm.scopeCategoryId}
+                    onChange={(e) => setCreateForm((prev) => ({ ...prev, scopeCategoryId: e.target.value }))}
+                  >
+                    <option value="">Seleccione una categoría</option>
+                    {categoryOptions.map((option) => (
+                      <option key={option.value} value={option.value} title={option.path}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {createScopeType === STOCK_COUNT_SCOPE.Products && (
+                <div className="form-group">
+                  <label className="form-label" htmlFor="sc-create-products">
+                    Productos seleccionados ({scopeProducts.length} / {MAX_SCOPE_PRODUCTS})
+                  </label>
+                  <div className="sc-scope-toolbar">
+                    <button
+                      id="sc-create-products"
+                      type="button"
+                      className="btn btn-outline"
+                      onClick={() => setIsProductPickerOpen(true)}
+                    >
+                      <ListChecks size={16} /> Seleccionar productos
+                    </button>
+                    <span className="sc-scope-hint">
+                      Solo los productos elegidos podrán escanearse en esta sesión.
+                    </span>
+                  </div>
+                  {scopeProducts.length > 0 ? (
+                    <div className="sc-scope-chips">
+                      {scopeProducts.map((product) => (
+                        <span key={product.id} className="sc-scope-chip">
+                          <span className="sc-scope-chip-name">{product.name}</span>
+                          <span className="sc-scope-chip-sku">{product.sku}</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setScopeProducts((prev) => prev.filter((item) => item.id !== product.id))
+                            }
+                            aria-label={`Quitar ${product.name}`}
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="sc-scope-empty">Seleccione al menos un producto para continuar.</p>
+                  )}
+                </div>
+              )}
               <div className="form-group">
                 <label className="form-label" htmlFor="sc-create-notes">
                   Notas (opcional)
@@ -554,7 +698,15 @@ function StockCountPageContent() {
               </div>
               {createError && <div className="sc-feedback sc-feedback--error">{createError}</div>}
               <div className="sc-form-actions">
-                <button type="button" className="btn btn-outline" onClick={() => setIsCreateOpen(false)} disabled={isCreating}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => {
+                    setIsCreateOpen(false);
+                    setIsProductPickerOpen(false);
+                  }}
+                  disabled={isCreating}
+                >
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={isCreating}>
@@ -606,7 +758,7 @@ function StockCountPageContent() {
                     <span className="sc-session-card-main">
                       <span className="sc-session-name">{session.name}</span>
                       <span className="sc-session-meta">
-                        {session.scopeCategoryPath || 'Todo el inventario'} · {session.itemsCount} ítem(s)
+                        {resolveStockCountScopeDisplay(session)} · {session.itemsCount} ítem(s)
                       </span>
                       <span className="sc-session-meta">Creada {formatDate(session.createdAt)}</span>
                     </span>
@@ -632,7 +784,7 @@ function StockCountPageContent() {
                 {statusMeta.label}
                 {statusMeta.context ? ` · ${statusMeta.context}` : ''}
               </span>
-              <span className="sc-session-meta">{selectedSession?.scopeCategoryPath || 'Todo el inventario'}</span>
+              <span className="sc-session-meta">{resolveStockCountScopeDisplay(selectedSession)}</span>
             </div>
             <button type="button" className="btn btn-outline" onClick={refreshDetail} disabled={detailLoading}>
               <RefreshCw size={16} className={detailLoading ? 'spin' : ''} /> Actualizar
@@ -642,8 +794,13 @@ function StockCountPageContent() {
           {detailError && <div className="alert alert-danger">{detailError}</div>}
 
           {scanFeedback && (
-            <div className={`sc-feedback sc-feedback--${scanFeedback.type}`} role="status" aria-live="polite">
-              {scanFeedback.text}
+            <div
+              className={`sc-feedback sc-feedback--${scanFeedback.type}`}
+              role={scanFeedback.type === 'scope' ? 'alert' : 'status'}
+              aria-live={scanFeedback.type === 'scope' ? 'assertive' : 'polite'}
+            >
+              {scanFeedback.type === 'scope' && <AlertTriangle size={16} aria-hidden="true" />}
+              <span>{scanFeedback.text}</span>
             </div>
           )}
 
@@ -904,6 +1061,18 @@ function StockCountPageContent() {
         confirmText={confirmState?.confirmText || 'Confirmar'}
         variant={confirmState?.variant || 'warning'}
       />
+
+      {isProductPickerOpen && (
+        <ProductPickerModal
+          categories={categories}
+          selectedProducts={scopeProducts}
+          onClose={() => setIsProductPickerOpen(false)}
+          onConfirm={(products) => {
+            setScopeProducts(products);
+            setIsProductPickerOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

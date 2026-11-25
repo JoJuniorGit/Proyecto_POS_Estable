@@ -780,6 +780,35 @@ public partial class WpfDialogService
         _httpClientFactory is null ? null : new CategoryService(_httpClientFactory.CreateClient("Categories"));
 
     /// <summary>
+    /// WU3: selector modal reutilizable de productos para el alcance Products del conteo. Devuelve
+    /// true solo cuando el operador confirma una selección no vacía.
+    /// </summary>
+    public bool ShowProductPickerDialog(ProductPickerDialogViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (Application.Current == null) return false;
+        using var _ = TrackModal();
+        bool confirmed = false;
+
+        Action openDialog = () =>
+        {
+            var dialog = new ProductPickerDialog(viewModel);
+            if (Application.Current.MainWindow != null && Application.Current.MainWindow.IsVisible)
+            {
+                dialog.Owner = Application.Current.MainWindow;
+            }
+
+            viewModel.InitializeAsync().SafeFireAndForget("WpfDialogService.ProductPicker");
+            confirmed = dialog.ShowDialog() == true;
+        };
+
+        if (Application.Current.Dispatcher.CheckAccess()) openDialog();
+        else Application.Current.Dispatcher.Invoke(openDialog);
+
+        return confirmed && viewModel.CanConfirm;
+    }
+
+    /// <summary>
     /// 8.179-T2 (S3): abre el diálogo modal de gestión de categorías y devuelve si hubo cambios
     /// persistidos (para que ProductDialog refresque su tarjeta preservando la selección).
     /// </summary>

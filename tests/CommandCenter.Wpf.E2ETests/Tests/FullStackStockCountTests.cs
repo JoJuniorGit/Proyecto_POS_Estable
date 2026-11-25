@@ -59,14 +59,20 @@ public sealed class FullStackStockCountTests : IClassFixture<FullStackFixture>
                     $"El botón Crear sesión no se habilitó. {DescribeUi(window)}");
             submit.Invoke();
 
-            var open = WaitForEnabledButton(window, "StockCount_SessionOpenButton", timeout)
-                ?? throw new InvalidOperationException(
-                    $"La sesión creada no apareció en la grilla. {DescribeUi(window)}");
-            open.Invoke();
+            // Creating a session auto-selects it and opens the detail view. Fall back to the
+            // grid row action only when the detail did not open by itself.
+            var scanInput = WaitForElement(window, "StockCount_ScanInput", timeout)?.AsTextBox();
+            if (scanInput is null)
+            {
+                var open = WaitForEnabledButton(window, "StockCount_SessionOpenButton", timeout)
+                    ?? throw new InvalidOperationException(
+                        $"La sesión creada no apareció en la grilla. {DescribeUi(window)}");
+                open.Invoke();
 
-            var scanInput = WaitForElement(window, "StockCount_ScanInput", timeout)?.AsTextBox()
-                ?? throw new InvalidOperationException(
-                    $"La sesión abierta no expuso el escáner. {DescribeUi(window)}");
+                scanInput = WaitForElement(window, "StockCount_ScanInput", timeout)?.AsTextBox()
+                    ?? throw new InvalidOperationException(
+                        $"La sesión abierta no expuso el escáner. {DescribeUi(window)}");
+            }
 
             // Admin auto-loads the review after opening the session; its grid proves the
             // theoretical/cost contract deserializes on the WPF client.

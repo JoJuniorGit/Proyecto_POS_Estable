@@ -82,6 +82,66 @@
   gap: 0.5rem;
 }
 
+.sc-scope-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.sc-scope-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.sc-scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.sc-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 999px;
+  background: #ede9fe;
+  color: #5b21b6;
+  font-size: 0.78rem;
+}
+
+.sc-scope-chip-name {
+  font-weight: 600;
+}
+
+.sc-scope-chip-sku {
+  color: #7c3aed;
+  font-size: 0.7rem;
+}
+
+.sc-scope-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #5b21b6;
+  cursor: pointer;
+}
+
+.sc-scope-chip button:hover {
+  color: #4c1d95;
+}
+
+.sc-scope-empty {
+  margin: 0.5rem 0 0;
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
 /* ── Lista de sesiones ── */
 .sc-session-list {
   display: grid;
@@ -244,10 +304,14 @@
 }
 
 .sc-feedback {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
   padding: 0.55rem 0.8rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
+  line-height: 1.4;
 }
 
 .sc-feedback--success {
@@ -260,6 +324,12 @@
   background: var(--danger-light);
   border-color: var(--danger);
   color: var(--text-primary);
+}
+
+.sc-feedback--scope {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
 }
 
 /* ── Ítems contados ── */

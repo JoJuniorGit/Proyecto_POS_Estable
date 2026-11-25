@@ -30,6 +30,7 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
     private readonly IStockCountClientService _stockCountService;
     private readonly ICategoryService? _categoryService;
     private readonly IDialogService? _dialogService;
+    private readonly IProductService? _productService;
     private readonly IDispatcherInvoker _dispatcherInvoker;
     private CancellationTokenSource? _loadCts;
     private bool _hasLoaded;
@@ -44,7 +45,27 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
 
     public bool CanCount => HasAccess;
 
-    public bool CanCreateSession => CanManage && !IsBusy;
+    public bool CanCreateSession => CanManage && !IsBusy && IsCreateScopeValid;
+
+    public bool CanOpenCreatePanel => CanManage && !IsCreatePanelOpen;
+
+    public bool CanPickCreateScopeProducts => _productService is not null && _dialogService is not null;
+
+    public bool IsCreateScopeCategoryVisible => SelectedCreateScopeType.Value == StockCountScopeType.Category;
+
+    public bool IsCreateScopeProductsVisible => SelectedCreateScopeType.Value == StockCountScopeType.Products;
+
+    public bool IsCreateScopeValid => SelectedCreateScopeType.Value switch
+    {
+        StockCountScopeType.All => true,
+        StockCountScopeType.Category => CreateScopeCategory?.Id is not null,
+        StockCountScopeType.Products => CreateScopeProducts.Count is > 0 and <= ProductPickerDialogViewModel.MaxSelection,
+        _ => false
+    };
+
+    public bool HasCreateScopeProducts => CreateScopeProducts.Count > 0;
+
+    public string CreateScopeProductCountText => $"{CreateScopeProducts.Count} / {ProductPickerDialogViewModel.MaxSelection}";
 
     public bool HasSelectedSession => SelectedSession is not null;
 
@@ -74,6 +95,10 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
 
     public bool HasNoSessions => !HasSessions;
 
+    public bool HasNoVisibleSessions => FilteredSessions.Count == 0;
+
+    public bool HasNoSearchResults => HasSessions && FilteredSessions.Count == 0;
+
     public bool HasNoItems => !HasItems;
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
@@ -84,9 +109,16 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
 
     public bool HasActionFeedback => !string.IsNullOrWhiteSpace(ActionFeedback);
 
-    public string ScanFeedbackColor => ScanFeedbackIsError ? "#B91C1C" : "#047857";
+    public string ScanFeedbackColor => ScanFeedbackIsError
+        ? (ScanFeedbackIsScopeViolation ? "#B45309" : "#B91C1C")
+        : "#047857";
+
+    public string CreateNotesCounterText => $"{CreateNotes?.Length ?? 0} / 300";
 
     public ObservableCollection<StockCountSessionRowViewModel> Sessions { get; } = new();
+
+    /// <summary>Vista filtrada por nombre para el buscador rápido del listado.</summary>
+    public ObservableCollection<StockCountSessionRowViewModel> FilteredSessions { get; } = new();
 
     public ObservableCollection<StockCountItemRowViewModel> Items { get; } = new();
 
@@ -94,9 +126,15 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<StockCountCategoryOption> Categories { get; } = new();
 
+    /// <summary>Productos elegidos para un alcance Products (chips del formulario de alta).</summary>
+    public ObservableCollection<ProductPickerSelection> CreateScopeProducts { get; } = new();
+
     public IReadOnlyList<StockCountStatusOption> StatusOptions { get; }
 
+    public IReadOnlyList<StockCountScopeOption> ScopeTypeOptions { get; }
+
     [ObservableProperty] private StockCountStatusOption _selectedStatusOption;
+    [ObservableProperty] private string _sessionSearchText = string.Empty;
     [ObservableProperty] private StockCountSessionRowViewModel? _selectedSession;
     [ObservableProperty] private StockCountReviewDto? _review;
     [ObservableProperty] private bool _isBusy;
@@ -107,9 +145,11 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _scanCode = string.Empty;
     [ObservableProperty] private string? _scanFeedback;
     [ObservableProperty] private bool _scanFeedbackIsError;
+    [ObservableProperty] private bool _scanFeedbackIsScopeViolation;
     [ObservableProperty] private bool _isCreatePanelOpen;
     [ObservableProperty] private string _createName = string.Empty;
     [ObservableProperty] private StockCountCategoryOption? _createScopeCategory;
+    [ObservableProperty] private StockCountScopeOption _selectedCreateScopeType;
     [ObservableProperty] private string _createNotes = string.Empty;
     [ObservableProperty] private string? _createError;
     [ObservableProperty] private string? _actionFeedback;
@@ -119,18 +159,22 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
         ICategoryService? categoryService = null,
         IDialogService? dialogService = null,
         UserSession? userSession = null,
-        IDispatcherInvoker? dispatcherInvoker = null)
+        IDispatcherInvoker? dispatcherInvoker = null,
+        IProductService? productService = null)
     {
         ArgumentNullException.ThrowIfNull(stockCountService);
 
         _stockCountService = stockCountService;
         _categoryService = categoryService;
         _dialogService = dialogService;
+        _productService = productService;
         _dispatcherInvoker = dispatcherInvoker ?? new InlineDispatcherInvoker();
         UserSession = userSession;
 
         StatusOptions = CreateStatusOptions();
+        ScopeTypeOptions = CreateScopeTypeOptions();
         _selectedStatusOption = StatusOptions[0];
+        _selectedCreateScopeType = ScopeTypeOptions[0];
         Categories.Add(new StockCountCategoryOption(null, "Todo el inventario"));
         _createScopeCategory = Categories[0];
 
@@ -140,16 +184,28 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
         }
 
         Sessions.CollectionChanged += (_, _) => NotifyStateChanged();
+        FilteredSessions.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasNoVisibleSessions));
+            OnPropertyChanged(nameof(HasNoSearchResults));
+        };
         Items.CollectionChanged += (_, _) => NotifyStateChanged();
+        CreateScopeProducts.CollectionChanged += (_, _) => NotifyCreateScopeStateChanged();
     }
 
     partial void OnSelectedSessionChanged(StockCountSessionRowViewModel? value)
     {
+        if (value is not null)
+        {
+            IsCreatePanelOpen = false;
+        }
+
         Items.Clear();
         ReviewItems.Clear();
         Review = null;
         ScanFeedback = null;
         ScanFeedbackIsError = false;
+        ScanFeedbackIsScopeViolation = false;
         ActionFeedback = null;
         NotifyStateChanged();
     }
@@ -162,6 +218,25 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
         }
     }
 
+    partial void OnSessionSearchTextChanged(string value) => ApplySessionFilter();
+
+    partial void OnIsCreatePanelOpenChanged(bool value) => NotifyStateChanged();
+
+    partial void OnSelectedCreateScopeTypeChanged(StockCountScopeOption value)
+    {
+        if (value.Value == StockCountScopeType.Category && CreateScopeCategory?.Id is null)
+        {
+            CreateScopeCategory = Categories.FirstOrDefault(category => category.Id is not null)
+                ?? Categories.FirstOrDefault();
+        }
+
+        NotifyCreateScopeStateChanged();
+    }
+
+    partial void OnCreateScopeCategoryChanged(StockCountCategoryOption? value) => NotifyCreateScopeStateChanged();
+
+    partial void OnScanFeedbackIsScopeViolationChanged(bool value) => OnPropertyChanged(nameof(ScanFeedbackColor));
+
     partial void OnReviewChanged(StockCountReviewDto? value) => NotifyStateChanged();
 
     partial void OnErrorMessageChanged(string? value) => OnPropertyChanged(nameof(HasError));
@@ -169,6 +244,8 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
     partial void OnScanFeedbackChanged(string? value) => OnPropertyChanged(nameof(HasScanFeedback));
 
     partial void OnCreateErrorChanged(string? value) => OnPropertyChanged(nameof(HasCreateError));
+
+    partial void OnCreateNotesChanged(string value) => OnPropertyChanged(nameof(CreateNotesCounterText));
 
     partial void OnActionFeedbackChanged(string? value) => OnPropertyChanged(nameof(HasActionFeedback));
 
@@ -239,6 +316,7 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
         Review = null;
         ScanFeedback = null;
         ScanFeedbackIsError = false;
+        ScanFeedbackIsScopeViolation = false;
         ActionFeedback = null;
         ErrorMessage = null;
     }
@@ -254,7 +332,9 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
         IsCreatePanelOpen = true;
         CreateName = string.Empty;
         CreateNotes = string.Empty;
+        SelectedCreateScopeType = ScopeTypeOptions[0];
         CreateScopeCategory = Categories.FirstOrDefault();
+        CreateScopeProducts.Clear();
         CreateError = null;
     }
 
@@ -263,6 +343,40 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
     {
         IsCreatePanelOpen = false;
         CreateError = null;
+    }
+
+    [RelayCommand]
+    private void OpenCreateScopeProductPicker()
+    {
+        if (_productService is null || _dialogService is null)
+        {
+            return;
+        }
+
+        var picker = new ProductPickerDialogViewModel(
+            _productService,
+            _categoryService,
+            CreateScopeProducts.ToList());
+
+        if (!_dialogService.ShowProductPickerDialog(picker))
+        {
+            return;
+        }
+
+        CreateScopeProducts.Clear();
+        foreach (var product in picker.SelectedProducts)
+        {
+            CreateScopeProducts.Add(product);
+        }
+    }
+
+    [RelayCommand]
+    private void RemoveCreateScopeProduct(ProductPickerSelection? product)
+    {
+        if (product is not null)
+        {
+            CreateScopeProducts.Remove(product);
+        }
     }
 
     [RelayCommand]
@@ -293,15 +407,32 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
             return;
         }
 
+        if (SelectedCreateScopeType.Value == StockCountScopeType.Category && CreateScopeCategory?.Id is null)
+        {
+            CreateError = "Seleccione una categoría para el alcance.";
+            return;
+        }
+
+        if (SelectedCreateScopeType.Value == StockCountScopeType.Products && CreateScopeProducts.Count == 0)
+        {
+            CreateError = "Seleccione al menos un producto para el alcance.";
+            return;
+        }
+
         IsBusy = true;
         CreateError = null;
         try
         {
+            var scopeType = SelectedCreateScopeType.Value;
             var created = await _stockCountService.CreateAsync(
                 new CreateStockCountRequestDto(
                     name,
-                    CreateScopeCategory?.Id,
-                    string.IsNullOrWhiteSpace(notes) ? null : notes));
+                    scopeType == StockCountScopeType.Category ? CreateScopeCategory?.Id : null,
+                    string.IsNullOrWhiteSpace(notes) ? null : notes,
+                    scopeType,
+                    scopeType == StockCountScopeType.Products
+                        ? CreateScopeProducts.Select(product => product.Id).Distinct().ToList()
+                        : null));
             IsCreatePanelOpen = false;
             await LoadSessionsAsync();
             var row = Sessions.FirstOrDefault(session => session.Id == created.Id);
@@ -339,6 +470,7 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
         IsBusy = true;
         ScanFeedback = null;
         ScanFeedbackIsError = false;
+        ScanFeedbackIsScopeViolation = false;
         try
         {
             var item = await _stockCountService.ScanAsync(SelectedSession.Id, code);
@@ -350,6 +482,8 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
         {
             ScanFeedback = ex.Message;
             ScanFeedbackIsError = true;
+            ScanFeedbackIsScopeViolation = ex.Message.Contains("productos seleccionados", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("alcance de la sesión", StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -607,6 +741,8 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
                     Sessions.Add(row);
                 }
 
+                ApplySessionFilter();
+
                 SelectedSession = selectedId.HasValue
                     ? Sessions.FirstOrDefault(session => session.Id == selectedId.Value)
                     : null;
@@ -733,12 +869,37 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
 
     private void OnSessionChanged() => NotifyStateChanged();
 
+    private void ApplySessionFilter()
+    {
+        var term = (SessionSearchText ?? string.Empty).Trim();
+        FilteredSessions.Clear();
+        foreach (var session in Sessions)
+        {
+            if (term.Length == 0
+                || session.Name.Contains(term, StringComparison.OrdinalIgnoreCase))
+            {
+                FilteredSessions.Add(session);
+            }
+        }
+    }
+
+    private void NotifyCreateScopeStateChanged()
+    {
+        OnPropertyChanged(nameof(IsCreateScopeCategoryVisible));
+        OnPropertyChanged(nameof(IsCreateScopeProductsVisible));
+        OnPropertyChanged(nameof(IsCreateScopeValid));
+        OnPropertyChanged(nameof(HasCreateScopeProducts));
+        OnPropertyChanged(nameof(CreateScopeProductCountText));
+        OnPropertyChanged(nameof(CanCreateSession));
+    }
+
     private void NotifyStateChanged()
     {
         OnPropertyChanged(nameof(HasAccess));
         OnPropertyChanged(nameof(CanManage));
         OnPropertyChanged(nameof(CanCount));
         OnPropertyChanged(nameof(CanCreateSession));
+        OnPropertyChanged(nameof(CanOpenCreatePanel));
         OnPropertyChanged(nameof(HasSelectedSession));
         OnPropertyChanged(nameof(SelectedSessionIsOpen));
         OnPropertyChanged(nameof(SelectedSessionIsClosed));
@@ -753,6 +914,8 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasItems));
         OnPropertyChanged(nameof(HasSessions));
         OnPropertyChanged(nameof(HasNoSessions));
+        OnPropertyChanged(nameof(HasNoVisibleSessions));
+        OnPropertyChanged(nameof(HasNoSearchResults));
         OnPropertyChanged(nameof(HasNoItems));
         OnPropertyChanged(nameof(HasError));
         OnPropertyChanged(nameof(HasScanFeedback));
@@ -780,6 +943,13 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
         new StockCountStatusOption(StockCountStatus.Closed, "Cerrada"),
         new StockCountStatusOption(StockCountStatus.Applied, "Aplicada"),
         new StockCountStatusOption(StockCountStatus.Cancelled, "Cancelada")
+    };
+
+    private static IReadOnlyList<StockCountScopeOption> CreateScopeTypeOptions() => new[]
+    {
+        new StockCountScopeOption(StockCountScopeType.All, "Todo el inventario"),
+        new StockCountScopeOption(StockCountScopeType.Category, "Por categoría"),
+        new StockCountScopeOption(StockCountScopeType.Products, "Productos seleccionados")
     };
 
     private static string FormatQuantity(decimal value)
@@ -811,6 +981,8 @@ public partial class StockCountViewModel : ObservableObject, IDisposable
 
 public sealed record StockCountStatusOption(StockCountStatus? Value, string Label);
 
+public sealed record StockCountScopeOption(StockCountScopeType Value, string Label);
+
 public sealed record StockCountCategoryOption(int? Id, string Label);
 
 /// <summary>Fila del listado de sesiones con displays de estado y alcance.</summary>
@@ -828,9 +1000,7 @@ public sealed class StockCountSessionRowViewModel : ObservableObject
     public string Name => _session.Name;
     public StockCountStatus Status => _session.Status;
     public int ItemsCount => _session.ItemsCount;
-    public string ScopeDisplay => string.IsNullOrWhiteSpace(_session.ScopeCategoryPath)
-        ? "Todo el inventario"
-        : _session.ScopeCategoryPath!;
+    public string ScopeDisplay => _session.ScopeDisplay;
     public string CreatedAtText => FormatLocal(_session.CreatedAt);
     public string StatusLabel => _session.Status switch
     {

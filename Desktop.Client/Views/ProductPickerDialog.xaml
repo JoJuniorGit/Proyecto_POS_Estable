@@ -1,0 +1,274 @@
+<Window x:Class="Desktop.Client.Views.ProductPickerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance vm:ProductPickerDialogViewModel}"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        TextElement.FontWeight="Regular"
+        TextElement.FontSize="13"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Auto"
+        Background="{DynamicResource MaterialDesignPaper}"
+        FontFamily="{DynamicResource MaterialDesignFont}"
+        Title="Seleccionar productos"
+        Height="640" Width="960"
+        MinHeight="520" MinWidth="760"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        PreviewKeyDown="ProductPickerDialog_PreviewKeyDown">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+
+        <Style x:Key="PickerHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="BorderBrush" Value="#F1F5F9"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="PickerGridStyle" TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="False"/>
+            <Setter Property="CanUserAddRows" Value="False"/>
+            <Setter Property="CanUserDeleteRows" Value="False"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="SelectionMode" Value="Single"/>
+            <Setter Property="SelectionUnit" Value="FullRow"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="ColumnHeaderHeight" Value="40"/>
+            <Setter Property="RowHeight" Value="40"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="RowBackground" Value="#FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#F1F5F9"/>
+            <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="VirtualizingStackPanel.IsVirtualizing" Value="True"/>
+            <Setter Property="VirtualizingStackPanel.VirtualizationMode" Value="Recycling"/>
+            <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
+        </Style>
+
+        <Style x:Key="PickerSecondaryButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+            <Setter Property="MinHeight" Value="34"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,16" LastChildFill="True">
+            <Border DockPanel.Dock="Right" Background="#EDE9FE" CornerRadius="10"
+                    Padding="12,6" VerticalAlignment="Top">
+                <TextBlock Text="{Binding SelectionCounterText}"
+                           Foreground="#5B21B6" FontWeight="SemiBold" FontSize="12"/>
+            </Border>
+            <StackPanel>
+                <TextBlock Text="Seleccionar productos"
+                           FontSize="20" FontWeight="Bold" Foreground="#1E293B"/>
+                <TextBlock Text="Solo se podrán escanear los productos seleccionados. El conteo permanece ciego: no se muestran existencias ni costos."
+                           FontSize="12" Foreground="#64748B" Margin="0,4,0,0" TextWrapping="Wrap"/>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Filtros -->
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox Grid.Column="0"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                     materialDesign:HintAssist.Hint="Buscar por nombre o SKU / código de barras"
+                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                     MinHeight="40" Padding="12,8" VerticalContentAlignment="Center"
+                     FontSize="13" Margin="0,0,8,0">
+                <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding SearchCommand}"/>
+                </TextBox.InputBindings>
+            </TextBox>
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding Categories}"
+                      SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"
+                      DisplayMemberPath="Label"
+                      Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                      MinWidth="190" MinHeight="40" Padding="12,6"
+                      VerticalContentAlignment="Center" VerticalAlignment="Center"
+                      FontSize="12" Margin="0,0,8,0"/>
+            <Button Grid.Column="2" Content="Buscar"
+                    Command="{Binding SearchCommand}"
+                    Style="{DynamicResource MaterialDesignRaisedButton}"
+                    Background="#6D28D9" Foreground="#FFFFFF"
+                    MinHeight="40" Padding="18,0" VerticalAlignment="Center"/>
+        </Grid>
+
+        <!-- Resultados y seleccionados -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="320"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1"
+                    CornerRadius="8" Padding="0" Margin="0,0,12,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <DataGrid Grid.Row="0"
+                              ItemsSource="{Binding Results}"
+                              Style="{StaticResource PickerGridStyle}">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Width="44" HeaderStyle="{StaticResource PickerHeaderStyle}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="SKU" Binding="{Binding Sku}" Width="140"
+                                                HeaderStyle="{StaticResource PickerHeaderStyle}"/>
+                            <DataGridTextColumn Header="PRODUCTO" Binding="{Binding Name}" Width="*"
+                                                HeaderStyle="{StaticResource PickerHeaderStyle}"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                Background="Transparent" Margin="16" IsHitTestVisible="False">
+                        <ProgressBar IsIndeterminate="True" Width="160" Height="4"
+                                     Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                        <TextBlock Text="No se encontraron productos contables con ese filtro."
+                                   FontSize="12" Foreground="#64748B" TextAlignment="Center"
+                                   Margin="0,8,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsBusy}" Value="False"/>
+                                                <Condition Binding="{Binding HasResults}" Value="False"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <DockPanel Grid.Row="1" Margin="12,8" LastChildFill="True">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="Anterior" Command="{Binding PreviousPageCommand}"
+                                    IsEnabled="{Binding HasPreviousPage}"
+                                    Style="{StaticResource PickerSecondaryButtonStyle}"
+                                    Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding PageText}" FontSize="12" Foreground="#475569"
+                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <Button Content="Siguiente" Command="{Binding NextPageCommand}"
+                                    IsEnabled="{Binding HasNextPage}"
+                                    Style="{StaticResource PickerSecondaryButtonStyle}"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding TotalCount, StringFormat={}{0} productos activos}"
+                                   FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1"
+                    CornerRadius="8" Padding="12">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Seleccionados"
+                               FontSize="14" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,10"/>
+
+                    <Grid Grid.Row="1">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding SelectedProducts}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#EDE9FE" CornerRadius="8" Padding="10,8"
+                                                Margin="0,0,0,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Name}" Foreground="#5B21B6"
+                                                               FontWeight="SemiBold" FontSize="12"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding Sku}" Foreground="#7C3AED"
+                                                               FontSize="11" Margin="0,2,0,0"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1"
+                                                        Command="{Binding DataContext.RemoveSelectedCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{DynamicResource MaterialDesignIconButton}"
+                                                        Width="28" Height="28" Padding="0"
+                                                        ToolTip="Quitar de la selección">
+                                                    <materialDesign:PackIcon Kind="Close" Width="16" Height="16"
+                                                                             Foreground="#5B21B6"/>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <TextBlock Text="Aún no has seleccionado productos."
+                                   FontSize="12" Foreground="#94A3B8" TextAlignment="Center"
+                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding HasSelection, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Footer -->
+        <DockPanel Grid.Row="3" Margin="0,16,0,0" LastChildFill="True">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="Cancelar" Command="{Binding CancelCommand}"
+                        Style="{StaticResource PickerSecondaryButtonStyle}"
+                        Margin="0,0,8,0"/>
+                <Button Content="Confirmar selección" Command="{Binding ConfirmCommand}"
+                        IsEnabled="{Binding CanConfirm}"
+                        Style="{DynamicResource MaterialDesignRaisedButton}"
+                        Background="#6D28D9" Foreground="#FFFFFF"
+                        MinHeight="36" Padding="18,0"/>
+            </StackPanel>
+            <TextBlock Text="{Binding ErrorMessage}"
+                       Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}"
+                       Foreground="#B91C1C" FontSize="12" VerticalAlignment="Center"
+                       TextWrapping="Wrap" Margin="0,0,16,0"/>
+        </DockPanel>
+    </Grid>
+</Window>

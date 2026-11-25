@@ -67,22 +67,40 @@ describe('stockCountApi — contrato /api/stock-counts (8.180-T2, S5)', () => {
     assert.deepStrictEqual(await listStockCounts(), []);
   });
 
-  it('4. createStockCount normaliza scopeCategoryId/notes a null cuando no vienen', async () => {
+  it('4. createStockCount envía scopeType y normaliza category/products/notes a null', async () => {
     mockFetch({ id: 1 });
-    await createStockCount({ name: 'Conteo octubre', scopeCategoryId: 5 });
+    await createStockCount({ name: 'Conteo octubre', scopeType: 1, scopeCategoryId: 5 });
     assert.strictEqual(fetchCalls[0].config.method, 'POST');
     assert.ok(fetchCalls[0].url.endsWith('/api/stock-counts'));
     assert.deepStrictEqual(JSON.parse(fetchCalls[0].config.body), {
       name: 'Conteo octubre',
+      scopeType: 1,
       scopeCategoryId: 5,
+      scopeProductIds: null,
       notes: null,
     });
 
     await createStockCount({ name: 'Todo el inventario' });
     assert.deepStrictEqual(JSON.parse(fetchCalls[1].config.body), {
       name: 'Todo el inventario',
+      scopeType: 0,
       scopeCategoryId: null,
+      scopeProductIds: null,
       notes: null,
+    });
+
+    await createStockCount({
+      name: 'Conteo focalizado',
+      scopeType: 2,
+      scopeProductIds: [10, 20],
+      notes: '  notas  ',
+    });
+    assert.deepStrictEqual(JSON.parse(fetchCalls[2].config.body), {
+      name: 'Conteo focalizado',
+      scopeType: 2,
+      scopeCategoryId: null,
+      scopeProductIds: [10, 20],
+      notes: 'notas',
     });
   });
 
