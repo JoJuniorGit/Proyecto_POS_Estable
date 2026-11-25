@@ -18582,3 +18582,44 @@ D1. WU2 (contrato API, servicio, tests de integracion) y WU3 (WPF/Web) pendiente
 D2. La etiqueta y validacion de productos seleccionados se implementan en WU2;
     esta WU solo persiste el alcance.
 ================================================================================
+
+ANEXO LXXIV - CONTEO FISICO: ALCANCE POR PRODUCTOS (WU2) - 2026-11-25
+================================================================================
+
+A. CAMBIOS
+A1. `CreateStockCountRequestDto` agrega `ScopeType` (nullable) y
+    `ScopeProductIds` (List<int>). Sin ScopeType se infiere Category/Products/All
+    por compatibilidad; con ScopeType explicito se valida la exclusividad.
+A2. Alta Products: 1..1000 IDs unicos, existentes, activos, no borrados y
+    contables (sin cash advance, agrupador individual ni variante compartida);
+    los payloads invalidos son ArgumentException -> 400. Category conserva el
+    404 de categoria inexistente. La tabla puente se persiste en el mismo
+    SaveChanges de la sesion.
+A3. `EnsureProductInScopeAsync` ahora recibe el Product y aplica el tipo de
+    alcance: All libre, Category subtree, Products contra
+    StockCountSessionProducts con 409 y mensaje con nombre/SKU del operador.
+A4. `CountUnscannedInScopeAsync` cuenta solo los seleccionados no escaneados
+    para Products; All/Category conserva el filtro contable historico.
+    `ApplyAsync` no cambio: solo aplica los items escaneados.
+A5. `StockCountSessionDto` expone ScopeType, ScopeProductCount y ScopeDisplay
+    calculado (Todo el inventario / ruta de categoria / Productos
+    seleccionados (N)) manteniendo la firma posicional existente.
+
+B. EVIDENCIA
+B1. RED: StockCountProductScopeServiceTests no compilaba (CS1739/CS1061).
+B2. GREEN unitario: 7/7, incluido round-trip JSON web de scopeType y
+    scopeProductIds. Filtro StockCount con PostgreSQL real: 66/66.
+B3. PostgreSQL real: create Products con 2 productos, scan dentro, scan fuera
+    con 409, review de 1 no escaneado, close/apply y movimientos solo para el
+    producto escaneado; stock de seleccionados no escaneados y fuera de alcance
+    intacto.
+B4. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+
+C. COMMITS
+C1. Commit local de WU2 en la rama V0.15; sin push.
+
+D. PENDIENTE / RIESGOS
+D1. WU3: selector WPF/Web, aviso visual de 409 y validacion final de clientes.
+D2. El mensaje de fuera de alcance se expone tal cual al operador; Web/WPF lo
+    distinguen por status/mensaje en WU3.
+================================================================================
