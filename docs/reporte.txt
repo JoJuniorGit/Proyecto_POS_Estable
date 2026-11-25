@@ -18545,3 +18545,40 @@ D2. El rediseno visual completo de Profitability/StockCount sigue pendiente; la
 D3. La plantilla PostgreSQL y las colecciones serializadas agregan estado de
     proceso; la limpieza de plantillas huerfanas es best-effort por PID.
 ================================================================================
+
+ANEXO LXXIII - CONTEO FISICO: ALCANCE POR PRODUCTOS (WU1) - 2026-11-25
+================================================================================
+
+A. CAMBIOS
+A1. Nuevo enum `StockCountScopeType` (All=0, Category=1, Products=2) y campo
+    `ScopeType` en `StockCountSession`, persistido como varchar(32) con default
+    'All' (consistente con `StockCountStatus`).
+A2. Nueva entidad `StockCountSessionProduct` y navegacion `ScopeProducts`:
+    tabla puente `StockCountSessionProducts` con PK compuesta
+    (StockCountSessionId, ProductId), indice por ProductId y FKs Restrict.
+A3. Migracion nueva e idempotente `20261125173504_AddStockCountProductScope`:
+    ADD COLUMN IF NOT EXISTS, backfill Category para sesiones historicas con
+    ScopeCategoryId no nulo, CREATE TABLE/INDEX IF NOT EXISTS. No modifica
+    migraciones previas. ModelSnapshot actualizado.
+A4. `InventoryDbContext` mapea la conversion string y la relacion; el resto de
+    columnas, indices y FKs existentes no cambia.
+
+B. EVIDENCIA
+B1. RED: `StockCountProductScopeModelTests` no compilaba (CS0117/CS0246).
+B2. GREEN modelo: 2/2. `MigrationIndexDriftTests` 2/2.
+    `PendingModelChangesTests` 2/2.
+B3. PostgreSQL real aislado: 1/1. Migra a la version previa, inserta sesiones
+    legacy, aplica la migracion nueva, verifica backfill Category/All, columna
+    varchar(32) NO NULL default 'All', tabla puente, PK, dos FKs Restrict,
+    indice por ProductId y rechazo de DELETE del producto referenciado.
+B4. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+    (WU1 verificado con TEST_POSTGRES_CONNECTION local.)
+
+C. COMMITS
+C1. Commit local de WU1 en la rama V0.15; sin push.
+
+D. PENDIENTE / RIESGOS
+D1. WU2 (contrato API, servicio, tests de integracion) y WU3 (WPF/Web) pendientes.
+D2. La etiqueta y validacion de productos seleccionados se implementan en WU2;
+    esta WU solo persiste el alcance.
+================================================================================

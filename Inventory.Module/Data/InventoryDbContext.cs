@@ -31,6 +31,7 @@ public class InventoryDbContext : DbContext
     // 8.180-T1 (S1): sesiones de conteo físico ciego + ítems contados (Paso 6).
     public DbSet<StockCountSession> StockCountSessions { get; set; }
     public DbSet<StockCountItem> StockCountItems { get; set; }
+    public DbSet<StockCountSessionProduct> StockCountSessionProducts { get; set; }
 
 
 
@@ -424,6 +425,10 @@ public class InventoryDbContext : DbContext
                 .HasConversion<string>()
                 .HasMaxLength(32)
                 .HasDefaultValue(StockCountStatus.Open);
+            entity.Property(s => s.ScopeType)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .HasDefaultValue(StockCountScopeType.All);
             entity.HasOne(s => s.ScopeCategory)
                 .WithMany()
                 .HasForeignKey(s => s.ScopeCategoryId)
@@ -457,6 +462,24 @@ public class InventoryDbContext : DbContext
             entity.HasOne(i => i.Product)
                 .WithMany()
                 .HasForeignKey(i => i.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // WU1: alcance estricto por producto. Clave compuesta (sesión, producto) + índice por
+        // producto para búsquedas de alcance; ambos FKs Restrict para no borrar en cascada.
+        modelBuilder.Entity<StockCountSessionProduct>(entity =>
+        {
+            entity.HasKey(sp => new { sp.StockCountSessionId, sp.ProductId });
+            entity.ToTable("StockCountSessionProducts");
+            entity.HasIndex(sp => sp.ProductId)
+                .HasDatabaseName("IX_StockCountSessionProducts_ProductId");
+            entity.HasOne(sp => sp.StockCountSession)
+                .WithMany(s => s.ScopeProducts)
+                .HasForeignKey(sp => sp.StockCountSessionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(sp => sp.Product)
+                .WithMany()
+                .HasForeignKey(sp => sp.ProductId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

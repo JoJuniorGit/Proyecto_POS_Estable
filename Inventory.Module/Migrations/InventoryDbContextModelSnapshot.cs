@@ -411,6 +411,13 @@ namespace Inventory.Module.Migrations
                     b.Property<int?>("ScopeCategoryId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ScopeType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("All");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -435,6 +442,22 @@ namespace Inventory.Module.Migrations
                         .HasDatabaseName("IX_StockCountSessions_Status");
 
                     b.ToTable("StockCountSessions");
+                });
+
+            modelBuilder.Entity("Core.Entities.StockCountSessionProduct", b =>
+                {
+                    b.Property<int>("StockCountSessionId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("StockCountSessionId", "ProductId");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("IX_StockCountSessionProducts_ProductId");
+
+                    b.ToTable("StockCountSessionProducts", (string)null);
                 });
 
             modelBuilder.Entity("Core.Entities.StockMovement", b =>
@@ -1183,6 +1206,25 @@ namespace Inventory.Module.Migrations
                     b.Navigation("ScopeCategory");
                 });
 
+            modelBuilder.Entity("Core.Entities.StockCountSessionProduct", b =>
+                {
+                    b.HasOne("Core.Entities.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Core.Entities.StockCountSession", "StockCountSession")
+                        .WithMany("ScopeProducts")
+                        .HasForeignKey("StockCountSessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+
+                    b.Navigation("StockCountSession");
+                });
+
             modelBuilder.Entity("Core.Entities.StockMovement", b =>
                 {
                     b.HasOne("Core.Entities.Product", "Product")
@@ -1314,6 +1356,8 @@ namespace Inventory.Module.Migrations
             modelBuilder.Entity("Core.Entities.StockCountSession", b =>
                 {
                     b.Navigation("Items");
+
+                    b.Navigation("ScopeProducts");
                 });
 
             modelBuilder.Entity("Core.Entities.Supplier", b =>

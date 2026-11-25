@@ -19,9 +19,15 @@ public class StockCountSession : BaseEntity
 
     public StockCountStatus Status { get; set; } = StockCountStatus.Open;
 
+    /// <summary>Tipo de alcance; determina si se usan ScopeCategoryId o ScopeProducts.</summary>
+    public StockCountScopeType ScopeType { get; set; } = StockCountScopeType.All;
+
     /// <summary>Categoría raíz del alcance del conteo (subárbol completo); null = todos los productos.</summary>
     public int? ScopeCategoryId { get; set; }
     public Category? ScopeCategory { get; set; }
+
+    /// <summary>Productos seleccionados cuando <see cref="ScopeType"/> es Products.</summary>
+    public ICollection<StockCountSessionProduct> ScopeProducts { get; set; } = new List<StockCountSessionProduct>();
 
     public string? CreatedByUserId { get; set; }
 
