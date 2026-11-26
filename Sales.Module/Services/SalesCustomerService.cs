@@ -86,7 +86,8 @@ internal sealed class SalesCustomerService
         int page = 1,
         int pageSize = 20,
         bool recentOnly = false,
-        System.Threading.CancellationToken cancellationToken = default)
+        System.Threading.CancellationToken cancellationToken = default,
+        bool? isActive = null)
     {
         if (recentOnly)
         {
@@ -138,6 +139,11 @@ internal sealed class SalesCustomerService
         }
 
         var q = _context.Customers.AsNoTracking().AsQueryable();
+
+        if (isActive.HasValue)
+        {
+            q = q.Where(c => c.IsActive == isActive.Value);
+        }
 
         if (!string.IsNullOrWhiteSpace(query))
         {

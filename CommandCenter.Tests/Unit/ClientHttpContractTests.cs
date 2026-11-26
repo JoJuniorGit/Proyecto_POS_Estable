@@ -259,6 +259,26 @@ public class ClientHttpContractTests
     }
 
     [Fact]
+    public async Task Sales_GetCustomersAsync_ForwardsTheActiveStatusFilter()
+    {
+        var requests = await CaptureAsync<SalesService>(
+            c => new SalesService(c),
+            s => s.GetCustomersAsync("Ana", 2, 15, recentOnly: false, isActive: true));
+
+        AssertRequest(
+            Assert.Single(requests),
+            HttpMethod.Get,
+            "/api/sales/customers",
+            typeof(SalesController),
+            nameof(SalesController.GetCustomersAsync),
+            "query",
+            "page",
+            "pageSize",
+            "recentOnly",
+            "isActive");
+    }
+
+    [Fact]
     public async Task Sales_CreateCustomerAsync_PostsToCustomersRoute()
     {
         var requests = await CaptureAsync<SalesService>(

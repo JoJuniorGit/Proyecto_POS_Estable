@@ -41,8 +41,9 @@ public partial class SalesService
         int page = 1,
         int pageSize = 20,
         bool recentOnly = false,
-        System.Threading.CancellationToken cancellationToken = default)
-        => _customers.GetCustomersAsync(query, page, pageSize, recentOnly, cancellationToken);
+        System.Threading.CancellationToken cancellationToken = default,
+        bool? isActive = null)
+        => _customers.GetCustomersAsync(query, page, pageSize, recentOnly, cancellationToken, isActive);
 
     public Task<CustomerDto> CreateCustomerAsync(CreateCustomerDto request, System.Threading.CancellationToken cancellationToken = default)
         => _customers.CreateCustomerAsync(request, cancellationToken);

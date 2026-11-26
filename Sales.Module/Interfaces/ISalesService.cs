@@ -103,7 +103,7 @@ public interface ISalesService
     /// <summary>8.14-N1: total de retiros pendientes para paginación de UI.</summary>
     Task<int> CountPendingPickupsAsync(int? cashierId = null, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId, int? actingUserId = null, System.Threading.CancellationToken cancellationToken = default);
-    Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(string? query = null, int page = 1, int pageSize = 20, bool recentOnly = false, System.Threading.CancellationToken cancellationToken = default);
+    Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(string? query = null, int page = 1, int pageSize = 20, bool recentOnly = false, System.Threading.CancellationToken cancellationToken = default, bool? isActive = null);
 
     Task<CustomerDto> GetDefaultCustomerAsync(System.Threading.CancellationToken cancellationToken = default);
     Task<CustomerDto> CreateCustomerAsync(CreateCustomerDto request, System.Threading.CancellationToken cancellationToken = default);

@@ -17,12 +17,13 @@ public partial class SalesController
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] bool recentOnly = false,
+        [FromQuery] bool? isActive = null,
         CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
 
-        var (items, totalCount) = await _salesService.GetCustomersAsync(query, page, pageSize, recentOnly, cancellationToken);
+        var (items, totalCount) = await _salesService.GetCustomersAsync(query, page, pageSize, recentOnly, cancellationToken, isActive);
         Response.Headers["X-Total-Count"] = totalCount.ToString();
 
         bool canViewCredit = User.IsInRole("Admin") || User.IsInRole("Manager");

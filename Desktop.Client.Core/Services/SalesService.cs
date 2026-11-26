@@ -298,12 +298,17 @@ public class SalesService : ISalesService
         string? query = null,
         int page = 1,
         int pageSize = 20,
-        bool recentOnly = false)
+        bool recentOnly = false,
+        bool? isActive = null)
     {
         var url = $"api/sales/customers?page={page}&pageSize={pageSize}&recentOnly={recentOnly}";
         if (!string.IsNullOrWhiteSpace(query))
         {
             url += $"&query={Uri.EscapeDataString(query)}";
+        }
+        if (isActive.HasValue)
+        {
+            url += $"&isActive={isActive.Value.ToString().ToLowerInvariant()}";
         }
 
         try
