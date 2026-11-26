@@ -858,18 +858,13 @@
                     </StackPanel>
 
                     
-                    <!-- Bottom-right Gear Icon (Opens Side Drawer) -->
+                    <!-- Bottom-right menu button (location exception for POS) -->
                     <Button Grid.Row="1"
                             AutomationProperties.AutomationId="Pos_OpenMenuButton"
-                            Style="{DynamicResource MaterialDesignIconButton}"
-                            Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                            CommandParameter="{x:Static Dock.Right}"
+                            Style="{StaticResource SidebarMenuButtonStyle}"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Bottom"
-                            ToolTip="Open Main Menu"
-                            Margin="0,20,0,0">
-                        <materialDesign:PackIcon Kind="Cog" Width="24" Height="24" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                    </Button>
+                            Margin="0,20,0,0"/>
                 </Grid>
             </Border>
         </Grid>

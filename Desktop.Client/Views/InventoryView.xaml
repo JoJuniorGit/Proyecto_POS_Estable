@@ -273,22 +273,7 @@
                     </Button>
 
                     <!-- Menú: solo ícono -->
-                    <Button Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                            CommandParameter="{x:Static Dock.Right}"
-                            Background="#FFFFFF"
-                            BorderBrush="#CBD5E1"
-                            BorderThickness="1"
-                            Foreground="#475569"
-                            ToolTipService.InitialShowDelay="150"
-                            ToolTipService.BetweenShowDelay="50"
-                            ToolTipService.ShowDuration="8000"
-                            ToolTip="Menú de inventario"
-                            Width="38"
-                            Height="38"
-                            Padding="0"
-                            materialDesign:ButtonAssist.CornerRadius="6">
-                        <materialDesign:PackIcon Kind="CogOutline" Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Button>
+                    <Button Style="{StaticResource SidebarMenuButtonStyle}" VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>
         </Border>

@@ -118,14 +118,8 @@
                     </Button>
 
                     <!-- Navigation / Menu Button -->
-                    <Button Style="{DynamicResource MaterialDesignIconButton}"
-                            Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                            CommandParameter="{x:Static Dock.Right}"
-                            Margin="8,0,0,0"
-                            Width="36" Height="36"
-                            ToolTip="Abrir Menú Principal">
-                        <materialDesign:PackIcon Kind="Menu" Width="22" Height="22" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                    </Button>
+                    <Button Style="{StaticResource SidebarMenuButtonStyle}"
+                            Margin="8,0,0,0"/>
                 </StackPanel>
             </Grid>
         </Border>

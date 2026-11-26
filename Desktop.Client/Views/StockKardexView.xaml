@@ -94,14 +94,7 @@
                     </Button.ContentTemplate>
                 </Button>
 
-                <Button Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                        CommandParameter="{x:Static Dock.Right}"
-                        Style="{DynamicResource MaterialDesignIconButton}"
-                        ToolTip="Abrir Menú Principal"
-                        Height="36" Width="36"
-                        VerticalAlignment="Center">
-                    <materialDesign:PackIcon Kind="Menu" Width="22" Height="22" Foreground="#475569"/>
-                </Button>
+                <Button Style="{StaticResource SidebarMenuButtonStyle}" VerticalAlignment="Center"/>
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">

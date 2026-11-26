@@ -582,12 +582,7 @@
                         </StackPanel>
                     </Button>
 
-                    <Button Style="{StaticResource HeaderIconButtonStyle}"
-                            Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                            CommandParameter="{x:Static Dock.Right}"
-                            ToolTip="Abrir menú principal">
-                        <materialDesign:PackIcon Kind="CogOutline" Width="18" Height="18" Foreground="#475569"/>
-                    </Button>
+                    <Button Style="{StaticResource SidebarMenuButtonStyle}"/>
                 </StackPanel>
             </Grid>
 

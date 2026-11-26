@@ -122,13 +122,8 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                        <Button Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                                CommandParameter="{x:Static Dock.Right}"
-                                Style="{StaticResource MaterialDesignIconButton}"
-                                ToolTip="Open Navigation Menu"
-                                Margin="0,0,12,0" VerticalAlignment="Center">
-                            <materialDesign:PackIcon Kind="Cog" Width="24" Height="24" />
-                        </Button>
+                        <Button Style="{StaticResource SidebarMenuButtonStyle}"
+                                Margin="0,0,12,0" VerticalAlignment="Center"/>
                         <Border Width="40" Height="40" CornerRadius="20"
                                 Background="{DynamicResource PrimaryHueLightBrush}"
                                 Margin="0,0,12,0" VerticalAlignment="Center">

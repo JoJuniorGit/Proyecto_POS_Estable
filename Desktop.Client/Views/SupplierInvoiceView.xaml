@@ -49,14 +49,8 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
-            <Button Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                    CommandParameter="{x:Static Dock.Right}"
-                    Style="{StaticResource MaterialDesignIconButton}"
-                    ToolTip="Abrir menú de navegación"
-                    Margin="0,0,16,0" VerticalAlignment="Center">
-                <materialDesign:PackIcon Kind="Menu" Width="24" Height="24" />
-            </Button>
+        <DockPanel Grid.Row="0" Margin="0,0,0,12">
+            <Button DockPanel.Dock="Right" Style="{StaticResource SidebarMenuButtonStyle}" VerticalAlignment="Top" Margin="16,0,0,0"/>
             <StackPanel VerticalAlignment="Center">
                 <TextBlock Text="ACTUALIZACIÓN DE PRECIOS POR FACTURA DE PROVEEDOR"
                            AutomationProperties.AutomationId="SupplierInvoice_Title"
@@ -66,7 +60,7 @@
                            Style="{DynamicResource MaterialDesignSubtitle2TextBlock}"
                            Foreground="{DynamicResource MaterialDesignTextBoxBorder}" />
             </StackPanel>
-        </StackPanel>
+        </DockPanel>
 
         <materialDesign:Card Grid.Row="1" Padding="16" Margin="0,0,0,12">
             <!-- 8.161: fila unica de seleccion (proveedor, moneda, tasa); el alta de proveedor

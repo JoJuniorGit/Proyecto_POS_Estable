@@ -18930,3 +18930,39 @@ D. PENDIENTE / RIESGOS
 D1. La validacion visual se hizo con harness fuera del repositorio; la
     prueba manual final sigue siendo recomendable.
 ================================================================================
+
+ANEXO LXXXII - WPF: BOTON DE MENU LATERAL UNIFICADO - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Se agrego SidebarMenuButtonStyle en Desktop.Client/App.xaml: 40x40,
+    fondo blanco, borde #CBD5E1, radio 8, icono hamburguesa de 18px, hover
+    #F1F5F9, pressed #E2E8F0 y tooltip "Abrir menu lateral"; el estilo fija
+    DrawerHost.OpenDrawerCommand y Dock.Right.
+A2. Se reemplazaron los botones de menu de 16 vistas WPF (Caja, CxC, Cierre
+    diario, Tasa de Cambio, Importacion, Inventario, Pedidos, Retiros,
+    Rentabilidad, Historial, Configuracion, Conteo, Kardex, Factura
+    proveedor, Usuarios y POS) por el estilo compartido; se elimino la
+    variacion de iconos Menu/Cog/CogOutline, tamanos, colores y tooltips en
+    ingles.
+A3. Se estandarizo la ubicacion en el encabezado derecho de la mayoria de
+    las vistas; se conservaron excepciones justificadas en POS (inferior
+    derecho), Inventario (toolbar) y Caja/Rentabilidad (encabezado con
+    acciones propias).
+A4. Se agrego el boton compartido en Tasa de Cambio, junto a "Volver al POS".
+    La logica de navegacion, comandos existentes y bindings no se modificaron.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET completa con PostgreSQL real: 4531/4531, 0 skipped.
+B3. Verificacion estructural de XAML: 16 vistas referencian el estilo; no
+    quedan usos de DrawerHost.OpenDrawerCommand fuera de App.xaml.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La validacion visual final en la instalacion y a 125% DPI sigue siendo
+    recomendable; no se ejecuto un harness visual de todas las vistas.
+================================================================================

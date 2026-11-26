@@ -360,16 +360,18 @@
                 </StackPanel>
             </StackPanel>
 
-            <Button Grid.Column="1"
-                    Style="{StaticResource HeaderSecondaryButtonStyle}"
-                    Command="{Binding DataContext.NavigateToPosCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                    VerticalAlignment="Top"
-                    ToolTip="Volver al Punto de Venta">
-                <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="ArrowLeft" Width="16" Height="16" VerticalAlignment="Center"/>
-                    <TextBlock Text="Volver al POS" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                </StackPanel>
-            </Button>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button Style="{StaticResource SidebarMenuButtonStyle}" Margin="0,0,8,0"/>
+                <Button Style="{StaticResource HeaderSecondaryButtonStyle}"
+                        Command="{Binding DataContext.NavigateToPosCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                        VerticalAlignment="Top"
+                        ToolTip="Volver al Punto de Venta">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="ArrowLeft" Width="16" Height="16" VerticalAlignment="Center"/>
+                        <TextBlock Text="Volver al POS" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!-- Single regime notice: no exchange rate exists, so current rate, manual entry, sync and history are hidden -->
