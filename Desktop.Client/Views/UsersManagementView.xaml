@@ -6,10 +6,10 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              xmlns:converters="clr-namespace:Desktop.Client.Converters"
-             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
              xmlns:entities="clr-namespace:Core.Entities;assembly=Core"
+             xmlns:views="clr-namespace:Desktop.Client.Views"
              mc:Ignorable="d"
-             d:DesignHeight="760" d:DesignWidth="1180"
+             d:DesignHeight="800" d:DesignWidth="1180"
              Background="#F8FAFC"
              d:DataContext="{d:DesignInstance Type=vm:UsersManagementViewModel}">
 
@@ -17,8 +17,9 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVis"/>
         <converters:InitialsConverter x:Key="InitialsConverter"/>
+        <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
+        <converters:CollectionEmptyToVisibilityConverter x:Key="CollectionEmptyToVis"/>
 
-        <!-- Enterprise cards -->
         <Style x:Key="EnterpriseCardStyle" TargetType="Border">
             <Setter Property="Background" Value="#FFFFFF"/>
             <Setter Property="BorderBrush" Value="#E2E8F0"/>
@@ -27,48 +28,34 @@
             <Setter Property="Padding" Value="0"/>
         </Style>
 
-        <Style x:Key="InspectorHeaderStyle" TargetType="Border">
-            <Setter Property="Background" Value="#F8FAFC"/>
-            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="CornerRadius" Value="12,12,0,0"/>
-            <Setter Property="Padding" Value="20,14"/>
-        </Style>
-
         <Style x:Key="TableFooterStyle" TargetType="Border">
             <Setter Property="Background" Value="#FAFAFA"/>
             <Setter Property="BorderBrush" Value="#F1F5F9"/>
             <Setter Property="BorderThickness" Value="0,1,0,0"/>
             <Setter Property="CornerRadius" Value="0,0,12,12"/>
-            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="Padding" Value="16,10"/>
         </Style>
 
-        <!-- Header -->
         <Style x:Key="HeaderIconButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#FFFFFF"/>
             <Setter Property="BorderBrush" Value="#E2E8F0"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Foreground" Value="#475569"/>
-            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Padding" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="HeaderButtonBorder"
-                                Background="{TemplateBinding Background}"
+                        <Border x:Name="HeaderButtonBorder" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
+                                CornerRadius="8" SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="HeaderButtonBorder" Property="Background" Value="#F8FAFC"/>
-                                <Setter TargetName="HeaderButtonBorder" Property="BorderBrush" Value="#CBD5E1"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="HeaderButtonBorder" Property="Background" Value="#F1F5F9"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -77,7 +64,6 @@
             </Setter>
         </Style>
 
-        <!-- Segmented control -->
         <Style x:Key="SegmentButtonBaseStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#475569"/>
@@ -89,19 +75,13 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="SegmentBorder"
-                                Background="{TemplateBinding Background}"
-                                CornerRadius="8"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
+                        <Border x:Name="SegmentBorder" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="SegmentBorder" Property="Opacity" Value="0.92"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="SegmentBorder" Property="Opacity" Value="0.82"/>
+                                <Setter TargetName="SegmentBorder" Property="Background" Value="#E2E8F0"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -114,6 +94,7 @@
                 <DataTrigger Binding="{Binding SelectedTabIndex}" Value="0">
                     <Setter Property="Background" Value="#FFFFFF"/>
                     <Setter Property="Foreground" Value="#6D28D9"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -123,6 +104,7 @@
                 <DataTrigger Binding="{Binding SelectedTabIndex}" Value="1">
                     <Setter Property="Background" Value="#FFFFFF"/>
                     <Setter Property="Foreground" Value="#6D28D9"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -157,24 +139,20 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
 
-        <!-- Actions -->
         <Style x:Key="PrimaryActionButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#6D28D9"/>
             <Setter Property="Foreground" Value="#FFFFFF"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Height" Value="44"/>
-            <Setter Property="Padding" Value="14,0"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="FontSize" Value="12.5"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="PrimaryBorder"
-                                Background="{TemplateBinding Background}"
-                                CornerRadius="8"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
+                        <Border x:Name="PrimaryBorder" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -208,20 +186,14 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="SecondaryBorder"
-                                Background="{TemplateBinding Background}"
+                        <Border x:Name="SecondaryBorder" Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
+                                CornerRadius="8" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="SecondaryBorder" Property="Background" Value="#F8FAFC"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="SecondaryBorder" Property="Background" Value="#F1F5F9"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
@@ -234,147 +206,8 @@
             </Setter>
         </Style>
 
-        <Style x:Key="CompactAccentButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="#F5F3FF"/>
-            <Setter Property="BorderBrush" Value="#DDD6FE"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="#6D28D9"/>
-            <Setter Property="Height" Value="32"/>
-            <Setter Property="Padding" Value="10,6"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="AccentBorder"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="AccentBorder" Property="Background" Value="#EDE9FE"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="AccentBorder" Property="Background" Value="#DDD6FE"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="AccentBorder" Property="Opacity" Value="0.55"/>
-                                <Setter Property="Cursor" Value="Arrow"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="PaginationNumberButtonStyle" TargetType="Button"
-               BasedOn="{StaticResource MaterialDesignFlatButton}">
-            <Setter Property="Height" Value="30"/>
-            <Setter Property="MinWidth" Value="32"/>
-            <Setter Property="Padding" Value="6,0"/>
-            <Setter Property="Margin" Value="2,0"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#475569"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="materialDesign:ButtonAssist.CornerRadius" Value="6"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsActive}" Value="True">
-                    <Setter Property="Background" Value="#6D28D9"/>
-                    <Setter Property="Foreground" Value="#FFFFFF"/>
-                    <Setter Property="FontWeight" Value="Bold"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style x:Key="PaginationTextBoxFrameStyle" TargetType="Border">
-            <Setter Property="Background" Value="#F8FAFC"/>
-            <Setter Property="BorderBrush" Value="#CBD5E1"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Height" Value="30"/>
-            <Setter Property="Width" Value="52"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Style.Triggers>
-                <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                    <Setter Property="Background" Value="#FFFFFF"/>
-                    <Setter Property="BorderBrush" Value="#6D28D9"/>
-                    <Setter Property="BorderThickness" Value="1.5"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <Style x:Key="PaginationTextBoxStyle" TargetType="TextBox">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="2,0"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Foreground" Value="#0F172A"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Height" Value="28"/>
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
-        </Style>
-
-        <Style x:Key="DangerActionButtonStyle" TargetType="Button">
+        <Style x:Key="SearchFrameStyle" TargetType="Border">
             <Setter Property="Background" Value="#FFFFFF"/>
-            <Setter Property="BorderBrush" Value="#FECACA"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="#B91C1C"/>
-            <Setter Property="Height" Value="38"/>
-            <Setter Property="Padding" Value="12,0"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="DangerBorder"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="DangerBorder" Property="Background" Value="#FEF2F2"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="DangerBorder" Property="Opacity" Value="0.55"/>
-                                <Setter Property="Cursor" Value="Arrow"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Form fields -->
-        <Style x:Key="FormLabelStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#334155"/>
-            <Setter Property="Margin" Value="0,0,0,6"/>
-        </Style>
-
-        <Style x:Key="HelperTextStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Foreground" Value="#64748B"/>
-            <Setter Property="Margin" Value="2,5,0,0"/>
-        </Style>
-
-        <Style x:Key="FieldFrameStyle" TargetType="Border">
-            <Setter Property="Background" Value="#F8FAFC"/>
             <Setter Property="BorderBrush" Value="#CBD5E1"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="8"/>
@@ -382,89 +215,93 @@
             <Setter Property="SnapsToDevicePixels" Value="True"/>
             <Style.Triggers>
                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                    <Setter Property="Background" Value="#FFFFFF"/>
                     <Setter Property="BorderBrush" Value="#6D28D9"/>
                     <Setter Property="BorderThickness" Value="1.5"/>
-                </Trigger>
-                <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Opacity" Value="0.65"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
 
-        <Style x:Key="FieldTextBoxStyle" TargetType="TextBox">
+        <Style x:Key="SearchTextBoxStyle" TargetType="TextBox">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="Padding" Value="36,0,32,0"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Foreground" Value="#0F172A"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Height" Value="38"/>
         </Style>
 
-        <Style x:Key="FieldPasswordBoxStyle" TargetType="PasswordBox">
+        <Style x:Key="FilterComboBoxItemStyle" TargetType="ComboBoxItem">
+            <Setter Property="Padding" Value="10,7"/>
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="10,0"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Foreground" Value="#0F172A"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Height" Value="38"/>
+            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#EDE9FE"/>
+                    <Setter Property="Foreground" Value="#5B21B6"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#EDE9FE"/>
+                    <Setter Property="Foreground" Value="#5B21B6"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
-        <Style x:Key="FieldComboBoxStyle" TargetType="ComboBox">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="8,0"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Foreground" Value="#0F172A"/>
+        <Style x:Key="FilterComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="Height" Value="38"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource FilterComboBoxItemStyle}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBox">
-                        <Grid>
-                            <Border x:Name="ComboSurface"
-                                    Background="{TemplateBinding Background}"
-                                    BorderThickness="0"
-                                    SnapsToDevicePixels="True"/>
-                            <ContentPresenter Margin="10,0,32,0"
-                                              VerticalAlignment="Center"
-                                              IsHitTestVisible="False"
-                                              Content="{TemplateBinding SelectionBoxItem}"
-                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"/>
-                            <materialDesign:PackIcon Kind="ChevronDown" Width="16" Height="16"
-                                                     Foreground="#64748B"
-                                                     HorizontalAlignment="Right" VerticalAlignment="Center"
-                                                     Margin="0,0,10,0"
-                                                     IsHitTestVisible="False"/>
-                            <ToggleButton Focusable="False" ClickMode="Press"
-                                          Background="Transparent" BorderThickness="0"
-                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
-                                <ToggleButton.Template>
-                                    <ControlTemplate TargetType="ToggleButton">
-                                        <Border Background="Transparent"/>
-                                    </ControlTemplate>
-                                </ToggleButton.Template>
-                            </ToggleButton>
-                            <Popup x:Name="PART_Popup"
-                                   IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
-                                   Placement="Bottom"
-                                   AllowsTransparency="True"
-                                   Focusable="False"
-                                   PopupAnimation="Fade">
-                                <Border Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1"
-                                        CornerRadius="8" Margin="0,4,0,0" MaxHeight="260" MinWidth="150">
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <StackPanel IsItemsHost="True"/>
-                                    </ScrollViewer>
-                                </Border>
-                            </Popup>
-                        </Grid>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" SnapsToDevicePixels="True">
+                            <Grid>
+                                <ContentPresenter Margin="10,0,28,0" VerticalAlignment="Center"
+                                                  IsHitTestVisible="False"
+                                                  Content="{TemplateBinding SelectionBoxItem}"
+                                                  ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                  ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"/>
+                                <materialDesign:PackIcon Kind="ChevronDown" Width="16" Height="16"
+                                                         Foreground="#64748B"
+                                                         HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                         Margin="0,0,9,0" IsHitTestVisible="False"/>
+                                <ToggleButton Focusable="False" ClickMode="Press" Background="Transparent"
+                                              BorderThickness="0"
+                                              IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                    <ToggleButton.Template>
+                                        <ControlTemplate TargetType="ToggleButton">
+                                            <Border Background="Transparent"/>
+                                        </ControlTemplate>
+                                    </ToggleButton.Template>
+                                </ToggleButton>
+                                <Popup IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                       Placement="Bottom" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                    <Border Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1"
+                                            CornerRadius="8" Margin="0,4,0,0" MaxHeight="240" MinWidth="150">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <StackPanel IsItemsHost="True"/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </Border>
                         <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter Property="BorderBrush" Value="#6D28D9"/>
+                            </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="ComboSurface" Property="Opacity" Value="0.6"/>
+                                <Setter Property="Opacity" Value="0.65"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -472,7 +309,6 @@
             </Setter>
         </Style>
 
-        <!-- Data grid -->
         <Style x:Key="EnterpriseColumnHeaderStyle" TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#F8FAFC"/>
             <Setter Property="Foreground" Value="#64748B"/>
@@ -496,6 +332,12 @@
             <Setter Property="FontFamily" Value="Consolas"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Foreground" Value="#475569"/>
+        </Style>
+
+        <Style x:Key="EnterprisePrimaryCellStyle" TargetType="TextBlock" BasedOn="{StaticResource EnterpriseCellTextStyle}">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#0F172A"/>
         </Style>
 
         <Style x:Key="EnterpriseRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource MaterialDesignDataGridRow}">
@@ -581,8 +423,8 @@
                                             <Thumb MinWidth="24">
                                                 <Thumb.Template>
                                                     <ControlTemplate TargetType="Thumb">
-                                                        <Border x:Name="HorizontalThumbBorder"
-                                                                Background="#CBD5E1" CornerRadius="3" Height="6"/>
+                                                        <Border x:Name="HorizontalThumbBorder" Background="#CBD5E1"
+                                                                CornerRadius="3" Height="6"/>
                                                         <ControlTemplate.Triggers>
                                                             <Trigger Property="IsMouseOver" Value="True">
                                                                 <Setter TargetName="HorizontalThumbBorder" Property="Background" Value="#94A3B8"/>
@@ -607,133 +449,218 @@
         </Style>
 
         <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBarStyle}"/>
+
+        <Style x:Key="PaginationNumberButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource MaterialDesignFlatButton}">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="MinWidth" Value="32"/>
+            <Setter Property="Padding" Value="6,0"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="materialDesign:ButtonAssist.CornerRadius" Value="6"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                    <Setter Property="Background" Value="#6D28D9"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                    <Setter Property="FontWeight" Value="Bold"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PaginationTextBoxFrameStyle" TargetType="Border">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Width" Value="52"/>
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="Background" Value="#FFFFFF"/>
+                    <Setter Property="BorderBrush" Value="#6D28D9"/>
+                    <Setter Property="BorderThickness" Value="1.5"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PaginationTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="2,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#0F172A"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="PaginationIconButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource SecondaryActionButtonStyle}">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+
+        <Style x:Key="PaginationGoButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource PrimaryActionButtonStyle}">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
     </UserControl.Resources>
 
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+    <Grid>
+        <Grid Margin="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-        <!-- ── 1. Cabecera principal ── -->
-        <Grid Grid.Row="0" Margin="0,0,0,18">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                <Border Width="42" Height="42" CornerRadius="10" Background="#EDE9FE" VerticalAlignment="Center">
-                    <materialDesign:PackIcon Kind="AccountGroup" Width="22" Height="22"
-                                             Foreground="#6D28D9"
-                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-                <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="Gestión de Usuarios y Clientes"
-                               AutomationProperties.AutomationId="UsersManagement_Title"
-                               FontSize="22" FontWeight="Bold" Foreground="#0F172A"/>
-                    <TextBlock Text="Administra accesos, roles del personal y el directorio de clientes."
-                               FontSize="13" Foreground="#64748B" Margin="0,3,0,0"/>
-                </StackPanel>
-            </StackPanel>
-
-            <Button Grid.Column="1"
-                    Style="{StaticResource HeaderIconButtonStyle}"
-                    Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                    CommandParameter="{x:Static Dock.Right}"
-                    VerticalAlignment="Top"
-                    ToolTip="Abrir menú principal">
-                <materialDesign:PackIcon Kind="CogOutline" Width="18" Height="18" Foreground="#475569"/>
-            </Button>
-        </Grid>
-
-        <!-- ── 2. Segmented control ── -->
-        <Border Grid.Row="1" Background="#F1F5F9" CornerRadius="10" Padding="4"
-                HorizontalAlignment="Left" Margin="0,0,0,18">
-            <StackPanel Orientation="Horizontal">
-                <Button Style="{StaticResource UsersTabButtonStyle}"
-                        Command="{Binding LoadUsersCommand}"
-                        Click="TabUsers_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="AccountGroup" Width="17" Height="17" VerticalAlignment="Center"/>
-                        <TextBlock Text="Usuarios y Cajeros" Margin="7,0,0,0" VerticalAlignment="Center"/>
-                        <Border Style="{StaticResource UsersTabCountPillStyle}">
-                            <TextBlock Text="{Binding TotalUserCount}" Style="{StaticResource TabCountTextStyle}"/>
-                        </Border>
-                    </StackPanel>
-                </Button>
-
-                <Button Style="{StaticResource CustomersTabButtonStyle}"
-                        Click="TabCustomers_Click" Margin="4,0,0,0">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="AccountBox" Width="17" Height="17" VerticalAlignment="Center"/>
-                        <TextBlock Text="Gestión de Clientes" Margin="7,0,0,0" VerticalAlignment="Center"/>
-                        <Border Style="{StaticResource CustomersTabCountPillStyle}">
-                            <TextBlock Text="{Binding CustomerViewModel.TotalCount}" Style="{StaticResource TabCountTextStyle}"/>
-                        </Border>
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-        </Border>
-
-        <!-- ── 3. Contenido ── -->
-        <Grid Grid.Row="2">
-            <!-- ══════════════════════════════════════════════════════
-                 PESTAÑA 1: USUARIOS Y CAJEROS
-                 ══════════════════════════════════════════════════════ -->
-            <Grid>
-                <Grid.Style>
-                    <Style TargetType="Grid">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding SelectedTabIndex}" Value="0">
-                                <Setter Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Grid.Style>
-
+            <!-- Header -->
+            <Grid Grid.Row="0" Margin="0,0,0,18">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="390"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Directorio de usuarios -->
-                <Border Grid.Column="0" Style="{StaticResource EnterpriseCardStyle}" Margin="0,0,16,0">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="42" Height="42" CornerRadius="10" Background="#EDE9FE" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="AccountGroup" Width="22" Height="22" Foreground="#6D28D9"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Gestión de Usuarios y Clientes"
+                                   AutomationProperties.AutomationId="UsersManagement_Title"
+                                   FontSize="22" FontWeight="Bold" Foreground="#0F172A"/>
+                        <TextBlock Text="Administra accesos, roles del personal y el directorio comercial de clientes."
+                                   FontSize="13" Foreground="#64748B" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </StackPanel>
 
-                        <Grid Grid.Row="0" Margin="16,16,16,12">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Command="{Binding NewUserCommand}"
+                            Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="Users_NewPrimaryButton">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedTabIndex}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="AccountPlus" Width="17" Height="17" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Nuevo Usuario" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding CustomerViewModel.OpenNewCustomerCommand}"
+                            Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="Customers_NewPrimaryButton">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource PrimaryActionButtonStyle}">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedTabIndex}" Value="1">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="AccountPlusOutline" Width="17" Height="17" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Nuevo Cliente" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Style="{StaticResource HeaderIconButtonStyle}"
+                            Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
+                            CommandParameter="{x:Static Dock.Right}"
+                            ToolTip="Abrir menú principal">
+                        <materialDesign:PackIcon Kind="CogOutline" Width="18" Height="18" Foreground="#475569"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Segmented control -->
+            <Border Grid.Row="1" Background="#F1F5F9" CornerRadius="10" Padding="4"
+                    HorizontalAlignment="Left" Margin="0,0,0,18">
+                <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource UsersTabButtonStyle}"
+                            Command="{Binding LoadUsersCommand}"
+                            Click="TabUsers_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="AccountGroup" Width="17" Height="17" VerticalAlignment="Center"/>
+                            <TextBlock Text="Usuarios y Cajeros" Margin="7,0,0,0" VerticalAlignment="Center"/>
+                            <Border Style="{StaticResource UsersTabCountPillStyle}">
+                                <TextBlock Text="{Binding TotalUserCount}" Style="{StaticResource TabCountTextStyle}"/>
+                            </Border>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Style="{StaticResource CustomersTabButtonStyle}"
+                            Click="TabCustomers_Click" Margin="4,0,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="AccountBox" Width="17" Height="17" VerticalAlignment="Center"/>
+                            <TextBlock Text="Gestión de Clientes" Margin="7,0,0,0" VerticalAlignment="Center"/>
+                            <Border Style="{StaticResource CustomersTabCountPillStyle}">
+                                <TextBlock Text="{Binding CustomerViewModel.TotalCount}" Style="{StaticResource TabCountTextStyle}"/>
+                            </Border>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Content -->
+            <Grid Grid.Row="2">
+                <!-- Users -->
+                <Grid>
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedTabIndex}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+
+                    <Border Style="{StaticResource EnterpriseCardStyle}">
+                        <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <Grid Grid.Row="0">
+                            <Grid Grid.Row="0" Margin="16,16,16,12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
-                                <Border Grid.Column="0" Style="{StaticResource FieldFrameStyle}" Margin="0,0,8,0">
+                                <Border Grid.Column="0" Style="{StaticResource SearchFrameStyle}" Margin="0,0,8,0">
                                     <Grid>
-                                        <materialDesign:PackIcon Kind="Magnify" Width="18" Height="18"
-                                                                 Foreground="#64748B"
-                                                                 HorizontalAlignment="Left" VerticalAlignment="Center"
-                                                                 Margin="12,0,0,0"/>
+                                        <materialDesign:PackIcon Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8"
+                                                                 HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0"/>
                                         <TextBox Text="{Binding UserSearchQuery, UpdateSourceTrigger=PropertyChanged}"
-                                                 Style="{StaticResource FieldTextBoxStyle}"
-                                                 Padding="38,0,12,0"
+                                                 Style="{StaticResource SearchTextBoxStyle}"
                                                  AutomationProperties.AutomationId="Users_SearchBox"/>
                                         <TextBlock Text="Buscar usuario o nombre..."
-                                                   FontSize="12" Foreground="#94A3B8"
-                                                   Margin="38,0,12,0" VerticalAlignment="Center"
-                                                   IsHitTestVisible="False">
+                                                   FontSize="12" Foreground="#94A3B8" Margin="36,0,40,0"
+                                                   VerticalAlignment="Center" IsHitTestVisible="False">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -745,11 +672,32 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
+                                        <Button Style="{DynamicResource MaterialDesignToolButton}"
+                                                Command="{Binding ClearUserSearchCommand}"
+                                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Width="28" Height="28" Margin="0,0,4,0"
+                                                ToolTip="Limpiar búsqueda"
+                                                Visibility="{Binding UserSearchQuery, Converter={StaticResource StringToVisibilityConverter}}">
+                                            <materialDesign:PackIcon Kind="CloseCircle" Width="16" Height="16" Foreground="#94A3B8"/>
+                                        </Button>
                                     </Grid>
                                 </Border>
 
-                                <Button Grid.Column="1"
-                                        Command="{Binding LoadUsersCommand}"
+                                <ComboBox Grid.Column="1" Width="170" Margin="0,0,8,0"
+                                          ItemsSource="{Binding UserRoleFilters}"
+                                          SelectedItem="{Binding SelectedUserRoleFilter, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          Style="{StaticResource FilterComboBoxStyle}"
+                                          AutomationProperties.AutomationId="Users_RoleFilter"/>
+
+                                <ComboBox Grid.Column="2" Width="140" Margin="0,0,8,0"
+                                          ItemsSource="{Binding UserStatusFilters}"
+                                          SelectedItem="{Binding SelectedUserStatusFilter, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          Style="{StaticResource FilterComboBoxStyle}"
+                                          AutomationProperties.AutomationId="Users_StatusFilter"/>
+
+                                <Button Grid.Column="3" Command="{Binding LoadUsersCommand}"
                                         Style="{StaticResource SecondaryActionButtonStyle}"
                                         AutomationProperties.AutomationId="Users_RefreshButton">
                                     <StackPanel Orientation="Horizontal">
@@ -759,568 +707,290 @@
                                 </Button>
                             </Grid>
 
-                            <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,10,0,0">
-                                <TextBlock Text="Rol" FontSize="11" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <Border Style="{StaticResource FieldFrameStyle}" Width="190">
-                                    <ComboBox ItemsSource="{Binding UserRoleFilters}"
-                                              SelectedItem="{Binding SelectedUserRoleFilter, Mode=TwoWay}"
-                                              DisplayMemberPath="Label"
-                                              Style="{StaticResource FieldComboBoxStyle}"
-                                              AutomationProperties.AutomationId="Users_RoleFilter"/>
-                                </Border>
-                            </StackPanel>
-                        </Grid>
+                            <Grid Grid.Row="1">
+                                <DataGrid ItemsSource="{Binding Users}"
+                                          SelectedItem="{Binding SelectedUser}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          SelectionMode="Single"
+                                          SelectionUnit="FullRow"
+                                          HeadersVisibility="Column"
+                                          GridLinesVisibility="Horizontal"
+                                          HorizontalGridLinesBrush="#F1F5F9"
+                                          VerticalGridLinesBrush="Transparent"
+                                          RowHeight="52"
+                                          ColumnHeaderHeight="42"
+                                          BorderThickness="0"
+                                          Background="Transparent"
+                                          RowBackground="#FFFFFF"
+                                          AlternatingRowBackground="#FFFFFF"
+                                          HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Auto"
+                                          VirtualizingStackPanel.IsVirtualizing="True"
+                                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                          VirtualizingPanel.ScrollUnit="Pixel"
+                                          ColumnHeaderStyle="{StaticResource EnterpriseColumnHeaderStyle}"
+                                          RowStyle="{StaticResource EnterpriseRowStyle}"
+                                          CellStyle="{StaticResource EnterpriseCellStyle}"
+                                          MouseDoubleClick="UsersGrid_MouseDoubleClick"
+                                          AutomationProperties.AutomationId="Users_Grid">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="USUARIO"
+                                                            Binding="{Binding Cedula}"
+                                                            Width="200" MinWidth="160"
+                                                            ElementStyle="{StaticResource EnterprisePrimaryCellStyle}"/>
 
-                        <DataGrid Grid.Row="1"
-                                  ItemsSource="{Binding Users}"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  VerticalScrollBarVisibility="Auto"
-                                  SelectedItem="{Binding SelectedUser}"
-                                  AutoGenerateColumns="False"
-                                  IsReadOnly="True"
-                                  SelectionMode="Single"
-                                  SelectionUnit="FullRow"
-                                  HeadersVisibility="Column"
-                                  GridLinesVisibility="Horizontal"
-                                  HorizontalGridLinesBrush="#F1F5F9"
-                                  VerticalGridLinesBrush="Transparent"
-                                  RowHeight="50"
-                                  ColumnHeaderHeight="42"
-                                  BorderThickness="0"
-                                  Background="Transparent"
-                                  RowBackground="#FFFFFF"
-                                  AlternatingRowBackground="#FFFFFF"
+                                        <DataGridTemplateColumn Header="NOMBRE" Width="520" MinWidth="220">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="12,0" VerticalAlignment="Center">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16" Background="#EDE9FE"
+                                                                VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Name, Converter={StaticResource InitialsConverter}}"
+                                                                       FontSize="11" FontWeight="Bold" Foreground="#5B21B6"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}" ToolTip="{Binding Name}"
+                                                                   FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"
+                                                                   VerticalAlignment="Center" Margin="10,0,0,0"
+                                                                   TextWrapping="Wrap" MaxHeight="38"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
 
-                                  VirtualizingStackPanel.IsVirtualizing="True"
-                                  VirtualizingStackPanel.VirtualizationMode="Recycling"
-                                  VirtualizingPanel.ScrollUnit="Pixel"
-                                  ColumnHeaderStyle="{StaticResource EnterpriseColumnHeaderStyle}"
-                                  RowStyle="{StaticResource EnterpriseRowStyle}"
-                                  CellStyle="{StaticResource EnterpriseCellStyle}"
-                                  
-                                  AutomationProperties.AutomationId="Users_Grid">
-                            <DataGrid.Columns>
-                                <DataGridTemplateColumn Header="USUARIO" Width="330" MinWidth="160">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="12,0" VerticalAlignment="Center">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16" Background="#EDE9FE"
-                                                        VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Name, Converter={StaticResource InitialsConverter}}"
-                                                               FontSize="11" FontWeight="Bold" Foreground="#5B21B6"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </Border>
-                                                <TextBlock Grid.Column="1" Text="{Binding Name}" ToolTip="{Binding Name}"
-                                                           FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"
-                                                           VerticalAlignment="Center" Margin="10,0,0,0"
-                                                           TextWrapping="Wrap" MaxHeight="36"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="ROL" Width="150">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Border CornerRadius="10" Padding="9,3" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Background" Value="#FEF3C7"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Admin}">
+                                                                        <Setter Property="Background" Value="#EDE9FE"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Manager}">
+                                                                        <Setter Property="Background" Value="#DBEAFE"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Driver}">
+                                                                        <Setter Property="Background" Value="#F1F5F9"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <TextBlock FontSize="10.5" FontWeight="SemiBold">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Text" Value="Cajero"/>
+                                                                    <Setter Property="Foreground" Value="#B45309"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Admin}">
+                                                                            <Setter Property="Text" Value="Administrador"/>
+                                                                            <Setter Property="Foreground" Value="#5B21B6"/>
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Manager}">
+                                                                            <Setter Property="Text" Value="Gerente"/>
+                                                                            <Setter Property="Foreground" Value="#1D4ED8"/>
+                                                                        </DataTrigger>
+                                                                        <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Driver}">
+                                                                            <Setter Property="Text" Value="Conductor"/>
+                                                                            <Setter Property="Foreground" Value="#475569"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
 
-                                <DataGridTextColumn Header="CÉDULA"
-                                                    Binding="{Binding Cedula}"
-                                                    Width="Auto" MinWidth="130"
-                                                    ElementStyle="{StaticResource EnterpriseMonoCellStyle}"/>
-
-                                <DataGridTemplateColumn Header="ROL" Width="Auto" MinWidth="110">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Border CornerRadius="10" Padding="9,3" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                                <Border.Style>
-                                                    <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="#FEF3C7"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Admin}">
-                                                                <Setter Property="Background" Value="#EDE9FE"/>
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Manager}">
-                                                                <Setter Property="Background" Value="#DBEAFE"/>
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Driver}">
+                                        <DataGridTemplateColumn Header="ESTADO" Width="120">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Border CornerRadius="10" Padding="9,3" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
                                                                 <Setter Property="Background" Value="#F1F5F9"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Border.Style>
-                                                <TextBlock FontSize="10.5" FontWeight="SemiBold">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="Cajero"/>
-                                                            <Setter Property="Foreground" Value="#B45309"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Admin}">
-                                                                    <Setter Property="Text" Value="Administrador"/>
-                                                                    <Setter Property="Foreground" Value="#5B21B6"/>
-                                                                </DataTrigger>
-                                                                <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Manager}">
-                                                                    <Setter Property="Text" Value="Gerente"/>
-                                                                    <Setter Property="Foreground" Value="#1D4ED8"/>
-                                                                </DataTrigger>
-                                                                <DataTrigger Binding="{Binding Role}" Value="{x:Static entities:UserRole.Driver}">
-                                                                    <Setter Property="Text" Value="Conductor"/>
-                                                                    <Setter Property="Foreground" Value="#475569"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </Border>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-
-                                <DataGridTemplateColumn Header="ESTADO" Width="Auto" MinWidth="110">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Border CornerRadius="10" Padding="9,3" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                                <Border.Style>
-                                                    <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="#F1F5F9"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                <Setter Property="Background" Value="#DCFCE7"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Border.Style>
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Ellipse Width="6" Height="6" Margin="0,0,6,0" VerticalAlignment="Center">
-                                                        <Ellipse.Style>
-                                                            <Style TargetType="Ellipse">
-                                                                <Setter Property="Fill" Value="#94A3B8"/>
                                                                 <Style.Triggers>
                                                                     <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                        <Setter Property="Fill" Value="#16A34A"/>
+                                                                        <Setter Property="Background" Value="#DCFCE7"/>
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
-                                                        </Ellipse.Style>
-                                                    </Ellipse>
-                                                    <TextBlock FontSize="10.5" FontWeight="SemiBold">
-                                                        <TextBlock.Style>
-                                                            <Style TargetType="TextBlock">
-                                                                <Setter Property="Text" Value="Inactivo"/>
-                                                                <Setter Property="Foreground" Value="#64748B"/>
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                        <Setter Property="Text" Value="Activo"/>
-                                                                        <Setter Property="Foreground" Value="#15803D"/>
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </TextBlock.Style>
-                                                    </TextBlock>
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
+                                                        </Border.Style>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Ellipse Width="6" Height="6" Margin="0,0,6,0" VerticalAlignment="Center">
+                                                                <Ellipse.Style>
+                                                                    <Style TargetType="Ellipse">
+                                                                        <Setter Property="Fill" Value="#94A3B8"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                                <Setter Property="Fill" Value="#16A34A"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Ellipse.Style>
+                                                            </Ellipse>
+                                                            <TextBlock FontSize="10.5" FontWeight="SemiBold">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Text" Value="Inactivo"/>
+                                                                        <Setter Property="Foreground" Value="#64748B"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                                <Setter Property="Text" Value="Activo"/>
+                                                                                <Setter Property="Foreground" Value="#15803D"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
 
-                        <Border Grid.Row="2" Style="{StaticResource TableFooterStyle}">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
+                                        <DataGridTemplateColumn Header="ACCIONES" Width="120" HeaderStyle="{StaticResource EnterpriseColumnHeaderStyle}">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Command="{Binding DataContext.OpenEditUserCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{StaticResource SecondaryActionButtonStyle}"
+                                                            Height="30" Padding="10,0"
+                                                            HorizontalAlignment="Right"
+                                                            AutomationProperties.AutomationId="Users_EditAction">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <materialDesign:PackIcon Kind="PencilOutline" Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                            <TextBlock Text="Editar" FontSize="11" VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
 
-                                <TextBlock Grid.Row="0" Text="{Binding StatusMessage}"
-                                           FontSize="11" Foreground="#64748B"
-                                           VerticalAlignment="Center"
-                                           TextTrimming="CharacterEllipsis"
-                                           ToolTip="{Binding StatusMessage}"/>
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Visibility="{Binding Users.Count, Converter={StaticResource CollectionEmptyToVis}}">
+                                    <materialDesign:PackIcon Kind="AccountSearchOutline" Width="34" Height="34"
+                                                             Foreground="#CBD5E1" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="No se encontraron resultados para tu búsqueda."
+                                               FontSize="13" Foreground="#64748B" Margin="0,10,0,8" HorizontalAlignment="Center"/>
+                                    <Button Content="Limpiar filtros" Command="{Binding ClearUserFiltersCommand}"
+                                            Style="{StaticResource SecondaryActionButtonStyle}" Height="32"
+                                            HorizontalAlignment="Center" IsHitTestVisible="True"/>
+                                </StackPanel>
+                            </Grid>
 
-                                <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#E2E8F0"
-                                        BorderThickness="1" CornerRadius="8" Padding="8,4"
-                                        HorizontalAlignment="Right" Margin="0,8,0,0">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Grid.Row="2" Style="{StaticResource TableFooterStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" FontSize="11"
+                                               Foreground="#64748B" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}"/>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
                                         <TextBlock Text="{Binding UserPageSummary}" VerticalAlignment="Center"
-                                                   FontSize="11" FontWeight="SemiBold" Foreground="#475569"
-                                                   Margin="0,0,10,0"
+                                                   FontSize="11" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,8,0"
                                                    AutomationProperties.AutomationId="Users_PageSummary"/>
-
-                                        <Button Command="{Binding FirstUserPageCommand}"
-                                                IsEnabled="{Binding CanGoFirstUser}"
-                                                Style="{StaticResource SecondaryActionButtonStyle}"
-                                                Height="30" Width="32" Padding="0" Margin="0,0,3,0"
-                                                ToolTip="Primera Página"
-                                                AutomationProperties.AutomationId="Users_FirstPage">
+                                        <Button Command="{Binding FirstUserPageCommand}" IsEnabled="{Binding CanGoFirstUser}"
+                                                Style="{StaticResource PaginationIconButtonStyle}" Margin="0,0,3,0" ToolTip="Primera página">
                                             <materialDesign:PackIcon Kind="PageFirst" Width="16" Height="16"/>
                                         </Button>
-
-                                        <Button Command="{Binding PreviousUserPageCommand}"
-                                                IsEnabled="{Binding CanGoPreviousUser}"
-                                                Style="{StaticResource SecondaryActionButtonStyle}"
-                                                Height="30" Width="32" Padding="0" Margin="0,0,5,0"
-                                                ToolTip="Página Anterior"
-                                                AutomationProperties.AutomationId="Users_PreviousPage">
+                                        <Button Command="{Binding PreviousUserPageCommand}" IsEnabled="{Binding CanGoPreviousUser}"
+                                                Style="{StaticResource PaginationIconButtonStyle}" Margin="0,0,5,0" ToolTip="Página anterior">
                                             <materialDesign:PackIcon Kind="ChevronLeft" Width="16" Height="16"/>
                                         </Button>
-
                                         <ItemsControl ItemsSource="{Binding UserPageNumbers}">
                                             <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <StackPanel Orientation="Horizontal"/>
-                                                </ItemsPanelTemplate>
+                                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Button Command="{Binding DataContext.GoToUserPageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                            CommandParameter="{Binding PageNumber}"
-                                                            Content="{Binding PageNumber}"
+                                                            CommandParameter="{Binding PageNumber}" Content="{Binding PageNumber}"
                                                             Style="{StaticResource PaginationNumberButtonStyle}"/>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-
-                                        <Button Command="{Binding NextUserPageCommand}"
-                                                IsEnabled="{Binding CanGoNextUser}"
-                                                Style="{StaticResource SecondaryActionButtonStyle}"
-                                                Height="30" Width="32" Padding="0" Margin="5,0,3,0"
-                                                ToolTip="Página Siguiente"
-                                                AutomationProperties.AutomationId="Users_NextPage">
+                                        <Button Command="{Binding NextUserPageCommand}" IsEnabled="{Binding CanGoNextUser}"
+                                                Style="{StaticResource PaginationIconButtonStyle}" Margin="5,0,3,0" ToolTip="Página siguiente">
                                             <materialDesign:PackIcon Kind="ChevronRight" Width="16" Height="16"/>
                                         </Button>
-
-                                        <Button Command="{Binding LastUserPageCommand}"
-                                                IsEnabled="{Binding CanGoLastUser}"
-                                                Style="{StaticResource SecondaryActionButtonStyle}"
-                                                Height="30" Width="32" Padding="0" Margin="0,0,10,0"
-                                                ToolTip="Última Página"
-                                                AutomationProperties.AutomationId="Users_LastPage">
+                                        <Button Command="{Binding LastUserPageCommand}" IsEnabled="{Binding CanGoLastUser}"
+                                                Style="{StaticResource PaginationIconButtonStyle}" Margin="0,0,8,0" ToolTip="Última página">
                                             <materialDesign:PackIcon Kind="PageLast" Width="16" Height="16"/>
                                         </Button>
-
-                                        <Rectangle Width="1" Height="20" Fill="#E2E8F0" Margin="0,0,8,0"/>
-
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="11"
-                                                       Foreground="#64748B" Margin="0,0,5,0"/>
-                                            <Border Style="{StaticResource PaginationTextBoxFrameStyle}" Margin="0,0,5,0">
-                                                <TextBox Text="{Binding UserTargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                         Style="{StaticResource PaginationTextBoxStyle}"
-                                                         PreviewTextInput="NumberValidationTextBox"
-                                                         AutomationProperties.AutomationId="Users_GoToPageInput">
-                                                    <TextBox.InputBindings>
-                                                        <KeyBinding Key="Return" Command="{Binding SubmitUserGoToPageCommand}"/>
-                                                    </TextBox.InputBindings>
-                                                </TextBox>
-                                            </Border>
-                                            <Button Command="{Binding SubmitUserGoToPageCommand}"
-                                                    Style="{StaticResource PrimaryActionButtonStyle}"
-                                                    Height="30" Width="34" Padding="0"
-                                                    ToolTip="Ir a la página especificada"
-                                                    AutomationProperties.AutomationId="Users_GoToPageButton">
-                                                <materialDesign:PackIcon Kind="ArrowRight" Width="15" Height="15"/>
-                                            </Button>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                            </Grid>
-                        </Border>
-                    </Grid>
-                </Border>
-
-                <!-- Inspector de usuarios -->
-                <Border Grid.Column="1" Style="{StaticResource EnterpriseCardStyle}" VerticalAlignment="Stretch">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <Border Grid.Row="0" Style="{StaticResource InspectorHeaderStyle}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock FontSize="15" FontWeight="Bold" Foreground="#0F172A">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="Nuevo Usuario"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsEditing}" Value="True">
-                                                        <Setter Property="Text" Value="Editar Usuario"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                        <Border Background="#EDE9FE" CornerRadius="999" Padding="7,2" VerticalAlignment="Center">
-                                            <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="#5B21B6">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Text" Value="Nuevo"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsEditing}" Value="True">
-                                                                <Setter Property="Text" Value="Editando"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
+                                        <Rectangle Width="1" Height="20" Fill="#E2E8F0" Margin="0,0,7,0"/>
+                                        <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="11" Foreground="#64748B" Margin="0,0,5,0"/>
+                                        <Border Style="{StaticResource PaginationTextBoxFrameStyle}" Margin="0,0,4,0">
+                                            <TextBox Text="{Binding UserTargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     Style="{StaticResource PaginationTextBoxStyle}"
+                                                     PreviewTextInput="NumberValidationTextBox">
+                                                <TextBox.InputBindings>
+                                                    <KeyBinding Key="Return" Command="{Binding SubmitUserGoToPageCommand}"/>
+                                                </TextBox.InputBindings>
+                                            </TextBox>
                                         </Border>
-                                        <TextBlock Text="Credenciales y permisos del personal."
-                                                   FontSize="11" Foreground="#64748B" VerticalAlignment="Center"
-                                                   Margin="8,0,0,0"/>
-                                    </StackPanel>
-                                </StackPanel>
-
-                                <Button Grid.Column="1"
-                                        Command="{Binding NewUserCommand}"
-                                        Style="{StaticResource CompactAccentButtonStyle}"
-                                        VerticalAlignment="Center"
-                                        AutomationProperties.AutomationId="Users_NewButton">
-                                    <TextBlock Text="+ Nuevo" FontSize="12" FontWeight="SemiBold"/>
-                                </Button>
-                            </Grid>
-                        </Border>
-
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Margin="20">
-                                <TextBlock Text="Usuario *" Style="{StaticResource FormLabelStyle}"/>
-                                <Border Style="{StaticResource FieldFrameStyle}" Margin="0,0,0,14">
-                                    <TextBox Text="{Binding Cedula, UpdateSourceTrigger=PropertyChanged}"
-                                             Style="{StaticResource FieldTextBoxStyle}"
-                                             AutomationProperties.AutomationId="Users_CedulaInput"/>
-                                </Border>
-
-                                <TextBlock Text="Nombre y Apellido *" Style="{StaticResource FormLabelStyle}"/>
-                                <Border Style="{StaticResource FieldFrameStyle}" Margin="0,0,0,14">
-                                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                                             Style="{StaticResource FieldTextBoxStyle}"
-                                             AutomationProperties.AutomationId="Users_NameInput"/>
-                                </Border>
-
-                                <TextBlock Text="Contraseña" Style="{StaticResource FormLabelStyle}"/>
-                                <Border Style="{StaticResource FieldFrameStyle}" Margin="0,0,0,5">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <PasswordBox x:Name="UserPasswordBox"
-                                                     Grid.Column="0"
-                                                     Style="{StaticResource FieldPasswordBoxStyle}"
-                                                     Padding="10,0,38,0"
-                                                     Visibility="{Binding IsPasswordVisible, Converter={StaticResource InverseBoolToVis}, FallbackValue=Visible}"
-                                                     PasswordChanged="UserPasswordBox_PasswordChanged"/>
-
-                                        <TextBox x:Name="UserPasswordTextBox"
-                                                 Grid.Column="0"
-                                                 Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
-                                                 Style="{StaticResource FieldTextBoxStyle}"
-                                                 Padding="10,0,38,0"
-                                                 Visibility="{Binding IsPasswordVisible, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}"/>
-
-                                        <TextBlock Grid.Column="0"
-                                                   Text="{Binding PasswordPlaceholder}"
-                                                   FontSize="12" Foreground="#94A3B8"
-                                                   Margin="12,0,42,0" VerticalAlignment="Center"
-                                                   IsHitTestVisible="False"
-                                                   TextTrimming="CharacterEllipsis">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Password}" Value="">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-
-                                        <Button Grid.Column="1"
-                                                Style="{DynamicResource MaterialDesignToolButton}"
-                                                Command="{Binding TogglePasswordVisibilityCommand}"
-                                                Width="30" Height="30" Margin="0,0,5,0"
-                                                VerticalAlignment="Center"
-                                                ToolTip="Mostrar / Ocultar Contraseña">
-                                            <materialDesign:PackIcon Width="18" Height="18" Foreground="#64748B">
-                                                <materialDesign:PackIcon.Style>
-                                                    <Style TargetType="materialDesign:PackIcon">
-                                                        <Setter Property="Kind" Value="EyeOutline"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsPasswordVisible}" Value="True">
-                                                                <Setter Property="Kind" Value="EyeOffOutline"/>
-                                                                <Setter Property="Foreground" Value="#6D28D9"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </materialDesign:PackIcon.Style>
-                                            </materialDesign:PackIcon>
+                                        <Button Command="{Binding SubmitUserGoToPageCommand}"
+                                                Style="{StaticResource PaginationGoButtonStyle}" ToolTip="Ir a la página">
+                                            <materialDesign:PackIcon Kind="ArrowRight" Width="15" Height="15"/>
                                         </Button>
-                                    </Grid>
-                                </Border>
-                                <TextBlock Text="Mínimo 8 caracteres, una letra y un número si se especifica."
-                                           Style="{StaticResource HelperTextStyle}" Margin="2,0,0,14"/>
-
-                                <TextBlock Text="Rol del Usuario *" Style="{StaticResource FormLabelStyle}"/>
-                                <Border Style="{StaticResource FieldFrameStyle}" Margin="0,0,0,14">
-                                    <ComboBox ItemsSource="{Binding RoleOptions}"
-                                              SelectedValuePath="Role"
-                                              SelectedValue="{Binding Role, Mode=TwoWay}"
-                                              DisplayMemberPath="Label"
-                                              Style="{StaticResource FieldComboBoxStyle}"
-                                              AutomationProperties.AutomationId="Users_RoleInput"/>
-                                </Border>
-
-                                <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
-                                        CornerRadius="8" Padding="12,10" Margin="0,0,0,18">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                            <TextBlock Text="Usuario Activo" FontSize="12" FontWeight="SemiBold" Foreground="#334155"/>
-                                            <TextBlock Text="Permite iniciar sesión en el POS" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
-                                        </StackPanel>
-                                        <ToggleButton Grid.Column="1"
-                                                      Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                                                      IsChecked="{Binding IsActive, Mode=TwoWay}"
-                                                      VerticalAlignment="Center"
-                                                      AutomationProperties.AutomationId="Users_ActiveToggle"/>
-                                    </Grid>
-                                </Border>
-
-                                <Button Command="{Binding SaveUserCommand}"
-                                        Style="{StaticResource PrimaryActionButtonStyle}"
-                                        AutomationProperties.AutomationId="Users_SaveButton"
-                                        Margin="0,0,0,10">
-                                    <StackPanel Orientation="Horizontal">
-                                        <materialDesign:PackIcon Kind="ContentSave" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBlock VerticalAlignment="Center">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Text" Value="Guardar Usuario"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsEditing}" Value="True">
-                                                            <Setter Property="Text" Value="Guardar Cambios"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
                                     </StackPanel>
-                                </Button>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
 
-                                <Button Command="{Binding ToggleActiveUserCommand}"
-                                        Style="{StaticResource SecondaryActionButtonStyle}"
-                                        Margin="0,0,0,8"
-                                        Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"
-                                        AutomationProperties.AutomationId="Users_ToggleActiveButton">
-                                    <StackPanel Orientation="Horizontal">
-                                        <materialDesign:PackIcon Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0">
-                                            <materialDesign:PackIcon.Style>
-                                                <Style TargetType="materialDesign:PackIcon">
-                                                    <Setter Property="Kind" Value="AccountCancel"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding SelectedUser.IsActive}" Value="False">
-                                                            <Setter Property="Kind" Value="AccountCheck"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </materialDesign:PackIcon.Style>
-                                        </materialDesign:PackIcon>
-                                        <TextBlock VerticalAlignment="Center">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Text" Value="Desactivar Usuario"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding SelectedUser.IsActive}" Value="False">
-                                                            <Setter Property="Text" Value="Activar Usuario"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                    </StackPanel>
-                                </Button>
+                <!-- Customers -->
+                <Grid DataContext="{Binding CustomerViewModel}">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding DataContext.SelectedTabIndex, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="1">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
 
-                                <Button Command="{Binding HardDeleteUserCommand}"
-                                        Style="{StaticResource DangerActionButtonStyle}"
-                                        Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"
-                                        AutomationProperties.AutomationId="Users_DeleteButton">
-                                    <StackPanel Orientation="Horizontal">
-                                        <materialDesign:PackIcon Kind="DeleteForever" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBlock Text="Eliminar Definitivamente" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Button>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Grid>
-                </Border>
-            </Grid>
-
-            <!-- ══════════════════════════════════════════════════════
-                 PESTAÑA 2: GESTIÓN DE CLIENTES
-                 ══════════════════════════════════════════════════════ -->
-            <Grid DataContext="{Binding CustomerViewModel}">
-                <Grid.Style>
-                    <Style TargetType="Grid">
-                        <Setter Property="Visibility" Value="Collapsed"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding DataContext.SelectedTabIndex, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="1">
-                                <Setter Property="Visibility" Value="Visible"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Grid.Style>
-
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="390"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- Directorio de clientes -->
-                <Border Grid.Column="0" Style="{StaticResource EnterpriseCardStyle}" Margin="0,0,16,0">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <Grid Grid.Row="0" Margin="16,16,16,12">
+                    <Border Style="{StaticResource EnterpriseCardStyle}">
+                        <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <Grid Grid.Row="0">
+                            <Grid Grid.Row="0" Margin="16,16,16,12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
-                                <Border Grid.Column="0" Style="{StaticResource FieldFrameStyle}" Margin="0,0,8,0">
+                                <Border Grid.Column="0" Style="{StaticResource SearchFrameStyle}" Margin="0,0,8,0">
                                     <Grid>
-                                        <materialDesign:PackIcon Kind="Magnify" Width="18" Height="18"
-                                                                 Foreground="#64748B"
-                                                                 HorizontalAlignment="Left" VerticalAlignment="Center"
-                                                                 Margin="12,0,0,0"/>
+                                        <materialDesign:PackIcon Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8"
+                                                                 HorizontalAlignment="Left" VerticalAlignment="Center" Margin="12,0,0,0"/>
                                         <TextBox Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
-                                                 Style="{StaticResource FieldTextBoxStyle}"
-                                                 Padding="38,0,12,0"
+                                                 Style="{StaticResource SearchTextBoxStyle}"
                                                  AutomationProperties.AutomationId="Customers_SearchBox"/>
-                                        <TextBlock Text="Buscar por Cédula/RIF o Nombre..."
-                                                   FontSize="12" Foreground="#94A3B8"
-                                                   Margin="38,0,12,0" VerticalAlignment="Center"
-                                                   IsHitTestVisible="False">
+                                        <TextBlock Text="Buscar por Cédula/RIF, Nombre o Teléfono..."
+                                                   FontSize="12" Foreground="#94A3B8" Margin="36,0,40,0"
+                                                   VerticalAlignment="Center" IsHitTestVisible="False">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -1332,11 +1002,25 @@
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
+                                        <Button Style="{DynamicResource MaterialDesignToolButton}"
+                                                Command="{Binding ClearCustomerSearchCommand}"
+                                                HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                Width="28" Height="28" Margin="0,0,4,0"
+                                                ToolTip="Limpiar búsqueda"
+                                                Visibility="{Binding SearchQuery, Converter={StaticResource StringToVisibilityConverter}}">
+                                            <materialDesign:PackIcon Kind="CloseCircle" Width="16" Height="16" Foreground="#94A3B8"/>
+                                        </Button>
                                     </Grid>
                                 </Border>
 
-                                <Button Grid.Column="1"
-                                        Command="{Binding LoadCustomersCommand}"
+                                <ComboBox Grid.Column="1" Width="150" Margin="0,0,8,0"
+                                          ItemsSource="{Binding CustomerStatusFilters}"
+                                          SelectedItem="{Binding SelectedCustomerStatusFilter, Mode=TwoWay}"
+                                          DisplayMemberPath="Label"
+                                          Style="{StaticResource FilterComboBoxStyle}"
+                                          AutomationProperties.AutomationId="Customers_StatusFilter"/>
+
+                                <Button Grid.Column="2" Command="{Binding LoadCustomersCommand}"
                                         Style="{StaticResource SecondaryActionButtonStyle}"
                                         AutomationProperties.AutomationId="Customers_RefreshButton">
                                     <StackPanel Orientation="Horizontal">
@@ -1346,614 +1030,258 @@
                                 </Button>
                             </Grid>
 
-                            <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,10,0,0">
-                                <TextBlock Text="Estado" FontSize="11" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <Border Style="{StaticResource FieldFrameStyle}" Width="150">
-                                    <ComboBox ItemsSource="{Binding CustomerStatusFilters}"
-                                              SelectedItem="{Binding SelectedCustomerStatusFilter, Mode=TwoWay}"
-                                              DisplayMemberPath="Label"
-                                              Style="{StaticResource FieldComboBoxStyle}"
-                                              AutomationProperties.AutomationId="Customers_StatusFilter"/>
-                                </Border>
-                            </StackPanel>
-                        </Grid>
+                            <Grid Grid.Row="1">
+                                <DataGrid ItemsSource="{Binding Customers}"
+                                          SelectedItem="{Binding SelectedCustomer, Mode=TwoWay}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          SelectionMode="Single"
+                                          SelectionUnit="FullRow"
+                                          HeadersVisibility="Column"
+                                          GridLinesVisibility="Horizontal"
+                                          HorizontalGridLinesBrush="#F1F5F9"
+                                          VerticalGridLinesBrush="Transparent"
+                                          RowHeight="52"
+                                          ColumnHeaderHeight="42"
+                                          BorderThickness="0"
+                                          Background="Transparent"
+                                          RowBackground="#FFFFFF"
+                                          AlternatingRowBackground="#FFFFFF"
+                                          HorizontalScrollBarVisibility="Auto"
+                                          VerticalScrollBarVisibility="Auto"
+                                          VirtualizingStackPanel.IsVirtualizing="True"
+                                          VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                          VirtualizingPanel.ScrollUnit="Pixel"
+                                          ColumnHeaderStyle="{StaticResource EnterpriseColumnHeaderStyle}"
+                                          RowStyle="{StaticResource EnterpriseRowStyle}"
+                                          CellStyle="{StaticResource EnterpriseCellStyle}"
+                                          MouseDoubleClick="CustomersGrid_MouseDoubleClick"
+                                          AutomationProperties.AutomationId="Customers_Grid">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="CÉDULA / RIF"
+                                                            Binding="{Binding CedulaOrRif}"
+                                                            Width="170" MinWidth="145"
+                                                            ElementStyle="{StaticResource EnterpriseMonoCellStyle}"/>
 
-                        <DataGrid Grid.Row="1"
-                                  ItemsSource="{Binding Customers}"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  VerticalScrollBarVisibility="Auto"
-                                  SelectedItem="{Binding SelectedCustomer, Mode=TwoWay}"
-                                  AutoGenerateColumns="False"
-                                  IsReadOnly="True"
-                                  SelectionMode="Single"
-                                  SelectionUnit="FullRow"
-                                  HeadersVisibility="Column"
-                                  GridLinesVisibility="Horizontal"
-                                  HorizontalGridLinesBrush="#F1F5F9"
-                                  VerticalGridLinesBrush="Transparent"
-                                  RowHeight="50"
-                                  ColumnHeaderHeight="42"
-                                  BorderThickness="0"
-                                  Background="Transparent"
-                                  RowBackground="#FFFFFF"
-                                  AlternatingRowBackground="#FFFFFF"
+                                        <DataGridTemplateColumn Header="NOMBRE / RAZÓN SOCIAL" Width="550" MinWidth="240">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="12,0" VerticalAlignment="Center">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16" Background="#F1F5F9"
+                                                                VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Name, Converter={StaticResource InitialsConverter}}"
+                                                                       FontSize="11" FontWeight="Bold" Foreground="#334155"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}" ToolTip="{Binding Name}"
+                                                                   FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"
+                                                                   VerticalAlignment="Center" Margin="10,0,0,0"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
 
-                                  VirtualizingStackPanel.IsVirtualizing="True"
-                                  VirtualizingStackPanel.VirtualizationMode="Recycling"
-                                  VirtualizingPanel.ScrollUnit="Pixel"
-                                  ColumnHeaderStyle="{StaticResource EnterpriseColumnHeaderStyle}"
-                                  RowStyle="{StaticResource EnterpriseRowStyle}"
-                                  CellStyle="{StaticResource EnterpriseCellStyle}"
-                                  
-                                  AutomationProperties.AutomationId="Customers_Grid">
-                            <DataGrid.Columns>
-                                <DataGridTemplateColumn Header="NOMBRE / RAZÓN SOCIAL" Width="330" MinWidth="180">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="12,0" VerticalAlignment="Center">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16" Background="#F1F5F9"
-                                                        VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Name, Converter={StaticResource InitialsConverter}}"
-                                                               FontSize="11" FontWeight="Bold" Foreground="#334155"
-                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                </Border>
-                                                <TextBlock Grid.Column="1" Text="{Binding Name}" ToolTip="{Binding Name}"
-                                                           FontSize="13" FontWeight="SemiBold" Foreground="#0F172A"
-                                                           VerticalAlignment="Center" Margin="10,0,0,0"
-                                                           TextWrapping="Wrap" MaxHeight="36"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-
-                                <DataGridTextColumn Header="CÉDULA / RIF"
-                                                    Binding="{Binding CedulaOrRif}"
-                                                    Width="Auto" MinWidth="130"
-                                                    ElementStyle="{StaticResource EnterpriseMonoCellStyle}"/>
-
-                                <DataGridTextColumn Header="TELÉFONO"
-                                                    Binding="{Binding Phone}"
-                                                    Width="Auto" MinWidth="140"
-                                                    ElementStyle="{StaticResource EnterpriseMonoCellStyle}"/>
-
-                                <DataGridTemplateColumn Header="ESTADO" Width="Auto" MinWidth="110">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Border CornerRadius="10" Padding="9,3" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                                <Border.Style>
-                                                    <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="#F1F5F9"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                <Setter Property="Background" Value="#DCFCE7"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Border.Style>
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Ellipse Width="6" Height="6" Margin="0,0,6,0" VerticalAlignment="Center">
-                                                        <Ellipse.Style>
-                                                            <Style TargetType="Ellipse">
-                                                                <Setter Property="Fill" Value="#94A3B8"/>
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                        <Setter Property="Fill" Value="#16A34A"/>
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Ellipse.Style>
-                                                    </Ellipse>
-                                                    <TextBlock FontSize="10.5" FontWeight="SemiBold">
+                                        <DataGridTemplateColumn Header="TELÉFONO" Width="155" MinWidth="155">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock FontFamily="Consolas" FontSize="12" Foreground="#334155"
+                                                               VerticalAlignment="Center" Margin="12,0">
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock">
-                                                                <Setter Property="Text" Value="Inactivo"/>
-                                                                <Setter Property="Foreground" Value="#64748B"/>
+                                                                <Setter Property="Text" Value="{Binding Phone}"/>
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                        <Setter Property="Text" Value="Activo"/>
-                                                                        <Setter Property="Foreground" Value="#15803D"/>
+                                                                    <DataTrigger Binding="{Binding Phone}" Value="">
+                                                                        <Setter Property="Text" Value="Sin teléfono"/>
+                                                                        <Setter Property="Foreground" Value="#94A3B8"/>
+                                                                        <Setter Property="FontStyle" Value="Italic"/>
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
                                                         </TextBlock.Style>
                                                     </TextBlock>
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
-
-                        <Border Grid.Row="2" Style="{StaticResource TableFooterStyle}">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Grid.Row="0" Text="{Binding StatusMessage}"
-                                           FontSize="11" Foreground="#64748B" VerticalAlignment="Center"
-                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}"/>
-
-                                <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#E2E8F0"
-                                        BorderThickness="1" CornerRadius="8" Padding="8,4"
-                                        HorizontalAlignment="Right" Margin="0,8,0,0">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding PageSummary}" VerticalAlignment="Center"
-                                                   FontSize="11" FontWeight="SemiBold" Foreground="#475569"
-                                                   Margin="0,0,10,0"
-                                                   AutomationProperties.AutomationId="Customers_PageSummary"/>
-
-                                        <Button Command="{Binding FirstPageCommand}"
-                                                IsEnabled="{Binding CanGoToFirstPage}"
-                                                Style="{StaticResource SecondaryActionButtonStyle}"
-                                                Height="30" Width="32" Padding="0" Margin="0,0,3,0"
-                                                ToolTip="Primera Página"
-                                                AutomationProperties.AutomationId="Customers_FirstPage">
-                                            <materialDesign:PackIcon Kind="PageFirst" Width="16" Height="16"/>
-                                        </Button>
-
-                                        <Button Command="{Binding PreviousPageCommand}"
-                                                IsEnabled="{Binding CanGoToPreviousPage}"
-                                                Style="{StaticResource SecondaryActionButtonStyle}"
-                                                Height="30" Width="32" Padding="0" Margin="0,0,5,0"
-                                                ToolTip="Página Anterior"
-                                                AutomationProperties.AutomationId="Customers_PreviousPage">
-                                            <materialDesign:PackIcon Kind="ChevronLeft" Width="16" Height="16"/>
-                                        </Button>
-
-                                        <ItemsControl ItemsSource="{Binding PageNumbers}">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <StackPanel Orientation="Horizontal"/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Button Command="{Binding DataContext.GoToPageCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                                            CommandParameter="{Binding PageNumber}"
-                                                            Content="{Binding PageNumber}"
-                                                            Style="{StaticResource PaginationNumberButtonStyle}"/>
                                                 </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
 
-                                        <Button Command="{Binding NextPageCommand}"
-                                                IsEnabled="{Binding CanGoToNextPage}"
-                                                Style="{StaticResource SecondaryActionButtonStyle}"
-                                                Height="30" Width="32" Padding="0" Margin="5,0,3,0"
-                                                ToolTip="Página Siguiente"
-                                                AutomationProperties.AutomationId="Customers_NextPage">
-                                            <materialDesign:PackIcon Kind="ChevronRight" Width="16" Height="16"/>
-                                        </Button>
+                                        <DataGridTemplateColumn Header="ESTADO" Width="120">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Border CornerRadius="10" Padding="9,3" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Background" Value="#F1F5F9"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                        <Setter Property="Background" Value="#DCFCE7"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Ellipse Width="6" Height="6" Margin="0,0,6,0" VerticalAlignment="Center">
+                                                                <Ellipse.Style>
+                                                                    <Style TargetType="Ellipse">
+                                                                        <Setter Property="Fill" Value="#94A3B8"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                                <Setter Property="Fill" Value="#16A34A"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Ellipse.Style>
+                                                            </Ellipse>
+                                                            <TextBlock FontSize="10.5" FontWeight="SemiBold">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Text" Value="Inactivo"/>
+                                                                        <Setter Property="Foreground" Value="#64748B"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                                <Setter Property="Text" Value="Activo"/>
+                                                                                <Setter Property="Foreground" Value="#15803D"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
 
-                                        <Button Command="{Binding LastPageCommand}"
-                                                IsEnabled="{Binding CanGoToLastPage}"
-                                                Style="{StaticResource SecondaryActionButtonStyle}"
-                                                Height="30" Width="32" Padding="0" Margin="0,0,10,0"
-                                                ToolTip="Última Página"
-                                                AutomationProperties.AutomationId="Customers_LastPage">
-                                            <materialDesign:PackIcon Kind="PageLast" Width="16" Height="16"/>
-                                        </Button>
+                                        <DataGridTemplateColumn Header="ACCIONES" Width="120">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Command="{Binding DataContext.OpenEditCustomerCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{StaticResource SecondaryActionButtonStyle}"
+                                                            Height="30" Padding="10,0"
+                                                            HorizontalAlignment="Right"
+                                                            AutomationProperties.AutomationId="Customers_EditAction">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <materialDesign:PackIcon Kind="PencilOutline" Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                            <TextBlock Text="Editar" FontSize="11" VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
 
-                                        <Rectangle Width="1" Height="20" Fill="#E2E8F0" Margin="0,0,8,0"/>
-
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="11"
-                                                       Foreground="#64748B" Margin="0,0,5,0"/>
-                                            <Border Style="{StaticResource PaginationTextBoxFrameStyle}" Margin="0,0,5,0">
-                                                <TextBox Text="{Binding TargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                         Style="{StaticResource PaginationTextBoxStyle}"
-                                                         PreviewTextInput="NumberValidationTextBox"
-                                                         AutomationProperties.AutomationId="Customers_GoToPageInput">
-                                                    <TextBox.InputBindings>
-                                                        <KeyBinding Key="Return" Command="{Binding SubmitGoToPageCommand}"/>
-                                                    </TextBox.InputBindings>
-                                                </TextBox>
-                                            </Border>
-                                            <Button Command="{Binding SubmitGoToPageCommand}"
-                                                    Style="{StaticResource PrimaryActionButtonStyle}"
-                                                    Height="30" Width="34" Padding="0"
-                                                    ToolTip="Ir a la página especificada"
-                                                    AutomationProperties.AutomationId="Customers_GoToPageButton">
-                                                <materialDesign:PackIcon Kind="ArrowRight" Width="15" Height="15"/>
-                                            </Button>
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                            </Grid>
-                        </Border>
-                    </Grid>
-                </Border>
-
-                <!-- Inspector de clientes -->
-                <Border Grid.Column="1" Style="{StaticResource EnterpriseCardStyle}" VerticalAlignment="Stretch">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <Border Grid.Row="0" Style="{StaticResource InspectorHeaderStyle}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock FontSize="15" FontWeight="Bold" Foreground="#0F172A">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="Nuevo Cliente"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsEditing}" Value="True">
-                                                        <Setter Property="Text" Value="Editar Cliente"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                        <Border Background="#F1F5F9" CornerRadius="999" Padding="7,2" VerticalAlignment="Center">
-                                            <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="#475569">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Text" Value="Nuevo"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsEditing}" Value="True">
-                                                                <Setter Property="Text" Value="Editando"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </Border>
-                                        <TextBlock Text="Datos de contacto y facturación."
-                                                   FontSize="11" Foreground="#64748B" VerticalAlignment="Center"
-                                                   Margin="8,0,0,0"/>
-                                    </StackPanel>
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Visibility="{Binding Customers.Count, Converter={StaticResource CollectionEmptyToVis}}">
+                                    <materialDesign:PackIcon Kind="AccountSearchOutline" Width="34" Height="34"
+                                                             Foreground="#CBD5E1" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="No se encontraron resultados para tu búsqueda."
+                                               FontSize="13" Foreground="#64748B" Margin="0,10,0,8" HorizontalAlignment="Center"/>
+                                    <Button Content="Limpiar filtros" Command="{Binding ClearCustomerFiltersCommand}"
+                                            Style="{StaticResource SecondaryActionButtonStyle}" Height="32"
+                                            HorizontalAlignment="Center" IsHitTestVisible="True"/>
                                 </StackPanel>
-
-                                <Button Grid.Column="1"
-                                        Command="{Binding NewCustomerCommand}"
-                                        Style="{StaticResource CompactAccentButtonStyle}"
-                                        IsEnabled="{Binding CanManageCustomerContact}"
-                                        VerticalAlignment="Center"
-                                        AutomationProperties.AutomationId="Customers_NewButton">
-                                    <TextBlock Text="+ Nuevo" FontSize="12" FontWeight="SemiBold"/>
-                                </Button>
                             </Grid>
-                        </Border>
 
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Margin="20">
-                                <TextBlock Text="Cédula o RIF *" Style="{StaticResource FormLabelStyle}"/>
-                                <Border Style="{StaticResource FieldFrameStyle}" Margin="0,0,0,5"
-                                        IsEnabled="{Binding CanManageCustomerContact}">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBox Grid.Column="0"
-                                                 Text="{Binding CedulaOrRif, UpdateSourceTrigger=PropertyChanged}"
-                                                 Style="{StaticResource FieldTextBoxStyle}"
-                                                 AutomationProperties.AutomationId="Customers_CedulaInput"/>
-                                        <materialDesign:PackIcon Grid.Column="1" Kind="CheckCircle" Width="18" Height="18"
-                                                                 Foreground="#059669" VerticalAlignment="Center"
-                                                                 Margin="0,0,10,0"
-                                                                 Visibility="{Binding IsCedulaValid, Converter={StaticResource BoolToVis}}"/>
-                                    </Grid>
-                                </Border>
-                                <TextBlock Text="Ej: V-12345678 o J-12345678-9"
-                                           Style="{StaticResource HelperTextStyle}" Margin="2,0,0,14"/>
-
-                                <Grid Margin="0,0,0,6">
+                            <Border Grid.Row="2" Style="{StaticResource TableFooterStyle}">
+                                <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Nombre Completo o Razón Social *"
-                                               Style="{StaticResource FormLabelStyle}" Margin="0"/>
-                                    <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="11">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Foreground" Value="#64748B"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsNameNearLimit}" Value="True">
-                                                        <Setter Property="Foreground" Value="#D97706"/>
-                                                        <Setter Property="FontWeight" Value="Bold"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                        <Run Text="{Binding NameLength, Mode=OneWay}"/>
-                                        <Run Text=" / 50"/>
-                                    </TextBlock>
-                                </Grid>
-                                <Border Style="{StaticResource FieldFrameStyle}" Margin="0,0,0,5"
-                                        IsEnabled="{Binding CanManageCustomerContact}">
-                                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                                             MaxLength="50"
-                                             Style="{StaticResource FieldTextBoxStyle}"
-                                             AutomationProperties.AutomationId="Customers_NameInput"/>
-                                </Border>
-                                <TextBlock Text="Máximo 50 caracteres para reportes y facturas"
-                                           Style="{StaticResource HelperTextStyle}" Margin="2,0,0,14"/>
+                                    <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" FontSize="11"
+                                               Foreground="#64748B" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}"/>
 
-                                <TextBlock Text="Teléfono *" Style="{StaticResource FormLabelStyle}"/>
-                                <Border Style="{StaticResource FieldFrameStyle}" Margin="0,0,0,5"
-                                        IsEnabled="{Binding CanManageCustomerContact}">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBox Grid.Column="0"
-                                                 Text="{Binding Phone, UpdateSourceTrigger=PropertyChanged}"
-                                                 Style="{StaticResource FieldTextBoxStyle}"
-                                                 AutomationProperties.AutomationId="Customers_PhoneInput"/>
-                                        <materialDesign:PackIcon Grid.Column="1" Kind="CheckCircle" Width="18" Height="18"
-                                                                 Foreground="#059669" VerticalAlignment="Center"
-                                                                 Margin="0,0,10,0"
-                                                                 Visibility="{Binding IsPhoneValid, Converter={StaticResource BoolToVis}}"/>
-                                    </Grid>
-                                </Border>
-                                <TextBlock Text="Ej: 0412-1234567 (11 dígitos)"
-                                           Style="{StaticResource HelperTextStyle}" Margin="2,0,0,14"/>
-
-                                <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
-                                        CornerRadius="8" Padding="12,10" Margin="0,0,0,18"
-                                        IsEnabled="{Binding CanMutate}">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                            <TextBlock Text="Cliente Activo" FontSize="12" FontWeight="SemiBold" Foreground="#334155"/>
-                                            <TextBlock Text="Habilitado para facturación y crédito" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
-                                        </StackPanel>
-                                        <ToggleButton Grid.Column="1"
-                                                      Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                                                      IsChecked="{Binding IsActive, Mode=TwoWay}"
-                                                      VerticalAlignment="Center"
-                                                      AutomationProperties.AutomationId="Customers_ActiveToggle"/>
-                                    </Grid>
-                                </Border>
-
-                                <Button Command="{Binding SaveCustomerCommand}"
-                                        Style="{StaticResource PrimaryActionButtonStyle}"
-                                        IsEnabled="{Binding CanManageCustomerContact}"
-                                        Margin="0,0,0,10"
-                                        AutomationProperties.AutomationId="Customers_SaveButton">
-                                    <StackPanel Orientation="Horizontal">
-                                        <materialDesign:PackIcon Kind="ContentSave" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBlock VerticalAlignment="Center">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Text" Value="Guardar Cliente"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsEditing}" Value="True">
-                                                            <Setter Property="Text" Value="Guardar Cambios"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                    </StackPanel>
-                                </Button>
-
-                                <Button Command="{Binding ToggleActiveCustomerCommand}"
-                                        Style="{StaticResource SecondaryActionButtonStyle}"
-                                        Margin="0,0,0,8"
-                                        IsEnabled="{Binding CanMutate}"
-                                        Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"
-                                        AutomationProperties.AutomationId="Customers_ToggleActiveButton">
-                                    <StackPanel Orientation="Horizontal">
-                                        <materialDesign:PackIcon Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0">
-                                            <materialDesign:PackIcon.Style>
-                                                <Style TargetType="materialDesign:PackIcon">
-                                                    <Setter Property="Kind" Value="AccountCancel"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsActive}" Value="False">
-                                                            <Setter Property="Kind" Value="AccountCheck"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </materialDesign:PackIcon.Style>
-                                        </materialDesign:PackIcon>
-                                        <TextBlock VerticalAlignment="Center">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Text" Value="Desactivar Cliente"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsActive}" Value="False">
-                                                            <Setter Property="Text" Value="Activar Cliente"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                    </StackPanel>
-                                </Button>
-
-                                <Button Command="{Binding DeleteCustomerCommand}"
-                                        Style="{StaticResource DangerActionButtonStyle}"
-                                        IsEnabled="{Binding CanDeleteCustomer}"
-                                        Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"
-                                        AutomationProperties.AutomationId="Customers_DeleteButton">
-                                    <StackPanel Orientation="Horizontal">
-                                        <materialDesign:PackIcon Kind="DeleteForever" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBlock Text="Eliminar Cliente" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Button>
-
-                                <!-- Perfil crediticio (Admin/Manager; el cajero no lo ve) -->
-                                <Separator Margin="0,18,0,10" Visibility="{Binding CanViewCreditProfile, Converter={StaticResource BoolToVis}}"/>
-
-                                <Expander AutomationProperties.AutomationId="Customers_CreditProfilePanel"
-                                          Header="Perfil Crediticio"
-                                          IsExpanded="{Binding IsEditing, Mode=OneWay}"
-                                          Visibility="{Binding CanViewCreditProfile, Converter={StaticResource BoolToVis}}"
-                                          Margin="0,0,0,8">
-                                    <StackPanel Margin="0,10,0,0">
-                                        <TextBlock Text="Consultando perfil crediticio..."
-                                                   Visibility="{Binding IsCreditProfileLoading, Converter={StaticResource BoolToVis}}"
-                                                   FontSize="11" FontStyle="Italic" Foreground="#64748B" Margin="0,0,0,6"/>
-
-                                        <TextBlock Text="{Binding CreditProfileError}"
-                                                   Visibility="{Binding CreditProfileError, Converter={StaticResource StringToVisibilityConverter}}"
-                                                   FontSize="11" Foreground="#B91C1C" TextWrapping="Wrap" Margin="0,0,0,8"/>
-
-                                        <CheckBox AutomationProperties.AutomationId="Customers_IsCreditEnabled"
-                                                  Content="Habilitar línea de crédito"
-                                                  IsChecked="{Binding IsCreditEnabled}"
-                                                  IsEnabled="{Binding CanEditCreditProfile}"
-                                                  Margin="0,0,0,10"/>
-
-                                        <TextBox AutomationProperties.AutomationId="Customers_CreditLimit"
-                                                 Text="{Binding CreditLimitText, UpdateSourceTrigger=PropertyChanged}"
-                                                 materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Límite de crédito ({0})'}"
-                                                 materialDesign:HintAssist.IsFloating="True"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                 IsEnabled="{Binding CanEditCreditProfile}"
-                                                 Margin="0,0,0,10"/>
-
-                                        <Grid Margin="0,0,0,10">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="12"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox Grid.Column="0"
-                                                     AutomationProperties.AutomationId="Customers_PaymentTermDays"
-                                                     Text="{Binding PaymentTermDaysText, UpdateSourceTrigger=PropertyChanged}"
-                                                     materialDesign:HintAssist.Hint="Plazo de pago (días)"
-                                                     materialDesign:HintAssist.IsFloating="True"
-                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                     IsEnabled="{Binding CanEditCreditProfile}"/>
-                                            <TextBox Grid.Column="2"
-                                                     AutomationProperties.AutomationId="Customers_CreditGraceDays"
-                                                     Text="{Binding CreditGraceDaysText, UpdateSourceTrigger=PropertyChanged}"
-                                                     materialDesign:HintAssist.Hint="Días de gracia"
-                                                     materialDesign:HintAssist.IsFloating="True"
-                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                     IsEnabled="{Binding CanEditCreditProfile}"/>
-                                        </Grid>
-
-                                        <TextBox AutomationProperties.AutomationId="Customers_CreditNotes"
-                                                 Text="{Binding CreditNotes, UpdateSourceTrigger=PropertyChanged}"
-                                                 MaxLength="1000"
-                                                 AcceptsReturn="True"
-                                                 TextWrapping="Wrap"
-                                                 MinHeight="56"
-                                                 materialDesign:HintAssist.Hint="Notas, garantías o acuerdos especiales"
-                                                 materialDesign:HintAssist.IsFloating="True"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                 IsEnabled="{Binding CanEditCreditProfile}"
-                                                 Margin="0,0,0,12"/>
-
-                                        <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,12">
-                                            <StackPanel>
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel Grid.Column="0">
-                                                        <TextBlock Text="DEUDA ACTUAL" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
-                                                        <TextBlock Text="{Binding CreditProfile.CurrentDebtUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='—'}"
-                                                                   AutomationProperties.AutomationId="Customers_CreditDebt"
-                                                                   FontSize="15" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
-                                                    </StackPanel>
-                                                    <StackPanel Grid.Column="1">
-                                                        <TextBlock Text="DISPONIBLE" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
-                                                        <TextBlock Text="{Binding CreditProfile.AvailableCreditUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='—'}"
-                                                                   AutomationProperties.AutomationId="Customers_CreditAvailable"
-                                                                   FontSize="15" FontWeight="Bold" Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
-                                                    </StackPanel>
-                                                </Grid>
-                                                <Grid Margin="0,10,0,0">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <StackPanel Grid.Column="0">
-                                                        <TextBlock Text="UTILIZACIÓN" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
-                                                        <TextBlock Text="{Binding CreditProfile.UtilizationPercent, StringFormat='{}{0:N2}%', FallbackValue='—'}"
-                                                                   AutomationProperties.AutomationId="Customers_CreditUtilization"
-                                                                   FontSize="15" FontWeight="Bold" Foreground="#0F172A"/>
-                                                    </StackPanel>
-                                                    <StackPanel Grid.Column="1">
-                                                        <TextBlock Text="MORA / ESTADO" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
-                                                        <TextBlock FontSize="13" FontWeight="SemiBold">
-                                                            <Run Text="{Binding CreditStatusLabel, Mode=OneWay}"/>
-                                                            <Run Text=" · "/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, Mode=OneWay}"/>
-                                                            <Run Text="{Binding CreditProfile.OverdueUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='0.00'}"/>
-                                                        </TextBlock>
-                                                    </StackPanel>
-                                                </Grid>
-                                            </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                                        <TextBlock Text="{Binding PageSummary}" VerticalAlignment="Center"
+                                                   FontSize="11" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,8,0"
+                                                   AutomationProperties.AutomationId="Customers_PageSummary"/>
+                                        <Button Command="{Binding FirstPageCommand}" IsEnabled="{Binding CanGoToFirstPage}"
+                                                Style="{StaticResource PaginationIconButtonStyle}" Margin="0,0,3,0" ToolTip="Primera página">
+                                            <materialDesign:PackIcon Kind="PageFirst" Width="16" Height="16"/>
+                                        </Button>
+                                        <Button Command="{Binding PreviousPageCommand}" IsEnabled="{Binding CanGoToPreviousPage}"
+                                                Style="{StaticResource PaginationIconButtonStyle}" Margin="0,0,5,0" ToolTip="Página anterior">
+                                            <materialDesign:PackIcon Kind="ChevronLeft" Width="16" Height="16"/>
+                                        </Button>
+                                        <ItemsControl ItemsSource="{Binding PageNumbers}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Command="{Binding DataContext.GoToPageCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding PageNumber}" Content="{Binding PageNumber}"
+                                                            Style="{StaticResource PaginationNumberButtonStyle}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        <Button Command="{Binding NextPageCommand}" IsEnabled="{Binding CanGoToNextPage}"
+                                                Style="{StaticResource PaginationIconButtonStyle}" Margin="5,0,3,0" ToolTip="Página siguiente">
+                                            <materialDesign:PackIcon Kind="ChevronRight" Width="16" Height="16"/>
+                                        </Button>
+                                        <Button Command="{Binding LastPageCommand}" IsEnabled="{Binding CanGoToLastPage}"
+                                                Style="{StaticResource PaginationIconButtonStyle}" Margin="0,0,8,0" ToolTip="Última página">
+                                            <materialDesign:PackIcon Kind="PageLast" Width="16" Height="16"/>
+                                        </Button>
+                                        <Rectangle Width="1" Height="20" Fill="#E2E8F0" Margin="0,0,7,0"/>
+                                        <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="11" Foreground="#64748B" Margin="0,0,5,0"/>
+                                        <Border Style="{StaticResource PaginationTextBoxFrameStyle}" Margin="0,0,4,0">
+                                            <TextBox Text="{Binding TargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     Style="{StaticResource PaginationTextBoxStyle}"
+                                                     PreviewTextInput="NumberValidationTextBox">
+                                                <TextBox.InputBindings>
+                                                    <KeyBinding Key="Return" Command="{Binding SubmitGoToPageCommand}"/>
+                                                </TextBox.InputBindings>
+                                            </TextBox>
                                         </Border>
-
-                                        <Button Command="{Binding SaveCreditProfileCommand}"
-                                                AutomationProperties.AutomationId="Customers_SaveCreditProfile"
-                                                Style="{StaticResource PrimaryActionButtonStyle}"
-                                                Height="38" FontSize="12"
-                                                IsEnabled="{Binding CanEditCreditProfile}"
-                                                Margin="0,0,0,8">
-                                            <StackPanel Orientation="Horizontal">
-                                                <materialDesign:PackIcon Kind="ContentSave" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                                <TextBlock Text="GUARDAR PERFIL CREDITICIO" VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                        </Button>
-
-                                        <Button Command="{Binding ToggleCreditBlockCommand}"
-                                                AutomationProperties.AutomationId="Customers_ToggleCreditBlock"
-                                                Style="{StaticResource SecondaryActionButtonStyle}"
-                                                Height="36" FontSize="12"
-                                                IsEnabled="{Binding CanEditCreditProfile}">
-                                            <StackPanel Orientation="Horizontal">
-                                                <materialDesign:PackIcon Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0">
-                                                    <materialDesign:PackIcon.Style>
-                                                        <Style TargetType="materialDesign:PackIcon">
-                                                            <Setter Property="Kind" Value="LockOutline"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsManuallyBlocked}" Value="True">
-                                                                    <Setter Property="Kind" Value="LockOpenOutline"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </materialDesign:PackIcon.Style>
-                                                </materialDesign:PackIcon>
-                                                <TextBlock VerticalAlignment="Center">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="BLOQUEAR CRÉDITO"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsManuallyBlocked}" Value="True">
-                                                                    <Setter Property="Text" Value="DESBLOQUEAR CRÉDITO"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </StackPanel>
+                                        <Button Command="{Binding SubmitGoToPageCommand}"
+                                                Style="{StaticResource PaginationGoButtonStyle}" ToolTip="Ir a la página">
+                                            <materialDesign:PackIcon Kind="ArrowRight" Width="15" Height="15"/>
                                         </Button>
                                     </StackPanel>
-                                </Expander>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Grid>
-                </Border>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
             </Grid>
+        </Grid>
+
+        <!-- Toast no bloqueante -->
+        <Border Grid.Row="2" Panel.ZIndex="40"
+                Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1"
+                CornerRadius="8" Padding="12,8" Margin="0,8,8,0"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Visibility="{Binding IsToastVisible, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Kind="CheckCircleOutline" Width="18" Height="18" Foreground="#16A34A"
+                                         VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock Text="{Binding ToastMessage}" Foreground="#166534" FontSize="12" FontWeight="SemiBold"
+                           VerticalAlignment="Center"/>
+                <Button Style="{DynamicResource MaterialDesignToolButton}" Command="{Binding DismissToastCommand}"
+                        Width="24" Height="24" Margin="8,0,0,0" ToolTip="Cerrar aviso">
+                    <materialDesign:PackIcon Kind="Close" Width="14" Height="14" Foreground="#166534"/>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- User modal overlay -->
+        <Grid Panel.ZIndex="100" Background="#730F172A"
+              Visibility="{Binding IsUserModalOpen, Converter={StaticResource BoolToVis}}">
+            <views:UserEditorModal HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Grid>
+
+        <!-- Customer modal overlay -->
+        <Grid Panel.ZIndex="100" Background="#730F172A"
+              Visibility="{Binding CustomerViewModel.IsCustomerModalOpen, Converter={StaticResource BoolToVis}}">
+            <views:CustomerEditorModal DataContext="{Binding CustomerViewModel}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Grid>
     </Grid>
 </UserControl>

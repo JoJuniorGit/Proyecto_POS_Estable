@@ -99,6 +99,119 @@ public sealed class UsersAndCustomersEnterpriseUiTests
     }
 
     [Fact]
+    public async Task Users_ModalCreateAndEdit_CancelKeepsTheGridItemIntact()
+    {
+        var user = new UserDto
+        {
+            Id = 1,
+            Cedula = "V-12345678",
+            Name = "Usuario Original",
+            Role = UserRole.Cashier,
+            IsActive = true
+        };
+        var userService = new Mock<IUserService>();
+        userService.Setup(service => service.GetUsersAsync()).ReturnsAsync(new List<UserDto> { user });
+        var session = new UserSession();
+        using var customerVm = new CustomerManagementViewModel(
+            new Mock<ISalesService>().Object,
+            session,
+            new Mock<IDialogService>().Object);
+        var vm = new UsersManagementViewModel(userService.Object, session, customerVm);
+        await vm.LoadUsersCommand.ExecuteAsync(null);
+
+        vm.OpenEditUserCommand.Execute(user);
+
+        Assert.True(vm.IsUserModalOpen);
+        Assert.True(vm.IsEditing);
+        Assert.Equal("Usuario Original", vm.Name);
+
+        vm.Name = "Cambio de borrador";
+        vm.CloseUserModalCommand.Execute(null);
+
+        Assert.False(vm.IsUserModalOpen);
+        Assert.False(vm.IsEditing);
+        Assert.Equal("Usuario Original", user.Name);
+
+        vm.NewUserCommand.Execute(null);
+        Assert.True(vm.IsUserModalOpen);
+        Assert.False(vm.IsEditing);
+        Assert.Empty(vm.Cedula);
+        Assert.Empty(vm.Name);
+    }
+
+    [Fact]
+    public async Task Customers_ModalCreateAndEdit_CancelKeepsTheGridItemIntact()
+    {
+        var customer = new CustomerDto
+        {
+            Id = 7,
+            CedulaOrRif = "V-12345678",
+            Name = "Cliente Original",
+            Phone = "0412-1234567",
+            IsActive = true
+        };
+        var sales = new Mock<ISalesService>();
+        sales.Setup(service => service.GetCustomersAsync(
+                It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<int>(), false, It.IsAny<bool?>()))
+            .ReturnsAsync((new List<CustomerDto> { customer }, 1));
+        var vm = new CustomerManagementViewModel(
+            sales.Object,
+            new UserSession(),
+            new Mock<IDialogService>().Object);
+        await vm.LoadCustomersAsync();
+
+        vm.OpenEditCustomerCommand.Execute(customer);
+
+        Assert.True(vm.IsCustomerModalOpen);
+        Assert.True(vm.IsEditing);
+        Assert.Equal("Cliente Original", vm.Name);
+
+        vm.Name = "Cambio de borrador";
+        vm.CloseCustomerModalCommand.Execute(null);
+
+        Assert.False(vm.IsCustomerModalOpen);
+        Assert.False(vm.IsEditing);
+        Assert.Equal("Cliente Original", customer.Name);
+
+        vm.OpenNewCustomerCommand.Execute(null);
+        Assert.True(vm.IsCustomerModalOpen);
+        Assert.False(vm.IsEditing);
+        Assert.Empty(vm.CedulaOrRif);
+        Assert.Empty(vm.Name);
+    }
+
+    [Fact]
+    public async Task Modals_ValidationErrorsStayInlineAndPreserveTheDraft()
+    {
+        var session = new UserSession();
+        session.SetUser(new UserDto { Id = 1, Name = "Admin", Role = UserRole.Admin }, "token");
+        using var customerVm = new CustomerManagementViewModel(
+            new Mock<ISalesService>().Object,
+            session,
+            new Mock<IDialogService>().Object);
+        var users = new UsersManagementViewModel(
+            new Mock<IUserService>().Object,
+            session,
+            customerVm);
+
+        users.NewUserCommand.Execute(null);
+        users.Name = "Borrador sin usuario";
+        await users.SaveUserCommand.ExecuteAsync(null);
+
+        Assert.True(users.IsUserModalOpen);
+        Assert.Contains("obligatorios", users.UserModalError, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Borrador sin usuario", users.Name);
+
+        customerVm.OpenNewCustomerCommand.Execute(null);
+        customerVm.Name = "Borrador sin cédula";
+        await customerVm.SaveCustomerCommand.ExecuteAsync(null);
+
+        Assert.True(customerVm.IsCustomerModalOpen);
+        Assert.Contains("Cédula o RIF", customerVm.CustomerModalError, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Borrador sin cédula", customerVm.Name);
+    }
+
+    [Fact]
     public async Task Users_AdvancedPagination_SlicesTheFilteredDirectory()
     {
         var users = Enumerable.Range(1, 60)
@@ -108,7 +221,7 @@ public sealed class UsersAndCustomersEnterpriseUiTests
                 Cedula = $"V-{10000000 + index}",
                 Name = $"Usuario {index:00}",
                 Role = UserRole.Cashier,
-                IsActive = true
+                IsActive = index != 60
             })
             .ToList();
 
@@ -144,6 +257,29 @@ public sealed class UsersAndCustomersEnterpriseUiTests
         Assert.Equal(1, vm.UserCurrentPage);
         Assert.Single(vm.Users);
         Assert.Equal("Página 1 de 1 (1 usuarios)", vm.UserPageSummary);
+
+        vm.UserSearchQuery = string.Empty;
+        vm.SelectedUserStatusFilter = vm.UserStatusFilters.Single(filter => filter.IsActive == false);
+        Assert.Single(vm.Users);
+        Assert.Equal("Usuario 60", vm.Users[0].Name);
+    }
+
+    [Fact]
+    public async Task Customers_SearchQuery_IsForwardedToTheService()
+    {
+        var sales = new Mock<ISalesService>();
+        sales.Setup(service => service.GetCustomersAsync(
+                It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<int>(), false, It.IsAny<bool?>()))
+            .ReturnsAsync((new List<CustomerDto>(), 0));
+        var vm = new CustomerManagementViewModel(
+            sales.Object,
+            new UserSession(),
+            new Mock<IDialogService>().Object);
+
+        await vm.LoadCustomersAsync("0414");
+
+        sales.Verify(service => service.GetCustomersAsync(
+            "0414", 1, 25, false, null), Times.Once);
     }
 
     [Fact]
@@ -197,6 +333,95 @@ public sealed class UsersAndCustomersEnterpriseUiTests
     }
 
     [Fact]
+    public async Task UserModal_SuccessfulSaveClosesTheModalAndEmitsAToast()
+    {
+        var user = new UserDto
+        {
+            Id = 1,
+            Cedula = "V-12345678",
+            Name = "Usuario Original",
+            Role = UserRole.Cashier,
+            IsActive = true
+        };
+        var userService = new Mock<IUserService>();
+        userService.Setup(service => service.GetUsersAsync()).ReturnsAsync(new List<UserDto> { user });
+        userService.Setup(service => service.UpdateUserAsync(
+                1,
+                It.Is<UpdateUserDto>(request => request.Name == "Usuario Guardado")))
+            .ReturnsAsync(new UserDto { Id = 1, Cedula = "V-12345678", Name = "Usuario Guardado", Role = UserRole.Cashier, IsActive = true });
+
+        var session = new UserSession();
+        using var customerVm = new CustomerManagementViewModel(
+            new Mock<ISalesService>().Object,
+            session,
+            new Mock<IDialogService>().Object);
+        var vm = new UsersManagementViewModel(userService.Object, session, customerVm);
+        await vm.LoadUsersCommand.ExecuteAsync(null);
+
+        vm.OpenEditUserCommand.Execute(user);
+        vm.Name = "Usuario Guardado";
+        await vm.SaveUserCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsUserModalOpen);
+        Assert.Null(vm.UserModalError);
+        Assert.Contains("guardado", vm.ToastMessage, StringComparison.OrdinalIgnoreCase);
+        userService.Verify(service => service.UpdateUserAsync(1, It.IsAny<UpdateUserDto>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CustomerModal_SuccessfulSaveClosesTheModalAndEmitsAToast()
+    {
+        var customer = new CustomerDto
+        {
+            Id = 7,
+            CedulaOrRif = "V-12345678",
+            Name = "Cliente Original",
+            Phone = "0412-1234567",
+            IsActive = true
+        };
+        var sales = new Mock<ISalesService>();
+        sales.Setup(service => service.GetCustomersAsync(
+                It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<int>(), false, It.IsAny<bool?>()))
+            .ReturnsAsync((new List<CustomerDto> { customer }, 1));
+        sales.Setup(service => service.UpdateCustomerAsync(7, It.IsAny<UpdateCustomerDto>()))
+            .ReturnsAsync(new CustomerDto
+            {
+                Id = 7,
+                CedulaOrRif = "V-12345678",
+                Name = "Cliente Guardado",
+                Phone = "0412-1234567",
+                IsActive = true
+            });
+        sales.Setup(service => service.GetCreditProfileAsync(7, It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync(new CreditProfileClientDto
+            {
+                CustomerId = 7,
+                CustomerName = "Cliente Original",
+                IsActive = true,
+                IsCreditEnabled = false,
+                Status = CreditStatus.Active
+            });
+
+        var session = new UserSession();
+        session.SetUser(new UserDto { Id = 1, Name = "Admin", Role = UserRole.Admin }, "token");
+        var vm = new CustomerManagementViewModel(sales.Object, session, new Mock<IDialogService>().Object);
+        await vm.LoadCustomersAsync();
+
+        string? toast = null;
+        vm.ToastRequested += message => toast = message;
+
+        vm.OpenEditCustomerCommand.Execute(customer);
+        await (vm.PendingCreditProfile ?? Task.CompletedTask);
+        vm.Name = "Cliente Guardado";
+        await vm.SaveCustomerCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsCustomerModalOpen);
+        Assert.Null(vm.CustomerModalError);
+        Assert.Contains("guardado", toast, StringComparison.OrdinalIgnoreCase);
+        sales.Verify(service => service.UpdateCustomerAsync(7, It.IsAny<UpdateCustomerDto>()), Times.Once);
+    }
+
+    [Fact]
     public void CustomerRif_PreservesTheCheckDigitAndValidates()
     {
         using var vm = new CustomerManagementViewModel(
@@ -237,45 +462,55 @@ public sealed class UsersAndCustomersEnterpriseUiTests
             session,
             customerVm);
 
-        Assert.Equal("Opcional (por defecto: usuario)", vm.PasswordPlaceholder);
+        Assert.Equal("Dejar vacío para valor por defecto", vm.PasswordPlaceholder);
 
         vm.SelectedUser = new UserDto { Id = 1, Cedula = "V-1", Name = "Editor" };
-        Assert.Equal("Dejar en blanco para conservar la actual", vm.PasswordPlaceholder);
+        Assert.Equal("Dejar vacío para conservar la actual", vm.PasswordPlaceholder);
     }
 
     [Fact]
     public void View_DeclaresTheEnterpriseStructureAndCanonicalCopy()
     {
-        var source = File.ReadAllText(ResolveViewPath());
+        var mainPath = ResolveViewPath();
+        var viewDirectory = Path.GetDirectoryName(mainPath)!;
+        var source = File.ReadAllText(mainPath)
+            + File.ReadAllText(Path.Combine(viewDirectory, "UserEditorModal.xaml"))
+            + File.ReadAllText(Path.Combine(viewDirectory, "CustomerEditorModal.xaml"));
 
         Assert.Contains("Text=\"Gestión de Usuarios y Clientes\"", source, StringComparison.Ordinal);
-        Assert.Contains("Administra accesos, roles del personal y el directorio de clientes.", source, StringComparison.Ordinal);
+        Assert.Contains("Administra accesos, roles del personal y el directorio comercial de clientes.", source, StringComparison.Ordinal);
         Assert.Contains("Text=\"Usuarios y Cajeros\"", source, StringComparison.Ordinal);
         Assert.Contains("Text=\"Gestión de Clientes\"", source, StringComparison.Ordinal);
-        Assert.Contains("Value=\"Nuevo Usuario\"", source, StringComparison.Ordinal);
-        Assert.Contains("Value=\"Nuevo Cliente\"", source, StringComparison.Ordinal);
+        Assert.Contains("UserModalTitle", source, StringComparison.Ordinal);
+        Assert.Contains("CustomerModalTitle", source, StringComparison.Ordinal);
+        Assert.Contains("IsUserModalOpen", source, StringComparison.Ordinal);
+        Assert.Contains("IsCustomerModalOpen", source, StringComparison.Ordinal);
         Assert.Contains("Text=\"Rol del Usuario *\"", source, StringComparison.Ordinal);
         Assert.Contains("Text=\"Nombre Completo o Razón Social *\"", source, StringComparison.Ordinal);
         Assert.Contains("PasswordPlaceholder", source, StringComparison.Ordinal);
-        Assert.Contains("Máximo 50 caracteres para reportes y facturas", source, StringComparison.Ordinal);
+        Assert.Contains("caracteres para facturas y reportes.", source, StringComparison.Ordinal);
         Assert.Contains("Text=\"Usuario Activo\"", source, StringComparison.Ordinal);
-        Assert.Contains("Permite iniciar sesión en el POS", source, StringComparison.Ordinal);
+        Assert.Contains("operar en caja", source, StringComparison.Ordinal);
         Assert.Contains("Text=\"Cliente Activo\"", source, StringComparison.Ordinal);
-        Assert.Contains("Habilitado para facturación y crédito", source, StringComparison.Ordinal);
-        Assert.Contains("Guardar Usuario", source, StringComparison.Ordinal);
-        Assert.Contains("Guardar Cliente", source, StringComparison.Ordinal);
-        Assert.Contains("Text=\"+ Nuevo\"", source, StringComparison.Ordinal);
+        Assert.Contains("ventas a cr", source, StringComparison.Ordinal);
+        Assert.Contains("Crear Usuario", source, StringComparison.Ordinal);
+        Assert.Contains("Crear Cliente", source, StringComparison.Ordinal);
+        Assert.Contains("Guardar Cambios", source, StringComparison.Ordinal);
         Assert.Contains("Header=\"USUARIO\"", source, StringComparison.Ordinal);
-        Assert.Contains("Header=\"CÉDULA\"", source, StringComparison.Ordinal);
         Assert.Contains("Header=\"CÉDULA / RIF\"", source, StringComparison.Ordinal);
         Assert.Contains("Header=\"TELÉFONO\"", source, StringComparison.Ordinal);
         Assert.Contains("Header=\"ROL\"", source, StringComparison.Ordinal);
         Assert.Contains("Header=\"ESTADO\"", source, StringComparison.Ordinal);
-        Assert.Contains("RowHeight=\"50\"", source, StringComparison.Ordinal);
+        Assert.Contains("RowHeight=\"52\"", source, StringComparison.Ordinal);
         Assert.Contains("InitialsConverter", source, StringComparison.Ordinal);
         Assert.Contains("UserSearchQuery", source, StringComparison.Ordinal);
         Assert.Contains("SelectedUserRoleFilter", source, StringComparison.Ordinal);
+        Assert.Contains("SelectedUserStatusFilter", source, StringComparison.Ordinal);
         Assert.Contains("SelectedCustomerStatusFilter", source, StringComparison.Ordinal);
+        Assert.Contains("OpenEditUserCommand", source, StringComparison.Ordinal);
+        Assert.Contains("OpenEditCustomerCommand", source, StringComparison.Ordinal);
+        Assert.Contains("HasUserModalError", source, StringComparison.Ordinal);
+        Assert.Contains("HasCustomerModalError", source, StringComparison.Ordinal);
         Assert.Contains("PaginationNumberButtonStyle", source, StringComparison.Ordinal);
         Assert.Contains("Users_PageSummary", source, StringComparison.Ordinal);
         Assert.Contains("Customers_PageSummary", source, StringComparison.Ordinal);

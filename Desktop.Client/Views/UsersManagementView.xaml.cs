@@ -1,8 +1,8 @@
-using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Core.DTOs;
 using Desktop.Client.ViewModels;
 
 namespace Desktop.Client.Views;
@@ -12,61 +12,6 @@ public partial class UsersManagementView : UserControl
     public UsersManagementView()
     {
         InitializeComponent();
-        DataContextChanged += UsersManagementView_DataContextChanged;
-        Loaded += UsersManagementView_Loaded;
-        Unloaded += UsersManagementView_Unloaded;
-    }
-
-    private void UsersManagementView_Loaded(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is UsersManagementViewModel vm)
-        {
-            vm.PropertyChanged -= Vm_PropertyChanged;
-            vm.PropertyChanged += Vm_PropertyChanged;
-        }
-    }
-
-    private void UsersManagementView_Unloaded(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is UsersManagementViewModel vm)
-        {
-            vm.PropertyChanged -= Vm_PropertyChanged;
-        }
-    }
-
-    private void UsersManagementView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        if (e.OldValue is UsersManagementViewModel oldVm)
-        {
-            oldVm.PropertyChanged -= Vm_PropertyChanged;
-        }
-        if (e.NewValue is UsersManagementViewModel newVm)
-        {
-            newVm.PropertyChanged -= Vm_PropertyChanged;
-            newVm.PropertyChanged += Vm_PropertyChanged;
-        }
-    }
-
-    private void Vm_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (sender is UsersManagementViewModel vm)
-        {
-            if (e.PropertyName == nameof(UsersManagementViewModel.Password))
-            {
-                if (UserPasswordBox != null && UserPasswordBox.Password != (vm.Password ?? string.Empty))
-                {
-                    UserPasswordBox.Password = vm.Password ?? string.Empty;
-                }
-            }
-        }
-    }
-
-    private void UserPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is UsersManagementViewModel vm && sender is PasswordBox pb)
-        {
-            vm.Password = pb.Password;
-        }
     }
 
     private void NumberValidationTextBox(object sender, TextCompositionEventArgs e)
@@ -87,6 +32,26 @@ public partial class UsersManagementView : UserControl
         if (DataContext is UsersManagementViewModel vm)
         {
             vm.SelectedTabIndex = 1;
+        }
+    }
+
+    private void UsersGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        if (DataContext is not UsersManagementViewModel vm) return;
+        if (sender is DataGrid { SelectedItem: UserDto user })
+        {
+            vm.OpenEditUserCommand.Execute(user);
+        }
+    }
+
+    private void CustomersGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        if (DataContext is not UsersManagementViewModel vm) return;
+        if (sender is DataGrid { SelectedItem: CustomerDto customer })
+        {
+            vm.CustomerViewModel.OpenEditCustomerCommand.Execute(customer);
         }
     }
 }

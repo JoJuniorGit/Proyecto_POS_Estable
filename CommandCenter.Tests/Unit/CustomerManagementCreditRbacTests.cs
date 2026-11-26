@@ -112,6 +112,8 @@ public class CustomerManagementCreditRbacTests
         vm.SelectedCustomer = Customer();
         await (vm.PendingCreditProfile ?? Task.CompletedTask);
 
+        string? toast = null;
+        vm.ToastRequested += message => toast = message;
         vm.Name = "Cliente Contacto Editado";
         vm.Phone = "0414-7654321";
         await vm.SaveCustomerCommand.ExecuteAsync(null);
@@ -123,9 +125,7 @@ public class CustomerManagementCreditRbacTests
                 && request.Phone == "0414-7654321"
                 && request.CedulaOrRif == "V-12345678")),
             Times.Once);
-        dialog.Verify(instance => instance.ShowWarning("Acceso Denegado", It.IsAny<string>()), Times.Never);
-        dialog.Verify(instance => instance.ShowSuccessDialog(
-            It.Is<string>(message => message.Contains("actualizado")), null), Times.Once);
+        Assert.Contains("guardado", toast, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -164,8 +164,7 @@ public class CustomerManagementCreditRbacTests
         vm.Name = "Cliente Driver";
         await vm.SaveCustomerCommand.ExecuteAsync(null);
 
-        dialog.Verify(instance => instance.ShowWarning(
-            "Acceso Denegado", It.Is<string>(message => message.Contains("permisos"))), Times.Once);
+        Assert.Contains("permisos", vm.CustomerModalError, StringComparison.OrdinalIgnoreCase);
         sales.Verify(instance => instance.CreateCustomerAsync(It.IsAny<CreateCustomerDto>()), Times.Never);
         sales.Verify(instance => instance.UpdateCustomerAsync(It.IsAny<int>(), It.IsAny<UpdateCustomerDto>()), Times.Never);
     }

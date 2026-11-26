@@ -39,6 +39,10 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsDefaultCustomer))]
     [NotifyPropertyChangedFor(nameof(CanViewCreditProfile))]
     [NotifyPropertyChangedFor(nameof(CanEditCreditProfile))]
+    [NotifyPropertyChangedFor(nameof(CustomerModalTitle))]
+    [NotifyPropertyChangedFor(nameof(CustomerModalSubtitle))]
+    [NotifyPropertyChangedFor(nameof(CanEditCustomerContact))]
+    [NotifyPropertyChangedFor(nameof(IsCustomerSaveEnabled))]
     private CustomerDto? _selectedCustomer;
 
     public bool IsEditing => SelectedCustomer != null;
@@ -55,6 +59,9 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool CanManageCustomerContact => _userSession.CurrentUser != null
         && _userSession.CurrentUser.Role != UserRole.Driver;
+
+    /// <summary>El cliente general del sistema conserva su identidad y no se edita desde el modal.</summary>
+    public bool CanEditCustomerContact => CanManageCustomerContact && !IsDefaultCustomer;
 
     /// <summary>
     /// 8.188: visibilidad del panel crediticio. El cajero nunca ve los parámetros de crédito (el

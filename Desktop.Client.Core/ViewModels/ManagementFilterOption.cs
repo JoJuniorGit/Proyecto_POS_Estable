@@ -19,3 +19,9 @@ public sealed record CustomerStatusFilterOption(string Label, bool? IsActive)
 {
     public override string ToString() => Label;
 }
+
+/// <summary>Filtro rápido de estado de usuarios. <see cref="IsActive"/> null representa "Todos".</summary>
+public sealed record UserStatusFilterOption(string Label, bool? IsActive)
+{
+    public override string ToString() => Label;
+}

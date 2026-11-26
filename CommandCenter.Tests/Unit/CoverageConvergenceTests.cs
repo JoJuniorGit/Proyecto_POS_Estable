@@ -312,6 +312,22 @@ public class CoverageConvergenceTests
     }
 
     [Fact]
+    public async Task GetCustomersAsync_FiltersByPhoneQuery()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        context.Customers.AddRange(
+            new Customer { Id = 1, CedulaOrRif = "V-10000001", Name = "Cliente Uno", Phone = "0414332255" },
+            new Customer { Id = 2, CedulaOrRif = "V-10000002", Name = "Cliente Dos", Phone = "0414123456" });
+        await context.SaveChangesAsync();
+
+        var service = CreateSalesService(context);
+        var (items, total) = await service.GetCustomersAsync(query: "0414332255");
+
+        Assert.Equal(1, total);
+        Assert.Equal("Cliente Uno", items.Single().Name);
+    }
+
+    [Fact]
     public async Task GetCustomersAsync_FiltersByActiveStatus()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();

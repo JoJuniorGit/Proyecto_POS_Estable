@@ -27,48 +27,52 @@ public partial class CustomerManagementViewModel
     [RelayCommand]
     public async Task SaveCustomerAsync()
     {
+        CustomerModalError = null;
+
         if (!CanManageCustomerContact)
         {
-            _dialogService.ShowWarning("Acceso Denegado", "Su rol no tiene permisos para crear o modificar clientes.");
+            CustomerModalError = "Su rol no tiene permisos para crear o modificar clientes.";
             return;
         }
 
         if (string.IsNullOrWhiteSpace(CedulaOrRif))
         {
-            _dialogService.ShowWarning("Validación de Cliente", "La Cédula o RIF es obligatoria.");
+            CustomerModalError = "La Cédula o RIF es obligatoria.";
             return;
         }
 
         if (!IsCedulaValid)
         {
-            _dialogService.ShowWarning("Validación de Cliente", "La Cédula o RIF debe tener el formato oficial (ej. V-12345678 con 7 u 8 dígitos).");
+            CustomerModalError = "La Cédula o RIF debe tener el formato oficial (ej. V-12345678 o J-12345678-9).";
             return;
         }
 
         if (string.IsNullOrWhiteSpace(Name))
         {
-            _dialogService.ShowWarning("Validación de Cliente", "El Nombre o Razón Social es obligatorio.");
+            CustomerModalError = "El Nombre o Razón Social es obligatorio.";
             return;
         }
 
         if (Name.Trim().Length > 50)
         {
-            _dialogService.ShowWarning("Validación de Cliente", "El Nombre o Razón Social no puede exceder los 50 caracteres.");
+            CustomerModalError = "El Nombre o Razón Social no puede exceder los 50 caracteres.";
             return;
         }
 
         if (!string.IsNullOrWhiteSpace(Phone) && !IsPhoneValid)
         {
-            _dialogService.ShowWarning("Validación de Cliente", "El teléfono debe tener 11 dígitos y una operadora válida (ej. 0412-1234567).");
+            CustomerModalError = "El teléfono debe tener 11 dígitos y una operadora válida (ej. 0412-1234567).";
             return;
         }
 
         decimal.TryParse(CreditLimitText, System.Globalization.NumberStyles.Any,
             System.Globalization.CultureInfo.InvariantCulture, out decimal creditLimit);
 
+        IsSavingCustomer = true;
         IsLoading = true;
         try
         {
+            string savedName;
             if (IsEditing && SelectedCustomer != null)
             {
                 var updated = await _salesService.UpdateCustomerAsync(SelectedCustomer.Id, new UpdateCustomerDto
@@ -79,8 +83,7 @@ public partial class CustomerManagementViewModel
                     CreditLimitUSD = creditLimit,
                     IsActive = IsActive
                 });
-
-                _dialogService.ShowSuccessDialog($"Cliente '{updated.Name}' actualizado correctamente.");
+                savedName = updated.Name;
             }
             else
             {
@@ -91,20 +94,23 @@ public partial class CustomerManagementViewModel
                     Phone = Phone.Trim(),
                     CreditLimitUSD = creditLimit
                 });
-
-                _dialogService.ShowSuccessDialog($"Cliente '{created.Name}' registrado con éxito.");
+                savedName = created.Name;
             }
 
+            IsCustomerModalOpen = false;
+            CustomerModalError = null;
             await LoadCustomersAsync();
             NewCustomer();
+            ToastRequested?.Invoke($"Cliente '{savedName}' guardado correctamente.");
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Error al Guardar Cliente", ex.Message);
+            CustomerModalError = $"Error al guardar el cliente: {ex.Message}";
         }
         finally
         {
             IsLoading = false;
+            IsSavingCustomer = false;
         }
     }
 
@@ -148,6 +154,7 @@ public partial class CustomerManagementViewModel
 
             IsActive = updated.IsActive;
             _dialogService.ShowSuccessDialog($"Cliente '{updated.Name}' {(newStatus ? "activado" : "desactivado")} correctamente.");
+            IsCustomerModalOpen = false;
             await LoadCustomersAsync();
         }
         catch (Exception ex)
@@ -196,6 +203,7 @@ public partial class CustomerManagementViewModel
         {
             await _salesService.DeleteCustomerAsync(SelectedCustomer.Id);
             _dialogService.ShowSuccessDialog($"Cliente '{Name}' eliminado correctamente.");
+            IsCustomerModalOpen = false;
             await LoadCustomersAsync();
             NewCustomer();
         }

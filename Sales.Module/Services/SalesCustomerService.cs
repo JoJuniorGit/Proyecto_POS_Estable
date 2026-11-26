@@ -151,12 +151,12 @@ internal sealed class SalesCustomerService
             if (_context.Database.IsNpgsql())
             {
                 var pattern = $"%{term}%";
-                q = q.Where(c => EF.Functions.ILike(c.Name, pattern) || EF.Functions.ILike(c.CedulaOrRif, pattern));
+                q = q.Where(c => EF.Functions.ILike(c.Name, pattern) || EF.Functions.ILike(c.CedulaOrRif, pattern) || EF.Functions.ILike(c.Phone, pattern));
             }
             else
             {
                 var lower = term.ToLower();
-                q = q.Where(c => c.Name.ToLower().Contains(lower) || c.CedulaOrRif.ToLower().Contains(lower));
+                q = q.Where(c => c.Name.ToLower().Contains(lower) || c.CedulaOrRif.ToLower().Contains(lower) || c.Phone.ToLower().Contains(lower));
             }
         }
 
