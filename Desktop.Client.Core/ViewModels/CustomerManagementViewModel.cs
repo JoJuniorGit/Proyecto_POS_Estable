@@ -331,25 +331,34 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PageSummary))]
+    [NotifyPropertyChangedFor(nameof(CanGoToFirstPage))]
     [NotifyPropertyChangedFor(nameof(CanGoToPreviousPage))]
     [NotifyPropertyChangedFor(nameof(CanGoToNextPage))]
+    [NotifyPropertyChangedFor(nameof(CanGoToLastPage))]
     private int _currentPage = 1;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PageSummary))]
+    [NotifyPropertyChangedFor(nameof(CanGoToFirstPage))]
     [NotifyPropertyChangedFor(nameof(CanGoToPreviousPage))]
     [NotifyPropertyChangedFor(nameof(CanGoToNextPage))]
+    [NotifyPropertyChangedFor(nameof(CanGoToLastPage))]
     private int _totalPages = 1;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PageSummary))]
     private int _totalCount = 0;
 
-    [ObservableProperty] private int _pageSize = 20;
+    [ObservableProperty] private int _pageSize = 25;
 
-    public string PageSummary => $"Página {CurrentPage} de {Math.Max(1, TotalPages)} (Total: {TotalCount})";
-    public bool CanGoToPreviousPage => CurrentPage > 1;
-    public bool CanGoToNextPage => CurrentPage < TotalPages;
+    public string PageSummary => TotalCount == 0
+        ? "Página 0 de 0 (0 clientes)"
+        : $"Página {CurrentPage} de {TotalPages} ({TotalCount} clientes)";
+
+    public bool CanGoToFirstPage => CurrentPage > 1 && TotalPages > 1;
+    public bool CanGoToPreviousPage => CurrentPage > 1 && TotalPages > 1;
+    public bool CanGoToNextPage => CurrentPage < TotalPages && TotalPages > 1;
+    public bool CanGoToLastPage => CurrentPage < TotalPages && TotalPages > 1;
 
     private async Task StartDebouncedSearchAsync(string query, CancellationToken token)
     {
@@ -379,14 +388,31 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
                 recentOnly: false,
                 isActive: SelectedCustomerStatusFilter?.IsActive);
             TotalCount = total;
-            TotalPages = (int)Math.Ceiling((double)total / PageSize);
-            if (TotalPages < 1) TotalPages = 1;
+            TotalPages = total > 0 ? (int)Math.Ceiling((double)total / PageSize) : 0;
+
+            bool pageWasOutOfRange = total > 0 && CurrentPage > TotalPages;
+            if (total == 0)
+            {
+                CurrentPage = 0;
+            }
+            else
+            {
+                if (CurrentPage <= 0) CurrentPage = 1;
+                if (CurrentPage > TotalPages) CurrentPage = TotalPages;
+            }
+
+            if (pageWasOutOfRange)
+            {
+                await LoadCustomersAsync(query);
+                return;
+            }
 
             Customers.Clear();
             foreach (var c in items)
             {
                 Customers.Add(c);
             }
+            UpdatePageNumbers();
             StatusMessage = $"Mostrando {Customers.Count} de {TotalCount} clientes";
         }
         catch (Exception ex)

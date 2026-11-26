@@ -1,6 +1,8 @@
 using System.ComponentModel;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Desktop.Client.ViewModels;
 
 namespace Desktop.Client.Views;
@@ -65,6 +67,11 @@ public partial class UsersManagementView : UserControl
         {
             vm.Password = pb.Password;
         }
+    }
+
+    private void NumberValidationTextBox(object sender, TextCompositionEventArgs e)
+    {
+        e.Handled = e.Text.Any(character => !char.IsDigit(character));
     }
 
     private void TabUsers_Click(object sender, RoutedEventArgs e)

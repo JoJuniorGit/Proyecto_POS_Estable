@@ -105,9 +105,17 @@ public partial class UsersManagementViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(PasswordPlaceholder));
     }
 
-    partial void OnUserSearchQueryChanged(string value) => ApplyUserFilters();
+    partial void OnUserSearchQueryChanged(string value)
+    {
+        UserCurrentPage = 1;
+        ApplyUserFilters();
+    }
 
-    partial void OnSelectedUserRoleFilterChanged(UserRoleFilterOption? value) => ApplyUserFilters();
+    partial void OnSelectedUserRoleFilterChanged(UserRoleFilterOption? value)
+    {
+        UserCurrentPage = 1;
+        ApplyUserFilters();
+    }
 
     public Array Roles => Enum.GetValues(typeof(UserRole));
 
@@ -166,13 +174,34 @@ public partial class UsersManagementViewModel : ObservableObject, IDisposable
             filtered = filtered.Where(user => user.Role == role);
         }
 
+        _filteredUsers.Clear();
+        _filteredUsers.AddRange(filtered);
+        UserFilteredCount = _filteredUsers.Count;
+        UserTotalPages = _filteredUsers.Count == 0
+            ? 0
+            : (int)Math.Ceiling((double)_filteredUsers.Count / UserPageSize);
+
         Users.Clear();
-        foreach (var user in filtered)
+        if (UserTotalPages == 0)
+        {
+            UserCurrentPage = 0;
+            UpdateUserPageNumbers();
+            StatusMessage = "No hay usuarios que coincidan con el filtro.";
+            return;
+        }
+
+        if (UserCurrentPage <= 0) UserCurrentPage = 1;
+        if (UserCurrentPage > UserTotalPages) UserCurrentPage = UserTotalPages;
+
+        foreach (var user in _filteredUsers
+                     .Skip((UserCurrentPage - 1) * UserPageSize)
+                     .Take(UserPageSize))
         {
             Users.Add(user);
         }
 
-        StatusMessage = $"Mostrando {Users.Count} de {_allUsers.Count} usuarios";
+        UpdateUserPageNumbers();
+        StatusMessage = $"Mostrando {Users.Count} de {_filteredUsers.Count} usuarios";
     }
 
     partial void OnSelectedUserChanged(UserDto? value)

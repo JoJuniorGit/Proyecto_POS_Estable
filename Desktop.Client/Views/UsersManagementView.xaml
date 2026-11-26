@@ -273,6 +273,56 @@
             </Setter>
         </Style>
 
+        <Style x:Key="PaginationNumberButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource MaterialDesignFlatButton}">
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="MinWidth" Value="32"/>
+            <Setter Property="Padding" Value="6,0"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="materialDesign:ButtonAssist.CornerRadius" Value="6"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                    <Setter Property="Background" Value="#6D28D9"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                    <Setter Property="FontWeight" Value="Bold"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PaginationTextBoxFrameStyle" TargetType="Border">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="Width" Value="52"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="Background" Value="#FFFFFF"/>
+                    <Setter Property="BorderBrush" Value="#6D28D9"/>
+                    <Setter Property="BorderThickness" Value="1.5"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PaginationTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="2,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#0F172A"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+
         <Style x:Key="DangerActionButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#FFFFFF"/>
             <Setter Property="BorderBrush" Value="#FECACA"/>
@@ -876,19 +926,103 @@
 
                         <Border Grid.Row="2" Style="{StaticResource TableFooterStyle}">
                             <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Text="{Binding StatusMessage}"
                                            FontSize="11" Foreground="#64748B"
                                            VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding StatusMessage}"/>
-                                <TextBlock Grid.Column="1"
-                                           Text="{Binding TotalUserCount, StringFormat={}{0} registros}"
-                                           FontSize="11" FontWeight="SemiBold" Foreground="#64748B"
-                                           VerticalAlignment="Center" Margin="12,0,0,0"/>
+
+                                <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#E2E8F0"
+                                        BorderThickness="1" CornerRadius="8" Padding="8,4"
+                                        HorizontalAlignment="Right" Margin="0,8,0,0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding UserPageSummary}" VerticalAlignment="Center"
+                                                   FontSize="11" FontWeight="SemiBold" Foreground="#475569"
+                                                   Margin="0,0,10,0"
+                                                   AutomationProperties.AutomationId="Users_PageSummary"/>
+
+                                        <Button Command="{Binding FirstUserPageCommand}"
+                                                IsEnabled="{Binding CanGoFirstUser}"
+                                                Style="{StaticResource SecondaryActionButtonStyle}"
+                                                Height="30" Width="32" Padding="0" Margin="0,0,3,0"
+                                                ToolTip="Primera Página"
+                                                AutomationProperties.AutomationId="Users_FirstPage">
+                                            <materialDesign:PackIcon Kind="PageFirst" Width="16" Height="16"/>
+                                        </Button>
+
+                                        <Button Command="{Binding PreviousUserPageCommand}"
+                                                IsEnabled="{Binding CanGoPreviousUser}"
+                                                Style="{StaticResource SecondaryActionButtonStyle}"
+                                                Height="30" Width="32" Padding="0" Margin="0,0,5,0"
+                                                ToolTip="Página Anterior"
+                                                AutomationProperties.AutomationId="Users_PreviousPage">
+                                            <materialDesign:PackIcon Kind="ChevronLeft" Width="16" Height="16"/>
+                                        </Button>
+
+                                        <ItemsControl ItemsSource="{Binding UserPageNumbers}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Command="{Binding DataContext.GoToUserPageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding PageNumber}"
+                                                            Content="{Binding PageNumber}"
+                                                            Style="{StaticResource PaginationNumberButtonStyle}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <Button Command="{Binding NextUserPageCommand}"
+                                                IsEnabled="{Binding CanGoNextUser}"
+                                                Style="{StaticResource SecondaryActionButtonStyle}"
+                                                Height="30" Width="32" Padding="0" Margin="5,0,3,0"
+                                                ToolTip="Página Siguiente"
+                                                AutomationProperties.AutomationId="Users_NextPage">
+                                            <materialDesign:PackIcon Kind="ChevronRight" Width="16" Height="16"/>
+                                        </Button>
+
+                                        <Button Command="{Binding LastUserPageCommand}"
+                                                IsEnabled="{Binding CanGoLastUser}"
+                                                Style="{StaticResource SecondaryActionButtonStyle}"
+                                                Height="30" Width="32" Padding="0" Margin="0,0,10,0"
+                                                ToolTip="Última Página"
+                                                AutomationProperties.AutomationId="Users_LastPage">
+                                            <materialDesign:PackIcon Kind="PageLast" Width="16" Height="16"/>
+                                        </Button>
+
+                                        <Rectangle Width="1" Height="20" Fill="#E2E8F0" Margin="0,0,8,0"/>
+
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="11"
+                                                       Foreground="#64748B" Margin="0,0,5,0"/>
+                                            <Border Style="{StaticResource PaginationTextBoxFrameStyle}" Margin="0,0,5,0">
+                                                <TextBox Text="{Binding UserTargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         Style="{StaticResource PaginationTextBoxStyle}"
+                                                         PreviewTextInput="NumberValidationTextBox"
+                                                         AutomationProperties.AutomationId="Users_GoToPageInput">
+                                                    <TextBox.InputBindings>
+                                                        <KeyBinding Key="Return" Command="{Binding SubmitUserGoToPageCommand}"/>
+                                                    </TextBox.InputBindings>
+                                                </TextBox>
+                                            </Border>
+                                            <Button Command="{Binding SubmitUserGoToPageCommand}"
+                                                    Style="{StaticResource PrimaryActionButtonStyle}"
+                                                    Height="30" Width="34" Padding="0"
+                                                    ToolTip="Ir a la página especificada"
+                                                    AutomationProperties.AutomationId="Users_GoToPageButton">
+                                                <materialDesign:PackIcon Kind="ArrowRight" Width="15" Height="15"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
                             </Grid>
                         </Border>
                     </Grid>
@@ -1337,31 +1471,101 @@
 
                         <Border Grid.Row="2" Style="{StaticResource TableFooterStyle}">
                             <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Text="{Binding StatusMessage}"
                                            FontSize="11" Foreground="#64748B" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}"/>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
-                                    <Button Command="{Binding PreviousPageCommand}"
-                                            Style="{StaticResource SecondaryActionButtonStyle}"
-                                            Height="30" Width="34" Padding="0" Margin="0,0,4,0"
-                                            ToolTip="Página Anterior"
-                                            AutomationProperties.AutomationId="Customers_PreviousPage">
-                                        <materialDesign:PackIcon Kind="ChevronLeft" Width="18" Height="18"/>
-                                    </Button>
-                                    <TextBlock Text="{Binding PageSummary}" VerticalAlignment="Center" FontSize="11"
-                                               FontWeight="SemiBold" Foreground="#475569" Margin="6,0"/>
-                                    <Button Command="{Binding NextPageCommand}"
-                                            Style="{StaticResource SecondaryActionButtonStyle}"
-                                            Height="30" Width="34" Padding="0" Margin="4,0,0,0"
-                                            ToolTip="Página Siguiente"
-                                            AutomationProperties.AutomationId="Customers_NextPage">
-                                        <materialDesign:PackIcon Kind="ChevronRight" Width="18" Height="18"/>
-                                    </Button>
-                                </StackPanel>
+
+                                <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#E2E8F0"
+                                        BorderThickness="1" CornerRadius="8" Padding="8,4"
+                                        HorizontalAlignment="Right" Margin="0,8,0,0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding PageSummary}" VerticalAlignment="Center"
+                                                   FontSize="11" FontWeight="SemiBold" Foreground="#475569"
+                                                   Margin="0,0,10,0"
+                                                   AutomationProperties.AutomationId="Customers_PageSummary"/>
+
+                                        <Button Command="{Binding FirstPageCommand}"
+                                                IsEnabled="{Binding CanGoToFirstPage}"
+                                                Style="{StaticResource SecondaryActionButtonStyle}"
+                                                Height="30" Width="32" Padding="0" Margin="0,0,3,0"
+                                                ToolTip="Primera Página"
+                                                AutomationProperties.AutomationId="Customers_FirstPage">
+                                            <materialDesign:PackIcon Kind="PageFirst" Width="16" Height="16"/>
+                                        </Button>
+
+                                        <Button Command="{Binding PreviousPageCommand}"
+                                                IsEnabled="{Binding CanGoToPreviousPage}"
+                                                Style="{StaticResource SecondaryActionButtonStyle}"
+                                                Height="30" Width="32" Padding="0" Margin="0,0,5,0"
+                                                ToolTip="Página Anterior"
+                                                AutomationProperties.AutomationId="Customers_PreviousPage">
+                                            <materialDesign:PackIcon Kind="ChevronLeft" Width="16" Height="16"/>
+                                        </Button>
+
+                                        <ItemsControl ItemsSource="{Binding PageNumbers}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Command="{Binding DataContext.GoToPageCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding PageNumber}"
+                                                            Content="{Binding PageNumber}"
+                                                            Style="{StaticResource PaginationNumberButtonStyle}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <Button Command="{Binding NextPageCommand}"
+                                                IsEnabled="{Binding CanGoToNextPage}"
+                                                Style="{StaticResource SecondaryActionButtonStyle}"
+                                                Height="30" Width="32" Padding="0" Margin="5,0,3,0"
+                                                ToolTip="Página Siguiente"
+                                                AutomationProperties.AutomationId="Customers_NextPage">
+                                            <materialDesign:PackIcon Kind="ChevronRight" Width="16" Height="16"/>
+                                        </Button>
+
+                                        <Button Command="{Binding LastPageCommand}"
+                                                IsEnabled="{Binding CanGoToLastPage}"
+                                                Style="{StaticResource SecondaryActionButtonStyle}"
+                                                Height="30" Width="32" Padding="0" Margin="0,0,10,0"
+                                                ToolTip="Última Página"
+                                                AutomationProperties.AutomationId="Customers_LastPage">
+                                            <materialDesign:PackIcon Kind="PageLast" Width="16" Height="16"/>
+                                        </Button>
+
+                                        <Rectangle Width="1" Height="20" Fill="#E2E8F0" Margin="0,0,8,0"/>
+
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="11"
+                                                       Foreground="#64748B" Margin="0,0,5,0"/>
+                                            <Border Style="{StaticResource PaginationTextBoxFrameStyle}" Margin="0,0,5,0">
+                                                <TextBox Text="{Binding TargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         Style="{StaticResource PaginationTextBoxStyle}"
+                                                         PreviewTextInput="NumberValidationTextBox"
+                                                         AutomationProperties.AutomationId="Customers_GoToPageInput">
+                                                    <TextBox.InputBindings>
+                                                        <KeyBinding Key="Return" Command="{Binding SubmitGoToPageCommand}"/>
+                                                    </TextBox.InputBindings>
+                                                </TextBox>
+                                            </Border>
+                                            <Button Command="{Binding SubmitGoToPageCommand}"
+                                                    Style="{StaticResource PrimaryActionButtonStyle}"
+                                                    Height="30" Width="34" Padding="0"
+                                                    ToolTip="Ir a la página especificada"
+                                                    AutomationProperties.AutomationId="Customers_GoToPageButton">
+                                                <materialDesign:PackIcon Kind="ArrowRight" Width="15" Height="15"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
                             </Grid>
                         </Border>
                     </Grid>

@@ -99,6 +99,104 @@ public sealed class UsersAndCustomersEnterpriseUiTests
     }
 
     [Fact]
+    public async Task Users_AdvancedPagination_SlicesTheFilteredDirectory()
+    {
+        var users = Enumerable.Range(1, 60)
+            .Select(index => new UserDto
+            {
+                Id = index,
+                Cedula = $"V-{10000000 + index}",
+                Name = $"Usuario {index:00}",
+                Role = UserRole.Cashier,
+                IsActive = true
+            })
+            .ToList();
+
+        var userService = new Mock<IUserService>();
+        userService.Setup(service => service.GetUsersAsync()).ReturnsAsync(users);
+        var session = new UserSession();
+        using var customerVm = new CustomerManagementViewModel(
+            new Mock<ISalesService>().Object,
+            session,
+            new Mock<IDialogService>().Object);
+        var vm = new UsersManagementViewModel(userService.Object, session, customerVm);
+        await vm.LoadUsersCommand.ExecuteAsync(null);
+
+        Assert.Equal(60, vm.TotalUserCount);
+        Assert.Equal(25, vm.Users.Count);
+        Assert.Equal(3, vm.UserTotalPages);
+        Assert.Equal("Página 1 de 3 (60 usuarios)", vm.UserPageSummary);
+        Assert.Equal(3, vm.UserPageNumbers.Count);
+
+        vm.NextUserPageCommand.Execute(null);
+        Assert.Equal(2, vm.UserCurrentPage);
+        Assert.Equal(25, vm.Users.Count);
+
+        vm.LastUserPageCommand.Execute(null);
+        Assert.Equal(3, vm.UserCurrentPage);
+        Assert.Equal(10, vm.Users.Count);
+
+        vm.GoToUserPageCommand.Execute(1);
+        Assert.Equal(1, vm.UserCurrentPage);
+        Assert.Equal(25, vm.Users.Count);
+
+        vm.UserSearchQuery = "Usuario 60";
+        Assert.Equal(1, vm.UserCurrentPage);
+        Assert.Single(vm.Users);
+        Assert.Equal("Página 1 de 1 (1 usuarios)", vm.UserPageSummary);
+    }
+
+    [Fact]
+    public async Task Customers_AdvancedPagination_UsesServerPagesAndCatalogControls()
+    {
+        var pageItems = Enumerable.Range(1, 25)
+            .Select(index => new CustomerDto
+            {
+                Id = index,
+                CedulaOrRif = $"V-{10000000 + index}",
+                Name = $"Cliente {index:00}",
+                Phone = "04141234567",
+                IsActive = true
+            })
+            .ToList();
+
+        var sales = new Mock<ISalesService>();
+        sales.Setup(service => service.GetCustomersAsync(
+                It.IsAny<string?>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                false,
+                It.IsAny<bool?>()))
+            .ReturnsAsync((pageItems, 60));
+
+        var vm = new CustomerManagementViewModel(
+            sales.Object,
+            new UserSession(),
+            new Mock<IDialogService>().Object);
+        await vm.LoadCustomersAsync();
+
+        Assert.Equal(1, vm.CurrentPage);
+        Assert.Equal(3, vm.TotalPages);
+        Assert.Equal(25, vm.PageSize);
+        Assert.Equal("Página 1 de 3 (60 clientes)", vm.PageSummary);
+        Assert.Equal(3, vm.PageNumbers.Count);
+
+        await vm.NextPageCommand.ExecuteAsync(null);
+        Assert.Equal(2, vm.CurrentPage);
+        Assert.Equal("Página 2 de 3 (60 clientes)", vm.PageSummary);
+
+        await vm.LastPageCommand.ExecuteAsync(null);
+        Assert.Equal(3, vm.CurrentPage);
+
+        await vm.GoToPageCommand.ExecuteAsync(1);
+        Assert.Equal(1, vm.CurrentPage);
+
+        vm.TargetPageInput = "2";
+        await vm.SubmitGoToPageCommand.ExecuteAsync(null);
+        Assert.Equal(2, vm.CurrentPage);
+    }
+
+    [Fact]
     public void CustomerRif_PreservesTheCheckDigitAndValidates()
     {
         using var vm = new CustomerManagementViewModel(
@@ -178,6 +276,14 @@ public sealed class UsersAndCustomersEnterpriseUiTests
         Assert.Contains("UserSearchQuery", source, StringComparison.Ordinal);
         Assert.Contains("SelectedUserRoleFilter", source, StringComparison.Ordinal);
         Assert.Contains("SelectedCustomerStatusFilter", source, StringComparison.Ordinal);
+        Assert.Contains("PaginationNumberButtonStyle", source, StringComparison.Ordinal);
+        Assert.Contains("Users_PageSummary", source, StringComparison.Ordinal);
+        Assert.Contains("Customers_PageSummary", source, StringComparison.Ordinal);
+        Assert.Contains("FirstUserPageCommand", source, StringComparison.Ordinal);
+        Assert.Contains("FirstPageCommand", source, StringComparison.Ordinal);
+        Assert.Contains("UserPageNumbers", source, StringComparison.Ordinal);
+        Assert.Contains("PageNumbers", source, StringComparison.Ordinal);
+        Assert.Contains("TargetPageInput", source, StringComparison.Ordinal);
         Assert.DoesNotContain("materialDesign:HintAssist.Hint=\"Rol del Usuario *\"", source, StringComparison.Ordinal);
         Assert.True(System.Text.RegularExpressions.Regex.Matches(source, "Text=\" / 50\"").Count == 1, "El contador / 50 debe aparecer una sola vez.");
     }
