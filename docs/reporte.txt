@@ -18767,3 +18767,38 @@ D1. La validacion visual se hizo con un harness fuera del repositorio y datos
 D2. Los assets de `Backend.API/wwwroot` regenerados y los cambios previos de
     ProductPicker quedaron fuera de los commits de esta feature.
 ================================================================================
+
+ANEXO LXXVIII - USUARIOS Y CLIENTES: PAGINACION AVANZADA TIPO CATALOGO - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Usuarios: paginacion en cliente sobre el directorio filtrado, con page
+    size 25, resumen "Pagina X de Y (N usuarios)", primera/anterior, numeros
+    relativos (hasta 5), siguiente/ultima, "Ir a" y estado vacio 0/0.
+A2. Clientes: paginacion server-side con page size 25, PageNumbers,
+    TargetPageInput y comandos FirstPage/LastPage/GoToPage/SubmitGoToPage.
+    Si una eliminacion deja CurrentPage fuera de rango, recarga la ultima
+    pagina valida. El filtro de estado conserva la pagina 1 al cambiar.
+A3. Ambos footers usan dos filas: StatusMessage arriba y paginador Enterprise
+    abajo, con botones de 30px, numero activo #6D28D9, resumen, separador e
+    input "Ir a" con validacion numerica.
+A4. Se reutiliza `PageNumberItem` del catalogo para mantener el mismo
+    lenguaje visual y de navegacion.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET completa con PostgreSQL real: 4524/4524, 0 skipped.
+B3. Focused Usuarios/Clientes/paginacion: 32/32.
+B4. Harness WPF 96/120 DPI con 60 usuarios y 60 clientes: paginador sin
+    colisiones, numeros y botones visibles, footer de dos filas estable.
+
+C. COMMITS
+C1. Commit local de paginacion avanzada en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La paginacion de usuarios es client-side porque el endpoint de usuarios
+    devuelve el directorio completo; no se modifico el contrato backend.
+D2. La validacion visual se hizo con harness fuera del repositorio y datos
+    de prueba, no sobre la instalacion final.
+================================================================================
