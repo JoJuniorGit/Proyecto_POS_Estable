@@ -18894,3 +18894,39 @@ D1. La validacion visual se hizo con harness fuera del repositorio y datos
 D2. La tabla de metodos conserva un area de scroll para listas largas; el
     tamano se ajusta con MinHeight sin romper virtualizacion.
 ================================================================================
+
+ANEXO LXXXI - CONFIGURACION: REFINAMIENTO INVENTARIO, RED Y SISTEMA - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Inventario: pill Auto-guardado y aviso ambar condicionado a
+    AllowNegativeStock con el texto "Aviso: el punto de venta permitira
+    facturar articulos sin stock disponible".
+A2. Red: se elimino el borde exterior redundante y quedaron dos tarjetas
+    blancas iguales lado a lado. Cada una usa grid interior Auto/*/Auto para
+    alinear los botones; Servidor Backend muestra estado verde/rojo, URL
+    monoespaciada de solo lectura con boton Copiar y feedback breve; Pairing
+    muestra el recuadro informativo y el boton primario plano.
+A3. Sistema: tarjeta de zona horaria con subtitulo, pill Auto-guardado,
+    selector 320px con etiqueta superior y preview de hora actual en la zona
+    seleccionada; tarjeta de reinicio con acento ambar izquierdo de 4px,
+    fondo #FFFDF7, badge 38 y boton precautorio ambar (sin morado).
+A4. Se agrego TimeZoneAutoSaveStatus y SelectedTimeZoneCurrentTimeDisplay al
+    ViewModel sin alterar la persistencia; fallback de zona local cuando no
+    hay una guardada, sin auto-guardar el fallback.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET completa con PostgreSQL real: 4531/4531, 0 skipped.
+B3. Harness WPF 96/120 DPI: inventario, red y sistema renderizados sin
+    etiquetas cortadas, lineas negras ni sombras pesadas; estado, URL,
+    preview y botones alineados.
+
+C. COMMITS
+C1. Commit local del refinamiento en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La validacion visual se hizo con harness fuera del repositorio; la
+    prueba manual final sigue siendo recomendable.
+================================================================================
