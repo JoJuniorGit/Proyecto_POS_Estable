@@ -18722,3 +18722,48 @@ D2. El copy "cada 2 horas" refleja el default de `appsettings.json`; si una
 D3. El gating de solo lectura Web es de presentacion; el backend mantiene el
     RBAC de escritura/sincronizacion como autoridad final.
 ================================================================================
+
+ANEXO LXXVII - GESTION DE USUARIOS Y CLIENTES: UI ENTERPRISE WPF - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Cabecera institucional: icono de usuarios 42x42 (#EDE9FE/#6D28D9),
+    titulo "Gestion de Usuarios y Clientes" 22 Bold y subtitulo 13 #64748B;
+    engranaje movido a boton secundario formal en la esquina superior derecha.
+A2. Segmented control con contenedor #F1F5F9/CornerRadius 10, pestana activa
+    blanca, inactiva transparente y contadores de total (Usuarios y Clientes).
+A3. Directorio simetrico en ambas pestanas: buscador de 40px, filtro rapido
+    (rol para usuarios; Todos/Activos/Inactivos para clientes) y Refrescar.
+    Tabla con avatares de iniciales, badges de rol/estado, fila seleccionada
+    #F5F3FF con borde izquierdo #6D28D9, footer unificado y scrollbar 6px.
+A4. Inspector blanco de 390px con cabecera propia, titulo dinamico y boton
+    "+ Nuevo" sin superposicion. Formularios con etiquetas arriba, inputs
+    40px/CornerRadius 8, foco violeta, ComboBox legible en espanol, ToggleSwitch
+    de estado en mini tarjeta y boton primario plano #6D28D9.
+A5. Se elimino el contador duplicado 0/50 del input de clientes; queda un unico
+    contador en la linea de la etiqueta y la ayuda de 50 caracteres. El
+    placeholder de contrasena usa "Opcional (por defecto: usuario)".
+A6. Se agrego filtro de estado server-side de clientes (`isActive` opcional) en
+    interfaz/fachada/servicio/controller y cliente WPF, sin romper llamadas
+    existentes. Se corrigio el formateo de RIF juridico con digito verificador.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET completa con `TEST_POSTGRES_CONNECTION` local: 4522/4522,
+    0 skipped.
+B3. Focused Usuarios/Clientes/contratos: 158/158.
+B4. Harness WPF temporal 96/120 DPI: pestanas Usuarios y Clientes renderizadas;
+    sin colisiones en cabecera, formularios ni botones; nombres largos y
+    `BOT_STRESS_VENTAS_NOCTURNA` visibles; columnas de cedula/telefono/estado
+    visibles.
+
+C. COMMITS
+C1. Commits locales de WU1 (backend/contrato de filtro) y WU2 (UI/VM WPF) en
+    la rama V0.15; sin push. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La validacion visual se hizo con un harness fuera del repositorio y datos
+    de prueba; no reemplaza una prueba manual sobre la instalacion real.
+D2. Los assets de `Backend.API/wwwroot` regenerados y los cambios previos de
+    ProductPicker quedaron fuera de los commits de esta feature.
+================================================================================
