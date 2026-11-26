@@ -18846,3 +18846,51 @@ D1. La validacion visual se hizo con harness fuera del repositorio y datos de
 D2. La busqueda de telefono se agrego al filtro de clientes sin cambiar el
     contrato de respuesta de la API.
 ================================================================================
+
+ANEXO LXXX - CONFIGURACION DEL SISTEMA: REDISENO ENTERPRISE - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Shell: titulo Configuracion del Sistema con badge 42x42 (#EDE9FE/
+    #6D28D9), subtitulo 13 #64748B y boton Menu secundario. Sidebar de 248px
+    con separacion derecha #E2E8F0 y cinco iconos vectoriales; activo
+    #F5F3FF, texto/icono #6D28D9 y barra izquierda de 3px.
+A2. Contenido: fondo #F8FAFC; tarjetas blancas borde #E2E8F0, radio 12,
+    MaxWidth 1120 y sombra ambiental Opacity 0.03; scrollbar delgado 6px
+    #CBD5E1 sin flechas.
+A3. Controles: etiquetas superiores, inputs/ComboBox 40px con foco violeta,
+    ComboBoxItem #EDE9FE/#5B21B6, toggles en sub-tarjetas y tablas con
+    cabecera #F8FAFC, filas limpias y acciones iconograficas.
+A4. Seccion Moneda: formato con vista previa en dos bloques; politicas de
+    precios con selectores de 240px y toggle de piso de margen. Se agregaron
+    pills Auto-guardado/✓ Guardado para formato y politicas.
+A5. Seccion Pagos: comisiones de adelanto con labels y sufijo %, tabla de
+    metodos con orden first/last atenuado, tipo/moneda en badges, toggle
+    activo, checkbox vectorial de referencia y acciones renombrar/eliminar;
+    reglas de comision F4 con el mismo estandar.
+A6. Inventario, Conectividad y Sistema: tarjetas y toggles estandarizados;
+    red con tarjetas de servidor/pairing y estado; sistema con timezone y
+    reinicio en tarjeta de accion critica.
+A7. Se ajusto el modelo de presentacion del metodo de pago (IsFirst/IsLast,
+    ToString) y opciones de ComboBox para mostrar etiquetas legibles; sin
+    cambios en contratos de API ni reglas de negocio.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET completa con PostgreSQL real: 4531/4531, 0 skipped.
+B3. Tests del modulo Settings: 129/129 unitarios; smoke de integracion
+    PostgreSQL en la suite completa.
+B4. Harness WPF 96/120 DPI: cinco secciones renderizadas sin etiquetas
+    flotantes, sombras pesadas ni lineas #000000; tablas, badges, pills y
+    toggles visibles. Auto-save pricing cubierto por test.
+
+C. COMMITS
+C1. Commit local del rediseno de Settings en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La validacion visual se hizo con harness fuera del repositorio y datos
+    de prueba; no reemplaza la prueba manual en la instalacion final.
+D2. La tabla de metodos conserva un area de scroll para listas largas; el
+    tamano se ajusta con MinHeight sin romper virtualizacion.
+================================================================================
