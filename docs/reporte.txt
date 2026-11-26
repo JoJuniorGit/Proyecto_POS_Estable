@@ -18966,3 +18966,53 @@ D. PENDIENTE / RIESGOS
 D1. La validacion visual final en la instalacion y a 125% DPI sigue siendo
     recomendable; no se ejecuto un harness visual de todas las vistas.
 ================================================================================
+
+ANEXO LXXXIII - IMPORT PRODUCTS: UI ENTERPRISE WPF - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Cabecera enterprise con badge 42x42 (#EDE9FE/#6D28D9), titulo
+    "Importacion y Exportacion de Productos" 22px y subtitulo 13px
+    (#64748B). Se conservo el boton compartido del menu lateral.
+A2. Stepper de tres estados derivado del ViewModel: cargar archivo, revisar
+    vista previa y guardar cambios; activo #6D28D9, completado #16A34A y
+    pendiente #E2E8F0/#94A3B8.
+A3. Toolbar enterprise: importar primario #6D28D9, exportar sobrio
+    #ECFDF5/#A7F3D0/#047857, plantilla neutra, separador #E2E8F0, pill Merge
+    con ToggleSwitch y copy off/on, progreso y chip de archivo con descarte.
+A4. Barra KPI filtrable (Todas/Validas/Con errores) y buscador local por
+    SKU/nombre; los filtros solo afectan la vista, no la coleccion fuente.
+A5. Estado vacio guiado con dropzone centrada, arrastre .xlsx/.csv y CTA para
+    seleccionar archivo o descargar plantilla. La cabecera se mantiene
+    visible y el DataGrid se oculta sin filas.
+A6. Grilla enterprise con 14 columnas, SKU/Nombre congelados, virtualizacion
+    recycling, scroll delgado, cabeceras sin recorte, badges de fraccionado
+    y estado, filas invalidas #FEF2F2 con indicador izquierdo #DC2626 y
+    detalle del error seleccionado al pie.
+A7. Footer fijo con estado de guardado, Limpiar y Guardar en Base de Datos
+    (Y), estados disabled #E2E8F0/#94A3B8, enabled #6D28D9/#5B21B6 y copy
+    "Guardando..." durante la transaccion.
+A8. ViewModel: filtros, busqueda, conteos, stepper, chip de archivo, Merge
+    copy, error seleccionado y estado de guardado. Se preservaron parseo
+    Excel/CSV, validaciones, contratos de API, mapeo de columnas y commits.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET completa con PostgreSQL real: 4539/4539, 0 skipped.
+B3. Ocho pruebas nuevas del ViewModel cubren filtros KPI, busqueda, limpieza,
+    Merge, habilitacion del guardado, stepper, error seleccionado y estado.
+B4. Harness WPF 96/120 DPI: estado poblado, Merge encendido, estado vacio y
+    grilla desplazada; sin cabeceras truncadas, texto en ingles, bordes
+    negros de tabla ni sombras pesadas. A 100% se validaron las cabeceras
+    de moneda "Costo (USD)", "Precio Detal (USD)" y "Precio Mayor (USD)".
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La validacion visual se hizo con un harness fuera del repositorio; la
+    prueba manual en la instalacion final sigue siendo recomendable.
+D2. Con 14 columnas y los minimos solicitados, la grilla conserva scroll
+    horizontal por diseno; SKU y Nombre quedan congelados.
+================================================================================

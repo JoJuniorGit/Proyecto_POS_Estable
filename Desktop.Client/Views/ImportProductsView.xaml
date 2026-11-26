@@ -1,30 +1,189 @@
 <UserControl x:Class="Desktop.Client.Views.ImportProductsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
              xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
-             mc:Ignorable="d" 
-             d:DesignHeight="600" d:DesignWidth="800"
+             mc:Ignorable="d"
+             d:DesignHeight="760" d:DesignWidth="1280"
              TextElement.Foreground="{DynamicResource MaterialDesignBody}"
              TextElement.FontWeight="Regular"
              TextElement.FontSize="13"
              TextOptions.TextFormattingMode="Ideal"
              TextOptions.TextRenderingMode="Auto"
-             Background="Transparent"
+             Background="#F8FAFC"
              FontFamily="{DynamicResource MaterialDesignFont}"
              d:DataContext="{d:DesignInstance Type=vm:ImportProductsViewModel}">
 
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="SettingsStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsThinScrollBarStyle}"/>
+
+            <Style x:Key="ImportCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="12"/>
+            </Style>
+
+            <Style x:Key="ImportExportButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#ECFDF5"/>
+                <Setter Property="BorderBrush" Value="#A7F3D0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#047857"/>
+                <Setter Property="Height" Value="38"/>
+                <Setter Property="Padding" Value="14,0"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="ExportBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ExportBorder" Property="Background" Value="#D1FAE5"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="ExportBorder" Property="Background" Value="#A7F3D0"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="ExportBorder" Property="Opacity" Value="0.55"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ImportKpiBaseButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Padding" Value="12,0"/>
+                <Setter Property="FontSize" Value="11.5"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Background" Value="#F1F5F9"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="KpiBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="999"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="KpiBorder" Property="Background" Value="#E2E8F0"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="KpiBorder" Property="Background" Value="#CBD5E1"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ImportKpiAllButtonStyle" TargetType="Button" BasedOn="{StaticResource ImportKpiBaseButtonStyle}">
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsFilterAll}" Value="True">
+                        <Setter Property="Background" Value="#EDE9FE"/>
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                        <Setter Property="Foreground" Value="#5B21B6"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="ImportKpiValidButtonStyle" TargetType="Button" BasedOn="{StaticResource ImportKpiBaseButtonStyle}">
+                <Setter Property="Background" Value="#DCFCE7"/>
+                <Setter Property="BorderBrush" Value="#BBF7D0"/>
+                <Setter Property="Foreground" Value="#15803D"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsFilterValid}" Value="True">
+                        <Setter Property="BorderBrush" Value="#86EFAC"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="ImportKpiErrorButtonStyle" TargetType="Button" BasedOn="{StaticResource ImportKpiBaseButtonStyle}">
+                <Setter Property="Background" Value="#F1F5F9"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding HasErrors}" Value="True">
+                        <Setter Property="Background" Value="#FEE2E2"/>
+                        <Setter Property="BorderBrush" Value="#FECACA"/>
+                        <Setter Property="Foreground" Value="#B91C1C"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding IsFilterErrors}" Value="True">
+                        <Setter Property="BorderBrush" Value="#FCA5A5"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="ImportStepCircleStyle" TargetType="Border">
+                <Setter Property="Width" Value="24"/>
+                <Setter Property="Height" Value="24"/>
+                <Setter Property="CornerRadius" Value="12"/>
+                <Setter Property="Background" Value="#E2E8F0"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+            </Style>
+
+            <Style x:Key="ImportStepTextStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="11.5"/>
+                <Setter Property="Foreground" Value="#94A3B8"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="ImportNumberCellStyle" TargetType="TextBlock">
+                <Setter Property="Margin" Value="12,0"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="HorizontalAlignment" Value="Right"/>
+                <Setter Property="FontFamily" Value="Consolas"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Foreground" Value="#0F172A"/>
+            </Style>
+
+            <Style x:Key="ImportTextCellStyle" TargetType="TextBlock">
+                <Setter Property="Margin" Value="12,0"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Foreground" Value="#334155"/>
+                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid Margin="20" AllowDrop="True" Drop="Grid_Drop">
+    <Grid Margin="20" AllowDrop="True"
+          DragOver="Grid_DragOver"
+          DragLeave="Grid_DragLeave"
+          Drop="Grid_Drop">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -33,128 +192,758 @@
         </Grid.RowDefinitions>
 
         <!-- HEADER -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,5">
-            <Button DockPanel.Dock="Right"
-                    Style="{StaticResource SidebarMenuButtonStyle}"
-                    VerticalAlignment="Center" Margin="16,0,0,0"/>
-            <TextBlock Text="IMPORTACIÓN Y EXPORTACIÓN DE PRODUCTOS" 
-                       AutomationProperties.AutomationId="ImportProducts_Title"
-                       Style="{DynamicResource MaterialDesignHeadline5TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
-        </DockPanel>
-        <TextBlock Grid.Row="1" Text="Exporte el catálogo actual o descargue la plantilla para cargar/actualizar masivamente productos." Style="{DynamicResource MaterialDesignSubtitle2TextBlock}" Foreground="{DynamicResource MaterialDesignTextBoxBorder}" Margin="0,0,0,15"/>
-
-        <!-- CONTROLS & STATUS -->
-        <Grid Grid.Row="2" Margin="0,0,0,15">
+        <Grid Grid.Row="0" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="0" Command="{Binding ExportCatalogCommand}" Style="{StaticResource MaterialDesignRaisedSecondaryButton}" IsEnabled="{Binding CanMutateCatalog}" Margin="0,0,10,0" ToolTip="Exportar catálogo completo a archivo CSV">
-                <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="FileExportOutline" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                    <TextBlock Text="Exportar Catálogo" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Width="42" Height="42" CornerRadius="10" Background="#EDE9FE"
+                        VerticalAlignment="Center">
+                    <materialDesign:PackIcon Kind="FileImportOutline" Width="22" Height="22"
+                                             Foreground="#6D28D9"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="Importación y Exportación de Productos"
+                               AutomationProperties.AutomationId="ImportProducts_Title"
+                               FontSize="22" FontWeight="Bold" Foreground="#0F172A"/>
+                    <TextBlock Text="Exporte el catálogo actual, descargue la plantilla o cargue un archivo Excel/CSV para actualizar productos masivamente."
+                               FontSize="13" Foreground="#64748B" Margin="0,3,0,0"
+                               TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
-            </Button>
+            </StackPanel>
 
-            <Button Grid.Column="1" 
-                    AutomationProperties.AutomationId="ImportProducts_SelectFileButton"
-                    Command="{Binding SelectFileCommand}" Style="{StaticResource MaterialDesignRaisedButton}" IsEnabled="{Binding CanMutateCatalog}" Margin="0,0,10,0" ToolTip="Seleccionar un archivo Excel (.xlsx) o CSV (.csv) para importar masivamente productos">
-                <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="CloudUploadOutline" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                    <TextBlock Text="Cargar / Importar Productos" VerticalAlignment="Center" FontWeight="Bold"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border>
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource ImportStepCircleStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsStep1Active}" Value="True">
+                                            <Setter Property="Background" Value="#6D28D9"/>
+                                            <Setter Property="BorderBrush" Value="#6D28D9"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsStep1Complete}" Value="True">
+                                            <Setter Property="Background" Value="#16A34A"/>
+                                            <Setter Property="BorderBrush" Value="#16A34A"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Grid>
+                                <TextBlock Text="1" FontSize="11" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#94A3B8"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsStep1Active}" Value="True">
+                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsStep1Complete}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <materialDesign:PackIcon Kind="Check" Width="14" Height="14"
+                                                         Foreground="#FFFFFF"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon.Style>
+                                        <Style TargetType="materialDesign:PackIcon">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsStep1Complete}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </materialDesign:PackIcon.Style>
+                                </materialDesign:PackIcon>
+                            </Grid>
+                        </Border>
+                        <TextBlock Text="1. Cargar archivo" Margin="8,0,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ImportStepTextStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsStep1Active}" Value="True">
+                                            <Setter Property="Foreground" Value="#0F172A"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsStep1Complete}" Value="True">
+                                            <Setter Property="Foreground" Value="#16A34A"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <Rectangle Width="20" Height="1" Fill="#E2E8F0" Margin="10,0" VerticalAlignment="Center"/>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border>
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource ImportStepCircleStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsStep2Active}" Value="True">
+                                            <Setter Property="Background" Value="#6D28D9"/>
+                                            <Setter Property="BorderBrush" Value="#6D28D9"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsStep2Complete}" Value="True">
+                                            <Setter Property="Background" Value="#16A34A"/>
+                                            <Setter Property="BorderBrush" Value="#16A34A"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Grid>
+                                <TextBlock Text="2" FontSize="11" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#94A3B8"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsStep2Active}" Value="True">
+                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsStep2Complete}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <materialDesign:PackIcon Kind="Check" Width="14" Height="14"
+                                                         Foreground="#FFFFFF"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon.Style>
+                                        <Style TargetType="materialDesign:PackIcon">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsStep2Complete}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </materialDesign:PackIcon.Style>
+                                </materialDesign:PackIcon>
+                            </Grid>
+                        </Border>
+                        <TextBlock Text="2. Revisar vista previa" Margin="8,0,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ImportStepTextStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsStep2Active}" Value="True">
+                                            <Setter Property="Foreground" Value="#0F172A"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsStep2Complete}" Value="True">
+                                            <Setter Property="Foreground" Value="#16A34A"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <Rectangle Width="20" Height="1" Fill="#E2E8F0" Margin="10,0" VerticalAlignment="Center"/>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border>
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource ImportStepCircleStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsStep3Active}" Value="True">
+                                            <Setter Property="Background" Value="#6D28D9"/>
+                                            <Setter Property="BorderBrush" Value="#6D28D9"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsStep3Complete}" Value="True">
+                                            <Setter Property="Background" Value="#16A34A"/>
+                                            <Setter Property="BorderBrush" Value="#16A34A"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Grid>
+                                <TextBlock Text="3" FontSize="11" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="#94A3B8"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsStep3Active}" Value="True">
+                                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsStep3Complete}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <materialDesign:PackIcon Kind="Check" Width="14" Height="14"
+                                                         Foreground="#FFFFFF"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon.Style>
+                                        <Style TargetType="materialDesign:PackIcon">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsStep3Complete}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </materialDesign:PackIcon.Style>
+                                </materialDesign:PackIcon>
+                            </Grid>
+                        </Border>
+                        <TextBlock Text="3. Guardar cambios" Margin="8,0,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ImportStepTextStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsStep3Active}" Value="True">
+                                            <Setter Property="Foreground" Value="#0F172A"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsStep3Complete}" Value="True">
+                                            <Setter Property="Foreground" Value="#16A34A"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
                 </StackPanel>
-            </Button>
-            
-            <Button Grid.Column="2" Command="{Binding DownloadTemplateCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding CanMutateCatalog}" Margin="0,0,15,0">
-                <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="FileDownloadOutline" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                    <TextBlock Text="Descargar Plantilla" VerticalAlignment="Center"/>
-                </StackPanel>
-            </Button>
 
-            <CheckBox Grid.Column="3" Content="Sobrescribir coincidencias por SKU (Merge)" IsChecked="{Binding OverwriteMerge, Mode=TwoWay}" IsEnabled="{Binding CanMutateCatalog}" Style="{StaticResource MaterialDesignDarkCheckBox}" ToolTip="Actualiza los productos existentes que coincidan por SKU." Margin="0,0,20,0" VerticalAlignment="Center" />
-
-            <!-- PROGRESS BAR AND STATUS MSG -->
-            <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                <ProgressBar IsIndeterminate="{Binding IsProgressIndeterminate}" Value="{Binding ProgressValue}" Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" Width="100" Height="10" Margin="0,0,10,0" />
-                <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                <Button Style="{StaticResource SidebarMenuButtonStyle}" Margin="16,0,0,0"
+                        VerticalAlignment="Center"/>
             </StackPanel>
         </Grid>
 
+        <!-- TOOLBAR -->
+        <Border Grid.Row="1" Style="{StaticResource ImportCardStyle}" Padding="16,12" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0"
+                        AutomationProperties.AutomationId="ImportProducts_SelectFileButton"
+                        Command="{Binding SelectFileCommand}"
+                        Style="{StaticResource SettingsPrimaryButtonStyle}"
+                        Height="38" Padding="16,0" Margin="0,0,10,0"
+                        IsEnabled="{Binding CanMutateCatalog}"
+                        ToolTip="Seleccionar un archivo Excel (.xlsx) o CSV (.csv) para importar masivamente productos">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="CloudUploadOutline" Width="18" Height="18"
+                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock Text="Cargar / Importar Productos" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Button>
+
+                <Button Grid.Column="1"
+                        Command="{Binding ExportCatalogCommand}"
+                        Style="{StaticResource ImportExportButtonStyle}"
+                        IsEnabled="{Binding CanMutateCatalog}"
+                        Margin="0,0,10,0"
+                        ToolTip="Exportar catálogo completo a archivo CSV">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="FileExportOutline" Width="18" Height="18"
+                                                 Foreground="#059669" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock Text="Exportar Catálogo" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <Button Grid.Column="2"
+                        Command="{Binding DownloadTemplateCommand}"
+                        Style="{StaticResource SettingsSecondaryButtonStyle}"
+                        Height="38" Padding="14,0" Margin="0,0,10,0"
+                        IsEnabled="{Binding CanMutateCatalog}"
+                        ToolTip="Descargar una plantilla Excel/CSV con el formato esperado">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="FileDownloadOutline" Width="18" Height="18"
+                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock Text="Descargar Plantilla" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <Rectangle Grid.Column="3" Width="1" Height="28" Fill="#E2E8F0"
+                           Margin="4,0,12,0" VerticalAlignment="Center"/>
+
+                <Border Grid.Column="4" Height="42" Padding="12,6" CornerRadius="10"
+                        BorderThickness="1" VerticalAlignment="Center" Margin="0,0,12,0"
+                        ToolTip="{Binding MergeTooltip}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#F8FAFC"/>
+                            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding OverwriteMerge}" Value="True">
+                                    <Setter Property="Background" Value="#FFFBEB"/>
+                                    <Setter Property="BorderBrush" Value="#FDE68A"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <ToggleButton Grid.Column="0"
+                                      Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                      IsChecked="{Binding OverwriteMerge, Mode=TwoWay}"
+                                      IsEnabled="{Binding CanMutateCatalog}"
+                                      AutomationProperties.AutomationId="ImportProducts_MergeToggle"
+                                      VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="Sobrescribir coincidencias por SKU" FontSize="11.5" FontWeight="SemiBold">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#475569"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding OverwriteMerge}" Value="True">
+                                                <Setter Property="Foreground" Value="#B45309"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Text="{Binding MergeStatusText}" FontSize="10.5" Margin="0,1,0,0"
+                                       TextTrimming="CharacterEllipsis">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#64748B"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding OverwriteMerge}" Value="True">
+                                                <Setter Property="Foreground" Value="#B45309"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <ProgressBar Grid.Column="6"
+                             IsIndeterminate="{Binding IsProgressIndeterminate}"
+                             Value="{Binding ProgressValue}"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
+                             Width="90" Height="6" Margin="0,0,12,0"
+                             VerticalAlignment="Center"
+                             Foreground="#6D28D9" Background="#E2E8F0"/>
+
+                <Border Grid.Column="7" Visibility="{Binding HasActiveFile, Converter={StaticResource BoolToVis}}"
+                        Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                        CornerRadius="8" Padding="9,5" MaxWidth="280" VerticalAlignment="Center"
+                        ToolTip="{Binding ActiveFilePath}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <materialDesign:PackIcon Grid.Column="0" Kind="FileDocumentOutline" Width="16" Height="16"
+                                                 Foreground="#6D28D9" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="{Binding ActiveFileName}" Margin="7,0"
+                                   FontSize="11.5" Foreground="#334155" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="220"
+                                   ToolTip="{Binding ActiveFilePath}"/>
+                        <Button Grid.Column="2" Content="×" Command="{Binding ClearDataCommand}"
+                                Style="{StaticResource SettingsBareButtonStyle}"
+                                Width="22" Height="22" FontSize="16" Foreground="#64748B"
+                                ToolTip="Descartar la previsualización"/>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Column="7" Visibility="{Binding HasActiveFile, Converter={StaticResource InverseBoolToVis}}"
+                        Background="#F1F5F9" CornerRadius="999" Padding="10,5" VerticalAlignment="Center">
+                    <TextBlock Text="Sin archivo cargado" FontSize="11" Foreground="#64748B"/>
+                </Border>
+            </Grid>
+        </Border>
+
         <!-- COLUMN MAPPING -->
-        <materialDesign:Card Grid.Row="3" Margin="0,0,0,15" Visibility="{Binding HasMappings, Converter={StaticResource BoolToVis}}">
-            <StackPanel Margin="15">
-                <TextBlock Text="Asignar Columnas del Archivo a Propiedades del Sistema" FontWeight="SemiBold" Margin="0,0,0,10"/>
+        <Border Grid.Row="2" Style="{StaticResource ImportCardStyle}" Padding="16,12" Margin="0,0,0,12"
+                Visibility="{Binding HasMappings, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Text="Asignar columnas del archivo a propiedades del sistema"
+                           FontSize="13" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,10"/>
                 <ItemsControl ItemsSource="{Binding ColumnMappings}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal" />
+                            <WrapPanel Orientation="Horizontal"/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Margin="0,0,20,10" Width="180">
-                                <TextBlock Text="{Binding ExcelHeader}" FontWeight="Medium" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
-                                <ComboBox ItemsSource="{Binding AvailableProperties}" SelectedItem="{Binding SelectedProperty}" Style="{DynamicResource MaterialDesignOutlinedComboBox}" Margin="0,5,0,0"/>
+                            <StackPanel Margin="0,0,16,10" Width="180">
+                                <TextBlock Text="{Binding ExcelHeader}" FontSize="11" FontWeight="Medium"
+                                           Foreground="#64748B" Margin="0,0,0,4"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <Border Style="{StaticResource SettingsFieldFrameStyle}" Height="36">
+                                    <ComboBox ItemsSource="{Binding AvailableProperties}"
+                                              SelectedItem="{Binding SelectedProperty}"
+                                              Style="{StaticResource SettingsComboBoxStyle}"/>
+                                </Border>
                             </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <Button Command="{Binding ProcessDataCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Content="Procesar Datos" HorizontalAlignment="Right" Margin="0,10,0,0"/>
+                <Button Command="{Binding ProcessDataCommand}" Content="Procesar datos"
+                        Style="{StaticResource SettingsPrimaryButtonStyle}" Height="36" Padding="16,0"
+                        HorizontalAlignment="Right" Margin="0,4,0,0"/>
             </StackPanel>
-        </materialDesign:Card>
+        </Border>
 
-        <!-- DATAGRID -->
-        <controls:PerformantDataGrid Grid.Row="4" ItemsSource="{Binding ImportedProducts}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" HeadersVisibility="All" Background="{DynamicResource MaterialDesignPaper}">
-            <controls:PerformantDataGrid.RowStyle>
-                <Style TargetType="DataGridRow" BasedOn="{StaticResource MaterialDesignDataGridRow}">
-                    <Style.Triggers>
-                        <!-- Highlight invalid rows firmly -->
-                        <DataTrigger Binding="{Binding IsValid}" Value="False">
-                            <Setter Property="Background" Value="#FFCDD2" />
-                            <Setter Property="Foreground" Value="#B71C1C"/>
-                            <Setter Property="ToolTip" Value="{Binding ErrorMessage}" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </controls:PerformantDataGrid.RowStyle>
-            
-            <controls:PerformantDataGrid.Columns>
-                <DataGridTextColumn Header="SKU" Binding="{Binding SKU}" Width="SizeToCells" MinWidth="80"/>
-                <DataGridTextColumn Header="Nombre" Binding="{Binding Name}" Width="*"/>
-                <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Costo ({0})'}" Binding="{Binding CostPriceUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="100" />
-                <DataGridTextColumn Header="Margen Detal" Binding="{Binding ProfitMarginRetail, StringFormat={}{0:N2}%}" Width="90" />
-                <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Precio Detal ({0})'}" Binding="{Binding PriceRetailUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="110"/>
-                <DataGridTextColumn Header="Margen Mayor" Binding="{Binding ProfitMarginWholesale, StringFormat={}{0:N2}%}" Width="90" />
-                <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Precio Mayor ({0})'}" Binding="{Binding PriceWholesaleUSD, Converter={StaticResource PrimaryAmountConverter}}" Width="110"/>
-                <DataGridCheckBoxColumn Header="Mayorista" Binding="{Binding HasWholesale}" Width="75"/>
-                <DataGridCheckBoxColumn Header="Fraccionable" Binding="{Binding IsFractional}" Width="85"/>
-                <DataGridTextColumn Header="Unidad" Binding="{Binding UnitOfMeasure}" Width="70"/>
-                <DataGridTextColumn Header="Tipo" Binding="{Binding ProductType}" Width="80"/>
-                <DataGridTextColumn Header="Grupo" Binding="{Binding GroupNameOrKey}" Width="90"/>
-                <DataGridTextColumn Header="Stock" Binding="{Binding StockQuantity}" Width="70"/>
-                
-                <DataGridTextColumn Header="Estado / Error" Binding="{Binding ErrorMessage}" Foreground="DarkRed" Width="SizeToCells" MinWidth="150">
-                    <DataGridTextColumn.ElementStyle>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                            <Setter Property="ToolTip" Value="{Binding ErrorMessage}"/>
+        <!-- MAIN CARD -->
+        <Border Grid.Row="3" Style="{StaticResource ImportCardStyle}" ClipToBounds="True">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- KPI + SEARCH -->
+                <Border Grid.Row="0" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1"
+                        Padding="16,10" Visibility="{Binding HasFileData, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Style="{StaticResource ImportKpiAllButtonStyle}"
+                                    Command="{Binding SetFilterAllCommand}"
+                                    Content="{Binding AllCountText}"
+                                    Margin="0,0,8,0"/>
+                            <Button Style="{StaticResource ImportKpiValidButtonStyle}"
+                                    Command="{Binding SetFilterValidCommand}"
+                                    Content="{Binding ValidCountText}"
+                                    Margin="0,0,8,0"/>
+                            <Button Style="{StaticResource ImportKpiErrorButtonStyle}"
+                                    Command="{Binding SetFilterErrorsCommand}"
+                                    Content="{Binding ErrorCountText}"/>
+                        </StackPanel>
+
+                        <Border Grid.Column="2" Width="240" Height="32" Background="#FFFFFF"
+                                BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="8"
+                                Padding="9,0" VerticalAlignment="Center">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="16" Height="16"
+                                                         Foreground="#64748B" VerticalAlignment="Center"/>
+                                <Grid Grid.Column="1" Margin="7,0,0,0">
+                                    <TextBlock Text="Filtrar por SKU o nombre..." FontSize="11.5"
+                                               Foreground="#94A3B8" VerticalAlignment="Center"
+                                               IsHitTestVisible="False">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SearchQuery}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding SearchQuery}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBox Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                                             Background="Transparent" BorderThickness="0" Padding="0"
+                                             FontSize="11.5" Foreground="#0F172A"
+                                             VerticalContentAlignment="Center"
+                                             AutomationProperties.AutomationId="ImportProducts_SearchBox"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- EMPTY DROPZONE -->
+                <Border x:Name="DropZoneBorder" Grid.Row="1" Margin="20" Background="#F8FAFC"
+                        BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="14"
+                        MaxWidth="560"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Visibility="{Binding HasFileData, Converter={StaticResource InverseBoolToVis}}">
+                    <Grid>
+                        <Rectangle x:Name="DropZoneDashedBorder" Stroke="#CBD5E1" StrokeThickness="1"
+                                   StrokeDashArray="4 3" RadiusX="14" RadiusY="14" Fill="Transparent"
+                                   IsHitTestVisible="False"/>
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    MaxWidth="488">
+                            <Border Width="56" Height="56" CornerRadius="28" Background="#EDE9FE"
+                                    HorizontalAlignment="Center">
+                                <materialDesign:PackIcon Kind="CloudUploadOutline" Width="28" Height="28"
+                                                         Foreground="#6D28D9"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Arrastra tu archivo Excel (.xlsx) o CSV aquí"
+                                       FontSize="16" FontWeight="Bold" Foreground="#0F172A"
+                                       TextAlignment="Center" TextWrapping="Wrap" Margin="0,16,0,0"/>
+                            <TextBlock Text="Previsualizaremos y validaremos cada SKU, costo, margen y categoría antes de tocar la base de datos."
+                                       FontSize="13" Foreground="#64748B" TextAlignment="Center"
+                                       TextWrapping="Wrap" Margin="0,6,0,0"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,18,0,0">
+                                <Button Content="Seleccionar archivo" Command="{Binding SelectFileCommand}"
+                                        Style="{StaticResource SettingsPrimaryButtonStyle}"
+                                        Height="38" Padding="16,0" IsEnabled="{Binding CanMutateCatalog}"/>
+                                <Button Command="{Binding DownloadTemplateCommand}"
+                                        Style="{StaticResource SettingsBareButtonStyle}"
+                                        Margin="16,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="¿Necesitas el formato? Descargar plantilla"
+                                               FontSize="11.5" Foreground="#6D28D9"
+                                               TextDecorations="Underline"/>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- PREVIEW GRID -->
+                <controls:PerformantDataGrid x:Name="PreviewGrid" Grid.Row="1"
+                                             ItemsSource="{Binding FilteredProducts}"
+                                             SelectedItem="{Binding SelectedProduct, Mode=TwoWay}"
+                                             Visibility="{Binding HasFileData, Converter={StaticResource BoolToVis}}"
+                                             AutoGenerateColumns="False"
+                                             CanUserAddRows="False"
+                                             CanUserDeleteRows="False"
+                                             CanUserReorderColumns="False"
+                                             IsReadOnly="True"
+                                             HeadersVisibility="Column"
+                                             GridLinesVisibility="Horizontal"
+                                             HorizontalGridLinesBrush="#F1F5F9"
+                                             BorderThickness="0"
+                                             Background="#FFFFFF"
+                                             RowBackground="#FFFFFF"
+                                             AlternatingRowBackground="#FFFFFF"
+                                             RowHeight="42"
+                                             FrozenColumnCount="2"
+                                             EnableRowVirtualization="True"
+                                             EnableColumnVirtualization="True"
+                                             VirtualizingStackPanel.IsVirtualizing="True"
+                                             VirtualizingStackPanel.VirtualizationMode="Recycling"
+                                             ScrollViewer.CanContentScroll="True"
+                                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             ColumnHeaderStyle="{StaticResource SettingsTableHeaderStyle}"
+                                             CellStyle="{StaticResource SettingsTableCellStyle}">
+                    <controls:PerformantDataGrid.RowStyle>
+                        <Style TargetType="DataGridRow" BasedOn="{StaticResource SettingsTableRowStyle}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsValid}" Value="False">
+                                    <Setter Property="Background" Value="#FEF2F2"/>
+                                    <Setter Property="BorderBrush" Value="#DC2626"/>
+                                    <Setter Property="BorderThickness" Value="3,0,0,0"/>
+                                </DataTrigger>
+                            </Style.Triggers>
                         </Style>
-                    </DataGridTextColumn.ElementStyle>
-                </DataGridTextColumn>
+                    </controls:PerformantDataGrid.RowStyle>
 
-            </controls:PerformantDataGrid.Columns>
-        </controls:PerformantDataGrid>
+                    <controls:PerformantDataGrid.Columns>
+                        <DataGridTextColumn Header="SKU" Binding="{Binding SKU}"
+                                            MinWidth="135" Width="SizeToCells"
+                                            ElementStyle="{StaticResource ImportNumberCellStyle}"/>
 
-        <!-- FOOTER ACTIONS -->
-        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
-            <Button Content="Limpiar" Command="{Binding ClearDataCommand}" Style="{StaticResource MaterialDesignFlatButton}" Margin="0,0,15,0" Visibility="{Binding HasFileData, Converter={StaticResource BoolToVis}}" />
-            <Button Content="Guardar en Base de Datos" Command="{Binding CommitImportCommand}" Style="{StaticResource MaterialDesignRaisedButton}" IsEnabled="{Binding CanCommit}" ToolTip="Guardar filas válidas en la base de datos PostgreSQL." />
-        </StackPanel>
+                        <DataGridTemplateColumn Header="Nombre" MinWidth="220" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource ImportTextCellStyle}"
+                                               ToolTip="{Binding Name}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn MinWidth="135" Width="SizeToCells">
+                            <DataGridTemplateColumn.Header>
+                                <TextBlock FontSize="11.5" FontWeight="SemiBold" Foreground="#64748B"><Run Text="Costo ("/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}"/><Run Text=")"/></TextBlock>
+                            </DataGridTemplateColumn.Header>
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding CostPriceUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                               Style="{StaticResource ImportNumberCellStyle}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTextColumn Header="Margen Detal %"
+                                            Binding="{Binding ProfitMarginRetail, StringFormat={}{0:N2}%}"
+                                            MinWidth="120" Width="SizeToCells"
+                                            ElementStyle="{StaticResource ImportNumberCellStyle}"/>
+
+                        <DataGridTemplateColumn MinWidth="145" Width="SizeToCells">
+                            <DataGridTemplateColumn.Header>
+                                <TextBlock FontSize="11.5" FontWeight="SemiBold" Foreground="#64748B"><Run Text="Precio Detal ("/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}"/><Run Text=")"/></TextBlock>
+                            </DataGridTemplateColumn.Header>
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding PriceRetailUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                               Style="{StaticResource ImportNumberCellStyle}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTextColumn Header="Margen Mayor %"
+                                            Binding="{Binding ProfitMarginWholesale, StringFormat={}{0:N2}%}"
+                                            MinWidth="125" Width="SizeToCells"
+                                            ElementStyle="{StaticResource ImportNumberCellStyle}"/>
+
+                        <DataGridTemplateColumn MinWidth="145" Width="SizeToCells">
+                            <DataGridTemplateColumn.Header>
+                                <TextBlock FontSize="11.5" FontWeight="SemiBold" Foreground="#64748B"><Run Text="Precio Mayor ("/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}"/><Run Text=")"/></TextBlock>
+                            </DataGridTemplateColumn.Header>
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding PriceWholesaleUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                               Style="{StaticResource ImportNumberCellStyle}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTextColumn Header="Cant. Mayor"
+                                            Binding="{Binding MinWholesaleQuantity, StringFormat={}{0:N2}}"
+                                            MinWidth="100" Width="SizeToCells"
+                                            ElementStyle="{StaticResource ImportNumberCellStyle}"/>
+
+                        <DataGridTemplateColumn Header="Fraccionado" MinWidth="100" Width="SizeToCells">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="12,0" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Background="#DCFCE7" CornerRadius="999" Padding="8,3"
+                                                Visibility="{Binding IsFractional, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="Sí" FontSize="11" FontWeight="SemiBold" Foreground="#15803D"/>
+                                        </Border>
+                                        <Border Background="#F1F5F9" CornerRadius="999" Padding="8,3"
+                                                Visibility="{Binding IsFractional, Converter={StaticResource InverseBoolToVis}}">
+                                            <TextBlock Text="No" FontSize="11" FontWeight="SemiBold" Foreground="#64748B"/>
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTextColumn Header="Unidad" Binding="{Binding UnitOfMeasure}"
+                                            MinWidth="90" Width="SizeToCells"
+                                            ElementStyle="{StaticResource ImportTextCellStyle}"/>
+
+                        <DataGridTextColumn Header="Tipo" Binding="{Binding ProductType}"
+                                            MinWidth="95" Width="SizeToCells"
+                                            ElementStyle="{StaticResource ImportTextCellStyle}"/>
+
+                        <DataGridTextColumn Header="Grupo / Categoría" Binding="{Binding GroupNameOrKey}"
+                                            MinWidth="140" Width="SizeToCells">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource ImportTextCellStyle}">
+                                    <Setter Property="ToolTip" Value="{Binding GroupNameOrKey}"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="Stock" Binding="{Binding StockQuantity, StringFormat={}{0:N2}}"
+                                            MinWidth="90" Width="SizeToCells"
+                                            ElementStyle="{StaticResource ImportNumberCellStyle}"/>
+
+                        <DataGridTemplateColumn Header="Estado / Error" MinWidth="210" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="12,0" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="#DCFCE7" CornerRadius="999"
+                                                Padding="8,3"
+                                                Visibility="{Binding IsValid, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="● Válido" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="#15803D"/>
+                                        </Border>
+                                        <Border Grid.Column="0" Background="#FEE2E2" CornerRadius="999"
+                                                Padding="8,3"
+                                                Visibility="{Binding IsValid, Converter={StaticResource InverseBoolToVis}}">
+                                            <TextBlock Text="● Error" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="#B91C1C"/>
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Text="{Binding ErrorMessage}" Margin="8,0,0,0"
+                                                   FontSize="11" Foreground="#64748B"
+                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                   ToolTip="{Binding ErrorMessage}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </controls:PerformantDataGrid.Columns>
+                </controls:PerformantDataGrid>
+
+                <!-- SELECTED ERROR DETAIL -->
+                <Border Grid.Row="2" Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="0,1,0,0"
+                        Padding="14,8"
+                        Visibility="{Binding HasSelectedError, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="AlertCircleOutline" Width="16" Height="16"
+                                                 Foreground="#B91C1C" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock FontSize="11.5" Foreground="#991B1B" VerticalAlignment="Center"
+                                   TextWrapping="Wrap">
+                            <Run Text="SKU"/>
+                            <Run Text="{Binding SelectedErrorSku, Mode=OneWay}" FontWeight="SemiBold"/>
+                            <Run Text="—"/>
+                            <Run Text="{Binding SelectedErrorDetail, Mode=OneWay}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- FOOTER -->
+        <Border Grid.Row="4" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1"
+                CornerRadius="12" Padding="16,12" Margin="0,12,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <TextBlock Text="{Binding ImportStatusText}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="#334155" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#64748B"
+                               Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Limpiar" Command="{Binding ClearDataCommand}"
+                            Style="{StaticResource SettingsSecondaryButtonStyle}"
+                            Height="38" Padding="14,0" Margin="0,0,10,0"
+                            Visibility="{Binding HasFileData, Converter={StaticResource BoolToVis}}"/>
+                    <Button Content="{Binding SaveButtonText}" Command="{Binding CommitImportCommand}"
+                            Style="{StaticResource SettingsPrimaryButtonStyle}"
+                            Height="42" Padding="20,0"
+                            IsEnabled="{Binding CanCommit}"
+                            ToolTip="Guardar filas válidas en la base de datos PostgreSQL."/>
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>
-
