@@ -165,6 +165,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             }
 
             SyncFeeEligiblePaymentMethods();
+            RefreshPaymentMethodOrderFlags();
         }
         catch (Exception ex)
         {
@@ -177,12 +178,22 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void RefreshPaymentMethodOrderFlags()
+    {
+        for (int i = 0; i < PaymentMethods.Count; i++)
+        {
+            PaymentMethods[i].IsFirst = i == 0;
+            PaymentMethods[i].IsLast = i == PaymentMethods.Count - 1;
+        }
+    }
+
     [RelayCommand]
     private async Task SetActiveStatusAsync(PaymentMethodDto method)
     {
         try
         {
             await _paymentService.UpdateAsync(method);
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -200,6 +211,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         try
         {
             await _paymentService.UpdateAsync(method);
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -235,6 +247,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                     IsDeleted = updated.IsDeleted
                 };
             }
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -268,6 +281,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             method.IsActive = true;
             var created = await _paymentService.CreateAsync(method);
             PaymentMethods.Add(created);
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
 
             if (CanEditPaymentMethodFeeRules)
@@ -323,6 +337,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                     IsDeleted = updated.IsDeleted
                 };
             }
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -354,6 +369,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             await _paymentService.UpdateAsync(PaymentMethods[index - 1]);
             await _paymentService.UpdateAsync(PaymentMethods[index]);
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -385,6 +401,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             await _paymentService.UpdateAsync(PaymentMethods[index]);
             await _paymentService.UpdateAsync(PaymentMethods[index + 1]);
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -410,7 +427,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             {
                 await _paymentService.DeleteAsync(method.Id);
                 PaymentMethods.Remove(method);
-                WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
+                RefreshPaymentMethodOrderFlags();
+            WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
             }
             catch (Exception ex)
             {

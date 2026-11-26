@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using System.Text.Json.Serialization;
 
 namespace Desktop.Client.Services;
 
@@ -58,6 +59,12 @@ public partial class PaymentMethodDto : ObservableObject
         set => SetProperty(ref _displayOrder, value);
     }
 
+    [JsonIgnore]
+    public bool IsFirst { get; set; }
+
+    [JsonIgnore]
+    public bool IsLast { get; set; }
+
     private bool _isDeleted = false;
     public bool IsDeleted
     {
@@ -70,6 +77,8 @@ public partial class PaymentMethodDto : ObservableObject
     /// PaymentMethodFeeRule en la misma operación lógica; una comisión 0/0 no se envía.
     /// </summary>
     public PaymentMethodCommissionClientDto? Commission { get; set; }
+
+    public override string ToString() => Name;
 }
 
 public sealed class PaymentMethodCommissionClientDto

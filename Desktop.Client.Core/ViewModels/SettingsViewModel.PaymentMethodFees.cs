@@ -21,6 +21,7 @@ public partial class SettingsViewModel
         public PaymentMethodFeeTypeClient Value { get; init; }
 
         public string DisplayName { get; init; } = string.Empty;
+        public override string ToString() => DisplayName;
     }
 
     public ObservableCollection<PaymentMethodFeeRuleClientDto> PaymentMethodFeeRules { get; } = new();

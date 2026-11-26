@@ -17,6 +17,7 @@ public partial class SettingsViewModel
         public string Key { get; set; } = "Venezuelan";
         public string DisplayName { get; set; } = "Venezolano Contable (1.234,56)";
         public string Description { get; set; } = "Separador de miles: punto (.), decimal: coma (,)";
+        public override string ToString() => DisplayName;
     }
 
     public ObservableCollection<CurrencyFormatOption> AvailableCurrencyFormats { get; } = new()
@@ -44,6 +45,9 @@ public partial class SettingsViewModel
 
     [ObservableProperty]
     private string _currencyFormatPreviewUSD = "$ 1.250,50";
+
+    [ObservableProperty]
+    private string _currencyFormatAutoSaveStatus = "Auto-guardado";
 
     private async Task LoadCurrencyFormatAsync()
     {
@@ -73,6 +77,7 @@ public partial class SettingsViewModel
     private async Task OnSelectedCurrencyFormatChangedAsync(CurrencyFormatOption? option, CurrencyFormatOption? previous)
     {
         if (option == null) return;
+        CurrencyFormatAutoSaveStatus = "Auto-guardado";
         try
         {
             // 8.143: aplica el formato al display del cliente antes de persistirlo y re-notifica
@@ -81,6 +86,7 @@ public partial class SettingsViewModel
             UpdateCurrencyPreview(option.Key);
             WeakReferenceMessenger.Default.Send(new CurrencyFormatChangedMessage());
             await _settingsService.SetCurrencyFormatAsync(option.Key);
+            CurrencyFormatAutoSaveStatus = "✓ Guardado";
         }
         catch (Exception ex)
         {
@@ -98,6 +104,7 @@ public partial class SettingsViewModel
             Core.Logging.ClientStateLogger.LogError(
                 $"Error al guardar formato de moneda: {ex.Message}",
                 nameof(SettingsViewModel));
+            CurrencyFormatAutoSaveStatus = "Auto-guardado";
             _dialogService?.ShowError("Settings Error", $"Error al guardar formato de moneda: {ex.Message}");
         }
     }
