@@ -48,6 +48,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _allowNegativeStock;
 
+    [ObservableProperty]
+    private string _timeZoneAutoSaveStatus = "Auto-guardado";
+
+    [ObservableProperty]
+    private string _selectedTimeZoneCurrentTimeDisplay = DateTime.Now.ToString("dd/MM/yyyy hh:mm tt", Core.Helpers.MoneyFormat.Culture);
+
     // S1/S9: apartado activo de Configuración. Es estado de presentación puro: el setter no
     // dispara cargas ni persiste nada; EnsureLoadedAsync sigue siendo la única fuente de carga.
     [ObservableProperty]
@@ -64,6 +70,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedTimeZone, value))
             {
+                UpdateTimeZonePreview(value);
                 OnSelectedTimeZoneChangedAsync(value).SafeFireAndForget("Settings.TimeZoneChanged");
             }
         }
@@ -452,18 +459,35 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             SelectedTimeZone = AvailableTimeZones.FirstOrDefault(t => t.Id == savedTzId);
         }
+        else
+        {
+            _selectedTimeZone = AvailableTimeZones.FirstOrDefault(t => t.Id == TimeZoneInfo.Local.Id)
+                                ?? AvailableTimeZones.FirstOrDefault();
+            OnPropertyChanged(nameof(SelectedTimeZone));
+            UpdateTimeZonePreview(_selectedTimeZone);
+        }
+    }
+
+    private void UpdateTimeZonePreview(TimeZoneInfo? value)
+    {
+        var zone = value ?? TimeZoneInfo.Local;
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone);
+        SelectedTimeZoneCurrentTimeDisplay = localNow.ToString("dd/MM/yyyy hh:mm tt", Core.Helpers.MoneyFormat.Culture);
     }
 
     private async Task OnSelectedTimeZoneChangedAsync(TimeZoneInfo? value)
     {
         if (value == null) return;
+        TimeZoneAutoSaveStatus = "Auto-guardado";
         try
         {
             await _settingsService.SetTimeZoneAsync(value.Id);
             WeakReferenceMessenger.Default.Send(new TimeZoneChangedMessage());
+            TimeZoneAutoSaveStatus = "✓ Guardado";
         }
         catch (Exception ex)
         {
+            TimeZoneAutoSaveStatus = "Auto-guardado";
             Core.Logging.ClientStateLogger.LogError($"Error al guardar la zona horaria: {ex.Message}", nameof(SettingsViewModel));
             if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo guardar la zona horaria. Intente nuevamente.");
         }

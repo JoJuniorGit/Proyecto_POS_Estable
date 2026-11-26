@@ -888,17 +888,26 @@
                                     AutomationProperties.AutomationId="Settings_SectionContent_Inventory">
                             <Border Style="{StaticResource SettingsCardStyle}">
                                 <StackPanel>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,16">
-                                        <Border Style="{StaticResource SettingsIconBadgeStyle}">
-                                            <materialDesign:PackIcon Kind="PackageVariant" Width="18" Height="18" Foreground="#6D28D9"
-                                                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
-                                            <TextBlock Text="Control de Existencias en Cobro" Style="{StaticResource SettingsSectionTitleStyle}"/>
-                                            <TextBlock Text="Reglas que afectan la disponibilidad de stock al momento de cobrar."
-                                                       Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                    <Grid Margin="0,0,0,16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                <materialDesign:PackIcon Kind="PackageVariant" Width="18" Height="18" Foreground="#6D28D9"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
+                                                <TextBlock Text="Control de Existencias en Cobro" Style="{StaticResource SettingsSectionTitleStyle}"/>
+                                                <TextBlock Text="Reglas que afectan la disponibilidad de stock al momento de cobrar."
+                                                           Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                            </StackPanel>
                                         </StackPanel>
-                                    </StackPanel>
+                                        <Border Grid.Column="1" Background="#F1F5F9" CornerRadius="999" Padding="9,4" VerticalAlignment="Center">
+                                            <TextBlock Text="Auto-guardado" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B"/>
+                                        </Border>
+                                    </Grid>
                                     <Border Style="{StaticResource SettingsToggleCardStyle}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
@@ -918,6 +927,17 @@
                                                           VerticalAlignment="Center"/>
                                         </Grid>
                                     </Border>
+                                    <Border Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="1"
+                                            CornerRadius="8" Padding="12,10" Margin="0,10,0,0"
+                                            Visibility="{Binding AllowNegativeStock, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="AlertOutline" Width="18" Height="18"
+                                                                     Foreground="#B45309" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Aviso: el punto de venta permitirá facturar artículos sin stock disponible"
+                                                       Foreground="#B45309" FontSize="12" FontWeight="SemiBold"
+                                                       TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -936,93 +956,153 @@
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel Margin="20,0,0,0" MaxWidth="1120"
                                     AutomationProperties.AutomationId="Settings_SectionContent_Network">
-                            <Border Style="{StaticResource SettingsCardStyle}">
-                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,16">
-                                        <Border Style="{StaticResource SettingsIconBadgeStyle}">
-                                            <materialDesign:PackIcon Kind="ServerNetwork" Width="18" Height="18" Foreground="#6D28D9"
-                                                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
-                                            <TextBlock Text="Conectividad y Red Local" Style="{StaticResource SettingsSectionTitleStyle}"/>
-                                            <TextBlock Text="Dirección del servidor POS y emparejamiento de terminales móviles o web."
-                                                       Style="{StaticResource SettingsSectionSubtitleStyle}"/>
-                                        </StackPanel>
-                                    </StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
 
+                                <Border Grid.Column="0" Style="{StaticResource SettingsCardStyle}" Margin="0" VerticalAlignment="Stretch">
                                     <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="16"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Border Grid.Column="0" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
-                                                CornerRadius="10" Padding="16">
-                                            <DockPanel LastChildFill="True">
-                                                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                                    <DockPanel LastChildFill="False" Margin="0,0,0,8">
-                                                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
-                                                            <materialDesign:PackIcon Kind="LanConnect" Width="18" Height="18" Foreground="#6D28D9"
-                                                                                     VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                                            <TextBlock Text="Servidor Backend" FontWeight="SemiBold" FontSize="13" Foreground="#0F172A"
-                                                                       VerticalAlignment="Center"/>
-                                                        </StackPanel>
-                                                        <Border DockPanel.Dock="Right" Background="{Binding ConnectionStatusColor}"
-                                                                CornerRadius="999" Padding="8,2" VerticalAlignment="Center">
-                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                                <Ellipse Width="6" Height="6" Fill="White" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                                                                <TextBlock Text="{Binding ConnectionStatusText}" Foreground="White" FontSize="10"
-                                                                           FontWeight="Bold" VerticalAlignment="Center"/>
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </DockPanel>
-                                                    <TextBlock Text="Dirección actual del servidor POS en la red local:"
-                                                               FontSize="11" Foreground="#64748B" Margin="0,0,0,6"/>
-                                                    <Border Background="#FFFFFF" BorderBrush="#CBD5E1" BorderThickness="1"
-                                                            CornerRadius="8" Padding="10,8">
-                                                        <TextBlock Text="{Binding CurrentServerAddress}" FontWeight="SemiBold"
-                                                                   FontFamily="Consolas" FontSize="12" Foreground="#0F172A"/>
-                                                    </Border>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <Grid Grid.Row="0" Margin="0,0,0,14">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                    <materialDesign:PackIcon Kind="LanConnect" Width="18" Height="18" Foreground="#6D28D9"
+                                                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <TextBlock Grid.Column="1" Text="Servidor Backend" FontSize="16" FontWeight="SemiBold"
+                                                           Foreground="#0F172A" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="1" CornerRadius="999" Padding="8,3" BorderThickness="1" VerticalAlignment="Center">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#FEE2E2"/>
+                                                        <Setter Property="BorderBrush" Value="#FECACA"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding ConnectionStatusText}" Value="Conectado">
+                                                                <Setter Property="Background" Value="#DCFCE7"/>
+                                                                <Setter Property="BorderBrush" Value="#BBF7D0"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="6" Height="6" Margin="0,0,5,0" VerticalAlignment="Center">
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse">
+                                                                <Setter Property="Fill" Value="#B91C1C"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding ConnectionStatusText}" Value="Conectado">
+                                                                        <Setter Property="Fill" Value="#16A34A"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                    <TextBlock Text="{Binding ConnectionStatusText}" FontSize="10.5" FontWeight="SemiBold">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="#B91C1C"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding ConnectionStatusText}" Value="Conectado">
+                                                                        <Setter Property="Foreground" Value="#15803D"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
                                                 </StackPanel>
-                                                <Button DockPanel.Dock="Bottom" Command="{Binding OpenServerConnectionCommand}"
-                                                        AutomationProperties.AutomationId="Settings_ChangeServerButton"
-                                                        Style="{StaticResource SettingsSecondaryButtonStyle}"
-                                                        Height="38" HorizontalAlignment="Left">
-                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                        <materialDesign:PackIcon Kind="CogOutline" Width="16" Height="16" Margin="0,0,6,0"/>
-                                                        <TextBlock Text="Cambiar Servidor / Escanear" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </Grid>
+
+                                        <StackPanel Grid.Row="1" Margin="0,0,0,14">
+                                            <TextBlock Text="Dirección actual del servidor POS en la red local:"
+                                                       Style="{StaticResource SettingsHelperStyle}" Margin="0,0,0,6"/>
+                                            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                                    CornerRadius="8" Padding="12,10">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding CurrentServerAddress}"
+                                                               FontFamily="Consolas" FontSize="12" Foreground="#0F172A"
+                                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <TextBlock x:Name="CopyServerFeedbackText" Text="✓ Copiado"
+                                                                   FontSize="11" FontWeight="SemiBold" Foreground="#15803D"
+                                                                   VerticalAlignment="Center" Margin="0,0,6,0"
+                                                                   Visibility="Collapsed"/>
+                                                        <Button Style="{StaticResource SettingsIconButtonStyle}"
+                                                                Click="CopyServerAddress_Click"
+                                                                AutomationProperties.AutomationId="Settings_CopyServerButton"
+                                                                ToolTip="Copiar dirección del servidor"
+                                                                Width="28" Height="28">
+                                                            <materialDesign:PackIcon Kind="ContentCopy" Width="15" Height="15"/>
+                                                        </Button>
                                                     </StackPanel>
-                                                </Button>
-                                            </DockPanel>
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <Button Grid.Row="2" Command="{Binding OpenServerConnectionCommand}"
+                                                AutomationProperties.AutomationId="Settings_ChangeServerButton"
+                                                Style="{StaticResource SettingsSecondaryButtonStyle}"
+                                                Height="40" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="CogOutline" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                <TextBlock Text="Cambiar Servidor / Escanear" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Column="2" Style="{StaticResource SettingsCardStyle}" Margin="0" VerticalAlignment="Stretch">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,14">
+                                            <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                <materialDesign:PackIcon Kind="QrcodeScan" Width="18" Height="18" Foreground="#6D28D9"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="Emparejamiento Móvil / Web" FontSize="16" FontWeight="SemiBold"
+                                                       Foreground="#0F172A" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                                        </StackPanel>
+
+                                        <Border Grid.Row="1" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                                CornerRadius="8" Padding="12,10" Margin="0,0,0,14">
+                                            <TextBlock Text="Los dispositivos móviles y terminales web deben estar en la misma red Wi-Fi o LAN."
+                                                       FontSize="12" Foreground="#64748B" TextWrapping="Wrap"/>
                                         </Border>
 
-                                        <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
-                                                CornerRadius="10" Padding="16">
-                                            <DockPanel LastChildFill="True">
-                                                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                                        <materialDesign:PackIcon Kind="QrcodeScan" Width="18" Height="18" Foreground="#6D28D9"
-                                                                                 VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                                        <TextBlock Text="Emparejamiento Móvil / Web" FontWeight="SemiBold" FontSize="13"
-                                                                   Foreground="#0F172A" VerticalAlignment="Center"/>
-                                                    </StackPanel>
-                                                    <TextBlock Text="Conecte teléfonos, tablets o terminales web escaneando el código QR de sincronización local:"
-                                                               FontSize="11" Foreground="#64748B" TextWrapping="Wrap"/>
-                                                </StackPanel>
-                                                <Button DockPanel.Dock="Bottom" Command="{Binding OpenPairingQrCommand}"
-                                                        AutomationProperties.AutomationId="Settings_PairingQrButton"
-                                                        Style="{StaticResource SettingsPrimaryButtonStyle}"
-                                                        Height="38" HorizontalAlignment="Left">
-                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                        <materialDesign:PackIcon Kind="QrcodeScan" Width="16" Height="16" Margin="0,0,6,0"/>
-                                                        <TextBlock Text="Ver Código QR de Emparejamiento" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                                    </StackPanel>
-                                                </Button>
-                                            </DockPanel>
-                                        </Border>
+                                        <Button Grid.Row="2" Command="{Binding OpenPairingQrCommand}"
+                                                AutomationProperties.AutomationId="Settings_PairingQrButton"
+                                                Style="{StaticResource SettingsPrimaryButtonStyle}"
+                                                Height="40" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="QrcodeScan" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                <TextBlock Text="Ver Código QR de Emparejamiento" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
                                     </Grid>
-                                </StackPanel>
-                            </Border>
+                                </Border>
+                            </Grid>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
@@ -1041,38 +1121,87 @@
                                     AutomationProperties.AutomationId="Settings_SectionContent_System">
                             <Border Style="{StaticResource SettingsCardStyle}">
                                 <StackPanel>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,16">
-                                        <Border Style="{StaticResource SettingsIconBadgeStyle}">
-                                            <materialDesign:PackIcon Kind="Web" Width="18" Height="18" Foreground="#6D28D9"
-                                                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
-                                            <TextBlock Text="Zona Horaria Global" Style="{StaticResource SettingsSectionTitleStyle}"/>
-                                            <TextBlock Text="Zona usada para fechas de ventas, cierres y reportes del sistema."
-                                                       Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                    <Grid Margin="0,0,0,16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                <materialDesign:PackIcon Kind="Web" Width="18" Height="18" Foreground="#6D28D9"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
+                                                <TextBlock Text="Zona Horaria Global" Style="{StaticResource SettingsSectionTitleStyle}"/>
+                                                <TextBlock Text="Define el corte diario de ventas, cierres de caja y reportes financieros."
+                                                           Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                            </StackPanel>
                                         </StackPanel>
-                                    </StackPanel>
-                                    <StackPanel Width="550" HorizontalAlignment="Left">
-                                        <TextBlock Text="Zona Horaria" Style="{StaticResource SettingsFormLabelStyle}"/>
-                                        <Border Style="{StaticResource SettingsFieldFrameStyle}">
-                                            <ComboBox ItemsSource="{Binding AvailableTimeZones}"
-                                                      SelectedItem="{Binding SelectedTimeZone, Mode=TwoWay}"
-                                                      IsEnabled="{Binding UserSession.CanMutateSettings}"
-                                                      Style="{StaticResource SettingsComboBoxStyle}">
-                                            <ComboBox.ItemTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding DisplayName}"/>
-                                                </DataTemplate>
-                                            </ComboBox.ItemTemplate>
-                                        </ComboBox>
+                                        <Border Grid.Column="1" CornerRadius="999" Padding="9,4" VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#F1F5F9"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding TimeZoneAutoSaveStatus}" Value="✓ Guardado">
+                                                            <Setter Property="Background" Value="#DCFCE7"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding TimeZoneAutoSaveStatus}" FontSize="10.5" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#64748B"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding TimeZoneAutoSaveStatus}" Value="✓ Guardado">
+                                                                <Setter Property="Foreground" Value="#15803D"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
                                         </Border>
-                                    </StackPanel>
+                                    </Grid>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="320"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Zona Horaria" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                            <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                <ComboBox ItemsSource="{Binding AvailableTimeZones}"
+                                                          SelectedItem="{Binding SelectedTimeZone, Mode=TwoWay}"
+                                                          IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                                          Style="{StaticResource SettingsComboBoxStyle}">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding DisplayName}"/>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                            </Border>
+                                        </StackPanel>
+                                        <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                                CornerRadius="10" Padding="16,10" VerticalAlignment="Bottom">
+                                            <StackPanel>
+                                                <TextBlock Text="HORA ACTUAL EN ZONA SELECCIONADA" FontSize="10.5" FontWeight="SemiBold"
+                                                           Foreground="#64748B" Margin="0,0,0,6"/>
+                                                <TextBlock Text="{Binding SelectedTimeZoneCurrentTimeDisplay}"
+                                                           FontSize="15" FontWeight="Bold" Foreground="#0F172A"
+                                                           FontFamily="Consolas" Typography.NumeralAlignment="Tabular"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
                                 </StackPanel>
                             </Border>
 
-                            <TextBlock Text="ZONA DE ACCIONES CRÍTICAS" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="#B45309" Margin="0,4,0,8"/>
-                            <Border Style="{StaticResource SettingsCardStyle}" BorderBrush="#F59E0B"
+                            <TextBlock Text="ZONA DE ACCIONES CRÍTICAS" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="#B45309" Margin="4,8,0,8"/>
+                            <Border Style="{StaticResource SettingsCardStyle}" BorderBrush="#FDE68A"
+                                    BorderThickness="4,1,1,1" Background="#FFFDF7"
                                     AutomationProperties.AutomationId="Settings_RestartCard">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -1080,8 +1209,8 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Border Width="34" Height="34" CornerRadius="8" Background="#FEF3C7" VerticalAlignment="Center">
-                                            <materialDesign:PackIcon Kind="AlertCircleOutline" Width="18" Height="18" Foreground="#D97706"
+                                        <Border Width="38" Height="38" CornerRadius="8" Background="#FEF3C7" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="AlertCircleOutline" Width="20" Height="20" Foreground="#D97706"
                                                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                         <StackPanel Margin="12,0,20,0" VerticalAlignment="Center" MaxWidth="700">
@@ -1093,15 +1222,15 @@
                                     <Button Grid.Column="1" Command="{Binding RestartSystemCommand}"
                                             AutomationProperties.AutomationId="Settings_RestartButton"
                                             IsEnabled="{Binding UserSession.CanMutateSettings}"
-                                            Style="{StaticResource SettingsPrimaryButtonStyle}"
-                                            Height="42" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                            Style="{StaticResource SettingsWarningButtonStyle}"
+                                            Height="40" HorizontalAlignment="Right" VerticalAlignment="Center"
                                             ToolTip="Reiniciar el servicio del sistema POS">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}" Value="0"
                                                          IsIndeterminate="True" Width="18" Height="18" Margin="0,0,8,0"
                                                          Visibility="{Binding IsRestarting, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                             <materialDesign:PackIcon Kind="Restart" Width="18" Height="18" Margin="0,0,6,0"
-                                                                     VerticalAlignment="Center"
+                                                                     Foreground="#B45309" VerticalAlignment="Center"
                                                                      Visibility="{Binding IsRestarting, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
                                             <TextBlock Text="Reiniciar Sistema" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                         </StackPanel>
@@ -1111,6 +1240,7 @@
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
+
             </TabControl>
 
             <Border Width="1" Background="#E2E8F0" HorizontalAlignment="Left" Margin="247,0,0,0"
