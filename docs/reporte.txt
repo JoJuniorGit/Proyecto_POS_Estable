@@ -19066,3 +19066,34 @@ D1. La validacion visual se hizo con harness fuera del repositorio; la
 D2. El menu de acciones y los permisos se validaron con el ViewModel de
     Manager; la prueba manual con Cajero/permisos reales sigue recomendada.
 ================================================================================
+
+ANEXO LXXXV - WPF: SECCIONES DE NAVEGACION EN ESPANOL - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Sidebar WPF: Point of Sale -> Punto de Venta; Register -> Caja;
+    Sales History -> Historial de Ventas; Catalog -> Catalogo;
+    Import Products -> Importacion de Productos; Settings -> Configuracion;
+    Exchange Rate -> Tasa de Cambio.
+A2. Tooltips del shell: Caja y Registro, Productos y Catalogo, Importar
+    productos desde Excel, Configuracion del Sistema y Configuracion de
+    Tasa de Cambio.
+A3. Titulos de MainViewModel: PUNTO DE VENTA, INVENTARIO, HISTORIAL DE
+    VENTAS, CONFIGURACION DEL SISTEMA, TASA DE CAMBIO, CAJA / REGISTRO
+    DE CAJA, IMPORTACION DE PRODUCTOS y CIERRE DIARIO.
+A4. No se modificaron comandos, bindings, permisos, vistas ni logica de
+    negocio; solo copy de navegacion y titulos de seccion.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Test WpfNavigationSpanishLabelsTests: 1/1.
+B3. Suite .NET completa con PostgreSQL real: 4545/4545, 0 skipped.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. Validacion estatica de XAML y titulos; la prueba visual final en la
+    instalacion sigue siendo recomendable.
+================================================================================

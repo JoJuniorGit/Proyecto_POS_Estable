@@ -147,10 +147,10 @@
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToPosCommand}"
                                 Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=pos}"
-                                ToolTip="Point of Sale">
+                                ToolTip="Punto de Venta">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="CashRegister" Width="18" Height="18" VerticalAlignment="Center"/>
-                                <TextBlock Text="Point of Sale" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Punto de Venta" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -159,10 +159,10 @@
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToCashDrawerCommand}"
                                 Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=register}"
-                                ToolTip="Cash Drawer &amp; Register">
+                                ToolTip="Caja y Registro">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="PointOfSale" Width="18" Height="18" VerticalAlignment="Center"/>
-                                <TextBlock Text="Register" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Caja" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -171,10 +171,10 @@
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToSalesHistoryCommand}"
                                 Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=history}"
-                                ToolTip="Sales History">
+                                ToolTip="Historial de Ventas">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="History" Width="18" Height="18" VerticalAlignment="Center"/>
-                                <TextBlock Text="Sales History" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Historial de Ventas" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -243,10 +243,10 @@
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToInventoryCommand}"
                                 Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=catalog}"
-                                ToolTip="Products &amp; Catalog">
+                                ToolTip="Productos y Catálogo">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="PackageVariantClosed" Width="18" Height="18" VerticalAlignment="Center"/>
-                                <TextBlock Text="Catalog" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Catálogo" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -279,10 +279,10 @@
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToImportProductsCommand}"
                                 Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=import}"
-                                ToolTip="Import Products Excel">
+                                ToolTip="Importar productos desde Excel">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="FileExcel" Width="18" Height="18" VerticalAlignment="Center"/>
-                                <TextBlock Text="Import Products" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Importación de Productos" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -333,10 +333,10 @@
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToSettingsCommand}"
                                 Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=settings}"
-                                ToolTip="System Settings">
+                                ToolTip="Configuración del Sistema">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="Cog" Width="18" Height="18" VerticalAlignment="Center"/>
-                                <TextBlock Text="Settings" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Configuración" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 
@@ -345,10 +345,10 @@
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToExchangeRateCommand}"
                                 Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=exchange}"
-                                ToolTip="Exchange Rate Configuration">
+                                ToolTip="Configuración de Tasa de Cambio">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="CurrencyUsd" Width="18" Height="18" VerticalAlignment="Center"/>
-                                <TextBlock Text="Exchange Rate" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Tasa de Cambio" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 

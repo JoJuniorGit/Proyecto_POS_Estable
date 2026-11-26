@@ -12,7 +12,7 @@ namespace Desktop.Client.ViewModels;
 
 public partial class MainViewModel : ObservableObject, IDisposable
 {
-    private string _title = "Point of Sale";
+    private string _title = "Punto de Venta";
     public string Title
     {
         get => _title;
@@ -137,7 +137,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var pos = ResolveViewModel(ref _posViewModel);
                 _currentViewModel = pos ?? new object();
-                _title = "POINT OF SALE";
+                _title = "PUNTO DE VENTA";
                 if (pos != null)
                 {
                     pos.InitializeForSessionAsync().SafeFireAndForget("MainViewModel.InitialPosInit");
@@ -361,7 +361,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToPos()
     {
         if (!CanNavigate(WpfNavigationPolicy.Pos) || _posViewModel == null) return;
-        Title = "POINT OF SALE";
+        Title = "PUNTO DE VENTA";
         CurrentViewModel = _posViewModel;
         _posViewModel.InitializeForSessionAsync().SafeFireAndForget("MainViewModel.NavigateToPos");
     }
@@ -370,7 +370,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToInventory()
     {
         if (!CanNavigate(WpfNavigationPolicy.Catalog) || _inventoryViewModel == null) return;
-        Title = "INVENTORY";
+        Title = "INVENTARIO";
         CurrentViewModel = _inventoryViewModel;
         _inventoryViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToInventory");
     }
@@ -397,7 +397,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToSalesHistory()
     {
         if (!CanNavigate(WpfNavigationPolicy.History) || _salesHistoryViewModel == null) return;
-        Title = "SALES HISTORY";
+        Title = "HISTORIAL DE VENTAS";
         CurrentViewModel = _salesHistoryViewModel;
         _salesHistoryViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToSalesHistory");
     }
@@ -442,7 +442,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToSettings()
     {
         if (!CanNavigate(WpfNavigationPolicy.Settings) || _settingsViewModel == null) return;
-        Title = "SYSTEM SETTINGS";
+        Title = "CONFIGURACIÓN DEL SISTEMA";
         CurrentViewModel = _settingsViewModel;
         _settingsViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToSettings");
     }
@@ -451,7 +451,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToExchangeRate()
     {
         if (!CanNavigate(WpfNavigationPolicy.Exchange) || _exchangeRateViewModel == null) return;
-        Title = "EXCHANGE RATE";
+        Title = "TASA DE CAMBIO";
         CurrentViewModel = _exchangeRateViewModel;
         _exchangeRateViewModel.LoadAllCommand.ExecuteAsync(null).SafeFireAndForget("MainViewModel.NavigateToExchangeRate");
     }
@@ -460,7 +460,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToCashDrawer()
     {
         if (!CanNavigate(WpfNavigationPolicy.Register) || _cashDrawerViewModel == null) return;
-        Title = "REGISTER / CASH DRAWER";
+        Title = "CAJA / REGISTRO DE CAJA";
         CurrentViewModel = _cashDrawerViewModel;
         _cashDrawerViewModel.LoadSessionAsync().SafeFireAndForget("MainViewModel.NavigateToCashDrawer");
     }
@@ -469,7 +469,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToImportProducts()
     {
         if (!CanNavigate(WpfNavigationPolicy.Import) || _importProductsViewModel == null) return;
-        Title = "IMPORT PRODUCTS";
+        Title = "IMPORTACIÓN DE PRODUCTOS";
         CurrentViewModel = _importProductsViewModel;
     }
 
@@ -485,7 +485,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToDailyClosure()
     {
         if (!CanNavigate(WpfNavigationPolicy.Closing) || _dailyClosureViewModel == null) return;
-        Title = "DAILY CLOSING";
+        Title = "CIERRE DIARIO";
         CurrentViewModel = _dailyClosureViewModel;
         _dailyClosureViewModel.LoadExpectedTotalsAsync().SafeFireAndForget("MainViewModel.NavigateToDailyClosure");
     }
