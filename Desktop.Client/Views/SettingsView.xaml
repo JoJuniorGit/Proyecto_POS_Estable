@@ -1086,7 +1086,7 @@
                                         </StackPanel>
 
                                         <Border Grid.Row="1" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
-                                                CornerRadius="8" Padding="12,10" Margin="0,0,0,14">
+                                                CornerRadius="8" Padding="12,10" Margin="0,30,0,14" VerticalAlignment="Top">
                                             <TextBlock Text="Los dispositivos móviles y terminales web deben estar en la misma red Wi-Fi o LAN."
                                                        FontSize="12" Foreground="#64748B" TextWrapping="Wrap"/>
                                         </Border>
