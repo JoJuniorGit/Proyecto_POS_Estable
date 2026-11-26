@@ -87,6 +87,93 @@ public class CreditReceivablesDashboardTests
     }
 
     [Fact]
+    public async Task EmptyState_IsVisibleOnlyAfterAnEmptyLoad()
+    {
+        var (vm, sales, _, _) = Create();
+        sales.Setup(s => s.GetCreditReceivablesAsync(It.IsAny<CreditReceivablesFilterClientDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(List());
+
+        Assert.False(vm.ShowEmptyState);
+
+        await vm.EnsureLoadedAsync();
+
+        Assert.True(vm.HasLoaded);
+        Assert.True(vm.ShowEmptyState);
+
+        vm.IsLoading = true;
+        Assert.False(vm.ShowEmptyState);
+        vm.IsLoading = false;
+        Assert.True(vm.ShowEmptyState);
+
+        sales.Setup(s => s.GetCreditReceivablesAsync(It.IsAny<CreditReceivablesFilterClientDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(List(Row()));
+
+        await vm.EnsureLoadedAsync();
+
+        Assert.False(vm.ShowEmptyState);
+    }
+
+    [Fact]
+    public void HeaderSubtitle_PluralizesAndOmitsTheDailyRate()
+    {
+        var (vm, _, _, _) = Create();
+
+        vm.OpenCount = 1;
+        Assert.Equal("Cartera abierta: 1 obligación · Busque por cliente, cédula/RIF o factura.", vm.HeaderSubtitle);
+        Assert.DoesNotContain("Tasa", vm.HeaderSubtitle, StringComparison.OrdinalIgnoreCase);
+
+        vm.OpenCount = 3;
+        Assert.StartsWith("Cartera abierta: 3 obligaciones", vm.HeaderSubtitle);
+    }
+
+    [Fact]
+    public void OverdueCardCopy_IsNeutralWhenThereIsNoOverdueBalance()
+    {
+        var (vm, _, _, _) = Create();
+
+        vm.TotalOverdueUSD = 0m;
+        Assert.Equal("Sin mora activa", vm.OverdueNote);
+        Assert.False(vm.HasOverdueAlert);
+
+        vm.TotalOverdueUSD = 12.50m;
+        Assert.Equal("Requiere seguimiento", vm.OverdueNote);
+        Assert.True(vm.HasOverdueAlert);
+    }
+
+    [Fact]
+    public void ItemPresentation_ExposesInitialsProgressStatusAndActionAvailability()
+    {
+        var open = Row(original: 100m, balance: 40m, overdue: true, status: "Vencida");
+        Assert.Equal("AP", open.CustomerInitials);
+        Assert.Equal("En mora", open.StatusDisplay);
+        Assert.Equal(60m, open.PaidAmountUSD);
+        Assert.Equal(60m, open.CollectionProgressPercent);
+        Assert.True(open.HasSecondaryActions);
+
+        var paid = Row(original: 100m, balance: 0m, overdue: false, status: "Pagada");
+        Assert.Equal("Pagada", paid.StatusDisplay);
+        Assert.True(paid.HasSecondaryActions);
+
+        var cancelled = Row(original: 100m, balance: 0m, overdue: false, status: "Anulada");
+        Assert.Equal("Anulada", cancelled.StatusDisplay);
+        Assert.False(cancelled.HasSecondaryActions);
+    }
+
+    [Fact]
+    public async Task OpenCountSubtitle_ReportsOverdueAndOnTimeRows()
+    {
+        var (vm, sales, _, _) = Create();
+        sales.Setup(s => s.GetCreditReceivablesAsync(It.IsAny<CreditReceivablesFilterClientDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(List(
+                Row(id: 1, overdue: true, status: "Vencida"),
+                Row(id: 2, overdue: false, status: "Vigente")));
+
+        await vm.EnsureLoadedAsync();
+
+        Assert.Equal("1 vencida · 1 al día", vm.OpenCountSubtitle);
+    }
+
+    [Fact]
     public async Task ApplyFilters_PassesSearchStatusAndOverdueToService()
     {
         var (vm, sales, _, _) = Create();

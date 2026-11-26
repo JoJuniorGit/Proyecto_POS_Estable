@@ -115,6 +115,46 @@ public class CreditReceivableClientItemDto
     public bool CanReturn => IsOpen || string.Equals(Status, "Pagada", StringComparison.OrdinalIgnoreCase);
 
     [JsonIgnore]
+    public bool HasSecondaryActions => CanReturn || IsCancelable;
+
+    [JsonIgnore]
+    public string StatusDisplay => IsOverdue || string.Equals(Status, "Vencida", StringComparison.OrdinalIgnoreCase)
+        ? "En mora"
+        : Status;
+
+    [JsonIgnore]
+    public string CustomerInitials
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(CustomerName))
+            {
+                return "?";
+            }
+
+            var parts = CustomerName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 1)
+            {
+                return parts[0].Length >= 2
+                    ? parts[0][..2].ToUpperInvariant()
+                    : parts[0].ToUpperInvariant();
+            }
+
+            return string.Concat(
+                char.ToUpperInvariant(parts[0][0]),
+                char.ToUpperInvariant(parts[1][0]));
+        }
+    }
+
+    [JsonIgnore]
+    public decimal PaidAmountUSD => Math.Max(0m, OriginalUSD - BalanceUSD);
+
+    [JsonIgnore]
+    public decimal CollectionProgressPercent => OriginalUSD <= 0m
+        ? 0m
+        : Math.Clamp(PaidAmountUSD / OriginalUSD * 100m, 0m, 100m);
+
+    [JsonIgnore]
     public string InvoiceDisplay => InvoiceNumber.HasValue ? $"F{InvoiceNumber.Value:D5}" : $"V{SaleId}";
 
     [JsonIgnore]

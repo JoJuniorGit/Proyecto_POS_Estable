@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -36,6 +37,8 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
         _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
         _userSession = userSession;
         ReceiptOpener = OpenPdfAsync;
+        Receivables.CollectionChanged += (_, _) => NotifyDerivedPresentation();
+        MonetaryProfilePresenter.Instance.PropertyChanged += OnMonetaryProfileChanged;
     }
 
     public IReadOnlyList<string> StatusOptions { get; } = new[]
@@ -55,14 +58,16 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOverdueAlert))]
     [NotifyPropertyChangedFor(nameof(OverdueAlertMessage))]
+    [NotifyPropertyChangedFor(nameof(OverdueNote))]
     private decimal _totalOverdueUSD;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HeaderSubtitle))]
+    [NotifyPropertyChangedFor(nameof(OpenCountSubtitle))]
     private int _openCount;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HeaderSubtitle))]
+    [NotifyPropertyChangedFor(nameof(TodayRateDisplay))]
     private decimal _todayRate;
 
     [ObservableProperty] private string? _successMessage;
@@ -72,16 +77,57 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
     public bool CanManageCreditReturns => _userSession?.IsAdmin == true || _userSession?.IsManager == true;
 
     public bool HasOverdueAlert => TotalOverdueUSD > 0m;
+    public bool ShowEmptyState => HasLoaded && !IsLoading && Receivables.Count == 0;
+
+    public decimal TotalOpenLocal => Receivables.Sum(item => item.BalanceTodayBsS);
+    public string TotalOpenLocalDisplay => CurrencyDisplay.FormatSecondary(TotalOpenLocal);
+    public string TodayRateDisplay => CurrencyDisplay.Number(TodayRate, 4);
+    public string OverdueNote => HasOverdueAlert ? "Requiere seguimiento" : "Sin mora activa";
+
+    public string OpenCountSubtitle
+    {
+        get
+        {
+            var overdue = Receivables.Count(item => item.IsOverdue);
+            var onTime = Receivables.Count(item => item.IsOpen && !item.IsOverdue);
+            return $"{overdue} {(overdue == 1 ? "vencida" : "vencidas")} · {onTime} al día";
+        }
+    }
 
     public string OverdueAlertMessage => HasOverdueAlert
         ? $"Alerta de mora: {CurrencyDisplay.FormatPrimary(TotalOverdueUSD)} vencidos en la cartera filtrada."
         : string.Empty;
 
-    public string HeaderSubtitle =>
-        $"Cartera abierta: {OpenCount} obligaciones · Tasa del día: {CurrencyDisplay.LocalCurrencyCode} {TodayRate:N2} por {CurrencyDisplay.PrimaryCurrencyCode} · {DefaultCustomerFilterNote}";
+    public string HeaderSubtitle
+    {
+        get
+        {
+            var noun = OpenCount == 1 ? "obligación" : "obligaciones";
+            return $"Cartera abierta: {OpenCount} {noun} · {DefaultCustomerFilterNote}";
+        }
+    }
 
     /// <summary>Seam de pruebas para no abrir procesos externos al verificar comprobantes.</summary>
     public Func<byte[], string, Task> ReceiptOpener { get; set; }
+
+    partial void OnIsLoadingChanged(bool value) => NotifyDerivedPresentation();
+    partial void OnHasLoadedChanged(bool value) => NotifyDerivedPresentation();
+
+    private void OnMonetaryProfileChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(TodayRateDisplay));
+        OnPropertyChanged(nameof(TotalOpenLocalDisplay));
+    }
+
+    private void NotifyDerivedPresentation()
+    {
+        OnPropertyChanged(nameof(ShowEmptyState));
+        OnPropertyChanged(nameof(TotalOpenLocal));
+        OnPropertyChanged(nameof(TotalOpenLocalDisplay));
+        OnPropertyChanged(nameof(OpenCountSubtitle));
+        OnPropertyChanged(nameof(HeaderSubtitle));
+        OnPropertyChanged(nameof(OverdueNote));
+    }
 
     public async Task EnsureLoadedAsync()
     {
@@ -108,7 +154,7 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
             OpenCount = result.OpenCount;
             TodayRate = result.TodayRate;
             HasLoaded = true;
-            OnPropertyChanged(nameof(HeaderSubtitle));
+            NotifyDerivedPresentation();
         }
         catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
@@ -146,6 +192,9 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
         OverdueOnly = false;
         await EnsureLoadedAsync();
     }
+
+    [RelayCommand]
+    public void ClearSearch() => SearchQuery = string.Empty;
 
     [RelayCommand]
     public async Task RegisterPaymentAsync(CreditReceivableClientItemDto? row)
@@ -336,7 +385,7 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        // Sin suscripciones ni recursos retenidos: el ViewModel se conserva por sesión.
+        MonetaryProfilePresenter.Instance.PropertyChanged -= OnMonetaryProfileChanged;
     }
 }
 

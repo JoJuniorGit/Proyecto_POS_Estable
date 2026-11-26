@@ -19016,3 +19016,53 @@ D1. La validacion visual se hizo con un harness fuera del repositorio; la
 D2. Con 14 columnas y los minimos solicitados, la grilla conserva scroll
     horizontal por diseno; SKU y Nombre quedan congelados.
 ================================================================================
+
+ANEXO LXXXIV - CUENTAS POR COBRAR: UI ENTERPRISE Y ACCIONES - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Cabecera con badge 42x42 (#EDE9FE/#6D28D9), titulo 22px, subtitulo de
+    una linea con pluralizacion (1 obligacion / N obligaciones) y sin la
+    tasa duplicada. Refrescar y menu quedaron como secundarios de 38px.
+A2. Filtros en tarjeta blanca: buscador de 40px con foco violeta y boton
+    interno para limpiar, ComboBox sin altura rigida (MinHeight 40,
+    MinWidth 160, padding 12,6), items #EDE9FE/#5B21B6, pill Solo mora,
+    Aplicar primario plano y Limpiar secundario.
+A3. Cuatro KPI uniformes con acento izquierdo de 4px, sombra ambiental
+    Opacity 0.03 y contenido Dual/Single. Mora neutral con $ 0,00 y
+    "Sin mora activa"; solo pasa a rojo con monto vencido. La tasa usa
+    Bs.S y 4 decimales con el separador configurado.
+A4. Estado vacio corregido: ShowEmptyState solo es true con HasLoaded,
+    sin IsLoading y Receivables.Count == 0. La superposicion con filas
+    queda eliminada.
+A5. Grilla de 8 columnas: DOCUMENTO, CLIENTE, VENCIMIENTO,
+    TOTAL/ABONADO, SALDO (USD), EQUIV. HOY (Bs.S), ESTADO y ACCIONES.
+    Incluye iniciales, barra de cobro, pildoras semanticas, fila hover
+    #F8FAFC y seleccion #F5F3FF con borde izquierdo #6D28D9.
+A6. Acciones compactas Cobrar, Edo. Cuenta y PDF; menu de desbordamiento
+    por clic izquierdo con Devolver y Anular. El ContextMenu usa
+    PlacementTarget.Tag (ViewModel) y PlacementTarget.DataContext (fila);
+    respeta CanReturn, IsCancelable, HasSecondaryActions y el permiso
+    CanManageCreditReturns.
+A7. Se agregaron helpers de presentacion al DTO (iniciales, estado
+    visible, abonado, avance de cobro y acciones secundarias) y pruebas
+    del ViewModel para estado vacio, copy, mora, estado y conteos.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Tests de Cuentas por Cobrar: 15/15.
+B3. Suite .NET completa con PostgreSQL real: 4544/4544, 0 skipped.
+B4. Harness WPF 96/125 DPI: cartera poblada, estado vacio y menu de
+    acciones. Sin solapamiento del estado vacio, sin recorte del ComboBox,
+    mora neutral en $ 0,00 y columnas sin desbordamiento horizontal.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La validacion visual se hizo con harness fuera del repositorio; la
+    prueba manual en la instalacion final sigue siendo recomendable.
+D2. El menu de acciones y los permisos se validaron con el ViewModel de
+    Manager; la prueba manual con Cajero/permisos reales sigue recomendada.
+================================================================================

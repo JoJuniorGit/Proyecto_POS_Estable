@@ -8,97 +8,388 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
              mc:Ignorable="d"
-             Background="#F1F5F9"
+             d:DesignHeight="820" d:DesignWidth="1280"
+             TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+             TextElement.FontWeight="Regular"
+             TextElement.FontSize="13"
+             TextOptions.TextFormattingMode="Ideal"
+             TextOptions.TextRenderingMode="Auto"
+             Background="#F8FAFC"
+             FontFamily="{DynamicResource MaterialDesignFont}"
              d:DataContext="{d:DesignInstance Type=vm:CreditReceivablesViewModel}">
 
     <UserControl.Resources>
-        <helpers:BindingProxy x:Key="Proxy" Data="{Binding}" />
-        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="SettingsStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
 
-        <DropShadowEffect x:Key="EnterpriseCardShadow"
-                          Color="#000000"
-                          BlurRadius="10"
-                          Opacity="0.05"
-                          Direction="270"
-                          ShadowDepth="2"/>
+            <helpers:BindingProxy x:Key="Proxy" Data="{Binding}"/>
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
-        <Style x:Key="StandardHeaderStyle" TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#F8FAFC"/>
-            <Setter Property="Foreground" Value="#64748B"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Padding" Value="12,12"/>
-            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        </Style>
+            <DropShadowEffect x:Key="CxcCardShadow"
+                              Color="#0F172A"
+                              BlurRadius="12"
+                              Opacity="0.03"
+                              Direction="270"
+                              ShadowDepth="2"/>
 
-        <Style x:Key="RightAlignedHeaderStyle" TargetType="DataGridColumnHeader" BasedOn="{StaticResource StandardHeaderStyle}">
-            <Setter Property="HorizontalContentAlignment" Value="Right"/>
-        </Style>
+            <DropShadowEffect x:Key="CxcMenuShadow"
+                              Color="#0F172A"
+                              BlurRadius="14"
+                              Opacity="0.10"
+                              Direction="270"
+                              ShadowDepth="2"/>
 
-        <Style x:Key="CxcRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource MaterialDesignDataGridRow}">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="4,0,0,0"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding IsOverdue}" Value="True">
-                    <Setter Property="Background" Value="#FEF2F2"/>
-                    <Setter Property="BorderBrush" Value="#DC2626"/>
-                </DataTrigger>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#F5F3FF"/>
-                    <Setter Property="BorderBrush" Value="#5E35B1"/>
-                </Trigger>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#F8FAFC"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsThinScrollBarStyle}"/>
 
-        <Style x:Key="CxcCellStyle" TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Style.Triggers>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="Transparent"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
+            <Style x:Key="CxcCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="12"/>
+            </Style>
 
-        <Style x:Key="ActionButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="#CBD5E1"/>
-            <Setter Property="Foreground" Value="#475569"/>
-            <Setter Property="Height" Value="28"/>
-            <Setter Property="Padding" Value="10,0"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,0,6,0"/>
-            <Setter Property="materialDesign:ButtonAssist.CornerRadius" Value="5"/>
-        </Style>
+            <Style x:Key="CxcKpiCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="12"/>
+                <Setter Property="Effect" Value="{StaticResource CxcCardShadow}"/>
+            </Style>
+
+            <Style x:Key="CxcColumnHeaderStyle" TargetType="DataGridColumnHeader"
+                   BasedOn="{StaticResource SettingsTableHeaderStyle}">
+                <Setter Property="FontSize" Value="11.5"/>
+                <Setter Property="Padding" Value="12,10"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            </Style>
+
+            <Style x:Key="CxcRightColumnHeaderStyle" TargetType="DataGridColumnHeader"
+                   BasedOn="{StaticResource CxcColumnHeaderStyle}">
+                <Setter Property="HorizontalContentAlignment" Value="Right"/>
+            </Style>
+
+            <Style x:Key="CxcRowStyle" TargetType="DataGridRow"
+                   BasedOn="{StaticResource SettingsTableRowStyle}">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="3,0,0,0"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#F8FAFC"/>
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="#F5F3FF"/>
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="CxcCellStyle" TargetType="DataGridCell"
+                   BasedOn="{StaticResource SettingsTableCellStyle}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            </Style>
+
+            <Style x:Key="CxcMiniProgressStyle" TargetType="ProgressBar">
+                <Setter Property="Height" Value="4"/>
+                <Setter Property="MinHeight" Value="4"/>
+                <Setter Property="Width" Value="96"/>
+                <Setter Property="Background" Value="#E2E8F0"/>
+                <Setter Property="Foreground" Value="#6D28D9"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ProgressBar">
+                            <Grid SnapsToDevicePixels="True">
+                                <Border x:Name="PART_Track" Background="{TemplateBinding Background}"
+                                        CornerRadius="2"/>
+                                <Border x:Name="PART_Indicator" Background="{TemplateBinding Foreground}"
+                                        CornerRadius="2" HorizontalAlignment="Left"/>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CxcPrimaryCompactButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#6D28D9"/>
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Padding" Value="8,0"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="PrimaryBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="PrimaryBorder" Property="Background" Value="#5B21B6"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="PrimaryBorder" Property="Background" Value="#4C1D95"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="PrimaryBorder" Property="Background" Value="#E2E8F0"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CxcSecondaryCompactButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#334155"/>
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Padding" Value="8,0"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="SecondaryBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="SecondaryBorder" Property="Background" Value="#F1F5F9"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="SecondaryBorder" Property="Opacity" Value="0.5"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CxcMoreButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource CxcSecondaryCompactButtonStyle}">
+                <Setter Property="Width" Value="30"/>
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="FontSize" Value="18"/>
+                <Setter Property="FontWeight" Value="Bold"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Style.Triggers>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Opacity" Value="0.45"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="CxcOverdueToggleStyle" TargetType="ToggleButton">
+                <Setter Property="Height" Value="38"/>
+                <Setter Property="Padding" Value="12,0"/>
+                <Setter Property="Background" Value="#F8FAFC"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="FontSize" Value="11.5"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border x:Name="PillBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="PillBorder" Property="Background" Value="#F1F5F9"/>
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="PillBorder" Property="Background" Value="#FEF2F2"/>
+                                    <Setter TargetName="PillBorder" Property="BorderBrush" Value="#FECACA"/>
+                                    <Setter Property="Foreground" Value="#B91C1C"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CxcSearchFrameStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="CxcMenuItemStyle" TargetType="MenuItem">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="#334155"/>
+                <Setter Property="Height" Value="34"/>
+                <Setter Property="Padding" Value="10,0"/>
+                <Setter Property="FontSize" Value="11.5"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Border x:Name="MenuItemBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter ContentSource="Header"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="MenuItemBorder" Property="Background" Value="#FFFBEB"/>
+                                    <Setter Property="Foreground" Value="#B45309"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="MenuItemBorder" Property="Opacity" Value="0.45"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CxcMenuDangerItemStyle" TargetType="MenuItem"
+                   BasedOn="{StaticResource CxcMenuItemStyle}">
+                <Setter Property="Foreground" Value="#DC2626"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Border x:Name="MenuItemBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter ContentSource="Header"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="MenuItemBorder" Property="Background" Value="#FEF2F2"/>
+                                    <Setter Property="Foreground" Value="#B91C1C"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="MenuItemBorder" Property="Opacity" Value="0.45"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CxcContextMenuStyle" TargetType="ContextMenu">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="4"/>
+                <Setter Property="MinWidth" Value="175"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ContextMenu">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="10"
+                                    Padding="{TemplateBinding Padding}"
+                                    Effect="{StaticResource CxcMenuShadow}"
+                                    SnapsToDevicePixels="True">
+                                <StackPanel IsItemsHost="True"
+                                            KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="Separator">
+                <Setter Property="Height" Value="1"/>
+                <Setter Property="Margin" Value="6,4"/>
+                <Setter Property="Background" Value="#F1F5F9"/>
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid>
+    <Grid Margin="24,20,24,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <DockPanel Grid.Row="0" Margin="24,20,24,12" LastChildFill="True">
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+        <!-- HEADER -->
+        <Grid Grid.Row="0" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Width="42" Height="42" CornerRadius="10" Background="#EDE9FE"
+                        VerticalAlignment="Center">
+                    <materialDesign:PackIcon Kind="CashMultiple" Width="22" Height="22"
+                                             Foreground="#6D28D9"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="Cuentas por Cobrar (CxC)"
+                               AutomationProperties.AutomationId="CreditReceivables_Title"
+                               FontSize="22" FontWeight="Bold" Foreground="#0F172A"/>
+                    <TextBlock Text="{Binding HeaderSubtitle}"
+                               FontSize="13" Foreground="#64748B" Margin="0,3,0,0"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Command="{Binding RefreshCommand}"
                         AutomationProperties.AutomationId="CreditReceivables_RefreshButton"
-                        Style="{DynamicResource MaterialDesignOutlinedButton}"
-                        BorderBrush="#CBD5E1" Foreground="#475569"
-                        Height="36" Padding="14,0" Margin="0,0,8,0"
+                        Style="{StaticResource SettingsSecondaryButtonStyle}"
+                        Height="38" Padding="14,0" Margin="0,0,8,0"
                         materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsLoading}"
                         materialDesign:ButtonProgressAssist.IsIndeterminate="True"
                         materialDesign:ButtonProgressAssist.Value="-1">
@@ -107,61 +398,47 @@
                         <TextBlock Text="Refrescar" FontWeight="SemiBold" FontSize="12" Margin="6,0,0,0"/>
                     </StackPanel>
                 </Button>
-                <Button Style="{StaticResource SidebarMenuButtonStyle}" VerticalAlignment="Center"/>
+                <Button Style="{StaticResource SidebarMenuButtonStyle}"
+                        Width="38" Height="38" VerticalAlignment="Center"/>
             </StackPanel>
+        </Grid>
 
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <materialDesign:PackIcon Kind="CashMultiple" Width="26" Height="26" Foreground="#5E35B1" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Cuentas por Cobrar (CxC)" FontSize="20" FontWeight="Bold" Foreground="#1E293B"/>
-                    <TextBlock FontSize="11" Foreground="#64748B" Margin="0,2,0,0">
-                        <Run Text="{Binding OpenCount, Mode=OneWay, StringFormat='Cartera abierta: {0} obligaciones · '}"/>
-                        <Run Text="Busque por cliente, cédula/RIF o factura."/>
-                    </TextBlock>
-                    <!-- 8.211-T4c2b4 (S9): the daily rate only exists in Dual. -->
-                    <TextBlock FontSize="11" Foreground="#64748B" Margin="0,1,0,0"
-                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
-                        <Run Text="Tasa del día: "/>
-                        <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode, Mode=OneWay}"/>
-                        <Run Text="{Binding TodayRate, Mode=OneWay, StringFormat=' {0:N2} por '}"/>
-                        <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}"/>
-                    </TextBlock>
-                </StackPanel>
-            </StackPanel>
-        </DockPanel>
-
-        <!-- Filters -->
-        <Border Grid.Row="1"
-                Margin="24,0,24,12"
-                Padding="16,12"
-                CornerRadius="8"
-                Background="#FFFFFF"
-                BorderBrush="#E2E8F0"
-                BorderThickness="1"
-                Effect="{StaticResource EnterpriseCardShadow}">
+        <!-- FILTERS -->
+        <Border Grid.Row="1" Style="{StaticResource CxcCardStyle}"
+                Padding="14,12" Margin="0,0,0,12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="160"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Height="38" Margin="0,0,10,0">
+                <Border Grid.Column="0" Style="{StaticResource CxcSearchFrameStyle}" Margin="0,0,10,0">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,2,0"/>
+                        <materialDesign:PackIcon Grid.Column="0" Kind="Magnify"
+                                                 Width="18" Height="18" Foreground="#94A3B8"
+                                                 VerticalAlignment="Center" Margin="10,0,2,0"/>
                         <TextBox Grid.Column="1"
                                  AutomationProperties.AutomationId="CreditReceivables_SearchInput"
                                  Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  materialDesign:HintAssist.Hint="Cliente, cédula/RIF o factura..."
-                                 materialDesign:TextFieldAssist.HasClearButton="True"
                                  BorderThickness="0" Background="Transparent"
-                                 VerticalAlignment="Center" FontSize="12" Foreground="#1E293B" Padding="6,0,10,0"/>
+                                 VerticalContentAlignment="Center"
+                                 FontSize="12" Foreground="#0F172A" Padding="6,0,4,0"/>
+                        <Button Grid.Column="2" Content="×"
+                                Command="{Binding ClearSearchCommand}"
+                                Style="{StaticResource SettingsBareButtonStyle}"
+                                Width="26" Height="26" Margin="0,0,3,0"
+                                FontSize="16" Foreground="#64748B"
+                                Visibility="{Binding SearchQuery, Converter={StaticResource StringToVisibilityConverter}}"
+                                ToolTip="Limpiar búsqueda"/>
                     </Grid>
                 </Border>
 
@@ -169,39 +446,57 @@
                           AutomationProperties.AutomationId="CreditReceivables_StatusFilter"
                           ItemsSource="{Binding StatusOptions}"
                           SelectedItem="{Binding SelectedStatus, Mode=TwoWay}"
-                          materialDesign:HintAssist.Hint="Estado"
-                          Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                          Height="38" Margin="0,0,10,0"/>
+                          MinWidth="160" MinHeight="40"
+                          VerticalContentAlignment="Center"
+                          Padding="12,6"
+                          Margin="0,0,10,0"
+                          Style="{DynamicResource MaterialDesignOutlinedComboBox}">
+                    <ComboBox.ItemContainerStyle>
+                        <Style TargetType="ComboBoxItem">
+                            <Setter Property="Padding" Value="10,7"/>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Foreground" Value="#334155"/>
+                            <Setter Property="FontSize" Value="12"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter Property="Background" Value="#EDE9FE"/>
+                                    <Setter Property="Foreground" Value="#5B21B6"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="#EDE9FE"/>
+                                    <Setter Property="Foreground" Value="#5B21B6"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ComboBox.ItemContainerStyle>
+                </ComboBox>
 
-                <CheckBox Grid.Column="2"
-                          AutomationProperties.AutomationId="CreditReceivables_OverdueFilter"
-                          Content="Solo mora"
-                          IsChecked="{Binding OverdueOnly, Mode=TwoWay}"
-                          VerticalAlignment="Center"
-                          Margin="0,0,12,0"
-                          FontSize="12"/>
+                <ToggleButton Grid.Column="2"
+                              Content="Solo mora"
+                              AutomationProperties.AutomationId="CreditReceivables_OverdueFilter"
+                              IsChecked="{Binding OverdueOnly, Mode=TwoWay}"
+                              Style="{StaticResource CxcOverdueToggleStyle}"
+                              Margin="0,0,10,0"/>
 
                 <Button Grid.Column="3"
                         Command="{Binding ApplyFiltersCommand}"
                         AutomationProperties.AutomationId="CreditReceivables_ApplyFilters"
-                        Content="APLICAR"
-                        Style="{DynamicResource MaterialDesignRaisedButton}"
-                        Background="#5E35B1" Foreground="White"
-                        Height="38" Padding="16,0" FontSize="11" FontWeight="Bold"
-                        materialDesign:ButtonAssist.CornerRadius="6" Margin="0,0,8,0"/>
+                        Content="Aplicar"
+                        Style="{StaticResource SettingsPrimaryButtonStyle}"
+                        Height="40" Padding="16,0" Margin="0,0,8,0"/>
 
                 <Button Grid.Column="4"
                         Command="{Binding ClearFiltersCommand}"
                         AutomationProperties.AutomationId="CreditReceivables_ClearFilters"
-                        Content="LIMPIAR"
-                        Style="{DynamicResource MaterialDesignOutlinedButton}"
-                        Height="38" Padding="14,0" FontSize="11" FontWeight="SemiBold"
-                        materialDesign:ButtonAssist.CornerRadius="6"/>
+                        Content="Limpiar"
+                        Style="{StaticResource SettingsSecondaryButtonStyle}"
+                        Height="40" Padding="14,0"/>
             </Grid>
         </Border>
 
-        <!-- Totals -->
-        <Grid Grid.Row="2" Margin="24,0,24,12">
+        <!-- KPI CARDS -->
+        <Grid Grid.Row="2" Margin="0,0,0,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
@@ -209,277 +504,433 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0" Effect="{StaticResource EnterpriseCardShadow}">
-                <StackPanel>
-                    <TextBlock Text="CARTERA ABIERTA" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
-                    <TextBlock Text="{Binding TotalOpenUSD, Converter={StaticResource PrimaryAmountConverter}}"
-                               AutomationProperties.AutomationId="CreditReceivables_TotalOpen"
-                               FontSize="20" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
-                </StackPanel>
+            <!-- Cartera abierta -->
+            <Border Grid.Column="0" Style="{StaticResource CxcKpiCardStyle}" Margin="0,0,10,0">
+                <Grid>
+                    <Border Width="4" Background="#6D28D9" CornerRadius="12,0,0,12"
+                            HorizontalAlignment="Left"/>
+                    <StackPanel Margin="18,14,14,14">
+                        <TextBlock Text="CARTERA ABIERTA" FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
+                        <TextBlock Text="{Binding TotalOpenUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                   AutomationProperties.AutomationId="CreditReceivables_TotalOpen"
+                                   FontSize="24" FontWeight="Bold" Foreground="#0F172A"
+                                   Typography.NumeralAlignment="Tabular" Margin="0,3,0,0"/>
+                        <TextBlock Text="{Binding TotalOpenLocalDisplay}" FontSize="11" Foreground="#64748B"
+                                   Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"
+                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                    </StackPanel>
+                </Grid>
             </Border>
 
-            <Border Grid.Column="1" Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0" Effect="{StaticResource EnterpriseCardShadow}">
-                <StackPanel>
-                    <TextBlock Text="VENCIDO (MORA)" FontSize="10" FontWeight="Bold" Foreground="#991B1B"/>
-                    <TextBlock Text="{Binding TotalOverdueUSD, Converter={StaticResource PrimaryAmountConverter}}"
-                               AutomationProperties.AutomationId="CreditReceivables_TotalOverdue"
-                               FontSize="20" FontWeight="Bold" Foreground="#DC2626" Typography.NumeralAlignment="Tabular"/>
-                </StackPanel>
+            <!-- Vencido / mora -->
+            <Border Grid.Column="1" Margin="0,0,10,0">
+                <Border.Style>
+                    <Style TargetType="Border" BasedOn="{StaticResource CxcKpiCardStyle}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasOverdueAlert}" Value="True">
+                                <Setter Property="Background" Value="#FEF2F2"/>
+                                <Setter Property="BorderBrush" Value="#FECACA"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid>
+                    <Border Width="4" HorizontalAlignment="Left" CornerRadius="12,0,0,12">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="#CBD5E1"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasOverdueAlert}" Value="True">
+                                        <Setter Property="Background" Value="#DC2626"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                    </Border>
+                    <StackPanel Margin="18,14,14,14">
+                        <TextBlock Text="VENCIDO (MORA)" FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
+                        <TextBlock Text="{Binding TotalOverdueUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                   AutomationProperties.AutomationId="CreditReceivables_TotalOverdue"
+                                   FontSize="24" FontWeight="Bold"
+                                   Typography.NumeralAlignment="Tabular" Margin="0,3,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#64748B"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasOverdueAlert}" Value="True">
+                                            <Setter Property="Foreground" Value="#DC2626"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="{Binding OverdueNote}" FontSize="11" Foreground="#64748B"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Grid>
             </Border>
 
-            <Border Grid.Column="2" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="14,10" Margin="0,0,10,0" Effect="{StaticResource EnterpriseCardShadow}">
-                <StackPanel>
-                    <TextBlock Text="OBLIGACIONES ABIERTAS" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
-                    <TextBlock Text="{Binding OpenCount}"
-                               AutomationProperties.AutomationId="CreditReceivables_OpenCount"
-                               FontSize="20" FontWeight="Bold" Foreground="#0F172A"/>
-                </StackPanel>
+            <!-- Obligaciones abiertas -->
+            <Border Grid.Column="2" Style="{StaticResource CxcKpiCardStyle}" Margin="0,0,10,0">
+                <Grid>
+                    <Border Width="4" Background="#0284C7" CornerRadius="12,0,0,12"
+                            HorizontalAlignment="Left"/>
+                    <StackPanel Margin="18,14,14,14">
+                        <TextBlock Text="OBLIGACIONES ABIERTAS" FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
+                        <TextBlock Text="{Binding OpenCount}"
+                                   AutomationProperties.AutomationId="CreditReceivables_OpenCount"
+                                   FontSize="24" FontWeight="Bold" Foreground="#0F172A" Margin="0,3,0,0"/>
+                        <TextBlock Text="{Binding OpenCountSubtitle}" FontSize="11" Foreground="#64748B"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Grid>
             </Border>
 
-            <!-- 8.211-T4c2b4 (S9): rate card is Dual-only. -->
-            <Border Grid.Column="3" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1" CornerRadius="8" Padding="14,10" Effect="{StaticResource EnterpriseCardShadow}"
+            <!-- Tasa del día -->
+            <Border Grid.Column="3" Style="{StaticResource CxcKpiCardStyle}"
                     Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
-                <StackPanel>
-                    <TextBlock FontSize="10" FontWeight="Bold" Foreground="#166534">
-                        <Run Text="TASA DEL DÍA ("/>
-                        <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode, Mode=OneWay}"/>
-                        <Run Text="/"/>
-                        <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}"/>
-                        <Run Text=")"/>
-                    </TextBlock>
-                    <TextBlock Text="{Binding TodayRate, StringFormat='{}{0:N2}'}"
-                               AutomationProperties.AutomationId="CreditReceivables_TodayRate"
-                               FontSize="20" FontWeight="Bold" Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
-                </StackPanel>
+                <Grid>
+                    <Border Width="4" Background="#16A34A" CornerRadius="12,0,0,12"
+                            HorizontalAlignment="Left"/>
+                    <StackPanel Margin="18,14,14,14">
+                        <TextBlock FontSize="10.5" FontWeight="Bold" Foreground="#64748B">
+                            <Run Text="TASA DEL DÍA ("/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyDisplayCode, Mode=OneWay}"/><Run Text=" / "/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyDisplayCode, Mode=OneWay}"/><Run Text=")"/>
+                        </TextBlock>
+                        <TextBlock Text="{Binding TodayRateDisplay}"
+                                   AutomationProperties.AutomationId="CreditReceivables_TodayRate"
+                                   FontSize="24" FontWeight="Bold" Foreground="#0F172A"
+                                   Typography.NumeralAlignment="Tabular" Margin="0,3,0,0"/>
+                        <TextBlock Text="Tasa de referencia del día" FontSize="11" Foreground="#64748B"
+                                   Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Grid>
             </Border>
         </Grid>
 
-        <!-- Alerts and messages -->
-        <StackPanel Grid.Row="3" Margin="24,0,24,10">
+        <!-- ALERTS -->
+        <StackPanel Grid.Row="3" Margin="0,0,0,10">
             <Border Visibility="{Binding HasOverdueAlert, Converter={StaticResource BoolToVis}}"
-                    Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8">
+                    Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1"
+                    CornerRadius="8" Padding="12,8" Margin="0,0,0,8">
                 <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="AlertCircleOutline" Width="18" Height="18" Foreground="#DC2626" VerticalAlignment="Center"/>
-                    <TextBlock Foreground="#991B1B" FontWeight="SemiBold"
-                               FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center">
-                        <Run Text="Alerta de mora: "/>
-                        <Run Text="{Binding TotalOverdueUSD, Converter={StaticResource PrimaryAmountConverter}, Mode=OneWay}"/>
-                        <Run Text=" vencidos en la cartera filtrada."/>
-                    </TextBlock>
+                    <materialDesign:PackIcon Kind="AlertCircleOutline" Width="18" Height="18"
+                                             Foreground="#DC2626" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding OverdueAlertMessage}" Foreground="#991B1B"
+                               FontWeight="SemiBold" FontSize="12" Margin="8,0,0,0"
+                               VerticalAlignment="Center" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
 
             <Border Visibility="{Binding SuccessMessage, Converter={StaticResource StringToVisibilityConverter}}"
-                    Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8">
+                    Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1"
+                    CornerRadius="8" Padding="12,8" Margin="0,0,0,8">
                 <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="CheckCircleOutline" Width="18" Height="18" Foreground="#166534" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding SuccessMessage}" Foreground="#166534" FontWeight="SemiBold"
-                               FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                    <materialDesign:PackIcon Kind="CheckCircleOutline" Width="18" Height="18"
+                                             Foreground="#166534" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding SuccessMessage}" Foreground="#166534"
+                               FontWeight="SemiBold" FontSize="12" Margin="8,0,0,0"
+                               VerticalAlignment="Center" TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
 
             <Border Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}}"
-                    Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="6" Padding="12,8">
-                <TextBlock Text="{Binding ErrorMessage}" Foreground="#991B1B" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap"/>
+                    Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1"
+                    CornerRadius="8" Padding="12,8">
+                <TextBlock Text="{Binding ErrorMessage}" Foreground="#991B1B"
+                           FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap"/>
             </Border>
         </StackPanel>
 
-        <!-- Receivables grid -->
-        <Border Grid.Row="4"
-                Margin="24,0,24,16"
-                Background="#FFFFFF"
-                BorderBrush="#E2E8F0"
-                BorderThickness="1"
-                CornerRadius="8"
-                Effect="{StaticResource EnterpriseCardShadow}"
-                ClipToBounds="True">
+        <!-- GRID CARD -->
+        <Border Grid.Row="4" Style="{StaticResource CxcCardStyle}" ClipToBounds="True">
             <Grid>
                 <DataGrid ItemsSource="{Binding Receivables}"
                           SelectedItem="{Binding SelectedReceivable, Mode=TwoWay}"
                           AutomationProperties.AutomationId="CreditReceivables_DataGrid"
-                          AutoGenerateColumns="False" CanUserAddRows="False"
-                          IsReadOnly="True" SelectionMode="Single"
-                          Background="#FFFFFF" BorderThickness="0"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          IsReadOnly="True"
+                          SelectionMode="Single"
+                          Background="#FFFFFF"
+                          BorderThickness="0"
+                          HeadersVisibility="Column"
+                          GridLinesVisibility="Horizontal"
+                          HorizontalGridLinesBrush="#F1F5F9"
+                          VerticalGridLinesBrush="Transparent"
+                          RowHeight="56"
                           VirtualizingStackPanel.IsVirtualizing="True"
                           VirtualizingStackPanel.VirtualizationMode="Recycling"
                           VirtualizingPanel.ScrollUnit="Pixel"
-                          GridLinesVisibility="Horizontal"
-                          HorizontalGridLinesBrush="#E2E8F0"
-                          VerticalGridLinesBrush="Transparent"
-                          HeadersVisibility="Column"
-                          ColumnHeaderStyle="{StaticResource StandardHeaderStyle}"
+                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                          ColumnHeaderStyle="{StaticResource CxcColumnHeaderStyle}"
                           RowStyle="{StaticResource CxcRowStyle}"
-                          CellStyle="{StaticResource CxcCellStyle}"
-                          RowHeight="54"
-                          VerticalScrollBarVisibility="Auto"
-                          materialDesign:DataGridAssist.CellPadding="12,8"
-                          materialDesign:DataGridAssist.ColumnHeaderPadding="12,12">
-
+                          CellStyle="{StaticResource CxcCellStyle}">
                     <DataGrid.Columns>
-                        <DataGridTemplateColumn Header="FACTURA" Width="110">
+                        <DataGridTemplateColumn Header="DOCUMENTO" MinWidth="115" Width="SizeToCells">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding InvoiceDisplay}" FontWeight="Bold" FontSize="12" Foreground="#0F172A"/>
-                                        <TextBlock Text="{Binding SaleId, StringFormat='Venta #{0}'}" FontSize="10" Foreground="#64748B"/>
+                                    <StackPanel Margin="12,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding InvoiceDisplay}" FontSize="12"
+                                                   FontWeight="SemiBold" Foreground="#0F172A"/>
+                                        <TextBlock Text="{Binding SaleId, StringFormat='Venta #{0}'}"
+                                                   FontSize="11.5" Foreground="#64748B" Margin="0,2,0,0"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="CLIENTE" Width="200">
+                        <DataGridTemplateColumn Header="CLIENTE" MinWidth="190" Width="*">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding CustomerName}" FontWeight="SemiBold" FontSize="12" Foreground="#1E293B" TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Text="{Binding CustomerCedulaOrRif}" FontSize="10" Foreground="#64748B"/>
-                                    </StackPanel>
+                                    <Grid Margin="12,0" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="30"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Width="30" Height="30" CornerRadius="15"
+                                                Background="#F1F5F9" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding CustomerInitials}" FontSize="10"
+                                                       FontWeight="Bold" Foreground="#334155"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding CustomerName}" FontSize="12"
+                                                       FontWeight="SemiBold" Foreground="#0F172A"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding CustomerName}"/>
+                                            <TextBlock Text="{Binding CustomerCedulaOrRif}" FontSize="11.5"
+                                                       Foreground="#64748B" Margin="0,2,0,0"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Grid>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="EMISIÓN / VENCE" Width="130">
+                        <DataGridTemplateColumn Header="VENCIMIENTO" MinWidth="150" Width="SizeToCells">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding IssuedDateDisplay}" FontSize="11" Foreground="#475569"/>
-                                        <TextBlock Text="{Binding DueDateDisplay, StringFormat='Vence: {0}'}" FontSize="10" Foreground="#64748B"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, StringFormat='SALDO {0}'}" Width="120" HeaderStyle="{StaticResource RightAlignedHeaderStyle}">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}" FontWeight="Bold" FontSize="13" Foreground="#0F172A" Typography.NumeralAlignment="Tabular" HorizontalAlignment="Right"/>
-                                        <TextBlock Text="{Binding OriginalUSD, Converter={StaticResource PrimaryAmountConverter}, StringFormat='Orig. {0}'}" FontSize="10" Foreground="#64748B" Typography.NumeralAlignment="Tabular" HorizontalAlignment="Right"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <!-- 8.211-T4c2b4 (S9): today projection only exists in Dual. -->
-                        <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='SALDO {0} HOY'}" Width="140" HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
-                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}" FontWeight="SemiBold" FontSize="12" Foreground="#166534"
-                                               HorizontalAlignment="Right" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"/>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <DataGridTemplateColumn Header="ESTADO" Width="110">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Border CornerRadius="100" Padding="9,4" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Background" Value="#E2E8F0"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsOverdue}" Value="True">
-                                                        <Setter Property="Background" Value="#FEE2E2"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="Pagada">
-                                                        <Setter Property="Background" Value="#DCFCE7"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="Anulada">
-                                                        <Setter Property="Background" Value="#F1F5F9"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <TextBlock FontSize="10" FontWeight="Bold" Text="{Binding Status}">
+                                    <StackPanel Margin="12,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding DueDateDisplay}" FontSize="12"
+                                                   FontWeight="SemiBold">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
-                                                    <Setter Property="Foreground" Value="#475569"/>
+                                                    <Setter Property="Foreground" Value="#0F172A"/>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsOverdue}" Value="True">
-                                                            <Setter Property="Foreground" Value="#B91C1C"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Status}" Value="Pagada">
-                                                            <Setter Property="Foreground" Value="#166534"/>
+                                                            <Setter Property="Foreground" Value="#DC2626"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>
                                         </TextBlock>
-                                    </Border>
+                                        <TextBlock Text="{Binding IssuedDateDisplay, StringFormat='Emisión: {0}'}"
+                                                   FontSize="11.5" Foreground="#64748B" Margin="0,2,0,0"/>
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="ACCIONES" Width="*">
+                        <DataGridTemplateColumn Header="TOTAL / ABONADO" MinWidth="135" Width="SizeToCells"
+                                                HeaderStyle="{StaticResource CxcRightColumnHeaderStyle}">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <StackPanel Margin="12,0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding OriginalUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                                   FontSize="12" Foreground="#334155"
+                                                   HorizontalAlignment="Right"
+                                                   Typography.NumeralAlignment="Tabular"/>
+                                        <TextBlock Text="{Binding PaidAmountUSD, Converter={StaticResource PrimaryAmountConverter}, StringFormat='Abonado: {0}'}"
+                                                   FontSize="11" Foreground="#64748B" Margin="0,2,0,0"
+                                                   HorizontalAlignment="Right"
+                                                   Typography.NumeralAlignment="Tabular"/>
+                                        <ProgressBar Value="{Binding CollectionProgressPercent, Mode=OneWay}"
+                                                     Maximum="100" Margin="0,4,0,0"
+                                                     Style="{StaticResource CxcMiniProgressStyle}"
+                                                     HorizontalAlignment="Right"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="SALDO (USD)" MinWidth="120" Width="SizeToCells"
+                                                HeaderStyle="{StaticResource CxcRightColumnHeaderStyle}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                               FontSize="14" FontWeight="Bold"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Margin="12,0" Typography.NumeralAlignment="Tabular">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#0F172A"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsOverdue}" Value="True">
+                                                        <Setter Property="Foreground" Value="#DC2626"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="EQUIV. HOY (Bs.S)" MinWidth="145" Width="SizeToCells"
+                                                HeaderStyle="{StaticResource CxcRightColumnHeaderStyle}"
+                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="#334155"
+                                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                                               Margin="12,0" Typography.NumeralAlignment="Tabular"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="ESTADO" MinWidth="110" Width="SizeToCells">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border CornerRadius="999" Padding="9,4">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#EFF6FF"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding StatusDisplay}" Value="Parcial">
+                                                            <Setter Property="Background" Value="#F5F3FF"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding StatusDisplay}" Value="En mora">
+                                                            <Setter Property="Background" Value="#FEF2F2"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding StatusDisplay}" Value="Pagada">
+                                                            <Setter Property="Background" Value="#DCFCE7"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding StatusDisplay}" Value="Anulada">
+                                                            <Setter Property="Background" Value="#F1F5F9"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding StatusDisplay, StringFormat='● {0}'}"
+                                                       FontSize="10.5" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#1D4ED8"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding StatusDisplay}" Value="Parcial">
+                                                                <Setter Property="Foreground" Value="#6D28D9"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding StatusDisplay}" Value="En mora">
+                                                                <Setter Property="Foreground" Value="#DC2626"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding StatusDisplay}" Value="Pagada">
+                                                                <Setter Property="Foreground" Value="#15803D"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding StatusDisplay}" Value="Anulada">
+                                                                <Setter Property="Foreground" Value="#64748B"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="ACCIONES" MinWidth="225" Width="SizeToCells"
+                                                HeaderStyle="{StaticResource CxcRightColumnHeaderStyle}">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                VerticalAlignment="Center" Margin="4,0,6,0">
                                         <Button Content="Cobrar"
                                                 Command="{Binding Data.RegisterPaymentCommand, Source={StaticResource Proxy}}"
                                                 CommandParameter="{Binding}"
                                                 AutomationProperties.AutomationId="CreditReceivables_RegisterPayment"
-                                                Height="28" Padding="12,0" FontSize="11" FontWeight="Bold" Margin="0,0,6,0"
-                                                materialDesign:ButtonAssist.CornerRadius="5">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
-                                                    <Setter Property="Background" Value="#5E35B1"/>
-                                                    <Setter Property="Foreground" Value="White"/>
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsOpen}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                        </Button>
-                                        <Button Content="Estado"
+                                                Style="{StaticResource CxcPrimaryCompactButtonStyle}"
+                                                IsEnabled="{Binding IsOpen}"
+                                                Margin="0,0,4,0"/>
+                                        <Button Content="Edo. Cuenta"
                                                 Command="{Binding Data.ViewStatementCommand, Source={StaticResource Proxy}}"
                                                 CommandParameter="{Binding}"
                                                 AutomationProperties.AutomationId="CreditReceivables_ViewStatement"
-                                                Style="{StaticResource ActionButtonStyle}"/>
-                                        <Button Content="Anular"
-                                                Command="{Binding Data.CancelCommand, Source={StaticResource Proxy}}"
-                                                CommandParameter="{Binding}"
-                                                AutomationProperties.AutomationId="CreditReceivables_Cancel">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
-                                                    <Setter Property="Foreground" Value="#B91C1C"/>
-                                                    <Setter Property="BorderBrush" Value="#FCA5A5"/>
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsCancelable}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                        </Button>
-                                        <Button Content="Devolver"
-                                                Command="{Binding Data.ReturnCommand, Source={StaticResource Proxy}}"
-                                                CommandParameter="{Binding}"
-                                                AutomationProperties.AutomationId="CreditReceivables_Return">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource ActionButtonStyle}">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <MultiDataTrigger>
-                                                            <MultiDataTrigger.Conditions>
-                                                                <Condition Binding="{Binding Data.CanManageCreditReturns, Source={StaticResource Proxy}}" Value="True"/>
-                                                                <Condition Binding="{Binding CanReturn}" Value="True"/>
-                                                            </MultiDataTrigger.Conditions>
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </MultiDataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                        </Button>
+                                                Style="{StaticResource CxcSecondaryCompactButtonStyle}"
+                                                ToolTip="Consultar estado de cuenta"
+                                                Margin="0,0,4,0"/>
                                         <Button Content="PDF"
                                                 Command="{Binding Data.PrintCreditSaleReceiptCommand, Source={StaticResource Proxy}}"
                                                 CommandParameter="{Binding}"
                                                 AutomationProperties.AutomationId="CreditReceivables_PrintCreditReceipt"
-                                                Style="{StaticResource ActionButtonStyle}"/>
+                                                Style="{StaticResource CxcSecondaryCompactButtonStyle}"
+                                                ToolTip="Descargar estado de cuenta en PDF"
+                                                Margin="0,0,4,0"/>
+                                        <Button x:Name="MoreActionsButton"
+                                                Content="⋯"
+                                                AutomationProperties.AutomationId="CreditReceivables_MoreActions"
+                                                Tag="{Binding Data, Source={StaticResource Proxy}}"
+                                                Style="{StaticResource CxcMoreButtonStyle}"
+                                                IsEnabled="{Binding HasSecondaryActions}"
+                                                ToolTip="Más acciones"
+                                                Click="MoreActionsButton_Click">
+                                            <Button.ContextMenu>
+                                                <ContextMenu Style="{StaticResource CxcContextMenuStyle}"
+                                                             DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
+                                                             Placement="Bottom">
+                                                    <MenuItem Command="{Binding PlacementTarget.Tag.ReturnCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}"
+                                                              AutomationProperties.AutomationId="CreditReceivables_Return">
+                                                        <MenuItem.Style>
+                                                            <Style TargetType="MenuItem" BasedOn="{StaticResource CxcMenuItemStyle}">
+                                                                <Setter Property="IsEnabled" Value="False"/>
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding PlacementTarget.Tag.CanManageCreditReturns, RelativeSource={RelativeSource AncestorType=ContextMenu}}" Value="True"/>
+                                                                            <Condition Binding="{Binding CanReturn}" Value="True"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="IsEnabled" Value="True"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </MenuItem.Style>
+                                                        <MenuItem.Header>
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <materialDesign:PackIcon Kind="UndoVariant" Width="16" Height="16"
+                                                                                         VerticalAlignment="Center"
+                                                                                         Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                                <TextBlock Text="Devolver" Margin="9,0,0,0"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                            </StackPanel>
+                                                        </MenuItem.Header>
+                                                    </MenuItem>
+                                                    <Separator/>
+                                                    <MenuItem Command="{Binding PlacementTarget.Tag.CancelCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}"
+                                                              IsEnabled="{Binding IsCancelable}"
+                                                              AutomationProperties.AutomationId="CreditReceivables_Cancel">
+                                                        <MenuItem.Style>
+                                                            <Style TargetType="MenuItem" BasedOn="{StaticResource CxcMenuDangerItemStyle}"/>
+                                                        </MenuItem.Style>
+                                                        <MenuItem.Header>
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <materialDesign:PackIcon Kind="Cancel" Width="16" Height="16"
+                                                                                         VerticalAlignment="Center"
+                                                                                         Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                                <TextBlock Text="Anular" Margin="9,0,0,0"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                            </StackPanel>
+                                                        </MenuItem.Header>
+                                                    </MenuItem>
+                                                </ContextMenu>
+                                            </Button.ContextMenu>
+                                        </Button>
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
@@ -487,21 +938,36 @@
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <Grid Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" Background="#60FFFFFF">
+                <!-- Loading overlay -->
+                <Grid Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
+                      Background="#70FFFFFF">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}" Foreground="#5E35B1"
-                                     IsIndeterminate="True" Width="44" Height="44"/>
-                        <TextBlock Text="Cargando cartera CxC..." Foreground="#475569" FontWeight="SemiBold" Margin="0,12,0,0" FontSize="13" HorizontalAlignment="Center"/>
+                        <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}"
+                                     Foreground="#6D28D9" IsIndeterminate="True"
+                                     Width="44" Height="44"/>
+                        <TextBlock Text="Cargando cartera CxC..." Foreground="#475569"
+                                   FontWeight="SemiBold" Margin="0,12,0,0" FontSize="13"
+                                   HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Grid>
 
+                <!-- Empty state: strictly hidden while loading or with rows -->
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
-                            Visibility="{Binding Receivables, Converter={StaticResource CollectionEmptyToVisibilityConverter}}">
-                    <materialDesign:PackIcon Kind="CashCheck" Width="48" Height="48" Foreground="#CBD5E1" HorizontalAlignment="Center"/>
-                    <TextBlock Text="Sin obligaciones para los filtros seleccionados." Foreground="#94A3B8" FontSize="12" Margin="0,10,0,0" HorizontalAlignment="Center"/>
+                            Visibility="{Binding ShowEmptyState, Converter={StaticResource BoolToVis}}">
+                    <Border Width="56" Height="56" CornerRadius="28" Background="#F1F5F9"
+                            HorizontalAlignment="Center">
+                        <materialDesign:PackIcon Kind="CashCheck" Width="28" Height="28"
+                                                 Foreground="#CBD5E1"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="Sin obligaciones para los filtros seleccionados."
+                               Foreground="#64748B" FontSize="13" FontWeight="SemiBold"
+                               Margin="0,12,0,0" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Ajuste los filtros o actualice la cartera para volver a intentarlo."
+                               Foreground="#94A3B8" FontSize="11.5"
+                               Margin="0,4,0,0" HorizontalAlignment="Center"/>
                 </StackPanel>
             </Grid>
         </Border>
     </Grid>
 </UserControl>
-
