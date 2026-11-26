@@ -22,9 +22,9 @@ Test runner: `dotnet build CommandCenter.slnx -c Release`; `dotnet test CommandC
 
 | ID | Specs | Route | Estado | Commit |
 | --- | --- | --- | --- | --- |
-| T1 / WU1 | S1-S5, S7, S9 | delegated (WPF writer) | completado | — |
-| T2 / WU2 | S1-S3, S6-S9 | delegated (Web writer) | completado | — |
-| T3 / docs | S10 | inline | pendiente | — |
+| T1 / WU1 | S1-S5, S7, S9 | delegated (WPF writer) | completado | `cb61437` |
+| T2 / WU2 | S1-S3, S6-S9 | delegated (Web writer) | completado | `943e2ce` |
+| T3 / docs | S10 | inline | completado | commit de documentación |
 
 ## Log
 

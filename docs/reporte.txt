@@ -18662,3 +18662,60 @@ D2. El selector Web pagina de a 50 productos y filtra no contables en cliente;
     el total del pie incluye productos activos que pueden no ser seleccionables.
 D3. El E2E full-stack sigue gateado por entorno y no cubre aun el alta Products.
 ================================================================================
+
+ANEXO LXXVI - PARIDAD COMPLETA TASA DE CAMBIO WPF/WEB - 2026-11-25
+================================================================================
+
+A. CAMBIOS
+A1. Copy de sincronizacion: el backend `BcvExchangeRateJob` esta registrado
+    como hosted service y usa `BcvSettings:AutoSyncIntervalMinutes` default
+    120 (2 h); `<= 0` desactiva el ciclo. Ambos clientes comunican ahora
+    `Modo Hibrido` y "Sincronizacion automatica cada 2 horas. Tambien puede
+    sincronizar a demanda o ingresar la tasa del dia manualmente."
+A2. Textos canonicos: `Tasa de Cambio`, `TASA VIGENTE`, `Actualizada: ...`,
+    `Nueva tasa del dia`, `Guardar`, `Sincronizar BCV`, `Reintentar`,
+    `Historial de Tasas`; columnas `FECHA`, `TASA`, `VARIACION`,
+    `ACTUALIZACION`, `ESTADO`; pildoras `Vigente` / `Historica`; contador
+    `N registros`; alerta >24 h y banner de solo lectura unificados.
+A3. Formato principal comun: `1 {MonedaPrimaria} = {Tasa a 4dp}
+    {MonedaSecundaria}` con el formato numerico configurado. WPF usa
+    `CurrencyDisplay.Number(rate, 4)`; Web usa `formatNumberEs(rate, 4)`.
+A4. WPF: regimen `Single` oculta tasa/formulario/sincronizacion/historial y
+    muestra el aviso de moneda unica; estados `Cargando historial...` y
+    `No hay registros de cambios de tasa.`; `IsSingle`/`SingleModeNotice` se
+    actualizan con `CurrencyDisplay.ProfileChanged` y se desuscriben en
+    `Dispose`. El historial conserva las cinco columnas y la fila vigente.
+A5. Web: historial `GET /api/exchange-rate/history?limit=90`; mapea
+    `date`/`rate`/`updatedAtLocal`, calcula variacion y estado, muestra contador
+    y resalta la fila vigente. El boton `Sincronizar BCV` queda junto a
+    `Guardar` (sin duplicacion). Manager ve `TASA VIGENTE` e historial en modo
+    solo lectura; Admin conserva escritura; Cashier/Driver siguen bloqueados.
+A6. `ExchangeRateHistoryResponseDto` ya exponia `Date`, `Rate`, `UpdatedAt` y
+    `UpdatedAtLocal`; no se requirio cambio de contrato/backend.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET completa con `TEST_POSTGRES_CONNECTION` local sobre
+    `CommandCenterDb_test`: 4512/4512, 0 skipped.
+B3. WPF focused ExchangeRate: 132/132.
+B4. Web focused ExchangeRatePage: 12/12; `npm test` 826/826;
+    `npm run lint` sin hallazgos; `npm run build` exitoso.
+B5. wwwroot regenerado por Vite; assets generados no se incluyeron en los
+    commits de fuente.
+
+C. COMMITS
+C1. `cb61437` feat(exchange-rate): align WPF parity with canonical copy and
+    Single state (WU1).
+C2. `943e2ce` feat(exchange-rate): align Web parity with history, read-only
+    and canonical copy (WU2).
+C3. Commit local de documentacion en la rama V0.15; sin push.
+
+D. PENDIENTE / RIESGOS
+D1. La verificacion visual WPF/Web no se ejecuto en navegador o ventana real;
+    la paridad se valido con tests de ViewModel, XAML estatico y SSR.
+D2. El copy "cada 2 horas" refleja el default de `appsettings.json`; si una
+    instalacion configura `AutoSyncIntervalMinutes <= 0`, el backend opera
+    solo bajo demanda y el copy de los clientes no se adapta dinamicamente.
+D3. El gating de solo lectura Web es de presentacion; el backend mantiene el
+    RBAC de escritura/sincronizacion como autoridad final.
+================================================================================
