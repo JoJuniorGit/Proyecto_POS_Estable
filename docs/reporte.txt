@@ -18692,11 +18692,14 @@ A5. Web: historial `GET /api/exchange-rate/history?limit=90`; mapea
     solo lectura; Admin conserva escritura; Cashier/Driver siguen bloqueados.
 A6. `ExchangeRateHistoryResponseDto` ya exponia `Date`, `Rate`, `UpdatedAt` y
     `UpdatedAtLocal`; no se requirio cambio de contrato/backend.
+A7. WPF usa `PrimaryCurrencyDisplayCode`/`LocalCurrencyDisplayCode` (VES -> Bs.S,
+    resto ISO) en la ecuacion de tasa, el formulario y el aviso Single, para que
+    la moneda presentada coincida con Web en perfiles EUR/USD o Single USD.
 
 B. EVIDENCIA
 B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
 B2. Suite .NET completa con `TEST_POSTGRES_CONNECTION` local sobre
-    `CommandCenterDb_test`: 4512/4512, 0 skipped.
+    `CommandCenterDb_test`: 4514/4514, 0 skipped.
 B3. WPF focused ExchangeRate: 132/132.
 B4. Web focused ExchangeRatePage: 12/12; `npm test` 826/826;
     `npm run lint` sin hallazgos; `npm run build` exitoso.

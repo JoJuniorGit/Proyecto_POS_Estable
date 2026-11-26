@@ -60,6 +60,32 @@ public sealed class ExchangeRateViewModelParityTests
     }
 
     [Fact]
+    public void SingleModeNotice_UsesTheDisplayCurrencyCode()
+    {
+        var previousFormat = CurrencyDisplay.Current;
+        var previousProfile = CaptureProfile();
+        try
+        {
+            CurrencyDisplay.Current = MoneyDisplayFormat.Venezuelan;
+            CurrencyDisplay.SetMonetaryProfile(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Single,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "$"
+            });
+
+            using var vm = new ExchangeRateViewModel(new Mock<IExchangeRateService>().Object);
+
+            Assert.Contains("únicamente en USD.", vm.SingleModeNotice, StringComparison.Ordinal);
+            Assert.DoesNotContain("únicamente en $.", vm.SingleModeNotice, StringComparison.Ordinal);
+        }
+        finally
+        {
+            RestoreProfile(previousProfile, previousFormat);
+        }
+    }
+
+    [Fact]
     public async Task EmptyHistory_ExposesEmptyStateWithoutRows()
     {
         var previousFormat = CurrencyDisplay.Current;

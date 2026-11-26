@@ -132,6 +132,17 @@ public sealed class ExchangeRateViewParityTests
     }
 
     [Fact]
+    public void RateEquation_UsesDisplayCurrencyCodes()
+    {
+        var source = ReadExchangeRateView();
+
+        Assert.Contains("Path=PrimaryCurrencyDisplayCode, Mode=OneWay", source, StringComparison.Ordinal);
+        Assert.Contains("Path=LocalCurrencyDisplayCode, Mode=OneWay", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Path=PrimaryCurrencyCode, Mode=OneWay", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("Path=LocalCurrencySymbol, Mode=OneWay", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SingleMode_UsesPresenterVisibilityAndNoticeBinding()
     {
         var source = ReadExchangeRateView();

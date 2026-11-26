@@ -130,7 +130,7 @@ public partial class ExchangeRateViewModel : ObservableObject, IDisposable
     public bool IsSingle => Services.CurrencyDisplay.IsSingle;
 
     public string SingleModeNotice =>
-        $"El régimen monetario Single no utiliza tasa de cambio: los importes se expresan únicamente en {Services.CurrencyDisplay.LocalCurrencySymbol}. No hay sincronización BCV ni carga manual disponibles.";
+        $"El régimen monetario Single no utiliza tasa de cambio: los importes se expresan únicamente en {Services.MonetaryProfilePresenter.Instance.LocalCurrencyDisplayCode}. No hay sincronización BCV ni carga manual disponibles.";
 
     private string? _statusMessage;
     public string? StatusMessage
