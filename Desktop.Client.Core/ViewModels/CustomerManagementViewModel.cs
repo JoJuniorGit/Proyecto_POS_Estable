@@ -162,6 +162,25 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
         }
     }
 
+    public IReadOnlyList<CustomerStatusFilterOption> CustomerStatusFilters { get; } = new[]
+    {
+        new CustomerStatusFilterOption("Todos", null),
+        new CustomerStatusFilterOption("Activos", true),
+        new CustomerStatusFilterOption("Inactivos", false)
+    };
+
+    [ObservableProperty]
+    private CustomerStatusFilterOption? _selectedCustomerStatusFilter;
+
+    private bool _suppressStatusFilterReload = true;
+
+    partial void OnSelectedCustomerStatusFilterChanged(CustomerStatusFilterOption? value)
+    {
+        if (_suppressStatusFilterReload) return;
+        CurrentPage = 1;
+        LoadCustomersAsync().SafeFireAndForget("CustomerManagement.StatusFilter");
+    }
+
     public CustomerManagementViewModel(
         ISalesService salesService,
         UserSession userSession,
@@ -170,6 +189,8 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
         _salesService = salesService;
         _userSession = userSession;
         _dialogService = dialogService;
+        SelectedCustomerStatusFilter = CustomerStatusFilters[0];
+        _suppressStatusFilterReload = false;
     }
 
     public async Task InitializeAsync()
@@ -217,7 +238,9 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
             return;
         }
 
-        IsCedulaValid = Regex.IsMatch(formatted, @"^[VJEGPvjegp]-\d{7,8}$", RegexOptions.IgnoreCase);
+        IsCedulaValid = formatted[0] is 'V' or 'E'
+            ? Regex.IsMatch(formatted, @"^[VE]-\d{7,8}$", RegexOptions.IgnoreCase)
+            : Regex.IsMatch(formatted, @"^[JGP]-\d{6,9}(?:-\d)?$", RegexOptions.IgnoreCase);
     }
 
     private static string FormatCedulaRifInput(string input)
@@ -238,12 +261,27 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
         }
 
         string digits = Regex.Replace(input.Substring(1), @"\D", "");
-        if (digits.Length > 8)
+
+        // Cédula venezolana: V/E + 7-8 dígitos. RIF jurídico: J/G/P + hasta 9 dígitos
+        // y un dígito verificador opcional (ej. J-12345678-9).
+        if (firstChar is "V" or "E")
         {
-            digits = digits.Substring(0, 8);
+            if (digits.Length > 8)
+            {
+                digits = digits.Substring(0, 8);
+            }
+
+            return $"{firstChar}-{digits}";
         }
 
-        return $"{firstChar}-{digits}";
+        if (digits.Length > 10)
+        {
+            digits = digits.Substring(0, 10);
+        }
+
+        return digits.Length > 8
+            ? $"{firstChar}-{digits.Substring(0, 8)}-{digits.Substring(8)}"
+            : $"{firstChar}-{digits}";
     }
 
     // ── Controlled Input: Phone (11 digits with operator hyphen) ──
@@ -334,7 +372,12 @@ public partial class CustomerManagementViewModel : ObservableObject, IDisposable
         StatusMessage = "Cargando clientes...";
         try
         {
-            var (items, total) = await _salesService.GetCustomersAsync(query ?? SearchQuery, CurrentPage, PageSize, recentOnly: false);
+            var (items, total) = await _salesService.GetCustomersAsync(
+                query ?? SearchQuery,
+                CurrentPage,
+                PageSize,
+                recentOnly: false,
+                isActive: SelectedCustomerStatusFilter?.IsActive);
             TotalCount = total;
             TotalPages = (int)Math.Ceiling((double)total / PageSize);
             if (TotalPages < 1) TotalPages = 1;

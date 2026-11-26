@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -15,6 +16,7 @@ public partial class UsersManagementViewModel : ObservableObject, IDisposable
     private readonly IUserService _userService;
     private readonly UserSession _userSession;
     private readonly IDialogService? _dialogService;
+    private readonly List<UserDto> _allUsers = new();
     private bool _disposed;
 
     public CustomerManagementViewModel CustomerViewModel { get; }
@@ -34,6 +36,30 @@ public partial class UsersManagementViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private UserDto? _selectedUser;
+
+    [ObservableProperty]
+    private string _userSearchQuery = string.Empty;
+
+    [ObservableProperty]
+    private UserRoleFilterOption? _selectedUserRoleFilter;
+
+    public IReadOnlyList<UserRoleFilterOption> UserRoleFilters { get; } = new[]
+    {
+        new UserRoleFilterOption("Todos los roles", null),
+        new UserRoleFilterOption("Administrador", UserRole.Admin),
+        new UserRoleFilterOption("Gerente", UserRole.Manager),
+        new UserRoleFilterOption("Cajero", UserRole.Cashier)
+    };
+
+    public IReadOnlyList<UserRoleOption> RoleOptions { get; } = new[]
+    {
+        new UserRoleOption(UserRole.Admin, "Administrador"),
+        new UserRoleOption(UserRole.Manager, "Gerente"),
+        new UserRoleOption(UserRole.Cashier, "Cajero"),
+        new UserRoleOption(UserRole.Driver, "Conductor")
+    };
+
+    public int TotalUserCount => _allUsers.Count;
 
     [ObservableProperty]
     private string _cedula = string.Empty;
@@ -69,10 +95,19 @@ public partial class UsersManagementViewModel : ObservableObject, IDisposable
         ? "Contraseña (Dejar en blanco para conservar actual)" 
         : "Contraseña (Opcional, por defecto Usuario)";
 
+    public string PasswordPlaceholder => IsEditing
+        ? "Dejar en blanco para conservar la actual"
+        : "Opcional (por defecto: usuario)";
+
     partial void OnIsEditingChanged(bool value)
     {
         OnPropertyChanged(nameof(PasswordHint));
+        OnPropertyChanged(nameof(PasswordPlaceholder));
     }
+
+    partial void OnUserSearchQueryChanged(string value) => ApplyUserFilters();
+
+    partial void OnSelectedUserRoleFilterChanged(UserRoleFilterOption? value) => ApplyUserFilters();
 
     public Array Roles => Enum.GetValues(typeof(UserRole));
 
@@ -86,6 +121,7 @@ public partial class UsersManagementViewModel : ObservableObject, IDisposable
         _userSession = userSession;
         CustomerViewModel = customerViewModel;
         _dialogService = dialogService;
+        SelectedUserRoleFilter = UserRoleFilters[0];
     }
 
     public async Task EnsureLoadedAsync()
@@ -101,13 +137,42 @@ public partial class UsersManagementViewModel : ObservableObject, IDisposable
         {
             StatusMessage = "Cargando usuarios...";
             var list = await _userService.GetUsersAsync();
-            Users = new ObservableCollection<UserDto>(list);
-            StatusMessage = $"Total de usuarios: {Users.Count}";
+
+            _allUsers.Clear();
+            _allUsers.AddRange(list);
+            OnPropertyChanged(nameof(TotalUserCount));
+            ApplyUserFilters();
         }
         catch (Exception ex)
         {
             StatusMessage = $"Error: {ex.Message}";
         }
+    }
+
+    private void ApplyUserFilters()
+    {
+        var query = UserSearchQuery?.Trim();
+        IEnumerable<UserDto> filtered = _allUsers;
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            filtered = filtered.Where(user =>
+                user.Cedula.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || user.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (SelectedUserRoleFilter?.Role is UserRole role)
+        {
+            filtered = filtered.Where(user => user.Role == role);
+        }
+
+        Users.Clear();
+        foreach (var user in filtered)
+        {
+            Users.Add(user);
+        }
+
+        StatusMessage = $"Mostrando {Users.Count} de {_allUsers.Count} usuarios";
     }
 
     partial void OnSelectedUserChanged(UserDto? value)
