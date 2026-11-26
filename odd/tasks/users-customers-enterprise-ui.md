@@ -19,6 +19,12 @@ Test runner: `dotnet build CommandCenter.slnx -c Release`; `dotnet test CommandC
 - S10. Tests: filtros de usuarios (texto/rol, conteo), filtro de estado de clientes (cliente y backend), converters de iniciales, XAML estático para textos/estilos/columnas, y suite completa. Visual harness 96/120 DPI sin colisiones.
 - S11. Paginación avanzada en ambas pestañas, con el mismo lenguaje del catálogo: resumen de página, primera/anterior, números relativos (5 máx.), siguiente/última, ir a página, 25 registros por página y estado vacío `Página 0 de 0`. Usuarios pagina en cliente sobre `_filteredUsers`; clientes mantiene paginación server-side con `CurrentPage`/`TotalPages`/`PageSize=25` y filtro de estado. El pie conserva `StatusMessage` y el paginador en una segunda fila.
 
+- S12. Directorio 100% ancho: se elimina el panel derecho; la tarjeta de tabla ocupa todo el ancho y conserva toolbar, DataGrid virtualizado y footer con conteo/paginador. Cabecera con acción contextual `Nuevo Usuario`/`Nuevo Cliente` y gear secundario.
+- S13. Modales independientes `UserEditorModal` y `CustomerEditorModal`: overlay con backdrop, ancho 480, cabecera con badge/título/subtítulo/cierre, cuerpo con etiquetas arriba, campos 40px, banner inline de error, footer Cancelar/Guardar con estado ocupado y sombra ambiental Opacity 0.06.
+- S14. Draft Pattern: abrir edición hidrata campos independientes; Cancelar/Esc no muta el DTO de la grilla. `Ctrl+Enter` guarda; foco automático en el primer campo; toast verde no bloqueante tras éxito.
+- S15. Búsqueda/filtros: Usuarios por texto, rol y estado; Clientes por Cédula/RIF, Nombre o Teléfono (búsqueda de teléfono server-side) y estado; botón × de limpieza y estado vacío con limpiar filtros.
+- S16. Tablas: columnas USUARIO, NOMBRE con avatar, ROL, ESTADO, ACCIONES en Usuarios; CÉDULA/RIF, NOMBRE/RAZÓN SOCIAL con avatar y tooltip, TELÉFONO (`Sin teléfono` si vacío), ESTADO, ACCIONES en Clientes; RowHeight 52, scrollbar 6px y doble clic/Editar abre modal.
+
 ## Tasks
 
 | ID | Specs | Route | Estado | Commit |
@@ -28,6 +34,7 @@ Test runner: `dotnet build CommandCenter.slnx -c Release`; `dotnet test CommandC
 | T3 | S10 | inline/tests | completado | — |
 | T4 | S10 | harness visual + docs | completado | — |
 | T5 | S11 | inline WPF/VM + tests | completado | - |
+| T6 | S12-S16 | inline WPF/VM + tests | completado | - |
 
 ## Log
 
@@ -80,3 +87,5 @@ Test runner: `dotnet build CommandCenter.slnx -c Release`; `dotnet test CommandC
 - L5 (2026-11-26): **Verificación final**. `dotnet build CommandCenter.slnx -c Release`: 0 warnings / 0 errors. Suite .NET completa con PostgreSQL real: **4522/4522**, 0 skipped. Focused Usuarios/Clientes/contratos: **158/158**. No se tocaron bindings de comandos/validaciones existentes ni se agregaron paquetes.
 
 - L6 (2026-11-26): **Paginación avanzada (catálogo)**. Usuarios ahora pagina en cliente sobre el directorio filtrado (`UserPageSize=25`, `UserPageNumbers`, resumen, primera/anterior/números/siguiente/última y `Ir a`). Clientes conserva paginación server-side con `PageSize=25`, `PageNumbers`, `TargetPageInput`, `FirstPage`/`LastPage`/`GoToPage`/`SubmitGoToPage`, estado vacío 0/0 y recarga automática si la página queda fuera de rango tras una eliminación. Ambos footers muestran `StatusMessage` en la primera fila y el paginador Enterprise en la segunda. Tests nuevos: `Users_AdvancedPagination_SlicesTheFilteredDirectory` y `Customers_AdvancedPagination_UsesServerPagesAndCatalogControls`; focused 32/32; suite .NET completa 4524/4524. Harness 96/120 DPI con 60 usuarios y 60 clientes verificó el pager sin colisiones.
+
+- L7 (2026-11-26): **MODALES INDEPENDIENTES Y DIRECTORIO 100% ANCHO**. Se eliminó el formulario lateral; la cabecera ganó acciones contextuales `Nuevo Usuario`/`Nuevo Cliente` y el directorio ocupa todo el ancho. Se crearon `UserEditorModal`/`CustomerEditorModal` con estilos compartidos en `ManagementEditorStyles.xaml`, backdrop `#730F172A`, cabecera, campos con etiquetas arriba, banner inline, footer con estado ocupado, foco automático, `Esc`, `Ctrl+Enter`, draft isolation y toast no bloqueante. Usuarios agregó filtro de estado y limpieza de búsqueda; Clientes busca también por teléfono en backend y muestra `Sin teléfono` cuando corresponde. Se conservaron las acciones administrativas y el perfil crediticio dentro del modal de cliente. Tests: apertura crear/editar, cancelación sin mutar, filtros, error inline, guardado exitoso y búsqueda de teléfono. Build 0/0; suite .NET 4531/4531; focused 63/63; harness 96/120 DPI sin colisiones.

@@ -18802,3 +18802,47 @@ D1. La paginacion de usuarios es client-side porque el endpoint de usuarios
 D2. La validacion visual se hizo con harness fuera del repositorio y datos
     de prueba, no sobre la instalacion final.
 ================================================================================
+
+ANEXO LXXIX - USUARIOS Y CLIENTES: MODALES INDEPENDIENTES Y DIRECTORIO FULL WIDTH - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Se elimino el formulario lateral derecho. La tarjeta de directorio ocupa
+    el 100% del ancho y la cabecera incorpora la accion contextual
+    "Nuevo Usuario"/"Nuevo Cliente" junto al boton secundario de configuracion.
+A2. Se crearon UserEditorModal y CustomerEditorModal como UserControls
+    independientes con backdrop #730F172A, ancho 480, cabecera con icono,
+    titulo/subtitulo dinamicos, cierre X, cuerpo con etiquetas superiores y
+    campos de 40px, banner de error inline, footer Cancelar/Guardar y estado
+    ocupado "Guardando...". Sombra ambiental Opacity 0.06.
+A3. Draft Pattern: la edicion hidrata campos independientes; Cancelar/Esc
+    conserva intacto el DTO de la grilla. Foco automatico en el primer campo,
+    Ctrl+Enter guarda y el exito cierra el modal y muestra toast verde.
+A4. Usuarios: filtro por rol y estado, buscador con boton de limpieza, tabla
+    con columnas USUARIO/NOMBRE con avatar/ROL/ESTADO/ACCIONES y edicion por
+    boton o doble clic. Clientes: busqueda por Cedula/RIF, Nombre o Telefono
+    (extension server-side), estado, tabla con avatar, telefono con
+    "Sin telefono" y mismas acciones. RowHeight 52, scrollbar 6px, sin
+    ScrollViewer externo y virtualizacion Recycling.
+A5. Se mantuvieron las operaciones de activar/desactivar/eliminar con su RBAC,
+    el perfil crediticio dentro del modal de cliente y la proteccion del
+    Cliente General (identidad no editable desde el modal).
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET completa con PostgreSQL real: 4531/4531, 0 skipped.
+B3. Focused Usuarios/Clientes/contratos: 63/63.
+B4. Harness WPF 96/120 DPI: directorio full width, toolbar, tablas, footer,
+    modales crear/editar de Usuario y Cliente sin colisiones; placeholders,
+    helper de password y contador unico /50 visibles.
+
+C. COMMITS
+C1. Commit local de la refactorizacion de modales/directorio en la rama V0.15;
+    sin push. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La validacion visual se hizo con harness fuera del repositorio y datos de
+    prueba; no reemplaza la prueba manual sobre la instalacion final.
+D2. La busqueda de telefono se agrego al filtro de clientes sin cambiar el
+    contrato de respuesta de la API.
+================================================================================
