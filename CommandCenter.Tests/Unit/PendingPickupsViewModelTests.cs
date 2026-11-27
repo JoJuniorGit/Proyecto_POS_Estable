@@ -680,6 +680,7 @@ public class PendingPickupsViewModelTests
             new[] { "Más recientes primero", "Más antiguas primero", "Mayor cantidad pendiente" },
             vm.SortOptions.Select(option => option.Label));
         Assert.Same(vm.SortOptions[0], vm.SelectedSortOption);
+        Assert.Equal("Más recientes primero", vm.SelectedSortOption.ToString());
         Assert.Equal(PickupStatusFilter.All, vm.SelectedStatusFilter);
     }
 
@@ -971,6 +972,21 @@ public class PendingPickupsViewModelTests
         Assert.Equal("27/11/26 01:48", dto.PaymentDateDisplay);
         Assert.Equal("4 de 10 unidades entregadas (40%)", dto.DeliveryProgressLabel);
         Assert.Equal("1 producto · 6 unidades pendientes por entregar", dto.DispatchSummaryLabel);
+    }
+
+    [Theory]
+    [InlineData("0412-2222222", true, "0412-2222222")]
+    [InlineData("   ", false, "Sin teléfono")]
+    [InlineData("", false, "Sin teléfono")]
+    public void PendingPickupClientDto_CustomerPhonePresentation_HandlesEmptyValues(
+        string phone,
+        bool expectedHasPhone,
+        string expectedDisplay)
+    {
+        var dto = new PendingPickupClientDto { CustomerPhone = phone };
+
+        Assert.Equal(expectedHasPhone, dto.HasCustomerPhone);
+        Assert.Equal(expectedDisplay, dto.CustomerPhoneDisplay);
     }
 
     [Fact]

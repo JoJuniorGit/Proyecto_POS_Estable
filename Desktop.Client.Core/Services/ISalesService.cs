@@ -124,6 +124,12 @@ public class PendingPickupClientDto
     public string DetailStatusLabel => IsPartiallyDelivered ? "Retiro Parcial" : "Pendiente de Retiro";
 
     [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasCustomerPhone => !string.IsNullOrWhiteSpace(CustomerPhone);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string CustomerPhoneDisplay => HasCustomerPhone ? CustomerPhone.Trim() : "Sin teléfono";
+
+    [System.Text.Json.Serialization.JsonIgnore]
     public string PendingUnitsLabel =>
         $"{PendingUnits.ToString("0.###", CultureInfo.InvariantCulture)} uds. pendientes";
 

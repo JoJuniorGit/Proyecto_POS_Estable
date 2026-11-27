@@ -1,15 +1,12 @@
-using System.ComponentModel;
+using System;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 
 namespace Desktop.Client.Views;
 
 public partial class PendingPickupsView : UserControl
 {
-    private ICollectionView? _view;
     private PendingPickupsViewModel? _vm;
 
     public PendingPickupsView()
@@ -38,43 +35,38 @@ public partial class PendingPickupsView : UserControl
 
     private void AttachViewModel(PendingPickupsViewModel? vm)
     {
-        if (ReferenceEquals(_vm, vm) && _view != null) return;
+        if (ReferenceEquals(_vm, vm)) return;
 
         DetachViewModel();
         _vm = vm;
 
         if (_vm == null) return;
 
-        var targetVm = _vm;
-        _view = CollectionViewSource.GetDefaultView(targetVm.Pickups);
-        _view.Filter = o => o is PendingPickupClientDto p && targetVm != null && targetVm.MatchesSearch(p);
-        PickupsList.ItemsSource = _view;
-        _view.Refresh();
-        _vm.PropertyChanged += OnVmPropertyChanged;
+        _vm.RequestClipboardCopy += OnRequestClipboardCopy;
     }
 
     private void DetachViewModel()
     {
-        if (_vm != null)
-        {
-            _vm.PropertyChanged -= OnVmPropertyChanged;
-            _vm = null;
-        }
+        if (_vm == null) return;
 
-        if (_view != null)
-        {
-            _view.Filter = null;
-            _view = null;
-        }
-
-        PickupsList.ItemsSource = null;
+        _vm.RequestClipboardCopy -= OnRequestClipboardCopy;
+        _vm = null;
     }
 
-    private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnRequestClipboardCopy(string text)
     {
-        if (e.PropertyName == nameof(PendingPickupsViewModel.SearchQuery))
+        if (string.IsNullOrEmpty(text)) return;
+
+        try
         {
-            _view?.Refresh();
+            Clipboard.SetText(text);
+        }
+        catch (Exception ex)
+        {
+            // The Windows clipboard is a shared OS resource that another process may be
+            // holding; a failed copy must never break the dispatch workflow.
+            Core.Logging.ClientStateLogger.LogWarning(
+                $"[PendingPickupsView] Error al copiar al portapapeles: {ex.Message}");
         }
     }
 }

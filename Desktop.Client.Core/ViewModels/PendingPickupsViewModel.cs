@@ -502,4 +502,7 @@ public enum PickupSortMode
     MostPendingUnits
 }
 
-public sealed record PickupSortOption(string Label, PickupSortMode Mode);
+public sealed record PickupSortOption(string Label, PickupSortMode Mode)
+{
+    public override string ToString() => Label;
+}
