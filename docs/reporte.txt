@@ -19421,3 +19421,39 @@ D1. La suite completa requiere PostgreSQL real configurado para alcanzar
 D2. La revision fisica final a 125% DPI sobre el monitor instalado sigue
     recomendable; el harness se renderizo a 120 DPI.
 ================================================================================
+
+================================================================================
+ANEXO POST-CIERRE 8.185 (XVII) - FIX: EDICION MANUAL DE CANTIDAD EN VENTAS PENDING DEL POS WPF - 2026-11-27
+================================================================================
+Bug reportado: al ingresar manualmente la cantidad de un producto en el POS WPF,
+la operacion terminaba siempre con "No se pudo actualizar la cantidad...".
+
+A. DIAGNOSTICO
+A1. DataGrid_CellEditEnding lanza CommitItemQuantityFromTextAsync fire-and-forget.
+A2. Cualquier mutacion posterior del carrito (alta/escaneo/+/−/borrar) llama
+    FlushAllQuantitiesAsync; este usaba PUT /api/sales/{id}/items, endpoint batch
+    restringido a OnHold (SalesService.UpdateSaleItemsAsync).
+A3. En una venta Pending (POS normal) el backend responde "Solo se pueden modificar
+    productos en ventas que esten en estado en espera (OnHold)" y el carrito muestra
+    el rollback generico. La web no usa ese batch para editar cantidad.
+
+B. FIX
+B1. CartViewModel ahora espera los commits de cantidad en vuelo antes de flush.
+B2. FlushAllQuantitiesAsync usa UpdateItemQuantityAsync por linea en Pending;
+    conserva el batch solo para OnHold.
+B3. Sin cambios de API, esquema, precios manuales ni reglas de negocio.
+
+C. EVIDENCIA
+C1. RED: nuevos tests de flush Pending/batch y espera de commit en vuelo.
+C2. GREEN: carril Cart/Pos 25/25.
+C3. Build Release: 0 warnings / 0 errors.
+C4. Suite .NET: 4593/4655 superadas; los 62 fallos restantes son exclusivamente
+    el carril PostgreSQL real sin TEST_POSTGRES_CONNECTION (entorno). Web:
+    revision del path CartContext.updateQuantity (PUT singular) sin el defecto
+    del batch OnHold.
+C5. Commit local en V0.15; sin push.
+
+D. LIMITE CONOCIDO
+D1. Las lineas con Precio Manual siguen protegidas por el backend: cambiar la
+    cantidad exige reautorizacion; no se relajo esa regla de seguridad.
+================================================================================

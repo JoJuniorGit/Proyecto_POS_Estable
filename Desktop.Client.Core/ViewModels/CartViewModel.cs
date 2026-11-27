@@ -7,6 +7,8 @@ using Core.Logging;
 using Desktop.Client.Helpers;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -30,6 +32,7 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
     private readonly ISaleRecoveryStore? _recoveryStore;
     private readonly ISettingsService? _settingsService;
     private bool _preserveRecoveryClearOnce;
+    private readonly List<Task> _pendingQuantityCommits = new();
 
     // 8.185-T5 (S1/S2): toggle nunca-hacia-abajo vigente para el Bs.S efectivo de las líneas.
     // Una lectura al iniciar y refresco por mensaje: 0 consultas por recálculo.
@@ -499,7 +502,22 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
             _ = decimal.TryParse(rawText, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.CurrentCulture, out q);
         }
 
-        return CommitItemQuantityAsync(itemId, q);
+        // DataGrid_CellEditEnding is fire-and-forget. Keep the in-flight task so any cart
+        // mutation that flushes pending edits waits for the single-item commit instead of
+        // racing it with a second (and, on Pending sales, invalid) batch update.
+        var commit = CommitItemQuantityAsync(itemId, q);
+        _pendingQuantityCommits.RemoveAll(task => task.IsCompleted);
+        _pendingQuantityCommits.Add(commit);
+        return commit;
+    }
+
+    private async Task DrainPendingQuantityCommitsAsync()
+    {
+        if (_pendingQuantityCommits.Count == 0) return;
+
+        var pending = _pendingQuantityCommits.ToArray();
+        _pendingQuantityCommits.Clear();
+        await Task.WhenAll(pending);
     }
 
     public async Task CommitItemQuantityAsync(int itemId, decimal newQty)
@@ -530,15 +548,45 @@ public partial class CartViewModel : ObservableObject, System.IDisposable
 
     public async Task FlushAllQuantitiesAsync()
     {
+        // The DataGrid commit is fire-and-forget; wait for it before inspecting dirty rows.
+        // Otherwise a fast click on another cart action would race the commit and flush the
+        // same line twice.
+        await DrainPendingQuantityCommitsAsync();
         if (CurrentSale == null) return;
+
         try
         {
             var dirtyItems = CartItems.Where(i => i.IsQuantityDirty).ToList();
             if (dirtyItems.Count == 0) return;
 
-            // PERF-10: una sola llamada batch en lugar de un PUT por ítem modificado.
             // Edicion manual protegida: un borrador confirmado <= 0 revierte a 1 (nunca 0 al
             // servidor y nunca eliminacion implicita por la cantidad).
+            if (!string.Equals(CurrentSale.Status, "OnHold", StringComparison.Ordinal))
+            {
+                // PERF-10 batch is OnHold-only on the backend. A Pending POS sale must commit
+                // each edited line through the regular quantity endpoint; using the batch
+                // endpoint here returned "Solo se pueden modificar productos en ventas que
+                // estén en estado en espera (OnHold)" on every pending edit.
+                SaleDto? updated = null;
+                foreach (var item in dirtyItems)
+                {
+                    decimal quantity = item.Model.Quantity <= 0m ? 1m : item.Model.Quantity;
+                    updated = await _salesService.UpdateItemQuantityAsync(
+                        CurrentSale.Id,
+                        item.Id,
+                        quantity,
+                        _exchangeRateService.CurrentRate);
+                }
+
+                if (updated != null)
+                {
+                    CurrentSale = updated;
+                }
+
+                return;
+            }
+
+            // OnHold keeps the batch optimization (one PUT for every edited line).
             var updates = dirtyItems
                 .Select(item => new UpdateSaleItemDto
                 {

@@ -111,10 +111,8 @@ public class PosSearchSuggestionsTests
         cartVm.CurrentSale = BuildServerSale(withSecondaryItem: false);
         cartVm.CartItems[0].QuantityText = "10";
 
-        mockSales.Setup(s => s.UpdateSaleItemsAsync(10, It.IsAny<IEnumerable<UpdateSaleItemDto>>(), Rate))
+        mockSales.Setup(s => s.UpdateItemQuantityAsync(10, 1, 10m, Rate))
                  .Callback(() => serverQuantityA = 10m)
-                 .Returns(Task.CompletedTask);
-        mockSales.Setup(s => s.GetSaleAsync(10))
                  .ReturnsAsync(() => BuildServerSale(withSecondaryItem: false));
         mockSales.Setup(s => s.AddItemAsync(10, 42, 1, It.IsAny<decimal>(), null, null))
                  .ReturnsAsync(() => BuildServerSale(withSecondaryItem: true));
@@ -134,12 +132,10 @@ public class PosSearchSuggestionsTests
 
         await vm.AddSelectedSuggestionCommand.ExecuteAsync(product);
 
+        mockSales.Verify(s => s.UpdateItemQuantityAsync(10, 1, 10m, Rate), Times.Once);
         mockSales.Verify(
-            s => s.UpdateSaleItemsAsync(
-                10,
-                It.Is<IEnumerable<UpdateSaleItemDto>>(items => items.Single().Quantity == 10m),
-                Rate),
-            Times.Once);
+            s => s.UpdateSaleItemsAsync(It.IsAny<int>(), It.IsAny<IEnumerable<UpdateSaleItemDto>>(), It.IsAny<decimal>()),
+            Times.Never);
         Assert.Equal(10m, cartVm.CartItems.Single(i => i.Id == 1).Model.Quantity);
         Assert.Equal(2, cartVm.CartItems.Count);
     }
