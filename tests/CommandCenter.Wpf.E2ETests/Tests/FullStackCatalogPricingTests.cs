@@ -180,21 +180,33 @@ public class FullStackCatalogPricingTests : IClassFixture<FullStackFixture>
 
                 var suggestion = list.FindAllChildren(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.ListItem))
                     .FirstOrDefault();
-                if (suggestion != null)
+                if (suggestion == null)
                 {
-                    try
-                    {
-                        suggestion.AsListBoxItem().Select();
-                        suggestion.Click();
-                        dispatched = true;
-                        return null;
-                    }
-                    catch (FlaUI.Core.Exceptions.ElementNotAvailableException)
-                    {
-                    }
-                    catch (FlaUI.Core.Exceptions.NoClickablePointException)
-                    {
-                    }
+                    // El popup puede abrirse antes de que lleguen los resultados: no consumir el
+                    // único commit; se espera a que el primer ítem esté materializado.
+                    return null;
+                }
+
+                try
+                {
+                    window.SetForeground();
+                }
+                catch (Exception)
+                {
+                }
+
+                try
+                {
+                    suggestion.AsListBoxItem().Select();
+                    suggestion.Click();
+                    dispatched = true;
+                    return null;
+                }
+                catch (FlaUI.Core.Exceptions.ElementNotAvailableException)
+                {
+                }
+                catch (FlaUI.Core.Exceptions.NoClickablePointException)
+                {
                 }
 
                 try

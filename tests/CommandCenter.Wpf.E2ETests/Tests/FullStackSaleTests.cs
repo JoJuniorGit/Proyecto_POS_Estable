@@ -382,34 +382,47 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
                 var suggestion = suggestionsList
                     .FindAllChildren(cf => cf.ByControlType(ControlType.ListItem))
                     .FirstOrDefault();
-                if (suggestion != null)
+                if (suggestion == null)
                 {
-                    // UIA-first: el click real sobre el ítem dispara el PreviewMouseLeftButtonDown
-                    // del template -> AddSelectedSuggestionCommand. El peer WPF del ListBoxItem no
-                    // implementa InvokePattern (solo SelectionItem/ScrollItem), así que el click es
-                    // la interacción de usuario equivalente. Select() solo deja SelectedItem listo
-                    // (no commitea: OnSelectedSuggestionChanged es un no-op).
-                    bool clicked = false;
-                    try
-                    {
-                        suggestion.AsListBoxItem().Select();
-                        suggestion.Click();
-                        clicked = true;
-                    }
-                    catch (FlaUI.Core.Exceptions.ElementNotAvailableException)
-                    {
-                        // La lista se refrescó entre el find y el click: sin input despachado.
-                    }
-                    catch (FlaUI.Core.Exceptions.NoClickablePointException)
-                    {
-                        // Ítem sin punto clickeable (animación/reflow del popup): sin input despachado.
-                    }
+                    // El popup puede abrirse antes de que lleguen los resultados: no consumir el
+                    // único commit; se espera a que el primer ítem esté materializado.
+                    return null;
+                }
 
-                    if (clicked)
-                    {
-                        commitDispatched = true;
-                        return null;
-                    }
+                // UIA-first: el click real sobre el ítem dispara el PreviewMouseLeftButtonDown
+                // del template -> AddSelectedSuggestionCommand. El peer WPF del ListBoxItem no
+                // implementa InvokePattern (solo SelectionItem/ScrollItem), así que el click es
+                // la interacción de usuario equivalente. Select() solo deja SelectedItem listo
+                // (no commitea: OnSelectedSuggestionChanged es un no-op).
+                try
+                {
+                    window.SetForeground();
+                }
+                catch (Exception)
+                {
+                    // Sin activación no se aborta: el click puede seguir funcionando.
+                }
+
+                bool clicked = false;
+                try
+                {
+                    suggestion.AsListBoxItem().Select();
+                    suggestion.Click();
+                    clicked = true;
+                }
+                catch (FlaUI.Core.Exceptions.ElementNotAvailableException)
+                {
+                    // La lista se refrescó entre el find y el click: sin input despachado.
+                }
+                catch (FlaUI.Core.Exceptions.NoClickablePointException)
+                {
+                    // Ítem sin punto clickeable (animación/reflow del popup): sin input despachado.
+                }
+
+                if (clicked)
+                {
+                    commitDispatched = true;
+                    return null;
                 }
 
                 // Respaldo por teclado: la lista está abierta pero su ítem no es accionable por UIA
