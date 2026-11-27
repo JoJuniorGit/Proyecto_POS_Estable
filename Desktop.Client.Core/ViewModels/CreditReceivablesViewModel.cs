@@ -17,7 +17,7 @@ namespace Desktop.Client.ViewModels;
 /// </summary>
 public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
 {
-    private const string AllStatuses = "Todos";
+    private const string AllStatuses = "Todas las pendientes";
     private const string DefaultCustomerFilterNote = "Busque por cliente, cédula/RIF o factura.";
 
     private readonly ISalesService _salesService;
@@ -43,7 +43,7 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
 
     public IReadOnlyList<string> StatusOptions { get; } = new[]
     {
-        AllStatuses, "Vigente", "Parcial", "Vencida", "Pagada", "Anulada"
+        AllStatuses, "Vigente", "Parcial", "En mora"
     };
 
     public ObservableCollection<CreditReceivableClientItemDto> Receivables { get; } = new();
@@ -155,6 +155,9 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
             TodayRate = result.TodayRate;
             HasLoaded = true;
             NotifyDerivedPresentation();
+
+            // El contador de la subseccion Pagadas debe estar vivo desde la primera carga.
+            await EnsurePaidLoadedAsync();
         }
         catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
@@ -173,7 +176,9 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
     private CreditReceivablesFilterClientDto BuildFilter() => new()
     {
         CustomerId = null,
-        Status = string.Equals(SelectedStatus, AllStatuses, StringComparison.Ordinal) ? null : SelectedStatus,
+        Status = string.Equals(SelectedStatus, AllStatuses, StringComparison.Ordinal)
+            ? null
+            : string.Equals(SelectedStatus, "En mora", StringComparison.Ordinal) ? "Vencida" : SelectedStatus,
         OverdueOnly = OverdueOnly,
         Search = string.IsNullOrWhiteSpace(SearchQuery) ? null : SearchQuery.Trim()
     };
@@ -230,6 +235,12 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
             if (result == null) return;
 
             await EnsureLoadedAsync();
+
+            bool settled = !Receivables.Any(item => item.ReceivableId == row.ReceivableId);
+            ShowViewPaidLink = settled;
+            SettledNotice = settled
+                ? $"Factura {row.InvoiceDisplay} saldada al 100%. Disponible en Deudas Pagadas."
+                : null;
 
             SuccessMessage = $"Abono registrado exitosamente (comprobante N° {result.PaymentId}): " +
                 $"{CurrencyDisplay.FormatPrimary(result.AmountUSD)} ({CurrencyDisplay.FormatSecondary(result.AmountBsS)} a la tasa {result.PaymentRate:N2}).";
@@ -389,4 +400,5 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
         MonetaryProfilePresenter.Instance.PropertyChanged -= OnMonetaryProfileChanged;
     }
 }
+
 

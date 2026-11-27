@@ -27,9 +27,9 @@ S9. Verification: Release build 0/0; .NET suite green except the known PostgreSQ
 - [x] WU1-T1 (S1) - Default open-only filter in the Postgres and memory receivable queries + regression test.
 - [x] WU1-T2 (S2-S4) - Core DTOs, service queries and `ReceivablesController` endpoints for paid list, timeline and flat payments; client DTOs and `ISalesService` transport.
 - [ ] WU1-T3 (S5) - Export CSV/XLSX/PDF and paid cancellation PDF.
-- [ ] WU2-T1 (S5) - WPF view model state, filters, KPIs, modes, pagination and settlement transition.
-- [ ] WU2-T2 (S5) - WPF segmented sub-sections, paid tables and timeline slide-over.
-- [ ] WU2-T3 (S8) - WPF unit tests.
+- [x] WU2-T1 (S5) - WPF view model state, filters, KPIs, modes, pagination and settlement transition.
+- [x] WU2-T2 (S5) - WPF segmented sub-sections, paid tables and timeline slide-over.
+- [x] WU2-T3 (S8) - WPF unit tests.
 - [ ] WU3-T1 (S6) - Web paid sub-section, modes, timeline drawer and exports.
 - [ ] WU3-T2 (S7/S8) - Web tests and Single/RBAC coverage.
 - [ ] WU3-T3 (S9) - Build, .NET suite, web checks, visual validation.
@@ -39,3 +39,6 @@ S9. Verification: Release build 0/0; .NET suite green except the known PostgreSQ
 L1. User requested separating paid debts from pending in CxC, with a dedicated `Deudas Pagadas` sub-section, full auditable payment history, strict realized vs estimated amounts, WPF + web parity, TDD and 3 work units.
 
 L2. WU1 backend implemented: open-only default portfolio, `PaidReceivablesListDto`/`ReceivablePaymentTimelineDto`/`PaidReceivablePaymentsListDto` contracts, `CreditService.Paid` queries with frozen payment snapshots, `ReceivablesController` routes and client transport. Evidence: Release build 0/0; new paid tests 5/5; existing CxC list tests 14/14 after updating the isolation expectation.
+
+L3. WU2 WPF implemented: segmented Deudas Pendientes/Deudas Pagadas with live counters, open-only status options, paid filters/presets, invoice/payment modes, 4 realized KPIs, paginated tables, settlement notice with Ver en Pagadas, per-obligation slide-over with frozen rates/running balance and Esc/backdrop/close. CSV export works; Excel/PDF and the cancellation PDF remain for WU3. Evidence: Release build 0/0; paid WPF tests 3/3; CxC suite 55/56 with only the PostgreSQL-lane environment failure; harness screenshots show paid section, pending section and timeline slide-over.
+

@@ -576,7 +576,7 @@ public class PaidReceivablePaymentItemClientDto
     public string ExchangeRateDisplay => CurrencyDisplay.Number(ExchangeRateApplied, 2);
 
     [JsonIgnore]
-    public string ReferenceDisplay => string.IsNullOrWhiteSpace(Reference) ? "—" : $"Ref: {Reference}";
+    public string ReferenceDisplay => string.IsNullOrWhiteSpace(Reference) ? string.Empty : $"Ref: {Reference}";
 
     [JsonIgnore]
     public string CustomerInitials
@@ -602,3 +602,4 @@ public class PaidPaymentAllocationClientDto
     [JsonIgnore]
     public string InvoiceDisplay => InvoiceNumber.HasValue ? $"F{InvoiceNumber.Value:D5}" : $"CxC-{ObligationId}";
 }
+

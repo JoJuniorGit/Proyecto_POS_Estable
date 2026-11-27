@@ -208,7 +208,7 @@ public class CreditReceivablesDashboardTests
         await vm.ClearFiltersCommand.ExecuteAsync(null);
 
         Assert.Equal(string.Empty, vm.SearchQuery);
-        Assert.Equal("Todos", vm.SelectedStatus);
+        Assert.Equal("Todas las pendientes", vm.SelectedStatus);
         Assert.False(vm.OverdueOnly);
         sales.Verify(s => s.GetCreditReceivablesAsync(
             It.Is<CreditReceivablesFilterClientDto>(f => f.Search == null && f.Status == null && !f.OverdueOnly),
