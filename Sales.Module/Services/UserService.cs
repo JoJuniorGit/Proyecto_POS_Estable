@@ -76,7 +76,13 @@ public class UserService : IUserService
 
         var usernameClean = dto.Cedula.Trim();
         var usernameLower = usernameClean.ToLower();
-        var existing = await _db.Users.AnyAsync(u => u.Cedula.ToLower() == usernameLower || u.Username.ToLower() == usernameLower, cancellationToken);
+        var existing = _db.Database.IsNpgsql()
+            ? await _db.Users.AnyAsync(
+                u => EF.Functions.ILike(u.Cedula, usernameClean) || EF.Functions.ILike(u.Username, usernameClean),
+                cancellationToken)
+            : await _db.Users.AnyAsync(
+                u => u.Cedula.ToLower() == usernameLower || u.Username.ToLower() == usernameLower,
+                cancellationToken);
         if (existing)
         {
             throw new InvalidOperationException("Ya existe un usuario registrado con ese nombre de usuario.");
@@ -157,7 +163,13 @@ public class UserService : IUserService
 
         var usernameClean = dto.Cedula.Trim();
         var usernameLower = usernameClean.ToLower();
-        var existingUser = await _db.Users.AnyAsync(u => (u.Cedula.ToLower() == usernameLower || u.Username.ToLower() == usernameLower) && u.Id != id, cancellationToken);
+        var existingUser = _db.Database.IsNpgsql()
+            ? await _db.Users.AnyAsync(
+                u => (EF.Functions.ILike(u.Cedula, usernameClean) || EF.Functions.ILike(u.Username, usernameClean)) && u.Id != id,
+                cancellationToken)
+            : await _db.Users.AnyAsync(
+                u => (u.Cedula.ToLower() == usernameLower || u.Username.ToLower() == usernameLower) && u.Id != id,
+                cancellationToken);
         if (existingUser)
         {
             throw new InvalidOperationException("El nombre de usuario especificado ya pertenece a otro usuario.");

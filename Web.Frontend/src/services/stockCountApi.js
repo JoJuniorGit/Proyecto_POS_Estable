@@ -20,13 +20,15 @@ export async function listStockCounts(status) {
 }
 
 /**
- * @param {{name: string, scopeCategoryId?: number|null, notes?: string|null}} body
+ * @param {{name: string, scopeType?: number, scopeCategoryId?: number|null, scopeProductIds?: number[]|null, notes?: string|null}} body
  */
 export async function createStockCount(body) {
   return api.post(STOCK_COUNTS_BASE, {
     name: body?.name,
+    scopeType: body?.scopeType ?? 0,
     scopeCategoryId: body?.scopeCategoryId ?? null,
-    notes: body?.notes ?? null,
+    scopeProductIds: body?.scopeProductIds ?? null,
+    notes: typeof body?.notes === 'string' && body.notes.trim() ? body.notes.trim() : null,
   });
 }
 

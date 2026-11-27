@@ -8,6 +8,7 @@ using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Linq;
 using Core.Common;
+using Core.Diagnostics;
 
 namespace Desktop.Client.ViewModels;
 
@@ -15,6 +16,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 {
     private readonly IPaymentService _paymentService;
     private readonly ISettingsService _settingsService;
+    private readonly IProfitabilityClientService? _profitabilityService;
     private readonly IConnectionManager? _connectionManager;
     private EventHandler<ConnectionStatusEventArgs>? _connectionStatusHandler;
     private bool _isDialogOpen;
@@ -35,7 +37,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
-    private string _currentServerAddress = "http://localhost:5000/";
+    private string _currentServerAddress = "https://localhost:5001/";
 
     [ObservableProperty]
     private string _connectionStatusText = "Conectado";
@@ -45,6 +47,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _allowNegativeStock;
+
+    [ObservableProperty]
+    private string _timeZoneAutoSaveStatus = "Auto-guardado";
+
+    [ObservableProperty]
+    private string _selectedTimeZoneCurrentTimeDisplay = DateTime.Now.ToString("dd/MM/yyyy hh:mm tt", Core.Helpers.MoneyFormat.Culture);
+
+    // S1/S9: apartado activo de Configuración. Es estado de presentación puro: el setter no
+    // dispara cargas ni persiste nada; EnsureLoadedAsync sigue siendo la única fuente de carga.
+    [ObservableProperty]
+    private int _selectedSettingsSectionIndex;
 
     public ObservableCollection<PaymentMethodDto> PaymentMethods { get; } = new();
     public ObservableCollection<TimeZoneInfo> AvailableTimeZones { get; } = new();
@@ -57,6 +70,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             if (SetProperty(ref _selectedTimeZone, value))
             {
+                UpdateTimeZonePreview(value);
                 OnSelectedTimeZoneChangedAsync(value).SafeFireAndForget("Settings.TimeZoneChanged");
             }
         }
@@ -71,10 +85,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         UserSession? userSession = null,
         IDialogService? dialogService = null,
         IConnectionManager? connectionManager = null,
-        IDispatcherInvoker? dispatcherInvoker = null)
+        IDispatcherInvoker? dispatcherInvoker = null,
+        IProfitabilityClientService? profitabilityService = null)
     {
         _paymentService = paymentService;
         _settingsService = settingsService;
+        _profitabilityService = profitabilityService;
         UserSession = userSession;
         _dialogService = dialogService;
         _connectionManager = connectionManager;
@@ -100,13 +116,20 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         if (_hasLoaded) return;
         if (UserSession == null || UserSession.IsLoggedIn)
         {
-            await LoadMethodsAsync();
-            await LoadTimeZonesAsync();
-            await LoadCurrencyFormatAsync();
-            await LoadAllowNegativeStockAsync();
-            // 8.184-T4 (S2): políticas globales de precios y redondeo (fallback silencioso a defaults).
-            await LoadPricingPoliciesAsync();
+            StartupTimeline.Mark("Wpf.Settings.Load.Start");
+            await Task.WhenAll(
+                LoadMethodsAsync(),
+                LoadTimeZonesAsync(),
+                LoadCurrencyFormatAsync(),
+                LoadAllowNegativeStockAsync(),
+                // 8.184-T4 (S2): pol�ticas globales de precios y redondeo (fallback silencioso a defaults).
+                LoadPricingPoliciesAsync(),
+                // Comisiones del adelanto de efectivo (lectura Admin/Manager; escritura solo Admin).
+                LoadCashAdvanceCommissionAsync(),
+                // F4-WU1: reglas de comisi�n de medios de pago (Admin-only, misma pol�tica del endpoint F3).
+                LoadPaymentMethodFeeRulesAsync());
             _hasLoaded = true;
+            StartupTimeline.Mark("Wpf.Settings.Load.Done");
         }
     }
 
@@ -147,6 +170,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             {
                 PaymentMethods.Add(m);
             }
+
+            SyncFeeEligiblePaymentMethods();
+            RefreshPaymentMethodOrderFlags();
         }
         catch (Exception ex)
         {
@@ -159,12 +185,22 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void RefreshPaymentMethodOrderFlags()
+    {
+        for (int i = 0; i < PaymentMethods.Count; i++)
+        {
+            PaymentMethods[i].IsFirst = i == 0;
+            PaymentMethods[i].IsLast = i == PaymentMethods.Count - 1;
+        }
+    }
+
     [RelayCommand]
     private async Task SetActiveStatusAsync(PaymentMethodDto method)
     {
         try
         {
             await _paymentService.UpdateAsync(method);
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -182,6 +218,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         try
         {
             await _paymentService.UpdateAsync(method);
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -212,10 +249,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                     IsActive = updated.IsActive,
                     RequiresReference = updated.RequiresReference,
                     IsCash = updated.IsCash,
+                    Currency = updated.Currency,
                     DisplayOrder = updated.DisplayOrder,
                     IsDeleted = updated.IsDeleted
                 };
             }
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -231,10 +270,10 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private async Task AddNewMethodAsync()
     {
         if (_dialogService == null) return;
-        var newName = await _dialogService.ShowTextInputAsync(
-            "Ingrese el nombre del nuevo método de pago (ej. Cheque, Transferencia, Criptomoneda):",
-            "Nombre del Método");
+        var method = await _dialogService.ShowPaymentMethodCreationDialogAsync();
+        if (method == null) return;
 
+        var newName = method.Name.Trim();
         if (string.IsNullOrWhiteSpace(newName)) return;
 
         if (PaymentMethods.Any(p => p.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
@@ -245,17 +284,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
 
         try
         {
-            var method = new PaymentMethodDto
-            {
-                Name = newName,
-                IsActive = true,
-                RequiresReference = false,
-                IsCash = false // Digital por defecto
-            };
-
+            method.Name = newName;
+            method.IsActive = true;
             var created = await _paymentService.CreateAsync(method);
             PaymentMethods.Add(created);
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
+
+            if (CanEditPaymentMethodFeeRules)
+            {
+                await LoadPaymentMethodFeeRulesAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -300,9 +339,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                     IsActive = updated.IsActive,
                     RequiresReference = updated.RequiresReference,
                     IsCash = updated.IsCash,
-                    DisplayOrder = updated.DisplayOrder
+                    Currency = updated.Currency,
+                    DisplayOrder = updated.DisplayOrder,
+                    IsDeleted = updated.IsDeleted
                 };
             }
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -334,6 +376,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             await _paymentService.UpdateAsync(PaymentMethods[index - 1]);
             await _paymentService.UpdateAsync(PaymentMethods[index]);
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -365,6 +408,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             await _paymentService.UpdateAsync(PaymentMethods[index]);
             await _paymentService.UpdateAsync(PaymentMethods[index + 1]);
+            RefreshPaymentMethodOrderFlags();
             WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
         }
         catch (Exception ex)
@@ -390,7 +434,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             {
                 await _paymentService.DeleteAsync(method.Id);
                 PaymentMethods.Remove(method);
-                WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
+                RefreshPaymentMethodOrderFlags();
+            WeakReferenceMessenger.Default.Send(new PaymentMethodsChangedMessage());
             }
             catch (Exception ex)
             {
@@ -414,18 +459,35 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         {
             SelectedTimeZone = AvailableTimeZones.FirstOrDefault(t => t.Id == savedTzId);
         }
+        else
+        {
+            _selectedTimeZone = AvailableTimeZones.FirstOrDefault(t => t.Id == TimeZoneInfo.Local.Id)
+                                ?? AvailableTimeZones.FirstOrDefault();
+            OnPropertyChanged(nameof(SelectedTimeZone));
+            UpdateTimeZonePreview(_selectedTimeZone);
+        }
+    }
+
+    private void UpdateTimeZonePreview(TimeZoneInfo? value)
+    {
+        var zone = value ?? TimeZoneInfo.Local;
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone);
+        SelectedTimeZoneCurrentTimeDisplay = localNow.ToString("dd/MM/yyyy hh:mm tt", Core.Helpers.MoneyFormat.Culture);
     }
 
     private async Task OnSelectedTimeZoneChangedAsync(TimeZoneInfo? value)
     {
         if (value == null) return;
+        TimeZoneAutoSaveStatus = "Auto-guardado";
         try
         {
             await _settingsService.SetTimeZoneAsync(value.Id);
             WeakReferenceMessenger.Default.Send(new TimeZoneChangedMessage());
+            TimeZoneAutoSaveStatus = "✓ Guardado";
         }
         catch (Exception ex)
         {
+            TimeZoneAutoSaveStatus = "Auto-guardado";
             Core.Logging.ClientStateLogger.LogError($"Error al guardar la zona horaria: {ex.Message}", nameof(SettingsViewModel));
             if (_dialogService != null) _dialogService.ShowError("Error", "No se pudo guardar la zona horaria. Intente nuevamente.");
         }

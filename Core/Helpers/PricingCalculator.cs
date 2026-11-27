@@ -13,6 +13,18 @@ public static class PricingCalculator
     public const int CashDecimals = 0;
 
     /// <summary>
+    /// 8.211-T3c3d (S4/S5): maximum scale of the persisted rate snapshots (columns 18,4).
+    /// A manual pair rate is frozen at this scale; the calculation keeps the 8dp quote.
+    /// </summary>
+    public const int RateSnapshotDecimals = 4;
+
+    /// <summary>
+    /// 8.211-T3c3d (S4/S5): scale of a manually loaded pair quote (CurrencyPairRate is 18,8).
+    /// The sale/abono calculation uses this value so a 4dp snapshot never distorts the totals.
+    /// </summary>
+    public const int ManualRateDecimals = 8;
+
+    /// <summary>
     /// Rounds an amount to digital precision (2 decimal places) using MidpointRounding.AwayFromZero.
     /// Used for electronic payments, bank transfers, credit cards, and ledger totals.
     /// </summary>
@@ -24,10 +36,21 @@ public static class PricingCalculator
     /// <summary>
     /// Rounds an exchange rate up to 2 decimal places (ceiling rounding), alineado a la guia §2.4.
     /// Example: 804.63001 -> 804.64, 804.64 -> 804.64 (identidad al tope de precision).
+    /// BCV keeps this policy; manual pair rates use <see cref="RoundExchangeRate"/> instead.
     /// </summary>
     public static decimal RoundExchangeRateCeiling(decimal rate)
     {
         return Math.Ceiling(rate * 100m) / 100m;
+    }
+
+    /// <summary>
+    /// 8.211-T3c3d (S4/S5): rounds an exchange rate to an explicit scale using
+    /// MidpointRounding.AwayFromZero. Defaults to the 4dp snapshot scale; pass
+    /// <see cref="ManualRateDecimals"/> for the manual calculation rate.
+    /// </summary>
+    public static decimal RoundExchangeRate(decimal rate, int decimals = RateSnapshotDecimals)
+    {
+        return Math.Round(rate, decimals, MidpointRounding.AwayFromZero);
     }
 
     /// <summary>
@@ -80,9 +103,30 @@ public static class PricingCalculator
     }
 
     /// <summary>
-    /// 8.169 [CLEAN-01]: canonical calculation of a supplier invoice line unit cost in USD,
-    /// dividing the document unit cost by the effective box-to-unit conversion factor (rounded to
-    /// 4 decimals when factor != 1) and converting from Bs.S using the invoice snapshot rate.
+    /// 8.186-T3 (S2/S3): inverso USD EFECTIVO del Total Bs.S (ya redondeado por la política de
+    /// efectivo) a la tasa anclada — 4 decimales con MidpointRounding.AwayFromZero. Fuente de
+    /// verdad: ANEXO XII B1 (misma semántica de Sale.EffectiveTotalUSD). Sin Bs.S cobrado o sin
+    /// tasa cae al canónico. Única implementación de la inversa: la comparten la entidad Sale,
+    /// el checkout preview y los clientes que consuman el Gran Total $ sin desfase.
+    /// </summary>
+    public static decimal EffectiveUsdFromBsS(decimal totalBsS, decimal rate, decimal canonicalUsd)
+    {
+        if (totalBsS <= 0m || rate <= 0m)
+        {
+            return canonicalUsd;
+        }
+
+        return ToUSD(totalBsS, rate, decimals: 4);
+    }
+
+    /// <summary>
+    /// 8.169 [CLEAN-01]: canonical calculation of a supplier invoice line unit cost, dividing the
+    /// document unit cost by the effective box-to-unit conversion factor (rounded to 4 decimals when
+    /// factor != 1).
+    /// 8.211-T3d (F3d): <see cref="Core.Entities.SupplierInvoiceLine.UnitCostUSD"/> keeps its legacy
+    /// name but stores the cost in the active profile PRIMARY currency. USD and any rate-1 document
+    /// (Single primary) need no conversion; a Dual secondary divides by the invoice AppliedRate
+    /// snapshot. The historical Bs.S branch keeps the same divide-by-rate result.
     /// </summary>
     public static decimal CalculateInvoiceUnitCostUsd(
         decimal unitCostDocument,
@@ -95,12 +139,13 @@ public static class PricingCalculator
             ? unitCostDocument
             : Math.Round(unitCostDocument / effectiveFactor, 4, MidpointRounding.AwayFromZero);
 
-        if (string.Equals(currency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase))
+        if (appliedRate == 1m
+            || string.Equals(currency, CurrencyCodes.Usd, StringComparison.OrdinalIgnoreCase))
         {
-            return ToUSD(unitDocumentCost, appliedRate);
+            return unitDocumentCost;
         }
 
-        return unitDocumentCost;
+        return ToUSD(unitDocumentCost, appliedRate);
     }
 
     /// <summary>

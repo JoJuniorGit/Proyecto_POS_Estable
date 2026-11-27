@@ -47,25 +47,31 @@ public class ServiceRestartCoordinator : IServiceRestartCoordinator
             var nssmPath = Path.Combine(AppContext.BaseDirectory, "nssm.exe");
             if (File.Exists(nssmPath))
             {
-                Process.Start(new ProcessStartInfo(nssmPath, $"restart {ServiceName}")
+                using (Process.Start(new ProcessStartInfo(nssmPath, $"restart {ServiceName}")
                 {
                     UseShellExecute = false,
                     CreateNoWindow = true
-                });
+                }))
+                {
+                }
                 _logger.LogInformation("Reinicio diferido del servicio {ServiceName} programado via nssm.", ServiceName);
                 return;
             }
 
-            Process.Start(new ProcessStartInfo("sc.exe", $"stop {ServiceName}")
+            using (Process.Start(new ProcessStartInfo("sc.exe", $"stop {ServiceName}")
             {
                 UseShellExecute = false,
                 CreateNoWindow = true
-            });
-            Process.Start(new ProcessStartInfo("sc.exe", $"start {ServiceName}")
+            }))
+            {
+            }
+            using (Process.Start(new ProcessStartInfo("sc.exe", $"start {ServiceName}")
             {
                 UseShellExecute = false,
                 CreateNoWindow = true
-            });
+            }))
+            {
+            }
             _logger.LogInformation("Reinicio diferido del servicio {ServiceName} programado via sc.exe.", ServiceName);
         }
         catch (Exception ex)

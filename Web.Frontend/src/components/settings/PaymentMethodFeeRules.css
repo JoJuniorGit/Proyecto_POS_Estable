@@ -1,0 +1,19 @@
+/* F4-WU2 (Paso 14): ajustes propios de la tarjeta Admin-only de reglas de comisión.
+   La paleta, los formularios y las tablas consumen el sistema set-* de SettingsPage.css,
+   de modo que la tarjeta hereda el tema claro/oscuro sin bordes claros fijos. */
+:root .pmf-table-wrap {
+  border-radius: 12px;
+}
+
+:root .pmf-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  :root .pmf-table-wrap {
+    border-radius: 10px;
+  }
+}

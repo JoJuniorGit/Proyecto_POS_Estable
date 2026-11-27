@@ -7,480 +7,1003 @@
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
              xmlns:behaviors="clr-namespace:Desktop.Client.Behaviors"
-             xmlns:controls="clr-namespace:Desktop.Client.Controls"
+             xmlns:converters="clr-namespace:Desktop.Client.Converters"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
+             xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
              mc:Ignorable="d"
+             d:DesignHeight="900"
+             d:DesignWidth="1280"
+             Background="#F8FAFC"
+             FontFamily="{DynamicResource MaterialDesignFont}"
+             TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+             TextOptions.TextFormattingMode="Ideal"
              d:DataContext="{d:DesignInstance Type=vm:DailyClosureViewModel}">
 
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="SettingsStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
 
-        <!-- Enterprise Sutil Drop Shadow (0 4px 6px -1px rgba(0,0,0,0.05)) -->
-        <DropShadowEffect x:Key="EnterpriseCardShadow"
-                          Color="#000000"
-                          BlurRadius="10"
-                          Opacity="0.05"
-                          Direction="270"
-                          ShadowDepth="2"/>
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+            <converters:SingleCurrencyGridLengthConverter x:Key="SingleCurrencyGridLengthConverter"/>
+            <converters:BlindColumnWidthConverter x:Key="BlindColumnWidthConverter"/>
+            <converters:LocalNumberConverter x:Key="LocalNumberConverter"/>
+            <helpers:BindingProxy x:Key="VmProxy" Data="{Binding}"/>
+
+            <DropShadowEffect x:Key="DailyCardShadow"
+                              Color="#0F172A"
+                              BlurRadius="12"
+                              Opacity="0.03"
+                              Direction="270"
+                              ShadowDepth="2"/>
+
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsThinScrollBarStyle}"/>
+
+            <Style x:Key="DailyCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="12"/>
+                <Setter Property="Effect" Value="{StaticResource DailyCardShadow}"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+            </Style>
+
+            <Style x:Key="DailyKpiCardStyle" TargetType="Border" BasedOn="{StaticResource DailyCardStyle}">
+                <Setter Property="MinHeight" Value="98"/>
+            </Style>
+
+            <Style x:Key="DailyKpiAccentStyle" TargetType="Border">
+                <Setter Property="Width" Value="4"/>
+                <Setter Property="HorizontalAlignment" Value="Left"/>
+                <Setter Property="CornerRadius" Value="2"/>
+                <Setter Property="Margin" Value="0,12,14,12"/>
+            </Style>
+
+            <Style x:Key="DailyBlindToggleStyle" TargetType="ToggleButton">
+                <Setter Property="Width" Value="36"/>
+                <Setter Property="Height" Value="20"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Grid Width="36" Height="20">
+                                <Border x:Name="Track" Background="#CBD5E1" CornerRadius="10"/>
+                                <Ellipse x:Name="Thumb" Width="14" Height="14"
+                                         Fill="#FFFFFF" HorizontalAlignment="Left"
+                                         Margin="3,0,0,0"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Track" Property="Background" Value="#6D28D9"/>
+                                    <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="DailyInputFrameStyle" TargetType="Border">
+                <Setter Property="Background" Value="#F8FAFC"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Height" Value="38"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="Background" Value="#FFFFFF"/>
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                        <Setter Property="BorderThickness" Value="1.5"/>
+                    </Trigger>
+                    <Trigger Property="IsEnabled" Value="False">
+                        <Setter Property="Opacity" Value="0.6"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="DailyObservationFrameStyle" TargetType="Border">
+                <Setter Property="Background" Value="#F8FAFC"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="MinHeight" Value="92"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="Background" Value="#FFFFFF"/>
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                        <Setter Property="BorderThickness" Value="1.5"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="DailyCompactButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="28"/>
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="Background" Value="#F5F3FF"/>
+                <Setter Property="Foreground" Value="#5B21B6"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="FontWeight" Value="Bold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="IsTabStop" Value="False"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="CompactBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="6"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="CompactBorder" Property="Background" Value="#EDE9FE"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="CompactBorder" Property="Background" Value="#DDD6FE"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="CompactBorder" Property="Opacity" Value="0.4"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="DailyPrimaryButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource SettingsPrimaryButtonStyle}">
+                <Setter Property="Height" Value="42"/>
+                <Setter Property="Padding" Value="20,0"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsSaved}" Value="True">
+                        <Setter Property="IsEnabled" Value="False"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="DailySecondaryButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource SettingsSecondaryButtonStyle}">
+                <Setter Property="Height" Value="42"/>
+                <Setter Property="Padding" Value="14,0"/>
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid Margin="24">
+    <Grid Background="#F8FAFC">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>   <!-- Header -->
-            <RowDefinition Height="*"/>      <!-- DataGrid -->
-            <RowDefinition Height="Auto"/>   <!-- Summary -->
-            <RowDefinition Height="Auto"/>   <!-- Observation -->
-            <RowDefinition Height="Auto"/>   <!-- Buttons -->
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- ═══════════════════════════════════════════
-             1. HEADER CARD
-             ═══════════════════════════════════════════ -->
-        <Border Grid.Row="0"
-                Background="{DynamicResource MaterialDesignCardBackground}"
+        <!-- Fixed header: title, blind-toggle, reload and navigation -->
+        <Grid Grid.Row="0" Margin="24,20,24,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Width="42" Height="42" CornerRadius="10" Background="#EDE9FE"
+                        VerticalAlignment="Center" Margin="0,0,12,0">
+                    <materialDesign:PackIcon Kind="CashRegister"
+                                             Width="24" Height="24"
+                                             Foreground="#5B21B6"
+                                             HorizontalAlignment="Center"
+                                             VerticalAlignment="Center"/>
+                </Border>
+
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Cierre Diario y Arqueo de Caja"
+                               AutomationProperties.AutomationId="DailyClosure_Title"
+                               FontSize="22"
+                               FontWeight="Bold"
+                               Foreground="#0F172A"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Text="Conteo físico, declaración por método y cierre de caja del turno."
+                               FontSize="12"
+                               Foreground="#64748B"
+                               Margin="0,3,0,0"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Background="#FFFFFF"
+                        BorderBrush="#E2E8F0"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="10,5"
+                        Margin="0,0,10,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="ShieldLock"
+                                                 Width="17" Height="17"
+                                                 Foreground="#5B21B6"
+                                                 VerticalAlignment="Center"/>
+                        <TextBlock Text="Cierre a Ciegas"
+                                   Margin="6,0,7,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="#334155"
+                                   ToolTip="Oculta los montos esperados del sistema para obligar al conteo físico a ciegas"/>
+                        <ToggleButton Style="{StaticResource DailyBlindToggleStyle}"
+                                      IsChecked="{Binding IsBlindClosing, Mode=TwoWay}"
+                                      IsEnabled="{Binding CanToggleBlindClosing}"
+                                      ToolTip="Activar o desactivar el modo de arqueo a ciegas"/>
+                    </StackPanel>
+                </Border>
+
+                <Button Style="{StaticResource DailySecondaryButtonStyle}"
+                        AutomationProperties.AutomationId="DailyClosure_RefreshButton"
+                        Command="{Binding LoadExpectedTotalsCommand}"
+                        Height="38"
+                        Padding="12,0"
+                        Margin="0,0,8,0"
+                        ToolTip="Recargar los totales esperados desde la base de datos">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Refresh" Width="16" Height="16" VerticalAlignment="Center"/>
+                        <TextBlock Text="Recargar" Margin="6,0,0,0" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Button>
+
+                <Button Style="{StaticResource SidebarMenuButtonStyle}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Single scroll region: KPIs, methods and reconciliation cards scroll together -->
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Focusable="False"
+                      Padding="0,0,0,24">
+            <StackPanel Margin="24,0,24,0">
+                <ProgressBar Height="3"
+                             IsIndeterminate="True"
+                             Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
+                             Margin="0,0,0,12"/>
+
+                <!-- KPI row: three direct cards, no wrapper container -->
+                <Grid Margin="0,0,0,16"
+                      Visibility="{Binding IsBlindClosing, Converter={StaticResource InverseBoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource DailyKpiCardStyle}" Margin="0,0,7,0">
+                        <Grid>
+                            <Border Style="{StaticResource DailyKpiAccentStyle}" Background="#6D28D9"/>
+                            <StackPanel Margin="20,14,18,14" VerticalAlignment="Center">
+                                <TextBlock Text="ESPERADO EN CAJA"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"/>
+                                <TextBlock Text="{Binding TotalExpectedBsS, Converter={StaticResource LocalAmountConverter}}"
+                                           AutomationProperties.AutomationId="DailyClosure_ExpectedTotalText"
+                                           FontSize="24"
+                                           FontWeight="Bold"
+                                           Foreground="#0F172A"
+                                           Margin="0,4,0,0"
+                                           Typography.NumeralAlignment="Tabular"
+                                           Visibility="{Binding IsBlindClosing, Converter={StaticResource InverseBoolToVis}}"/>
+                                <Border Background="#F1F5F9"
+                                        CornerRadius="6"
+                                        Padding="8,4"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,4,0,0"
+                                        Visibility="{Binding IsBlindClosing, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="LockOutline" Width="13" Height="13"
+                                                                 Foreground="#64748B" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Oculto en cierre a ciegas"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#64748B"
+                                                   Margin="5,0,0,0"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource DailyKpiCardStyle}" Margin="7,0">
+                        <Grid>
+                            <Border Style="{StaticResource DailyKpiAccentStyle}" Background="#334155"/>
+                            <StackPanel Margin="20,14,18,14" VerticalAlignment="Center">
+                                <TextBlock Text="DECLARADO EN CAJA"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"/>
+                                <TextBlock Text="{Binding TotalActualBsS, Converter={StaticResource LocalAmountConverter}}"
+                                           AutomationProperties.AutomationId="DailyClosure_ActualTotalText"
+                                           FontSize="24"
+                                           FontWeight="Bold"
+                                           Foreground="#0F172A"
+                                           Margin="0,4,0,0"
+                                           Typography.NumeralAlignment="Tabular"/>
+                                <TextBlock Text="{Binding DeclaredMethodsSummary}"
+                                           FontSize="11"
+                                           Foreground="#64748B"
+                                           Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="2"
+                            Background="{Binding DifferenceCardBackground}"
+                            BorderBrush="{Binding DifferenceCardBorder}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            MinHeight="98"
+                            Margin="7,0,0,0"
+                            Effect="{StaticResource DailyCardShadow}"
+                            SnapsToDevicePixels="True">
+                        <Grid>
+                            <Border Style="{StaticResource DailyKpiAccentStyle}"
+                                    Background="{Binding DifferenceStatusColor}"/>
+                            <StackPanel Margin="20,14,18,14" VerticalAlignment="Center">
+                                <TextBlock Text="DIFERENCIA"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"/>
+                                <TextBlock Text="{Binding TotalDifferenceBsS, Converter={StaticResource LocalAmountConverter}}"
+                                           FontSize="24"
+                                           FontWeight="ExtraBold"
+                                           Foreground="{Binding DifferenceStatusColor}"
+                                           Margin="0,4,0,0"
+                                           Typography.NumeralAlignment="Tabular"
+                                           Visibility="{Binding IsBlindClosing, Converter={StaticResource InverseBoolToVis}}"/>
+                                <Border Background="{Binding DifferenceBadgeBackground}"
+                                        CornerRadius="5"
+                                        Padding="8,3"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,3,0,0"
+                                        Visibility="{Binding IsBlindClosing, Converter={StaticResource InverseBoolToVis}}">
+                                    <TextBlock Text="{Binding DifferenceBadgeLabel}"
+                                               AutomationProperties.AutomationId="DailyClosure_DifferenceStatusLabel"
+                                               FontSize="10.5"
+                                               FontWeight="SemiBold"
+                                               Foreground="{Binding DifferenceBadgeForeground}"/>
+                                </Border>
+                                <Border Background="#F1F5F9"
+                                        CornerRadius="5"
+                                        Padding="8,4"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,4,0,0"
+                                        Visibility="{Binding IsBlindClosing, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="LockOutline" Width="13" Height="13"
+                                                                 Foreground="#64748B" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Se calculará al procesar el cierre"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#64748B"
+                                                   Margin="5,0,0,0"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- Blind mode: declared summary + guidance -->
+                <Grid Margin="0,0,0,16"
+                      Visibility="{Binding IsBlindClosing, Converter={StaticResource BoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="380"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Style="{StaticResource DailyCardStyle}"
+                            Padding="20,16">
+                        <StackPanel>
+                            <TextBlock Text="DECLARADO EN CAJA"
+                                       FontSize="10.5"
+                                       FontWeight="Bold"
+                                       Foreground="#64748B"/>
+                            <TextBlock Text="{Binding TotalActualBsS, Converter={StaticResource LocalAmountConverter}}"
+                                       AutomationProperties.AutomationId="DailyClosure_ActualTotalText"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="#0F172A"
+                                       Margin="0,4,0,0"
+                                       Typography.NumeralAlignment="Tabular"/>
+                            <TextBlock Text="{Binding DeclaredMethodsSummary}"
+                                       FontSize="11"
+                                       Foreground="#64748B"
+                                       Margin="0,3,0,0"/>
+                            <ProgressBar Height="4"
+                                         Minimum="0"
+                                         Maximum="100"
+                                         Value="{Binding DeclaredMethodsProgress, Mode=OneWay}"
+                                         Background="#E2E8F0"
+                                         Foreground="#6D28D9"
+                                         BorderThickness="0"
+                                         Margin="0,10,0,0"
+                                         IsHitTestVisible="False">
+                                <ProgressBar.Template>
+                                    <ControlTemplate TargetType="ProgressBar">
+                                        <Grid>
+                                            <Border x:Name="PART_Track"
+                                                    Background="{TemplateBinding Background}"
+                                                    CornerRadius="2"/>
+                                            <Border x:Name="PART_Indicator"
+                                                    Background="{TemplateBinding Foreground}"
+                                                    CornerRadius="2"
+                                                    HorizontalAlignment="Left"/>
+                                        </Grid>
+                                    </ControlTemplate>
+                                </ProgressBar.Template>
+                            </ProgressBar>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1"
+                            Background="#F5F3FF"
+                            BorderBrush="#DDD6FE"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="20,16"
+                            Margin="16,0,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <materialDesign:PackIcon Kind="ShieldLock"
+                                                     Width="24" Height="24"
+                                                     Foreground="#6D28D9"
+                                                     VerticalAlignment="Top"/>
+                            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                <TextBlock Text="Modo Cierre a Ciegas activo"
+                                           FontSize="14"
+                                           FontWeight="SemiBold"
+                                           Foreground="#5B21B6"/>
+                                <TextBlock Text="Ingresa los montos contados en efectivo y los cierres de lote. Las diferencias frente al sistema se calcularán al procesar el cierre."
+                                           FontSize="12.5"
+                                           Foreground="#64748B"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <!-- Methods card: ItemsControl only, no nested scrollbar -->
+                <Border Style="{StaticResource DailyCardStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0"
+                                BorderBrush="#E2E8F0"
+                                BorderThickness="0,0,0,1"
+                                Padding="24,14">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Métodos de pago"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Foreground="#0F172A"/>
+                                    <TextBlock Text="Esperado, declarado y diferencia por método de pago."
+                                               FontSize="11.5"
+                                               Foreground="#64748B"
+                                               Margin="0,2,0,0"
+                                               Visibility="{Binding IsBlindClosing, Converter={StaticResource InverseBoolToVis}}"/>
+                                    <TextBlock Text="Ingresa el total contado o cerrado en lote para cada método de pago."
+                                               FontSize="11.5"
+                                               Foreground="#64748B"
+                                               Margin="0,2,0,0"
+                                               Visibility="{Binding IsBlindClosing, Converter={StaticResource BoolToVis}}"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Background="#F5F3FF"
+                                            BorderBrush="#DDD6FE"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="8,4">
+                                        <TextBlock Text="{Binding DetailRows.Count, StringFormat='{}{0} métodos'}"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#5B21B6"/>
+                                    </Border>
+                                    <Button Style="{StaticResource DailySecondaryButtonStyle}"
+                                            Height="30"
+                                            Padding="10,0"
+                                            Margin="8,0,0,0"
+                                            Command="{Binding EqualizeAllCommand}"
+                                            IsEnabled="{Binding CanEqualize}"
+                                            Visibility="{Binding IsBlindClosing, Converter={StaticResource InverseBoolToVis}}"
+                                            ToolTip="Copiar cada esperado al declarado">
+                                        <StackPanel Orientation="Horizontal">
+                                            <materialDesign:PackIcon Kind="CheckAll" Width="14" Height="14" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Igualar todo" Margin="5,0,0,0" VerticalAlignment="Center" FontSize="11.5"/>
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="1" Background="#F8FAFC" Height="38">
+                            <Grid Margin="24,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" MinWidth="240"/>
+                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='160|0'}"/>
+                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='220|240'}"/>
+                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='44|0'}"/>
+                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='175|0'}"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0"
+                                           Text="MÉTODO DE PAGO"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Left"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='ESPERADO ({0})'}"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"
+                                           TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"/>
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='DECLARADO ({0})'}"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"
+                                           TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,12,0"/>
+                                <TextBlock Grid.Column="3" Text=""
+                                           FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
+                                <TextBlock Grid.Column="4"
+                                           Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='DIFERENCIA ({0})'}"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"
+                                           TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"/>
+                            </Grid>
+                        </Border>
+                        <Grid Grid.Row="2">
+                            <ItemsControl ItemsSource="{Binding DetailRows}" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border x:Name="MethodRow"
+                                                Background="#FFFFFF"
+                                                BorderBrush="#E2E8F0"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="24,10"
+                                                MinHeight="58">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" MinWidth="240"/>
+                                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='160|0'}"/>
+                                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='220|240'}"/>
+                                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='44|0'}"/>
+                                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='175|0'}"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0"
+                                                            Orientation="Horizontal"
+                                                            VerticalAlignment="Center">
+                                                    <Border Width="30" Height="30" CornerRadius="8"
+                                                            Background="#F5F3FF" Margin="0,0,9,0">
+                                                        <materialDesign:PackIcon Kind="WalletOutline"
+                                                                                 Width="16" Height="16"
+                                                                                 Foreground="#6D28D9"
+                                                                                 HorizontalAlignment="Center"
+                                                                                 VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding PaymentMethodName}"
+                                                               FontSize="13"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="#0F172A"
+                                                               VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding ExpectedAmountBsS, Converter={StaticResource LocalNumberConverter}}"
+                                                           FontSize="13"
+                                                           FontWeight="Medium"
+                                                           Foreground="#334155"
+                                                           TextAlignment="Right"
+                                                           VerticalAlignment="Center"
+                                                           Typography.NumeralAlignment="Tabular"
+                                                           Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"/>
+
+                                                <Border Grid.Column="2"
+                                                        Style="{StaticResource DailyInputFrameStyle}"
+                                                        Margin="16,0,0,0"
+                                                        HorizontalAlignment="Stretch">
+                                                    <Grid>
+                                                        <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol}"
+                                                                   FontSize="11"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#94A3B8"
+                                                                   VerticalAlignment="Center"
+                                                                   Margin="10,0,0,0"
+                                                                   IsHitTestVisible="False"/>
+                                                        <TextBox TextAlignment="Right"
+                                                                 BorderThickness="0"
+                                                                 Background="Transparent"
+                                                                 Padding="30,0,12,0"
+                                                                 FontWeight="Bold"
+                                                                 FontSize="13"
+                                                                 Foreground="#0F172A"
+                                                                 CaretBrush="#6D28D9"
+                                                                 HorizontalAlignment="Stretch"
+                                                                 Typography.NumeralAlignment="Tabular"
+                                                                 GotKeyboardFocus="AmountInput_GotKeyboardFocus"
+                                                                 PreviewKeyDown="AmountInput_PreviewKeyDown">
+                                                            <i:Interaction.Behaviors>
+                                                                <behaviors:NumericCalculatorBehavior Value="{Binding ActualAmountBsS, Mode=TwoWay}"/>
+                                                            </i:Interaction.Behaviors>
+                                                        </TextBox>
+                                                    </Grid>
+                                                </Border>
+
+                                                <Button Grid.Column="3"
+                                                        Content="="
+                                                        Width="30"
+                                                        Height="30"
+                                                        Style="{StaticResource DailyCompactButtonStyle}"
+                                                        HorizontalAlignment="Center"
+                                                        Command="{Binding DataContext.EqualizeRowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="Igualar esta fila al esperado"
+                                                        Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"/>
+
+                                                <StackPanel Grid.Column="4"
+                                                            VerticalAlignment="Center"
+                                                            HorizontalAlignment="Right"
+                                                            Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}">
+                                                    <TextBlock Text="{Binding DifferenceDisplay}"
+                                                               FontSize="13"
+                                                               FontWeight="Bold"
+                                                               Foreground="{Binding DifferenceColor}"
+                                                               TextAlignment="Right"
+                                                               Typography.NumeralAlignment="Tabular"/>
+                                                    <Border Background="{Binding DifferenceBadgeBackground}"
+                                                            CornerRadius="4"
+                                                            Padding="6,2"
+                                                            HorizontalAlignment="Right"
+                                                            Margin="0,3,0,0"
+                                                            Visibility="{Binding ShowDifferenceBadge, Converter={StaticResource BoolToVis}}">
+                                                        <TextBlock Text="{Binding DifferenceStatusText}"
+                                                                   FontSize="10"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="{Binding DifferenceBadgeForeground}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>                                        <DataTemplate.Triggers>
+                                            <Trigger SourceName="MethodRow" Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="MethodRow" Property="Background" Value="#F8FAFC"/>
+                                            </Trigger>
+                                        </DataTemplate.Triggers>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Border Padding="20,24"
+                                    Visibility="{Binding IsEmptyStateVisible, Converter={StaticResource BoolToVis}}">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="WalletOutline"
+                                                             Width="28" Height="28"
+                                                             Foreground="#94A3B8"
+                                                             HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Sin métodos de pago cargados"
+                                               FontSize="12.5"
+                                               FontWeight="SemiBold"
+                                               Foreground="#64748B"
+                                               HorizontalAlignment="Center"
+                                               Margin="0,8,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Conteo USD: solo si el metodo USD tuvo cobros en la jornada -->
+                        <Border Grid.Row="3"
+                                Background="#FFFFFF"
+                                BorderBrush="#E2E8F0"
+                                BorderThickness="0,1,0,0"
+                                Padding="24,16"
+                                Visibility="{Binding ShowUsdCount, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="220"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Border Width="30" Height="30" CornerRadius="8" Background="#F5F3FF" Margin="0,0,9,0">
+                                            <materialDesign:PackIcon Kind="WalletOutline"
+                                                                     Width="16" Height="16"
+                                                                     Foreground="#6D28D9"
+                                                                     HorizontalAlignment="Center"
+                                                                     VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel>
+                                            <TextBlock Text="Efectivo USD"
+                                                       FontSize="13"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#0F172A"/>
+                                            <TextBlock Text="Conteo físico obligatorio"
+                                                       FontSize="11"
+                                                       Foreground="#64748B"
+                                                       Margin="0,1,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <Border Grid.Column="1"
+                                            Style="{StaticResource DailyInputFrameStyle}"
+                                            Height="36"
+                                            VerticalAlignment="Center">
+                                        <Grid>
+                                            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol}"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#94A3B8"
+                                                       VerticalAlignment="Center"
+                                                       Margin="10,0,0,0"
+                                                       IsHitTestVisible="False"/>
+                                            <TextBox Text="{Binding ActualClosingBalanceUsdText, UpdateSourceTrigger=PropertyChanged}"
+                                                     AutomationProperties.AutomationId="DailyClosure_UsdCountText"
+                                                     TextAlignment="Right"
+                                                     BorderThickness="0"
+                                                     Background="Transparent"
+                                                     Padding="30,0,10,0"
+                                                     FontWeight="Bold"
+                                                     FontSize="13"
+                                                     Foreground="#0F172A"
+                                                     CaretBrush="#6D28D9"
+                                                     Typography.NumeralAlignment="Tabular"
+                                                     GotKeyboardFocus="AmountInput_GotKeyboardFocus"
+                                                     PreviewKeyDown="AmountInput_PreviewKeyDown"
+                                                     LostKeyboardFocus="UsdInput_LostKeyboardFocus"/>
+                                            <TextBlock Text="0,00"
+                                                       FontSize="13"
+                                                       FontWeight="Bold"
+                                                       Foreground="#94A3B8"
+                                                       HorizontalAlignment="Right"
+                                                       VerticalAlignment="Center"
+                                                       Margin="0,0,10,0"
+                                                       IsHitTestVisible="False">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding ActualClosingBalanceUsdText}" Value="">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+
+                                <TextBlock Text="Se recibieron pagos en USD durante la jornada. Ingrese el conteo físico; no puede quedar vacío."
+                                           FontSize="11"
+                                           Foreground="#64748B"
+                                           TextWrapping="Wrap"
+                                           Margin="0,8,0,8"/>
+
+                                <StackPanel Orientation="Horizontal"
+                                            Margin="0,2,0,0"
+                                            Visibility="{Binding ShowUsdReconciliation, Converter={StaticResource BoolToVis}}">
+                                    <Border Background="#F8FAFC"
+                                            BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="8,5"
+                                            Margin="0,0,6,0">
+                                        <StackPanel>
+                                            <TextBlock Text="Esperado USD"
+                                                       FontSize="9.5"
+                                                       FontWeight="Bold"
+                                                       Foreground="#64748B"/>
+                                            <TextBlock Text="{Binding ExpectedClosingBalanceUsdDisplay}"
+                                                       AutomationProperties.AutomationId="DailyClosure_ExpectedUsdText"
+                                                       FontSize="13"
+                                                       FontWeight="Bold"
+                                                       Foreground="#5B21B6"
+                                                       Margin="0,2,0,0"
+                                                       Typography.NumeralAlignment="Tabular"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="#F8FAFC"
+                                            BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="8,5">
+                                        <StackPanel>
+                                            <TextBlock Text="Diferencia USD"
+                                                       FontSize="9.5"
+                                                       FontWeight="Bold"
+                                                       Foreground="#64748B"/>
+                                            <TextBlock Text="{Binding DifferenceUsdDisplay}"
+                                                       AutomationProperties.AutomationId="DailyClosure_DifferenceUsdText"
+                                                       FontSize="13"
+                                                       FontWeight="Bold"
+                                                       Foreground="#0F172A"
+                                                       Margin="0,2,0,0"
+                                                       Typography.NumeralAlignment="Tabular"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Observaciones del arqueo -->
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Style="{StaticResource DailyCardStyle}" Padding="20">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Width="30" Height="30" CornerRadius="8" Background="#F5F3FF" Margin="0,0,9,0">
+                                        <materialDesign:PackIcon Kind="FileDocumentOutline"
+                                                                 Width="16" Height="16"
+                                                                 Foreground="#6D28D9"
+                                                                 HorizontalAlignment="Center"
+                                                                 VerticalAlignment="Center"/>
+                                    </Border>
+                                    <StackPanel>
+                                        <TextBlock Text="Observaciones del arqueo"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#0F172A"/>
+                                        <TextBlock Text="Novedades, incidencias o notas del turno"
+                                                   FontSize="11"
+                                                   Foreground="#64748B"
+                                                   Margin="0,1,0,0"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding ObservationCounterText}"
+                                           FontSize="11"
+                                           Foreground="#64748B"
+                                           VerticalAlignment="Center"
+                                           Typography.NumeralAlignment="Tabular"/>
+                            </Grid>
+
+                            <Border Style="{StaticResource DailyObservationFrameStyle}" Margin="0,10,0,0">
+                                <Grid>
+                                    <TextBox Text="{Binding Observation, UpdateSourceTrigger=PropertyChanged}"
+                                             AcceptsReturn="True"
+                                             TextWrapping="Wrap"
+                                             MinHeight="80"
+                                             MaxHeight="130"
+                                             MaxLength="500"
+                                             materialDesign:TextFieldAssist.CharacterCounterVisibility="Collapsed"
+                                             FontSize="13"
+                                             Foreground="#0F172A"
+                                             BorderThickness="0"
+                                             Background="Transparent"
+                                             Padding="10,8"
+                                             VerticalScrollBarVisibility="Hidden"
+                                             CaretBrush="#6D28D9"/>
+                                    <TextBlock Text="Escribe aquí cualquier novedad del arqueo..."
+                                               FontSize="12"
+                                               Foreground="#94A3B8"
+                                               Margin="12,8,0,0"
+                                               IsHitTestVisible="False">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Observation}" Value="{x:Null}">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Observation}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Sticky footer: status and primary actions -->
+        <Border Grid.Row="2"
+                Background="#FFFFFF"
                 BorderBrush="#E2E8F0"
-                BorderThickness="1"
-                CornerRadius="8"
-                Padding="18,14"
-                Margin="0,0,0,16"
-                Effect="{StaticResource EnterpriseCardShadow}">
+                BorderThickness="0,1,0,0"
+                Padding="24,12">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="CashRegister"
-                                                 Width="24" Height="24"
-                                                 Foreground="#5E35B1"
-                                                 VerticalAlignment="Center"
-                                                 Margin="0,0,8,0"/>
-                        <TextBlock Text="Cierre Diario y Arqueo de Caja"
-                                   AutomationProperties.AutomationId="DailyClosure_Title"
-                                   FontSize="18"
-                                   Foreground="#1E293B"
-                                   FontWeight="Bold"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <TextBlock Text="Conteo físico de dinero en efectivo y arqueo de comprobantes por método de pago."
-                               FontSize="12"
-                               Foreground="{DynamicResource MaterialDesignBodyLight}"
-                               Margin="32,2,0,0"/>
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="0,0,16,0">
+                    <Ellipse Width="8" Height="8"
+                             Fill="{Binding FooterStatusColor}"
+                             VerticalAlignment="Center"
+                             Margin="0,0,8,0"/>
+                    <TextBlock Text="{Binding FooterStatusText}"
+                               FontSize="11.5"
+                               FontWeight="SemiBold"
+                               Foreground="{Binding FooterStatusColor}"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- Blind Closing Toggle con Tooltip de Información -->
-                    <Border Background="#F1F5F9"
-                            BorderBrush="#E2E8F0"
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Padding="10,6"
-                            Margin="0,0,12,0">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <materialDesign:PackIcon Kind="ShieldLock"
-                                                     Width="18" Height="18"
-                                                     VerticalAlignment="Center"
-                                                     Foreground="#5E35B1"/>
-                            <TextBlock Text="Cierre a Ciegas"
-                                       Margin="6,0,4,0"
-                                       VerticalAlignment="Center"
-                                       FontWeight="SemiBold"
-                                       FontSize="12"
-                                       Foreground="#334155"/>
-                            <materialDesign:PackIcon Kind="InformationOutline"
-                                                     Width="15" Height="15"
-                                                     VerticalAlignment="Center"
-                                                     Foreground="#64748B"
-                                                     Margin="0,0,8,0"
-                                                     ToolTip="Oculta los montos esperados del sistema para obligar al conteo físico a ciegas"/>
-                            <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                                          IsChecked="{Binding IsBlindClosing, Mode=TwoWay}"
-                                          IsEnabled="{Binding CanToggleBlindClosing}"
-                                          ToolTip="Activar o desactivar modo de arqueo a ciegas"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Reload Button -->
-                    <Button Style="{StaticResource MaterialDesignOutlinedButton}"
-                            AutomationProperties.AutomationId="DailyClosure_RefreshButton"
-                            Command="{Binding LoadExpectedTotalsCommand}"
-                            Height="36"
-                            Padding="12,0"
-                            BorderBrush="#CBD5E1"
-                            ToolTip="Recargar totales esperados desde la base de datos">
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center">
+                    <Button Style="{StaticResource DailySecondaryButtonStyle}"
+                            Command="{Binding ExportClosureReceiptCommand}"
+                            Margin="0,0,10,0"
+                            ToolTip="Exportar o guardar el comprobante de cierre de caja">
                         <StackPanel Orientation="Horizontal">
-                            <materialDesign:PackIcon Kind="Refresh" Width="16" Height="16" VerticalAlignment="Center"/>
-                            <TextBlock Text="Recargar" Margin="6,0,0,0" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"/>
+                            <materialDesign:PackIcon Kind="FileDownload" Width="17" Height="17" VerticalAlignment="Center"/>
+                            <TextBlock Text="Exportar Comprobante" Margin="7,0,0,0" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"/>
                         </StackPanel>
                     </Button>
 
-                    <!-- Navigation / Menu Button -->
-                    <Button Style="{DynamicResource MaterialDesignIconButton}"
-                            Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                            CommandParameter="{x:Static Dock.Right}"
-                            Margin="8,0,0,0"
-                            Width="36" Height="36"
-                            ToolTip="Abrir Menú Principal">
-                        <materialDesign:PackIcon Kind="Menu" Width="22" Height="22" Foreground="{DynamicResource MaterialDesignBodyLight}"/>
+                    <Button Style="{StaticResource DailyPrimaryButtonStyle}"
+                            Command="{Binding ConfirmClosureCommand}"
+                            AutomationProperties.AutomationId="DailyClosure_ConfirmButton"
+                            MinWidth="230"
+                            ToolTip="Confirmar y procesar el cierre del turno">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="CheckCircle" Width="18" Height="18" VerticalAlignment="Center"/>
+                            <TextBlock Text="Confirmar y Procesar Cierre" Margin="7,0,0,0" VerticalAlignment="Center" FontWeight="Bold" FontSize="12"/>
+                        </StackPanel>
                     </Button>
                 </StackPanel>
             </Grid>
         </Border>
-
-        <!-- ═══════════════════════════════════════════
-             LOADING INDICATOR
-             ═══════════════════════════════════════════ -->
-        <ProgressBar Grid.Row="1"
-                     IsIndeterminate="True"
-                     VerticalAlignment="Top"
-                     Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
-                     Margin="0,0,0,8"/>
-
-        <!-- ═══════════════════════════════════════════
-             2. DATAGRID MODERNO (Sin líneas verticales, headers gris tenue)
-             ═══════════════════════════════════════════ -->
-        <Border Grid.Row="1"
-                Background="{DynamicResource MaterialDesignCardBackground}"
-                BorderBrush="#E2E8F0"
-                BorderThickness="1"
-                CornerRadius="8"
-                Padding="0"
-                Effect="{StaticResource EnterpriseCardShadow}">
-            <controls:PerformantDataGrid ItemsSource="{Binding DetailRows}"
-                      AutoGenerateColumns="False"
-                      CanUserAddRows="False"
-                      CanUserDeleteRows="False"
-                      CanUserSortColumns="False"
-                      SelectionMode="Single"
-                      IsReadOnly="False"
-                      HeadersVisibility="Column"
-                      GridLinesVisibility="Horizontal"
-                      HorizontalGridLinesBrush="#E2E8F0"
-                      VerticalGridLinesBrush="Transparent"
-                      materialDesign:DataGridAssist.CellPadding="16 10"
-                      materialDesign:DataGridAssist.ColumnHeaderPadding="16 10"
-                      VerticalScrollBarVisibility="Auto"
-                      Background="#FFFFFF"
-                      RowBackground="#FFFFFF"
-                      BorderThickness="0">
-
-                <controls:PerformantDataGrid.ColumnHeaderStyle>
-                    <Style TargetType="DataGridColumnHeader">
-                        <Setter Property="Background" Value="#F8FAFC"/>
-                        <Setter Property="Foreground" Value="#475569"/>
-                        <Setter Property="FontWeight" Value="SemiBold"/>
-                        <Setter Property="FontSize" Value="11"/>
-                        <Setter Property="Padding" Value="16,12"/>
-                        <Setter Property="BorderBrush" Value="#E2E8F0"/>
-                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
-                        <Setter Property="HorizontalContentAlignment" Value="Left"/>
-                    </Style>
-                </controls:PerformantDataGrid.ColumnHeaderStyle>
-
-                <controls:PerformantDataGrid.Columns>
-                    <!-- Col 1: Método de Pago (Read-only) -->
-                    <DataGridTextColumn Header="MÉTODO DE PAGO"
-                                        Binding="{Binding PaymentMethodName}"
-                                        IsReadOnly="True"
-                                        Width="1.2*">
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="FontWeight" Value="SemiBold"/>
-                                <Setter Property="FontSize" Value="13"/>
-                                <Setter Property="Foreground" Value="#1E293B"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-
-                    <!-- Col 2: Monto Esperado (Read-only, hidden if blind) -->
-                    <DataGridTextColumn Header="MONTO ESPERADO (BS.S)"
-                                        Binding="{Binding ExpectedAmountBsS, StringFormat={}{0:N2}}"
-                                        IsReadOnly="True"
-                                        Width="*"
-                                        x:Name="ExpectedColumn">
-                        <DataGridTextColumn.HeaderStyle>
-                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
-                                <Setter Property="HorizontalContentAlignment" Value="Right"/>
-                            </Style>
-                        </DataGridTextColumn.HeaderStyle>
-                        <DataGridTextColumn.ElementStyle>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="FontWeight" Value="Medium"/>
-                                <Setter Property="FontSize" Value="13"/>
-                                <Setter Property="Foreground" Value="#475569"/>
-                                <Setter Property="TextAlignment" Value="Right"/>
-                                <Setter Property="VerticalAlignment" Value="Center"/>
-                                <Setter Property="Typography.NumeralAlignment" Value="Tabular"/>
-                            </Style>
-                        </DataGridTextColumn.ElementStyle>
-                    </DataGridTextColumn>
-
-                    <!-- Col 3: Monto Declarado (Input Recuadro con Focus Morado) -->
-                    <DataGridTemplateColumn Header="MONTO DECLARADO (BS.S)" Width="*">
-                        <DataGridTemplateColumn.HeaderStyle>
-                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
-                                <Setter Property="HorizontalContentAlignment" Value="Right"/>
-                            </Style>
-                        </DataGridTemplateColumn.HeaderStyle>
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <Border x:Name="InputContainer"
-                                        Background="#F1F5F9"
-                                        BorderBrush="#E2E8F0"
-                                        BorderThickness="1.5"
-                                        CornerRadius="4"
-                                        Padding="4,2"
-                                        Margin="0,2"
-                                        HorizontalAlignment="Stretch"
-                                        VerticalAlignment="Center">
-                                    <TextBox TextAlignment="Right"
-                                             materialDesign:HintAssist.Hint="0.00"
-                                             MinWidth="120"
-                                             HorizontalAlignment="Stretch"
-                                             VerticalAlignment="Center"
-                                             BorderThickness="0"
-                                             Background="Transparent"
-                                             Padding="6,4"
-                                             FontWeight="Bold"
-                                             FontSize="13"
-                                             Foreground="#1E293B"
-                                             Typography.NumeralAlignment="Tabular">
-                                        <i:Interaction.Behaviors>
-                                            <behaviors:NumericCalculatorBehavior Value="{Binding ActualAmountBsS, Mode=TwoWay}" />
-                                        </i:Interaction.Behaviors>
-                                    </TextBox>
-                                </Border>
-                                <DataTemplate.Triggers>
-                                    <Trigger SourceName="InputContainer" Property="IsKeyboardFocusWithin" Value="True">
-                                        <Setter TargetName="InputContainer" Property="BorderBrush" Value="#5E35B1"/>
-                                        <Setter TargetName="InputContainer" Property="Background" Value="#FFFFFF"/>
-                                    </Trigger>
-                                </DataTemplate.Triggers>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-
-                    <!-- Col 4: Diferencia (Color Semántico: Rojo, Verde o Gris) -->
-                    <DataGridTemplateColumn Header="DIFERENCIA (BS.S)"
-                                            Width="*"
-                                            x:Name="DifferenceColumn">
-                        <DataGridTemplateColumn.HeaderStyle>
-                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
-                                <Setter Property="HorizontalContentAlignment" Value="Right"/>
-                            </Style>
-                        </DataGridTemplateColumn.HeaderStyle>
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding DifferenceDisplay}"
-                                           Foreground="{Binding DifferenceColor}"
-                                           FontWeight="Bold"
-                                           FontSize="13"
-                                           VerticalAlignment="Center"
-                                           TextAlignment="Right"
-                                           Typography.NumeralAlignment="Tabular"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                </controls:PerformantDataGrid.Columns>
-            </controls:PerformantDataGrid>
-        </Border>
-
-        <!-- ═══════════════════════════════════════════
-             3. SUMMARY TOTALS (Tarjetas Unificadas)
-             ═══════════════════════════════════════════ -->
-        <Border Grid.Row="2"
-                Background="{DynamicResource MaterialDesignCardBackground}"
-                BorderBrush="#E2E8F0"
-                BorderThickness="1"
-                CornerRadius="8"
-                Padding="16,14"
-                Margin="0,16,0,0"
-                Effect="{StaticResource EnterpriseCardShadow}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <!-- Total Esperado -->
-                <Border Grid.Column="0"
-                        Background="#F8FAFC"
-                        BorderBrush="#E2E8F0"
-                        BorderThickness="1"
-                        CornerRadius="8"
-                        Padding="16,12"
-                        Margin="0,0,6,0"
-                        x:Name="ExpectedTotalPanel">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="TOTAL ESPERADO"
-                                   FontSize="11" FontWeight="Bold"
-                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                   HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding TotalExpectedBsS, StringFormat=Bs.S {0:N2}}"
-                                   AutomationProperties.AutomationId="DailyClosure_ExpectedTotalText"
-                                   FontSize="20" FontWeight="Bold"
-                                   HorizontalAlignment="Center"
-                                   Foreground="#5E35B1"
-                                   Margin="0,4,0,0"
-                                   Typography.NumeralAlignment="Tabular"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- Total Declarado -->
-                <Border Grid.Column="1"
-                        Background="#F8FAFC"
-                        BorderBrush="#E2E8F0"
-                        BorderThickness="1"
-                        CornerRadius="8"
-                        Padding="16,12"
-                        Margin="4,0,4,0">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="TOTAL DECLARADO"
-                                   FontSize="11" FontWeight="Bold"
-                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                   HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding TotalActualBsS, StringFormat=Bs.S {0:N2}}"
-                                   AutomationProperties.AutomationId="DailyClosure_ActualTotalText"
-                                   FontSize="20" FontWeight="Bold"
-                                   HorizontalAlignment="Center"
-                                   Foreground="#1E293B"
-                                   Margin="0,4,0,0"
-                                   Typography.NumeralAlignment="Tabular"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- Diferencia Total (Tarjeta con Fondo y Borde Semántico Reactivo) -->
-                <Border Grid.Column="2"
-                        Background="{Binding DifferenceCardBackground}"
-                        BorderBrush="{Binding DifferenceCardBorder}"
-                        BorderThickness="1.5"
-                        CornerRadius="8"
-                        Padding="16,12"
-                        Margin="6,0,0,0"
-                        x:Name="DifferenceTotalPanel">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="DIFERENCIA TOTAL"
-                                   FontSize="11" FontWeight="Bold"
-                                   Foreground="{DynamicResource MaterialDesignBodyLight}"
-                                   HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding TotalDifferenceBsS, StringFormat=Bs.S {0:N2}}"
-                                   FontSize="20" FontWeight="ExtraBold"
-                                   HorizontalAlignment="Center"
-                                   Foreground="{Binding DifferenceStatusColor}"
-                                   Margin="0,4,0,0"
-                                   Typography.NumeralAlignment="Tabular"/>
-                        <Border CornerRadius="4"
-                                Padding="8,3"
-                                Margin="0,4,0,0"
-                                HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding DifferenceStatusLabel}"
-                                       AutomationProperties.AutomationId="DailyClosure_DifferenceStatusLabel"
-                                       FontSize="11"
-                                       FontWeight="Bold"
-                                       Foreground="{Binding DifferenceStatusColor}"/>
-                        </Border>
-                    </StackPanel>
-                </Border>
-            </Grid>
-        </Border>
-
-        <!-- ═══════════════════════════════════════════
-             4. OBSERVATION TEXTAREA (Recuadro Real + Contador)
-             ═══════════════════════════════════════════ -->
-        <Border Grid.Row="3"
-                Background="#FFFFFF"
-                BorderBrush="#CBD5E1"
-                BorderThickness="1"
-                CornerRadius="8"
-                Padding="14,10"
-                Margin="0,16,0,0"
-                Effect="{StaticResource EnterpriseCardShadow}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <TextBlock Grid.Row="0"
-                           Text="Observaciones / Notas del Arqueo (opcional)"
-                           FontSize="11" FontWeight="SemiBold"
-                           Foreground="{DynamicResource MaterialDesignBodyLight}"
-                           Margin="0,0,0,6"/>
-
-                <TextBox Grid.Row="1"
-                         Text="{Binding Observation, UpdateSourceTrigger=PropertyChanged}"
-                         AcceptsReturn="True"
-                         TextWrapping="Wrap"
-                         MinHeight="54"
-                         MaxLength="500"
-                         FontSize="13"
-                         Foreground="#1E293B"
-                         BorderThickness="0"
-                         Background="Transparent"
-                         VerticalScrollBarVisibility="Auto"/>
-
-                <TextBlock Grid.Row="2"
-                           Text="{Binding ObservationCounterText}"
-                           FontSize="11"
-                           Foreground="{DynamicResource MaterialDesignBodyLight}"
-                           HorizontalAlignment="Right"
-                           Margin="0,4,0,0"/>
-            </Grid>
-        </Border>
-
-        <!-- ═══════════════════════════════════════════
-             5. FOOTER BUTTONS
-             ═══════════════════════════════════════════ -->
-        <StackPanel Grid.Row="4"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Right"
-                    Margin="0,16,0,0">
-            <!-- Export Receipt Button -->
-            <Button Style="{StaticResource MaterialDesignOutlinedButton}"
-                    Command="{Binding ExportClosureReceiptCommand}"
-                    Margin="0,0,12,0"
-                    Height="46"
-                    Padding="16,0"
-                    BorderBrush="#CBD5E1"
-                    ToolTip="Exportar o guardar el comprobante de cierre de caja">
-                <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="FileDownload" Width="18" Height="18" VerticalAlignment="Center"/>
-                    <TextBlock Text="Exportar Comprobante" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="13"/>
-                </StackPanel>
-            </Button>
-
-            <!-- Confirm Closure Button -->
-            <Button Command="{Binding ConfirmClosureCommand}"
-                    AutomationProperties.AutomationId="DailyClosure_ConfirmButton"
-                    MinWidth="230"
-                    Height="46"
-                    Padding="20,0"
-                    Background="#5E35B1"
-                    BorderBrush="#5E35B1"
-                    Foreground="White">
-                <Button.Resources>
-                    <Style TargetType="Border">
-                        <Setter Property="CornerRadius" Value="8"/>
-                    </Style>
-                </Button.Resources>
-                <Button.Style>
-                    <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignRaisedButton}">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsSaved}" Value="True">
-                                <Setter Property="IsEnabled" Value="False"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </Button.Style>
-                <StackPanel Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="CheckCircle" Width="20" Height="20" VerticalAlignment="Center"/>
-                    <TextBlock Text="Confirmar y Procesar Cierre" Margin="8,0,0,0" VerticalAlignment="Center" FontWeight="Bold" FontSize="13"/>
-                </StackPanel>
-            </Button>
-        </StackPanel>
     </Grid>
 </UserControl>

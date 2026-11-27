@@ -12,6 +12,7 @@ import {
   applyAuthorizationResolution,
   cancelAuthorizationWait,
   createAuthorizationFlowState,
+  createAuthorizationStatusPoller,
   getAuthorizationSettlement,
   getRemainingSeconds,
   isAuthorizationPending,
@@ -265,6 +266,22 @@ export function AuthorizationProvider({ children }) {
     return () => clearInterval(interval);
   }, [flow.phase, flow.expiresAt, expireWait]);
 
+  // Residual 3 (8.188, S4): fallback REST del sondeo de estado. El push de SignalR es la via
+  // primaria; si el socket de esta terminal no esta vivo (hub caido o reconnect en curso), el
+  // GET de estado recupera la resolucion remota (y reemite el token del solicitante) sin esperar
+  // al reconnect. Con socket conectado no se sondea: el evento cierra la espera.
+  useEffect(() => {
+    if (flow.phase !== AUTHORIZATION_PHASES.WAITING) return undefined;
+
+    const poller = createAuthorizationStatusPoller({
+      isHubConnected: () => authorizationHub.isConnected(),
+      // El sondeo es best-effort: un GET fallido no debe romper la espera (se reintenta al tick).
+      recover: () => { recoverStatus().catch(() => {}); },
+    });
+    poller.start();
+    return () => poller.stop();
+  }, [flow.phase, recoverStatus]);
+
   const startWait = useCallback(async ({ context, retry } = {}) => {
     if (!context || typeof retry !== 'function') {
       throw new Error('startWait requiere { context, retry }.');
@@ -311,8 +328,11 @@ export function AuthorizationProvider({ children }) {
     if (!current || !current.resolve) return false;
 
     const phase = flowRef.current.phase;
-    if (phase === AUTHORIZATION_PHASES.GRANTED || phase === AUTHORIZATION_PHASES.LOCAL) {
-      // Ya existe autorizacion y la accion se esta reanudando: cancelar no debe abortarla.
+    if ((phase === AUTHORIZATION_PHASES.GRANTED || phase === AUTHORIZATION_PHASES.LOCAL)
+      && isExecutingRef.current) {
+      // La accion autorizada esta en vuelo: cancelar no debe abortarla. Si la ejecucion fallo
+      // (nada en vuelo, con retryError visible) el operador si puede cerrar la espera: paridad
+      // con el cliente WPF, donde Cancelar sigue disponible en ese estado.
       return false;
     }
 
@@ -325,7 +345,9 @@ export function AuthorizationProvider({ children }) {
     if (phase === AUTHORIZATION_PHASES.EXPIRED) {
       // 8.151 (W2, R5/D5): desestimar la expirada sin reintentar liquida expired.
       settlePending(getAuthorizationSettlement(flowRef.current, AUTHORIZATION_SETTLEMENTS.EXPIRED_DISMISSAL));
-    } else if (phase === AUTHORIZATION_PHASES.WAITING) {
+    } else if (phase === AUTHORIZATION_PHASES.WAITING
+      || phase === AUTHORIZATION_PHASES.GRANTED
+      || phase === AUTHORIZATION_PHASES.LOCAL) {
       settlePending(getAuthorizationSettlement(flowRef.current, AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL));
     }
     // Fase rejected: la promesa ya liquido al llegar el rechazo; el cierre solo oculta el acuse.

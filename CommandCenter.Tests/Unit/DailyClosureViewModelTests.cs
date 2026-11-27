@@ -133,6 +133,101 @@ public class DailyClosureViewModelTests
     }
 
     [Fact]
+    public async Task LoadExpectedTotalsCommand_ExcludesMethodsWithoutActivityInTheJourney()
+    {
+        _closureServiceMock
+            .Setup(s => s.GetExpectedTotalsAsync(It.IsAny<DateTime>()))
+            .ReturnsAsync(new List<ExpectedTotalDto>
+            {
+                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 500m },
+                new() { PaymentMethodId = 2, PaymentMethodName = "Punto de Venta", ExpectedAmountBsS = 0m },
+                new() { PaymentMethodId = 3, PaymentMethodName = "Pago Móvil", ExpectedAmountBsS = 120m }
+            });
+
+        var vm = CreateViewModel();
+        await vm.LoadExpectedTotalsCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, vm.DetailRows.Count);
+        Assert.DoesNotContain(vm.DetailRows, row => row.PaymentMethodId == 2);
+        Assert.Equal(620m, vm.TotalExpectedBsS);
+    }
+
+    [Fact]
+    public async Task EqualizeAllCommand_CopiesExpectedIntoDeclaredAndUpdatesPresentationTotals()
+    {
+        _closureServiceMock
+            .Setup(s => s.GetExpectedTotalsAsync(It.IsAny<DateTime>()))
+            .ReturnsAsync(new List<ExpectedTotalDto>
+            {
+                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo", ExpectedAmountBsS = 500m },
+                new() { PaymentMethodId = 2, PaymentMethodName = "Pago Móvil", ExpectedAmountBsS = 300m }
+            });
+
+        var vm = CreateViewModel();
+        await vm.LoadExpectedTotalsCommand.ExecuteAsync(null);
+
+        vm.EqualizeAllCommand.Execute(null);
+
+        Assert.Equal(800m, vm.TotalActualBsS);
+        Assert.Equal(0m, vm.TotalDifferenceBsS);
+        Assert.Equal("2 de 2 métodos declarados", vm.DeclaredMethodsSummary);
+        Assert.Equal("Caja cuadrada", vm.DifferenceBadgeLabel);
+    }
+
+    [Fact]
+    public void EmptyState_IsOnlyVisibleWhenNotLoadingAndThereAreNoRows()
+    {
+        var vm = CreateViewModel();
+
+        Assert.True(vm.IsEmptyStateVisible);
+
+        vm.IsLoading = true;
+        Assert.False(vm.IsEmptyStateVisible);
+
+        vm.IsLoading = false;
+        Assert.True(vm.IsEmptyStateVisible);
+
+        vm.DetailRows.Add(new ClosureDetailRow(1, "Efectivo", 10m, () => { }));
+        Assert.False(vm.IsEmptyStateVisible);
+    }
+
+    [Fact]
+    public void BlindFooter_ReportsDeclaredProgressAndVioletStatus()
+    {
+        var session = new UserSession();
+        session.CurrentUser = new UserDto { Id = 1, Name = "Supervisor", Role = UserRole.Admin };
+        var vm = CreateViewModel(session);
+        vm.DetailRows.Add(new ClosureDetailRow(1, "Efectivo", 10m, () => { }));
+        vm.DetailRows.Add(new ClosureDetailRow(2, "Pago Móvil", 20m, () => { }));
+        vm.DetailRows.Add(new ClosureDetailRow(3, "Punto de Venta", 30m, () => { }));
+        vm.DetailRows[0].ActualAmountBsS = 10m;
+        vm.DetailRows[1].ActualAmountBsS = 20m;
+
+        vm.IsBlindClosing = true;
+
+        Assert.Equal(2, vm.DeclaredMethodCount);
+        Assert.Equal(3, vm.PaymentMethodCount);
+        Assert.Equal(2d / 3d * 100d, vm.DeclaredMethodsProgress, 3);
+        Assert.Equal("Modo Cierre a Ciegas · 2 de 3 métodos declarados", vm.FooterStatusText);
+        Assert.Equal("#6D28D9", vm.FooterStatusColor);
+    }
+
+    [Fact]
+    public void DifferenceBadge_IsHiddenForEmptyRowsAndShowsCuadradoForEqualAmounts()
+    {
+        var empty = new ClosureDetailRow(1, "Efectivo", 0m, () => { });
+        Assert.False(empty.ShowDifferenceBadge);
+        Assert.Equal("—", empty.DifferenceStatusText);
+
+        var equal = new ClosureDetailRow(2, "Efectivo", 100m, () => { });
+        equal.ActualAmountBsS = 100m;
+
+        Assert.True(equal.ShowDifferenceBadge);
+        Assert.Equal("✓ Cuadrado", equal.DifferenceStatusText);
+        Assert.Equal("#15803D", equal.DifferenceBadgeForeground);
+    }
+
+    [Fact]
     public void BlindClosing_WhenUserIsCashier_DisallowsDisabling()
     {
         var cashierSession = new UserSession();

@@ -449,6 +449,104 @@ public class CashAdvanceTests
     }
 
     [Fact]
+    public async Task CashAdvanceRegisterViewModel_WithSinglePhysicalMethod_SelectsItAndProjectsBalance()
+    {
+        var physicalMethods = new[]
+        {
+            new ClientCashService.PhysicalMethodBalanceClientDto
+            {
+                PaymentMethodId = 10,
+                Name = "Caja Bs.S",
+                CurrencyCode = "VES",
+                CurrencySymbol = "Bs.S",
+                CurrentBalance = 5000m,
+                IsActive = true,
+                CanDispense = true
+            }
+        };
+
+        var vm = new CashAdvanceRegisterViewModel(
+            CreateElectronicMethods(),
+            availableCashLocal: 2000m,
+            exchangeRate: 50m,
+            cashDrawer: CreateAdvanceDrawerMock(5.5m, 10m).Object,
+            physicalCashMethods: physicalMethods);
+
+        await vm.RefreshCommissionAsync();
+        vm.RequestedAmountBsS = 1000m;
+
+        Assert.Same(physicalMethods[0], vm.SelectedDispensedCashMethod);
+        Assert.Equal(4000m, vm.ProjectedBalance);
+        Assert.Contains("Existencia actual", vm.ProjectedBalanceDisplay);
+        Assert.True(vm.HasSufficientDispensedBalance);
+        Assert.True(vm.CanConfirm);
+    }
+
+    [Fact]
+    public async Task CashAdvanceRegisterViewModel_WithInsufficientPhysicalBalance_BlocksConfirmation()
+    {
+        var physicalMethods = new[]
+        {
+            new ClientCashService.PhysicalMethodBalanceClientDto
+            {
+                PaymentMethodId = 11,
+                Name = "Caja USD",
+                CurrencyCode = "USD",
+                CurrencySymbol = "$",
+                CurrentBalance = 5m,
+                IsActive = true,
+                CanDispense = true
+            }
+        };
+
+        var vm = new CashAdvanceRegisterViewModel(
+            CreateElectronicMethods(),
+            availableCashLocal: 2000m,
+            exchangeRate: 50m,
+            cashDrawer: CreateAdvanceDrawerMock(5.5m, 10m).Object,
+            physicalCashMethods: physicalMethods);
+
+        await vm.RefreshCommissionAsync();
+        vm.RequestedAmountBsS = 10m;
+
+        Assert.False(vm.HasSufficientDispensedBalance);
+        Assert.False(vm.CanConfirm);
+        Assert.Contains("Existencia insuficiente en Caja USD (USD)", vm.ErrorMessage);
+        Assert.Contains("disponible $5", vm.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task CashAdvanceRegisterViewModel_WithInactivePhysicalMethod_BlocksConfirmation()
+    {
+        var physicalMethods = new[]
+        {
+            new ClientCashService.PhysicalMethodBalanceClientDto
+            {
+                PaymentMethodId = 12,
+                Name = "Caja retirada",
+                CurrencyCode = "VES",
+                CurrencySymbol = "Bs.S",
+                CurrentBalance = 100m,
+                IsActive = false,
+                CanDispense = false
+            }
+        };
+
+        var vm = new CashAdvanceRegisterViewModel(
+            CreateElectronicMethods(),
+            availableCashLocal: 2000m,
+            exchangeRate: 50m,
+            cashDrawer: CreateAdvanceDrawerMock(5.5m, 10m).Object,
+            physicalCashMethods: physicalMethods);
+
+        await vm.RefreshCommissionAsync();
+        vm.RequestedAmountBsS = 10m;
+
+        Assert.False(vm.CanConfirm);
+        Assert.Contains("no está activo para dispensar", vm.ErrorMessage);
+    }
+
+    [Fact]
     public async Task CreateCashAdvanceSale_WhenCashierAndInfrastructureProductMissing_ProvisionsProductWithoutCatalogPermission()
     {
         using var salesContext = GetInMemoryDbContext();

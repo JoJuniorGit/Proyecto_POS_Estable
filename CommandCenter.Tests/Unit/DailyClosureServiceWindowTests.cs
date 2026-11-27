@@ -68,7 +68,8 @@ public class DailyClosureServiceWindowTests
             Id = 1,
             SaleId = 1,
             PaymentMethodId = 1,
-            AmountBsS = 365m
+            AmountBsS = 365m,
+            CreatedAt = saleBeforeSession.Date
         });
 
         var saleInWindow = new Sale
@@ -86,7 +87,8 @@ public class DailyClosureServiceWindowTests
             Id = 2,
             SaleId = 2,
             PaymentMethodId = 1,
-            AmountBsS = 182.50m
+            AmountBsS = 182.50m,
+            CreatedAt = saleInWindow.Date
         });
 
         await context.SaveChangesAsync();
@@ -132,7 +134,8 @@ public class DailyClosureServiceWindowTests
             Id = 1,
             SaleId = 1,
             PaymentMethodId = 1,
-            AmountBsS = 365m
+            AmountBsS = 365m,
+            CreatedAt = saleAtStart.Date
         });
 
         await context.SaveChangesAsync();
@@ -180,7 +183,8 @@ public class DailyClosureServiceWindowTests
             Id = 1,
             SaleId = 1,
             PaymentMethodId = 1,
-            AmountBsS = 365m
+            AmountBsS = 365m,
+            CreatedAt = saleAtEnd.Date
         });
 
         await context.SaveChangesAsync();

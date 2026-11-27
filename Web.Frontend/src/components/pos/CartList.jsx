@@ -2,11 +2,13 @@ import { Plus, Minus, Trash2 } from 'lucide-react';
 import { useExchangeRate } from '../../context/ExchangeRateContext';
 import QuantityInput from './QuantityInput';
 import { useCart, selectEffectiveRate } from '../../context/CartContext';
-import { getLineAmounts, formatBsS } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { getLineAmounts } from '../../utils/formatters';
 
 export default function CartList({ items, selectedItemId, onSelectItem, onUpdateQty, onRemoveItem }) {
   const { exchangeRate } = useExchangeRate();
   const { currentSale } = useCart();
+  const { formatSecondary } = useMonetaryProfile();
   const updateQty = onUpdateQty;
 
   return (
@@ -38,7 +40,7 @@ export default function CartList({ items, selectedItemId, onSelectItem, onUpdate
 
             <div className="cart-card-body">
               <div className="cart-card-unit-price">
-                {formatBsS(unitBsS)} c/u
+                {formatSecondary(unitBsS)} c/u
               </div>
 
               <div className="cart-card-bottom">
@@ -78,7 +80,7 @@ export default function CartList({ items, selectedItemId, onSelectItem, onUpdate
                 </div>
 
                 <div className="cart-card-subtotal">
-                  {formatBsS(subtotalBsS)}
+                  {formatSecondary(subtotalBsS)}
                 </div>
               </div>
             </div>

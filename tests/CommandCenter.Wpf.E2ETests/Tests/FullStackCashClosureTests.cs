@@ -33,8 +33,8 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// <item>El cierre diario es el camino real de cierre/rollover de la sesión: al confirmar, el
 /// servidor registra el arqueo y ejecuta <c>RolloverSessionAfterClosureAsync</c> (cierra la sesión
 /// activa con el saldo actual y abre una nueva con ese arrastre).</item>
-/// <item>El esperado del cierre se computa por ventas de la ventana de la sesión activa (menos
-/// vueltos en efectivo); un ingreso manual de caja NO entra en el esperado (solo en el saldo).</item>
+/// <item>El esperado del cierre incluye los movimientos físicos del turno (ventas, CASH IN,
+/// CASH OUT, vueltos y caja chica); con apertura 0 y sin egresos coincide con el saldo físico.</item>
 /// <item>La grilla de montos declarados es un <c>PerformantDataGrid</c> con AutomationPeer null
 /// (ver <c>Desktop.Client/Controls/PerformantDataGrid.cs</c>): UIA no puede escribir los montos
 /// declarados. El camino feliz acotado por D9 declara 0 y verifica que el faltante mostrado sea
@@ -55,6 +55,12 @@ public class FullStackCashClosureTests : IClassFixture<FullStackFixture>
 
     /// <summary>Monto entero controlado del CASH IN real (el efectivo solo acepta montos enteros).</summary>
     private const decimal CashInAmountBsS = 100m;
+
+    /// <summary>
+    /// Tolerancia de comparación monetaria: el saldo y los esperados del servidor pueden
+    /// conservar escalas distintas (4dp de snapshot vs 2dp de presentación) para el mismo valor.
+    /// </summary>
+    private const decimal AmountTolerance = 0.01m;
 
     // Igual a SystemSettings:MinimumClientVersion (Backend.API/appsettings.json): el
     // VersionCheckMiddleware exige el header en rutas /api/* que no sean auth/pairing.
@@ -175,19 +181,19 @@ public class FullStackCashClosureTests : IClassFixture<FullStackFixture>
                 $"La diferencia mostrada ('{statusBeforeClosure}') no es el declarado (0) menos el esperado ({expectedBeforeClosure}).");
 
             // 5b) Coherencia contra el estado real del servidor en la MISMA sesión: el esperado del
-            //     cierre (solo ventas) coincide con el saldo de caja menos el CASH IN manual, y la UI
-            //     debe estar mostrando exactamente ese esperado.
+            //     cierre incluye el CASH IN manual, por lo que con apertura 0 y sin egresos coincide
+            //     con el saldo físico; la UI debe estar mostrando exactamente ese esperado.
             using var api = await CreateAuthenticatedApiClientAsync();
             var sessionBeforeClosure = await GetActiveSessionAsync(api)
                 ?? throw new InvalidOperationException("La API no reporta sesión de caja activa antes del cierre.");
             decimal serverBalanceBeforeClosure = await GetCurrentBalanceAsync(api, sessionBeforeClosure.Id);
             decimal serverExpectedBeforeClosure = await GetExpectedTotalsTotalAsync(api);
             Assert.True(
-                serverExpectedBeforeClosure == serverBalanceBeforeClosure - CashInAmountBsS,
-                $"Esperado del servidor ({serverExpectedBeforeClosure}) != saldo del servidor ({serverBalanceBeforeClosure}) - CASH IN ({CashInAmountBsS}).");
+                AmountsMatch(serverExpectedBeforeClosure, serverBalanceBeforeClosure),
+                $"Esperado del servidor ({serverExpectedBeforeClosure:G29}) != saldo del servidor ({serverBalanceBeforeClosure:G29}) para la ventana del turno.");
             Assert.True(
-                expectedBeforeClosure == serverExpectedBeforeClosure,
-                $"El esperado de la UI ({expectedBeforeClosure}) != esperado del servidor ({serverExpectedBeforeClosure}).");
+                AmountsMatch(expectedBeforeClosure, serverExpectedBeforeClosure),
+                $"El esperado de la UI ({expectedBeforeClosure:G29}) != esperado del servidor ({serverExpectedBeforeClosure:G29}).");
 
             var confirmButton = WaitForEnabledButton(window, "DailyClosure_ConfirmButton", findTimeout)
                 ?? throw new InvalidOperationException($"El botón de confirmar cierre no está habilitado. {DescribeUi(window)}");
@@ -215,8 +221,8 @@ public class FullStackCashClosureTests : IClassFixture<FullStackFixture>
                 sessionAfterClosure.Id != sessionBeforeClosure.Id,
                 $"El cierre no rotó la sesión de caja: sigue activa la sesión #{sessionBeforeClosure.Id}.");
             Assert.True(
-                sessionAfterClosure.OpeningBalanceLocal == serverBalanceBeforeClosure,
-                $"El arrastre de la nueva sesión ({sessionAfterClosure.OpeningBalanceLocal}) != saldo físico previo al cierre ({serverBalanceBeforeClosure}).");
+                AmountsMatch(sessionAfterClosure.OpeningBalanceLocal, serverBalanceBeforeClosure),
+                $"El arrastre de la nueva sesión ({sessionAfterClosure.OpeningBalanceLocal:G29}) != saldo físico previo al cierre ({serverBalanceBeforeClosure:G29}).");
         }
         finally
         {
@@ -1111,6 +1117,9 @@ public class FullStackCashClosureTests : IClassFixture<FullStackFixture>
     }
 
     // ─────────────────────────────────────────── Helpers UIA ───────────────────────────────────────
+
+    private static bool AmountsMatch(decimal left, decimal right) =>
+        Math.Abs(left - right) <= AmountTolerance;
 
     private static AutomationElement? WaitForElement(Window window, string automationId, TimeSpan timeout)
     {

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using Core.Common;
+using Core.Entities;
 using Core.Helpers;
 using Core.Logging;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -50,7 +51,7 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
 
         if (enableRealtime)
         {
-            var baseAddress = httpClient.BaseAddress ?? new Uri("http://localhost:5000/");
+            var baseAddress = httpClient.BaseAddress ?? new Uri("https://localhost:5001/");
             var hubUri = new Uri(baseAddress, HubPath);
 
             _hubConnection = new HubConnectionBuilder()
@@ -133,24 +134,64 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
         };
     }
 
-    /// <summary>8.150 (T9): claves exactas de RequestAuthorizationContract (hub y REST comparten el payload).</summary>
-    public static Dictionary<string, object?> BuildRequestPayload(AuthorizationRequestContext context)
+    /// <summary>
+    /// 8.150 (T9) / T4-prep (S4): claves exactas del contrato de RequestAuthorization. El override
+    /// manual conserva exactamente las siete claves historicas (sin actionType); el sobregiro de
+    /// credito envia actionType numerico + contexto de cliente/montos y ninguna clave de producto.
+    /// </summary>
+    public static Dictionary<string, object?> BuildRequestPayload(IAuthorizationRequestContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
 
+        if (context is CreditOverLimitAuthorizationRequestContext creditOverLimit)
+        {
+            return new Dictionary<string, object?>
+            {
+                ["saleId"] = creditOverLimit.SaleId,
+                ["actionType"] = (int)AuthorizationActionType.CreditOverLimit,
+                ["customerId"] = creditOverLimit.CustomerId,
+                ["customerName"] = creditOverLimit.CustomerName,
+                ["financedUSD"] = creditOverLimit.FinancedUSD,
+                ["availableCreditUSD"] = creditOverLimit.AvailableCreditUSD,
+                ["terminal"] = creditOverLimit.Terminal
+            };
+        }
+
+        // T4 (Paso 13 / 8.188, S4): el gasto de caja chica no tiene venta. Se envían solo las
+        // claves del contrato PettyCashExpense que el coordinador canonaliza (mismos valores que
+        // el 403 del backend) para que el token quede ligado al mismo hash.
+        if (context is PettyCashExpenseAuthorizationRequestContext pettyCash)
+        {
+            return new Dictionary<string, object?>
+            {
+                ["actionType"] = (int)AuthorizationActionType.PettyCashExpense,
+                ["pettyCashSessionId"] = pettyCash.SessionId,
+                ["pettyCashCurrency"] = (int)pettyCash.Currency,
+                ["pettyCashAmountBsS"] = pettyCash.AmountBsS,
+                ["pettyCashAmountUsd"] = pettyCash.AmountUsd,
+                ["pettyCashCategory"] = (int)pettyCash.Category,
+                ["terminal"] = pettyCash.Terminal
+            };
+        }
+
+        if (context is not AuthorizationRequestContext manualPriceOverride)
+        {
+            throw new ArgumentException("El contexto de autorización informado no está soportado.", nameof(context));
+        }
+
         return new Dictionary<string, object?>
         {
-            ["saleId"] = context.SaleId,
-            ["productId"] = context.ProductId,
-            ["productName"] = context.ProductName,
-            ["quantity"] = context.Quantity,
-            ["customUnitPriceUsd"] = context.CustomUnitPriceUsd,
-            ["customUnitPriceLocal"] = context.CustomUnitPriceLocal,
-            ["terminal"] = context.Terminal
+            ["saleId"] = manualPriceOverride.SaleId,
+            ["productId"] = manualPriceOverride.ProductId,
+            ["productName"] = manualPriceOverride.ProductName,
+            ["quantity"] = manualPriceOverride.Quantity,
+            ["customUnitPriceUsd"] = manualPriceOverride.CustomUnitPriceUsd,
+            ["customUnitPriceLocal"] = manualPriceOverride.CustomUnitPriceLocal,
+            ["terminal"] = manualPriceOverride.Terminal
         };
     }
 
-    public async Task<AuthorizationRequestInfo> RequestAuthorizationAsync(AuthorizationRequestContext context)
+    public async Task<AuthorizationRequestInfo> RequestAuthorizationAsync(IAuthorizationRequestContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         EnsureNotDisposed();
@@ -516,13 +557,19 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
             {
                 await _hubConnection.StopAsync().ConfigureAwait(false);
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                ClientStateLogger.LogWarning($"Aviso al detener conexión SignalR: {ex.Message}", nameof(AuthorizationHubService));
+            }
 
             try
             {
                 await _hubConnection.DisposeAsync().ConfigureAwait(false);
             }
-            catch (Exception) { }
+            catch (Exception ex)
+            {
+                ClientStateLogger.LogWarning($"Aviso al disponer conexión SignalR: {ex.Message}", nameof(AuthorizationHubService));
+            }
         }
 
         GC.SuppressFinalize(this);
@@ -541,7 +588,10 @@ public class AuthorizationHubService : IAuthorizationHubService, IAsyncDisposabl
         {
             _ = Task.Run(async () => await DisposeAsync().ConfigureAwait(false));
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            ClientStateLogger.LogWarning($"Aviso al despachar DisposeAsync: {ex.Message}", nameof(AuthorizationHubService));
+        }
     }
 
     private sealed class CreateAuthorizationResponse

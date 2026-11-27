@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Core.Common;
 using Core.DTOs;
+using Core.Diagnostics;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using System;
@@ -231,9 +232,25 @@ public partial class PosViewModel : ObservableObject, IDisposable
     /// </summary>
     private void RewriteEffectivePriceBsS(ProductQuickInfoDto item)
     {
-        item.PriceBsS = item.PriceUSD > 0 && CurrentExchangeRate > 0
-            ? Helpers.EffectivePriceVesHelper.EffectiveBsS(item.PriceUSD, CurrentExchangeRate, item.RoundingRuleCashBs ?? _globalCashRoundingRule, _neverRoundDownCashBs)
-            : item.PriceBsS;
+        // El precio Detal canónico del artículo es PriceRetailUSD (mismo canal que usa el
+        // backend en RecalculateTotalAsync); PriceUSD solo es fallback legado.
+        decimal retailUsd = item.PriceRetailUSD > 0m ? item.PriceRetailUSD : item.PriceUSD;
+        if (retailUsd > 0m && CurrentExchangeRate > 0m)
+        {
+            item.PriceBsS = Helpers.EffectivePriceVesHelper.EffectiveBsS(
+                retailUsd,
+                CurrentExchangeRate,
+                item.RoundingRuleCashBs ?? _globalCashRoundingRule,
+                _neverRoundDownCashBs);
+            item.EffectivePriceBsS = item.PriceBsS;
+            return;
+        }
+
+        // Sin USD/tasa válidos se conserva la proyección del servidor o el snapshot persistido.
+        if (item.EffectivePriceBsS > 0m)
+        {
+            item.PriceBsS = item.EffectivePriceBsS;
+        }
     }
 
     private readonly SemaphoreSlim _sessionInitializationGate = new(1, 1);
@@ -264,23 +281,36 @@ public partial class PosViewModel : ObservableObject, IDisposable
         try
         {
             if (_userSession != null && !_userSession.IsLoggedIn) return;
+            StartupTimeline.Mark("Wpf.Pos.Initialize.Start");
 
+            // Tasa y metodos de pago son independientes: se lanzan juntos y se aplican al
+            // terminar ambos. La recuperacion/creacion de venta conserva su orden posterior.
+            Task<(decimal Rate, DateTime? LastUpdated)>? rateTask = null;
             if (CurrentExchangeRate <= 0)
             {
-                await _exchangeRateService.GetCurrentRateAsync();
-                OnPropertyChanged(nameof(CurrentExchangeRate));
-                OnPropertyChanged(nameof(IsRateOutdated));
+                rateTask = _exchangeRateService.GetCurrentRateAsync();
             }
 
-            if (ActivePaymentMethods.Count == 0)
+            Task? methodsTask = ActivePaymentMethods.Count == 0
+                ? LoadPaymentMethodsAsync()
+                : null;
+
+            await Task.WhenAll(
+                rateTask ?? Task.CompletedTask,
+                methodsTask ?? Task.CompletedTask);
+
+            if (rateTask != null)
             {
-                await LoadPaymentMethodsAsync();
+                OnPropertyChanged(nameof(CurrentExchangeRate));
+                OnPropertyChanged(nameof(IsRateOutdated));
             }
 
             if (Cart.CurrentSale == null)
             {
                 await RestoreOrStartSaleAsync();
             }
+
+            StartupTimeline.Mark("Wpf.Pos.Initialize.Done");
         }
         finally
         {
@@ -529,6 +559,7 @@ public partial class PosViewModel : ObservableObject, IDisposable
         }
         catch (ObjectDisposedException) { }
 
+        _cart?.Dispose();
         WeakReferenceMessenger.Default.UnregisterAll(this);
     }
 

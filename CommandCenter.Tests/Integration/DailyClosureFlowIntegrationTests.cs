@@ -28,12 +28,12 @@ public class DailyClosureFlowIntegrationTests
         // Venta 1: Efectivo USD (1000 Bs.S)
         var sale1 = new Sale { Id = 101, Status = SaleStatus.Completed, Date = baseTime.AddHours(1) };
         context.Sales.Add(sale1);
-        context.SalePayments.Add(new SalePayment { SaleId = 101, PaymentMethodId = 1, AmountBsS = 1000m });
+        context.SalePayments.Add(new SalePayment { SaleId = 101, PaymentMethodId = 1, AmountBsS = 1000m, CreatedAt = sale1.Date });
 
         // Venta 2: Punto de Venta (2500 Bs.S)
         var sale2 = new Sale { Id = 102, Status = SaleStatus.Completed, Date = baseTime.AddHours(2) };
         context.Sales.Add(sale2);
-        context.SalePayments.Add(new SalePayment { SaleId = 102, PaymentMethodId = 3, AmountBsS = 2500m });
+        context.SalePayments.Add(new SalePayment { SaleId = 102, PaymentMethodId = 3, AmountBsS = 2500m, CreatedAt = sale2.Date });
 
         await context.SaveChangesAsync();
 
@@ -69,7 +69,7 @@ public class DailyClosureFlowIntegrationTests
         // 6. Register New Sale in Shift 2 (at 14:00 PM)
         var saleShift2 = new Sale { Id = 103, Status = SaleStatus.Completed, Date = baseTime.AddHours(5) };
         context.Sales.Add(saleShift2);
-        context.SalePayments.Add(new SalePayment { SaleId = 103, PaymentMethodId = 1, AmountBsS = 800m });
+        context.SalePayments.Add(new SalePayment { SaleId = 103, PaymentMethodId = 1, AmountBsS = 800m, CreatedAt = saleShift2.Date });
         await context.SaveChangesAsync();
 
         // 7. Query Expected Totals for Shift 2 (at 17:00 PM)

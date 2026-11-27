@@ -2,7 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { getSalesHistory, getSaleHistoryDetail } from '../services/historyApi';
 import { Search, Filter, Loader2, Calendar, ChevronRight, ChevronDown, RefreshCw, CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
 import { useExchangeRate } from '../context/ExchangeRateContext';
-import { formatBsS, formatUSD, formatNumberEs, formatDate, formatTime, formatQuantity } from '../utils/formatters';
+import { useMonetaryProfile } from '../context/MonetaryProfileContext';
+import { formatNumberEs, formatDate, formatTime, formatQuantity, effectiveTotalUsd } from '../utils/formatters';
+import { displayCurrencyCode } from '../utils/monetaryProfile';
+import { resolveLocalCurrencyProfile } from '../components/register/registerFormLogic';
 import { filterHistorySales, accumulateCashierNames, areSecondaryFiltersActive, applySecondaryFilterDrafts, filterCashierSuggestions } from '../utils/historyFilters';
 import { useMediaQuery } from '../utils/useMediaQuery';
 import Pagination from '../components/ui/Pagination';
@@ -10,6 +13,25 @@ import RoleGuard from '../navigation/RoleGuard';
 import './HistoryPage.css';
 
 const PAGE_SIZE = 25;
+
+/**
+ * 8.211-T4b2b2a (S9): etiquetas de presentación del historial según el perfil activo. En `Single`
+ * sólo existe la primaria (sin línea USD ni tasa); en `Dual` se muestran primaria y local.
+ * @param {object} profile
+ */
+export function resolveHistoryCurrencyLabels(profile = {}) {
+  const local = resolveLocalCurrencyProfile(profile);
+  const primaryCurrencyLabel = displayCurrencyCode(profile?.primaryCurrencyCode);
+
+  return {
+    isDual: local.isDual,
+    primaryCurrencyLabel,
+    localCurrencyLabel: local.label,
+    showPrimaryAmount: local.isDual,
+    showRate: local.isDual,
+    rateLabel: local.isDual ? `${local.label} / ${primaryCurrencyLabel}` : null,
+  };
+}
 
 export default function HistoryPage() {
   return (
@@ -21,6 +43,8 @@ export default function HistoryPage() {
 
 function HistoryPageContent() {
   const { exchangeRate } = useExchangeRate();
+  const { profile, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const { isDual, primaryCurrencyLabel, localCurrencyLabel } = resolveHistoryCurrencyLabels(profile);
   const isMobile = useMediaQuery('(max-width: 640px)');
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -481,13 +505,15 @@ const handlePageChange = (newPage) => {
 
                     {/* Piso Inferior: Finanzas Resaltadas */}
                     <div className="d-flex flex-between flex-align-center w-full hist-fin-row">
-                      <div>
-                        <span className="text-label hist-total-label">Total USD:</span>
-                        <span className="text-primary font-semibold font-mono text-sm">{formatUSD(sale.totalUSD || 0)}</span>
-                      </div>
+                      {isDual && (
+                        <div>
+                          <span className="text-label hist-total-label">Total {primaryCurrencyLabel}:</span>
+                          <span className="text-primary font-semibold font-mono text-sm">{formatPrimary(effectiveTotalUsd(sale))}</span>
+                        </div>
+                      )}
 
-                      <div className="text-right">
-                        <span className="text-label hist-total-label">Total Bs.S:</span>
+                      <div className={isDual ? 'text-right' : ''}>
+                        <span className="text-label hist-total-label">Total {localCurrencyLabel}:</span>
                         <span className="text-primary font-semibold font-mono hist-total-amnt">{formatNumberEs(totalBsS)}</span>
                       </div>
                     </div>
@@ -521,7 +547,7 @@ const handlePageChange = (newPage) => {
                                     <tr>
                                       <th className="text-secondary">Producto</th>
                                       <th className="text-right text-secondary">Cant.</th>
-                                      <th className="text-right text-secondary">Subtotal Bs.S</th>
+                                      <th className="text-right text-secondary">Subtotal {localCurrencyLabel}</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -529,7 +555,7 @@ const handlePageChange = (newPage) => {
                                       <tr key={item.id}>
                                         <td className="font-medium">{item.productName}</td>
                                         <td className="text-right font-mono">{formatQuantity(item.quantity)}</td>
-                                        <td className="text-right font-mono font-bold">{formatBsS(item.subtotalBsS)}</td>
+                                        <td className="text-right font-mono font-bold">{formatSecondary(item.subtotalBsS)}</td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -547,7 +573,7 @@ const handlePageChange = (newPage) => {
                                       className="d-flex flex-between flex-align-center border hist-pay-item"
                                     >
                                       <span>{pay.methodName} {pay.reference ? `(Ref: ${pay.reference})` : ''}</span>
-                                      <span className="font-bold font-mono">{formatBsS(pay.amountBsS || 0)}</span>
+                                      <span className="font-bold font-mono">{formatSecondary(pay.amountBsS || 0)}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -574,7 +600,7 @@ const handlePageChange = (newPage) => {
                     <th className="text-left text-secondary font-semibold text-nowrap">N° Factura</th>
                     <th className="text-secondary font-semibold text-nowrap">Cliente</th>
                     <th className="text-secondary font-semibold text-nowrap">Cajero</th>
-                    <th className="text-right text-secondary font-semibold text-nowrap hist-pr-16">Total Bs.S</th>
+                    <th className="text-right text-secondary font-semibold text-nowrap hist-pr-16">Total {localCurrencyLabel}</th>
                     <th className="text-center text-secondary font-semibold text-nowrap">Estado</th>
                   </tr>
                 </thead>
@@ -631,10 +657,12 @@ const handlePageChange = (newPage) => {
                           </td>
 
                           <td className="text-right text-nowrap hist-pr-16">
-                            <div className="font-mono font-bold text-primary">{formatBsS(totalBsS)}</div>
-                            <div className="text-xs text-muted">
-                              {formatUSD(sale.totalUSD || 0)}
-                            </div>
+                            <div className="font-mono font-bold text-primary">{formatSecondary(totalBsS)}</div>
+                            {isDual && (
+                              <div className="text-xs text-muted">
+                                {formatPrimary(effectiveTotalUsd(sale))}
+                              </div>
+                            )}
                           </td>
 
                           {/* Etiqueta Visual de Estado */}
@@ -684,7 +712,7 @@ const handlePageChange = (newPage) => {
                                             <th className="text-left text-secondary font-semibold text-nowrap">Producto</th>
                                             <th className="text-right text-secondary font-semibold text-nowrap">Cant.</th>
                                             <th className="text-right text-secondary font-semibold text-nowrap">P. Unidad</th>
-                                            <th className="text-right text-secondary font-semibold text-nowrap">Subtotal Bs.S</th>
+                                            <th className="text-right text-secondary font-semibold text-nowrap">Subtotal {localCurrencyLabel}</th>
                                           </tr>
                                         </thead>
                                         <tbody>
@@ -692,8 +720,8 @@ const handlePageChange = (newPage) => {
                                             <tr key={item.id}>
                                               <td className="font-medium">{item.productName}</td>
                                                <td className="text-right font-mono">{formatQuantity(item.quantity)}</td>
-                                              <td className="text-right font-mono">{formatBsS(item.unitPriceBsS)}</td>
-                                              <td className="text-right font-mono font-bold">{formatBsS(item.subtotalBsS)}</td>
+                                              <td className="text-right font-mono">{formatSecondary(item.unitPriceBsS)}</td>
+                                              <td className="text-right font-mono font-bold">{formatSecondary(item.subtotalBsS)}</td>
                                             </tr>
                                           ))}
                                         </tbody>
@@ -712,17 +740,21 @@ const handlePageChange = (newPage) => {
                                         <span className="text-muted">Cédula / RIF:</span>
                                         <span className="font-bold">{detailState.data.customerCedula || 'V-00000000'}</span>
                                       </div>
-                                      <div className="d-flex flex-between mb-1">
-                                        <span className="text-muted">Tasa de Cambio:</span>
-                                        <span className="font-bold">Bs.S {formatNumberEs(detailState.data.appliedRate)}</span>
-                                      </div>
-                                      <div className="d-flex flex-between mb-1">
-                                        <span className="text-muted">Total USD:</span>
-                                        <span className="font-bold">{formatUSD(detailState.data.totalUSD || 0)}</span>
-                                      </div>
+                                      {isDual && (
+                                        <div className="d-flex flex-between mb-1">
+                                          <span className="text-muted">Tasa de Cambio:</span>
+                                          <span className="font-bold">{`${localCurrencyLabel} ${formatNumberEs(detailState.data.appliedRate)} / ${primaryCurrencyLabel}`}</span>
+                                        </div>
+                                      )}
+                                      {isDual && (
+                                        <div className="d-flex flex-between mb-1">
+                                          <span className="text-muted">Total {primaryCurrencyLabel}:</span>
+                                          <span className="font-bold">{formatPrimary(effectiveTotalUsd(detailState.data))}</span>
+                                        </div>
+                                      )}
                                       <div className="d-flex flex-between">
-                                        <span className="text-muted">Total Bs.S:</span>
-                                        <span className="font-bold text-primary">{formatBsS(detailState.data.totalBsS || 0)}</span>
+                                        <span className="text-muted">Total {localCurrencyLabel}:</span>
+                                        <span className="font-bold text-primary">{formatSecondary(detailState.data.totalBsS || 0)}</span>
                                       </div>
                                     </div>
 
@@ -736,7 +768,7 @@ const handlePageChange = (newPage) => {
                                               {pay.reference && <div className="text-xs text-muted">Ref: {pay.reference}</div>}
                                             </div>
                                             <div className="font-bold">
-                                              {formatBsS(pay.amountBsS || 0)}
+                                              {formatSecondary(pay.amountBsS || 0)}
                                             </div>
                                           </div>
                                         ))}

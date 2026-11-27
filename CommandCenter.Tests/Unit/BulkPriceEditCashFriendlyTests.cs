@@ -93,8 +93,8 @@ public class BulkPriceEditCashFriendlyTests
 
         var vm = CreateViewModel();
         EnableRetailPriceOperation(vm);
-        vm.RetailRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
-        vm.WholesaleRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
+        // Spec V0.15: la proyección cash viaja por la capa dedicada (independiente del USD).
+        vm.CashBsRoundingRule = RoundingRuleType.VesCashFriendlyStep5;
 
         await vm.PreviewCommand.ExecuteAsync(null);
 
@@ -108,9 +108,10 @@ public class BulkPriceEditCashFriendlyTests
         Assert.Equal($"Bs.S {CurrencyDisplay.Number(680m)}", retailChange.CashFriendlyText);
         Assert.Equal($"Bs.S {CurrencyDisplay.Number(825m)}", wholesaleChange.CashFriendlyText);
 
-        // Columna del preview: una línea por canal con proyección.
+        // Columna del preview: una línea por canal con la proyección y su delta de redondeo.
         Assert.Equal(
-            $"Detal: Bs.S {CurrencyDisplay.Number(680m)}{Environment.NewLine}Mayor: Bs.S {CurrencyDisplay.Number(825m)}",
+            $"Detal: Bs.S {CurrencyDisplay.Number(680m)} (-Bs.S {CurrencyDisplay.Number(2.20m)}){Environment.NewLine}" +
+            $"Mayor: Bs.S {CurrencyDisplay.Number(825m)} (-Bs.S {CurrencyDisplay.Number(0.37m)})",
             row.CashFriendlyText);
     }
 

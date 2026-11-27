@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using Core.Diagnostics;
 using Core.Logging;
 using Inventory.Module.Data;
 using Microsoft.EntityFrameworkCore;
@@ -102,12 +105,33 @@ public static class DatabaseInitializer
             return false;
         }
 
-        // 3) Aplicar migraciones (crea el esquema y __EFMigrationsHistory). Abortar si fallan.
+        StartupTimeline.Mark("Backend.Db.Probe.Done");
+
+        // 3) Verificar migraciones pendientes antes de ejecutar el pipeline pesado.
+        //    Si el esquema ya está al día, se evita el viaje completo de MigrateAsync.
         try
         {
-            AppLogger.LogStart("Running EF Core Database Migrations asynchronously...");
-            await invDb.Database.MigrateAsync();
-            await salesDb.Database.MigrateAsync();
+            var pendingInventoryTask = invDb.Database.GetPendingMigrationsAsync();
+            var pendingSalesTask = salesDb.Database.GetPendingMigrationsAsync();
+            await Task.WhenAll(pendingInventoryTask, pendingSalesTask);
+
+            var pendingInventory = (await pendingInventoryTask).ToList();
+            var pendingSales = (await pendingSalesTask).ToList();
+            AppLogger.LogStart(
+                $"[START] Migraciones pendientes: Inventory={pendingInventory.Count}, Sales={pendingSales.Count}.");
+
+            if (pendingInventory.Count > 0 || pendingSales.Count > 0)
+            {
+                AppLogger.LogStart("Running EF Core Database Migrations asynchronously...");
+                await invDb.Database.MigrateAsync();
+                await salesDb.Database.MigrateAsync();
+            }
+            else
+            {
+                AppLogger.LogStart("[START] Esquema al día; se omite MigrateAsync.");
+            }
+
+            StartupTimeline.Mark("Backend.Db.Migrations.Done");
 
             // 8.7-B8 (segregación): bloque de CONVERGENCIA LEGACY idempotente (information_schema),
             // solo alcanza a BD instaladas ANTES de que existieran estas migraciones EF. 8.12-B1/B2/B3:
@@ -333,11 +357,13 @@ END $$;");
             }
 
             AppLogger.LogStart("EF Core Database Migrations applied successfully.");
+            StartupTimeline.Mark("Backend.Db.Convergence.Done");
         }
         catch (System.Exception ex)
         {
             var criticalMsg = "[ERROR CRÍTICO] Error ejecutando las migraciones de base de datos. Abortando el arranque. " + ex.Message;
-            Console.WriteLine(criticalMsg);
+            Console.Error.WriteLine(criticalMsg);
+            AppLogger.LogCrash(ex, "Database.Migrate.Startup");
             AppLogger.LogDbError(ex, "Database.Migrate");
             Environment.ExitCode = 1;
             return false;
@@ -520,20 +546,8 @@ END $$;");
                 }
             }
 
-            var defaultMethods = Sales.Module.PaymentMethodDefaults.CreateDefault();
-            var existingMethodNames = salesDb.PaymentMethods
-                .Where(m => !m.IsDeleted)
-                .Select(m => m.Name)
-                .ToList();
-            var missingMethods = defaultMethods
-                .Where(m => !existingMethodNames.Contains(m.Name, StringComparer.OrdinalIgnoreCase))
-                .ToList();
-            if (missingMethods.Count > 0)
-            {
-                salesDb.PaymentMethods.AddRange(missingMethods);
-                salesDb.SaveChanges();
-                AppLogger.LogStart("[Seed] Ensured default payment methods (Efectivo, Tarjeta PDV, Transferencia/Pago Movil, Divisas USD).");
-            }
+            EnsureDefaultPaymentMethods(salesDb);
+            EnsureP0CommissionAndOperatingExpenseDefaults(salesDb);
         }
         catch (System.Exception ex)
         {
@@ -544,6 +558,264 @@ END $$;");
             return false;
         }
 
+        StartupTimeline.Mark("Backend.Db.Seeds.Done");
+        return true;
+    }
+
+    /// <summary>
+    /// Converge the default payment methods with the legacy seed names created by the first
+    /// migration ("Cash" and "Card"). Renaming the legacy row instead of inserting a second
+    /// default keeps a single physical method per currency, which the drawer auto-open path
+    /// requires when a sale completes without an explicit MethodBalances payload.
+    /// </summary>
+    private static void EnsureDefaultPaymentMethods(Sales.Module.Data.SalesDbContext salesDb)
+    {
+        var defaults = Sales.Module.PaymentMethodDefaults.CreateDefault();
+        var existing = salesDb.PaymentMethods
+            .Where(method => !method.IsDeleted)
+            .ToList();
+
+        var legacyNamesByDefaultName = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Efectivo"] = new[] { "Cash" },
+            ["Tarjeta (Punto de Venta)"] = new[] { "Card" },
+            ["Transferencia / Pago Móvil"] = new[] { "Transfer" }
+        };
+
+        var changed = false;
+        foreach (var defaultMethod in defaults)
+        {
+            var current = existing.FirstOrDefault(method =>
+                string.Equals(method.Name, defaultMethod.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (current is null &&
+                legacyNamesByDefaultName.TryGetValue(defaultMethod.Name, out var legacyNames))
+            {
+                var legacy = existing.FirstOrDefault(method =>
+                    legacyNames.Any(legacyName =>
+                        string.Equals(method.Name, legacyName, StringComparison.OrdinalIgnoreCase)));
+                if (legacy is not null)
+                {
+                    legacy.Name = defaultMethod.Name;
+                    legacy.IsActive = true;
+                    legacy.IsCash = defaultMethod.IsCash;
+                    legacy.RequiresReference = defaultMethod.RequiresReference;
+                    current = legacy;
+                    changed = true;
+                }
+            }
+
+            if (current is null)
+            {
+                salesDb.PaymentMethods.Add(defaultMethod);
+                existing.Add(defaultMethod);
+                changed = true;
+                continue;
+            }
+
+            if (legacyNamesByDefaultName.TryGetValue(defaultMethod.Name, out var legacyDuplicates))
+            {
+                foreach (var duplicate in existing.Where(method =>
+                    !ReferenceEquals(method, current) &&
+                    legacyDuplicates.Any(legacyName =>
+                        string.Equals(method.Name, legacyName, StringComparison.OrdinalIgnoreCase))))
+                {
+                    duplicate.IsDeleted = true;
+                    duplicate.IsActive = false;
+                    changed = true;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(current.Currency) &&
+                !string.IsNullOrWhiteSpace(defaultMethod.Currency))
+            {
+                current.Currency = defaultMethod.Currency;
+                changed = true;
+            }
+
+            if (current.DisplayOrder == 0 && defaultMethod.DisplayOrder > 0)
+            {
+                current.DisplayOrder = defaultMethod.DisplayOrder;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            salesDb.SaveChanges();
+            AppLogger.LogStart("[Seed] Ensured default payment methods (Efectivo, Tarjeta PDV, Transferencia/Pago Movil, Divisas USD).");
+        }
+    }
+
+    /// <summary>
+    /// P0 (S2/S4): converge la configuracion real del punto de venta. Asegura los metodos digitales
+    /// TDD/TDC/BIOpago con sus reglas activas (0.75%, 2.50%, 2.70%), y los dos gastos operativos
+    /// mensuales ($1.60 mantenimiento de cuenta TDC y $41.12 gastos del POS). Es idempotente: no
+    /// renombra, borra ni desactiva metodos historicos, no sobrescribe una regla activa existente y
+    /// usa la descripcion exacta como clave natural de los gastos.
+    /// </summary>
+    internal static void EnsureP0CommissionAndOperatingExpenseDefaults(Sales.Module.Data.SalesDbContext salesDb)
+    {
+        ArgumentNullException.ThrowIfNull(salesDb);
+
+        var effectiveFromUtc = DateTime.UtcNow.Date;
+        // The recurring charge starts with the current Venezuelan month; do not apply the P0
+        // configuration retroactively to prior months.
+        var venezuelaToday = Core.Helpers.TimeZoneHelper.GetVenezuelaDate();
+        var effectiveFromDate = new DateOnly(venezuelaToday.Year, venezuelaToday.Month, 1);
+        var existingMethods = salesDb.PaymentMethods
+            .Where(method => !method.IsDeleted)
+            .ToList();
+        var nextDisplayOrder = existingMethods.Count == 0
+            ? 1
+            : existingMethods.Max(method => method.DisplayOrder) + 1;
+
+        // 1) Metodos digitales reales. Un metodo existente con el mismo nombre se conserva tal
+        // cual: la semilla nunca renombra, borra ni desactiva filas historicas.
+        var methodsByName = new Dictionary<string, PaymentMethod>(StringComparer.OrdinalIgnoreCase);
+        var methodsChanged = false;
+        foreach (var (name, _) in P0CommissionMethods)
+        {
+            var method = existingMethods.FirstOrDefault(candidate =>
+                string.Equals(candidate.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
+
+            if (method is null)
+            {
+                method = new PaymentMethod
+                {
+                    Name = name,
+                    IsActive = true,
+                    IsCash = false,
+                    RequiresReference = true,
+                    DisplayOrder = nextDisplayOrder++,
+                    IsDeleted = false,
+                    Currency = Sales.Module.PaymentMethodCurrencyResolver.LocalCurrency
+                };
+                salesDb.PaymentMethods.Add(method);
+                existingMethods.Add(method);
+                methodsChanged = true;
+            }
+
+            methodsByName[name] = method;
+        }
+
+        if (methodsChanged)
+        {
+            // Los Ids son necesarios para asociar reglas y gastos: se persisten antes de seguir.
+            salesDb.SaveChanges();
+            AppLogger.LogStart("[Seed] Ensured P0 payment methods (TDD, TDC, BIOpago).");
+        }
+
+        // 2) Reglas activas por transaccion. Una regla activa existente es configuracion del
+        // administrador y no se toca; jamas se asigna comision a efectivo ni al metodo generico
+        // legacy "Tarjeta (Punto de Venta)".
+        var rulesChanged = false;
+        foreach (var (name, percentage) in P0CommissionMethods)
+        {
+            var method = methodsByName[name];
+            if (method.IsCash || method.IsDeleted)
+            {
+                continue;
+            }
+
+            var hasActiveRule = salesDb.PaymentMethodFeeRules.Any(rule =>
+                rule.PaymentMethodId == method.Id && rule.IsActive);
+            if (hasActiveRule)
+            {
+                continue;
+            }
+
+            // El indice unico (PaymentMethodId, EffectiveFromUtc) impide duplicar la fecha de
+            // inicio. Si ya existe una fila inactiva con esa fecha, se preserva y no se duplica.
+            var sameDayRuleExists = salesDb.PaymentMethodFeeRules.Any(rule =>
+                rule.PaymentMethodId == method.Id && rule.EffectiveFromUtc == effectiveFromUtc);
+            if (sameDayRuleExists)
+            {
+                continue;
+            }
+
+            var now = DateTime.UtcNow;
+            salesDb.PaymentMethodFeeRules.Add(new PaymentMethodFeeRule
+            {
+                PaymentMethodId = method.Id,
+                FeeType = PaymentMethodFeeType.Percentage,
+                Percentage = percentage,
+                FixedAmount = null,
+                CurrencyCode = "USD",
+                EffectiveFromUtc = effectiveFromUtc,
+                EffectiveToUtc = null,
+                IsActive = true,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            });
+            rulesChanged = true;
+        }
+
+        if (rulesChanged)
+        {
+            salesDb.SaveChanges();
+            AppLogger.LogStart("[Seed] Ensured P0 payment method commission rules (TDD 0.75%, TDC 2.50%, BIOpago 2.70%).");
+        }
+
+        // 3) Gastos operativos mensuales. La descripcion exacta es la clave de idempotencia: si ya
+        // existe un gasto activo equivalente, se omite.
+        var expensesChanged = EnsureOperatingExpense(
+            salesDb,
+            "Mantenimiento de cuenta TDC",
+            monthlyAmountUsd: 1.60m,
+            paymentMethodId: methodsByName["Tarjeta de Crédito (TDC)"].Id,
+            effectiveFromDate);
+        expensesChanged |= EnsureOperatingExpense(
+            salesDb,
+            "Gastos mensuales del POS",
+            monthlyAmountUsd: 41.12m,
+            paymentMethodId: null,
+            effectiveFromDate);
+
+        if (expensesChanged)
+        {
+            salesDb.SaveChanges();
+            AppLogger.LogStart("[Seed] Ensured P0 monthly operating expenses (TDC maintenance $1.60, POS $41.12).");
+        }
+    }
+
+    private static readonly (string Name, decimal Percentage)[] P0CommissionMethods =
+    {
+        ("Tarjeta de Débito (TDD)", 0.75m),
+        ("Tarjeta de Crédito (TDC)", 2.50m),
+        ("BIOpago", 2.70m)
+    };
+
+    private static bool EnsureOperatingExpense(
+        Sales.Module.Data.SalesDbContext salesDb,
+        string description,
+        decimal monthlyAmountUsd,
+        int? paymentMethodId,
+        DateOnly effectiveFromDate)
+    {
+        // Any row with the canonical description is the idempotency key, including an inactive
+        // one: a restart must not resurrect a charge the admin deliberately disabled.
+        var alreadyExists = salesDb.OperatingExpenses.Any(expense =>
+            expense.Description == description);
+        if (alreadyExists)
+        {
+            return false;
+        }
+
+        var now = DateTime.UtcNow;
+        salesDb.OperatingExpenses.Add(new OperatingExpense
+        {
+            Description = description,
+            MonthlyAmountUsd = monthlyAmountUsd,
+            MonthlyAmountLocal = null,
+            LocalCurrencyCode = null,
+            PaymentMethodId = paymentMethodId,
+            EffectiveFromDate = effectiveFromDate,
+            EffectiveToDate = null,
+            IsActive = true,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        });
         return true;
     }
 }

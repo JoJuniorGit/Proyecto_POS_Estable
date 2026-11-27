@@ -33,6 +33,11 @@ public class SaleItem
     [Column(TypeName = "decimal(18,2)")]
     public decimal? UnitCostUSD { get; set; }
 
+    // Paso 14 (S4): snapshot del costo unitario en la moneda del regimen/transaccion. Permite
+    // calcular el CMV de ventas Single/Dual sin consultar tasas ni costos fuera de la venta.
+    [Column(TypeName = "decimal(18,4)")]
+    public decimal? UnitCostLocal { get; set; }
+
     // 8.185-T2 (S5/S8): regla de efectivo RESUELTA al agregar la línea (override del producto ??
     // default global de Pricing) y persistida por NOMBRE como snapshot de política. Null = línea
     // previa a 8.185 sin política registrada (conserva el techo canónico 8.104 al recalcular).

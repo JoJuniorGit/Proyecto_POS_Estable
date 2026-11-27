@@ -1,0 +1,796 @@
+<UserControl x:Class="Desktop.Client.Views.StockCountView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance vm:StockCountViewModel}"
+             Background="#F8FAFC"
+             d:DesignHeight="760" d:DesignWidth="1180">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+
+        <DropShadowEffect x:Key="EnterpriseCardShadow"
+                          Color="#000000"
+                          BlurRadius="10"
+                          Opacity="0.05"
+                          Direction="270"
+                          ShadowDepth="2"/>
+
+        <Style x:Key="ScCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Effect" Value="{StaticResource EnterpriseCardShadow}"/>
+        </Style>
+
+        <Style x:Key="ScSectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#1E293B"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ScFieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+        </Style>
+
+        <Style x:Key="ScHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F8FAFC"/>
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="BorderBrush" Value="#F1F5F9"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ScHeaderRightStyle" TargetType="DataGridColumnHeader"
+               BasedOn="{StaticResource ScHeaderStyle}">
+            <Setter Property="HorizontalContentAlignment" Value="Right"/>
+        </Style>
+
+        <Style x:Key="ScGridCellStyle" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+        </Style>
+
+        <Style x:Key="ScGridCellRightStyle" TargetType="TextBlock"
+               BasedOn="{StaticResource ScGridCellStyle}">
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="Margin" Value="0"/>
+        </Style>
+
+        <Style x:Key="ScComboBoxItemStyle" TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#1E293B"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Bd"
+                                Background="Transparent"
+                                CornerRadius="4"
+                                Margin="2,1"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#EDE9FE"/>
+                                <Setter Property="Foreground" Value="#5B21B6"/>
+                            </Trigger>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#EDE9FE"/>
+                                <Setter Property="Foreground" Value="#5B21B6"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#EDE9FE"/>
+                                <Setter Property="Foreground" Value="#5B21B6"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ScPrimaryButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#6D28D9"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="FocusVisualStyle">
+                <Setter.Value>
+                    <Style>
+                        <Setter Property="Control.Template">
+                            <Setter.Value>
+                                <ControlTemplate>
+                                    <Rectangle Margin="-3"
+                                               Stroke="#6D28D9"
+                                               StrokeThickness="2"
+                                               StrokeDashArray="3 2"
+                                               RadiusX="8"
+                                               RadiusY="8"
+                                               SnapsToDevicePixels="True"/>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True"
+                                UseLayoutRounding="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#5B21B6"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#4C1D95"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#C4B5FD"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                                <Setter Property="Opacity" Value="0.7"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ScGridRowStyle" TargetType="DataGridRow"
+               BasedOn="{StaticResource MaterialDesignDataGridRow}">
+            <Setter Property="Foreground" Value="#1E293B"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#F8FAFC"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#EDE9FE"/>
+                    <Setter Property="Foreground" Value="#5B21B6"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="ScGridStyle" TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="False"/>
+            <Setter Property="CanUserAddRows" Value="False"/>
+            <Setter Property="CanUserDeleteRows" Value="False"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="SelectionMode" Value="Single"/>
+            <Setter Property="SelectionUnit" Value="FullRow"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="ColumnHeaderHeight" Value="42"/>
+            <Setter Property="RowHeight" Value="44"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="RowBackground" Value="#FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#F1F5F9"/>
+            <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="VirtualizingStackPanel.IsVirtualizing" Value="True"/>
+            <Setter Property="VirtualizingStackPanel.VirtualizationMode" Value="Recycling"/>
+            <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
+            <Setter Property="RowStyle" Value="{StaticResource ScGridRowStyle}"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,16" LastChildFill="True">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Command="{Binding RefreshCommand}"
+                        AutomationProperties.AutomationId="StockCount_RefreshButton"
+                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                        BorderBrush="#CBD5E1"
+                        Foreground="#475569"
+                        MinHeight="36" Padding="14,0" Margin="0,0,8,0"
+                        ToolTip="Recargar sesiones">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="Refresh" Width="16" Height="16" Margin="0,0,6,0"/>
+                        <TextBlock Text="Actualizar" FontWeight="SemiBold" FontSize="12"/>
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource SidebarMenuButtonStyle}"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <materialDesign:PackIcon Kind="ClipboardListOutline" Width="28" Height="28" Foreground="#6D28D9" Margin="0,0,10,0"/>
+                <StackPanel>
+                    <TextBlock Text="Conteo Físico"
+                               AutomationProperties.AutomationId="StockCount_Title"
+                               FontSize="20" FontWeight="Bold" Foreground="#1E293B"/>
+                    <TextBlock Text="Conteo ciego por escáner: producto y cantidad contada. El descuadre se revisa al cerrar la sesión."
+                               FontSize="12" Foreground="#64748B" Margin="0,2,0,0"/>
+                </StackPanel>
+            </StackPanel>
+        </DockPanel>
+
+        <!-- Error de carga / acceso -->
+        <Border Grid.Row="1" Background="#FEE2E2" BorderBrush="#FCA5A5" BorderThickness="1" CornerRadius="6"
+                Padding="12,8" Margin="0,0,0,16"
+                Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <TextBlock Text="{Binding ErrorMessage}" Foreground="#B91C1C" FontSize="12" TextWrapping="Wrap"/>
+        </Border>
+
+        <!-- Nueva sesión -->
+        <Border Grid.Row="2" Style="{StaticResource ScCardStyle}" Margin="0,0,0,16"
+                AutomationProperties.AutomationId="StockCount_CreatePanel"
+                Visibility="{Binding IsCreatePanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <StackPanel>
+                <TextBlock Text="Nueva sesión de conteo" Style="{StaticResource ScSectionTitleStyle}" Margin="0,0,0,12"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="3*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                        <TextBlock Text="Nombre" Style="{StaticResource ScFieldLabelStyle}"/>
+                        <TextBox Text="{Binding CreateName, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.AutomationId="StockCount_CreateName"
+                                 materialDesign:HintAssist.Hint="Ej: Conteo octubre 2026"
+                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                 MaxLength="80"
+                                 MinHeight="42" Padding="12,8"
+                                 VerticalContentAlignment="Center"
+                                 FontSize="13"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                        <TextBlock Text="Alcance" Style="{StaticResource ScFieldLabelStyle}"/>
+                        <ComboBox ItemsSource="{Binding ScopeTypeOptions}"
+                                  SelectedItem="{Binding SelectedCreateScopeType, Mode=TwoWay}"
+                                  DisplayMemberPath="Label"
+                                  AutomationProperties.AutomationId="StockCount_CreateScope"
+                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                  ItemContainerStyle="{StaticResource ScComboBoxItemStyle}"
+                                  MinHeight="42" Padding="12,6"
+                                  VerticalContentAlignment="Center"
+                                  FontSize="13"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Notas (opcional)" Style="{StaticResource ScFieldLabelStyle}"/>
+                        <TextBox Text="{Binding CreateNotes, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.AutomationId="StockCount_CreateNotes"
+                                 materialDesign:HintAssist.Hint="Observaciones de la sesión"
+                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                 MaxLength="300"
+                                 MinHeight="42" Padding="12,8"
+                                 VerticalContentAlignment="Center"
+                                 FontSize="13"/>
+                        <TextBlock Text="{Binding CreateNotesCounterText}"
+                                   HorizontalAlignment="Right" FontSize="11" Foreground="#94A3B8"
+                                   Margin="0,3,2,0"/>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Margin="0,12,0,0"
+                            Visibility="{Binding IsCreateScopeCategoryVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Text="Categoría" Style="{StaticResource ScFieldLabelStyle}"/>
+                    <ComboBox ItemsSource="{Binding Categories}"
+                              SelectedItem="{Binding CreateScopeCategory, Mode=TwoWay}"
+                              DisplayMemberPath="Label"
+                              AutomationProperties.AutomationId="StockCount_CreateScopeCategory"
+                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                              ItemContainerStyle="{StaticResource ScComboBoxItemStyle}"
+                              MinHeight="42" Padding="12,6"
+                              VerticalContentAlignment="Center"
+                              MaxWidth="420" HorizontalAlignment="Left"
+                              FontSize="13"/>
+                </StackPanel>
+
+                <StackPanel Margin="0,12,0,0"
+                            Visibility="{Binding IsCreateScopeProductsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                            CornerRadius="8" Padding="12">
+                        <StackPanel>
+                            <DockPanel LastChildFill="True">
+                                <Button DockPanel.Dock="Left" Content="Seleccionar productos"
+                                        Command="{Binding OpenCreateScopeProductPickerCommand}"
+                                        AutomationProperties.AutomationId="StockCount_CreateProductsButton"
+                                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                        Foreground="#5B21B6" BorderBrush="#C4B5FD"
+                                        MinHeight="34" Padding="14,0"
+                                        IsEnabled="{Binding CanPickCreateScopeProducts}"/>
+                                <TextBlock Text="{Binding CreateScopeProductCountText}"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           Foreground="#5B21B6" FontWeight="SemiBold" FontSize="12"
+                                           Margin="16,0,0,0"/>
+                            </DockPanel>
+                            <ItemsControl ItemsSource="{Binding CreateScopeProducts}" Margin="0,10,0,0"
+                                          Visibility="{Binding HasCreateScopeProducts, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#EDE9FE" CornerRadius="10" Padding="9,4"
+                                                Margin="0,0,6,6">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Name}" Foreground="#5B21B6"
+                                                           FontWeight="SemiBold" FontSize="11"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding Sku}" Foreground="#7C3AED"
+                                                           FontSize="10" Margin="6,0,4,0"
+                                                           VerticalAlignment="Center"/>
+                                                <Button Command="{Binding DataContext.RemoveCreateScopeProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{DynamicResource MaterialDesignIconButton}"
+                                                        Width="22" Height="22" Padding="0"
+                                                        ToolTip="Quitar producto del alcance">
+                                                    <materialDesign:PackIcon Kind="Close" Width="13" Height="13"
+                                                                             Foreground="#5B21B6"/>
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="Seleccione al menos un producto. Solo esos productos podrán escanearse."
+                                       FontSize="11" Foreground="#94A3B8" Margin="0,4,0,0"
+                                       Visibility="{Binding HasCreateScopeProducts, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                <TextBlock Text="{Binding CreateError}"
+                           Visibility="{Binding HasCreateError, Converter={StaticResource BooleanToVisibilityConverter}}"
+                           Foreground="#B91C1C" FontSize="12" Margin="0,10,0,0"/>
+                <Border BorderBrush="#F1F5F9" BorderThickness="0,1,0,0" Margin="0,14,0,0" Padding="0,12,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Cancelar" Command="{Binding CancelCreateCommand}"
+                                AutomationProperties.AutomationId="StockCount_CreateCancel"
+                                Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                MinHeight="34" Padding="16,0" Margin="0,0,8,0"/>
+                        <Button Content="Crear sesión" Command="{Binding SubmitCreateCommand}"
+                                AutomationProperties.AutomationId="StockCount_CreateSubmit"
+                                Style="{StaticResource ScPrimaryButtonStyle}"
+                                MinHeight="34" Padding="16,0"
+                                IsEnabled="{Binding CanCreateSession}"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- Contenido principal: listado o detalle (master-detail) -->
+        <Grid Grid.Row="3">
+            <!-- Listado de sesiones -->
+            <Border Style="{StaticResource ScCardStyle}"
+                    Visibility="{Binding HasSelectedSession, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="Sesiones de conteo"
+                                   Style="{StaticResource ScSectionTitleStyle}"/>
+
+                        <Border Grid.Column="2"
+                                MinHeight="38" MinWidth="220" MaxWidth="280"
+                                Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                CornerRadius="8" Margin="0,0,8,0"
+                                VerticalAlignment="Center"
+                                ToolTip="Buscar sesión por nombre">
+                            <Grid Margin="10,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <materialDesign:PackIcon Grid.Column="0" Kind="Magnify"
+                                                         Width="16" Height="16" Foreground="#94A3B8"
+                                                         VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBox Grid.Column="1"
+                                         AutomationProperties.AutomationId="StockCount_SessionSearch"
+                                         materialDesign:HintAssist.Hint="Buscar por nombre..."
+                                         materialDesign:TextFieldAssist.HasClearButton="True"
+                                         Style="{DynamicResource MaterialDesignTextBox}"
+                                         BorderThickness="0" Background="Transparent"
+                                         Foreground="#1E293B" FontSize="12"
+                                         Text="{Binding SessionSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         VerticalAlignment="Center" VerticalContentAlignment="Center"/>
+                            </Grid>
+                        </Border>
+
+                        <ComboBox Grid.Column="3"
+                                  ItemsSource="{Binding StatusOptions}"
+                                  SelectedItem="{Binding SelectedStatusOption, Mode=TwoWay}"
+                                  DisplayMemberPath="Label"
+                                  AutomationProperties.AutomationId="StockCount_StatusFilter"
+                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                                  ItemContainerStyle="{StaticResource ScComboBoxItemStyle}"
+                                  MinWidth="150" MinHeight="38" Padding="12,6"
+                                  VerticalContentAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  FontSize="12" Margin="0,0,8,0"/>
+
+                        <Button Grid.Column="4" Content="Nueva sesión"
+                                Command="{Binding OpenCreatePanelCommand}"
+                                AutomationProperties.AutomationId="StockCount_CreateButton"
+                                Style="{StaticResource ScPrimaryButtonStyle}"
+                                MinHeight="36" Padding="14,0"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding CanOpenCreatePanel, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                        <DataGrid ItemsSource="{Binding FilteredSessions}"
+                                  AutomationProperties.AutomationId="StockCount_SessionGrid"
+                                  VerticalAlignment="Stretch"
+                                  ScrollViewer.CanContentScroll="True"
+                                  VirtualizingPanel.ScrollUnit="Pixel"
+                                  Style="{StaticResource ScGridStyle}"
+                                  Visibility="{Binding HasNoVisibleSessions, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="NOMBRE" Binding="{Binding Name}"
+                                                    Width="*" MinWidth="180"
+                                                    HeaderStyle="{StaticResource ScHeaderStyle}"
+                                                    ElementStyle="{StaticResource ScGridCellStyle}"/>
+                                <DataGridTextColumn Header="ALCANCE" Binding="{Binding ScopeDisplay}"
+                                                    Width="1.4*" MinWidth="160"
+                                                    HeaderStyle="{StaticResource ScHeaderStyle}"
+                                                    ElementStyle="{StaticResource ScGridCellStyle}"/>
+                                <DataGridTemplateColumn Header="ESTADO" Width="110"
+                                                        HeaderStyle="{StaticResource ScHeaderStyle}">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{Binding StatusBackground}" CornerRadius="10"
+                                                    Padding="10,3" HorizontalAlignment="Left"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding StatusLabel}" Foreground="{Binding StatusColor}"
+                                                           FontWeight="SemiBold" FontSize="11"/>
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="ÍTEMS"
+                                                    Binding="{Binding ItemsCount, StringFormat={}{0:N0}}"
+                                                    Width="80"
+                                                    HeaderStyle="{StaticResource ScHeaderRightStyle}"
+                                                    ElementStyle="{StaticResource ScGridCellRightStyle}"/>
+                                <DataGridTextColumn Header="CREADA" Binding="{Binding CreatedAtText}"
+                                                    Width="150"
+                                                    HeaderStyle="{StaticResource ScHeaderStyle}"
+                                                    ElementStyle="{StaticResource ScGridCellStyle}"/>
+                                <DataGridTemplateColumn Header="ACCIONES" Width="92"
+                                                        HeaderStyle="{StaticResource ScHeaderStyle}">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="Abrir"
+                                                    AutomationProperties.AutomationId="StockCount_SessionOpenButton"
+                                                    Command="{Binding DataContext.SelectSessionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{DynamicResource MaterialDesignFlatButton}"
+                                                    Foreground="#5B21B6" FontWeight="SemiBold"
+                                                    Height="28" Padding="8,0" FontSize="11"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    MaxWidth="360"
+                                    Visibility="{Binding HasNoSessions, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <materialDesign:PackIcon Kind="ClipboardListOutline"
+                                                     Width="46" Height="46" Foreground="#94A3B8"
+                                                     HorizontalAlignment="Center"/>
+                            <TextBlock Text="Aún no hay sesiones de conteo"
+                                       FontSize="15" FontWeight="SemiBold" Foreground="#475569"
+                                       HorizontalAlignment="Center" Margin="0,12,0,4"/>
+                            <TextBlock Text="Crea una nueva sesión para iniciar el conteo ciego por escáner."
+                                       FontSize="12" Foreground="#94A3B8"
+                                       TextAlignment="Center" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    MaxWidth="360"
+                                    Visibility="{Binding HasNoSearchResults, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <materialDesign:PackIcon Kind="Magnify"
+                                                     Width="46" Height="46" Foreground="#94A3B8"
+                                                     HorizontalAlignment="Center"/>
+                            <TextBlock Text="Sin coincidencias"
+                                       FontSize="15" FontWeight="SemiBold" Foreground="#475569"
+                                       HorizontalAlignment="Center" Margin="0,12,0,4"/>
+                            <TextBlock Text="Prueba con otro nombre o limpia la búsqueda."
+                                       FontSize="12" Foreground="#94A3B8"
+                                       TextAlignment="Center" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- Detalle de sesión -->
+            <Border Style="{StaticResource ScCardStyle}"
+                    Visibility="{Binding HasSelectedSession, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,12">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="Volver" Command="{Binding BackToSessionsCommand}"
+                                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                        MinHeight="32" Padding="12,0" Margin="0,0,8,0"/>
+                                <Button Content="Actualizar" Command="{Binding RefreshDetailCommand}"
+                                        Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                        MinHeight="32" Padding="12,0"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding SelectedSession.Name}" FontSize="16" FontWeight="Bold" Foreground="#1E293B"/>
+                                <Border Background="{Binding SelectedSession.StatusBackground}" CornerRadius="10"
+                                        Padding="10,3" Margin="10,0,8,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding SelectedSession.StatusLabel}"
+                                               Foreground="{Binding SelectedSession.StatusColor}" FontWeight="SemiBold" FontSize="11"/>
+                                </Border>
+                                <TextBlock Text="{Binding SelectedSession.ScopeDisplay}" Foreground="#64748B" FontSize="12" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DockPanel>
+
+                        <!-- Escaneo -->
+                        <Grid Margin="0,0,0,8"
+                              Visibility="{Binding SelectedSessionIsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding ScanCode, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.AutomationId="StockCount_ScanInput"
+                                     materialDesign:HintAssist.Hint="Escanea o escribe el SKU / código de barras y presiona Enter"
+                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                     MinHeight="42" Padding="12,8"
+                                     VerticalContentAlignment="Center"
+                                     FontSize="13" Margin="0,0,8,0">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Key="Enter" Command="{Binding ScanCommand}"/>
+                                </TextBox.InputBindings>
+                            </TextBox>
+                            <Button Grid.Column="1" Content="Contar"
+                                    Command="{Binding ScanCommand}"
+                                    AutomationProperties.AutomationId="StockCount_ScanButton"
+                                    Style="{StaticResource ScPrimaryButtonStyle}"
+                                    MinHeight="42" Padding="18,0" FontSize="13"
+                                    VerticalAlignment="Center"
+                                    IsEnabled="{Binding CanScan}"/>
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal"
+                                    Visibility="{Binding HasScanFeedback, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="AlertCircleOutline"
+                                                     Width="16" Height="16" Foreground="#B45309"
+                                                     VerticalAlignment="Center" Margin="0,0,6,0"
+                                                     Visibility="{Binding ScanFeedbackIsScopeViolation, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                            <TextBlock Text="{Binding ScanFeedback}"
+                                       AutomationProperties.AutomationId="StockCount_ScanFeedback"
+                                       Foreground="{Binding ScanFeedbackColor}"
+                                       FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <DataGrid ItemsSource="{Binding Items}"
+                                  AutomationProperties.AutomationId="StockCount_ItemsGrid"
+                                  MaxHeight="360" ScrollViewer.CanContentScroll="True"
+                                  VirtualizingPanel.ScrollUnit="Pixel"
+                                  Style="{StaticResource ScGridStyle}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="SKU" Binding="{Binding Sku}" Width="120"
+                                                    HeaderStyle="{StaticResource ScHeaderStyle}"
+                                                    ElementStyle="{StaticResource ScGridCellStyle}"/>
+                                <DataGridTextColumn Header="PRODUCTO" Binding="{Binding ProductName}" Width="*"
+                                                    HeaderStyle="{StaticResource ScHeaderStyle}"
+                                                    ElementStyle="{StaticResource ScGridCellStyle}"/>
+                                <DataGridTextColumn Header="CONTADO" Binding="{Binding CountedQuantityText}" Width="100"
+                                                    HeaderStyle="{StaticResource ScHeaderRightStyle}"
+                                                    ElementStyle="{StaticResource ScGridCellRightStyle}"/>
+                                <DataGridTextColumn Header="ACTUALIZADO" Binding="{Binding UpdatedAtText}" Width="145"
+                                                    HeaderStyle="{StaticResource ScHeaderStyle}"
+                                                    ElementStyle="{StaticResource ScGridCellStyle}"/>
+                                <DataGridTemplateColumn Header="ACCIONES" Width="250"
+                                                        HeaderStyle="{StaticResource ScHeaderStyle}">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Button Content="-"
+                                                        Command="{Binding DataContext.DecreaseItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding DataContext.CanEditItems, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        Style="{DynamicResource MaterialDesignFlatButton}"
+                                                        Height="26" Width="28" Padding="0" Margin="0,0,2,0"
+                                                        ToolTip="Restar una unidad"/>
+                                                <Button Content="+"
+                                                        Command="{Binding DataContext.IncreaseItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding DataContext.CanEditItems, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        Style="{DynamicResource MaterialDesignFlatButton}"
+                                                        Height="26" Width="28" Padding="0" Margin="0,0,6,0"
+                                                        ToolTip="Sumar una unidad"/>
+                                                <Button Content="Editar"
+                                                        Command="{Binding DataContext.EditItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding DataContext.CanEditItems, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        Style="{DynamicResource MaterialDesignFlatButton}"
+                                                        Height="26" Padding="8,0" FontSize="11" Margin="0,0,2,0"/>
+                                                <Button Content="Quitar"
+                                                        Command="{Binding DataContext.RemoveItemCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding DataContext.CanEditItems, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        Style="{DynamicResource MaterialDesignFlatButton}"
+                                                        Foreground="#B91C1C"
+                                                        Height="26" Padding="8,0" FontSize="11"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <TextBlock Text="Aún no hay ítems contados. Escanee el primer producto."
+                                   Visibility="{Binding HasNoItems, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                   Foreground="#64748B" FontSize="12" Margin="0,14,0,0"/>
+
+                        <TextBlock Text="{Binding ActionFeedback}"
+                                   Visibility="{Binding HasActionFeedback, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                   Foreground="#047857" FontSize="12" FontWeight="SemiBold" Margin="0,10,0,0"/>
+
+                        <!-- Descuadre (solo Admin/Manager) -->
+                        <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6"
+                                Padding="12" Margin="0,14,0,0"
+                                Visibility="{Binding ShowReview, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel>
+                                <DockPanel Margin="0,0,0,8">
+                                    <Button DockPanel.Dock="Right" Content="Actualizar descuadre"
+                                            Command="{Binding LoadReviewCommand}"
+                                            AutomationProperties.AutomationId="StockCount_ReviewButton"
+                                            Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                            MinHeight="30" Padding="12,0" FontSize="11"/>
+                                    <TextBlock Text="Descuadre (Admin/Manager)" Style="{StaticResource ScSectionTitleStyle}"/>
+                                </DockPanel>
+
+                                <TextBlock Text="Teórico EN VIVO (sesión abierta): los valores pueden cambiar hasta cerrar la sesión."
+                                           Visibility="{Binding Review.TheoreticalIsPreview, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                           Foreground="#B45309" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap"/>
+
+                                <UniformGrid Columns="4" Margin="0,0,0,10">
+                                    <StackPanel Margin="0,0,10,0">
+                                        <TextBlock Text="SOBRANTES" FontSize="10" Foreground="#64748B" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Review.TotalSurplusValueUsd, StringFormat={}{0:N2}}"
+                                                   FontSize="16" FontWeight="Bold" Foreground="#047857"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,10,0">
+                                        <TextBlock Text="FALTANTES" FontSize="10" Foreground="#64748B" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Review.TotalShortageValueUsd, StringFormat={}{0:N2}}"
+                                                   FontSize="16" FontWeight="Bold" Foreground="#B91C1C"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,10,0">
+                                        <TextBlock Text="NETO" FontSize="10" Foreground="#64748B" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Review.NetValueUsd, StringFormat={}{0:N2}}"
+                                                   FontSize="16" FontWeight="Bold" Foreground="#1E293B"/>
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Text="NO ESCANEADOS" FontSize="10" Foreground="#64748B" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Review.UnscannedInScopeCount}"
+                                                   FontSize="16" FontWeight="Bold" Foreground="#B45309"/>
+                                    </StackPanel>
+                                </UniformGrid>
+
+                                <DataGrid ItemsSource="{Binding ReviewItems}"
+                                          AutomationProperties.AutomationId="StockCount_ReviewGrid"
+                                          MaxHeight="360" ScrollViewer.CanContentScroll="True"
+                                          VirtualizingPanel.ScrollUnit="Pixel"
+                                          Style="{StaticResource ScGridStyle}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="SKU" Binding="{Binding Sku}" Width="110"
+                                                            HeaderStyle="{StaticResource ScHeaderStyle}"
+                                                            ElementStyle="{StaticResource ScGridCellStyle}"/>
+                                        <DataGridTextColumn Header="PRODUCTO" Binding="{Binding ProductName}" Width="*"
+                                                            HeaderStyle="{StaticResource ScHeaderStyle}"
+                                                            ElementStyle="{StaticResource ScGridCellStyle}"/>
+                                        <DataGridTextColumn Header="CONTADO" Binding="{Binding CountedText}" Width="90"
+                                                            HeaderStyle="{StaticResource ScHeaderRightStyle}"
+                                                            ElementStyle="{StaticResource ScGridCellRightStyle}"/>
+                                        <DataGridTextColumn Header="TEÓRICO" Binding="{Binding TheoreticalText}" Width="90"
+                                                            HeaderStyle="{StaticResource ScHeaderRightStyle}"
+                                                            ElementStyle="{StaticResource ScGridCellRightStyle}"/>
+                                        <DataGridTextColumn Header="Δ" Binding="{Binding DifferenceText}" Width="90"
+                                                            HeaderStyle="{StaticResource ScHeaderRightStyle}"
+                                                            ElementStyle="{StaticResource ScGridCellRightStyle}"/>
+                                        <DataGridTextColumn Header="COSTO" Binding="{Binding UnitCostText}" Width="90"
+                                                            HeaderStyle="{StaticResource ScHeaderRightStyle}"
+                                                            ElementStyle="{StaticResource ScGridCellRightStyle}"/>
+                                        <DataGridTextColumn Header="VALOR Δ" Binding="{Binding DifferenceValueText}" Width="100"
+                                                            HeaderStyle="{StaticResource ScHeaderRightStyle}"
+                                                            ElementStyle="{StaticResource ScGridCellRightStyle}"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Acciones de sesión -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                            <Button Content="Cerrar conteo"
+                                    Command="{Binding CloseCommand}"
+                                    AutomationProperties.AutomationId="StockCount_CloseButton"
+                                    Style="{StaticResource ScPrimaryButtonStyle}"
+                                    MinHeight="34" Padding="16,0" Margin="0,0,8,0"
+                                    Visibility="{Binding SelectedSessionIsOpen, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    IsEnabled="{Binding CanClose}"/>
+                            <Button Content="Aplicar ajustes"
+                                    Command="{Binding ApplyCommand}"
+                                    AutomationProperties.AutomationId="StockCount_ApplyButton"
+                                    Style="{StaticResource ScPrimaryButtonStyle}"
+                                    MinHeight="34" Padding="16,0" Margin="0,0,8,0"
+                                    Visibility="{Binding SelectedSessionIsClosed, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    IsEnabled="{Binding CanApply}"/>
+                            <Button Content="Cancelar sesión"
+                                    Command="{Binding CancelCommand}"
+                                    AutomationProperties.AutomationId="StockCount_CancelButton"
+                                    Style="{DynamicResource MaterialDesignOutlinedButton}"
+                                    Foreground="#B91C1C"
+                                    MinHeight="34" Padding="16,0"
+                                    Visibility="{Binding CanCancel, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                    IsEnabled="{Binding CanCancel}"/>
+                        </StackPanel>
+
+                        <TextBlock Text="Esta sesión es terminal: no admite más escaneos, ediciones ni ajustes."
+                                   Visibility="{Binding SelectedSessionIsTerminal, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                   Foreground="#64748B" FontSize="12" Margin="0,12,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

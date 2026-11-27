@@ -61,7 +61,7 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
 
         if (enableRealtime)
         {
-            var baseAddress = httpClient.BaseAddress ?? new Uri("http://localhost:5000/");
+            var baseAddress = httpClient.BaseAddress ?? new Uri("https://localhost:5001/");
             var hubUri = new Uri(baseAddress, "hubs/exchange-rate");
 
             _hubConnection = new HubConnectionBuilder()
@@ -148,7 +148,12 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             _userSession.SessionChanged += OnSessionChanged;
         }
 
-        InitializeAsync().SafeFireAndForget("ExchangeRateService.Initialize");
+        // Sin sesion no hay motivo para pedir tasa ni abrir SignalR antes del Login. La carga
+        // inicial la dispara el ViewModel que la necesita al entrar a su vista (POS/Pickups).
+        if (_userSession?.IsLoggedIn == true)
+        {
+            InitializeAsync().SafeFireAndForget("ExchangeRateService.Initialize");
+        }
     }
 
     public static Func<Task<string?>> CreateAccessTokenProvider(Uri hubUri, UserSession? userSession)
@@ -195,9 +200,10 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         {
             await GetCurrentRateAsync();
         }
-        catch
+        catch (Exception ex)
         {
             // Rate stays at 0; user will see "0.00" and can set it manually
+            ClientStateLogger.LogWarning($"Aviso al sincronizar tasa inicial: {ex.Message}", nameof(ExchangeRateService));
         }
 
         // Start SignalR in background — never blocks the UI (omitido en modo E2E sin tiempo real)
@@ -402,8 +408,9 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             }
             return (rate, _lastUpdated);
         }
-        catch
+        catch (Exception ex)
         {
+            ClientStateLogger.LogWarning($"Aviso al consultar tasa actual: {ex.Message}", nameof(ExchangeRateService));
             return (0m, null);
         }
     }
@@ -431,8 +438,9 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             var history = await response.Content.ReadFromJsonAsync<List<ExchangeRateHistoryDto>>(_jsonOptions);
             return history ?? new List<ExchangeRateHistoryDto>();
         }
-        catch
+        catch (Exception ex)
         {
+            ClientStateLogger.LogWarning($"Aviso al consultar historial de tasas: {ex.Message}", nameof(ExchangeRateService));
             return new List<ExchangeRateHistoryDto>();
         }
     }
@@ -448,7 +456,10 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
                 var errorDoc = await response.Content.ReadFromJsonAsync<System.Text.Json.Nodes.JsonObject>(_jsonOptions);
                 errorMessage = errorDoc?["message"]?.ToString();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                ClientStateLogger.LogWarning($"Aviso al parsear respuesta de error BCV: {ex.Message}", nameof(ExchangeRateService));
+            }
             throw new HttpRequestException(errorMessage ?? $"Error {(int)response.StatusCode}: {response.ReasonPhrase}");
         }
 
@@ -477,20 +488,29 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
             {
                 await _hubConnection.StopAsync();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                ClientStateLogger.LogWarning($"Aviso al detener hub de tasa: {ex.Message}", nameof(ExchangeRateService));
+            }
 
             try
             {
                 await _hubConnection.DisposeAsync();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                ClientStateLogger.LogWarning($"Aviso al disponer hub de tasa: {ex.Message}", nameof(ExchangeRateService));
+            }
         }
 
         try
         {
             _semaphore.Dispose();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            ClientStateLogger.LogWarning($"Aviso al disponer semaforo: {ex.Message}", nameof(ExchangeRateService));
+        }
 
         GC.SuppressFinalize(this);
     }
@@ -506,7 +526,10 @@ public class ExchangeRateService : IExchangeRateService, IDisposable, IAsyncDisp
         {
             _ = Task.Run(async () => await DisposeAsync().ConfigureAwait(false));
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            ClientStateLogger.LogWarning($"Aviso al despachar DisposeAsync de tasa: {ex.Message}", nameof(ExchangeRateService));
+        }
     }
 
     private class ExchangeRateResponse

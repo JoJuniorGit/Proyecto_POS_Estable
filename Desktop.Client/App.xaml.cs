@@ -1,3 +1,4 @@
+using Core.Diagnostics;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 using System.IO;
@@ -107,7 +108,22 @@ public partial class App : Application
 
     private void RecordUnhandledException(string fileCategory, string logContext, Exception ex)
     {
-        try { File.AppendAllText(_crashPath, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] " + fileCategory + ": " + ex.Message + "\n" + ex.StackTrace + "\n\n"); } catch { }
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append('[').Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).Append("] ")
+              .Append(fileCategory).Append(": ").Append(ex.GetType().FullName).Append(": ")
+              .Append(ex.Message).Append('\n').Append(ex.StackTrace).Append('\n');
+
+            for (var inner = ex.InnerException; inner != null; inner = inner.InnerException)
+            {
+                sb.Append("--- Inner: ").Append(inner.GetType().FullName).Append(": ")
+                  .Append(inner.Message).Append('\n').Append(inner.StackTrace).Append('\n');
+            }
+
+            File.AppendAllText(_crashPath, sb.ToString() + "\n");
+        }
+        catch { }
         Core.Logging.AppLogger.LogCrash(ex, logContext);
     }
 
@@ -148,6 +164,10 @@ public partial class App : Application
             }
             else
             {
+                // HTTPS end-to-end en la LAN: certificados públicos se validan normalmente;
+                // certificados locales/autofirmados se aceptan solo por el pin TOFU del host.
+                clientBuilder.ConfigurePrimaryHttpMessageHandler(
+                    CertificatePinning.CreateHttpClientHandler);
                 clientBuilder.AddHttpMessageHandler<UserSessionHeaderHandler>().AddHttpMessageHandler<ResilienceHandler>();
             }
         }
@@ -157,7 +177,16 @@ public partial class App : Application
         var baseAddressStr = clientSettings.ServerBaseAddress;
         if (string.IsNullOrWhiteSpace(baseAddressStr) || baseAddressStr == "http://localhost:5000/")
         {
-            baseAddressStr = builder.Configuration["BackendSettings:BaseAddress"] ?? "http://localhost:5000/";
+            baseAddressStr = builder.Configuration["BackendSettings:BaseAddress"] ?? "https://localhost:5001/";
+        }
+        if (!isE2E)
+        {
+            var secureAddress = ServerPortResolver.NormalizeHttpsAddress(baseAddressStr);
+            if (!string.Equals(secureAddress, baseAddressStr, StringComparison.OrdinalIgnoreCase))
+            {
+                settingsStore.UpdateServerAddress(secureAddress, clientSettings.LastKnownServerMachineName);
+            }
+            baseAddressStr = secureAddress;
         }
         if (!baseAddressStr.EndsWith("/")) baseAddressStr += "/";
         var baseAddressUri = new Uri(baseAddressStr);
@@ -171,7 +200,14 @@ public partial class App : Application
         {
             client.BaseAddress = baseAddressUri;
         });
-        if (isE2E) healthClient.ConfigurePrimaryHttpMessageHandler<E2EMockHttpMessageHandler>();
+        if (isE2E)
+        {
+            healthClient.ConfigurePrimaryHttpMessageHandler<E2EMockHttpMessageHandler>();
+        }
+        else
+        {
+            healthClient.ConfigurePrimaryHttpMessageHandler(CertificatePinning.CreateHttpClientHandler);
+        }
 
         builder.Services.AddSingleton<IHealthPollingService>(sp =>
             new HealthPollingService(
@@ -191,6 +227,12 @@ public partial class App : Application
             client.BaseAddress = baseAddressUri;
         }));
 
+        // Paso 15: reporte de rotacion/stock muerto y puente de IDs al dialogo del Paso 9.
+        ConfigureClient(builder.Services.AddHttpClient<IInventoryRotationService, InventoryRotationService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
         ConfigureClient(builder.Services.AddHttpClient("Categories", client =>
         {
             client.BaseAddress = baseAddressUri;
@@ -198,6 +240,12 @@ public partial class App : Application
 
         // 8.177-T3 (S2/S3): cliente del Centro de Auditoría de Kardex (mismo pipeline HTTP).
         ConfigureClient(builder.Services.AddHttpClient<IStockKardexClientService, StockKardexClientService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
+        // Conteo físico ciego (8.180): misma base HTTP y pipeline de sesión/seguridad.
+        ConfigureClient(builder.Services.AddHttpClient<IStockCountClientService, StockCountClientService>(client =>
         {
             client.BaseAddress = baseAddressUri;
         }));
@@ -264,6 +312,7 @@ public partial class App : Application
         builder.Services.AddSingleton<PosViewModel>();
         builder.Services.AddSingleton<InventoryViewModel>();
         builder.Services.AddSingleton<StockKardexViewModel>();
+        builder.Services.AddSingleton<StockCountViewModel>();
         builder.Services.AddSingleton<SalesHistoryViewModel>();
         builder.Services.AddSingleton<PendingOrdersViewModel>(sp => new Desktop.Client.ViewModels.PendingOrdersViewModel(
             sp.GetRequiredService<Desktop.Client.Services.ISalesService>(),
@@ -275,6 +324,9 @@ public partial class App : Application
 
         builder.Services.AddSingleton<PendingPickupsViewModel>();
 
+        // T4 (F3): cartera CxC, abonos y estado de cuenta (Admin/Manager/Cashier).
+        builder.Services.AddSingleton<CreditReceivablesViewModel>();
+
         builder.Services.AddSingleton<SettingsViewModel>();
         builder.Services.AddSingleton<ExchangeRateViewModel>();
 
@@ -285,6 +337,19 @@ public partial class App : Application
         }));
 
         ConfigureClient(builder.Services.AddHttpClient<ISettingsService, SettingsService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
+        // F4-WU1 (Paso 14): Estado de Resultados y reglas de comisión (mismo pipeline de sesión).
+        ConfigureClient(builder.Services.AddHttpClient<IProfitabilityClientService, ProfitabilityClientService>(client =>
+        {
+            client.BaseAddress = baseAddressUri;
+        }));
+
+        // 8.211-T4c1 (S9): perfil monetario read-only para la presentación WPF. Comparte el
+        // pipeline HTTP configurado (base address, pinning, sesión y resiliencia).
+        ConfigureClient(builder.Services.AddHttpClient<IClientMonetaryProfileService, ClientMonetaryProfileService>(client =>
         {
             client.BaseAddress = baseAddressUri;
         }));
@@ -316,6 +381,7 @@ public partial class App : Application
         builder.Services.AddSingleton<CashDrawerViewModel>();
         builder.Services.AddSingleton<ImportProductsViewModel>();
         builder.Services.AddSingleton<SupplierInvoiceViewModel>();
+        builder.Services.AddSingleton<ProfitabilityViewModel>();
 
         // Main Window Registration
         builder.Services.AddSingleton<MainWindow>();
@@ -330,9 +396,11 @@ public partial class App : Application
         try
         {
             Core.Logging.AppLogger.LogStart("WPF Desktop Client initializing...");
+            StartupTimeline.Mark("Wpf.OnStartup.Start");
 
             _host = CreateAndStartHost(e.Args);
             await _host.StartAsync();
+            StartupTimeline.Mark("Wpf.Host.Started");
 
             var versionService = _host.Services.GetRequiredService<IVersionCheckService>();
             // 8.9-M12: timeout de 5s en el arranque — si el servidor no responde, se continúa
@@ -356,6 +424,7 @@ public partial class App : Application
                 return;
             }
 
+            StartupTimeline.Mark("Wpf.VersionCheck.Done");
             Core.Logging.AppLogger.LogStart("WPF Desktop Client version check passed. Displaying MainWindow.");
 
             // Restaurar sesión previa resguardada en DPAPI (H-DCC-11 / R7)
@@ -383,31 +452,77 @@ public partial class App : Application
                 Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.RestoreToken");
             }
 
-            // 8.143: el formato de moneda configurado server-side (Venezolano/Internacional) debe
-            // honrarse en el display del WPF. Carga best-effort con timeout acotado: un backend
-            // caído no debe demorar MainWindow.Show() más allá de 2s; si falla o expira, queda Venezuelan.
-            try
-            {
-                var settingsService = _host.Services.GetRequiredService<ISettingsService>();
-                CurrencyDisplay.SetFromSetting(await settingsService.GetCurrencyFormatAsync().WaitAsync(TimeSpan.FromSeconds(2)));
-            }
-            catch (TimeoutException)
-            {
-                CurrencyDisplay.SetFromSetting(null);
-            }
-            catch (Exception ex)
-            {
-                Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadCurrencyFormat");
-                CurrencyDisplay.SetFromSetting(null);
-            }
+            StartupTimeline.Mark("Wpf.SessionReady");
 
+            // 8.211-T6-U12b: install the profile-change listener before applying the profile so
+            // every later profile refresh re-evaluates amount bindings in open windows.
+            CurrencyBindingRefresher.Install();
+
+            // El primer paint no espera lecturas de presentacion. El formato y el perfil se
+            // aplican despues de mostrar Login/Shell y refrescan los bindings con los mensajes
+            // existentes; si el backend no responde, quedan los defaults Dual USD/VES.
+            var settingsService = _host.Services.GetRequiredService<ISettingsService>();
+            var monetaryProfileService = _host.Services.GetRequiredService<IClientMonetaryProfileService>();
             var mainWindow = _host.Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
+            StartupTimeline.Mark("Wpf.MainWindow.Shown");
+
+            _ = LoadDisplaySettingsAfterShowAsync(settingsService, monetaryProfileService);
         }
         catch (Exception fatalEx)
         {
             Core.Logging.AppLogger.LogCrash(fatalEx, "WpfDesktop.OnStartupFatal");
             throw;
+        }
+    }
+
+    private static async Task LoadDisplaySettingsAfterShowAsync(
+        ISettingsService settingsService,
+        IClientMonetaryProfileService monetaryProfileService)
+    {
+        var currencyTask = LoadCurrencyFormatAsync(settingsService);
+        var profileTask = LoadMonetaryProfileAsync(monetaryProfileService);
+        await Task.WhenAll(currencyTask, profileTask);
+        StartupTimeline.Mark("Wpf.DisplaySettings.Loaded");
+    }
+
+    private static async Task LoadCurrencyFormatAsync(ISettingsService settingsService)
+    {
+        try
+        {
+            CurrencyDisplay.SetFromSetting(
+                await settingsService.GetCurrencyFormatAsync().WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        catch (TimeoutException)
+        {
+            CurrencyDisplay.SetFromSetting(null);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadCurrencyFormat");
+            CurrencyDisplay.SetFromSetting(null);
+        }
+    }
+
+    private static async Task LoadMonetaryProfileAsync(IClientMonetaryProfileService monetaryProfileService)
+    {
+        try
+        {
+            using var monetaryProfileCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(2));
+            var monetaryProfile = await monetaryProfileService.GetAsync(monetaryProfileCts.Token);
+            if (monetaryProfile is null)
+            {
+                Core.Logging.AppLogger.LogWarn(
+                    "No se pudo cargar el perfil monetario; se usan los defaults Dual USD/VES.",
+                    "App.OnStartup.LoadMonetaryProfile");
+            }
+
+            CurrencyDisplay.SetMonetaryProfile(monetaryProfile);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogCrash(ex, "App.OnStartup.LoadMonetaryProfile");
+            CurrencyDisplay.SetMonetaryProfile(null);
         }
     }
 
@@ -543,3 +658,4 @@ public partial class App : Application
         base.OnExit(e);
     }
 }
+

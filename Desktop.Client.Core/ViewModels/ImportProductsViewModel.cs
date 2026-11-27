@@ -6,6 +6,7 @@ using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -13,6 +14,13 @@ using System.Linq;
 using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
+
+public enum ImportFilterMode
+{
+    All,
+    Valid,
+    Errors
+}
 
 public partial class ColumnMappingItem : ObservableObject
 {
@@ -30,12 +38,14 @@ public partial class ColumnMappingItem : ObservableObject
     }
 }
 
-public partial class ImportProductsViewModel : ObservableObject
+public partial class ImportProductsViewModel : ObservableObject, IDisposable
 {
     private readonly IProductImportService _importService;
     private readonly IExchangeRateService _exchangeRateService;
     private readonly IDialogService? _dialogService;
     private readonly IFilePickerDialog _filePicker;
+    private readonly ObservableCollection<ProductImportDto> _filteredProducts = new();
+    private ObservableCollection<ProductImportDto>? _observedProducts;
 
     public UserSession UserSession { get; }
 
@@ -51,6 +61,8 @@ public partial class ImportProductsViewModel : ObservableObject
         UserSession = userSession;
         _dialogService = dialogService;
         _filePicker = filePicker ?? new NoopFilePicker();
+        FilteredProducts = new ReadOnlyObservableCollection<ProductImportDto>(_filteredProducts);
+        AttachImportedProducts(ImportedProducts);
     }
 
     public decimal CurrentExchangeRate => _exchangeRateService.CurrentRate;
@@ -79,6 +91,29 @@ public partial class ImportProductsViewModel : ObservableObject
 
     [ObservableProperty]
     private ObservableCollection<ColumnMappingItem> _columnMappings = new();
+
+    [ObservableProperty]
+    private ImportFilterMode _selectedFilter = ImportFilterMode.All;
+
+    [ObservableProperty]
+    private string _searchQuery = string.Empty;
+
+    [ObservableProperty]
+    private string _activeFileName = string.Empty;
+
+    [ObservableProperty]
+    private string _activeFilePath = string.Empty;
+
+    [ObservableProperty]
+    private ProductImportDto? _selectedProduct;
+
+    [ObservableProperty]
+    private bool _isSaving;
+
+    [ObservableProperty]
+    private bool _isImportCompleted;
+
+    public ReadOnlyObservableCollection<ProductImportDto> FilteredProducts { get; }
 
     public ObservableCollection<string> AvailableProperties { get; } = new ObservableCollection<string>
     {
@@ -206,7 +241,81 @@ public partial class ImportProductsViewModel : ObservableObject
 
     public bool HasFileData => ImportedProducts.Any();
     public bool HasMappings => ColumnMappings.Any();
+    public bool HasActiveFile => !string.IsNullOrWhiteSpace(ActiveFileName);
     public bool CanCommit => HasFileData && _hasValidProducts && !IsBusy && CanMutateCatalog;
+
+    public int TotalCount => ImportedProducts.Count;
+    public int ValidCount => ImportedProducts.Count(p => p.IsValid);
+    public int ErrorCount => TotalCount - ValidCount;
+    public bool HasErrors => ErrorCount > 0;
+    public bool HasValidProducts => ValidCount > 0;
+    public bool HasFilteredProducts => _filteredProducts.Count > 0;
+
+    public bool IsFilterAll => SelectedFilter == ImportFilterMode.All;
+    public bool IsFilterValid => SelectedFilter == ImportFilterMode.Valid;
+    public bool IsFilterErrors => SelectedFilter == ImportFilterMode.Errors;
+
+    public bool IsStep1Active => !HasFileData && !IsImportCompleted;
+    public bool IsStep1Complete => HasFileData || IsImportCompleted;
+    public bool IsStep2Active => HasFileData && ErrorCount > 0 && !IsImportCompleted;
+    public bool IsStep2Complete => IsImportCompleted || (HasFileData && ErrorCount == 0);
+    public bool IsStep3Active => HasFileData && ErrorCount == 0 && ValidCount > 0 && !IsImportCompleted;
+    public bool IsStep3Complete => IsImportCompleted;
+
+    public bool HasSelectedError => SelectedProduct is { IsValid: false };
+    public string SelectedErrorDetail => SelectedProduct?.ErrorMessage ?? string.Empty;
+    public string SelectedErrorSku => SelectedProduct?.SKU ?? string.Empty;
+
+    public string AllCountText => $"Todas ({TotalCount})";
+    public string ValidCountText => $"Válidas ({ValidCount})";
+    public string ErrorCountText => $"Con errores ({ErrorCount})";
+
+    public string ImportStatusText
+    {
+        get
+        {
+            if (IsSaving)
+            {
+                return "Guardando productos en la base de datos...";
+            }
+
+            if (IsImportCompleted)
+            {
+                return "Importación completada correctamente.";
+            }
+
+            if (!HasFileData && !HasActiveFile)
+            {
+                return "Listo para importar";
+            }
+
+            if (!HasFileData)
+            {
+                return "El archivo no contiene filas para previsualizar.";
+            }
+
+            if (HasErrors)
+            {
+                return $"Se detectaron {ErrorCount} filas con errores; revísalas antes de confirmar.";
+            }
+
+            return $"Listo para importar {ValidCount} productos válidos.";
+        }
+    }
+
+    public string SaveButtonText => IsSaving
+        ? "Guardando..."
+        : ValidCount > 0
+            ? $"Guardar en Base de Datos ({ValidCount})"
+            : "Guardar en Base de Datos";
+
+    public string MergeStatusText => OverwriteMerge
+        ? "Actualizará productos con SKU coincidente"
+        : "Omitir SKUs existentes";
+
+    public string MergeTooltip => OverwriteMerge
+        ? "Actualiza los productos existentes que coincidan por SKU."
+        : "Omite los productos cuyo SKU ya exista en la base de datos.";
 
     partial void OnIsBusyChanged(bool value)
     {
@@ -214,16 +323,142 @@ public partial class ImportProductsViewModel : ObservableObject
         CommitImportCommand?.NotifyCanExecuteChanged();
     }
 
+    partial void OnSelectedFilterChanged(ImportFilterMode value)
+    {
+        OnPropertyChanged(nameof(IsFilterAll));
+        OnPropertyChanged(nameof(IsFilterValid));
+        OnPropertyChanged(nameof(IsFilterErrors));
+        ApplyFilters();
+    }
+
+    partial void OnSearchQueryChanged(string value) => ApplyFilters();
+
+    partial void OnActiveFileNameChanged(string value) => OnPropertyChanged(nameof(HasActiveFile));
+
+    partial void OnSelectedProductChanged(ProductImportDto? value)
+    {
+        OnPropertyChanged(nameof(HasSelectedError));
+        OnPropertyChanged(nameof(SelectedErrorDetail));
+        OnPropertyChanged(nameof(SelectedErrorSku));
+    }
+
+    partial void OnOverwriteMergeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(MergeStatusText));
+        OnPropertyChanged(nameof(MergeTooltip));
+    }
+
+    partial void OnIsSavingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(SaveButtonText));
+        OnPropertyChanged(nameof(ImportStatusText));
+    }
+
+    partial void OnIsImportCompletedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ImportStatusText));
+        NotifyStepperState();
+    }
+
     private void RefreshValidationCache()
     {
         _hasValidProducts = ImportedProducts.Any(p => p.IsValid);
+        OnPropertyChanged(nameof(HasFileData));
+        OnPropertyChanged(nameof(TotalCount));
+        OnPropertyChanged(nameof(ValidCount));
+        OnPropertyChanged(nameof(ErrorCount));
+        OnPropertyChanged(nameof(HasErrors));
+        OnPropertyChanged(nameof(HasValidProducts));
+        OnPropertyChanged(nameof(AllCountText));
+        OnPropertyChanged(nameof(ValidCountText));
+        OnPropertyChanged(nameof(ErrorCountText));
         OnPropertyChanged(nameof(CanCommit));
+        OnPropertyChanged(nameof(ImportStatusText));
+        OnPropertyChanged(nameof(SaveButtonText));
+        NotifyStepperState();
         CommitImportCommand?.NotifyCanExecuteChanged();
+        ApplyFilters();
     }
+
+    private void NotifyStepperState()
+    {
+        OnPropertyChanged(nameof(IsStep1Active));
+        OnPropertyChanged(nameof(IsStep1Complete));
+        OnPropertyChanged(nameof(IsStep2Active));
+        OnPropertyChanged(nameof(IsStep2Complete));
+        OnPropertyChanged(nameof(IsStep3Active));
+        OnPropertyChanged(nameof(IsStep3Complete));
+    }
+
+    private void ApplyFilters()
+    {
+        var term = SearchQuery?.Trim() ?? string.Empty;
+        _filteredProducts.Clear();
+
+        foreach (var product in ImportedProducts)
+        {
+            if (SelectedFilter == ImportFilterMode.Valid && !product.IsValid)
+            {
+                continue;
+            }
+
+            if (SelectedFilter == ImportFilterMode.Errors && product.IsValid)
+            {
+                continue;
+            }
+
+            if (term.Length > 0 &&
+                !product.SKU.Contains(term, StringComparison.OrdinalIgnoreCase) &&
+                !product.Name.Contains(term, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            _filteredProducts.Add(product);
+        }
+
+        if (SelectedProduct is not null && !_filteredProducts.Contains(SelectedProduct))
+        {
+            SelectedProduct = null;
+        }
+
+        OnPropertyChanged(nameof(HasFilteredProducts));
+    }
+
+    [RelayCommand]
+    private void SetFilterAll() => SelectedFilter = ImportFilterMode.All;
+
+    [RelayCommand]
+    private void SetFilterValid() => SelectedFilter = ImportFilterMode.Valid;
+
+    [RelayCommand]
+    private void SetFilterErrors() => SelectedFilter = ImportFilterMode.Errors;
 
     partial void OnImportedProductsChanged(ObservableCollection<ProductImportDto> value)
     {
+        AttachImportedProducts(value);
         OnPropertyChanged(nameof(HasFileData));
+        RefreshValidationCache();
+    }
+
+    private void AttachImportedProducts(ObservableCollection<ProductImportDto> products)
+    {
+        if (ReferenceEquals(_observedProducts, products))
+        {
+            return;
+        }
+
+        if (_observedProducts is not null)
+        {
+            _observedProducts.CollectionChanged -= OnImportedProductsCollectionChanged;
+        }
+
+        _observedProducts = products;
+        _observedProducts.CollectionChanged += OnImportedProductsCollectionChanged;
+    }
+
+    private void OnImportedProductsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
         RefreshValidationCache();
     }
     
@@ -330,10 +565,21 @@ public partial class ImportProductsViewModel : ObservableObject
 
     public async Task ProcessFileAsync(string filePath)
     {
+        IsImportCompleted = false;
+        ImportedProducts.Clear();
+        ColumnMappings.Clear();
+        OnPropertyChanged(nameof(HasMappings));
+        SelectedProduct = null;
+        SelectedFilter = ImportFilterMode.All;
+        SearchQuery = string.Empty;
+        ActiveFileName = Path.GetFileName(filePath);
+        ActiveFilePath = filePath;
+        _currentFilePath = filePath;
+        RefreshValidationCache();
+
         IsBusy = true;
         IsProgressIndeterminate = true;
         StatusMessage = "Leyendo encabezados del archivo...";
-        _currentFilePath = filePath;
         bool readSuccess = false;
         
         try
@@ -368,7 +614,8 @@ public partial class ImportProductsViewModel : ObservableObject
                 
                 ColumnMappings.Add(mapping);
             }
-            
+
+            OnPropertyChanged(nameof(HasMappings));
             StatusMessage = "Encabezados leídos. Procesando filas...";
             readSuccess = true;
         }
@@ -394,6 +641,10 @@ public partial class ImportProductsViewModel : ObservableObject
     {
         if (string.IsNullOrEmpty(_currentFilePath) || !ColumnMappings.Any()) return;
 
+        IsImportCompleted = false;
+        SelectedProduct = null;
+        SelectedFilter = ImportFilterMode.All;
+        SearchQuery = string.Empty;
         IsBusy = true;
         IsProgressIndeterminate = true;
         StatusMessage = "Procesando y aplicando validaciones de negocio...";
@@ -448,6 +699,8 @@ public partial class ImportProductsViewModel : ObservableObject
         var validProducts = ImportedProducts.Where(p => p.IsValid).ToList();
         if (!validProducts.Any()) return;
 
+        IsSaving = true;
+        IsImportCompleted = false;
         IsBusy = true;
         IsProgressIndeterminate = true;
         StatusMessage = "Guardando productos en la base de datos PostgreSQL...";
@@ -467,11 +720,13 @@ public partial class ImportProductsViewModel : ObservableObject
 
             if (!ImportedProducts.Any())
             {
+                IsImportCompleted = true;
                 StatusMessage = $"Importación exitosa: {added} agregados, {updated} actualizados.";
                 ShowInfo("Éxito de Importación", StatusMessage);
             }
             else
             {
+                IsImportCompleted = false;
                 int remainingErrors = ImportedProducts.Count;
                 StatusMessage = $"Importación parcial: {added} agregados, {updated} actualizados. Quedan {remainingErrors} filas con errores en pantalla para su revisión.";
                 ShowWarning("Importación Parcial Completada", $"Se importaron exitosamente {validProducts.Count} productos ({added} agregados, {updated} actualizados).\n\nLas {remainingErrors} filas que contienen errores permanecen en la tabla para su revisión o corrección.");
@@ -485,6 +740,7 @@ public partial class ImportProductsViewModel : ObservableObject
         finally
         {
             RefreshValidationCache();
+            IsSaving = false;
             IsBusy = false;
             IsProgressIndeterminate = false;
         }
@@ -495,7 +751,14 @@ public partial class ImportProductsViewModel : ObservableObject
     {
         ImportedProducts.Clear();
         ColumnMappings.Clear();
+        OnPropertyChanged(nameof(HasMappings));
         _currentFilePath = string.Empty;
+        ActiveFileName = string.Empty;
+        ActiveFilePath = string.Empty;
+        SelectedProduct = null;
+        SelectedFilter = ImportFilterMode.All;
+        SearchQuery = string.Empty;
+        IsImportCompleted = false;
         StatusMessage = "Seleccione un archivo Excel/CSV para comenzar o exporte el catálogo.";
         RefreshValidationCache();
     }
@@ -513,5 +776,30 @@ public partial class ImportProductsViewModel : ObservableObject
     private void ShowInfo(string title, string message)
     {
         _dialogService?.ShowInfo(title, message);
+    }
+
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed) return;
+        if (disposing)
+        {
+            WeakReferenceMessenger.Default.UnregisterAll(this);
+            if (_observedProducts is not null)
+            {
+                _observedProducts.CollectionChanged -= OnImportedProductsCollectionChanged;
+            }
+
+            ImportedProducts.Clear();
+            ColumnMappings.Clear();
+        }
+        _disposed = true;
     }
 }

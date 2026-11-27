@@ -13,12 +13,21 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir=..\dist_installer
 OutputBaseFilename=POS_System_Setup_v1.0.0
-Compression=lzma2/ultra64
-SolidCompression=yes
+#ifdef FastBuild
+Compression=zip/1
+#else
+Compression=lzma2/fast
+#endif
+CompressionThreads=auto
+; Inno Setup 7 lo declara obsoleto y ya usa un proceso separado por defecto.
+#ifdef InnoSetup6
+LZMAUseSeparateProcess=yes
+#endif
+SolidCompression=no
 WizardStyle=modern
 PrivilegesRequired=admin
 SetupIconFile=app.ico
-UninstallIconFile=app.ico
+UninstallDisplayIcon={app}\DesktopClient\{#MyAppExeName}
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -31,7 +40,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; 8.27-A01/A04: se excluyen appsettings de entorno y el pfx stale del puesto de build;
 ; el certificado HTTPS se genera en la MÁQUINA DESTINO (tools\create-https-cert.ps1) para
 ; que sus SANs correspondan al cliente y nunca viajen credenciales de desarrollo.
-Source: "..\publish\BackendAPI\*"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "appsettings.Production.json,appsettings.Development.json,certs\pos-https.pfx,secrets.json"
+Source: "..\publish\BackendAPI\*"; DestDir: "{app}\BackendAPI"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "appsettings.Production.json,appsettings.Development.json,certs\pos-https.pfx,secrets.json,*.br,*.gz"
+; Los assets web .br/.gz ya vienen comprimidos: copiarlos sin recompresión acelera el instalador.
+Source: "..\publish\BackendAPI\wwwroot\*.br"; DestDir: "{app}\BackendAPI\wwwroot"; Flags: ignoreversion recursesubdirs createallsubdirs nocompression
+Source: "..\publish\BackendAPI\wwwroot\*.gz"; DestDir: "{app}\BackendAPI\wwwroot"; Flags: ignoreversion recursesubdirs createallsubdirs nocompression
 ; Publicación Autónoma Cliente WPF Desktop (.NET Self-Contained)
 Source: "..\publish\DesktopClient\*"; DestDir: "{app}\DesktopClient"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NSSM ejecutable y Licencia (Opcional: Si está presente se empaqueta, si no se usa el fallback sc.exe)
@@ -81,10 +93,10 @@ Filename: "{app}\DesktopClient\{#MyAppExeName}"; Description: "{cm:LaunchProgram
 
 [UninstallRun]
 ; Limpieza de firewall y tareas programadas
-Filename: "schtasks.exe"; Parameters: "/delete /tn ""Sistema POS - Monitor de Salud"" /f"; Flags: runhidden
-Filename: "schtasks.exe"; Parameters: "/delete /tn ""Sistema POS - Backup PostgreSQL"" /f"; Flags: runhidden
-Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Sistema POS - Backend API (TCP 5000)"""; Flags: runhidden
-Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Sistema POS - Backend API (TCP 5000/5001)"""; Flags: runhidden
+Filename: "schtasks.exe"; Parameters: "/delete /tn ""Sistema POS - Monitor de Salud"" /f"; Flags: runhidden; RunOnceId: "DeleteHealthMonitorTask"
+Filename: "schtasks.exe"; Parameters: "/delete /tn ""Sistema POS - Backup PostgreSQL"" /f"; Flags: runhidden; RunOnceId: "DeleteBackupPostgresTask"
+Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Sistema POS - Backend API (TCP 5000)"""; Flags: runhidden; RunOnceId: "DeleteFirewallRuleBackendApi"
+Filename: "netsh.exe"; Parameters: "advfirewall firewall delete rule name=""Sistema POS - Backend API (TCP 5000/5001)"""; Flags: runhidden; RunOnceId: "DeleteFirewallRuleBackendApiLegacy"
 ; Detención y eliminación silenciosa del servicio de Windows al desinstalar (NSSM)
 Filename: "{app}\BackendAPI\nssm.exe"; Parameters: "stop PosBackendService"; Flags: runhidden; Check: HasNssm; RunOnceId: "StopBackendServiceNssm"
 Filename: "{app}\BackendAPI\nssm.exe"; Parameters: "remove PosBackendService confirm"; Flags: runhidden; Check: HasNssm; RunOnceId: "RemoveBackendServiceNssm"

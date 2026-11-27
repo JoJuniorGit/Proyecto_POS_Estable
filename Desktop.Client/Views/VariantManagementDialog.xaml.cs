@@ -20,7 +20,11 @@ public partial class VariantManagementDialog : Window
         };
 
         PreviewKeyDown += VariantManagementDialog_PreviewKeyDown;
-        Closed += (s, e) => ViewModel.Dispose();
+        Closed += (s, e) =>
+        {
+            ViewModel.RequestClose = null;
+            ViewModel.Dispose();
+        };
     }
 
     private void VariantManagementDialog_PreviewKeyDown(object sender, KeyEventArgs e)

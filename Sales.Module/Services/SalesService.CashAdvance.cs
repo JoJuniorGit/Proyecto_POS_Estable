@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using Core.Common;
 using Core.DTOs;
 using Core.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +22,13 @@ public partial class SalesService
         int? cashierId = null,
         string? userName = null,
         IDbContextTransaction? existingTransaction = null,
-        System.Threading.CancellationToken cancellationToken = default)
+        System.Threading.CancellationToken cancellationToken = default,
+        decimal? receivedPrincipal = null,
+        decimal? receivedCommission = null,
+        decimal? receivedTotal = null,
+        decimal? receivedTotalUsd = null,
+        string? receivedCurrencyCode = null,
+        decimal? receivedCommissionUsd = null)
     {
         if (existingTransaction != null && _context.Database.ProviderName != null && !_context.Database.ProviderName.Contains("InMemory"))
         {
@@ -29,6 +37,21 @@ public partial class SalesService
             {
                 _context.Database.UseTransaction(dbTx);
             }
+        }
+
+        // 8.211-T3a/T3c3b2 (S6/S7/S8): resolver perfil y método ANTES de cualquier efecto
+        // (producto de sistema, nextval de factura, usuario o cliente). Un rechazo de perfil o
+        // moneda no debe consumir un consecutivo ni dejar trabajo parcial.
+        var monetaryProfile = await ResolveMonetaryProfileSnapshotAsync(cancellationToken);
+        EnsureSupportedCheckoutMonetaryProfile(monetaryProfile, allowSingle: false);
+        string localCurrencyCode = ResolveLocalCurrencyCode(monetaryProfile);
+
+        var paymentMethod = await _context.PaymentMethods
+            .AsNoTracking()
+            .FirstOrDefaultAsync(pm => pm.Id == paymentMethodId, cancellationToken);
+        if (paymentMethod is not null)
+        {
+            EnsurePaymentMethodCurrencyMatchesProfile(monetaryProfile, paymentMethod);
         }
 
         // 1. Obtener o auto-garantizar el ID del producto especial IsCashAdvance
@@ -82,9 +105,16 @@ public partial class SalesService
             resolvedCashierId = defaultUser?.Id;
         }
 
-        // 3. Obtener cliente por defecto
-        var defaultCustomer = await _context.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.IsDefault, cancellationToken)
-                           ?? await _context.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == 1, cancellationToken);
+        // 3. Obtener cliente por defecto (cacheado; PERF-09)
+        CustomerDto? defaultCustomer = null;
+        try
+        {
+            defaultCustomer = await _customers.GetDefaultCustomerAsync(cancellationToken);
+        }
+        catch (KeyNotFoundException)
+        {
+            // Se conserva el fallback histórico para instalaciones sin cliente sembrado.
+        }
 
         int customerId = defaultCustomer?.Id ?? 1;
         string customerName = defaultCustomer?.Name ?? "CLIENTE CONTADO";
@@ -97,8 +127,12 @@ public partial class SalesService
         // política que CompleteSale/HoldSale (desvío > tolerancia => ancla; >= ±100% => rechazo).
         decimal anchoredRate = await ResolveAnchoredRateAsync(exchangeRate, contextLabel: "CashAdvance", referenceId: nextInvoice);
 
-        decimal totalChargedLocal = requestedAmountLocal + commissionAmountLocal;
-        decimal totalChargedUSD = anchoredRate > 0 ? Math.Round(totalChargedLocal / anchoredRate, 4) : 0m;
+        // 8.211-T3c3d (S4/S5): the advance amounts use the anchored calculation rate (8dp for a
+        // manual pair); AppliedRate freezes the schema snapshot (4dp manual / 2dp BCV).
+        decimal snapshotRate = RoundSnapshotRate(anchoredRate, monetaryProfile);
+        decimal totalChargedLocal = receivedTotal ?? (requestedAmountLocal + commissionAmountLocal);
+        decimal totalChargedUSD = receivedTotalUsd
+            ?? (anchoredRate > 0 ? Math.Round(totalChargedLocal / anchoredRate, 4) : 0m);
 
         // 5. Crear Sale completado con el CashierId resuelto
         var sale = new Sale
@@ -107,16 +141,34 @@ public partial class SalesService
             Status = SaleStatus.Completed,
             DeliveryStatus = SaleDeliveryStatus.Delivered,
             InvoiceNumber = nextInvoice,
+            // Paso 14 (S2): el capital del avance es movimiento de tesoreria, no venta de
+            // mercancia. La comision de servicio se congela junto al discriminador para que el
+            // Estado de Resultados la sume como ServiceCommissions sin reinterpretar montos.
+            SaleType = SaleType.CashAdvance,
+            CommissionAmountLocal = commissionAmountLocal,
+            // Paso 14 (S2): en el camino method-aware la comision puede venir ya denominada en
+            // USD (receptor USD); solo el fallback legacy convierte desde la moneda local.
+            CommissionAmountUSD = receivedCommissionUsd ?? (anchoredRate > 0m
+                ? Math.Round(commissionAmountLocal / anchoredRate, 4, MidpointRounding.AwayFromZero)
+                : 0m),
             CashierId = resolvedCashierId,
             CustomerId = customerId,
             CustomerName = customerName,
             CustomerCedula = customerCedula,
-            AppliedRate = anchoredRate,
+            AppliedRate = snapshotRate,
             Subtotal = totalChargedUSD,
             TotalUSD = totalChargedUSD,
             SubtotalBsS = totalChargedLocal,
             TotalBsS = totalChargedLocal,
-            FinalPaidAmountBsS = totalChargedLocal
+            FinalPaidAmountBsS = totalChargedLocal,
+            // 8.211-T3c2 (S6): snapshots aditivos de importes del adelanto completado directo.
+            // 8.211-T3c3c1 (S4): la fuente de tasa sigue el régimen (Bcv/Manual; Identity en Single).
+            PrimaryAmount = totalChargedUSD,
+            SecondaryAmount = totalChargedLocal,
+            AppliedRateSource = ResolveAppliedRateSource(monetaryProfile),
+            PrimaryCurrencyCode = monetaryProfile.PrimaryCurrencyCode,
+            SecondaryCurrencyCode = monetaryProfile.SecondaryCurrencyCode,
+            MonetaryMode = monetaryProfile.MonetaryMode
         };
 
         _context.Sales.Add(sale);
@@ -130,6 +182,9 @@ public partial class SalesService
             ProductName = $"Adelanto de Efectivo ({paymentMethodName})",
             Quantity = 1m,
             UnitCostUSD = 0m,
+            // Paso 14 (S4): la linea sintetica no representa mercancia; su costo local es 0
+            // explicito para que el CMV nunca lo interprete como costo desconocido.
+            UnitCostLocal = 0m,
             UnitPrice = totalChargedUSD,
             Subtotal = totalChargedUSD,
             UnitPriceBsS = totalChargedLocal,
@@ -139,6 +194,14 @@ public partial class SalesService
         _context.SaleItems.Add(saleItem);
 
         // 7. Crear SalePayment a nombre del método electrónico
+        // 8.211-T3b1 (S6/S8): la moneda snapshot sale del método persistido; el nombre recibido
+        // solo resuelve el fallback legacy cuando la fila no está disponible.
+        string currencyCode = !string.IsNullOrWhiteSpace(receivedCurrencyCode)
+            ? CurrencyCodeNormalizer.NormalizeToIso(receivedCurrencyCode) ?? receivedCurrencyCode
+            : paymentMethod is null
+                ? PaymentMethodCurrencyResolver.Resolve(paymentMethodName)
+                : ResolvePaymentMethodCurrency(paymentMethod);
+
         var payment = new SalePayment
         {
             SaleId = sale.Id,
@@ -147,8 +210,23 @@ public partial class SalesService
             AmountBsS = totalChargedLocal,
             ExchangeRate = anchoredRate,
             CreatedAt = DateTime.UtcNow,
-            ReferenceNumber = $"ADELANTO-{DateTime.UtcNow:yyyyMMddHHmmss}"
+            ReferenceNumber = $"ADELANTO-{DateTime.UtcNow:yyyyMMddHHmmss}",
+            CurrencyCode = currencyCode,
+            OriginalAmount = ResolveOriginalAmount(totalChargedUSD, totalChargedLocal, currencyCode)
         };
+
+        // Paso 14 (S7): la comision del medio se calcula sobre el total cobrado (capital +
+        // comision de servicio). El capital sigue siendo movimiento de tesoreria, no ingreso.
+        var feeSnapshot = await ResolvePaymentMethodFeeAsync(
+            paymentMethod,
+            paymentMethodId,
+            payment.CreatedAt,
+            totalChargedUSD,
+            totalChargedLocal,
+            anchoredRate,
+            localCurrencyCode,
+            cancellationToken);
+        payment.ApplyFeeSnapshot(feeSnapshot);
 
         _context.SalePayments.Add(payment);
         await _context.SaveChangesAsync(cancellationToken);

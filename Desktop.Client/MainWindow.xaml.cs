@@ -1,24 +1,95 @@
+using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows;
 using Core.Common;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
+using Desktop.Client.Views;
 
 namespace Desktop.Client;
 
 public partial class MainWindow : Window
 {
+    private static readonly IReadOnlyDictionary<Type, Func<FrameworkElement>> ViewFactories =
+        new Dictionary<Type, Func<FrameworkElement>>
+        {
+            [typeof(LoginViewModel)] = () => new LoginView(),
+            [typeof(PosViewModel)] = () => new PosView(),
+            [typeof(InventoryViewModel)] = () => new InventoryView(),
+            [typeof(SalesHistoryViewModel)] = () => new SalesHistoryView(),
+            [typeof(SettingsViewModel)] = () => new SettingsView(),
+            [typeof(ExchangeRateViewModel)] = () => new ExchangeRateView(),
+            [typeof(CashDrawerViewModel)] = () => new CashDrawerView(),
+            [typeof(ImportProductsViewModel)] = () => new ImportProductsView(),
+            [typeof(SupplierInvoiceViewModel)] = () => new SupplierInvoiceView(),
+            [typeof(StockKardexViewModel)] = () => new StockKardexView(),
+            [typeof(StockCountViewModel)] = () => new StockCountView(),
+            [typeof(UsersManagementViewModel)] = () => new UsersManagementView(),
+            [typeof(DailyClosureViewModel)] = () => new DailyClosureView(),
+            [typeof(PendingOrdersViewModel)] = () => new PendingOrdersView(),
+            [typeof(PendingPickupsViewModel)] = () => new PendingPickupsView(),
+            [typeof(CreditReceivablesViewModel)] = () => new CreditReceivablesView(),
+            [typeof(ProfitabilityViewModel)] = () => new ProfitabilityView()
+        };
+
     private readonly IDialogService _dialogService;
+    private readonly MainViewModel _viewModel;
+    private readonly Dictionary<object, FrameworkElement> _viewCache = new();
 
     public MainWindow(MainViewModel viewModel, IDialogService dialogService)
     {
+        ArgumentNullException.ThrowIfNull(viewModel);
         InitializeComponent();
+        _viewModel = viewModel;
         DataContext = viewModel;
         _dialogService = dialogService;
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        ShowCurrentView();
     }
 
     private bool _isShuttingDown;
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.CurrentViewModel))
+        {
+            ShowCurrentView();
+        }
+    }
+
+    private void ShowCurrentView()
+    {
+        var current = _viewModel.CurrentViewModel;
+        if (current == null)
+        {
+            MainContent.Content = null;
+            return;
+        }
+
+        if (!_viewCache.TryGetValue(current, out var view))
+        {
+            if (!ViewFactories.TryGetValue(current.GetType(), out var factory))
+            {
+                // Fallback seguro: deja que el DataTemplate implicito de Window.Resources
+                // resuelva el tipo si aparece un ViewModel nuevo sin cache explicito.
+                MainContent.Content = current;
+                return;
+            }
+
+            view = factory();
+            view.DataContext = current;
+            _viewCache[current] = view;
+        }
+
+        if (!ReferenceEquals(view.DataContext, current))
+        {
+            view.DataContext = current;
+        }
+
+        MainContent.Content = view;
+    }
 
     protected override void OnClosing(CancelEventArgs e)
     {
@@ -101,6 +172,9 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        MainContent.Content = null;
+        _viewCache.Clear();
         (DataContext as System.IDisposable)?.Dispose();
 
         base.OnClosed(e);

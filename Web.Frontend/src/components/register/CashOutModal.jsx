@@ -2,11 +2,16 @@ import { useRef, useState } from 'react';
 import Modal from '../ui/Modal';
 import { ArrowUpRight, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '../../services/api';
-import { formatBsS } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
 import { createCheckoutKeyHolder } from '../../utils/idempotency';
+import { resolveLocalCurrencyProfile } from './registerFormLogic';
+import { resolveCashAmountRules } from '../checkout/PaymentForm';
 import './RegisterModals.css';
 
 export default function CashOutModal({ isOpen, onClose, sessionId, availableCashBsS, exchangeRate, user, onSuccess }) {
+  const { profile, mode, secondaryCurrencyCode, formatSecondary } = useMonetaryProfile();
+  const { label: localCurrencyLabel } = resolveLocalCurrencyProfile(profile);
+  const { requiresIntegerCash } = resolveCashAmountRules({ mode, secondaryCurrencyCode });
   const [amountBsS, setAmountBsS] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,7 +32,8 @@ export default function CashOutModal({ isOpen, onClose, sessionId, availableCash
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') {
+    const blocked = requiresIntegerCash ? ['.', ',', 'e', 'E', '+', '-'] : ['e', 'E', '+', '-'];
+    if (blocked.includes(e.key)) {
       e.preventDefault();
     }
   };
@@ -47,13 +53,13 @@ export default function CashOutModal({ isOpen, onClose, sessionId, availableCash
       return;
     }
 
-    if (!Number.isInteger(numAmount) || numAmount % 1 !== 0) {
-      setError('El monto de efectivo debe ser un número entero estrictamente sin decimales.');
+    if (requiresIntegerCash && (!Number.isInteger(numAmount) || numAmount % 1 !== 0)) {
+      setError(`El monto de efectivo en ${localCurrencyLabel} debe ser un número entero estrictamente sin decimales.`);
       return;
     }
 
     if (availableCashBsS !== undefined && availableCashBsS !== null && numAmount > availableCashBsS) {
-      setError(`El monto a retirar (${formatBsS(numAmount)}) supera el efectivo disponible en caja (${formatBsS(availableCashBsS)}).`);
+      setError(`El monto a retirar (${formatSecondary(numAmount)}) supera el efectivo disponible en caja (${formatSecondary(availableCashBsS)}).`);
       return;
     }
 
@@ -99,11 +105,14 @@ export default function CashOutModal({ isOpen, onClose, sessionId, availableCash
         )}
 
         <div className="form-group mb-3">
-          <label className="form-label font-medium">1. Monto a Retirar (Bs.S - Solo Enteros) *</label>
+          <label className="form-label font-medium">
+            1. Monto a Retirar ({localCurrencyLabel}{requiresIntegerCash ? ' - Solo Enteros' : ''}) *
+          </label>
           <input
             type="number"
-            step="1"
-            min="1"
+            step={requiresIntegerCash ? '1' : '0.01'}
+            inputMode={requiresIntegerCash ? 'numeric' : 'decimal'}
+            min={requiresIntegerCash ? '1' : '0.01'}
             className="form-control form-control-lg font-bold"
             placeholder="0"
             value={amountBsS}
@@ -113,7 +122,9 @@ export default function CashOutModal({ isOpen, onClose, sessionId, availableCash
             autoFocus
           />
           <small className="text-muted text-xs mt-1 block">
-            Solo números enteros sin decimales (ej. 10, 50, 100).
+            {requiresIntegerCash
+              ? 'Solo números enteros sin decimales (ej. 10, 50, 100).'
+              : 'Puede incluir centavos cuando la moneda local los admite (ej. 10,50).'}
           </small>
         </div>
 

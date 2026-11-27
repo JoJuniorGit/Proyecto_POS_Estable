@@ -12,11 +12,28 @@ public class SaleDto
     public string Status { get; set; } = string.Empty;
     public decimal Subtotal { get; set; }
     public decimal TotalUSD { get; set; }
+
+    // Sincronización USD efectivo (ANEXO XII): inverso del TotalBsS EFECTIVO a la tasa anclada
+    // (monto real transado, incluye la sobre-ganancia del redondeo). El TotalUSD canónico se
+    // conserva como referencia de precios/gates.
+    public decimal EffectiveTotalUSD { get; set; }
+
     public decimal AppliedRate { get; set; }
     public decimal TotalBsS { get; set; }
     public decimal SubtotalBsS { get; set; }
     public decimal RoundingAdjustment { get; set; }
     public decimal FinalPaidAmountBsS { get; set; }
+
+    // 8.211-T3a (S6): snapshot monetario aditivo capturado al completar la venta.
+    public string PrimaryCurrencyCode { get; set; } = "USD";
+    public string? SecondaryCurrencyCode { get; set; } = "VES";
+    public string MonetaryMode { get; set; } = "Dual";
+
+    // 8.211-T3c2 (S6): snapshots aditivos de importes y fuente de tasa.
+    public decimal? PrimaryAmount { get; set; }
+    public decimal? SecondaryAmount { get; set; }
+    public string? AppliedRateSource { get; set; }
+
     public int? CashierId { get; set; }
     public string CashierName { get; set; } = "Usuario Desconocido";
 
@@ -109,6 +126,12 @@ public class SalePaymentDto
     public decimal ExchangeRate { get; set; }
     public string? ReferenceNumber { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    // 8.211-T3b1 (S6): moneda snapshot al momento del pago (null solo en filas previas al backfill).
+    public string? CurrencyCode { get; set; }
+
+    // 8.211-T3c2 (S6): importe original en la moneda del medio de pago.
+    public decimal? OriginalAmount { get; set; }
 }
 
 public class HoldSaleRequestDto

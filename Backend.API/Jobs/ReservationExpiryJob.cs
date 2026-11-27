@@ -30,6 +30,7 @@ public class ReservationExpiryJob : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await Backend.API.Startup.StartupReadiness.WaitUntilReadyAsync(stoppingToken);
         _logger.LogInformation("[RESERVATION_EXPIRY] Servicio de expiración automática de reservas iniciado con intervalo de {Interval}.", _interval);
 
         // Breve pausa inicial tras el arranque del backend

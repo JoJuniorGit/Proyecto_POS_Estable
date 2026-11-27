@@ -25,10 +25,60 @@
             <converters:CollectionEmptyToVisibilityConverter x:Key="CollectionEmptyToVis"/>
             <converters:TitleCaseConverter x:Key="TitleCaseConverter"/>
             <converters:HoldLockDisplayConverter x:Key="HoldLockDisplayConverter"/>
+            <converters:DualOnlyStringVisibilityConverter x:Key="DualOnlyStringVisibilityConverter"/>
             <converters:InverseNullToBooleanConverter x:Key="InverseNullToBooleanConverter"/>
+            <!-- 8.211-T4c2b1 (S9): labels, amounts and dual-only visibility from the WPF profile. -->
+            <converters:LocalAmountConverter x:Key="LocalAmountConverter"/>
+            <converters:PrimaryAmountConverter x:Key="PrimaryAmountConverter"/>
+            <converters:LocalCurrencySymbolConverter x:Key="LocalCurrencySymbolConverter"/>
+            <converters:PrimaryCurrencySymbolConverter x:Key="PrimaryCurrencySymbolConverter"/>
+            <converters:LocalCurrencyCodeConverter x:Key="LocalCurrencyCodeConverter"/>
+            <converters:PrimaryCurrencyCodeConverter x:Key="PrimaryCurrencyCodeConverter"/>
+            <converters:DualOnlyVisibilityConverter x:Key="DualOnlyVisibilityConverter"/>
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
             <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
             <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+            <Style x:Key="SidebarMenuButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="Width" Value="40"/>
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Command" Value="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"/>
+                <Setter Property="CommandParameter" Value="{x:Static Dock.Right}"/>
+                <Setter Property="ToolTip" Value="Abrir menú lateral"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="MenuButtonBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8"
+                                    SnapsToDevicePixels="True">
+                                <materialDesign:PackIcon Kind="Menu" Width="18" Height="18"
+                                                         Foreground="{TemplateBinding Foreground}"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="MenuButtonBorder" Property="Background" Value="#F1F5F9"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="MenuButtonBorder" Property="Background" Value="#E2E8F0"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="MenuButtonBorder" Property="Opacity" Value="0.55"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
+

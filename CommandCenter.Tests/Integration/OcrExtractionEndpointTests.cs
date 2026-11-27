@@ -193,6 +193,14 @@ public class OcrExtractionEndpointTests
         builder.Services.AddSingleton(context);
         builder.Services.AddSingleton(connection);
 
+        // 8.202-H4: el controlador real exige ICurrentUserService en su constructor. El host de
+        // pruebas no lo registraba y el pipeline devolvía 500 antes de ejecutar la acción.
+        var currentUser = new Mock<ICurrentUserService>();
+        currentUser.Setup(service => service.UserId).Returns("ocr-extraction-test-user");
+        currentUser.Setup(service => service.UserRole).Returns(Core.Entities.UserRole.Admin);
+        currentUser.Setup(service => service.CanMutateCatalog).Returns(true);
+        builder.Services.AddSingleton(currentUser.Object);
+
         // Mismo grafo de DI que producción, con IOcrEngine reemplazado por el stub determinista.
         builder.Services.AddSingleton<ImagePreprocessor>();
         builder.Services.AddSingleton<ImagePageDecoder>();

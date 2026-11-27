@@ -24,6 +24,7 @@ public partial class SettingsViewModel
     {
         public RoundingRuleType Rule { get; set; } = RoundingRuleType.ExactMath;
         public string DisplayName { get; set; } = string.Empty;
+        public override string ToString() => DisplayName;
     }
 
     public ObservableCollection<PricingRoundingOption> UsdRoundingOptions { get; } = new()
@@ -67,6 +68,9 @@ public partial class SettingsViewModel
     }
 
     [ObservableProperty]
+    private string _pricingPoliciesAutoSaveStatus = "Auto-guardado";
+
+    [ObservableProperty]
     private bool _enforceMinimumMarginFloor = true;
 
     partial void OnEnforceMinimumMarginFloorChanged(bool value)
@@ -104,6 +108,7 @@ public partial class SettingsViewModel
 
     private void QueuePricingPoliciesSave()
     {
+        PricingPoliciesAutoSaveStatus = "Auto-guardado";
         PricingPoliciesSaveTask = SavePricingPoliciesAsync();
         PricingPoliciesSaveTask.SafeFireAndForget("Settings.PricingPoliciesChanged");
     }
@@ -126,9 +131,11 @@ public partial class SettingsViewModel
             // 8.185-T4 (S2b): broadcast in-process del bloque persistido; Catálogo y POS aplican la
             // regla/toggle en memoria (0 lecturas extra) y recomputan sus displays al instante.
             WeakReferenceMessenger.Default.Send(new PricingPoliciesChangedMessage(requested));
+            PricingPoliciesAutoSaveStatus = "✓ Guardado";
         }
         catch (Exception ex)
         {
+            PricingPoliciesAutoSaveStatus = "Auto-guardado";
             Core.Logging.ClientStateLogger.LogError(
                 $"Error al guardar las políticas de precios y redondeo: {ex.Message}",
                 nameof(SettingsViewModel));

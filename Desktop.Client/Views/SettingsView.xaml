@@ -1,621 +1,1243 @@
 <UserControl x:Class="Desktop.Client.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:local="clr-namespace:Desktop.Client.Views"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
-             mc:Ignorable="d" 
-             d:DesignHeight="700" d:DesignWidth="900">
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
+             xmlns:converters="clr-namespace:Desktop.Client.Converters"
+             mc:Ignorable="d"
+             d:DesignHeight="760" d:DesignWidth="1180"
+             Background="#F8FAFC">
 
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="SettingsStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter"/>
+            <converters:DualOnlyVisibilityConverter x:Key="DualOnlyVisibilityConverter"/>
+
+            <Style x:Key="SettingsSectionTabItem" TargetType="TabItem">
+                <Setter Property="Width" Value="248"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TabItem">
+                            <Border x:Name="TabBorder"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="8"
+                                    Padding="14,10"
+                                    Margin="0,2">
+                                <ContentPresenter ContentSource="Header"
+                                                  HorizontalAlignment="Stretch"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="TabBorder" Property="Background" Value="#F1F5F9"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="TabBorder" Property="Background" Value="#F5F3FF"/>
+                                    <Setter TargetName="TabBorder" Property="BorderBrush" Value="#6D28D9"/>
+                                    <Setter TargetName="TabBorder" Property="BorderThickness" Value="3,0,0,0"/>
+                                    <Setter Property="Foreground" Value="#6D28D9"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsThinScrollBarStyle}"/>
+        </ResourceDictionary>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <Grid Margin="20,15,20,20">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
+    <Grid Margin="20,15,20,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
 
-            <!-- TÍTULO PRINCIPAL & BANNER PERMISOS -->
-            <StackPanel Grid.Row="0" Margin="0,0,0,15">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+        <!-- Shell header -->
+        <Grid Grid.Row="0" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="Configuración del Sistema" 
-                                   AutomationProperties.AutomationId="Settings_Title"
-                                   Style="{DynamicResource MaterialDesignHeadline4TextBlock}" FontWeight="Bold"/>
-                        <TextBlock Text="Gestione las preferencias globales, conectividad de red, zona horaria y los métodos de pago aceptados." 
-                                   Style="{DynamicResource MaterialDesignBody1TextBlock}" Opacity="0.7" Margin="0,4,0,0"/>
-                    </StackPanel>
-
-                    <!-- Botón Menú Lateral -->
-                    <Button Grid.Column="1"
-                            Style="{DynamicResource MaterialDesignOutlinedButton}"
-                            Command="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"
-                            CommandParameter="{x:Static Dock.Right}"
-                            ToolTip="Abrir Menú Principal"
-                            Height="38"
-                            Padding="12,0">
-                        <StackPanel Orientation="Horizontal">
-                            <materialDesign:PackIcon Kind="CogOutline" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="Menú" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                </Grid>
-
-                <!-- Banner Modo Solo Lectura -->
-                <Border Visibility="{Binding UserSession.CanMutateSettings, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
-                        Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,15,0,0">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <materialDesign:PackIcon Kind="LockOutline" Foreground="#D97706" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBlock Text="Modo Solo Lectura: Su cuenta tiene permisos de consulta. Los cambios de configuración están bloqueados."
-                                   Foreground="#B45309" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                    </StackPanel>
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Width="42" Height="42" CornerRadius="10" Background="#EDE9FE">
+                    <materialDesign:PackIcon Kind="CogOutline" Width="22" Height="22" Foreground="#6D28D9"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
+                <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="Configuración del Sistema"
+                               AutomationProperties.AutomationId="Settings_Title"
+                               FontSize="22" FontWeight="Bold" Foreground="#0F172A"/>
+                    <TextBlock Text="Gestione las preferencias globales, conectividad, zona horaria y métodos de pago aceptados."
+                               FontSize="13" Foreground="#64748B" Margin="0,3,0,0"/>
+                </StackPanel>
             </StackPanel>
 
-            <!-- SECCIÓN 1: CONECTIVIDAD Y RED LOCAL -->
-            <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" 
-                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
-                    BorderThickness="1" 
-                    CornerRadius="10" 
-                    Padding="20" 
-                    Margin="0,0,0,20">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
+            <Button Grid.Column="1" Style="{StaticResource SidebarMenuButtonStyle}" VerticalAlignment="Center"/>
+        </Grid>
 
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,16">
-                        <materialDesign:PackIcon Kind="ServerNetwork" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBlock Text="Conectividad y Red Local" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
-                    </StackPanel>
+        <!-- Read-only banner -->
+        <Border Grid.Row="0" VerticalAlignment="Bottom" Margin="0,64,0,0"
+                Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1"
+                CornerRadius="8" Padding="12,10"
+                Visibility="{Binding UserSession.CanMutateSettings, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <materialDesign:PackIcon Kind="LockOutline" Foreground="#D97706" Width="20" Height="20"
+                                         VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBlock Text="Modo Solo Lectura: Su cuenta tiene permisos de consulta. Los cambios de configuración están bloqueados."
+                           Foreground="#B45309" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
 
-                    <Grid Grid.Row="1">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
+        <!-- Sidebar + content -->
+        <Grid Grid.Row="1">
+            <TabControl SelectedIndex="{Binding SelectedSettingsSectionIndex, Mode=TwoWay}"
+                        TabStripPlacement="Left"
+                        ItemContainerStyle="{StaticResource SettingsSectionTabItem}"
+                        Background="Transparent" BorderThickness="0" Padding="0"
+                        KeyboardNavigation.DirectionalNavigation="Cycle"
+                        KeyboardNavigation.TabNavigation="Cycle">
+                <TabControl.Resources>
+                    <Style TargetType="TabPanel">
+                        <Setter Property="Margin" Value="0,0,0,0"/>
+                    </Style>
+                </TabControl.Resources>
 
-                        <!-- Tarjeta 1: Servidor Backend Activo -->
-                        <Border Grid.Column="0" Background="{DynamicResource MaterialDesignBackground}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,10,0">
-                            <DockPanel LastChildFill="True">
-                                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                    <DockPanel LastChildFill="False" Margin="0,0,0,6">
-                                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
-                                            <materialDesign:PackIcon Kind="LanConnect" Width="20" Height="20" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                            <TextBlock Text="Servidor Backend" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
-                                        </StackPanel>
+                <!-- 1. MONEDA, TASAS Y FORMATO -->
+                <TabItem AutomationProperties.AutomationId="Settings_Section_Currency">
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="CurrencyUsd" Width="16" Height="16"
+                                                     VerticalAlignment="Center"
+                                                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
+                            <TextBlock Text="Moneda, Tasas y Formato" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,0,0,0" MaxWidth="1120"
+                                    AutomationProperties.AutomationId="Settings_SectionContent_Currency">
 
-                                        <!-- Badge Estado de Conexión con Color Dinámico -->
-                                        <Border DockPanel.Dock="Right" Background="{Binding ConnectionStatusColor}" CornerRadius="10" Padding="8,2" VerticalAlignment="Center">
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <Ellipse Width="6" Height="6" Fill="White" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding ConnectionStatusText}" Foreground="White" FontSize="10" FontWeight="Bold" VerticalAlignment="Center"/>
+                            <!-- Formato -->
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                <materialDesign:PackIcon Kind="CurrencyUsd" Width="18" Height="18"
+                                                                         Foreground="#6D28D9"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
+                                                <TextBlock Text="Formato Numérico y de Moneda" Style="{StaticResource SettingsSectionTitleStyle}"/>
+                                                <TextBlock Text="Seleccione el estándar de formato y visualización para montos monetarios en todo el sistema."
+                                                           Style="{StaticResource SettingsSectionSubtitleStyle}"/>
                                             </StackPanel>
-                                        </Border>
-                                    </DockPanel>
-                                    <TextBlock Text="Dirección actual del servidor POS en la red local:" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" Margin="0,0,0,6"/>
-                                    <Border Background="{DynamicResource MaterialDesignPaper}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="4" Padding="10,6">
-                                        <TextBlock Text="{Binding CurrentServerAddress}" FontWeight="SemiBold" FontFamily="Consolas, Monospace" FontSize="12" Foreground="{DynamicResource MaterialDesignBody}"/>
-                                    </Border>
-                                </StackPanel>
-
-                                <Button DockPanel.Dock="Bottom"
-                                        Command="{Binding OpenServerConnectionCommand}"
-                                        Style="{DynamicResource MaterialDesignOutlinedButton}"
-                                        Height="38"
-                                        HorizontalAlignment="Left"
-                                        Padding="14,0">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <materialDesign:PackIcon Kind="CogOutline" Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Cambiar Servidor / Escanear" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Button>
-                            </DockPanel>
-                        </Border>
-
-                        <!-- Tarjeta 2: Emparejamiento Móvil / Web QR -->
-                        <Border Grid.Column="1" Background="{DynamicResource MaterialDesignBackground}" BorderBrush="{DynamicResource MaterialDesignDivider}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="10,0,0,0">
-                            <DockPanel LastChildFill="True">
-                                <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                        <materialDesign:PackIcon Kind="QrcodeScan" Width="20" Height="20" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                        <TextBlock Text="Emparejamiento Móvil / Web" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                    <TextBlock Text="Conecte teléfonos, tablets o terminales web escaneando el código QR de sincronización local:" FontSize="11" Foreground="{DynamicResource MaterialDesignBodyLight}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                                </StackPanel>
-
-                                <Button DockPanel.Dock="Bottom"
-                                        Command="{Binding OpenPairingQrCommand}"
-                                        Style="{DynamicResource MaterialDesignRaisedButton}"
-                                        Height="38"
-                                        HorizontalAlignment="Left"
-                                        Padding="14,0">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <materialDesign:PackIcon Kind="QrcodeScan" Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Ver Código QR de Emparejamiento" FontWeight="Bold" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Button>
-                            </DockPanel>
-                        </Border>
-                    </Grid>
-                </Grid>
-            </Border>
-
-            <!-- SECCIÓN 2: ZONA HORARIA GLOBAL -->
-            <Border Grid.Row="2" Background="{DynamicResource MaterialDesignPaper}" 
-                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
-                    BorderThickness="1" 
-                    CornerRadius="10" 
-                    Padding="20" 
-                    Margin="0,0,0,20">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,12">
-                        <materialDesign:PackIcon Kind="Web" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBlock Text="Zona Horaria Global" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
-                    </StackPanel>
-
-                    <ComboBox ItemsSource="{Binding AvailableTimeZones}" 
-                              DisplayMemberPath="DisplayName"
-                              SelectedItem="{Binding SelectedTimeZone, Mode=TwoWay}"
-                              IsEnabled="{Binding UserSession.CanMutateSettings}"
-                              materialDesign:HintAssist.Hint="Seleccionar Zona Horaria"
-                              Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                              MaxWidth="550"
-                              HorizontalAlignment="Left"/>
-                </StackPanel>
-            </Border>
- 
-            <!-- SECCIÓN 3: FORMATO NUMÉRICO Y DE MONEDA -->
-            <Border Grid.Row="3" Background="{DynamicResource MaterialDesignPaper}" 
-                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
-                    BorderThickness="1" 
-                    CornerRadius="10" 
-                    Padding="20" 
-                    Margin="0,0,0,20">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
-                        <materialDesign:PackIcon Kind="CurrencyUsd" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBlock Text="Formato Numérico y de Moneda" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
-                    </StackPanel>
-
-                    <TextBlock Text="Seleccione el estándar de formato y visualización para montos monetarios en todo el sistema."
-                               Style="{DynamicResource MaterialDesignCaptionTextBlock}" Opacity="0.7" Margin="34,0,0,14"/>
-
-                    <Grid Margin="34,0,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" MinWidth="340"/>
-                            <ColumnDefinition Width="20"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Selector de Formato -->
-                        <ComboBox Grid.Column="0"
-                                  ItemsSource="{Binding AvailableCurrencyFormats}" 
-                                  DisplayMemberPath="DisplayName"
-                                  SelectedItem="{Binding SelectedCurrencyFormat, Mode=TwoWay}"
-                                  IsEnabled="{Binding UserSession.CanMutateSettings}"
-                                  materialDesign:HintAssist.Hint="Seleccionar Formato de Moneda"
-                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                                  VerticalAlignment="Center"/>
-
-                        <!-- Panel de Vista Previa -->
-                        <Border Grid.Column="2" 
-                                Background="{DynamicResource MaterialDesignBackground}" 
-                                BorderBrush="{DynamicResource MaterialDesignDivider}" 
-                                BorderThickness="1" 
-                                CornerRadius="8" 
-                                Padding="14,8">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <materialDesign:PackIcon Kind="EyeOutline" Width="18" Height="18" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBlock Text="Vista Previa en Vivo: " FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                <TextBlock Text="{Binding CurrencyFormatPreviewBsS}" FontWeight="Bold" FontFamily="Consolas, Monospace" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
-                                <TextBlock Text="{Binding CurrencyFormatPreviewUSD}" FontWeight="Bold" FontFamily="Consolas, Monospace" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
-
-                    <!-- Toggle: permitir stock negativo -->
-                    <Grid Margin="0,16,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="Permitir stock negativo" FontWeight="SemiBold"/>
-                            <TextBlock Text="Si se activa, las ventas pueden dejar existencias negativas al superar el stock disponible (no bloquea el cobro)." 
-                                       TextWrapping="Wrap" Foreground="{DynamicResource MaterialDesignBodyLight}" FontSize="12"/>
-                        </StackPanel>
-                        <ToggleButton Grid.Column="1" 
-                                                     Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                                                     IsChecked="{Binding AllowNegativeStock, Mode=TwoWay}"
-                                                     Command="{Binding ToggleAllowNegativeStockCommand}"
-                                                     IsEnabled="{Binding UserSession.CanMutateSettings}"
-                                                     VerticalAlignment="Center"/>
-                    </Grid>
-                </StackPanel>
-            </Border>
-
-            <!-- SECCIÓN 4: POLÍTICAS DE PRECIOS Y REDONDEO (8.184-T4 / S2) -->
-            <Border Grid.Row="4" Background="{DynamicResource MaterialDesignPaper}" 
-                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
-                    BorderThickness="1" 
-                    CornerRadius="10" 
-                    Padding="20" 
-                    Margin="0,0,0,20">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
-                        <materialDesign:PackIcon Kind="CurrencyUsd" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBlock Text="Políticas de Precios y Redondeo" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
-                    </StackPanel>
-
-                    <TextBlock Text="Reglas globales que precargan los selectores de redondeo al crear/editar productos, editar precios en masa y resolver facturas de proveedor. El auto-guardado persiste los tres valores juntos."
-                               Style="{DynamicResource MaterialDesignCaptionTextBlock}" Opacity="0.7" Margin="34,0,0,14"/>
-
-                    <Grid Margin="34,0,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" MinWidth="300"/>
-                            <ColumnDefinition Width="20"/>
-                            <ColumnDefinition Width="Auto" MinWidth="300"/>
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Regla USD por defecto (Detal/Mayor) -->
-                        <ComboBox Grid.Column="0"
-                                  ItemsSource="{Binding UsdRoundingOptions}" 
-                                  DisplayMemberPath="DisplayName"
-                                  SelectedItem="{Binding SelectedUsdRoundingRule, Mode=TwoWay}"
-                                  IsEnabled="{Binding UserSession.CanMutateSettings}"
-                                  materialDesign:HintAssist.Hint="Redondeo USD (Detal/Mayor)"
-                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                                  AutomationProperties.AutomationId="Settings_UsdRoundingCombo"
-                                  VerticalAlignment="Center"/>
-
-                        <!-- Regla de efectivo Bs.S (proyección en caliente) -->
-                        <ComboBox Grid.Column="2"
-                                  ItemsSource="{Binding CashBsRoundingOptions}" 
-                                  DisplayMemberPath="DisplayName"
-                                  SelectedItem="{Binding SelectedCashBsRoundingRule, Mode=TwoWay}"
-                                  IsEnabled="{Binding UserSession.CanMutateSettings}"
-                                  materialDesign:HintAssist.Hint="Redondeo efectivo Bs.S (proyección)"
-                                  Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                                  AutomationProperties.AutomationId="Settings_CashRoundingCombo"
-                                  VerticalAlignment="Center"/>
-                    </Grid>
-
-                    <!-- Toggle: protección de piso de margen (activada por defecto) -->
-                    <Grid Margin="0,16,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="Protección de piso de margen" FontWeight="SemiBold"/>
-                            <TextBlock Text="Si se activa, el redondeo de precios nunca baja del margen objetivo del canal (protege la rentabilidad al aplicar reglas psicológicas o de efectivo)." 
-                                       TextWrapping="Wrap" Foreground="{DynamicResource MaterialDesignBodyLight}" FontSize="12"/>
-                        </StackPanel>
-                        <ToggleButton Grid.Column="1" 
-                                      Style="{StaticResource MaterialDesignSwitchToggleButton}"
-                                      IsChecked="{Binding EnforceMinimumMarginFloor, Mode=TwoWay}"
-                                      IsEnabled="{Binding UserSession.CanMutateSettings}"
-                                      AutomationProperties.AutomationId="Settings_MarginFloorToggle"
-                                      VerticalAlignment="Center"/>
-                    </Grid>
-                </StackPanel>
-            </Border>
-
-            <!-- SECCIÓN 5: GESTIÓN DEL SISTEMA / REINICIO -->
-            <Border Grid.Row="5" Background="{DynamicResource MaterialDesignPaper}" 
-                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
-                    BorderThickness="1" 
-                    CornerRadius="10" 
-                    Padding="20" 
-                    Margin="0,0,0,20">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,20,0">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,8">
-                            <materialDesign:PackIcon Kind="Restart" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                            <TextBlock Text="Reiniciar Sistema" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <TextBlock Text="Reinicia el servicio del sistema POS cuando presente lentitud o comportamiento anómalo. Las ventas y la configuración se conservan; la caja se restablece en segundos."
-                                   TextWrapping="Wrap" Foreground="{DynamicResource MaterialDesignBodyLight}" FontSize="12" Margin="34,0,0,0"/>
-                    </StackPanel>
-
-                    <Button Grid.Column="1"
-                            Command="{Binding RestartSystemCommand}"
-                            IsEnabled="{Binding UserSession.CanMutateSettings}"
-                            Style="{DynamicResource MaterialDesignRaisedButton}"
-                            Height="42"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Center"
-                            Padding="14,0"
-                            Foreground="White"
-                            ToolTip="Reiniciar el servicio del sistema POS">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}"
-                                         Value="0" IsIndeterminate="True"
-                                         Width="18" Height="18" Margin="0,0,8,0"
-                                         Visibility="{Binding IsRestarting, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                            <materialDesign:PackIcon Kind="Restart" Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center"
-                                                     Visibility="{Binding IsRestarting, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
-                            <TextBlock Text="Reiniciar Sistema" FontWeight="Bold" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
-                </Grid>
-            </Border>
-
-            <!-- SECCIÓN 6: ADMINISTRACIÓN DE MÉTODOS DE PAGO -->
-            <Border Grid.Row="6" Background="{DynamicResource MaterialDesignPaper}" 
-                    BorderBrush="{DynamicResource MaterialDesignDivider}" 
-                    BorderThickness="1" 
-                    CornerRadius="10" 
-                    Padding="20">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- Encabezado de Sección -->
-                    <Grid Grid.Row="0" Margin="0,0,0,15">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Grid.Column="0">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <materialDesign:PackIcon Kind="CreditCardOutline" Width="24" Height="24" Foreground="{DynamicResource PrimaryHueMidBrush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <TextBlock Text="Métodos de Pago Aceptados" Style="{DynamicResource MaterialDesignHeadline6TextBlock}" FontWeight="Bold" VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <TextBlock Text="Configure la lista de métodos de pago, renómbrelos o reordénelos según la prioridad en el Punto de Venta (POS)." 
-                                       Style="{DynamicResource MaterialDesignCaptionTextBlock}" Opacity="0.7" Margin="34,4,0,0"/>
-                        </StackPanel>
-
-                        <!-- Acciones Principales -->
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Command="{Binding AddNewMethodCommand}"
-                                    IsEnabled="{Binding UserSession.CanMutateSettings}"
-                                    Style="{DynamicResource MaterialDesignRaisedButton}"
-                                    Height="38"
-                                    Padding="14,0"
-                                    Margin="0,0,8,0">
-                                <StackPanel Orientation="Horizontal">
-                                    <materialDesign:PackIcon Kind="Plus" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                    <TextBlock Text="Nuevo Método" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-                            
-                            <Button Command="{Binding LoadMethodsCommand}" 
-                                    Style="{DynamicResource MaterialDesignOutlinedButton}" 
-                                    ToolTip="Recargar Lista"
-                                    Height="38" Width="38" Padding="0">
-                                <materialDesign:PackIcon Kind="Refresh" Width="20" Height="20"/>
-                            </Button>
-                            
-                            <!-- Indicador de Carga -->
-                            <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}"
-                                         Value="0" IsIndeterminate="True"
-                                         Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}"
-                                         Margin="10,0,0,0" Width="20" Height="20"/>
-                        </StackPanel>
-                    </Grid>
-
-                    <!-- TABLA DE MÉTODOS DE PAGO CON ORDENAMIENTO Y EDICIÓN DE NOMBRE -->
-                    <controls:PerformantDataGrid Grid.Row="2" 
-                              ItemsSource="{Binding PaymentMethods}" 
-                              AutoGenerateColumns="False" 
-                              CanUserAddRows="False"
-                              CanUserDeleteRows="False"
-                              GridLinesVisibility="Horizontal"
-                              HeadersVisibility="Column"
-                              ColumnHeaderHeight="40"
-                              RowHeight="44"
-                              BorderThickness="1"
-                              BorderBrush="{DynamicResource MaterialDesignDivider}"
-                              Background="Transparent">
-                        
-                        <controls:PerformantDataGrid.RowStyle>
-                            <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsActive}" Value="False">
-                                        <Setter Property="Opacity" Value="0.5"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </controls:PerformantDataGrid.RowStyle>
-
-                        <controls:PerformantDataGrid.Columns>
-                            <!-- Columna Orden (Subir / Bajar) -->
-                            <DataGridTemplateColumn Header="Orden" Width="75">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                            <!-- Mover Arriba -->
-                                            <Button Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                    CommandParameter="{Binding}"
-                                                    IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                    Style="{DynamicResource MaterialDesignIconButton}"
-                                                    ToolTip="Subir Posición"
-                                                    AutomationProperties.Name="Subir posición del método"
-                                                    Width="26" Height="26" Padding="0">
-                                                <materialDesign:PackIcon Kind="ArrowUp" Width="16" Height="16"/>
-                                            </Button>
-
-                                            <!-- Mover Abajo -->
-                                            <Button Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                    CommandParameter="{Binding}"
-                                                    IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                    Style="{DynamicResource MaterialDesignIconButton}"
-                                                    ToolTip="Bajar Posición"
-                                                    AutomationProperties.Name="Bajar posición del método"
-                                                    Width="26" Height="26" Padding="0">
-                                                <materialDesign:PackIcon Kind="ArrowDown" Width="16" Height="16"/>
-                                            </Button>
                                         </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-
-                            <!-- Columna Nombre con Edición -->
-                            <DataGridTemplateColumn Header="Nombre del Método" Width="*" MinWidth="180">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Name}" 
-                                                       FontWeight="Bold" 
-                                                       FontSize="13"
-                                                       VerticalAlignment="Center" 
-                                                       Margin="4,0,8,0"/>
-                                            
-                                            <!-- Botón Renombrar -->
-                                            <Button Command="{Binding DataContext.RenameMethodCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                    CommandParameter="{Binding}"
-                                                    IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                    Style="{DynamicResource MaterialDesignIconButton}"
-                                                    Foreground="{DynamicResource PrimaryHueMidBrush}"
-                                                    ToolTip="Renombrar Método"
-                                                    AutomationProperties.Name="Renombrar método de pago"
-                                                    Width="26" Height="26" Padding="0">
-                                                <materialDesign:PackIcon Kind="Pencil" Width="15" Height="15"/>
-                                            </Button>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-
-                            <!-- Columna Tipo (Físico vs Digital interactivo) -->
-                            <DataGridTemplateColumn Header="Tipo" Width="Auto">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Command="{Binding DataContext.TogglePaymentTypeCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                CommandParameter="{Binding}"
-                                                IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                ToolTip="Clic para alternar entre Físico y Digital"
-                                                Padding="8,3"
-                                                Height="28"
-                                                Cursor="Hand"
-                                                BorderThickness="1">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatButton}">
+                                        <Border Grid.Column="1" CornerRadius="999" Padding="9,4"
+                                                VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
                                                     <Setter Property="Background" Value="#F1F5F9"/>
-                                                    <Setter Property="BorderBrush" Value="#CBD5E1"/>
-                                                    <Setter Property="Foreground" Value="#475569"/>
-                                                    <Setter Property="AutomationProperties.Name" Value="Método Digital. Clic para cambiar a Físico."/>
                                                     <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsCash}" Value="True">
+                                                        <DataTrigger Binding="{Binding CurrencyFormatAutoSaveStatus}" Value="✓ Guardado">
                                                             <Setter Property="Background" Value="#DCFCE7"/>
-                                                            <Setter Property="BorderBrush" Value="#86EFAC"/>
-                                                            <Setter Property="Foreground" Value="#166534"/>
-                                                            <Setter Property="AutomationProperties.Name" Value="Método Físico. Clic para cambiar a Digital."/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
-                                            </Button.Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding CurrencyFormatAutoSaveStatus}" FontSize="10.5" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#64748B"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding CurrencyFormatAutoSaveStatus}" Value="✓ Guardado">
+                                                                <Setter Property="Foreground" Value="#15803D"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </Grid>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="320"/>
+                                            <ColumnDefinition Width="20"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Formato de Moneda" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                            <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                <ComboBox ItemsSource="{Binding AvailableCurrencyFormats}"
+                                                          DisplayMemberPath="DisplayName"
+                                                          SelectedItem="{Binding SelectedCurrencyFormat, Mode=TwoWay}"
+                                                          IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                                          Style="{StaticResource SettingsComboBoxStyle}"/>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#E2E8F0"
+                                                BorderThickness="1" CornerRadius="10" Padding="16,10"
+                                                VerticalAlignment="Bottom">
+                                            <StackPanel>
+                                                <TextBlock Text="VISTA PREVIA EN VIVO" FontSize="10.5" FontWeight="SemiBold"
+                                                           Foreground="#64748B" Margin="0,0,0,6"/>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock Text="Moneda Local" FontSize="10" Foreground="#64748B" Margin="0,0,0,2"/>
+                                                        <TextBlock Text="{Binding CurrencyFormatPreviewBsS}"
+                                                                   FontSize="15" FontWeight="Bold" Foreground="#0F172A"
+                                                                   FontFamily="Consolas" Typography.NumeralAlignment="Tabular"/>
+                                                    </StackPanel>
+                                                    <Border Grid.Column="1" Width="1" Background="#E2E8F0" Margin="16,2"/>
+                                                    <StackPanel Grid.Column="2" Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                                        <TextBlock Text="Divisa" FontSize="10" Foreground="#64748B" Margin="0,0,0,2"/>
+                                                        <TextBlock Text="{Binding CurrencyFormatPreviewUSD}"
+                                                                   FontSize="15" FontWeight="Bold" Foreground="#0F172A"
+                                                                   FontFamily="Consolas" Typography.NumeralAlignment="Tabular"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Políticas de precios -->
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                <materialDesign:PackIcon Kind="TagOutline" Width="18" Height="18"
+                                                                         Foreground="#6D28D9"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
+                                                <TextBlock Text="Políticas de Precios y Redondeo" Style="{StaticResource SettingsSectionTitleStyle}"/>
+                                                <TextBlock Text="Reglas globales que precargan los selectores de redondeo al crear/editar productos, editar precios en masa y resolver facturas de proveedor."
+                                                           Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Border Grid.Column="1" CornerRadius="999" Padding="9,4" VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#F1F5F9"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding PricingPoliciesAutoSaveStatus}" Value="✓ Guardado">
+                                                            <Setter Property="Background" Value="#DCFCE7"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding PricingPoliciesAutoSaveStatus}" FontSize="10.5" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#64748B"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding PricingPoliciesAutoSaveStatus}" Value="✓ Guardado">
+                                                                <Setter Property="Foreground" Value="#15803D"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </Grid>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="240"/>
+                                            <ColumnDefinition Width="20"/>
+                                            <ColumnDefinition Width="240"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Style="{StaticResource SettingsFormLabelStyle}">
+                                                <Run Text="Redondeo"/>
+                                                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                <Run Text="(Detal/Mayor)"/>
+                                            </TextBlock>
+                                            <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                <ComboBox ItemsSource="{Binding UsdRoundingOptions}"
+                                                          DisplayMemberPath="DisplayName"
+                                                          SelectedItem="{Binding SelectedUsdRoundingRule, Mode=TwoWay}"
+                                                          IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                                          Style="{StaticResource SettingsComboBoxStyle}"
+                                                          AutomationProperties.AutomationId="Settings_UsdRoundingCombo"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Style="{StaticResource SettingsFormLabelStyle}">
+                                                <Run Text="Redondeo efectivo"/>
+                                                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                <Run Text="(proyección)"/>
+                                            </TextBlock>
+                                            <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                <ComboBox ItemsSource="{Binding CashBsRoundingOptions}"
+                                                          DisplayMemberPath="DisplayName"
+                                                          SelectedItem="{Binding SelectedCashBsRoundingRule, Mode=TwoWay}"
+                                                          IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                                          Style="{StaticResource SettingsComboBoxStyle}"
+                                                          AutomationProperties.AutomationId="Settings_CashRoundingCombo"/>
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Border Style="{StaticResource SettingsToggleCardStyle}" Margin="0,16,0,0">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock Text="Protección de piso de margen" FontSize="12" FontWeight="SemiBold" Foreground="#334155"/>
+                                                <TextBlock Text="Si se activa, el redondeo de precios nunca baja del margen objetivo del canal (protege la rentabilidad al aplicar reglas psicológicas o de efectivo)."
+                                                           Style="{StaticResource SettingsHelperStyle}" Margin="0,3,0,0"/>
+                                            </StackPanel>
+                                            <ToggleButton Grid.Column="1" Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                          IsChecked="{Binding EnforceMinimumMarginFloor, Mode=TwoWay}"
+                                                          IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                                          AutomationProperties.AutomationId="Settings_MarginFloorToggle"
+                                                          VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- 2. MÉTODOS DE PAGO Y CAJA -->
+                <TabItem AutomationProperties.AutomationId="Settings_Section_Payments">
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="CreditCardOutline" Width="16" Height="16"
+                                                     VerticalAlignment="Center"
+                                                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
+                            <TextBlock Text="Métodos de Pago y Caja" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,0,0,0" MaxWidth="1120"
+                                    AutomationProperties.AutomationId="Settings_SectionContent_Payments">
+
+                            <!-- Comisiones de adelanto -->
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,16">
+                                        <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                            <materialDesign:PackIcon Kind="CashMultiple" Width="18" Height="18" Foreground="#6D28D9"
+                                                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
+                                            <TextBlock Text="Comisiones de Adelanto de Efectivo" Style="{StaticResource SettingsSectionTitleStyle}"/>
+                                            <TextBlock Text="Parámetros operativos para adelantos de caja. La comisión se aplica al monto entregado."
+                                                       Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="170"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="170"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Transferencia / Pago Móvil" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                            <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox Grid.Column="0" Text="{Binding TransferCommissionText, UpdateSourceTrigger=PropertyChanged}"
+                                                             Style="{StaticResource SettingsTextBoxStyle}"
+                                                             AutomationProperties.AutomationId="Settings_TransferCommissionInput"
+                                                             IsEnabled="{Binding UserSession.CanMutateSettings}"/>
+                                                    <Border Grid.Column="1" Background="#F1F5F9" CornerRadius="0,8,8,0"
+                                                            Padding="8,0" Margin="0,0,1,0">
+                                                        <TextBlock Text="%" FontSize="12" FontWeight="SemiBold" Foreground="#64748B"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="Efectivo" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                            <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox Grid.Column="0" Text="{Binding CashCommissionText, UpdateSourceTrigger=PropertyChanged}"
+                                                             Style="{StaticResource SettingsTextBoxStyle}"
+                                                             AutomationProperties.AutomationId="Settings_CashCommissionInput"
+                                                             IsEnabled="{Binding UserSession.CanMutateSettings}"/>
+                                                    <Border Grid.Column="1" Background="#F1F5F9" CornerRadius="0,8,8,0"
+                                                            Padding="8,0" Margin="0,0,1,0">
+                                                        <TextBlock Text="%" FontSize="12" FontWeight="SemiBold" Foreground="#64748B"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <TextBlock Grid.Column="3" Text="{Binding CashAdvanceCommissionStatus}"
+                                                   Visibility="{Binding HasCashAdvanceCommissionStatus, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                   Foreground="#475569" FontSize="12" TextWrapping="Wrap"
+                                                   VerticalAlignment="Bottom" Margin="14,0,14,10"/>
+
+                                        <Button Grid.Column="4" Content="Guardar comisiones"
+                                                Command="{Binding SaveCashAdvanceCommissionCommand}"
+                                                AutomationProperties.AutomationId="Settings_SaveCashAdvanceCommissionButton"
+                                                IsEnabled="{Binding CanSaveCashAdvanceCommission}"
+                                                Style="{StaticResource SettingsPrimaryButtonStyle}"
+                                                Height="40" VerticalAlignment="Bottom"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Métodos de pago -->
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <Grid Grid.Row="0" Margin="0,0,0,14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                <materialDesign:PackIcon Kind="WalletOutline" Width="18" Height="18" Foreground="#6D28D9"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
+                                                <TextBlock Text="Métodos de Pago Aceptados" Style="{StaticResource SettingsSectionTitleStyle}"/>
+                                                <TextBlock Text="Configure la lista de métodos de pago, renómbrelos o reordénelos según la prioridad en el Punto de Venta (POS)."
+                                                           Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Command="{Binding AddNewMethodCommand}" IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                                    Style="{StaticResource SettingsPrimaryButtonStyle}" Height="38"
+                                                    Padding="14,0" Margin="0,0,8,0">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="Plus" Width="17" Height="17" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                    <TextBlock Text="Nuevo Método" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Command="{Binding LoadMethodsCommand}" Style="{StaticResource SettingsSecondaryButtonStyle}"
+                                                    Height="38" Width="38" Padding="0" ToolTip="Recargar Lista">
+                                                <materialDesign:PackIcon Kind="Refresh" Width="18" Height="18"/>
+                                            </Button>
+                                            <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}" Value="0"
+                                                         IsIndeterminate="True" Width="20" Height="20"
+                                                         Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}"
+                                                         Margin="10,0,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Border Grid.Row="1" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10"
+                                            Background="#FFFFFF" Padding="0">
+                                        <controls:PerformantDataGrid ItemsSource="{Binding PaymentMethods}"
+                                                                     AutomationProperties.AutomationId="Settings_PaymentMethodsGrid"
+                                                                     AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                                                                     HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                                                     HorizontalGridLinesBrush="#F1F5F9" VerticalGridLinesBrush="Transparent"
+                                                                     ColumnHeaderHeight="42" RowHeight="48" MinHeight="220"
+                                                                     BorderThickness="0" Background="Transparent"
+                                                                     RowBackground="#FFFFFF" AlternatingRowBackground="#FFFFFF"
+                                                                     HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                                                     ColumnHeaderStyle="{StaticResource SettingsTableHeaderStyle}"
+                                                                     CellStyle="{StaticResource SettingsTableCellStyle}">
+                                            <controls:PerformantDataGrid.RowStyle>
+                                                <Style TargetType="DataGridRow" BasedOn="{StaticResource SettingsTableRowStyle}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                            <Setter Property="Opacity" Value="0.55"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </controls:PerformantDataGrid.RowStyle>
+                                            <controls:PerformantDataGrid.Columns>
+                                                <DataGridTemplateColumn Header="ORDEN" Width="80">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                                <Button Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                        CommandParameter="{Binding}"
+                                                                        IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                        Width="26" Height="26"
+                                                                        ToolTip="Subir posición">
+                                                                    <Button.Style>
+                                                                        <Style TargetType="Button" BasedOn="{StaticResource SettingsIconButtonStyle}">
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsFirst}" Value="True">
+                                                                                    <Setter Property="Opacity" Value="0.3"/>
+                                                                                    <Setter Property="Cursor" Value="Arrow"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Button.Style>
+                                                                    <materialDesign:PackIcon Kind="ArrowUp" Width="15" Height="15"/>
+                                                                </Button>
+                                                                <Button Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                        CommandParameter="{Binding}"
+                                                                        IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                        Width="26" Height="26"
+                                                                        ToolTip="Bajar posición" Margin="2,0,0,0">
+                                                                    <Button.Style>
+                                                                        <Style TargetType="Button" BasedOn="{StaticResource SettingsIconButtonStyle}">
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsLast}" Value="True">
+                                                                                    <Setter Property="Opacity" Value="0.3"/>
+                                                                                    <Setter Property="Cursor" Value="Arrow"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Button.Style>
+                                                                    <materialDesign:PackIcon Kind="ArrowDown" Width="15" Height="15"/>
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+
+                                                <DataGridTemplateColumn Header="NOMBRE DEL MÉTODO" Width="320" MinWidth="180">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                                                       Foreground="#0F172A" VerticalAlignment="Center" Margin="12,0"/>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+
+                                                <DataGridTemplateColumn Header="TIPO" Width="Auto">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <Button Command="{Binding DataContext.TogglePaymentTypeCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                    CommandParameter="{Binding}"
+                                                                    IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                    Style="{StaticResource SettingsBareButtonStyle}"
+                                                                    ToolTip="Clic para alternar entre Físico y Digital"
+                                                                    HorizontalAlignment="Left" Margin="12,0">
+                                                                <Border CornerRadius="999" Height="24" Padding="10,0" BorderThickness="1" VerticalAlignment="Center">
+                                                                    <Border.Style>
+                                                                        <Style TargetType="Border">
+                                                                            <Setter Property="Background" Value="#F1F5F9"/>
+                                                                            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsCash}" Value="True">
+                                                                                    <Setter Property="Background" Value="#DCFCE7"/>
+                                                                                    <Setter Property="BorderBrush" Value="#BBF7D0"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Border.Style>
+                                                                    <TextBlock FontSize="10.5" FontWeight="SemiBold">
+                                                                        <TextBlock.Style>
+                                                                            <Style TargetType="TextBlock">
+                                                                                <Setter Property="Text" Value="DIGITAL"/>
+                                                                                <Setter Property="Foreground" Value="#334155"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding IsCash}" Value="True">
+                                                                                        <Setter Property="Text" Value="EFECTIVO"/>
+                                                                                        <Setter Property="Foreground" Value="#15803D"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </TextBlock.Style>
+                                                                    </TextBlock>
+                                                                </Border>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+
+                                                <DataGridTemplateColumn Header="MONEDA" Width="Auto">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <Border CornerRadius="999" Height="24" MaxHeight="24" Width="58" Padding="8,0" BorderThickness="1"
+                                                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border">
+                                                                        <Setter Property="Background" Value="#F5F3FF"/>
+                                                                        <Setter Property="BorderBrush" Value="#DDD6FE"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Currency}" Value="USD">
+                                                                                <Setter Property="Background" Value="#F1F5F9"/>
+                                                                                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                                <TextBlock Text="{Binding Currency}" FontFamily="Consolas" FontSize="10.5" FontWeight="SemiBold"
+                                                                           VerticalAlignment="Center" Typography.NumeralAlignment="Tabular">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock">
+                                                                            <Setter Property="Foreground" Value="#5B21B6"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding Currency}" Value="USD">
+                                                                                    <Setter Property="Foreground" Value="#0F172A"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+
+                                                <DataGridTemplateColumn Header="ESTADO ACTIVO" Width="130">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                                          IsChecked="{Binding IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                          Command="{Binding DataContext.SetActiveStatusCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                          CommandParameter="{Binding}"
+                                                                          IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                          ToolTip="Activar o desactivar este método en el POS"
+                                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+
+                                                <DataGridTemplateColumn Header="REQUIERE REFERENCIA" Width="180">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <CheckBox Style="{StaticResource SettingsCheckBoxStyle}"
+                                                                      IsChecked="{Binding RequiresReference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                      Command="{Binding DataContext.UpdateReferenceRequirementCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                      CommandParameter="{Binding}"
+                                                                      IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                      ToolTip="Si se activa, el POS solicitará una referencia"
+                                                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+
+                                                <DataGridTemplateColumn Header="ACCIONES" Width="105">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                                <Button Command="{Binding DataContext.RenameMethodCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                        CommandParameter="{Binding}"
+                                                                        IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                        Style="{StaticResource SettingsIconButtonStyle}"
+                                                                        ToolTip="Renombrar método"
+                                                                        AutomationProperties.Name="Renombrar método de pago"
+                                                                        Width="28" Height="28">
+                                                                    <materialDesign:PackIcon Kind="Pencil" Width="15" Height="15"/>
+                                                                </Button>
+                                                                <Button Command="{Binding DataContext.DeleteMethodCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                        CommandParameter="{Binding}"
+                                                                        IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                        Style="{StaticResource SettingsDangerIconButtonStyle}"
+                                                                        ToolTip="Eliminar método de pago"
+                                                                        AutomationProperties.Name="Eliminar método de pago"
+                                                                        Width="28" Height="28" Margin="4,0,0,0">
+                                                                    <materialDesign:PackIcon Kind="Delete" Width="15" Height="15"/>
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                            </controls:PerformantDataGrid.Columns>
+                                        </controls:PerformantDataGrid>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <!-- F4: reglas de comisión -->
+                            <Border Style="{StaticResource SettingsCardStyle}"
+                                    AutomationProperties.AutomationId="Settings_PaymentMethodFeesCard"
+                                    Visibility="{Binding CanEditPaymentMethodFeeRules, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                <materialDesign:PackIcon Kind="Percent" Width="18" Height="18" Foreground="#6D28D9"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
+                                                <TextBlock Text="Comisiones de Medios de Pago" Style="{StaticResource SettingsSectionTitleStyle}"/>
+                                                <TextBlock Text="Costo del negocio por cobros electrónicos. Nunca se suma al cliente ni al checkout."
+                                                           Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Command="{Binding NewFeeRuleCommand}"
+                                                    AutomationProperties.AutomationId="Settings_NewPaymentMethodFeeButton"
+                                                    Style="{StaticResource SettingsPrimaryButtonStyle}" Height="38" Padding="14,0"
+                                                    Margin="0,0,10,0">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="Plus" Width="17" Height="17" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                    <TextBlock Text="Nueva Regla" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}" Value="0"
+                                                         IsIndeterminate="True" Width="20" Height="20"
+                                                         Visibility="{Binding IsFeeRuleLoading, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <TextBlock Text="{Binding FeeRuleStatus}"
+                                               Visibility="{Binding HasFeeRuleStatus, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                               Foreground="#B45309" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                                               Margin="0,0,0,12"/>
+
+                                    <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                            CornerRadius="10" Padding="14" Margin="0,0,0,14"
+                                            Visibility="{Binding IsFeeRuleFormVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <StackPanel>
+                                            <WrapPanel>
+                                                <StackPanel Width="220" Margin="0,0,12,10">
+                                                    <TextBlock Text="Método de pago" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                                    <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                        <ComboBox ItemsSource="{Binding FeeEligiblePaymentMethods}" DisplayMemberPath="Name"
+                                                                  SelectedItem="{Binding SelectedFeePaymentMethod, Mode=TwoWay}"
+                                                                  IsEnabled="{Binding IsNewFeeRule}"
+                                                                  Style="{StaticResource SettingsComboBoxStyle}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <StackPanel Width="170" Margin="0,0,12,10">
+                                                    <TextBlock Text="Tipo de comisión" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                                    <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                        <ComboBox ItemsSource="{Binding FeeTypeOptions}" DisplayMemberPath="DisplayName"
+                                                                  SelectedItem="{Binding SelectedFeeTypeOption, Mode=TwoWay}"
+                                                                  Style="{StaticResource SettingsComboBoxStyle}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <StackPanel Width="130" Margin="0,0,12,10"
+                                                            Visibility="{Binding ShowFeePercentage, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock Text="Porcentaje (%)" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                                    <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                        <TextBox Text="{Binding FeePercentageText, UpdateSourceTrigger=PropertyChanged}"
+                                                                 Style="{StaticResource SettingsTextBoxStyle}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <StackPanel Width="130" Margin="0,0,12,10"
+                                                            Visibility="{Binding ShowFeeFixedAmount, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <TextBlock Text="Monto fijo" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                                    <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                        <TextBox Text="{Binding FeeFixedAmountText, UpdateSourceTrigger=PropertyChanged}"
+                                                                 Style="{StaticResource SettingsTextBoxStyle}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <StackPanel Width="110" Margin="0,0,12,10">
+                                                    <TextBlock Text="Moneda" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                                    <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                        <ComboBox ItemsSource="{Binding FeeCurrencyOptions}"
+                                                                  SelectedItem="{Binding FeeCurrencyCode, Mode=TwoWay}"
+                                                                  Style="{StaticResource SettingsComboBoxStyle}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <StackPanel Width="150" Margin="0,0,12,10">
+                                                    <TextBlock Text="Vigente desde" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                                    <DatePicker SelectedDate="{Binding FeeEffectiveFromDate, Mode=TwoWay}" MinHeight="40"/>
+                                                </StackPanel>
+                                                <StackPanel Width="150" Margin="0,0,12,10">
+                                                    <TextBlock Text="Vigente hasta" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                                    <DatePicker SelectedDate="{Binding FeeEffectiveToDate, Mode=TwoWay}" MinHeight="40"/>
+                                                </StackPanel>
+                                                <StackPanel Width="100" Margin="0,0,12,10" VerticalAlignment="Center">
+                                                    <TextBlock Text="Activa" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                                    <CheckBox Style="{StaticResource SettingsCheckBoxStyle}"
+                                                              IsChecked="{Binding IsFeeRuleActive, Mode=TwoWay}" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </WrapPanel>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Button Content="Cancelar" Command="{Binding CancelFeeRuleEditCommand}"
+                                                        Style="{StaticResource SettingsSecondaryButtonStyle}"
+                                                        Height="36" Margin="0,0,8,0"/>
+                                                <Button Content="Guardar Regla" Command="{Binding SaveFeeRuleCommand}"
+                                                        IsEnabled="{Binding CanSaveFeeRule}"
+                                                        Style="{StaticResource SettingsPrimaryButtonStyle}"
+                                                        Height="36"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="10"
+                                            Background="#FFFFFF" Padding="0">
+                                        <controls:PerformantDataGrid ItemsSource="{Binding PaymentMethodFeeRules}"
+                                                                     AutomationProperties.AutomationId="Settings_PaymentMethodFeesGrid"
+                                                                     AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                                                                     HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                                                     HorizontalGridLinesBrush="#F1F5F9" VerticalGridLinesBrush="Transparent"
+                                                                     ColumnHeaderHeight="42" RowHeight="42" MinHeight="200"
+                                                                     BorderThickness="0" Background="Transparent"
+                                                                     RowBackground="#FFFFFF" AlternatingRowBackground="#FFFFFF"
+                                                                     HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                                                     ColumnHeaderStyle="{StaticResource SettingsTableHeaderStyle}"
+                                                                     CellStyle="{StaticResource SettingsTableCellStyle}">
+                                            <controls:PerformantDataGrid.RowStyle>
+                                                <Style TargetType="DataGridRow" BasedOn="{StaticResource SettingsTableRowStyle}">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                            <Setter Property="Opacity" Value="0.55"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </controls:PerformantDataGrid.RowStyle>
+                                            <controls:PerformantDataGrid.Columns>
+                                                <DataGridTextColumn Header="MÉTODO" Binding="{Binding PaymentMethodName}" Width="*"
+                                                                    ElementStyle="{StaticResource SettingsTableTextStyle}"/>
+                                                <DataGridTextColumn Header="TIPO" Binding="{Binding FeeTypeDisplay}" Width="Auto"
+                                                                    ElementStyle="{StaticResource SettingsTableTextStyle}"/>
+                                                <DataGridTextColumn Header="VALOR" Binding="{Binding FeeValueDisplay}" Width="Auto"
+                                                                    ElementStyle="{StaticResource SettingsTableTextStyle}"/>
+                                                <DataGridTextColumn Header="MONEDA" Binding="{Binding CurrencyCode}" Width="Auto"
+                                                                    ElementStyle="{StaticResource SettingsTableTextStyle}"/>
+                                                <DataGridTextColumn Header="DESDE" Binding="{Binding EffectiveFromDisplay}" Width="Auto"
+                                                                    ElementStyle="{StaticResource SettingsTableTextStyle}"/>
+                                                <DataGridTextColumn Header="HASTA" Binding="{Binding EffectiveToDisplay}" Width="Auto"
+                                                                    ElementStyle="{StaticResource SettingsTableTextStyle}"/>
+                                                <DataGridTextColumn Header="ESTADO" Binding="{Binding StatusDisplay}" Width="Auto"
+                                                                    ElementStyle="{StaticResource SettingsTableTextStyle}"/>
+                                                <DataGridTemplateColumn Header="ACCIONES" Width="105">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                                <Button Command="{Binding DataContext.EditFeeRuleCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                        CommandParameter="{Binding}" Style="{StaticResource SettingsIconButtonStyle}"
+                                                                        ToolTip="Editar regla" Width="28" Height="28">
+                                                                    <materialDesign:PackIcon Kind="Pencil" Width="15" Height="15"/>
+                                                                </Button>
+                                                                <Button Command="{Binding DataContext.DeleteFeeRuleCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
+                                                                        CommandParameter="{Binding}" IsEnabled="{Binding IsActive}"
+                                                                        Style="{StaticResource SettingsDangerIconButtonStyle}"
+                                                                        ToolTip="Desactivar regla" Width="28" Height="28" Margin="4,0,0,0">
+                                                                    <materialDesign:PackIcon Kind="Delete" Width="15" Height="15"/>
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                            </controls:PerformantDataGrid.Columns>
+                                        </controls:PerformantDataGrid>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- 3. INVENTARIO -->
+                <TabItem AutomationProperties.AutomationId="Settings_Section_Inventory">
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="PackageVariant" Width="16" Height="16" VerticalAlignment="Center"
+                                                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
+                            <TextBlock Text="Inventario y Reglas de Venta" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,0,0,0" MaxWidth="1120"
+                                    AutomationProperties.AutomationId="Settings_SectionContent_Inventory">
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                <materialDesign:PackIcon Kind="PackageVariant" Width="18" Height="18" Foreground="#6D28D9"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
+                                                <TextBlock Text="Control de Existencias en Cobro" Style="{StaticResource SettingsSectionTitleStyle}"/>
+                                                <TextBlock Text="Reglas que afectan la disponibilidad de stock al momento de cobrar."
+                                                           Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Border Grid.Column="1" Background="#F1F5F9" CornerRadius="999" Padding="9,4" VerticalAlignment="Center">
+                                            <TextBlock Text="Auto-guardado" FontSize="10.5" FontWeight="SemiBold" Foreground="#64748B"/>
+                                        </Border>
+                                    </Grid>
+                                    <Border Style="{StaticResource SettingsToggleCardStyle}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                <TextBlock Text="Permitir stock negativo" FontSize="12" FontWeight="SemiBold" Foreground="#334155"/>
+                                                <TextBlock Text="Si se activa, las ventas pueden dejar existencias negativas al superar el stock disponible."
+                                                           Style="{StaticResource SettingsHelperStyle}" Margin="0,3,0,0"/>
+                                            </StackPanel>
+                                            <ToggleButton Grid.Column="1" Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                          IsChecked="{Binding AllowNegativeStock, Mode=TwoWay}"
+                                                          Command="{Binding ToggleAllowNegativeStockCommand}"
+                                                          IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                                          AutomationProperties.AutomationId="Settings_NegativeStockToggle"
+                                                          VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </Border>
+                                    <Border Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="1"
+                                            CornerRadius="8" Padding="12,10" Margin="0,10,0,0"
+                                            Visibility="{Binding AllowNegativeStock, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="AlertOutline" Width="18" Height="18"
+                                                                     Foreground="#B45309" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Aviso: el punto de venta permitirá facturar artículos sin stock disponible"
+                                                       Foreground="#B45309" FontSize="12" FontWeight="SemiBold"
+                                                       TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- 4. CONECTIVIDAD -->
+                <TabItem AutomationProperties.AutomationId="Settings_Section_Network">
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="LanConnect" Width="16" Height="16" VerticalAlignment="Center"
+                                                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
+                            <TextBlock Text="Conectividad y Red Local" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,0,0,0" MaxWidth="1120"
+                                    AutomationProperties.AutomationId="Settings_SectionContent_Network">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Border Grid.Column="0" Style="{StaticResource SettingsCardStyle}" Margin="0" VerticalAlignment="Stretch">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <Grid Grid.Row="0" Margin="0,0,0,14">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                    <materialDesign:PackIcon Kind="LanConnect" Width="18" Height="18" Foreground="#6D28D9"
+                                                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <TextBlock Grid.Column="1" Text="Servidor Backend" FontSize="16" FontWeight="SemiBold"
+                                                           Foreground="#0F172A" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                                            </StackPanel>
+                                            <Border Grid.Column="1" CornerRadius="999" Padding="8,3" BorderThickness="1" VerticalAlignment="Center">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#FEE2E2"/>
+                                                        <Setter Property="BorderBrush" Value="#FECACA"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding ConnectionStatusText}" Value="Conectado">
+                                                                <Setter Property="Background" Value="#DCFCE7"/>
+                                                                <Setter Property="BorderBrush" Value="#BBF7D0"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Ellipse Width="6" Height="6" Margin="0,0,5,0" VerticalAlignment="Center">
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse">
+                                                                <Setter Property="Fill" Value="#B91C1C"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding ConnectionStatusText}" Value="Conectado">
+                                                                        <Setter Property="Fill" Value="#16A34A"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                    <TextBlock Text="{Binding ConnectionStatusText}" FontSize="10.5" FontWeight="SemiBold">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="#B91C1C"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding ConnectionStatusText}" Value="Conectado">
+                                                                        <Setter Property="Foreground" Value="#15803D"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </Border>
+                                        </Grid>
+
+                                        <StackPanel Grid.Row="1" Margin="0,0,0,14">
+                                            <TextBlock Text="Dirección actual del servidor POS en la red local:"
+                                                       Style="{StaticResource SettingsHelperStyle}" Margin="0,0,0,6"/>
+                                            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                                    CornerRadius="8" Padding="12,10">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding CurrentServerAddress}"
+                                                               FontFamily="Consolas" FontSize="12" Foreground="#0F172A"
+                                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <TextBlock x:Name="CopyServerFeedbackText" Text="✓ Copiado"
+                                                                   FontSize="11" FontWeight="SemiBold" Foreground="#15803D"
+                                                                   VerticalAlignment="Center" Margin="0,0,6,0"
+                                                                   Visibility="Collapsed"/>
+                                                        <Button Style="{StaticResource SettingsIconButtonStyle}"
+                                                                Click="CopyServerAddress_Click"
+                                                                AutomationProperties.AutomationId="Settings_CopyServerButton"
+                                                                ToolTip="Copiar dirección del servidor"
+                                                                Width="28" Height="28">
+                                                            <materialDesign:PackIcon Kind="ContentCopy" Width="15" Height="15"/>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <Button Grid.Row="2" Command="{Binding OpenServerConnectionCommand}"
+                                                AutomationProperties.AutomationId="Settings_ChangeServerButton"
+                                                Style="{StaticResource SettingsSecondaryButtonStyle}"
+                                                Height="40" HorizontalAlignment="Left">
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <materialDesign:PackIcon Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,4,0">
-                                                    <materialDesign:PackIcon.Style>
-                                                        <Style TargetType="materialDesign:PackIcon">
-                                                            <Setter Property="Kind" Value="CreditCardOutline"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsCash}" Value="True">
-                                                                    <Setter Property="Kind" Value="CashMultiple"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </materialDesign:PackIcon.Style>
-                                                </materialDesign:PackIcon>
-                                                <TextBlock FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="DIGITAL"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsCash}" Value="True">
-                                                                    <Setter Property="Text" Value="EFECTIVO"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
+                                                <materialDesign:PackIcon Kind="CogOutline" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                <TextBlock Text="Cambiar Servidor / Escanear" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                             </StackPanel>
                                         </Button>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
+                                    </Grid>
+                                </Border>
 
-                            <!-- Switch Requiere Referencia -->
-                            <DataGridTemplateColumn Header="Requiere Referencia" Width="Auto">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <CheckBox IsChecked="{Binding RequiresReference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
-                                                  Command="{Binding DataContext.UpdateReferenceRequirementCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                  CommandParameter="{Binding}"
-                                                  IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                  HorizontalAlignment="Center"
-                                                  Margin="0"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
+                                <Border Grid.Column="2" Style="{StaticResource SettingsCardStyle}" Margin="0" VerticalAlignment="Stretch">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
 
-                            <!-- Switch Estado Activo -->
-                            <DataGridTemplateColumn Header="Estado Activo" Width="Auto">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <CheckBox IsChecked="{Binding IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  Command="{Binding DataContext.SetActiveStatusCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                  CommandParameter="{Binding}"
-                                                  IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                  ToolTip="Activar o desactivar este método en el POS"
-                                                  HorizontalAlignment="Center"
-                                                  Margin="0"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-
-                            <!-- Botones de Acción -->
-                            <DataGridTemplateColumn Header="Acciones" Width="Auto">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                            <!-- Desactivar / Eliminar -->
-                                            <Button Command="{Binding DataContext.DeleteMethodCommand, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                    CommandParameter="{Binding}"
-                                                    IsEnabled="{Binding DataContext.UserSession.CanMutateSettings, RelativeSource={RelativeSource AncestorType=controls:PerformantDataGrid}}"
-                                                    Style="{DynamicResource MaterialDesignIconButton}"
-                                                    ToolTip="Eliminar Método de Pago"
-                                                    AutomationProperties.Name="Eliminar Método de Pago"
-                                                    Foreground="#DC2626"
-                                                    Width="30" Height="30">
-                                                <materialDesign:PackIcon Kind="Delete" Width="18" Height="18"/>
-                                            </Button>
+                                        <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,14">
+                                            <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                <materialDesign:PackIcon Kind="QrcodeScan" Width="18" Height="18" Foreground="#6D28D9"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <TextBlock Text="Emparejamiento Móvil / Web" FontSize="16" FontWeight="SemiBold"
+                                                       Foreground="#0F172A" VerticalAlignment="Center" Margin="12,0,0,0"/>
                                         </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </controls:PerformantDataGrid.Columns>
-                    </controls:PerformantDataGrid>
-                </Grid>
-            </Border>
+
+                                        <Border Grid.Row="1" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                                CornerRadius="8" Padding="12,10" Margin="0,30,0,14" VerticalAlignment="Top">
+                                            <TextBlock Text="Los dispositivos móviles y terminales web deben estar en la misma red Wi-Fi o LAN."
+                                                       FontSize="12" Foreground="#64748B" TextWrapping="Wrap"/>
+                                        </Border>
+
+                                        <Button Grid.Row="2" Command="{Binding OpenPairingQrCommand}"
+                                                AutomationProperties.AutomationId="Settings_PairingQrButton"
+                                                Style="{StaticResource SettingsPrimaryButtonStyle}"
+                                                Height="40" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="QrcodeScan" Width="16" Height="16" Margin="0,0,6,0"/>
+                                                <TextBlock Text="Ver Código QR de Emparejamiento" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- 5. SISTEMA -->
+                <TabItem AutomationProperties.AutomationId="Settings_Section_System">
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="ShieldOutline" Width="16" Height="16" VerticalAlignment="Center"
+                                                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}"/>
+                            <TextBlock Text="Sistema y Mantenimiento" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="20,0,0,0" MaxWidth="1120"
+                                    AutomationProperties.AutomationId="Settings_SectionContent_System">
+                            <Border Style="{StaticResource SettingsCardStyle}">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Style="{StaticResource SettingsIconBadgeStyle}">
+                                                <materialDesign:PackIcon Kind="Web" Width="18" Height="18" Foreground="#6D28D9"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Margin="12,0,0,0" VerticalAlignment="Center" MaxWidth="680">
+                                                <TextBlock Text="Zona Horaria Global" Style="{StaticResource SettingsSectionTitleStyle}"/>
+                                                <TextBlock Text="Define el corte diario de ventas, cierres de caja y reportes financieros."
+                                                           Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <Border Grid.Column="1" CornerRadius="999" Padding="9,4" VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#F1F5F9"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding TimeZoneAutoSaveStatus}" Value="✓ Guardado">
+                                                            <Setter Property="Background" Value="#DCFCE7"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding TimeZoneAutoSaveStatus}" FontSize="10.5" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#64748B"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding TimeZoneAutoSaveStatus}" Value="✓ Guardado">
+                                                                <Setter Property="Foreground" Value="#15803D"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </Grid>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="320"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Zona Horaria" Style="{StaticResource SettingsFormLabelStyle}"/>
+                                            <Border Style="{StaticResource SettingsFieldFrameStyle}">
+                                                <ComboBox ItemsSource="{Binding AvailableTimeZones}"
+                                                          SelectedItem="{Binding SelectedTimeZone, Mode=TwoWay}"
+                                                          IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                                          Style="{StaticResource SettingsComboBoxStyle}">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding DisplayName}"/>
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                            </Border>
+                                        </StackPanel>
+                                        <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                                CornerRadius="10" Padding="16,10" VerticalAlignment="Bottom">
+                                            <StackPanel>
+                                                <TextBlock Text="HORA ACTUAL EN ZONA SELECCIONADA" FontSize="10.5" FontWeight="SemiBold"
+                                                           Foreground="#64748B" Margin="0,0,0,6"/>
+                                                <TextBlock Text="{Binding SelectedTimeZoneCurrentTimeDisplay}"
+                                                           FontSize="15" FontWeight="Bold" Foreground="#0F172A"
+                                                           FontFamily="Consolas" Typography.NumeralAlignment="Tabular"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="ZONA DE ACCIONES CRÍTICAS" FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="#B45309" Margin="4,8,0,8"/>
+                            <Border Style="{StaticResource SettingsCardStyle}" BorderBrush="#FDE68A"
+                                    BorderThickness="4,1,1,1" Background="#FFFDF7"
+                                    AutomationProperties.AutomationId="Settings_RestartCard">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Border Width="38" Height="38" CornerRadius="8" Background="#FEF3C7" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="AlertCircleOutline" Width="20" Height="20" Foreground="#D97706"
+                                                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel Margin="12,0,20,0" VerticalAlignment="Center" MaxWidth="700">
+                                            <TextBlock Text="Reiniciar Sistema" Style="{StaticResource SettingsSectionTitleStyle}"/>
+                                            <TextBlock Text="Reinicia el servicio del sistema POS cuando presente lentitud o comportamiento anómalo. Las ventas y la configuración se conservan; la caja se restablece en segundos."
+                                                       Style="{StaticResource SettingsSectionSubtitleStyle}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Command="{Binding RestartSystemCommand}"
+                                            AutomationProperties.AutomationId="Settings_RestartButton"
+                                            IsEnabled="{Binding UserSession.CanMutateSettings}"
+                                            Style="{StaticResource SettingsWarningButtonStyle}"
+                                            Height="40" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                            ToolTip="Reiniciar el servicio del sistema POS">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}" Value="0"
+                                                         IsIndeterminate="True" Width="18" Height="18" Margin="0,0,8,0"
+                                                         Visibility="{Binding IsRestarting, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                            <materialDesign:PackIcon Kind="Restart" Width="18" Height="18" Margin="0,0,6,0"
+                                                                     Foreground="#B45309" VerticalAlignment="Center"
+                                                                     Visibility="{Binding IsRestarting, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                                            <TextBlock Text="Reiniciar Sistema" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+            </TabControl>
+
+            <Border Width="1" Background="#E2E8F0" HorizontalAlignment="Left" Margin="247,0,0,0"
+                    IsHitTestVisible="False"/>
         </Grid>
-    </ScrollViewer>
+    </Grid>
 </UserControl>

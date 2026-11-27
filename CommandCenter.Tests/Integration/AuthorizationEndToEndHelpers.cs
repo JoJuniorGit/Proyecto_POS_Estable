@@ -25,7 +25,8 @@ namespace CommandCenter.Tests.Integration;
 /// E2E de autorizaciones remotas. Cada escenario recibe una base única <c>pos_e2e_&lt;run&gt;</c>
 /// creada desde cero, migrada y sembrada por el propio arranque (DatabaseInitializer) y
 /// descartada al final con DROP ... WITH (FORCE) (misma estrategia que FullStackFixture).
-/// Sin TEST_POSTGRES_CONNECTION la aplicación se declara no disponible y los tests se omiten.
+/// Carril <see cref="PostgresTestLane"/>: sin conexión utilizable el escenario falla EXPLÍCITO
+/// con la instrucción de configuración (nunca skip silencioso).
 /// </summary>
 internal sealed class AuthorizationEndToEndApplication : IAsyncDisposable
 {
@@ -70,12 +71,9 @@ internal sealed class AuthorizationEndToEndApplication : IAsyncDisposable
 
     public static async Task<AuthorizationEndToEndApplication> CreateAsync(string scenario)
     {
-        var baseConnectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(baseConnectionString))
-        {
-            // Gating del repo: sin PostgreSQL configurado el escenario se omite en silencio.
-            return new AuthorizationEndToEndApplication(null, null, null, string.Empty, string.Empty);
-        }
+        // Carril: TEST_POSTGRES_CONNECTION o fallback Development; sin conexión utilizable falla
+        // EXPLÍCITO (nunca skip silencioso).
+        var baseConnectionString = PostgresTestLane.RequireResolution().ConnectionString;
 
         var databaseName = BuildDatabaseName(scenario);
         var derivedBuilder = new NpgsqlConnectionStringBuilder(baseConnectionString) { Database = databaseName };

@@ -135,10 +135,10 @@ public class NetworkDiscoveryService : INetworkDiscoveryService
         var primaryIp = primary.IpAddress;
         var httpUrl = $"http://{primaryIp}:{httpPort}";
         var httpsUrl = isHttpsEnabled ? $"https://{primaryIp}:{httpsPort}" : string.Empty;
-        var effectiveUrl = isHttpsEnabled ? httpsUrl : httpUrl;
 
-        // 8.9-M4: el QR incorpora el secreto efímero de emparejamiento (single-use).
-        var pairingToken = GetOrCreatePairingToken();
+        // 8.9-M4: el QR incorpora el secreto efímero de emparejamiento (single-use). No se
+        // publica un QR remoto cuando falta TLS: el claim remoto se rechaza por política.
+        var pairingToken = isHttpsEnabled ? GetOrCreatePairingToken() : string.Empty;
 
         return new ServerPairingInfo
         {
@@ -151,7 +151,7 @@ public class NetworkDiscoveryService : INetworkDiscoveryService
             PrimaryHttpsUrl = httpsUrl,
             IsHttpsEnabled = isHttpsEnabled,
             NetworkInterfaces = interfaces,
-            QrPayload = $"{effectiveUrl}/?paired=true&pair={pairingToken}"
+            QrPayload = isHttpsEnabled ? $"{httpsUrl}/?paired=true&pair={pairingToken}" : string.Empty
         };
     }
 

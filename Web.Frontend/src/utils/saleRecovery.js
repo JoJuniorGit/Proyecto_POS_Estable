@@ -107,7 +107,9 @@ export function saveRecoverySnapshot(snapshot) {
         savedAt: Date.now(),
       })
     );
-  } catch {}
+  } catch (err) {
+    console.warn('[saleRecovery] Error al guardar snapshot:', err);
+  }
 }
 
 export function clearRecoverySnapshot() {
@@ -116,7 +118,9 @@ export function clearRecoverySnapshot() {
 
   try {
     storage.removeItem(SNAPSHOT_KEY);
-  } catch {}
+  } catch (err) {
+    console.warn('[saleRecovery] Error al limpiar snapshot:', err);
+  }
 }
 
 export function markCleanShutdown(saleId, now = Date.now()) {
@@ -125,7 +129,9 @@ export function markCleanShutdown(saleId, now = Date.now()) {
 
   try {
     storage.setItem(CLEAN_SHUTDOWN_KEY, JSON.stringify({ saleId: Number(saleId) || null, at: now }));
-  } catch {}
+  } catch (err) {
+    console.warn('[saleRecovery] Error al marcar clean shutdown:', err);
+  }
 }
 
 export function markSessionDirty() {
@@ -134,5 +140,7 @@ export function markSessionDirty() {
 
   try {
     storage.removeItem(CLEAN_SHUTDOWN_KEY);
-  } catch {}
+  } catch (err) {
+    console.warn('[saleRecovery] Error al marcar session dirty:', err);
+  }
 }

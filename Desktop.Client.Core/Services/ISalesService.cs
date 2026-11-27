@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Core.DTOs;
@@ -17,6 +18,18 @@ public class PendingPickupClientDto
     public string CustomerPhone { get; set; } = string.Empty;
     public decimal TotalUSD { get; set; }
     public decimal TotalBsS { get; set; }
+    public decimal AppliedRate { get; set; }
+
+    /// <summary>
+    /// Sincronizacion USD efectivo (ANEXO XV): inverso del Bs.S EFECTIVO a la tasa anclada —
+    /// el $ de los retiros/cuentas abiertas es el monto realmente transado. Derivacion local
+    /// (misma formula de Sale.EffectiveTotalUSD) sobre los campos deserializados.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public decimal EffectiveTotalUSD => TotalBsS <= 0m || AppliedRate <= 0m
+        ? TotalUSD
+        : System.Math.Round(TotalBsS / AppliedRate, 4, System.MidpointRounding.AwayFromZero);
+
     public decimal TotalUnits { get; set; }
     public decimal DeliveredUnits { get; set; }
     public string DeliveryStatus { get; set; } = "PendingPickup";
@@ -38,6 +51,131 @@ public class PendingPickupClientDto
     public double ProgressPercent => TotalUnits <= 0m
         ? 0d
         : decimal.ToDouble(Math.Clamp(DeliveredUnits / TotalUnits * 100m, 0m, 100m));
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public decimal PendingUnits => Math.Max(0m, TotalUnits - DeliveredUnits);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int PendingLineCount => Items?.Count(item => item is not null && item.PendingQuantity > 0m) ?? 0;
+
+    /// <summary>
+    /// A1: proportional pending merchandise value. Per line it uses UnitPriceBsS x PendingQuantity,
+    /// falling back to SubtotalBsS x PendingQuantity / Quantity, and finally to the invoice total
+    /// scaled by the pending-unit fraction when line pricing is unavailable. Never exceeds TotalBsS.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public decimal PendingValueBsS
+    {
+        get
+        {
+            var items = Items;
+            decimal pendingValue = 0m;
+
+            if (items is { Count: > 0 })
+            {
+                foreach (var item in items)
+                {
+                    if (item is null) continue;
+                    decimal unitPrice = item.UnitPriceBsS > 0m
+                        ? item.UnitPriceBsS
+                        : item.Quantity > 0m
+                            ? item.SubtotalBsS / item.Quantity
+                            : 0m;
+                    pendingValue += unitPrice * item.PendingQuantity;
+                }
+            }
+
+            if ((items is null || items.Count == 0 || pendingValue == 0m) && TotalUnits > 0m)
+            {
+                pendingValue = TotalBsS * PendingUnits / TotalUnits;
+            }
+
+            decimal rounded = Math.Round(pendingValue, 2, MidpointRounding.AwayFromZero);
+            return rounded > TotalBsS ? TotalBsS : rounded;
+        }
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public decimal PendingValueUSD => AppliedRate > 0m
+        ? Math.Round(PendingValueBsS / AppliedRate, 4, MidpointRounding.AwayFromZero)
+        : TotalUnits > 0m
+            ? Math.Round(EffectiveTotalUSD * PendingUnits / TotalUnits, 4, MidpointRounding.AwayFromZero)
+            : 0m;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DateTime DateLocal => Date.Kind == DateTimeKind.Utc
+        ? Core.Helpers.TimeZoneHelper.ToVenezuelaTime(Date)
+        : Date;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string InvoiceDisplay => InvoiceNumber.HasValue
+        ? $"Factura N° {InvoiceNumber.Value.ToString("D5", CultureInfo.InvariantCulture)}"
+        : $"Pedido #{SaleId}";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string InvoiceBadge => InvoiceNumber.HasValue
+        ? $"Factura #{InvoiceNumber.Value.ToString("D5", CultureInfo.InvariantCulture)}"
+        : $"Pedido #{SaleId}";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string ShortStatusLabel => IsPartiallyDelivered ? "Parcial" : "Sin retirar";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DetailStatusLabel => IsPartiallyDelivered ? "Retiro Parcial" : "Pendiente de Retiro";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasCustomerPhone => !string.IsNullOrWhiteSpace(CustomerPhone);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string CustomerPhoneDisplay => HasCustomerPhone ? CustomerPhone.Trim() : "Sin teléfono";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string PendingUnitsLabel =>
+        $"{PendingUnits.ToString("0.###", CultureInfo.InvariantCulture)} uds. pendientes";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasLargePendingVolume => PendingUnits >= 50m;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DateDisplay => DateLocal.ToString("dd/MM/yy", CultureInfo.InvariantCulture);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int DaysInCustody => Math.Max(
+        0,
+        Core.Helpers.TimeZoneHelper.GetVenezuelaDate().DayNumber
+        - DateOnly.FromDateTime(DateLocal).DayNumber);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string AgeLabel => DaysInCustody switch
+    {
+        0 => "Hoy",
+        1 => "Hace 1 día",
+        var days => $"Hace {days} días"
+    };
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsStale => PendingUnits > 0m && DaysInCustody > 7;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string PaymentDateDisplay => DateLocal.ToString("dd/MM/yy HH:mm", CultureInfo.InvariantCulture);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DeliveryProgressLabel =>
+        $"{DeliveredUnits.ToString("0.###", CultureInfo.InvariantCulture)} de " +
+        $"{TotalUnits.ToString("0.###", CultureInfo.InvariantCulture)} unidades entregadas " +
+        $"({ProgressPercent.ToString("0", CultureInfo.InvariantCulture)}%)";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DispatchSummaryLabel
+    {
+        get
+        {
+            int pendingLines = PendingLineCount;
+            string productLabel = pendingLines == 1 ? "producto" : "productos";
+            return $"{pendingLines} {productLabel} · " +
+                   $"{PendingUnits.ToString("0.###", CultureInfo.InvariantCulture)} unidades pendientes por entregar";
+        }
+    }
 }
 
 public class PendingPickupItemDto
@@ -132,6 +270,16 @@ public class SaleHistoryDto
     public decimal TotalUSD { get; set; }
     public decimal AppliedRate { get; set; }
     public decimal TotalBsS { get; set; }
+
+    /// <summary>
+    /// Sincronizacion USD efectivo (ANEXO XIII): inverso del Bs.S EFECTIVO a la tasa anclada —
+    /// el $ del historial es el monto realmente transado, no la suma canonica de precios base.
+    /// Derivacion local (misma formula de Sale.EffectiveTotalUSD) sobre los campos deserializados.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public decimal EffectiveTotalUSD => TotalBsS <= 0m || AppliedRate <= 0m
+        ? TotalUSD
+        : System.Math.Round(TotalBsS / AppliedRate, 4, System.MidpointRounding.AwayFromZero);
     public string Status { get; set; } = string.Empty;
     public decimal FinalPaidAmountBsS { get; set; }
     public int? CashierId { get; set; }
@@ -177,9 +325,10 @@ public interface ISalesService
     Task<SaleDto> AddPaymentToHoldSaleAsync(int saleId, AddPaymentRequestDto request);
     Task<SaleDto> ClaimSaleAsync(int saleId, string action, System.Threading.CancellationToken cancellationToken = default);
     Task<SaleDto> ReleaseSaleAsync(int saleId, bool force = false, System.Threading.CancellationToken cancellationToken = default);
+    Task CancelSaleAsync(int saleId, System.Threading.CancellationToken cancellationToken = default);
     Task<(IEnumerable<SaleDto> Items, int TotalCount)> GetPendingSalesPagedAsync(int limit = 200, int offset = 0);
     Task<SaleDto> UpdateSaleCustomerAsync(int saleId, int customerId);
-    Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(string? query = null, int page = 1, int pageSize = 20, bool recentOnly = false);
+    Task<(IEnumerable<CustomerDto> Items, int TotalCount)> GetCustomersAsync(string? query = null, int page = 1, int pageSize = 20, bool recentOnly = false, bool? isActive = null);
 
     Task<CustomerDto> GetDefaultCustomerAsync();
     Task<CustomerDto> CreateCustomerAsync(CreateCustomerDto request);
@@ -197,6 +346,62 @@ public interface ISalesService
     Task<byte[]> GetDeliveryNoteAsync(int saleId, int deliveryId, CancellationToken cancellationToken = default);
     Task UpdateSaleItemsAsync(int saleId, IEnumerable<UpdateSaleItemDto> items, decimal exchangeRate);
     Task<byte[]?> GetReceiptAsync(int saleId);
+
+    // ── Paso 11/12 (F3): crédito CxC ──
+
+    /// <summary>Perfil crediticio del cliente (cupo, deuda, disponible, utilización, plazo, mora).</summary>
+    Task<CreditProfileClientDto> GetCreditProfileAsync(int customerId, CancellationToken cancellationToken = default);
+
+    /// <summary>Escritura administrativa del perfil crediticio (Admin/Manager en el backend).</summary>
+    Task<CreditProfileClientDto> UpdateCreditProfileAsync(
+        int customerId,
+        CreditProfileUpdateClientDto request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Estado de cuenta dual: perfil + cartera + historial de abonos con FX realizado.</summary>
+    Task<CreditStatementClientDto> GetCreditStatementAsync(int customerId, CancellationToken cancellationToken = default);
+
+    /// <summary>Cartera global CxC con filtros por cliente, estado, mora y búsqueda.</summary>
+    Task<CreditReceivablesClientDto> GetCreditReceivablesAsync(
+        CreditReceivablesFilterClientDto filter,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cierra la venta a crédito (total o mixta). Un 403 de sobregiro se traduce a
+    /// <see cref="CreditOverLimitAuthorizationException"/> con el contexto exacto del hub; el
+    /// reintento autorizado viaja con el token en X-Authorization-Token.
+    /// </summary>
+    Task<int> CompleteCreditSaleAsync(
+        int saleId,
+        decimal exchangeRate,
+        IEnumerable<SalePaymentDto> payments,
+        int? cashierId = null,
+        string? authorizationToken = null,
+        string? idempotencyKey = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Registra un abono CxC (FIFO o facturas explícitas); la tasa la resuelve el servidor.</summary>
+    Task<CreditPaymentResultClientDto> RegisterCreditPaymentAsync(
+        CreditPaymentRequestClientDto request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Anula una venta a crédito sin abonos (restituye stock y cupo; sin movimiento de caja).</summary>
+    Task<CreditCancelClientResultDto> CancelCreditSaleAsync(
+        int saleId,
+        string? reason,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Registra la devolución total o parcial de una venta a crédito.</summary>
+    Task<CreditReturnClientResultDto> RegisterCreditReturnAsync(
+        int saleId,
+        CreditReturnRequestClientDto request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Comprobante PDF de venta a crédito; null cuando la venta no existe (404).</summary>
+    Task<byte[]?> GetCreditSaleReceiptAsync(int saleId, CancellationToken cancellationToken = default);
+
+    /// <summary>Comprobante PDF de abono; null cuando el abono no existe (404).</summary>
+    Task<byte[]?> GetCreditPaymentReceiptAsync(int paymentId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>DTO for updating an item quantity in a pending/OnHold sale.</summary>

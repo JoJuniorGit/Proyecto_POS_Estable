@@ -13,6 +13,7 @@ using Backend.API.Attributes;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize]
 [ApiController]
 [Route("api/shifts")]
@@ -78,7 +79,8 @@ public class ShiftsController : ControllerBase
                 Observation: "",
                 Declarations: request.DeclaredAmounts
                     .Select(d => new DeclaredPaymentAmount(d.PaymentMethodId, d.Amount))
-                    .ToList());
+                    .ToList(),
+                ActualClosingBalanceUsd: request.ActualClosingBalanceUsd);
 
             var result = await _dailyClosureService.CreateClosureFromCommandAsync(command, cancellationToken);
             bool isElevated = User.IsInRole(nameof(Core.Entities.UserRole.Admin)) || User.IsInRole(nameof(Core.Entities.UserRole.Manager));
@@ -90,6 +92,11 @@ public class ShiftsController : ControllerBase
                 CashierCedula = result.CashierCedula,
                 ClosedAt = result.ClosedAt,
                 ExchangeRate = result.ExchangeRate,
+                // Blind 8.153: esperado y diferencia USD solo para supervisores; el contado
+                // informado por el usuario se conserva siempre.
+                ExpectedClosingBalanceUsd = isElevated ? result.ExpectedClosingBalanceUsd : null,
+                ActualClosingBalanceUsd = result.ActualClosingBalanceUsd,
+                DifferenceUsd = isElevated ? result.DifferenceUsd : null,
                 Details = result.Details.Select(d => new ShiftReportDetailDto
                 {
                     PaymentMethodId = d.PaymentMethodId,
@@ -196,6 +203,10 @@ public class ShiftsController : ControllerBase
             CashierCedula = closure.Observation ?? "V-00000000",
             ClosedAt = closure.ClosureDate,
             ExchangeRate = closure.ExchangeRate,
+            // Blind 8.153 al releer: el cajero dueno ve su conteo, nunca el esperado/diferencia.
+            ExpectedClosingBalanceUsd = isElevated ? closure.ExpectedClosingBalanceUsd : null,
+            ActualClosingBalanceUsd = closure.ActualClosingBalanceUsd,
+            DifferenceUsd = isElevated ? closure.DifferenceUsd : null,
             Details = details
         });
     }

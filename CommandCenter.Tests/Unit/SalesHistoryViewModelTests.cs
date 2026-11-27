@@ -40,6 +40,19 @@ public class SalesHistoryViewModelTests
     }
 
     [Fact]
+    public void DefaultDateRange_WhenInitialized_UsesVenezuelaBusinessDay()
+    {
+        // Hotfix CI/timezone: el backend interpreta las fechas como días calendario de Venezuela
+        // (TimeZoneHelper.GetUtcRange) — el default del VM debe ser la jornada VE, no la fecha
+        // local de la máquina (en CI UTC la venta nocturna quedaba fuera del rango "Hoy").
+        var vm = CreateViewModel();
+
+        var expectedVenezuelaDay = Core.Helpers.TimeZoneHelper.GetVenezuelaDate().ToDateTime(TimeOnly.MinValue);
+        Assert.Equal(expectedVenezuelaDay, vm.StartDate);
+        Assert.Equal(expectedVenezuelaDay, vm.EndDate);
+    }
+
+    [Fact]
     public void PaginationSummaryText_WhenMultiplePages_CalculatesRangeCorrectly()
     {
         var vm = CreateViewModel();

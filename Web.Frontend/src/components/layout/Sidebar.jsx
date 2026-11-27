@@ -4,11 +4,14 @@ import {
   History,
   Clock,
   PackageCheck,
+  HandCoins,
   Landmark,
   ClipboardCheck,
   ClipboardList,
   Settings,
   DollarSign,
+  TrendingUp,
+  BarChart3,
   User,
   LogOut,
 } from 'lucide-react';
@@ -23,6 +26,7 @@ const NAV_SECTIONS = [
       { id: 'pos', label: 'Punto de Venta', icon: ShoppingCart },
       { id: 'pending', label: 'Cuentas Abiertas', icon: Clock },
       { id: 'pickups', label: 'Retiros Pendientes', icon: PackageCheck },
+      { id: 'credit', label: 'Cuentas por Cobrar', icon: HandCoins },
     ],
   },
   {
@@ -33,6 +37,13 @@ const NAV_SECTIONS = [
       { id: 'history', label: 'Historial Ventas', icon: History },
       { id: 'register', label: 'Caja', icon: Landmark },
       { id: 'closing', label: 'Cierre Diario', icon: ClipboardCheck },
+    ],
+  },
+  {
+    label: 'ANÁLISIS',
+    items: [
+      { id: 'profitability', label: 'Rentabilidad', icon: TrendingUp },
+      { id: 'inventory-health', label: 'Salud de Inventario', icon: BarChart3 },
     ],
   },
   {

@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:converters="clr-namespace:Desktop.Client.Converters"
+        xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
         mc:Ignorable="d"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
@@ -138,7 +139,7 @@
                                             <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                             <TextBlock Foreground="#64748B" FontSize="11">
                                                 <Run Text="SKU: "/><Run Text="{Binding SKU, Mode=OneWay}"/>
-                                                <Run Text=" · Costo anterior: $"/><Run Text="{Binding CostPriceUSD, Mode=OneWay, StringFormat={}{0:N2}}"/>
+                                                <Run Text=" · Costo anterior: "/><Run Text="{Binding CostPriceUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}}"/>
                                                 <Run Text=" · Stock: "/><Run Text="{Binding StockQuantity, Mode=OneWay, StringFormat={}{0:N3}}"/>
                                             </TextBlock>
                                         </StackPanel>
@@ -267,7 +268,7 @@
                                                     <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis"/>
                                                     <TextBlock Foreground="#64748B" FontSize="11">
                                                         <Run Text="SKU: "/><Run Text="{Binding SKU, Mode=OneWay}"/>
-                                                        <Run Text=" · Costo anterior: $"/><Run Text="{Binding OldCostPriceUSD, Mode=OneWay, StringFormat={}{0:N2}}"/>
+                                                        <Run Text=" · Costo anterior: "/><Run Text="{Binding OldCostPriceUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}}"/>
                                                     </TextBlock>
                                                 </StackPanel>
                                                 <Button Grid.Column="1"
@@ -311,7 +312,7 @@
                                                         VerticalAlignment="Bottom">
                                                     <StackPanel>
                                                         <TextBlock Text="Nuevo Precio Detal" FontSize="10" Foreground="#166534"/>
-                                                        <TextBlock Text="{Binding SuggestedRetailPriceUSD, Mode=OneWay, StringFormat=${0:N2}}"
+                                                        <TextBlock Text="{Binding SuggestedRetailPriceUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}}"
                                                                    FontWeight="Bold"
                                                                    FontSize="13"
                                                                    Foreground="#15803D"/>
@@ -349,7 +350,7 @@
                                                         VerticalAlignment="Bottom">
                                                     <StackPanel>
                                                         <TextBlock Text="Nuevo Precio Mayor" FontSize="10" Foreground="#1E40AF"/>
-                                                        <TextBlock Text="{Binding SuggestedWholesalePriceUSD, Mode=OneWay, StringFormat=${0:N2}}"
+                                                        <TextBlock Text="{Binding SuggestedWholesalePriceUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}}"
                                                                    FontWeight="Bold"
                                                                    FontSize="13"
                                                                    Foreground="#1D4ED8"/>

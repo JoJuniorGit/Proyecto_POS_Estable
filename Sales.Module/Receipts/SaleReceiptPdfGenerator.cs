@@ -83,8 +83,8 @@ public static class SaleReceiptPdfGenerator
         sb.AppendLine($"40 {y} 532 22 re f");
         WriteLeft(sb, "PRODUCTO", 48, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
         WriteRight(sb, "CANT", 200, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
-        WriteRight(sb, "PRECIO", 300, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
-        WriteRight(sb, "SUBTOTAL", 565, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
+        WriteRight(sb, $"PRECIO ({context.PrimaryCurrencySymbol})", 300, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
+        WriteRight(sb, $"SUBTOTAL ({context.PrimaryCurrencySymbol})", 565, y + 7, "/F2 8.5 Tf", "1 1 1 rg");
 
         y -= 22;
         foreach (var line in context.Lines)
@@ -93,22 +93,32 @@ public static class SaleReceiptPdfGenerator
             sb.AppendLine($"0.88 0.9 0.92 RG 0.5 w 40 {y} 532 0 m 572 {y} l S");
             WriteLeft(sb, Truncate(line.ProductName, 28), 48, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
             WriteRight(sb, line.Quantity.ToString("0.###", CultureInfo.InvariantCulture), 200, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
-            WriteRight(sb, MoneyFormat.Number(line.UnitPrice, format), 300, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
-            WriteRight(sb, MoneyFormat.Number(line.Subtotal, format), 565, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
+            // ANEXO XIII: los montos $ de la linea son el inverso del Bs.S efectivo (paridad).
+            WriteRight(sb, MoneyFormat.Number(EffectiveUsd(line.UnitPriceBsS, line.UnitPrice, context.AppliedRate), format), 300, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
+            WriteRight(sb, MoneyFormat.Number(EffectiveUsd(line.SubtotalBsS, line.Subtotal, context.AppliedRate), format), 565, y + 6, "/F1 8.5 Tf", "0.1 0.1 0.1 rg");
             y -= 20;
         }
 
         sb.AppendLine($"0.86 0.9 0.94 rg 40 {y - 2} 532 22 re f");
         sb.AppendLine($"0.7 0.75 0.8 RG 1 w 40 {y - 2} 532 22 re S");
         WriteLeft(sb, "TOTALES", 48, y + 4, "/F2 9 Tf", "0.1 0.15 0.25 rg");
-        WriteRight(sb, $"Bs.S {MoneyFormat.Number(context.TotalBsS, format)}", 555, y + 4, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
+        WriteRight(sb, context.IsSingleCurrency
+            ? $"{context.PrimaryCurrencySymbol} {MoneyFormat.Number(context.EffectiveTotalUSD, format)}"
+            : $"{context.SecondaryCurrencySymbol} {MoneyFormat.Number(context.TotalBsS, format)}",
+            555, y + 4, "/F2 9.5 Tf", "0.15 0.2 0.3 rg", true);
 
         y -= 30;
-        WriteRight(sb, $"Tasa aplicada: {MoneyFormat.Number(context.AppliedRate, format, 4)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+        if (!context.IsSingleCurrency)
+        {
+            WriteRight(sb, $"Tasa aplicada: {MoneyFormat.Number(context.AppliedRate, format, 4)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+            y -= 14;
+        }
+        WriteRight(sb, $"Total {context.PrimaryCurrencyCode}: {MoneyFormat.Number(context.EffectiveTotalUSD, format)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
         y -= 14;
-        WriteRight(sb, $"Total USD: {MoneyFormat.Number(context.TotalUSD, format)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
-        y -= 14;
-        WriteRight(sb, $"Pago final (Bs.S): {MoneyFormat.Number(context.FinalPaidAmountBsS, format)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+        WriteRight(sb, context.IsSingleCurrency
+            ? $"Pago final ({context.PrimaryCurrencySymbol}): {MoneyFormat.Number(context.EffectiveTotalUSD, format)}"
+            : $"Pago final ({context.SecondaryCurrencySymbol}): {MoneyFormat.Number(context.FinalPaidAmountBsS, format)}",
+            555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
 
         if (context.Payments.Count > 0)
         {
@@ -116,13 +126,42 @@ public static class SaleReceiptPdfGenerator
             foreach (var p in context.Payments)
             {
                 y -= 14;
-                WriteRight(sb, $"{p.MethodName ?? "Pago"}: {MoneyFormat.Number(p.AmountBsS, format)}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
+                // 8.211-T4a (S10/F4a): cada pago usa el código snapshot del método; un cobro USD
+                // en una venta Dual se imprime con el símbolo/código primario, no con la secundaria.
+                string amount;
+                if (context.IsSingleCurrency)
+                {
+                    amount = $"{context.PrimaryCurrencySymbol} {MoneyFormat.Number(p.Amount, format)}";
+                }
+                else
+                {
+                    string paymentCode = ReceiptCurrencyFormatter.NormalizeCode(p.CurrencyCode)
+                        ?? context.SecondaryCurrencyCode
+                        ?? context.PrimaryCurrencyCode;
+                    bool isPrimary = string.Equals(paymentCode, context.PrimaryCurrencyCode, StringComparison.Ordinal);
+                    string symbol = isPrimary
+                        ? context.PrimaryCurrencySymbol
+                        : (string.Equals(paymentCode, context.SecondaryCurrencyCode, StringComparison.Ordinal)
+                            ? context.SecondaryCurrencySymbol ?? context.SecondaryCurrencyCode ?? paymentCode
+                            : ReceiptCurrencyFormatter.ResolveSymbol(paymentCode, null));
+                    amount = $"{symbol} {MoneyFormat.Number(isPrimary ? p.Amount : p.AmountBsS, format)}";
+                }
+
+                WriteRight(sb, $"{p.MethodName ?? "Pago"}: {amount}", 555, y, "/F1 8.5 Tf", "0.3 0.3 0.3 rg", true);
             }
         }
 
         WriteLeft(sb, "Sistema de Administracion y Punto de Venta - Comprobante no fiscal", 40, 35, "/F1 8 Tf", "0.5 0.5 0.5 rg");
         return sb.ToString();
     }
+
+    /// <summary>
+    /// ANEXO XIII: inverso USD del monto Bs.S efectivo con respaldo canonico cuando no hay
+    /// Bs.S o tasa (lineas previas al redondeo o datos incompletos) — usado por precio/subtotal
+    /// de linea y por el Total USD del recibo.
+    /// </summary>
+    private static decimal EffectiveUsd(decimal amountBsS, decimal canonicalUsd, decimal rate)
+        => amountBsS > 0m && rate > 0m ? PricingCalculator.ToUSD(amountBsS, rate) : canonicalUsd;
 
     private static void WriteLeft(StringBuilder sb, string text, float x, float y, string font, string color)
     {
@@ -201,7 +240,7 @@ public static class SaleReceiptPdfGenerator
                 case 'Ú': sb.Append(@"\332"); break;
                 default:
                     if (c < 128) sb.Append(c);
-                    else sb.Append('?');
+                    else sb.Append(PdfTextEscape.EncodeChar(c));
                     break;
             }
         }

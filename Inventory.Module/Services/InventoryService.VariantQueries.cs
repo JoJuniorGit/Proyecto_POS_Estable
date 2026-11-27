@@ -18,7 +18,7 @@ public partial class InventoryService
         decimal parentStock = parent?.StockQuantity ?? 0m;
         bool hasIndepPricing = parent?.HasIndependentPricing ?? false;
 
-        return await _context.Products
+        var variants = await _context.Products
             .AsNoTracking()
             .Where(p => p.ParentProductId == parentProductId && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
@@ -54,13 +54,26 @@ public partial class InventoryService
                 ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
                 ConsolidatedStock = isStockShared ? parentStock : p.StockQuantity,
+                // 8.186-T1 (S1): regla cruda del artículo para resolver el efectivo server-side
+                // (null = hereda el default global de Pricing), igual que el listado paginado.
+                RoundingRuleCashBs = p.RoundingRuleCashBs,
             })
             .ToListAsync(cancellationToken);
+
+        // 8.186-T1 (S1/S3): el selector de variantes web recibe los mismos precios efectivos que el
+        // catálogo/POS con UNA lectura de regla/tasa/toggle por request.
+        if (variants.Count > 0)
+        {
+            var defaultCashRule = await ResolveDefaultCashRoundingRuleAsync();
+            await ProjectEffectiveBsSBatchAsync(variants, defaultCashRule, cancellationToken);
+        }
+
+        return variants;
     }
 
     public async Task<List<Core.DTOs.ProductDto>> GetParentProductsAsync(System.Threading.CancellationToken cancellationToken = default)
     {
-        return await _context.Products
+        var parents = await _context.Products
             .AsNoTracking()
             .Where(p => p.IsGroupHeader && !p.IsDeleted && p.IsActive)
             .OrderBy(p => p.Name)
@@ -92,12 +105,23 @@ public partial class InventoryService
                 HasIndependentPricing = p.HasIndependentPricing,
                 ConversionFactor = p.ConversionFactor,
                 GroupKey = p.GroupKey,
+                // 8.186-T1 (S1): misma semántica cruda que el paginado (null = hereda global).
+                RoundingRuleCashBs = p.RoundingRuleCashBs,
                 VariantCount = p.Variants.Count(v => !v.IsDeleted),
                 ConsolidatedStock = p.IsStockShared 
                     ? p.StockQuantity 
                     : (p.Variants.Where(v => !v.IsDeleted).Sum(v => (decimal?)v.StockQuantity) ?? 0m),
             })
             .ToListAsync(cancellationToken);
+
+        // 8.186-T1 (S1/S3): mismos campos efectivos que el resto de superficies de catálogo.
+        if (parents.Count > 0)
+        {
+            var defaultCashRule = await ResolveDefaultCashRoundingRuleAsync();
+            await ProjectEffectiveBsSBatchAsync(parents, defaultCashRule, cancellationToken);
+        }
+
+        return parents;
     }
 
     public async Task<Core.DTOs.PagedResultDto<Core.DTOs.ProductDto>> GetCandidateVariantsPagedAsync(int parentId, string? filter, int page, int pageSize, System.Threading.CancellationToken token = default)
@@ -111,8 +135,17 @@ public partial class InventoryService
 
         if (!string.IsNullOrWhiteSpace(filter))
         {
-            var lower = filter.Trim().ToLower();
-            query = query.Where(p => p.Name.ToLower().Contains(lower) || p.SKU.ToLower().Contains(lower));
+            var term = filter.Trim();
+            if (_context.Database.IsNpgsql())
+            {
+                var pattern = $"%{term}%";
+                query = query.Where(p => EF.Functions.ILike(p.Name, pattern) || EF.Functions.ILike(p.SKU, pattern));
+            }
+            else
+            {
+                var lower = term.ToLower();
+                query = query.Where(p => p.Name.ToLower().Contains(lower) || p.SKU.ToLower().Contains(lower));
+            }
         }
 
         int totalCount = await query.CountAsync(token);
@@ -176,55 +209,56 @@ public partial class InventoryService
 
         var distinctIds = productIds.Distinct().ToList();
 
-        var parent = await _context.Products.FirstOrDefaultAsync(p => p.Id == parentId, token);
-        if (parent == null || parent.IsDeleted)
-        {
-            throw new KeyNotFoundException($"Producto padre con ID {parentId} no encontrado.");
-        }
-        if (!parent.IsGroupHeader)
-        {
-            throw new ArgumentException($"El producto '{parent.Name}' (ID {parentId}) no está configurado como producto padre / agrupador.");
-        }
-
-        var candidates = await _context.Products
-            .Where(p => distinctIds.Contains(p.Id))
-            .ToListAsync(token);
-
-        if (candidates.Count != distinctIds.Count)
-        {
-            var foundIds = candidates.Select(c => c.Id).ToHashSet();
-            var missingIds = distinctIds.Where(id => !foundIds.Contains(id)).ToList();
-            throw new KeyNotFoundException($"No se encontraron los siguientes productos: {string.Join(", ", missingIds)}");
-        }
-
-        foreach (var prod in candidates)
-        {
-            if (prod.IsDeleted)
-            {
-                throw new InvalidOperationException($"El producto '{prod.Name}' (ID {prod.Id}) está eliminado.");
-            }
-            if (prod.IsGroupHeader)
-            {
-                throw new ArgumentException($"El producto '{prod.Name}' (ID {prod.Id}) es un producto padre y no puede ser vinculado como variante.");
-            }
-            if (prod.IsCashAdvance)
-            {
-                throw new ArgumentException($"El producto '{prod.Name}' (ID {prod.Id}) es de avance de efectivo y no puede ser variante.");
-            }
-            if (prod.Id == parentId)
-            {
-                throw new ArgumentException("Un producto no puede ser variante de sí mismo.");
-            }
-        }
-
-        // 8.16-H02: la transacción manual debe vivir DENTRO de CreateExecutionStrategy().ExecuteAsync()
-        // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy en producción.
+        // 8.16-H02 / PERF-02: la carga de entidades y la transacción viven DENTRO de CreateExecutionStrategy().ExecuteAsync()
+        // para que ante reintentos de conexión/deadlock el ChangeTracker se limpie y cargue entidades frescas.
         return await _context.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
+            _context.ChangeTracker.Clear();
             await using var tx = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(token) : null;
             try
             {
-            foreach (var child in candidates)
+                var parent = await _context.Products.FirstOrDefaultAsync(p => p.Id == parentId, token);
+                if (parent == null || parent.IsDeleted)
+                {
+                    throw new KeyNotFoundException($"Producto padre con ID {parentId} no encontrado.");
+                }
+                if (!parent.IsGroupHeader)
+                {
+                    throw new ArgumentException($"El producto '{parent.Name}' (ID {parentId}) no está configurado como producto padre / agrupador.");
+                }
+
+                var candidates = await _context.Products
+                    .Where(p => distinctIds.Contains(p.Id))
+                    .ToListAsync(token);
+
+                if (candidates.Count != distinctIds.Count)
+                {
+                    var foundIds = candidates.Select(c => c.Id).ToHashSet();
+                    var missingIds = distinctIds.Where(id => !foundIds.Contains(id)).ToList();
+                    throw new KeyNotFoundException($"No se encontraron los siguientes productos: {string.Join(", ", missingIds)}");
+                }
+
+                foreach (var prod in candidates)
+                {
+                    if (prod.IsDeleted)
+                    {
+                        throw new InvalidOperationException($"El producto '{prod.Name}' (ID {prod.Id}) está eliminado.");
+                    }
+                    if (prod.IsGroupHeader)
+                    {
+                        throw new ArgumentException($"El producto '{prod.Name}' (ID {prod.Id}) es un producto padre y no puede ser vinculado como variante.");
+                    }
+                    if (prod.IsCashAdvance)
+                    {
+                        throw new ArgumentException($"El producto '{prod.Name}' (ID {prod.Id}) es de avance de efectivo y no puede ser variante.");
+                    }
+                    if (prod.Id == parentId)
+                    {
+                        throw new ArgumentException("Un producto no puede ser variante de sí mismo.");
+                    }
+                }
+
+                foreach (var child in candidates)
             {
                 child.ParentProductId = parent.Id;
                 child.GroupKey = parent.GroupKey;
@@ -278,7 +312,7 @@ public partial class InventoryService
     {
         EnsureCatalogMutationPermission();
 
-        var parent = await _context.Products.FirstOrDefaultAsync(p => p.Id == parentId, token);
+        var parent = await _context.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == parentId, token);
         if (parent == null || parent.IsDeleted)
         {
             throw new KeyNotFoundException($"Producto padre con ID {parentId} no encontrado.");

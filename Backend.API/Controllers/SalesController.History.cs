@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Core.DTOs;
+using Sales.Module.DTOs;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,7 +12,8 @@ public partial class SalesController
 {
     [Authorize(Roles = "Admin,Manager,Cashier")]
     [HttpGet("history")]
-    public async Task<ActionResult> GetHistoryAsync(
+    [ProducesResponseType(typeof(PagedResultDto<SaleHistoryDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResultDto<SaleHistoryDto>>> GetHistoryAsync(
         [FromQuery] int page = 1, 
         [FromQuery] int pageSize = 20, 
         [FromQuery] System.DateTime? startDate = null, 
@@ -23,11 +26,15 @@ public partial class SalesController
 
         var (scopeToCashier, cashierId) = GetCashierReadScope();
         var (items, totalCount) = await _salesService.GetSalesHistoryAsync(page, pageSize, startDate, endDate, search, scopeToCashier ? cashierId : null, cancellationToken);
-        return Ok(new { Items = items, TotalCount = totalCount });
+        var hasMore = (page * pageSize) < totalCount;
+        return Ok(new PagedResultDto<SaleHistoryDto>(items, totalCount, hasMore));
     }
 
     [HttpGet("{id}/history-detail")]
-    public async Task<ActionResult> GetHistoryDetailAsync(int id, CancellationToken cancellationToken = default)
+    [ProducesResponseType(typeof(SaleHistoryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SaleHistoryDto>> GetHistoryDetailAsync(int id, CancellationToken cancellationToken = default)
     {
         if (!await IsAuthorizedForSaleAsync(id, cancellationToken))
         {

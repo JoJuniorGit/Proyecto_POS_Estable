@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Services;
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Net.Http;
@@ -17,12 +18,18 @@ public partial class ClosureDetailRow : ObservableObject
 {
     private readonly Action _onChanged;
 
-    public ClosureDetailRow(int paymentMethodId, string paymentMethodName, decimal expectedAmountBsS, Action onChanged)
+    public ClosureDetailRow(
+        int paymentMethodId,
+        string paymentMethodName,
+        decimal expectedAmountBsS,
+        Action onChanged,
+        string? currency = null)
     {
         _paymentMethodId = paymentMethodId;
         _paymentMethodName = paymentMethodName;
         _expectedAmountBsS = expectedAmountBsS;
         _onChanged = onChanged;
+        Currency = currency;
     }
 
     private int _paymentMethodId;
@@ -31,11 +38,23 @@ public partial class ClosureDetailRow : ObservableObject
     private string _paymentMethodName;
     public string PaymentMethodName => _paymentMethodName;
 
+    /// <summary>Moneda persistida del método, para distinguir el arqueo USD.</summary>
+    public string? Currency { get; }
+
+    public bool IsUsd => string.Equals(Currency, "USD", StringComparison.OrdinalIgnoreCase);
+
     private decimal _expectedAmountBsS;
     public decimal ExpectedAmountBsS
     {
         get => _expectedAmountBsS;
-        set => SetProperty(ref _expectedAmountBsS, value);
+        set
+        {
+            if (SetProperty(ref _expectedAmountBsS, value))
+            {
+                NotifyDifferenceProperties();
+                _onChanged?.Invoke();
+            }
+        }
     }
 
     private decimal _actualAmountBsS;
@@ -46,9 +65,7 @@ public partial class ClosureDetailRow : ObservableObject
         {
             if (SetProperty(ref _actualAmountBsS, value))
             {
-                OnPropertyChanged(nameof(DifferenceBsS));
-                OnPropertyChanged(nameof(DifferenceColor));
-                OnPropertyChanged(nameof(DifferenceDisplay));
+                NotifyDifferenceProperties();
                 _onChanged?.Invoke();
             }
         }
@@ -56,12 +73,53 @@ public partial class ClosureDetailRow : ObservableObject
 
     public decimal DifferenceBsS => ActualAmountBsS - ExpectedAmountBsS;
 
-    public string DifferenceColor => DifferenceBsS switch
+    public bool IsEmptyDifference => ExpectedAmountBsS == 0m && ActualAmountBsS == 0m;
+
+    public string DifferenceColor => IsEmptyDifference
+        ? "#94A3B8"
+        : DifferenceBsS < 0m
+            ? "#DC2626"
+            : DifferenceBsS > 0m
+                ? "#B45309"
+                : "#15803D";
+
+    public string DifferenceStatusText => IsEmptyDifference
+        ? "—"
+        : DifferenceBsS < 0m
+            ? "Faltante"
+            : DifferenceBsS > 0m
+                ? "Sobrante"
+                : "✓ Cuadrado";
+
+    public bool ShowDifferenceBadge => !IsEmptyDifference;
+
+    public string DifferenceBadgeBackground => IsEmptyDifference
+        ? "#F1F5F9"
+        : DifferenceBsS < 0m
+            ? "#FEE2E2"
+            : DifferenceBsS > 0m
+                ? "#FEF3C7"
+                : "#DCFCE7";
+
+    public string DifferenceBadgeForeground => IsEmptyDifference
+        ? "#64748B"
+        : DifferenceBsS < 0m
+            ? "#DC2626"
+            : DifferenceBsS > 0m
+                ? "#B45309"
+                : "#15803D";
+
+    private void NotifyDifferenceProperties()
     {
-        < 0 => "#EF4444",
-        > 0 => "#10B981",
-        _ => "#94A3B8"
-    };
+        OnPropertyChanged(nameof(DifferenceBsS));
+        OnPropertyChanged(nameof(IsEmptyDifference));
+        OnPropertyChanged(nameof(DifferenceColor));
+        OnPropertyChanged(nameof(DifferenceDisplay));
+        OnPropertyChanged(nameof(DifferenceStatusText));
+        OnPropertyChanged(nameof(ShowDifferenceBadge));
+        OnPropertyChanged(nameof(DifferenceBadgeBackground));
+        OnPropertyChanged(nameof(DifferenceBadgeForeground));
+    }
 
     // 8.143: la diferencia mostrada honra el ajuste activo (Venezolano/Internacional) y se
     // re-formatea al vuelo cuando el formato cambia.
@@ -89,6 +147,20 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
 
     public bool CanToggleBlindClosing => UserSession?.IsAdmin == true;
 
+    /// <summary>
+    /// Residual 8.187-8.188: el arqueo USD esperado/diferencia solo se muestra a supervisores,
+    /// igual que el esperado Bs.S (blind closing 8.153). El cajero conserva el conteo ciego.
+    /// </summary>
+    public bool CanViewExpectedUsd => UserSession?.IsAdmin == true || UserSession?.IsManager == true;
+
+    /// <summary>
+    /// El metodo USD solo participa del cierre cuando tuvo cobros en la jornada. En ese caso
+    /// el conteo fisico es obligatorio; sin actividad no se muestra ni se envia.
+    /// </summary>
+    public bool HasUsdActivity => DetailRows.Any(row => row.IsUsd && row.ExpectedAmountBsS != 0m);
+
+    public bool ShowUsdCount => !CurrencyDisplay.IsSingle && HasUsdActivity;
+
     public DailyClosureViewModel(IDailyClosureClientService closureService, IDialogService dialogService, UserSession? userSession = null, IFilePickerDialog? filePicker = null)
     {
         _closureService = closureService;
@@ -105,6 +177,7 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             var vm = (DailyClosureViewModel)r;
             vm.OnPropertyChanged(nameof(DifferenceStatusLabel));
             vm.OnPropertyChanged(nameof(DifferenceStatusColor));
+            vm.OnPropertyChanged(nameof(FooterStatusText));
             foreach (var row in vm.DetailRows)
             {
                 row.NotifyCurrencyFormatChanged();
@@ -153,6 +226,18 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(DifferenceStatusLabel));
                 OnPropertyChanged(nameof(DifferenceStatusColor));
+                OnPropertyChanged(nameof(DifferenceBadgeLabel));
+                OnPropertyChanged(nameof(DifferenceBadgeBackground));
+                OnPropertyChanged(nameof(DifferenceBadgeForeground));
+                OnPropertyChanged(nameof(DifferenceCardBackground));
+                OnPropertyChanged(nameof(DifferenceCardBorder));
+                OnPropertyChanged(nameof(FooterStatusText));
+                OnPropertyChanged(nameof(FooterStatusColor));
+                OnPropertyChanged(nameof(CanViewUsdExpected));
+                OnPropertyChanged(nameof(ShowUsdReconciliation));
+                OnPropertyChanged(nameof(ExpectedClosingBalanceUsdDisplay));
+                OnPropertyChanged(nameof(DifferenceUsdDisplay));
+                OnPropertyChanged(nameof(CanEqualize));
             }
         }
     }
@@ -171,6 +256,103 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
     }
 
     public string ObservationCounterText => $"{Observation?.Length ?? 0} / 500";
+
+    /// <summary>
+    /// Residual 8.187-8.188: conteo fisico USD opcional. Se guarda como texto para distinguir
+    /// "vacio" (sin conteo, contrato previo) de "0.00" (conteo en cero), algo que un decimal no
+    /// puede expresar con el binding actual de la vista.
+    /// </summary>
+    private string _actualClosingBalanceUsdText = string.Empty;
+    public string ActualClosingBalanceUsdText
+    {
+        get => _actualClosingBalanceUsdText;
+        set
+        {
+            if (SetProperty(ref _actualClosingBalanceUsdText, value))
+            {
+                OnPropertyChanged(nameof(HasUsdCountInput));
+            }
+        }
+    }
+
+    public bool HasUsdCountInput => !string.IsNullOrWhiteSpace(ActualClosingBalanceUsdText);
+
+    /// <summary>
+    /// Resultado del ultimo cierre creado. Es la unica fuente del esperado/diferencia USD: el
+    /// servidor los calcula por bucket de la sesion y los oculta a roles no supervisores.
+    /// </summary>
+    private DailyClosureDto? _lastCreatedClosure;
+    public DailyClosureDto? LastCreatedClosure
+    {
+        get => _lastCreatedClosure;
+        private set
+        {
+            if (SetProperty(ref _lastCreatedClosure, value))
+            {
+                OnPropertyChanged(nameof(HasUsdClosureResult));
+                OnPropertyChanged(nameof(ShowUsdReconciliation));
+                OnPropertyChanged(nameof(ExpectedClosingBalanceUsdDisplay));
+                OnPropertyChanged(nameof(DifferenceUsdDisplay));
+            }
+        }
+    }
+
+    public bool HasUsdClosureResult => LastCreatedClosure?.ActualClosingBalanceUsd.HasValue == true;
+
+    /// <summary>Esperado/diferencia se muestran solo cuando el rol y el modo ciego lo permiten.</summary>
+    public bool CanViewUsdExpected => CanViewExpectedUsd && !IsBlindClosing;
+
+    public bool ShowUsdReconciliation => CanViewUsdExpected && HasUsdClosureResult;
+
+    // 8.211-T4c2b4 (S9): the reconciliation uses the primary currency of the active profile.
+    // Authorization/blanking stays in this view model so XAML never binds the raw USD decimals.
+    public string ExpectedClosingBalanceUsdDisplay => ShowUsdReconciliation
+        && LastCreatedClosure?.ExpectedClosingBalanceUsd is { } expected
+            ? CurrencyDisplay.FormatPrimary(expected)
+            : "—";
+
+    public string DifferenceUsdDisplay => ShowUsdReconciliation
+        && LastCreatedClosure?.DifferenceUsd is { } difference
+            ? (difference > 0 ? "+" : string.Empty) + CurrencyDisplay.FormatPrimary(difference)
+            : "—";
+
+    /// <summary>
+    /// Interpreta el conteo USD: vacio = sin conteo (null), texto invalido o negativo = error de
+    /// validacion. Reutiliza el parser tolerante del Core (es-VE/internacional).
+    /// </summary>
+    public bool TryGetActualClosingBalanceUsd(out decimal? amount, out string? error)
+    {
+        amount = null;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(ActualClosingBalanceUsdText))
+        {
+            if (HasUsdActivity)
+            {
+                error = $"Debe ingresar el conteo físico {CurrencyDisplay.PrimaryCurrencyCode}: se recibieron pagos por ese método durante la jornada.";
+                return false;
+            }
+
+            return true;
+        }
+
+        if (!FlexibleDecimalParser.TryParse(ActualClosingBalanceUsdText, out decimal parsed))
+        {
+            error = HasUsdActivity
+                ? $"Ingrese un conteo {CurrencyDisplay.PrimaryCurrencyCode} válido."
+                : $"Ingrese un conteo {CurrencyDisplay.PrimaryCurrencyCode} válido o deje el campo vacío.";
+            return false;
+        }
+
+        if (parsed < 0m)
+        {
+            error = $"El conteo de efectivo {CurrencyDisplay.PrimaryCurrencyCode} no puede ser negativo.";
+            return false;
+        }
+
+        amount = Math.Round(parsed, 4, MidpointRounding.AwayFromZero);
+        return true;
+    }
 
     private decimal _totalExpectedBsS;
     public decimal TotalExpectedBsS
@@ -193,33 +375,110 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _totalDifferenceBsS, value);
     }
 
+    // 8.211-T4c2b4 (S9): the symbol comes from the active profile. The historical suffix layout
+    // ("50,00 Bs.S") is preserved so the existing live-refresh contract keeps its shape.
     public string DifferenceStatusLabel => TotalDifferenceBsS > 0
-        ? $"SOBRANTE EN CAJA (+{CurrencyDisplay.Number(TotalDifferenceBsS)} Bs.S)"
-        : (TotalDifferenceBsS < 0 ? $"FALTANTE EN CAJA ({CurrencyDisplay.Number(TotalDifferenceBsS)} Bs.S)" : "CUADRADO EXACTO");
+        ? $"SOBRANTE EN CAJA (+{CurrencyDisplay.Number(TotalDifferenceBsS)} {CurrencyDisplay.LocalCurrencySymbol})"
+        : (TotalDifferenceBsS < 0 ? $"FALTANTE EN CAJA ({CurrencyDisplay.Number(TotalDifferenceBsS)} {CurrencyDisplay.LocalCurrencySymbol})" : "CUADRADO EXACTO");
 
-    public string DifferenceStatusColor => TotalDifferenceBsS > 0
-        ? "#10B981"
-        : (TotalDifferenceBsS < 0 ? "#EF4444" : "#3B82F6");
+    public string DifferenceStatusColor => IsBlindClosing
+        ? "#94A3B8"
+        : TotalDifferenceBsS > 0
+            ? "#B45309"
+            : TotalDifferenceBsS < 0
+                ? "#DC2626"
+                : "#15803D";
 
-    public string DifferenceCardBackground => TotalDifferenceBsS switch
-    {
-        < 0 => "#FEF2F2",
-        > 0 => "#F0FDF4",
-        _ => "#F8FAFC"
-    };
+    public string DifferenceCardBackground => IsBlindClosing
+        ? "#F8FAFC"
+        : TotalDifferenceBsS switch
+        {
+            < 0 => "#FEF2F2",
+            > 0 => "#FFFBEB",
+            _ => "#F0FDF4"
+        };
 
-    public string DifferenceCardBorder => TotalDifferenceBsS switch
-    {
-        < 0 => "#FECACA",
-        > 0 => "#BBF7D0",
-        _ => "#E2E8F0"
-    };
+    public string DifferenceCardBorder => IsBlindClosing
+        ? "#E2E8F0"
+        : TotalDifferenceBsS switch
+        {
+            < 0 => "#FECACA",
+            > 0 => "#FDE68A",
+            _ => "#BBF7D0"
+        };
+
+    public string DifferenceBadgeLabel => IsBlindClosing
+        ? "Se calculará al procesar"
+        : !DetailRows.Any()
+            ? "Sin métodos cargados"
+            : TotalDifferenceBsS < 0
+                ? "Faltante en caja"
+                : TotalDifferenceBsS > 0
+                    ? "Sobrante en caja"
+                    : "Caja cuadrada";
+
+    public string DifferenceBadgeBackground => IsBlindClosing
+        ? "#F1F5F9"
+        : TotalDifferenceBsS < 0
+            ? "#FEE2E2"
+            : TotalDifferenceBsS > 0
+                ? "#FEF3C7"
+                : "#DCFCE7";
+
+    public string DifferenceBadgeForeground => IsBlindClosing
+        ? "#64748B"
+        : TotalDifferenceBsS < 0
+            ? "#B91C1C"
+            : TotalDifferenceBsS > 0
+                ? "#B45309"
+                : "#15803D";
+
+    public bool CanEqualize => !IsBlindClosing && DetailRows.Count > 0;
+
+    public int PaymentMethodCount => DetailRows.Count;
+
+    public int DeclaredMethodCount => DetailRows.Count(r => r.ActualAmountBsS != 0m);
+
+    public double DeclaredMethodsProgress => PaymentMethodCount == 0
+        ? 0d
+        : DeclaredMethodCount * 100d / PaymentMethodCount;
+
+    public string DeclaredMethodsSummary =>
+        $"{DeclaredMethodCount} de {PaymentMethodCount} métodos declarados";
+
+    public bool IsEmptyStateVisible => !IsLoading && DetailRows.Count == 0;
+
+    public string FooterStatusColor => IsBlindClosing
+        ? "#6D28D9"
+        : !DetailRows.Any()
+            ? "#94A3B8"
+            : TotalDifferenceBsS < 0
+                ? "#DC2626"
+                : TotalDifferenceBsS > 0
+                    ? "#B45309"
+                    : "#15803D";
+
+    public string FooterStatusText => IsBlindClosing
+        ? $"Modo Cierre a Ciegas · {DeclaredMethodCount} de {PaymentMethodCount} métodos declarados"
+        : !DetailRows.Any()
+            ? "Sin métodos de pago cargados"
+            : TotalDifferenceBsS < 0
+                ? $"Diferencia actual: {CurrencyDisplay.FormatSecondary(TotalDifferenceBsS)} (Faltante)"
+                : TotalDifferenceBsS > 0
+                    ? $"Diferencia actual: {CurrencyDisplay.FormatSecondary(TotalDifferenceBsS)} (Sobrante)"
+                    : "Arqueo cuadrado · Listo para cerrar";
 
     private bool _isLoading;
     public bool IsLoading
     {
         get => _isLoading;
-        set => SetProperty(ref _isLoading, value);
+        set
+        {
+            if (SetProperty(ref _isLoading, value))
+            {
+                OnPropertyChanged(nameof(IsEmptyStateVisible));
+            }
+        }
     }
 
     private bool _isSaved;
@@ -238,6 +497,40 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(DifferenceStatusColor));
         OnPropertyChanged(nameof(DifferenceCardBackground));
         OnPropertyChanged(nameof(DifferenceCardBorder));
+        OnPropertyChanged(nameof(DifferenceBadgeLabel));
+        OnPropertyChanged(nameof(DifferenceBadgeBackground));
+        OnPropertyChanged(nameof(DifferenceBadgeForeground));
+        OnPropertyChanged(nameof(PaymentMethodCount));
+        OnPropertyChanged(nameof(DeclaredMethodCount));
+        OnPropertyChanged(nameof(DeclaredMethodsProgress));
+        OnPropertyChanged(nameof(DeclaredMethodsSummary));
+        OnPropertyChanged(nameof(IsEmptyStateVisible));
+        OnPropertyChanged(nameof(FooterStatusText));
+        OnPropertyChanged(nameof(FooterStatusColor));
+        OnPropertyChanged(nameof(CanEqualize));
+        OnPropertyChanged(nameof(HasUsdActivity));
+        OnPropertyChanged(nameof(ShowUsdCount));
+    }
+
+    [RelayCommand]
+    private void EqualizeAll()
+    {
+        if (!CanEqualize) return;
+
+        foreach (var row in DetailRows)
+        {
+            row.ActualAmountBsS = row.ExpectedAmountBsS;
+        }
+
+        RecalculateTotals();
+    }
+
+    [RelayCommand]
+    private void EqualizeRow(ClosureDetailRow? row)
+    {
+        if (row is null || IsBlindClosing) return;
+
+        row.ActualAmountBsS = row.ExpectedAmountBsS;
     }
 
     [RelayCommand]
@@ -249,7 +542,12 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         IsSaved = false;
         try
         {
-            var totals = await _closureService.GetExpectedTotalsAsync(DateTime.UtcNow);
+            // Solo se declaran montos para los metodos empleados en la jornada. El endpoint
+            // devuelve todos los metodos activos (incluidos los de esperado cero) para la
+            // auditoria; la UI de arqueo se limita a los que tuvieron movimiento real.
+            var totals = (await _closureService.GetExpectedTotalsAsync(DateTime.UtcNow))
+                .Where(t => t.ExpectedAmountBsS != 0m)
+                .ToList();
 
             DetailRows.Clear();
             foreach (var t in totals)
@@ -258,7 +556,15 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
                     t.PaymentMethodId,
                     t.PaymentMethodName,
                     t.ExpectedAmountBsS,
-                    RecalculateTotals));
+                    RecalculateTotals,
+                    t.PaymentMethodCurrency));
+            }
+
+            // El bloque USD solo existe si el metodo USD tuvo actividad en la jornada. Al
+            // ocultarse, cualquier conteo residual de una carga anterior no debe viajar al cierre.
+            if (!HasUsdActivity)
+            {
+                ActualClosingBalanceUsdText = string.Empty;
             }
 
             RecalculateTotals();
@@ -282,7 +588,7 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         }
     }
 
-    private string BuildConfirmationMessage()
+    private string BuildConfirmationMessage(decimal? actualClosingBalanceUsd)
     {
         var userName = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Usuario";
         var dateStr = LocalClosureNow().ToString("dd/MM/yyyy HH:mm");
@@ -298,10 +604,14 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             sb.AppendLine("DESGLOSE DE MONTOS DECLARADOS:");
             foreach (var row in DetailRows)
             {
-                sb.AppendLine($"• {row.PaymentMethodName}: {MoneyFormat.N2(row.ActualAmountBsS)} Bs.S");
+                sb.AppendLine($"• {row.PaymentMethodName}: {CurrencyDisplay.FormatSecondary(row.ActualAmountBsS)}");
             }
             sb.AppendLine("-----------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO: {MoneyFormat.N2(TotalActualBsS)} Bs.S");
+            sb.AppendLine($"TOTAL DECLARADO: {CurrencyDisplay.FormatSecondary(TotalActualBsS)}");
+            if (actualClosingBalanceUsd.HasValue)
+            {
+                sb.AppendLine($"EFECTIVO {CurrencyDisplay.PrimaryCurrencyCode} CONTADO: {CurrencyDisplay.FormatPrimary(actualClosingBalanceUsd.Value)}");
+            }
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Observaciones: {Observation}");
@@ -322,15 +632,19 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             {
                 var diffSign = row.DifferenceBsS >= 0 ? "+" : "";
                 sb.AppendLine($"• {row.PaymentMethodName}:");
-                sb.AppendLine($"    Esperado:  {MoneyFormat.N2(row.ExpectedAmountBsS)} Bs.S");
-                sb.AppendLine($"    Declarado: {MoneyFormat.N2(row.ActualAmountBsS)} Bs.S");
-                sb.AppendLine($"    Diferencia: {diffSign}{MoneyFormat.N2(row.DifferenceBsS)} Bs.S");
+                sb.AppendLine($"    Esperado:  {CurrencyDisplay.FormatSecondary(row.ExpectedAmountBsS)}");
+                sb.AppendLine($"    Declarado: {CurrencyDisplay.FormatSecondary(row.ActualAmountBsS)}");
+                sb.AppendLine($"    Diferencia: {diffSign}{CurrencyDisplay.FormatSecondary(row.DifferenceBsS)}");
             }
             sb.AppendLine("-----------------------------------");
-            sb.AppendLine($"TOTAL ESPERADO:  {MoneyFormat.N2(TotalExpectedBsS)} Bs.S");
-            sb.AppendLine($"TOTAL DECLARADO: {MoneyFormat.N2(TotalActualBsS)} Bs.S");
+            sb.AppendLine($"TOTAL ESPERADO:  {CurrencyDisplay.FormatSecondary(TotalExpectedBsS)}");
+            sb.AppendLine($"TOTAL DECLARADO: {CurrencyDisplay.FormatSecondary(TotalActualBsS)}");
             var totalDiffSign = TotalDifferenceBsS >= 0 ? "+" : "";
-            sb.AppendLine($"DIFERENCIA NETA: {totalDiffSign}{MoneyFormat.N2(TotalDifferenceBsS)} Bs.S ({DifferenceStatusLabel})");
+            sb.AppendLine($"DIFERENCIA NETA: {totalDiffSign}{CurrencyDisplay.FormatSecondary(TotalDifferenceBsS)} ({DifferenceStatusLabel})");
+            if (actualClosingBalanceUsd.HasValue)
+            {
+                sb.AppendLine($"EFECTIVO {CurrencyDisplay.PrimaryCurrencyCode} CONTADO: {CurrencyDisplay.FormatPrimary(actualClosingBalanceUsd.Value)}");
+            }
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Observaciones: {Observation}");
@@ -338,6 +652,36 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             sb.AppendLine("\n¿Desea confirmar y registrar este cierre contable?");
             return sb.ToString();
         }
+    }
+
+    /// <summary>
+    /// Mensaje de exito con el arqueo USD cuando el servidor lo devolvio y el rol puede verlo.
+    /// El cajero conserva el cierre ciego (solo se le confirma que el cierre fue registrado).
+    /// </summary>
+    private string BuildSuccessMessage()
+    {
+        var message = $"Cierre diario procesado y guardado exitosamente. Comprobantes guardados automáticamente en Descargas y en Documentos\\Registro de cierres.\n\nLos acumuladores de ingresos y egresos han sido reiniciados a {CurrencyDisplay.FormatSecondary(0m)} para el nuevo turno.";
+
+        if (!ShowUsdReconciliation || LastCreatedClosure is not { ActualClosingBalanceUsd: { } actual } closure)
+        {
+            return message;
+        }
+
+        var usd = new System.Text.StringBuilder();
+        usd.AppendLine();
+        usd.AppendLine();
+        usd.AppendLine($"ARQUEO FÍSICO {CurrencyDisplay.PrimaryCurrencyCode}:");
+        usd.AppendLine($"  Contado:    {CurrencyDisplay.FormatPrimary(actual)}");
+        if (closure.ExpectedClosingBalanceUsd is { } expected)
+        {
+            usd.AppendLine($"  Esperado:   {CurrencyDisplay.FormatPrimary(expected)}");
+        }
+        if (closure.DifferenceUsd is { } difference)
+        {
+            usd.AppendLine($"  Diferencia: {(difference > 0 ? "+" : string.Empty)}{CurrencyDisplay.FormatPrimary(difference)}");
+        }
+
+        return message + usd.ToString().TrimEnd();
     }
 
     [RelayCommand]
@@ -349,7 +693,15 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             return;
         }
 
-        string confirmMessage = BuildConfirmationMessage();
+        if (!TryGetActualClosingBalanceUsd(out decimal? actualClosingBalanceUsd, out string? usdError))
+        {
+            _dialogService.ShowWarning(
+                "Advertencia",
+                usdError ?? $"Ingrese un conteo {CurrencyDisplay.PrimaryCurrencyCode} válido o deje el campo vacío.");
+            return;
+        }
+
+        string confirmMessage = BuildConfirmationMessage(actualClosingBalanceUsd);
         string dialogTitle = IsBlindClosing ? "Confirmar Arqueo a Ciegas" : "Confirmar Cierre Diario (Admin)";
 
         bool confirmed = _dialogService.ShowConfirm(dialogTitle, confirmMessage);
@@ -363,6 +715,7 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
                 ClosureDate = DateTime.UtcNow,
                 UserId = UserSession?.CurrentUser?.Name ?? UserSession?.CurrentUser?.Cedula ?? "Admin",
                 Observation = Observation,
+                ActualClosingBalanceUsd = actualClosingBalanceUsd,
                 Details = DetailRows.Select(r => new Services.CreateClosureDetailRequest
                 {
                     PaymentMethodId = r.PaymentMethodId,
@@ -372,10 +725,10 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
                 }).ToList()
             };
 
-            await _closureService.CreateClosureAsync(request);
+            LastCreatedClosure = await _closureService.CreateClosureAsync(request);
             IsSaved = true;
             CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger.Default.Send(new Desktop.Client.Messages.ShiftClosedMessage());
-            _dialogService.ShowInfo("Éxito de Cierre", "Cierre diario procesado y guardado exitosamente. Comprobantes guardados automáticamente en Descargas y en Documentos\\Registro de cierres.\n\nLos acumuladores de ingresos y egresos han sido reiniciados a 0.00 Bs.S para el nuevo turno.");
+            _dialogService.ShowInfo("Éxito de Cierre", BuildSuccessMessage());
             await LoadExpectedTotalsAsync();
         }
         catch (Exception ex)
@@ -413,10 +766,10 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             sb.AppendLine("MÉTODOS DE PAGO DECLARADOS:");
             foreach (var row in DetailRows)
             {
-                sb.AppendLine($"  {row.PaymentMethodName,-22} Bs.S {MoneyFormat.N2(row.ActualAmountBsS),10}");
+                sb.AppendLine($"  {row.PaymentMethodName,-22} {CurrencyDisplay.FormatSecondary(row.ActualAmountBsS),10}");
             }
             sb.AppendLine("-----------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:         Bs.S {MoneyFormat.N2(TotalActualBsS),10}");
+            sb.AppendLine($"TOTAL DECLARADO:         {CurrencyDisplay.FormatSecondary(TotalActualBsS),10}");
             if (!string.IsNullOrWhiteSpace(Observation))
             {
                 sb.AppendLine($"Notas: {Observation}");
@@ -435,12 +788,12 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             foreach (var row in DetailRows)
             {
                 sb.AppendLine($"  {row.PaymentMethodName}");
-                sb.AppendLine($"    Declarado: Bs.S {MoneyFormat.N2(row.ActualAmountBsS)} | Esperado: Bs.S {MoneyFormat.N2(row.ExpectedAmountBsS)} | Dif: Bs.S {MoneyFormat.N2(row.DifferenceBsS)}");
+                sb.AppendLine($"    Declarado: {CurrencyDisplay.FormatSecondary(row.ActualAmountBsS)} | Esperado: {CurrencyDisplay.FormatSecondary(row.ExpectedAmountBsS)} | Dif: {CurrencyDisplay.FormatSecondary(row.DifferenceBsS)}");
             }
             sb.AppendLine("-----------------------------------------");
-            sb.AppendLine($"TOTAL DECLARADO:  Bs.S {MoneyFormat.N2(TotalActualBsS),10}");
-            sb.AppendLine($"TOTAL ESPERADO:   Bs.S {MoneyFormat.N2(TotalExpectedBsS),10}");
-            sb.AppendLine($"DIFERENCIA TOTAL: Bs.S {MoneyFormat.N2(TotalDifferenceBsS),10}");
+            sb.AppendLine($"TOTAL DECLARADO:  {CurrencyDisplay.FormatSecondary(TotalActualBsS),10}");
+            sb.AppendLine($"TOTAL ESPERADO:   {CurrencyDisplay.FormatSecondary(TotalExpectedBsS),10}");
+            sb.AppendLine($"DIFERENCIA TOTAL: {CurrencyDisplay.FormatSecondary(TotalDifferenceBsS),10}");
             sb.AppendLine($"ESTADO DE CAJA:   {DifferenceStatusLabel}");
             if (!string.IsNullOrWhiteSpace(Observation))
             {

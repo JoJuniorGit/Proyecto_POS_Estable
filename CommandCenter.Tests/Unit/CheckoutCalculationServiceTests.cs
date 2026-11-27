@@ -342,6 +342,222 @@ public class CheckoutCalculationServiceTests
         Assert.True(preview.IsFullyPaid);
     }
 
+    // =============================================================================================
+    // 8.211-T3c3c1 (S5): VES cash-friendly rules only apply when the pricing secondary is VES.
+    // =============================================================================================
+
+    private static Mock<IMonetaryProfileService> CreateProfileMock(
+        MonetaryMode mode,
+        string primaryCode = "USD",
+        string? secondaryCode = "VES")
+    {
+        var mock = new Mock<IMonetaryProfileService>();
+        mock.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = mode,
+                PrimaryCurrencyCode = primaryCode,
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = secondaryCode,
+                SecondaryCurrencySymbol = secondaryCode is null ? null : "Bs.S",
+                IsConfigured = true
+            });
+        return mock;
+    }
+
+    [Fact]
+    public async Task CalculatePreviewAsync_DualNonVesProfile_SkipsVesCashFriendlyProjection()
+    {
+        // 1.04 USD × 10 = 10.40 (2dp ceiling). The VES integer projection would yield 11.00.
+        var mock = CreateSalesServiceMockWithItems(
+            70,
+            totalUsd: 1.04m,
+            rate: 10m,
+            new SaleItemDto
+            {
+                ProductId = 1,
+                ProductName = "Item",
+                Quantity = 1m,
+                UnitPrice = 1.04m,
+                RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger
+            });
+        var settings = CreateSettingsMock("true");
+        var service = new CheckoutCalculationService(
+            mock.Object,
+            settings.Object,
+            CreateProfileMock(MonetaryMode.Dual, "USD", "COP").Object);
+
+        var preview = await service.CalculatePreviewAsync(
+            70,
+            new CheckoutPreviewRequest
+            {
+                ExchangeRate = 10m,
+                Payments = new List<SalePaymentDto>
+                {
+                    new SalePaymentDto { PaymentMethodId = 1, Amount = 0m, AmountBsS = 10.40m }
+                }
+            });
+
+        Assert.Equal(10.40m, preview.TotalBsS);
+        Assert.True(preview.IsFullyPaid);
+        settings.Verify(
+            s => s.GetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultEnforceMinimumMarginFloor),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task CalculatePreviewAsync_SingleProfile_SkipsVesCashFriendlyProjection()
+    {
+        var mock = CreateSalesServiceMockWithItems(
+            71,
+            totalUsd: 1.04m,
+            rate: 10m,
+            new SaleItemDto
+            {
+                ProductId = 1,
+                ProductName = "Item",
+                Quantity = 1m,
+                UnitPrice = 1.04m,
+                RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger
+            });
+        var settings = CreateSettingsMock("true");
+        var service = new CheckoutCalculationService(
+            mock.Object,
+            settings.Object,
+            CreateProfileMock(MonetaryMode.Single, "USD", null).Object);
+
+        var preview = await service.CalculatePreviewAsync(
+            71,
+            new CheckoutPreviewRequest
+            {
+                ExchangeRate = 10m,
+                Payments = new List<SalePaymentDto>
+                {
+                    new SalePaymentDto { PaymentMethodId = 1, Amount = 0m, AmountBsS = 10.40m }
+                }
+            });
+
+        Assert.Equal(10.40m, preview.TotalBsS);
+        settings.Verify(
+            s => s.GetSettingAsync(Core.Constants.SettingKeys.Pricing.DefaultEnforceMinimumMarginFloor),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task CalculatePreviewAsync_ProfileReadFailure_FallsBackToVesSnapshot()
+    {
+        var mock = CreateSalesServiceMockWithItems(
+            72,
+            totalUsd: 1.04m,
+            rate: 10m,
+            new SaleItemDto
+            {
+                ProductId = 1,
+                ProductName = "Item",
+                Quantity = 1m,
+                UnitPrice = 1.04m,
+                RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger
+            });
+        mock.Setup(s => s.GetSaleAsync(72, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SaleDto
+            {
+                Id = 72,
+                TotalUSD = 1.04m,
+                AppliedRate = 10m,
+                SecondaryCurrencyCode = "VES",
+                Items = new List<SaleItemDto>
+                {
+                    new SaleItemDto
+                    {
+                        ProductId = 1,
+                        ProductName = "Item",
+                        Quantity = 1m,
+                        UnitPrice = 1.04m,
+                        RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger
+                    }
+                }
+            });
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("settings store unavailable"));
+        var service = new CheckoutCalculationService(
+            mock.Object,
+            CreateSettingsMock("true").Object,
+            profile.Object);
+
+        var preview = await service.CalculatePreviewAsync(
+            72,
+            new CheckoutPreviewRequest
+            {
+                ExchangeRate = 10m,
+                Payments = new List<SalePaymentDto>
+                {
+                    new SalePaymentDto { PaymentMethodId = 1, Amount = 0m, AmountBsS = 11.00m }
+                }
+            });
+
+        Assert.Equal(11.00m, preview.TotalBsS);
+    }
+
+    [Fact]
+    public async Task CalculatePreviewAsync_ProfileReadFailure_WhenSaleIsSingle_SkipsVesRules()
+    {
+        var mock = CreateSalesServiceMockWithItems(
+            73,
+            totalUsd: 1.04m,
+            rate: 10m,
+            new SaleItemDto
+            {
+                ProductId = 1,
+                ProductName = "Item",
+                Quantity = 1m,
+                UnitPrice = 1.04m,
+                RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger
+            });
+        mock.Setup(s => s.GetSaleAsync(73, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SaleDto
+            {
+                Id = 73,
+                TotalUSD = 1.04m,
+                AppliedRate = 10m,
+                MonetaryMode = "Single",
+                SecondaryCurrencyCode = null,
+                Items = new List<SaleItemDto>
+                {
+                    new SaleItemDto
+                    {
+                        ProductId = 1,
+                        ProductName = "Item",
+                        Quantity = 1m,
+                        UnitPrice = 1.04m,
+                        RoundingRuleCashBs = RoundingRuleType.VesCashFriendlyInteger
+                    }
+                }
+            });
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("settings store unavailable"));
+        var service = new CheckoutCalculationService(
+            mock.Object,
+            CreateSettingsMock("true").Object,
+            profile.Object);
+
+        var preview = await service.CalculatePreviewAsync(
+            73,
+            new CheckoutPreviewRequest
+            {
+                ExchangeRate = 10m,
+                Payments = new List<SalePaymentDto>
+                {
+                    new SalePaymentDto { PaymentMethodId = 1, Amount = 0m, AmountBsS = 10.40m }
+                }
+            });
+
+        Assert.Equal(10.40m, preview.TotalBsS);
+    }
+
     [Fact]
     public async Task CalculatePreviewAsync_WhenBothDomainsShort_IsNotFullyPaid()
     {

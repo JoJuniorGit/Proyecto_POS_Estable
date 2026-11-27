@@ -1,7 +1,13 @@
 import { Trash2 } from 'lucide-react';
-import { formatBsS, formatUSD } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { MONETARY_MODE_DUAL } from '../../utils/monetaryProfile';
 
 export default function PaymentList({ payments, onRemovePayment }) {
+  // 8.211-T4b2b1 (S9): en Dual se muestran las dos monedas; en Single el monto local ya es la
+  // primaria y la segunda línea sería un duplicado con otro símbolo.
+  const { mode, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const isDual = mode === MONETARY_MODE_DUAL;
+
   if (!payments || payments.length === 0) {
     return (
       <div className="payment-list-empty">
@@ -25,8 +31,10 @@ export default function PaymentList({ payments, onRemovePayment }) {
           </div>
 
           <div className="payment-item-amounts">
-            <span className="payment-item-bss">{formatBsS(p.amountBsS)}</span>
-            <span className="payment-item-usd font-muted">({formatUSD(p.amountUsd)})</span>
+            <span className="payment-item-bss">{formatSecondary(p.amountBsS)}</span>
+            {isDual && (
+              <span className="payment-item-usd font-muted">({formatPrimary(p.amountUsd)})</span>
+            )}
             <button
               type="button"
               className="delete-btn"

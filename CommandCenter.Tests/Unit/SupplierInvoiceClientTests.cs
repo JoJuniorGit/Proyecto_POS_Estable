@@ -597,8 +597,35 @@ public sealed class SupplierInvoiceClientTests
             36.50m));
 
         using var payload = JsonDocument.Parse(Assert.Single(handler.RequestBodies));
+        Assert.False(string.IsNullOrWhiteSpace(Assert.Single(handler.IdempotencyKeys)));
         Assert.Equal("Bs.S", payload.RootElement.GetProperty("currency").GetString());
         Assert.Equal(36.50m, payload.RootElement.GetProperty("appliedRate").GetDecimal());
+    }
+
+    [Fact]
+    public async Task StageAsync_RetryAfterLostResponse_ReusesIdempotencyKey()
+    {
+        var invoice = CreateInvoice(CurrencyCodes.Usd, CreateLine(1));
+        var handler = new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.ServiceUnavailable),
+            JsonResponse(invoice));
+        using var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new Desktop.Client.Services.SupplierInvoiceService(httpClient);
+        var request = new StageSupplierInvoiceRequestDto(
+            7,
+            "J-123",
+            "Supplier",
+            null,
+            new[] { new StageLineDto("SUP-1", "12345", "Coffee", 2m, 365m) },
+            CurrencyCodes.Usd,
+            1m);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.StageAsync(request));
+        await service.StageAsync(request);
+
+        Assert.Equal(2, handler.IdempotencyKeys.Count);
+        Assert.False(string.IsNullOrWhiteSpace(handler.IdempotencyKeys[0]));
+        Assert.Equal(handler.IdempotencyKeys[0], handler.IdempotencyKeys[1]);
     }
 
     [Fact]
@@ -2823,12 +2850,18 @@ public sealed class SupplierInvoiceClientTests
 
         public List<string> RequestBodies { get; } = [];
 
+        public List<string> IdempotencyKeys { get; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
             RequestPaths.Add(request.RequestUri?.PathAndQuery ?? string.Empty);
+            if (request.Headers.TryGetValues("Idempotency-Key", out var idempotencyKeys))
+            {
+                IdempotencyKeys.Add(idempotencyKeys.First());
+            }
             RequestBodies.Add(request.Content is null
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken));

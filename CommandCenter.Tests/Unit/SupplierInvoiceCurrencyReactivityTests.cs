@@ -136,10 +136,10 @@ public sealed class SupplierInvoiceCurrencyReactivityTests
     }
 
     [Fact]
-    public async Task ConfirmInvoiceAsync_AfterCurrencyFlipToUsd_SendsLiveCurrencyWithoutRate()
+    public async Task ConfirmInvoiceAsync_AfterCurrencyFlipToUsd_SendsLiveCurrencyWithIdentityRate()
     {
-        // 8.176: si el revisor cambia la moneda a USD después del staging, el confirm transporta la
-        // moneda viva (sin tasa: en USD la tasa canónica la impone el backend).
+        // 8.176/8.211-T4c2b4d3b: si el revisor cambia la moneda a USD después del staging, el confirm
+        // transporta la moneda viva con la tasa identidad 1 (el canal primario no convierte).
         var service = new Mock<ClientSupplierInvoiceService>(MockBehavior.Strict);
         ConfirmSupplierInvoiceRequestDto? captured = null;
         var staged = CreateInvoice(CurrencyCodes.BsS, CreateLine(1, unitCost: 10m, unitCostDocument: 365m));
@@ -161,7 +161,7 @@ public sealed class SupplierInvoiceCurrencyReactivityTests
 
         Assert.NotNull(captured);
         Assert.Equal(CurrencyCodes.Usd, captured!.Currency);
-        Assert.Null(captured.AppliedRate);
+        Assert.Equal(1m, captured.AppliedRate);
     }
 
     [Fact]

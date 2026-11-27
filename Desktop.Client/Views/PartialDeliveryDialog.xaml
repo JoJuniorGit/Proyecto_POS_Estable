@@ -5,151 +5,667 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
+        xmlns:behaviors="clr-namespace:Desktop.Client.Behaviors"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:PartialDeliveryDialogViewModel}"
+        d:DesignHeight="620"
+        d:DesignWidth="700"
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         TextElement.FontWeight="Regular"
         TextElement.FontSize="13"
-        Background="{DynamicResource MaterialDesignPaper}"
+        Background="Transparent"
         FontFamily="{DynamicResource MaterialDesignFont}"
         Title="Registrar Retiro Parcial"
-        Height="600"
-        Width="760"
+        Width="700"
+        MinWidth="640"
+        SizeToContent="Height"
+        MaxHeight="720"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowStyle="None"
-        AllowsTransparency="True">
+        AllowsTransparency="True"
+        ShowInTaskbar="False"
+        PreviewKeyDown="Window_PreviewKeyDown">
 
-    <Border BorderBrush="{DynamicResource MaterialDesignDivider}"
-            BorderThickness="1"
-            CornerRadius="10"
-            Background="{DynamicResource MaterialDesignPaper}">
-        <Grid Margin="24">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="SettingsStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
 
-            <Grid Grid.Row="0" Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="PackageCheck"
-                                                 Width="26"
-                                                 Height="26"
-                                                 Foreground="{DynamicResource PrimaryHueMidBrush}"
-                                                 VerticalAlignment="Center"/>
-                        <TextBlock Text="Registrar Retiro Parcial"
-                                   Style="{DynamicResource MaterialDesignHeadline5TextBlock}"
-                                   FontWeight="Bold"
-                                   Margin="10,0,0,0"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <TextBlock Text="Indique las cantidades que se entregan hoy."
-                               FontSize="12"
-                               Foreground="{DynamicResource MaterialDesignBodyLight}"
-                               Margin="36,4,0,0"/>
-                </StackPanel>
-                <Button Grid.Column="1"
-                        AutomationProperties.AutomationId="PartialDelivery_CloseButton"
-                        Style="{DynamicResource MaterialDesignIconButton}"
-                        IsCancel="True"
-                        ToolTip="Cancelar"
-                        VerticalAlignment="Top">
-                    <materialDesign:PackIcon Kind="Close" Width="22" Height="22"/>
-                </Button>
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+            <DropShadowEffect x:Key="ModalShadow"
+                              Color="#0F172A"
+                              BlurRadius="24"
+                              Opacity="0.16"
+                              Direction="270"
+                              ShadowDepth="4"/>
+
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsThinScrollBarStyle}"/>
+
+            <Style x:Key="ModalCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="10"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+            </Style>
+
+            <Style x:Key="CloseButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="32"/>
+                <Setter Property="Height" Value="32"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="#64748B"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="CloseBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="6"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="CloseBorder" Property="Background" Value="#E2E8F0"/>
+                                    <Setter Property="Foreground" Value="#0F172A"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="CloseBorder" Property="Background" Value="#CBD5E1"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CompactAccentButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="Padding" Value="10,0"/>
+                <Setter Property="Background" Value="#F5F3FF"/>
+                <Setter Property="BorderBrush" Value="#DDD6FE"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#6D28D9"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="CompactBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="CompactBorder" Property="Background" Value="#EDE9FE"/>
+                                    <Setter Property="Foreground" Value="#5B21B6"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="CompactBorder" Property="Background" Value="#DDD6FE"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="CompactBorder" Property="Opacity" Value="0.45"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CompactNeutralButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="Padding" Value="10,0"/>
+                <Setter Property="Background" Value="#F8FAFC"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="CompactNeutralBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="CompactNeutralBorder" Property="Background" Value="#F1F5F9"/>
+                                    <Setter Property="Foreground" Value="#0F172A"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="CompactNeutralBorder" Property="Background" Value="#E2E8F0"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="CompactNeutralBorder" Property="Opacity" Value="0.45"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="MaxButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Padding" Value="8,0"/>
+                <Setter Property="Background" Value="#F8FAFC"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="IsTabStop" Value="False"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="MaxBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="MaxBorder" Property="Background" Value="#EDE9FE"/>
+                                    <Setter TargetName="MaxBorder" Property="BorderBrush" Value="#DDD6FE"/>
+                                    <Setter Property="Foreground" Value="#6D28D9"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="MaxBorder" Property="Background" Value="#DDD6FE"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="MaxBorder" Property="Opacity" Value="0.45"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ModalSecondaryButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource SettingsSecondaryButtonStyle}">
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="Padding" Value="18,0"/>
+            </Style>
+
+            <Style x:Key="ModalPrimaryButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource SettingsPrimaryButtonStyle}">
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="Padding" Value="20,0"/>
+            </Style>
+
+            <Style x:Key="QuantityFrameStyle" TargetType="Border">
+                <Setter Property="Width" Value="115"/>
+                <Setter Property="Height" Value="36"/>
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                        <Setter Property="BorderThickness" Value="1.5"/>
+                    </Trigger>
+                    <DataTrigger Binding="{Binding IsValid}" Value="False">
+                        <Setter Property="BorderBrush" Value="#DC2626"/>
+                        <Setter Property="BorderThickness" Value="1.5"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="NotesFrameStyle" TargetType="Border">
+                <Setter Property="Background" Value="#F8FAFC"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="MinHeight" Value="68"/>
+                <Setter Property="MaxHeight" Value="100"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="Background" Value="#FFFFFF"/>
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                        <Setter Property="BorderThickness" Value="1.5"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="TableHeaderTextStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Foreground" Value="#64748B"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="PendingPillStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FEF3C7"/>
+                <Setter Property="CornerRadius" Value="4"/>
+                <Setter Property="Padding" Value="7,2"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Grid Margin="6">
+        <Border Background="#FFFFFF"
+                BorderBrush="#E2E8F0"
+                BorderThickness="1"
+                CornerRadius="14"
+                Effect="{StaticResource ModalShadow}"
+                SnapsToDevicePixels="True">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Band 1: clean header -->
+                <Border Grid.Row="0"
+                        Background="#F8FAFC"
+                        BorderBrush="#E2E8F0"
+                        BorderThickness="0,0,0,1"
+                        CornerRadius="14,14,0,0"
+                        Padding="24,18">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <Border Width="38" Height="38" CornerRadius="10"
+                                    Background="#EDE9FE" VerticalAlignment="Top">
+                                <materialDesign:PackIcon Kind="PackageVariantClosed"
+                                                         Width="21" Height="21"
+                                                         Foreground="#6D28D9"
+                                                         HorizontalAlignment="Center"
+                                                         VerticalAlignment="Center"/>
+                            </Border>
+
+                            <StackPanel Margin="12,0,0,0">
+                                <TextBlock Text="Registrar Retiro Parcial"
+                                           FontSize="18"
+                                           FontWeight="Bold"
+                                           Foreground="#0F172A"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="Indique las cantidades físicas que se entregan hoy al cliente."
+                                           FontSize="12.5"
+                                           Foreground="#64748B"
+                                           Margin="0,3,0,0"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <Border Background="#FFFFFF"
+                                        BorderBrush="#E2E8F0"
+                                        BorderThickness="1"
+                                        CornerRadius="999"
+                                        Padding="10,3"
+                                        Margin="0,6,0,0"
+                                        MaxWidth="480"
+                                        HorizontalAlignment="Left"
+                                        Visibility="{Binding HasInvoiceContext, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding InvoiceContextLabel}"
+                                               FontSize="11.5"
+                                               Foreground="#334155"
+                                               TextTrimming="CharacterEllipsis"/>
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Button Grid.Column="1"
+                                Style="{StaticResource CloseButtonStyle}"
+                                AutomationProperties.AutomationId="PartialDelivery_CloseButton"
+                                IsCancel="True"
+                                Click="CancelButton_Click"
+                                ToolTip="Cerrar"
+                                VerticalAlignment="Top">
+                            <materialDesign:PackIcon Kind="Close"
+                                                     Width="18" Height="18"
+                                                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!-- Band 2: body -->
+                <Grid Grid.Row="1" Background="#FFFFFF" Margin="24,18">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="InformationOutline"
+                                                     Width="15" Height="15"
+                                                     Foreground="#64748B"
+                                                     VerticalAlignment="Center"/>
+                            <TextBlock Text="Las cantidades no pueden superar lo pendiente por producto."
+                                       FontSize="12"
+                                       Foreground="#64748B"
+                                       VerticalAlignment="Center"
+                                       Margin="6,0,12,0"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="Entregar todo"
+                                    Style="{StaticResource CompactAccentButtonStyle}"
+                                    Command="{Binding SetAllToMaxCommand}"
+                                    Margin="0,0,8,0"
+                                    AutomationProperties.AutomationId="PartialDelivery_FillAllButton"
+                                    ToolTip="Llenar todas las filas con su máximo pendiente"/>
+                            <Button Content="Poner en 0"
+                                    Style="{StaticResource CompactNeutralButtonStyle}"
+                                    Command="{Binding ClearAllCommand}"
+                                    AutomationProperties.AutomationId="PartialDelivery_ClearAllButton"
+                                    ToolTip="Limpiar todas las cantidades"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <Border Grid.Row="1" Style="{StaticResource ModalCardStyle}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="36"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <Border Grid.Row="0"
+                                    Background="#F8FAFC"
+                                    BorderBrush="#E2E8F0"
+                                    BorderThickness="0,0,0,1">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" MinWidth="240"/>
+                                        <ColumnDefinition Width="105"/>
+                                        <ColumnDefinition Width="185"/>
+                                        <ColumnDefinition Width="105"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <TextBlock Grid.Column="0" Text="PRODUCTO"
+                                               Style="{StaticResource TableHeaderTextStyle}"
+                                               Margin="14,0,8,0"/>
+                                    <TextBlock Grid.Column="1" Text="PENDIENTE"
+                                               Style="{StaticResource TableHeaderTextStyle}"
+                                               TextAlignment="Center"/>
+                                    <TextBlock Grid.Column="2" Text="ENTREGAR HOY"
+                                               Style="{StaticResource TableHeaderTextStyle}"
+                                               TextAlignment="Center"/>
+                                    <TextBlock Grid.Column="3" Text="QUEDARÍA"
+                                               Style="{StaticResource TableHeaderTextStyle}"
+                                               TextAlignment="Center"/>
+                                </Grid>
+                            </Border>
+
+                            <ScrollViewer Grid.Row="1"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          Focusable="False"
+                                          MinHeight="110"
+                                          MaxHeight="300"
+                                          Padding="0,0,2,0">
+                                <ItemsControl ItemsSource="{Binding Items}" Focusable="False">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border x:Name="RowBorder"
+                                                    Background="#FFFFFF"
+                                                    BorderBrush="#E2E8F0"
+                                                    BorderThickness="0,0,0,1"
+                                                    Padding="0,8"
+                                                    MinHeight="58">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" MinWidth="240"/>
+                                                        <ColumnDefinition Width="105"/>
+                                                        <ColumnDefinition Width="185"/>
+                                                        <ColumnDefinition Width="105"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <Grid Grid.Column="0" Margin="14,0,8,0" VerticalAlignment="Center">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding ProductName}"
+                                                                   ToolTip="{Binding ProductName}"
+                                                                   FontSize="13"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#0F172A"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   VerticalAlignment="Center"/>
+                                                        <Border Grid.Column="1"
+                                                                Background="#F1F5F9"
+                                                                CornerRadius="4"
+                                                                Padding="5,2"
+                                                                Margin="8,0,0,0"
+                                                                VerticalAlignment="Center"
+                                                                Visibility="{Binding HasUnitBadge, Converter={StaticResource BoolToVis}}">
+                                                            <TextBlock Text="{Binding UnitBadgeText}"
+                                                                       FontSize="9.5"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="#64748B"/>
+                                                        </Border>
+                                                    </Grid>
+
+                                                    <Border Grid.Column="1" Style="{StaticResource PendingPillStyle}">
+                                                        <TextBlock Text="{Binding PendingQuantityDisplay}"
+                                                                   FontSize="12"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#B45309"
+                                                                   Typography.NumeralAlignment="Tabular"/>
+                                                    </Border>
+
+                                                    <StackPanel Grid.Column="2"
+                                                                HorizontalAlignment="Center"
+                                                                VerticalAlignment="Center">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="115"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <Border Grid.Column="0" Style="{StaticResource QuantityFrameStyle}">
+                                                                <TextBox Text="{Binding QuantityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                         IsEnabled="{Binding CanDeliver}"
+                                                                         AutomationProperties.AutomationId="PartialDelivery_QuantityInput"
+                                                                         TextAlignment="Right"
+                                                                         BorderThickness="0"
+                                                                         Background="Transparent"
+                                                                         Padding="8,0"
+                                                                         FontSize="13"
+                                                                         FontWeight="SemiBold"
+                                                                         Foreground="#0F172A"
+                                                                         CaretBrush="#6D28D9"
+                                                                         Typography.NumeralAlignment="Tabular"
+                                                                         behaviors:QuantityInputBehavior.IsEnabled="True"
+                                                                         behaviors:QuantityInputBehavior.AllowDecimals="{Binding AllowsDecimals}"
+                                                                         behaviors:QuantityInputBehavior.MaxDecimalPlaces="{Binding MaxDecimalPlaces}"/>
+                                                            </Border>
+
+                                                            <Button Grid.Column="1"
+                                                                    Content="Máx"
+                                                                    Style="{StaticResource MaxButtonStyle}"
+                                                                    Command="{Binding SetMaxCommand}"
+                                                                    Margin="6,0,0,0"
+                                                                    ToolTip="Asignar toda la cantidad pendiente"/>
+                                                        </Grid>
+
+                                                        <TextBlock Text="{Binding ErrorMessage}"
+                                                                   Visibility="{Binding ErrorMessage, Converter={StaticResource StringToVisibilityConverter}}"
+                                                                   Foreground="#DC2626"
+                                                                   FontSize="10.5"
+                                                                   TextWrapping="Wrap"
+                                                                   Width="165"
+                                                                   HorizontalAlignment="Center"
+                                                                   Margin="0,3,0,0"/>
+                                                    </StackPanel>
+
+                                                    <Border Grid.Column="3"
+                                                            Background="{Binding RemainingBadgeBackground}"
+                                                            CornerRadius="6"
+                                                            Padding="8,3"
+                                                            HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding RemainingText}"
+                                                                   Foreground="{Binding RemainingForeground}"
+                                                                   FontSize="12"
+                                                                   FontWeight="SemiBold"
+                                                                   TextAlignment="Center"
+                                                                   Typography.NumeralAlignment="Tabular"/>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                            <DataTemplate.Triggers>
+                                                <Trigger SourceName="RowBorder" Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="RowBorder" Property="Background" Value="#F8FAFC"/>
+                                                </Trigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="2" Margin="0,16,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Notas (opcional)"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="#334155"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding NotesCounterText}"
+                                       FontSize="11.5"
+                                       Foreground="#94A3B8"
+                                       VerticalAlignment="Center"
+                                       Typography.NumeralAlignment="Tabular"/>
+                        </Grid>
+
+                        <Border Grid.Row="1" Style="{StaticResource NotesFrameStyle}" Margin="0,6,0,0">
+                            <Grid>
+                                <TextBox Text="{Binding Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         MaxLength="300"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         Padding="12,10"
+                                         FontSize="13"
+                                         Foreground="#0F172A"
+                                         CaretBrush="#6D28D9"
+                                         AutomationProperties.AutomationId="PartialDelivery_NotesInput"/>
+                                <TextBlock Text="Ej. Retira un tercero autorizado, entrega parcial en empaque..."
+                                           FontSize="12.5"
+                                           Foreground="#94A3B8"
+                                           TextWrapping="Wrap"
+                                           Margin="12,10,12,10"
+                                           IsHitTestVisible="False">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Notes}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Notes}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <!-- Band 3: fixed confirmation footer -->
+                <Border Grid.Row="2"
+                        Background="#F8FAFC"
+                        BorderBrush="#E2E8F0"
+                        BorderThickness="0,1,0,0"
+                        CornerRadius="0,0,14,14"
+                        Padding="24,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0"
+                                    Orientation="Horizontal"
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,16,0">
+                            <Ellipse Width="8" Height="8"
+                                     Fill="{Binding SummaryColor}"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding SummaryText}"
+                                       Foreground="{Binding SummaryColor}"
+                                       FontSize="11.5"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="Cancelar"
+                                    Style="{StaticResource ModalSecondaryButtonStyle}"
+                                    Margin="0,0,10,0"
+                                    IsCancel="True"
+                                    Click="CancelButton_Click"
+                                    AutomationProperties.AutomationId="PartialDelivery_CancelButton"/>
+                            <Button Content="Confirmar retiro"
+                                    Style="{StaticResource ModalPrimaryButtonStyle}"
+                                    IsEnabled="{Binding CanConfirm}"
+                                    Click="ConfirmButton_Click"
+                                    AutomationProperties.AutomationId="PartialDelivery_ConfirmButton"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </Grid>
-
-            <TextBlock Grid.Row="1"
-                       Text="Las cantidades no pueden superar lo pendiente por producto."
-                       FontSize="12"
-                       Foreground="{DynamicResource MaterialDesignBodyLight}"
-                       Margin="0,8,0,12"/>
-
-            <Border Grid.Row="2"
-                    BorderBrush="{DynamicResource MaterialDesignDivider}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    Padding="2"
-                    Margin="0,0,0,16">
-                <DataGrid ItemsSource="{Binding Items}"
-                          AutoGenerateColumns="False"
-                          CanUserAddRows="False"
-                          CanUserDeleteRows="False"
-                          CanUserReorderColumns="False"
-                          HeadersVisibility="Column"
-                          Background="Transparent"
-                          BorderThickness="0"
-                          MinRowHeight="68"
-                          VirtualizingStackPanel.IsVirtualizing="True"
-                          VirtualizingStackPanel.VirtualizationMode="Recycling"
-                          VirtualizingPanel.ScrollUnit="Pixel">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="PRODUCTO"
-                                            Binding="{Binding ProductName}"
-                                            IsReadOnly="True"
-                                            Width="*"/>
-                        <DataGridTextColumn Header="PENDIENTE"
-                                            Binding="{Binding PendingQuantity, StringFormat={}{0:0.###}}"
-                                            IsReadOnly="True"
-                                            Width="110"/>
-                        <DataGridTemplateColumn Header="ENTREGAR HOY" Width="190">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel Margin="4,2">
-                                        <TextBox Text="{Binding InputQuantityText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                 IsEnabled="{Binding CanDeliver}"
-                                                 Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                                                 HorizontalContentAlignment="Right"
-                                                 Padding="8,4"
-                                                 AutomationProperties.AutomationId="PartialDelivery_QuantityInput"/>
-                                        <TextBlock Text="{Binding ErrorMessage}"
-                                                   Foreground="#B91C1C"
-                                                   FontSize="11"
-                                                   TextWrapping="Wrap"
-                                                   Margin="2,2,2,0"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
-            </Border>
-
-            <StackPanel Grid.Row="3" Margin="0,0,0,16">
-                <TextBlock Text="Notas (opcional)" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
-                <TextBox Text="{Binding Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                         AcceptsReturn="True"
-                         TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto"
-                         Height="68"
-                         AutomationProperties.AutomationId="PartialDelivery_NotesInput"/>
-            </StackPanel>
-
-            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Cancelar"
-                        AutomationProperties.AutomationId="PartialDelivery_CancelButton"
-                        Style="{DynamicResource MaterialDesignOutlinedButton}"
-                        Margin="0,0,12,0"
-                        Height="40"
-                        Padding="16,0"
-                        Click="CancelButton_Click"/>
-                <Button Content="Confirmar retiro"
-                        Style="{DynamicResource MaterialDesignRaisedButton}"
-                        Height="40"
-                        Padding="18,0"
-                        IsEnabled="{Binding CanConfirm}"
-                        IsDefault="True"
-                        Click="ConfirmButton_Click"
-                        AutomationProperties.AutomationId="PartialDelivery_ConfirmButton"/>
-            </StackPanel>
-        </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </Window>

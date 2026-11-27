@@ -312,6 +312,42 @@ public class CoverageConvergenceTests
     }
 
     [Fact]
+    public async Task GetCustomersAsync_FiltersByPhoneQuery()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        context.Customers.AddRange(
+            new Customer { Id = 1, CedulaOrRif = "V-10000001", Name = "Cliente Uno", Phone = "0414332255" },
+            new Customer { Id = 2, CedulaOrRif = "V-10000002", Name = "Cliente Dos", Phone = "0414123456" });
+        await context.SaveChangesAsync();
+
+        var service = CreateSalesService(context);
+        var (items, total) = await service.GetCustomersAsync(query: "0414332255");
+
+        Assert.Equal(1, total);
+        Assert.Equal("Cliente Uno", items.Single().Name);
+    }
+
+    [Fact]
+    public async Task GetCustomersAsync_FiltersByActiveStatus()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        context.Customers.AddRange(
+            new Customer { Id = 1, CedulaOrRif = "V-10000001", Name = "Activo Uno", IsActive = true },
+            new Customer { Id = 2, CedulaOrRif = "V-10000002", Name = "Inactivo Dos", IsActive = false },
+            new Customer { Id = 3, CedulaOrRif = "V-10000003", Name = "Activo Tres", IsActive = true });
+        await context.SaveChangesAsync();
+
+        var service = CreateSalesService(context);
+        var (activeItems, activeTotal) = await service.GetCustomersAsync(isActive: true);
+        var (inactiveItems, inactiveTotal) = await service.GetCustomersAsync(isActive: false);
+
+        Assert.Equal(2, activeTotal);
+        Assert.Equal(new[] { "Activo Tres", "Activo Uno" }, activeItems.Select(c => c.Name).ToArray());
+        Assert.Equal(1, inactiveTotal);
+        Assert.Equal("Inactivo Dos", inactiveItems.Single().Name);
+    }
+
+    [Fact]
     public async Task GetCustomersAsync_PaginatesOrderedByName()
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();

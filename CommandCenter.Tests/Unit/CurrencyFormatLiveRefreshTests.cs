@@ -16,6 +16,7 @@ namespace CommandCenter.Tests.Unit;
 // 8.143: el cambio del ajuste de formato de moneda (Venezolano/Internacional) debe refrescar en
 // vivo las pantallas WPF abiertas vía mensajería (PropertyChanged inmediato, sin recomputo/rebindeo).
 // La suite está serializada y cada prueba restaura CurrencyDisplay.Current en finally.
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class CurrencyFormatLiveRefreshTests
 {
     private static Mock<IExchangeRateService> CreateRateMock(decimal rate)

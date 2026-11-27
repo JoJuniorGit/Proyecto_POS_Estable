@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Sales.Module.DTOs;
 using Sales.Module.Entities;
 using Sales.Module.Interfaces;
@@ -15,6 +16,7 @@ using Backend.API.Services;
 
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
@@ -29,6 +31,10 @@ public class CashDrawerController : ControllerBase
     private readonly Sales.Module.Services.CashAdvanceCoordinator _cashAdvanceCoordinator;
     // 8.149 (SRE-02): clave obligatoria + replay para POST transaction.
     private readonly IdempotencyRequestResolver _idempotencyResolver;
+    // 8.205 (C-01): política de anclaje de tasa compartida con SalesService.
+    private readonly Sales.Module.Services.ExchangeRateAnchorService _rateAnchor;
+    // 8.212-WU5: post-commit SignalR fan-out for drawer changes.
+    private readonly ICashDrawerChangedNotifier? _cashDrawerChangedNotifier;
 
     [Microsoft.Extensions.DependencyInjection.ActivatorUtilitiesConstructor]
     public CashDrawerController(
@@ -39,7 +45,10 @@ public class CashDrawerController : ControllerBase
         ICurrentUserService currentUserService,
         ITimeZoneProvider timeZoneProvider,
         Sales.Module.Services.CashAdvanceCoordinator cashAdvanceCoordinator,
-        IIdempotencyService? idempotencyService = null)
+        IIdempotencyService? idempotencyService = null,
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null,
+        ICashDrawerChangedNotifier? cashDrawerChangedNotifier = null)
     {
         _cashDrawerService = cashDrawerService;
         _settingsService = settingsService;
@@ -48,7 +57,15 @@ public class CashDrawerController : ControllerBase
         _currentUserService = currentUserService;
         _timeZoneProvider = timeZoneProvider;
         _cashAdvanceCoordinator = cashAdvanceCoordinator;
+        _cashDrawerChangedNotifier = cashDrawerChangedNotifier;
         _idempotencyResolver = new IdempotencyRequestResolver(idempotencyService, currentUserService);
+        // 8.211-T3c3b1 (S4): the injected profile lets Single mode resolve an identity rate.
+        // 8.211-T3c3c1 (S4): the pair rate service resolves Dual non-VES manual quotes.
+        _rateAnchor = new Sales.Module.Services.ExchangeRateAnchorService(
+            inventoryService,
+            settingsService,
+            monetaryProfileService: monetaryProfileService,
+            currencyRateService: currencyRateService);
     }
 
     [HttpGet("active-session")]
@@ -85,6 +102,12 @@ public class CashDrawerController : ControllerBase
             || _currentUserService.UserRole == Core.Entities.UserRole.Cashier;
     }
 
+    private bool RequireLifecycleIdempotencyKey()
+    {
+        var configuration = HttpContext?.RequestServices?.GetService(typeof(IConfiguration)) as IConfiguration;
+        return configuration?.GetValue<bool>("Idempotency:RequireCashSessionAndInvoiceStage") == true;
+    }
+
     [HttpGet("history")]
     [Authorize(Roles = "Admin,Manager")]
     public async Task<ActionResult<IEnumerable<CashTransactionResponseDto>>> GetHistoryAsync([FromQuery] int limit = 300, CancellationToken cancellationToken = default)
@@ -116,10 +139,32 @@ public class CashDrawerController : ControllerBase
     [HttpPost("open-session")]
     public async Task<ActionResult<CashDrawerSessionResponseDto>> OpenSessionAsync([FromBody] OpenSessionRequest request, CancellationToken cancellationToken)
     {
+        // SRE-10: idempotencia opcional para reintentos de red de la apertura.
+        string requestPath = "/api/cashdrawer/open-session";
+        string bodyJson = _idempotencyResolver.GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var idempotency = await _idempotencyResolver.ResolveWithPolicyAsync(
+            this,
+            requestPath,
+            bodyJson,
+            RequireLifecycleIdempotencyKey());
+        if (idempotency.ShouldStop) return idempotency.BlockingResult!;
+
         // 8.168 (SEC-04-RES): anclar la tasa de apertura al valor oficial BCV cuando existe.
         decimal anchoredRate = await ResolveAnchoredRateAsync(request.CurrentExchangeRate, referenceId: 0, cancellationToken: cancellationToken);
-        var session = await _cashDrawerService.OpenSessionAsync(request.OpeningBalanceLocal, anchoredRate, cancellationToken);
-        return Ok(await MapLocalTimesAsync(session, cancellationToken));
+        var session = await _cashDrawerService.OpenSessionAsync(
+            request.OpeningBalanceLocal,
+            anchoredRate,
+            cancellationToken: cancellationToken,
+            openingBalanceUsd: request.OpeningBalanceUsd,
+            requestedMethodBalances: request.MethodBalances);
+        var mapped = await MapLocalTimesAsync(session, cancellationToken);
+        await NotifyCashDrawerChangedAsync(mapped.Id, cancellationToken);
+        await _idempotencyResolver.RegisterSuccessAsync(
+            idempotency,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(mapped),
+            cancellationToken);
+        return Ok(mapped);
     }
 
     [RequireSecurityStampValidation]
@@ -127,10 +172,31 @@ public class CashDrawerController : ControllerBase
     [HttpPost("close")]
     public async Task<ActionResult<CashDrawerSessionResponseDto>> CloseSessionAsync([FromBody] CloseSessionRequest request, CancellationToken cancellationToken)
     {
+        // SRE-10: idempotencia opcional para reintentos de red del cierre.
+        string requestPath = "/api/cashdrawer/close";
+        string bodyJson = _idempotencyResolver.GetActorUserId() + "|" + System.Text.Json.JsonSerializer.Serialize(request);
+        var idempotency = await _idempotencyResolver.ResolveWithPolicyAsync(
+            this,
+            requestPath,
+            bodyJson,
+            RequireLifecycleIdempotencyKey());
+        if (idempotency.ShouldStop) return idempotency.BlockingResult!;
+
         // 8.168 (SEC-04-RES): anclar la tasa de cierre al valor oficial BCV cuando existe.
         decimal anchoredRate = await ResolveAnchoredRateAsync(request.CurrentExchangeRate, referenceId: 0, cancellationToken: cancellationToken);
-        var session = await _cashDrawerService.CloseSessionAsync(request.ActualClosingBalanceLocal, anchoredRate, cancellationToken);
-        return Ok(await MapLocalTimesAsync(session, cancellationToken));
+        var session = await _cashDrawerService.CloseSessionAsync(
+            request.ActualClosingBalanceLocal,
+            anchoredRate,
+            actualClosingBalanceUsd: request.ActualClosingBalanceUsd,
+            cancellationToken: cancellationToken);
+        var mapped = await MapLocalTimesAsync(session, cancellationToken);
+        await NotifyCashDrawerChangedAsync(mapped.Id, cancellationToken);
+        await _idempotencyResolver.RegisterSuccessAsync(
+            idempotency,
+            requestPath,
+            System.Text.Json.JsonSerializer.Serialize(mapped),
+            cancellationToken);
+        return Ok(mapped);
     }
 
     [HttpGet("current-balance")]
@@ -139,6 +205,53 @@ public class CashDrawerController : ControllerBase
     {
         var balance = await _cashDrawerService.GetCurrentBalanceLocalAsync(sessionId, cancellationToken);
         return Ok(balance);
+    }
+
+    /// <summary>
+    /// T4 (Paso 13 / 8.188, S2): saldos físicos del turno por moneda para el panel de caja chica.
+    /// Se mantiene bajo el mismo gate de supervisión que el saldo teórico (arqueo ciego).
+    /// </summary>
+    [HttpGet("physical-balances")]
+    [Authorize(Roles = "Admin,Manager")]
+    public async Task<ActionResult<PettyCashPhysicalBalancesResponseDto>> GetPhysicalBalancesAsync(
+        [FromQuery] int sessionId,
+        CancellationToken cancellationToken)
+    {
+        if (sessionId <= 0)
+        {
+            return this.ApiBadRequest("La sesión de caja es requerida para consultar los saldos físicos.");
+        }
+
+        decimal bsS = await _cashDrawerService.GetPhysicalBalanceAsync(
+            sessionId,
+            Sales.Module.Entities.PettyCashCurrency.BsS,
+            cancellationToken);
+        decimal usd = await _cashDrawerService.GetPhysicalBalanceAsync(
+            sessionId,
+            Sales.Module.Entities.PettyCashCurrency.Usd,
+            cancellationToken);
+
+        return Ok(new PettyCashPhysicalBalancesResponseDto(bsS, usd));
+    }
+
+    /// <summary>
+    /// 8.212-WU2 (S6): saldos físicos por método para refresco operativo de la gaveta. Comparte
+    /// el contrato de la colección incluida en la sesión activa; el endpoint legacy
+    /// <c>/physical-balances</c> permanece disponible.
+    /// </summary>
+    [HttpGet("physical-method-balances")]
+    [Authorize(Roles = "Admin,Manager,Cashier")]
+    public async Task<ActionResult<IReadOnlyList<PhysicalMethodBalanceDto>>> GetPhysicalMethodBalancesAsync(
+        [FromQuery] int sessionId,
+        CancellationToken cancellationToken)
+    {
+        if (sessionId <= 0)
+        {
+            return this.ApiBadRequest("La sesión de caja es requerida para consultar los saldos físicos por método.");
+        }
+
+        var balances = await _cashDrawerService.GetPhysicalMethodBalancesAsync(sessionId, cancellationToken);
+        return Ok(balances);
     }
 
     [RequireSecurityStampValidation]
@@ -179,7 +292,21 @@ public class CashDrawerController : ControllerBase
         try
         {
             decimal anchoredRate = await ResolveAnchoredRateAsync(request.ExchangeRate, referenceId: request.SessionId, cancellationToken: cancellationToken);
-            decimal amountUsd = Math.Round(request.AmountLocal / anchoredRate, 2, MidpointRounding.AwayFromZero);
+            decimal amountUsd = Core.Helpers.PricingCalculator.ToUSD(request.AmountLocal, anchoredRate);
+
+            var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
+
+            // 8.202-H2 (S4): la respuesta idempotente se persiste dentro de la MISMA transacción
+            // que el movimiento. El serializador conserva la hora local del contrato HTTP.
+            Sales.Module.DTOs.CashTransactionIdempotency? transactionIdempotency =
+                resolved.Key is not null && resolved.PayloadHash is not null
+                    ? new Sales.Module.DTOs.CashTransactionIdempotency(
+                        resolved.Key,
+                        requestPath,
+                        resolved.PayloadHash,
+                        _idempotencyResolver.GetActorUserId(),
+                        dto => System.Text.Json.JsonSerializer.Serialize(MapLocalTime(dto, tz)))
+                    : null;
 
             var transaction = await _cashDrawerService.AddTransactionAsync(
                 request.SessionId,
@@ -192,11 +319,11 @@ public class CashDrawerController : ControllerBase
                 null,
                 true,
                 null,
-                cancellationToken);
+                cancellationToken,
+                transactionIdempotency);
 
-            var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
             var mapped = MapLocalTime(transaction, tz);
-            await _idempotencyResolver.RegisterSuccessAsync(resolved, requestPath, System.Text.Json.JsonSerializer.Serialize(mapped), cancellationToken);
+            await NotifyCashDrawerChangedAsync(request.SessionId, cancellationToken);
 
             if (Response?.Headers != null)
             {
@@ -211,82 +338,38 @@ public class CashDrawerController : ControllerBase
         }
     }
 
+    private async Task NotifyCashDrawerChangedAsync(int sessionId, CancellationToken cancellationToken)
+    {
+        if (_cashDrawerChangedNotifier is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _cashDrawerChangedNotifier.NotifyCashDrawerChangedAsync(sessionId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Core.Logging.AppLogger.LogWarn(
+                $"[CashDrawer] No se pudo publicar CashDrawerChanged para la sesión {sessionId}: {ex.Message}",
+                nameof(CashDrawerController));
+        }
+    }
+
     private async Task<decimal> ResolveAnchoredRateAsync(decimal clientRate, int referenceId, CancellationToken cancellationToken)
     {
-        decimal roundedClientRate = ValidateAndRoundClientRate(clientRate);
-
-        var (hasOfficialRate, officialRate) = await TryGetOfficialRateAsync(roundedClientRate, referenceId, cancellationToken);
-        if (!hasOfficialRate)
+        var result = await _rateAnchor.ResolveAsync(clientRate, "CashDrawerController", referenceId, cancellationToken);
+        if (result.Outcome == Sales.Module.Services.ExchangeRateAnchorOutcome.Rejected)
         {
-            return roundedClientRate;
+            // 8.211-T3c3c1 (S4): name the official source actually used (manual pair or BCV).
+            string officialLabel = result.RateSource is Core.Interfaces.CurrencyRateSource.Manual or Core.Interfaces.CurrencyRateSource.ManualInverse
+                ? "manual del par"
+                : "BCV oficial";
+            throw new ArgumentException($"La tasa de cambio {result.ClientRate} fue rechazada: excede ±100% de la tasa {officialLabel} ({result.OfficialRate}). Contacte al supervisor.");
         }
 
-        decimal deviationPct = Math.Abs(roundedClientRate - officialRate) / officialRate;
-        if (deviationPct >= 1.0m)
-        {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Tasa rechazada por manipulación en txn manual #{referenceId}: recibida={roundedClientRate}, BCV={officialRate}, desvío={deviationPct:P2}");
-            throw new ArgumentException($"La tasa de cambio {roundedClientRate} fue rechazada: excede ±100% de la tasa BCV oficial ({officialRate}). Contacte al supervisor.");
-        }
-
-        decimal tolerancePct = await ResolveTolerancePctAsync(referenceId, cancellationToken);
-        if (deviationPct > tolerancePct)
-        {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Desvío de tasa ({deviationPct:P2} > {tolerancePct:P2}) en txn manual #{referenceId}. Se ANCLA: {roundedClientRate} -> {officialRate}");
-            return officialRate;
-        }
-
-        return roundedClientRate;
-    }
-
-    private static decimal ValidateAndRoundClientRate(decimal clientRate)
-    {
-        if (clientRate <= 0m)
-        {
-            throw new InvalidOperationException("Rechazo Defensivo: Tasa de cambio inválida o no inicializada (<= 0).");
-        }
-
-        return Core.Helpers.PricingCalculator.RoundExchangeRateCeiling(clientRate);
-    }
-
-    private async Task<(bool HasOfficialRate, decimal OfficialRate)> TryGetOfficialRateAsync(decimal roundedClientRate, int referenceId, CancellationToken cancellationToken)
-    {
-        decimal officialRate;
-        try
-        {
-            officialRate = await _inventoryService.GetTodayExchangeRateAsync(cancellationToken);
-        }
-        catch (System.Exception ex)
-        {
-            Core.Logging.AppLogger.LogDbError(ex, "CashDrawerController.ResolveAnchoredRate");
-            return (false, 0m);
-        }
-
-        if (officialRate <= 0m)
-        {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] Sin tasa BCV del día en CashDrawerController manual txn #{referenceId}. Fail-open: tasa recibida {roundedClientRate}.");
-            return (false, 0m);
-        }
-
-        return (true, officialRate);
-    }
-
-    private async Task<decimal> ResolveTolerancePctAsync(int referenceId, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var toleranceSetting = await _settingsService.GetSettingAsync("RateDeviationTolerancePct");
-            if (decimal.TryParse(toleranceSetting, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
-                && parsed > 0m && parsed < 1.0m)
-            {
-                return parsed;
-            }
-        }
-        catch (System.Exception ex)
-        {
-            Core.Logging.AppLogger.LogWarn($"[A5-AUDIT] No se pudo leer la tolerancia configurada en txn manual #{referenceId}; se usa default 10%. {ex.Message}");
-        }
-
-        return 0.10m;
+        return result.EffectiveRate;
     }
 
     private async Task<CashDrawerSessionResponseDto> MapLocalTimesAsync(CashDrawerSessionResponseDto session, CancellationToken cancellationToken)
@@ -317,6 +400,20 @@ public class CashDrawerController : ControllerBase
         };
     }
 
+    /// <summary>
+    /// 8.202-H2: aplica la hora local del contrato a ambos movimientos del adelanto. Es idempotente
+    /// (siempre recalcula desde <c>TransactionTime</c> UTC), por lo que también se usa al serializar
+    /// la respuesta que se persiste para un replay.
+    /// </summary>
+    private static Sales.Module.Interfaces.CashAdvanceResultDto MapCashAdvanceLocalTimes(
+        Sales.Module.Interfaces.CashAdvanceResultDto result,
+        TimeZoneInfo tz)
+    {
+        result.ExpenseTransaction = MapLocalTime(result.ExpenseTransaction, tz);
+        result.IncomeTransaction = MapLocalTime(result.IncomeTransaction, tz);
+        return result;
+    }
+
     [HttpGet("advance-commission")]
     [Authorize(Roles = "Admin,Manager,Cashier")]
     public async Task<ActionResult<CashAdvanceCommissionDto>> GetAdvanceCommissionAsync([FromQuery] bool isTransfer, CancellationToken cancellationToken)
@@ -342,10 +439,11 @@ public class CashDrawerController : ControllerBase
         }
 
         const string requestPath = "/api/cashdrawer/cash-advance";
-        var idempotency = await _idempotencyResolver.ResolveIfPresentAsync(
+        var idempotency = await _idempotencyResolver.ResolveAsync(
             this,
             requestPath,
-            System.Text.Json.JsonSerializer.Serialize(request));
+            System.Text.Json.JsonSerializer.Serialize(request),
+            missingKeyMessage: "El encabezado Idempotency-Key es obligatorio para procesar adelantos de efectivo.");
         if (idempotency.ShouldStop)
         {
             return idempotency.BlockingResult!;
@@ -361,6 +459,20 @@ public class CashDrawerController : ControllerBase
 
         try
         {
+            var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
+
+            // 8.202-H2 (S4): la respuesta idempotente se persiste dentro de la MISMA transacción
+            // que la venta y los dos movimientos de gaveta. El serializador congela la hora local.
+            Sales.Module.DTOs.CashAdvanceIdempotency? advanceIdempotency =
+                idempotency.Key is not null && idempotency.PayloadHash is not null
+                    ? new Sales.Module.DTOs.CashAdvanceIdempotency(
+                        idempotency.Key,
+                        requestPath,
+                        idempotency.PayloadHash,
+                        _idempotencyResolver.GetActorUserId(),
+                        advance => System.Text.Json.JsonSerializer.Serialize(MapCashAdvanceLocalTimes(advance, tz)))
+                    : null;
+
             var result = await _cashAdvanceCoordinator.ProcessAsync(
                 request.SessionId,
                 request.RequestedAmountLocal,
@@ -370,17 +482,14 @@ public class CashDrawerController : ControllerBase
                 anchoredRate,
                 cashierId,
                 userName,
-                cancellationToken);
+                cancellationToken,
+                advanceIdempotency,
+                dispensedCashPaymentMethodId: request.DispensedCashPaymentMethodId,
+                dispensedAmount: request.DispensedAmount,
+                receivedPaymentMethodId: request.ReceivedPaymentMethodId);
 
-            var tz = await _timeZoneProvider.GetTimeZoneInfoAsync(cancellationToken);
-            result.ExpenseTransaction = result.ExpenseTransaction with { TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.ExpenseTransaction.TransactionTime, tz) };
-            result.IncomeTransaction = result.IncomeTransaction with { TransactionTimeLocal = System.TimeZoneInfo.ConvertTimeFromUtc(result.IncomeTransaction.TransactionTime, tz) };
-
-            await _idempotencyResolver.RegisterSuccessAsync(
-                idempotency,
-                requestPath,
-                System.Text.Json.JsonSerializer.Serialize(result),
-                cancellationToken);
+            result = MapCashAdvanceLocalTimes(result, tz);
+            await NotifyCashDrawerChangedAsync(request.SessionId, cancellationToken);
 
             return Ok(result);
         }

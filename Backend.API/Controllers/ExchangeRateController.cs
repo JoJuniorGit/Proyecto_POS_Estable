@@ -12,8 +12,11 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Backend.API.Attributes;
+
 namespace Backend.API.Controllers;
 
+[RequireSecurityStampValidation]
 [Authorize(Roles = "Admin,Manager,Cashier")]
 [ApiController]
 [Route("api/exchange-rate")]

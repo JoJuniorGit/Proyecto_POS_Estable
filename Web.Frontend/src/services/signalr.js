@@ -73,6 +73,14 @@ const rewireHandlers = (onRateUpdate, onHoldSalesUpdated, onPaymentMethodsUpdate
     }
   });
 
+  // 8.212-WU5: the server publishes CashDrawerChanged(sessionId) after a committed operation.
+  connection.off('CashDrawerChanged');
+  connection.on('CashDrawerChanged', (sessionId) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('onCashDrawerChanged', { detail: { sessionId } }));
+    }
+  });
+
   // 8.157 (SEC-07, REQ-HFC-02): la revocación del servidor detiene este hub.
   handleForceDisconnect(connection);
 };

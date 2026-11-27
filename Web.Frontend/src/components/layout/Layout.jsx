@@ -6,6 +6,7 @@ const VIEW_TITLES = {
   pos: 'Punto de Venta',
   catalog: 'Catálogo de Productos',
   history: 'Historial de Ventas',
+  profitability: 'Rentabilidad',
   register: 'Caja Registradora',
   closing: 'Cierre Diario',
   settings: 'Configuración',

@@ -17,12 +17,18 @@ describe('cashTransactionSource — REQ-ADB-05 contract-aligned mapping', () => 
     assert.equal(CashTransactionSource.Closing, 4);
     assert.equal(CashTransactionSource.CashIn, 5);
     assert.equal(CashTransactionSource.CashOut, 6);
+    // Paso 11/12 (S5): abonos CxC y devoluciones de crédito.
+    assert.equal(CashTransactionSource.CreditPayment, 7);
+    assert.equal(CashTransactionSource.CreditRefund, 8);
+    // Paso 13 / 8.188-T1 (S6): egreso de caja chica y su reversa compensatoria.
+    assert.equal(CashTransactionSource.PettyCashExpense, 9);
+    assert.equal(CashTransactionSource.PettyCashReversal, 10);
   });
 
   it('defines one {id, key, label} table covering every contract value', () => {
     const ids = SOURCE_DEFINITIONS.map((definition) => definition.id);
 
-    assert.deepEqual([...ids].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6]);
+    assert.deepEqual([...ids].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     for (const definition of SOURCE_DEFINITIONS) {
       assert.equal(typeof definition.id, 'number');
       assert.ok(definition.key.length > 0);
@@ -38,6 +44,14 @@ describe('cashTransactionSource — REQ-ADB-05 contract-aligned mapping', () => 
     assert.equal(getSourceLabel('CashAdvance'), 'Adelanto Efectivo');
     assert.equal(getSourceLabel('SalePayment'), 'Venta POS');
     assert.equal(getSourceLabel('Sale'), 'Venta POS');
+    // Paso 11/12 (S5): mismas etiquetas que el cliente WPF.
+    assert.equal(getSourceLabel(7), 'Abono Crédito');
+    assert.equal(getSourceLabel(8), 'Devolución Crédito');
+    // Paso 13 / 8.188-T1 (S6): mismas etiquetas que el SourceDisplay del cliente WPF.
+    assert.equal(getSourceLabel(9), 'Caja Chica');
+    assert.equal(getSourceLabel(10), 'Reversa Caja Chica');
+    assert.equal(getSourceLabel('PettyCashExpense'), 'Caja Chica');
+    assert.equal(getSourceLabel('PettyCashReversal'), 'Reversa Caja Chica');
   });
 
   it('resolves the advance filter to CashAdvance (2) and never to Closing (4)', () => {
@@ -57,7 +71,7 @@ describe('cashTransactionSource — REQ-ADB-05 contract-aligned mapping', () => 
   });
 
   it('never labels a non-advance value as an advance', () => {
-    for (const source of [0, 1, 3, 4, 5, 6]) {
+    for (const source of [0, 1, 3, 4, 5, 6, 7, 8, 9, 10]) {
       assert.notEqual(getSourceLabel(source), 'Adelanto Efectivo');
     }
   });

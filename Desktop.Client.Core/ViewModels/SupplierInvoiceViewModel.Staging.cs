@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Core.Common;
 using Core.DTOs;
 using Core.Helpers;
+using Desktop.Client.Services;
 using System;
 using System.Globalization;
 using System.Linq;
@@ -90,10 +91,10 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     /// </summary>
     public string CostComparisonPillText => CostChangeKind switch
     {
-        CostChangeKind.Decreased => $"${OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
+        CostChangeKind.Decreased => $"{CurrencyDisplay.PrimaryCurrencySymbol}{OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
         CostChangeKind.Unchanged => $"Sin cambio · {UnitCostUSD:N2}",
-        CostChangeKind.IncreasedDrastic => $"${OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
-        CostChangeKind.IncreasedModerate => $"${OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
+        CostChangeKind.IncreasedDrastic => $"{CurrencyDisplay.PrimaryCurrencySymbol}{OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
+        CostChangeKind.IncreasedModerate => $"{CurrencyDisplay.PrimaryCurrencySymbol}{OldCostPriceUSD!.Value:N2} → {UnitCostUSD:N2}",
         CostChangeKind.NewProduct => $"Nuevo: {UnitCostUSD:N2}",
         _ => UnitCostUSD.ToString("N2")
     };
@@ -535,65 +536,18 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
     /// 8.168: parseo decimal permisivo para edición interactiva (acepta coma o punto, ".5", "10.").
     /// </summary>
     public static bool TryParseFlexibleDecimal(string? raw, out decimal result)
-    {
-        result = 0m;
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            return false;
-        }
-
-        var normalized = raw.Trim().Replace(" ", string.Empty, StringComparison.Ordinal);
-        if (!normalized.Any(char.IsAsciiDigit))
-        {
-            return false;
-        }
-
-        var commaIndex = normalized.LastIndexOf(',');
-        var dotIndex = normalized.LastIndexOf('.');
-        if (commaIndex >= 0 && dotIndex >= 0)
-        {
-            normalized = commaIndex > dotIndex
-                ? normalized.Replace(".", string.Empty, StringComparison.Ordinal).Replace(',', '.')
-                : normalized.Replace(",", string.Empty, StringComparison.Ordinal);
-        }
-        else if (commaIndex >= 0)
-        {
-            normalized = normalized.Replace(',', '.');
-        }
-
-        if (normalized.StartsWith('.'))
-        {
-            normalized = "0" + normalized;
-        }
-        else if (normalized.StartsWith("-.", StringComparison.Ordinal))
-        {
-            normalized = "-0." + normalized[2..];
-        }
-        else if (normalized.StartsWith("+.", StringComparison.Ordinal))
-        {
-            normalized = "+0." + normalized[2..];
-        }
-
-        if (normalized.EndsWith('.'))
-        {
-            normalized = normalized[..^1];
-        }
-
-        if (! decimal.TryParse(
-                normalized,
-                NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
-                CultureInfo.InvariantCulture,
-                out var parsed))
-        {
-            return false;
-        }
-
-        result = parsed;
-        return true;
-    }
+        => FlexibleDecimalParser.TryParse(raw, out result);
 
     private decimal CalculateUnitCostUsd()
     {
+        if (!string.Equals(_invoiceCurrency, CurrencyCodes.Usd, StringComparison.OrdinalIgnoreCase)
+            && _appliedRate <= 0m)
+        {
+            // 8.176/8.211-T4c2b4d3b: without a positive rate a non-USD document (VES/COP/MXN/EUR)
+            // has no normalized cost. Rows show 0,00 (never NaN/Infinity) and the confirm stays blocked.
+            return 0m;
+        }
+
         if (EditUnitCostDocument == _source.UnitCostDocument
             && EffectiveConversionFactor == 1m
             && _appliedRate == _initialAppliedRate
@@ -602,37 +556,13 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
             return _source.UnitCostUSD;
         }
 
-        if (string.Equals(_invoiceCurrency, CurrencyCodes.BsS, StringComparison.OrdinalIgnoreCase))
-        {
-            if (_appliedRate <= 0m)
-            {
-                // 8.176: sin tasa válida una factura Bs.S no tiene costo normalizado; la columna
-                // Costo USD muestra 0,00 (sin NaN/Infinity) y el confirm queda bloqueado.
-                return 0m;
-            }
-
-            return PricingCalculator.CalculateInvoiceUnitCostUsd(
-                EditUnitCostDocument,
-                EffectiveConversionFactor,
-                _invoiceCurrency,
-                _appliedRate);
-        }
-
-        var usdDocumentCost = PricingCalculator.CalculateInvoiceUnitCostUsd(
+        // The canonical calculator keeps rate 1 as identity (Single primary) and divides a secondary
+        // document cost by the applied-rate snapshot.
+        return PricingCalculator.CalculateInvoiceUnitCostUsd(
             EditUnitCostDocument,
             EffectiveConversionFactor,
             _invoiceCurrency,
             _appliedRate);
-
-        if (_appliedRate <= 0m && _source.UnitCostDocument > 0m && _source.UnitCostUSD != _source.UnitCostDocument)
-        {
-            return Math.Round(
-                _source.UnitCostUSD * (usdDocumentCost / _source.UnitCostDocument),
-                4,
-                MidpointRounding.AwayFromZero);
-        }
-
-        return usdDocumentCost;
     }
 
     private void NotifyPricingChanged()
@@ -670,4 +600,7 @@ public sealed partial class SupplierInvoiceLineViewModel : ObservableObject
         _ => BandNone
     };
 }
+
+
+
 

@@ -176,6 +176,26 @@ public class AuthorizationNotificationViewModelTests
     }
 
     [Fact]
+    public void ActionLabel_MapsPettyCashExpenseToSpanishLikeManualPriceOverride()
+    {
+        // Quick win 8.188: la caja chica sale del label crudo en la cola de supervision (paridad web).
+        Assert.Equal(
+            "un gasto de caja chica",
+            AuthorizationNotificationViewModel.BuildActionLabel("PettyCashExpense"));
+        Assert.Equal(
+            "un gasto de caja chica",
+            AuthorizationNotificationViewModel.BuildActionLabel("pettycashexpense"));
+        Assert.Equal(
+            "modificar el precio manual",
+            AuthorizationNotificationViewModel.BuildActionLabel("ManualPriceOverride"));
+
+        Assert.Equal(
+            "El cajero Cajero 01 solicita autorización para un gasto de caja chica.",
+            AuthorizationNotificationViewModel.BuildNotificationMessage(
+                BuildRequested(1, saleId: null, actionType: "PettyCashExpense", context: null)));
+    }
+
+    [Fact]
     public void MultipleRequests_AreQueuedInArrivalOrderWithPendingBadge()
     {
         var h = new Harness();

@@ -14,12 +14,21 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
     private const decimal MaxInvoiceNumericValue = 1_000_000_000m;
     private const decimal MaxMarginOverrideValue = 100_000m;
 
+    // 8.203: el confirm no puede aceptar una tasa arbitraria del cliente. Se tolera una
+    // corrección menor (redondeos/diferencia del día) y se rechaza cualquier desvío material.
+    private const decimal MaxConfirmRateDeviation = 0.10m;
+
     private readonly InventoryDbContext _context;
     private readonly ISystemSettingsService _systemSettingsService;
     private readonly ISupplierProductSimilaritySearch _similaritySearch;
     private readonly ICurrentUserService? _currentUserService;
     private readonly IMemoryCache? _memoryCache;
     private readonly ILogger<SupplierInvoiceService> _logger;
+    private readonly ITodayExchangeRateProvider? _rateProvider;
+    // 8.211-T3d (F3d): active monetary profile and manual pair quotes. Null keeps the historical
+    // USD/Bs.S behavior for direct legacy compositions and unit tests.
+    private readonly IMonetaryProfileService? _monetaryProfileService;
+    private readonly ICurrencyRateService? _currencyRateService;
 
     public SupplierInvoiceService(
         InventoryDbContext context,
@@ -28,7 +37,10 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         ICurrentUserService currentUserService,
         IProductManagementService productManagementService,
         IMemoryCache? memoryCache = null,
-        ILogger<SupplierInvoiceService>? logger = null)
+        ILogger<SupplierInvoiceService>? logger = null,
+        ITodayExchangeRateProvider? rateProvider = null,
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(systemSettingsService);
@@ -43,6 +55,9 @@ public partial class SupplierInvoiceService : ISupplierInvoiceService
         _productManagementService = productManagementService;
         _memoryCache = memoryCache;
         _logger = logger ?? NullLogger<SupplierInvoiceService>.Instance;
+        _rateProvider = rateProvider;
+        _monetaryProfileService = monetaryProfileService;
+        _currencyRateService = currencyRateService;
     }
 
     private void InvalidateProductCache(IEnumerable<Product> products)

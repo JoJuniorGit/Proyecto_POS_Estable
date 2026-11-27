@@ -12,9 +12,21 @@ public class PasswordHasherUnitTests
         string hash = PasswordHasher.HashPassword("AdminPass2026!");
 
         Assert.NotNull(hash);
-        Assert.StartsWith("PBKDF2$100000$", hash);
+        Assert.StartsWith("PBKDF2$600000$", hash);
         var parts = hash.Split('$');
         Assert.Equal(4, parts.Length);
+    }
+
+    [Fact]
+    public void NeedsRehash_LegacyIterations_ReturnsTrue_AndCurrentReturnsFalse()
+    {
+        string current = PasswordHasher.HashPassword("CurrentPass123!");
+        Assert.False(PasswordHasher.NeedsRehash(current));
+
+        var parts = current.Split('$');
+        string legacy = $"PBKDF2$100000${parts[2]}${parts[3]}";
+        Assert.True(PasswordHasher.NeedsRehash(legacy));
+        Assert.True(PasswordHasher.NeedsRehash("plain-legacy-hash"));
     }
 
     [Fact]

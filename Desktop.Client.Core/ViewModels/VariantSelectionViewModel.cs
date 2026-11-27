@@ -38,10 +38,14 @@ public partial class VariantSelectionViewModel : ObservableObject
     public decimal ExchangeRate => _exchangeRateService?.CurrentRate ?? 1m;
 
     public decimal BasePriceUSD => ParentProduct?.PriceRetailUSD > 0 ? ParentProduct.PriceRetailUSD : (ParentProduct?.PriceUSD ?? 0m);
-    // 8.143: derivar de USD x tasa vigente; el snapshot PriceBsS solo es fallback sin USD o sin tasa valida.
-    public decimal BasePriceBsS => BasePriceUSD > 0 && ExchangeRate > 0
-        ? Helpers.PricingHelper.ToBsSCeiling(BasePriceUSD, ExchangeRate)
-        : (ParentProduct?.PriceBsS > 0 ? ParentProduct.PriceBsS : 0m);
+
+    // La proyección del servidor ya aplica la regla cash del artículo (y su política global);
+    // el techo canónico queda solo como fallback cuando el DTO no trae el campo.
+    public decimal BasePriceBsS => ParentProduct is { EffectivePriceBsS: > 0m } parentWithEffective
+        ? parentWithEffective.EffectivePriceBsS
+        : (BasePriceUSD > 0 && ExchangeRate > 0
+            ? Helpers.PricingHelper.ToBsSCeiling(BasePriceUSD, ExchangeRate)
+            : (ParentProduct?.PriceBsS > 0 ? ParentProduct.PriceBsS : 0m));
 
     public VariantSelectionViewModel(
         IProductService productService,

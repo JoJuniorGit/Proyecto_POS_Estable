@@ -24,6 +24,44 @@ public partial class ProductVariantsTests
     }
 
     [Fact]
+    public void ProductItemViewModel_SingleProfile_UsesPrimarySymbolForCostAndLocalPrice()
+    {
+        var rateMock = CreateRateMock(50.00m);
+        var dto = new ProductDto
+        {
+            Id = 901,
+            Name = "Harina PAN",
+            SKU = "HAR-901",
+            IsActive = true,
+            Cost = 15.00m,
+            PriceUSD = 10.00m,
+            PriceBsS = 500.00m
+        };
+        var vm = new ProductItemViewModel(dto, rateMock.Object);
+        var previous = CurrencyDisplay.Current;
+        try
+        {
+            CurrencyDisplay.Current = MoneyDisplayFormat.Venezuelan;
+            CurrencyDisplay.SetMonetaryProfile(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Single,
+                PrimaryCurrencyCode = "EUR",
+                PrimaryCurrencySymbol = "€",
+                SecondaryCurrencyCode = null,
+                SecondaryCurrencySymbol = null,
+                IsConfigured = true
+            });
+
+            Assert.Equal("€15,00", vm.DisplayCost);
+            Assert.Equal("€ 500,00", vm.DisplayRetailPrice);
+        }
+        finally
+        {
+            CurrencyDisplay.Current = previous;
+            CurrencyDisplay.SetMonetaryProfile(null);
+        }
+    }
+    [Fact]
     public void ProductItemViewModel_DisplayRetailPrice_DerivaDeTasa_IgnoraSnapshotViejo()
     {
         var rateMock = CreateRateMock(50.00m);
@@ -218,3 +256,4 @@ public partial class ProductVariantsTests
         Assert.Equal(300.00m, vmSinUsd.BasePriceBsS);
     }
 }
+

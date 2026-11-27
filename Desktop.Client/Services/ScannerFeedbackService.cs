@@ -13,19 +13,23 @@ public sealed class ScannerFeedbackService : IScannerFeedbackService, IDisposabl
     private readonly SoundPlayer? _successPlayer;
     private readonly SoundPlayer? _notFoundPlayer;
     private readonly SoundPlayer? _errorPlayer;
+    private readonly MemoryStream? _successStream;
+    private readonly MemoryStream? _notFoundStream;
+    private readonly MemoryStream? _errorStream;
     private bool _disposed;
 
     public ScannerFeedbackService()
     {
         try
         {
-            _successPlayer = CreateTonePlayer(frequency: 880, durationMs: 80, amplitude: 0.25f);
-            _notFoundPlayer = CreateTonePlayer(frequency: 440, durationMs: 120, amplitude: 0.30f);
-            _errorPlayer = CreateTonePlayer(frequency: 220, durationMs: 180, amplitude: 0.35f);
+            (_successPlayer, _successStream) = CreateTonePlayer(frequency: 880, durationMs: 80, amplitude: 0.25f);
+            (_notFoundPlayer, _notFoundStream) = CreateTonePlayer(frequency: 440, durationMs: 120, amplitude: 0.30f);
+            (_errorPlayer, _errorStream) = CreateTonePlayer(frequency: 220, durationMs: 180, amplitude: 0.35f);
         }
         catch
         {
             // Fallback en caso de que el entorno de audio no permita inicialización directa de streams
+            Cleanup();
         }
     }
 
@@ -86,7 +90,7 @@ public sealed class ScannerFeedbackService : IScannerFeedbackService, IDisposabl
         }
     }
 
-    private static SoundPlayer CreateTonePlayer(double frequency, int durationMs, float amplitude)
+    private static (SoundPlayer Player, MemoryStream Stream) CreateTonePlayer(double frequency, int durationMs, float amplitude)
     {
         const int sampleRate = 44100;
         int sampleCount = (int)(sampleRate * (durationMs / 1000.0));
@@ -128,16 +132,23 @@ public sealed class ScannerFeedbackService : IScannerFeedbackService, IDisposabl
         stream.Position = 0;
         var player = new SoundPlayer(stream);
         player.Load();
-        return player;
+        return (player, stream);
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        Cleanup();
+    }
 
+    private void Cleanup()
+    {
         try { _successPlayer?.Dispose(); } catch { }
         try { _notFoundPlayer?.Dispose(); } catch { }
         try { _errorPlayer?.Dispose(); } catch { }
+        try { _successStream?.Dispose(); } catch { }
+        try { _notFoundStream?.Dispose(); } catch { }
+        try { _errorStream?.Dispose(); } catch { }
     }
 }

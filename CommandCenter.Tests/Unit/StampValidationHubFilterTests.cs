@@ -62,7 +62,7 @@ public class StampValidationHubFilterTests
     private static Mock<ISecurityStampValidator> CreateValidator(int userId, string stamp, bool isValid)
     {
         var validator = new Mock<ISecurityStampValidator>();
-        validator.Setup(v => v.ValidateStampAsync(userId, stamp, true)).ReturnsAsync(isValid);
+        validator.Setup(v => v.ValidateStampAsync(userId, stamp, true, It.IsAny<System.Threading.CancellationToken>())).ReturnsAsync(isValid);
         return validator;
     }
 
@@ -79,7 +79,7 @@ public class StampValidationHubFilterTests
 
         Assert.True(nextCalled);
         caller.Verify(c => c.Abort(), Times.Never);
-        validator.Verify(v => v.ValidateStampAsync(7, "stamp-vigente", true), Times.Once);
+        validator.Verify(v => v.ValidateStampAsync(7, "stamp-vigente", true, It.IsAny<System.Threading.CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public class StampValidationHubFilterTests
         Assert.True(nextCalled);
         Assert.Equal("resultado-hub", result);
         caller.Verify(c => c.Abort(), Times.Never);
-        validator.Verify(v => v.ValidateStampAsync(7, "stamp-vigente", true), Times.Once);
+        validator.Verify(v => v.ValidateStampAsync(7, "stamp-vigente", true, It.IsAny<System.Threading.CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public class StampValidationHubFilterTests
         Assert.False(nextCalled);
         caller.Verify(c => c.Abort(), Times.Once);
         validator.Verify(
-            v => v.ValidateStampAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<bool>()),
+            v => v.ValidateStampAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<System.Threading.CancellationToken>()),
             Times.Never);
     }
 
@@ -172,7 +172,7 @@ public class StampValidationHubFilterTests
         Assert.False(nextCalled);
         caller.Verify(c => c.Abort(), Times.Once);
         validator.Verify(
-            v => v.ValidateStampAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<bool>()),
+            v => v.ValidateStampAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<System.Threading.CancellationToken>()),
             Times.Never);
     }
 

@@ -9,6 +9,9 @@ public class ExpectedTotalDto
     public int PaymentMethodId { get; set; }
     public string PaymentMethodName { get; set; } = string.Empty;
     public decimal ExpectedAmountBsS { get; set; }
+
+    /// <summary>Moneda persistida del método; permite distinguir la actividad USD del cierre.</summary>
+    public string? PaymentMethodCurrency { get; set; }
 }
 
 public class DailyClosureDto
@@ -20,6 +23,17 @@ public class DailyClosureDto
     public decimal TotalActualBsS { get; set; }
     public decimal TotalDifferenceBsS { get; set; }
     public string? Observation { get; set; }
+
+    /// <summary>
+    /// Residual 8.187-8.188: arqueo USD del cierre tal como lo devuelve el servidor. Esperado y
+    /// diferencia llegan null para roles no supervisores (blind 8.153).
+    /// </summary>
+    public decimal? ExpectedClosingBalanceUsd { get; set; }
+
+    public decimal? ActualClosingBalanceUsd { get; set; }
+
+    public decimal? DifferenceUsd { get; set; }
+
     public List<ClosureDetailDto> Details { get; set; } = new();
 }
 
@@ -38,6 +52,12 @@ public class CreateClosureRequest
     public DateTime ClosureDate { get; set; }
     public string? UserId { get; set; } = "Admin";
     public string? Observation { get; set; }
+
+    /// <summary>
+    /// Residual 8.187-8.188: conteo fisico USD opcional. Null conserva el contrato previo.
+    /// </summary>
+    public decimal? ActualClosingBalanceUsd { get; set; }
+
     public List<CreateClosureDetailRequest> Details { get; set; } = new();
 }
 

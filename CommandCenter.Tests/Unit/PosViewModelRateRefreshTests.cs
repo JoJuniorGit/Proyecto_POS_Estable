@@ -18,6 +18,7 @@ namespace CommandCenter.Tests.Unit;
 /// snapshot viejo del DTO) y regenerar sugerencias al recibir ExchangeRateChangedMessage,
 /// porque los DTO de sugerencias no son observables.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.WeakMessengerStateCollection.Name)]
 public class PosViewModelRateRefreshTests
 {
     private static async Task<bool> WaitUntilAsync(Func<bool> condition, int timeoutMs = 3000)
@@ -108,6 +109,35 @@ public class PosViewModelRateRefreshTests
             bool refreshed = await WaitUntilAsync(() => vm.Suggestions.Count == 1 && vm.Suggestions[0].PriceBsS == 600.00m);
             Assert.True(refreshed, $"Las sugerencias no se regeneraron con la tasa nueva. Actual: {(vm.Suggestions.Count > 0 ? vm.Suggestions[0].PriceBsS : -1m)}");
             Assert.Equal(60.00m, vm.CurrentExchangeRate);
+        }
+        finally
+        {
+            vm.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteSearch_UsesRetailChannel_WhenLegacyPriceUsdIsStale()
+    {
+        // Tras una edición masiva el canal Detal es la autoridad; PriceUSD puede quedar viejo.
+        var suggestion = new ProductQuickInfoDto
+        {
+            Id = 43,
+            Name = "Cemento",
+            SKU = "CEM-43",
+            PriceUSD = 10.00m,
+            PriceRetailUSD = 12.00m,
+            PriceBsS = 100.00m
+        };
+        var (vm, _) = CreateVm(suggestion, 50.00m);
+
+        try
+        {
+            vm.SearchText = "Cemento";
+
+            bool derived = await WaitUntilAsync(() => vm.Suggestions.Count == 1 && vm.Suggestions[0].PriceBsS == 600.00m);
+            Assert.True(derived, $"El POS no uso el canal Detal. Actual: {(vm.Suggestions.Count > 0 ? vm.Suggestions[0].PriceBsS : -1m)}");
+            Assert.Equal(600.00m, vm.Suggestions[0].EffectivePriceBsS);
         }
         finally
         {

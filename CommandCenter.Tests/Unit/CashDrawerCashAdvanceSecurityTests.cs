@@ -55,8 +55,9 @@ public class CashDrawerCashAdvanceSecurityTests
         drawer.Setup(d => d.AddTransactionAsync(
                 It.IsAny<int>(), It.IsAny<CashTransactionType>(), It.IsAny<CashTransactionSource>(),
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<string>(),
-                It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((int sessionId, CashTransactionType type, CashTransactionSource source, decimal amountLocal, decimal amountUsd, decimal exchangeRate, string description, int? referenceId, bool isPhysical, int? paymentMethodId, CancellationToken _) =>
+                It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Sales.Module.DTOs.CashTransactionIdempotency?>()))
+            .ReturnsAsync((int sessionId, CashTransactionType type, CashTransactionSource source, decimal amountLocal, decimal amountUsd, decimal exchangeRate, string description, int? referenceId, bool isPhysical, int? paymentMethodId, CancellationToken _, Sales.Module.DTOs.CashTransactionIdempotency? _idempotency, string? _resolvedCurrency) =>
             {
                 if (type == CashTransactionType.Expense)
                 {
@@ -85,12 +86,13 @@ public class CashDrawerCashAdvanceSecurityTests
         sales.Setup(s => s.CreateCashAdvanceSaleAsync(
                 It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<int>(), It.IsAny<string>(),
                 It.IsAny<bool>(), It.IsAny<decimal>(), It.IsAny<int?>(), It.IsAny<string>(),
-                It.IsAny<IDbContextTransaction?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((decimal requestedAmountLocal, decimal commissionAmountLocal, int paymentMethodId, string paymentMethodName, bool isTransfer, decimal exchangeRate, int? cashierId, string? userName, IDbContextTransaction? existingTransaction, CancellationToken _) =>
+                It.IsAny<IDbContextTransaction?>(), It.IsAny<CancellationToken>(),
+                It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<string?>(), It.IsAny<decimal?>()))
+            .Returns((decimal requestedAmountLocal, decimal commissionAmountLocal, int paymentMethodId, string paymentMethodName, bool isTransfer, decimal exchangeRate, int? cashierId, string? userName, IDbContextTransaction? existingTransaction, CancellationToken _, decimal? _receivedPrincipal, decimal? _receivedCommission, decimal? _receivedTotal, decimal? _receivedTotalUsd, string? _receivedCurrencyCode, decimal? _receivedCommissionUsd) =>
             {
                 capture.CashierId = cashierId;
                 capture.UserName = userName;
-                return (SaleDto)null!;
+                return Task.FromResult((SaleDto)null!);
             });
 
         var currentUser = new Mock<ICurrentUserService>();
@@ -108,7 +110,9 @@ public class CashDrawerCashAdvanceSecurityTests
             currentUser.Object,
             new TimeZoneProvider(settings.Object),
             coordinator);
-        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers["Idempotency-Key"] = "ADVANCE-TEST-" + Guid.NewGuid().ToString("N");
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
 
         return new Harness(controller, capture, userService);
     }

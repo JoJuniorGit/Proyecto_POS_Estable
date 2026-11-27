@@ -134,7 +134,7 @@
 
                             <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                 <TextBlock Text="Caja Principal / Esta Máquina" FontSize="13" FontWeight="Bold" Foreground="#1E293B"/>
-                                <TextBlock Text="Ejecuta el servidor y la base de datos localmente (http://localhost:5000/). Recomendado para el equipo principal." 
+                                <TextBlock Text="Ejecuta el servidor y la base de datos localmente (https://localhost:5001/). Recomendado para el equipo principal." 
                                            FontSize="11" Foreground="#64748B" Margin="0,2,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Grid>

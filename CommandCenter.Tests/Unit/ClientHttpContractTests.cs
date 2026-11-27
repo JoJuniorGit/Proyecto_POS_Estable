@@ -259,6 +259,26 @@ public class ClientHttpContractTests
     }
 
     [Fact]
+    public async Task Sales_GetCustomersAsync_ForwardsTheActiveStatusFilter()
+    {
+        var requests = await CaptureAsync<SalesService>(
+            c => new SalesService(c),
+            s => s.GetCustomersAsync("Ana", 2, 15, recentOnly: false, isActive: true));
+
+        AssertRequest(
+            Assert.Single(requests),
+            HttpMethod.Get,
+            "/api/sales/customers",
+            typeof(SalesController),
+            nameof(SalesController.GetCustomersAsync),
+            "query",
+            "page",
+            "pageSize",
+            "recentOnly",
+            "isActive");
+    }
+
+    [Fact]
     public async Task Sales_CreateCustomerAsync_PostsToCustomersRoute()
     {
         var requests = await CaptureAsync<SalesService>(
@@ -485,7 +505,9 @@ public class ClientHttpContractTests
     {
         var requests = await CaptureAsync<CashDrawerService>(c => new CashDrawerService(c), s => s.OpenSessionAsync(150.25m, 36.5m));
 
-        AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/cashdrawer/open", typeof(CashDrawerController), nameof(CashDrawerController.OpenSessionAsync));
+        var request = Assert.Single(requests);
+        AssertRequest(request, HttpMethod.Post, "/api/cashdrawer/open", typeof(CashDrawerController), nameof(CashDrawerController.OpenSessionAsync));
+        Assert.False(string.IsNullOrWhiteSpace(request.GetHeaderValue("Idempotency-Key")));
     }
 
     [Fact]
@@ -493,7 +515,25 @@ public class ClientHttpContractTests
     {
         var requests = await CaptureAsync<CashDrawerService>(c => new CashDrawerService(c), s => s.CloseSessionAsync(200m, 36.5m));
 
-        AssertRequest(Assert.Single(requests), HttpMethod.Post, "/api/cashdrawer/close", typeof(CashDrawerController), nameof(CashDrawerController.CloseSessionAsync));
+        var request = Assert.Single(requests);
+        AssertRequest(request, HttpMethod.Post, "/api/cashdrawer/close", typeof(CashDrawerController), nameof(CashDrawerController.CloseSessionAsync));
+        Assert.False(string.IsNullOrWhiteSpace(request.GetHeaderValue("Idempotency-Key")));
+    }
+
+    [Fact]
+    public async Task CashDrawer_OpenSessionAsync_RetryAfterLostResponseReusesIdempotencyKey()
+    {
+        var handler = new CapturingHandler("{}", HttpStatusCode.ServiceUnavailable);
+        using var client = new HttpClient(handler) { BaseAddress = new Uri("https://unit.test/") };
+        var service = new CashDrawerService(client);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => service.OpenSessionAsync(200m, 36.5m));
+        await service.OpenSessionAsync(200m, 36.5m);
+
+        var requests = handler.Requests;
+        Assert.Equal(2, requests.Count);
+        Assert.False(string.IsNullOrWhiteSpace(requests[0].GetHeaderValue("Idempotency-Key")));
+        Assert.Equal(requests[0].GetHeaderValue("Idempotency-Key"), requests[1].GetHeaderValue("Idempotency-Key"));
     }
 
     [Fact]
@@ -978,11 +1018,8 @@ public class ClientHttpContractTests
         var service = new ExchangeRateService(client);
         try
         {
-            // El constructor dispara un GET inicial a api/exchange-rate/today (InitializeAsync);
-            // se espera a que aterrice y se limpia para capturar solo la llamada bajo prueba.
-            await handler.WaitForCountAsync(1);
-            handler.Clear();
-
+            // Sin sesion el servicio ya no dispara un GET inicial; cada llamada bajo prueba
+            // captura exactamente su propia request.
             await invoke(service);
 
             AssertRequest(Assert.Single(handler.Requests), method, path, typeof(ExchangeRateController), actionName, expectedQueryKeys);
@@ -1066,8 +1103,6 @@ public class ClientHttpContractShapeTests
         var service = new ExchangeRateService(client);
         try
         {
-            await handler.WaitForCountAsync(1);
-
             var (rate, lastUpdated) = await service.GetCurrentRateAsync();
 
             Assert.Equal(36.75m, rate);

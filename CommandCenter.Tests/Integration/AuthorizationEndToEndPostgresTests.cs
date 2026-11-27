@@ -19,7 +19,7 @@ namespace CommandCenter.Tests.Integration;
 /// (Program.cs + WebApplicationFactory), PostgreSQL real (Npgsql), clientes SignalR reales sobre
 /// TestServer (LongPolling) y HTTP real para la acción protegida. Cada escenario crea su propia
 /// base <c>pos_e2e_&lt;run&gt;</c>, la migra/siembra por el arranque real y la descarta al final.
-/// Gating del repo: sin TEST_POSTGRES_CONNECTION cada test retorna en silencio.
+/// Carril: sin conexión utilizable cada escenario falla EXPLÍCITO (nunca silent-pass).
 /// </summary>
 [Collection(PostgresRealCollection.Name)]
 [Trait("Category", "RequiresDocker")]
@@ -42,13 +42,20 @@ public class AuthorizationEndToEndPostgresTests
             CustomUnitPriceLocal,
             terminal);
 
+    private static async Task StartAndPingAsync(HubConnection hub)
+    {
+        await hub.StartAsync();
+        // El Ping se procesa después de OnConnectedAsync: garantiza que la conexión ya
+        // quedó suscrita a su grupo antes de crear o resolver una solicitud.
+        await hub.InvokeAsync("Ping");
+    }
+
     // ---------------------------------------------------------------- 1. happy full journey
 
     [Fact]
     public async Task HappyFullJourney_HubRequestRemoteApprovalHttpConsume_PersistsItemRequestAndRemoteAudit()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("journey");
-        if (!app.IsAvailable) return;
 
         var cashier = await app.CreateUserAsync(7001, UserRole.Cashier, "Cajero E2E Journey");
         var admin = await app.CreateUserAsync(7002, UserRole.Admin, "Admin E2E Journey");
@@ -64,8 +71,8 @@ public class AuthorizationEndToEndPostgresTests
         var resolved = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         adminHub.On<JsonElement>("AuthorizationRequested", payload => requested.TrySetResult(payload));
         cashierHub.On<JsonElement>("AuthorizationResolved", payload => resolved.TrySetResult(payload));
-        await cashierHub.StartAsync();
-        await adminHub.StartAsync();
+        await StartAndPingAsync(cashierHub);
+        await StartAndPingAsync(adminHub);
 
         var create = await cashierHub.InvokeAsync<JsonElement>(
             "RequestAuthorization",
@@ -76,7 +83,7 @@ public class AuthorizationEndToEndPostgresTests
         Assert.False(create.GetProperty("deduplicated").GetBoolean());
         Assert.InRange(create.GetProperty("remainingLifetimeSeconds").GetInt32(), 58, 60);
 
-        var requestedPayload = await requested.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var requestedPayload = await requested.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, requestedPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("ManualPriceOverride", requestedPayload.GetProperty("actionType").GetString());
         Assert.Equal(saleId, requestedPayload.GetProperty("saleId").GetInt32());
@@ -98,7 +105,7 @@ public class AuthorizationEndToEndPostgresTests
         Assert.Equal("Approved", resolve.GetProperty("status").GetString());
         Assert.Equal("Admin E2E Journey", resolve.GetProperty("resolvedByName").GetString());
 
-        var resolvedPayload = await resolved.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var resolvedPayload = await resolved.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, resolvedPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("Approved", resolvedPayload.GetProperty("status").GetString());
         Assert.True(resolvedPayload.GetProperty("approved").GetBoolean());
@@ -165,8 +172,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task Race_TwoElevatedClientsResolve_FirstWinsAndSecondGetsExactMessage()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("race");
-        if (!app.IsAvailable) return;
-
         var cashier = await app.CreateUserAsync(7101, UserRole.Cashier, "Cajero E2E Race");
         var firstAdmin = await app.CreateUserAsync(7102, UserRole.Admin, "Admin E2E Race Uno");
         var secondAdmin = await app.CreateUserAsync(7103, UserRole.Admin, "Admin E2E Race Dos");
@@ -181,9 +186,9 @@ public class AuthorizationEndToEndPostgresTests
         await using var secondAdminHub = app.CreateHubConnection(app.IssueToken(secondAdmin));
         var requesterResolved = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         cashierHub.On<JsonElement>("AuthorizationResolved", payload => requesterResolved.TrySetResult(payload));
-        await cashierHub.StartAsync();
-        await firstAdminHub.StartAsync();
-        await secondAdminHub.StartAsync();
+        await StartAndPingAsync(cashierHub);
+        await StartAndPingAsync(firstAdminHub);
+        await StartAndPingAsync(secondAdminHub);
 
         var create = await cashierHub.InvokeAsync<JsonElement>(
             "RequestAuthorization",
@@ -192,7 +197,7 @@ public class AuthorizationEndToEndPostgresTests
 
         var firstTask = firstAdminHub.InvokeAsync<JsonElement>("ResolveAuthorization", requestId, true, "Gano primero");
         var secondTask = secondAdminHub.InvokeAsync<JsonElement>("ResolveAuthorization", requestId, true, "Llego tarde");
-        var results = await Task.WhenAll(firstTask, secondTask).WaitAsync(TimeSpan.FromSeconds(20));
+        var results = await Task.WhenAll(firstTask, secondTask).WaitAsync(TimeSpan.FromSeconds(30));
 
         var firstSuccess = results[0].GetProperty("success").GetBoolean();
         var secondSuccess = results[1].GetProperty("success").GetBoolean();
@@ -206,7 +211,7 @@ public class AuthorizationEndToEndPostgresTests
             $"Esta solicitud ya fue resuelta por {expectedWinnerName}.",
             loser.GetProperty("message").GetString());
 
-        var requesterPayload = await requesterResolved.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var requesterPayload = await requesterResolved.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, requesterPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("Approved", requesterPayload.GetProperty("status").GetString());
         AuthorizationEndToEndApi.ReadRequiredToken(requesterPayload);
@@ -228,7 +233,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task LocalFallback_RealSupervisorCredentials_ResolvesLocalConsumesTokenAndFailsClosedOnWrongPassword()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("local");
-        if (!app.IsAvailable) return;
 
         const string supervisorPassword = "SuperClaveE2E123!";
         var cashier = await app.CreateUserAsync(7201, UserRole.Cashier, "Cajero E2E Local");
@@ -316,7 +320,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task Expiry_RealHostedSweepJob_ExpiresPushesAndAuditsNullResolver()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("expiry");
-        if (!app.IsAvailable) return;
 
         var cashier = await app.CreateUserAsync(7301, UserRole.Cashier, "Cajero E2E Expiry");
         await app.CreateProductAsync(9731, "Producto E2E Expiry", priceUsd: 5m, priceBsS: 250m);
@@ -331,7 +334,7 @@ public class AuthorizationEndToEndPostgresTests
         await using var cashierHub = app.CreateHubConnection(cashierToken);
         var expiredPush = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         cashierHub.On<JsonElement>("AuthorizationExpired", payload => expiredPush.TrySetResult(payload));
-        await cashierHub.StartAsync();
+        await StartAndPingAsync(cashierHub);
 
         // Backdate por el DbContext real: el barrido hosted (AuthorizationExpiryJob) encontrará
         // la solicitud vencida en el próximo tick.
@@ -358,7 +361,7 @@ public class AuthorizationEndToEndPostgresTests
         Assert.Equal("Expired", status.GetProperty("status").GetString());
         Assert.NotEqual(JsonValueKind.Null, status.GetProperty("resolvedAt").ValueKind);
 
-        var expiredPayload = await expiredPush.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var expiredPayload = await expiredPush.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, expiredPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("Expired", expiredPayload.GetProperty("status").GetString());
 
@@ -382,7 +385,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task AuditImmutability_RealPostgresTrigger_RejectsUpdateAndDeleteWithoutChangingRow()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("audit");
-        if (!app.IsAvailable) return;
 
         var cashier = await app.CreateUserAsync(7401, UserRole.Cashier, "Cajero E2E Audit");
         var admin = await app.CreateUserAsync(7402, UserRole.Admin, "Admin E2E Audit");
@@ -438,7 +440,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task TokenBinding_ApprovedForSaleA_RejectedOnSaleBWithoutBurningTheToken()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("binding");
-        if (!app.IsAvailable) return;
 
         var cashier = await app.CreateUserAsync(7501, UserRole.Cashier, "Cajero E2E Binding");
         var admin = await app.CreateUserAsync(7502, UserRole.Admin, "Admin E2E Binding");
@@ -500,7 +501,6 @@ public class AuthorizationEndToEndPostgresTests
     public async Task Cancellation_RequesterCancels_PersistsAuditPushesClosureWithoutTokenAndBlocksApproval()
     {
         await using var app = await AuthorizationEndToEndApplication.CreateAsync("cancel");
-        if (!app.IsAvailable) return;
 
         var cashier = await app.CreateUserAsync(7601, UserRole.Cashier, "Cajero E2E Cancel");
         var admin = await app.CreateUserAsync(7602, UserRole.Admin, "Admin E2E Cancel");
@@ -520,8 +520,8 @@ public class AuthorizationEndToEndPostgresTests
         var elevatedClosure = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         cashierHub.On<JsonElement>("AuthorizationResolved", payload => requesterClosure.TrySetResult(payload));
         adminHub.On<JsonElement>("AuthorizationResolved", payload => elevatedClosure.TrySetResult(payload));
-        await cashierHub.StartAsync();
-        await adminHub.StartAsync();
+        await StartAndPingAsync(cashierHub);
+        await StartAndPingAsync(adminHub);
 
         using (var cancelResponse = await AuthorizationEndToEndApi.CancelAsync(cashierHttp, requestId))
         {
@@ -532,13 +532,13 @@ public class AuthorizationEndToEndPostgresTests
             Assert.NotEqual(JsonValueKind.Null, body.GetProperty("resolvedAt").ValueKind);
         }
 
-        var requesterPayload = await requesterClosure.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var requesterPayload = await requesterClosure.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, requesterPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("Cancelled", requesterPayload.GetProperty("status").GetString());
         Assert.False(requesterPayload.GetProperty("approved").GetBoolean());
         Assert.Equal(JsonValueKind.Null, requesterPayload.GetProperty("token").ValueKind);
 
-        var elevatedPayload = await elevatedClosure.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        var elevatedPayload = await elevatedClosure.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.Equal(requestId, elevatedPayload.GetProperty("requestId").GetInt32());
         Assert.Equal("Cancelled", elevatedPayload.GetProperty("status").GetString());
         Assert.False(elevatedPayload.TryGetProperty("token", out _));

@@ -27,6 +27,35 @@ export function selectEffectiveRate(exchangeRate, appliedRate) {
   return exchangeRate > 0 ? exchangeRate : (appliedRate || 1);
 }
 
+/**
+ * 8.186-T4 (S2/S3): USD EFECTIVO de la venta activa — inverso del Total Bs.S EFECTIVO que el
+ * servidor cobra (monto real transado), cero desfase de display (2dp al mostrar) y 4dp contable.
+ * Server-first: 1) `effectiveTotalUSD` derivado por el backend (SaleDto ← TotalBsS+AppliedRate
+ * persistidos, ANEXO XII B1); 2) SOLO si el servidor no lo envía, inversa de display Bs.S/tasa a
+ * 4dp; 3) canónico `totalUSD` (gates/contratos). NO replica la política de redondeo (S3): el
+ * motor Core es la única autoridad; acá se consume/formatea, no se redondea quirúrgicamente.
+ * @param {object} sale SaleDto actual (puede traer effectiveTotalUSD)
+ * @param {number} totalBsS Total Bs.S efectivo exhibido
+ * @param {number} rateToUse Tasa activa (selectEffectiveRate)
+ * @param {number} canonicalTotalUSD Total USD canónico (fallback final, nunca se altera)
+ * @returns {number} USD efectivo (4dp)
+ */
+export function resolveEffectiveTotalUSD(sale, totalBsS, rateToUse, canonicalTotalUSD = 0) {
+  const serverEffective = Number(sale?.effectiveTotalUSD);
+  if (Number.isFinite(serverEffective) && serverEffective > 0) {
+    return serverEffective;
+  }
+
+  const effectiveBsS = Number(totalBsS);
+  const rate = Number(rateToUse);
+  if (Number.isFinite(effectiveBsS) && effectiveBsS > 0 && Number.isFinite(rate) && rate > 0) {
+    return Math.round((effectiveBsS / rate) * 10000) / 10000;
+  }
+
+  const canonical = Number(canonicalTotalUSD);
+  return Number.isFinite(canonical) ? canonical : 0;
+}
+
 export function CartProvider({ children }) {
   const { exchangeRate } = useExchangeRate();
   const { user } = useAuth();
@@ -508,6 +537,10 @@ const items = useMemo(() => currentSale?.items || [], [currentSale?.items]);
     };
   }, [items, rateToUse, currentSale?.subtotalBsS, currentSale?.totalBsS]);
 
+  // 8.186-T4 (S2/S3): Gran Total $ efectivo del carrito, server-first (ver resolver). El
+  // `totalUSD` canónico queda intacto para gates/contratos internos.
+  const effectiveTotalUSD = resolveEffectiveTotalUSD(currentSale, totalBsS, rateToUse, totalUSD);
+
   const stateValue = useMemo(() => ({
     currentSale,
     pendingRecovery,
@@ -523,7 +556,8 @@ const items = useMemo(() => currentSale?.items || [], [currentSale?.items]);
     totalUSD,
     subtotalBsS,
     totalBsS,
-  }), [currentSale, pendingRecovery, recoveryError, recoveryProcessing, items, selectedItemId, loading, error, subtotalUSD, totalUSD, subtotalBsS, totalBsS]);
+    effectiveTotalUSD,
+  }), [currentSale, pendingRecovery, recoveryError, recoveryProcessing, items, selectedItemId, loading, error, subtotalUSD, totalUSD, subtotalBsS, totalBsS, effectiveTotalUSD]);
 
   const actionsValue = useMemo(() => ({
     addItem,

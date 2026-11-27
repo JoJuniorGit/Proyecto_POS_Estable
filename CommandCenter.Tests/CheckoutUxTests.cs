@@ -98,7 +98,7 @@ public class CheckoutUxTests
         Assert.False(vm.HasValidPayments);
         Assert.False(vm.IsFullLiquidation);
         Assert.False(vm.CanFinalize);
-        Assert.Equal("COBRAR Y FINALIZAR", vm.FinalizeSaleButtonLabel);
+        Assert.Equal("Cobrar y Finalizar", vm.FinalizeSaleButtonLabel);
         Assert.Contains("Agregue al menos un método de pago", vm.ValidationHelperMessage);
     }
 
@@ -133,7 +133,7 @@ public class CheckoutUxTests
         Assert.True(vm.HasValidPayments);
         Assert.False(vm.IsFullLiquidation);
         Assert.False(vm.CanFinalize);
-        Assert.Equal("COBRAR Y FINALIZAR", vm.FinalizeSaleButtonLabel);
+        Assert.Equal("Cobrar y Finalizar", vm.FinalizeSaleButtonLabel);
         Assert.Contains("no cubre el 100%", vm.ValidationHelperMessage);
     }
 
@@ -168,7 +168,7 @@ public class CheckoutUxTests
         Assert.True(vm.HasValidPayments);
         Assert.True(vm.IsFullLiquidation);
         Assert.True(vm.CanFinalize);
-        Assert.Equal("COBRAR Y FINALIZAR", vm.FinalizeSaleButtonLabel);
+        Assert.Equal("Cobrar y Finalizar", vm.FinalizeSaleButtonLabel);
         Assert.Null(vm.ValidationHelperMessage);
     }
 
@@ -207,7 +207,7 @@ public class CheckoutUxTests
         Assert.True(vm.HasValidPayments);
         Assert.False(vm.IsFullLiquidation);
         Assert.True(vm.CanFinalize); // In override mode, partial abonos can be finalized!
-        Assert.Equal("REGISTRAR ABONO", vm.FinalizeSaleButtonLabel);
+        Assert.Equal("Registrar abono", vm.FinalizeSaleButtonLabel);
     }
 
     [Fact]
@@ -245,7 +245,7 @@ public class CheckoutUxTests
         Assert.True(vm.HasValidPayments);
         Assert.True(vm.IsFullLiquidation);
         Assert.True(vm.CanFinalize);
-        Assert.Equal("LIQUIDAR CUENTA", vm.FinalizeSaleButtonLabel);
+        Assert.Equal("Liquidar cuenta", vm.FinalizeSaleButtonLabel);
     }
 
     [Fact]
@@ -322,7 +322,7 @@ public class CheckoutUxTests
         Assert.True(vm.IsCustodyAllowed);
         Assert.True(vm.CanFinalize);
         Assert.Null(vm.PendingPickupErrorMessage);
-        Assert.Equal("COBRAR Y ENVIAR A RETIRO", vm.FinalizeSaleButtonLabel);
+        Assert.Equal("Cobrar y enviar a retiro", vm.FinalizeSaleButtonLabel);
     }
 
     [Fact]
@@ -368,7 +368,7 @@ public class CheckoutUxTests
         Assert.False(vm.IsDefaultCustomer);
         Assert.True(vm.IsCustodyAllowed);
         Assert.True(vm.CanFinalize);
-        Assert.Equal("COBRAR Y ENVIAR A RETIRO", vm.FinalizeSaleButtonLabel);
+        Assert.Equal("Cobrar y enviar a retiro", vm.FinalizeSaleButtonLabel);
     }
 
     [Fact]

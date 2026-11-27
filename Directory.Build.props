@@ -10,5 +10,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- Build incremental: reutiliza el compilador compartido, permite paralelismo
+         entre proyectos y publica reference assemblies para evitar recompilaciones
+         en cascada cuando solo cambia un consumidor. -->
+    <UseSharedCompilation>true</UseSharedCompilation>
+    <BuildInParallel>true</BuildInParallel>
+    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
   </PropertyGroup>
 </Project>

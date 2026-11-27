@@ -44,7 +44,7 @@ public class BulkPricesControllerTests
 
         var objectResult = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(403, objectResult.StatusCode);
-        inventory.Verify(i => i.BulkUpdatePricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>()), Times.Never);
+        inventory.Verify(i => i.BulkUpdatePricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>(), It.IsAny<BulkPriceIdempotency?>()), Times.Never);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class BulkPricesControllerTests
     public async Task ApplyBulkPricesAsync_WhenServiceThrowsArgument_Returns400()
     {
         var (controller, inventory) = CreateController();
-        inventory.Setup(i => i.BulkUpdatePricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>()))
+        inventory.Setup(i => i.BulkUpdatePricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>(), It.IsAny<BulkPriceIdempotency?>()))
             .ThrowsAsync(new ArgumentException("El precio al mayor no puede ser mayor al precio al detal."));
 
         var result = await controller.ApplyBulkPricesAsync(new BulkPriceUpdateRequestDto());
@@ -78,7 +78,7 @@ public class BulkPricesControllerTests
     public async Task ApplyBulkPricesAsync_WhenServiceThrowsConcurrencyConflict_Returns409()
     {
         var (controller, inventory) = CreateController();
-        inventory.Setup(i => i.BulkUpdatePricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>()))
+        inventory.Setup(i => i.BulkUpdatePricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>(), It.IsAny<BulkPriceIdempotency?>()))
             .ThrowsAsync(new DbUpdateConcurrencyException("stale xmin"));
 
         var result = await controller.ApplyBulkPricesAsync(new BulkPriceUpdateRequestDto());
@@ -91,7 +91,7 @@ public class BulkPricesControllerTests
     public async Task ApplyBulkPricesAsync_WhenServiceThrowsUnauthorized_Returns403()
     {
         var (controller, inventory) = CreateController();
-        inventory.Setup(i => i.BulkUpdatePricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>()))
+        inventory.Setup(i => i.BulkUpdatePricesAsync(It.IsAny<BulkPriceUpdateRequestDto>(), It.IsAny<CancellationToken>(), It.IsAny<BulkPriceIdempotency?>()))
             .ThrowsAsync(new UnauthorizedAccessException("sin permiso"));
 
         var result = await controller.ApplyBulkPricesAsync(new BulkPriceUpdateRequestDto());

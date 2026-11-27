@@ -32,7 +32,7 @@ public sealed record BulkPriceSelection(
 public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposable
 {
     public const int MaxSelectionSize = 1000;
-    public const string NoOperationsMessage = "Seleccione al menos una operación para editar.";
+    public const string NoOperationsMessage = "Configure al menos una operación o una modificación en Redondeo y protección de margen.";
     public const string InvalidValueMessage = "Ingrese un valor numérico válido mayor o igual a cero.";
     public const string InvalidMarginFloorMessage = "Ingrese un piso de margen numérico válido mayor o igual a cero.";
     public const string PreviewRequiredMessage = "Genere la vista previa antes de aplicar los cambios.";
@@ -46,12 +46,17 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         new BulkPriceModeOption(BulkPriceMode.DecreasePercent, "Disminuir %")
     };
 
-    // 8.182-T2 (S6): reglas de redondeo por canal (mismos labels para ambos combos). El granulado
-    // por sub-opción replica el enum del contrato congelado de T1.
-    private static readonly IReadOnlyList<BulkPriceRoundingOption> SharedRoundingRuleOptions = new[]
+    // 8.182-T2 (S6) + Spec V0.15: separación de capas — el redondeo USD por canal (exacto /
+    // psicológico) y la proyección Bs.S de efectivo (capa cash) usan listas exclusivas.
+    private static readonly IReadOnlyList<BulkPriceRoundingOption> UsdRoundingRuleOptionsShared = new[]
     {
         new BulkPriceRoundingOption(RoundingRuleType.ExactMath, "Sin redondeo (exacto)"),
-        new BulkPriceRoundingOption(RoundingRuleType.UsdPsychological, "Psicológico USD (.99/.95/.75/.50/.25)"),
+        new BulkPriceRoundingOption(RoundingRuleType.UsdPsychological, "Psicológico USD (.99/.95/.75/.50/.25)")
+    };
+
+    private static readonly IReadOnlyList<BulkPriceRoundingOption> CashBsRoundingRuleOptionsShared = new[]
+    {
+        new BulkPriceRoundingOption(RoundingRuleType.ExactMath, "Sin redondeo"),
         new BulkPriceRoundingOption(RoundingRuleType.VesCashFriendlyInteger, "Efectivo rápido Bs.S (entero)"),
         new BulkPriceRoundingOption(RoundingRuleType.VesCashFriendlyStep5, "(múltiplo de 5)"),
         new BulkPriceRoundingOption(RoundingRuleType.VesCashFriendlyStep10, "(múltiplo de 10)")
@@ -60,6 +65,8 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     private readonly IProductService _productService;
     private readonly IDialogService? _dialogService;
     private readonly BulkPriceSelection _selection;
+    private readonly RoundingRuleType _globalUsdRoundingRule;
+    private readonly RoundingRuleType _globalCashBsRoundingRule;
     private BulkPriceUpdateRequestDto? _previewedRequest;
 
     /// <summary>Resultado del cierre: true cuando la actualización se aplicó y persistió.</summary>
@@ -69,8 +76,11 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
 
     public ObservableCollection<BulkPricePreviewRowViewModel> PreviewRows { get; } = new();
 
-    /// <summary>8.182-T2 (S6): opciones del combo de regla de redondeo (una por sub-opción del enum).</summary>
-    public IReadOnlyList<BulkPriceRoundingOption> RoundingRuleOptions => SharedRoundingRuleOptions;
+    /// <summary>Spec V0.15: opciones USD-only de los combos de redondeo por canal (Detal/Mayor).</summary>
+    public IReadOnlyList<BulkPriceRoundingOption> UsdRoundingRuleOptions => UsdRoundingRuleOptionsShared;
+
+    /// <summary>Spec V0.15: opciones del combo de proyección Bs.S (capa cash independiente del USD).</summary>
+    public IReadOnlyList<BulkPriceRoundingOption> CashBsRoundingRuleOptions => CashBsRoundingRuleOptionsShared;
 
     public int SelectedCount => _selection.SelectedCount;
 
@@ -82,9 +92,11 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanApply))]
+    [NotifyPropertyChangedFor(nameof(PreviewSummary))]
     private bool _hasPreview;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanPreview))]
     [NotifyPropertyChangedFor(nameof(CanApply))]
     [NotifyPropertyChangedFor(nameof(CanClose))]
     private bool _isBusy;
@@ -107,16 +119,63 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     [ObservableProperty]
     private string _statusMessage = string.Empty;
 
-    // 8.182-T2 (S6): configuración de redondeo por canal y piso de margen por lote (contrato T1).
-    // Default ExactMath sin piso = comportamiento 8.181 intacto.
+    /// <summary>Spec V0.15: el mensaje inferior se pinta ámbar cuando la vista previa no trae cambios aplicables.</summary>
     [ObservableProperty]
+    private bool _statusMessageIsWarning;
+
+    // 8.182-T2 (S6) + Spec V0.15: redondeo USD por canal, capa cash Bs.S y piso de margen por lote
+    // (contrato T1). Default ExactMath sin piso = comportamiento 8.181 intacto.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowRetailFloorInput))]
     private RoundingRuleType _retailRoundingRule = RoundingRuleType.ExactMath;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowWholesaleFloorInput))]
     private RoundingRuleType _wholesaleRoundingRule = RoundingRuleType.ExactMath;
 
+    /// <summary>
+    /// Spec V0.15: capa de proyección Bs.S de efectivo (independiente del redondeo USD); se
+    /// inicializa con la política global (CashBsRoundingRule) y viaja en el request del lote.
+    /// </summary>
     [ObservableProperty]
+    private RoundingRuleType _cashBsRoundingRule = RoundingRuleType.ExactMath;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowRetailFloorInput))]
+    [NotifyPropertyChangedFor(nameof(ShowWholesaleFloorInput))]
     private bool _enforceMinimumMarginFloor;
+
+    /// <summary>
+    /// Spec V0.15: el piso al detal se muestra SOLO con redondeo psicológico USD + protección activa.
+    /// OJO: oculto no significa ignorado — el valor tipeado NO se borra y sigue viajando/aplicando al
+    /// clamp de reducciones de margen (la visibilidad es cosmética).
+    /// </summary>
+    public bool ShowRetailFloorInput => EnforceMinimumMarginFloor && IsUsdPsychologicalRule(RetailRoundingRule);
+
+    /// <inheritdoc cref="ShowRetailFloorInput"/>
+    public bool ShowWholesaleFloorInput => EnforceMinimumMarginFloor && IsUsdPsychologicalRule(WholesaleRoundingRule);
+
+    private static bool IsUsdPsychologicalRule(RoundingRuleType rule) => rule == RoundingRuleType.UsdPsychological;
+
+    /// <summary>
+    /// Spec V0.15 (intención explícita): true cuando el usuario cambió el selector de regla USD del
+    /// detal respecto de su seed (política global al abrir), o ejecuta Solo Redondeo (sin operaciones
+    /// válidas) con esa regla activa. Volver al valor inicial = SIN touch: la política del artículo
+    /// se preserva y el motor calcula con ella.
+    /// </summary>
+    public bool TouchRetailUsdPolicy =>
+        RetailRoundingRule != _globalUsdRoundingRule
+        || (!HasValidOperationConfiguration && RetailRoundingRule != RoundingRuleType.ExactMath);
+
+    /// <inheritdoc cref="TouchRetailUsdPolicy"/>
+    public bool TouchWholesaleUsdPolicy =>
+        WholesaleRoundingRule != _globalUsdRoundingRule
+        || (!HasValidOperationConfiguration && WholesaleRoundingRule != RoundingRuleType.ExactMath);
+
+    /// <inheritdoc cref="TouchRetailUsdPolicy"/>
+    public bool TouchCashBsPolicy =>
+        CashBsRoundingRule != _globalCashBsRoundingRule
+        || (!HasValidOperationConfiguration && CashBsRoundingRule != RoundingRuleType.ExactMath);
 
     /// <summary>Piso de margen al detal (%); vacío = sin piso. Se ignora si el toggle está apagado.</summary>
     [ObservableProperty]
@@ -129,22 +188,37 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     /// <summary>true cuando la vista previa tiene filas bloqueantes (400: negativos, topes, mayor&gt;detal).</summary>
     public bool HasPreviewErrors => PreviewRows.Any(row => row.IsError);
 
+    /// <summary>Spec V0.15: el overlay de estado vacío de la grilla solo desaparece con filas reales.</summary>
+    public bool HasPreviewItems => PreviewRows.Count > 0;
+
     public bool HasApplied { get; private set; }
 
     public int AppliedCount { get; private set; }
 
-    public bool CanApply => HasPreview && !HasPreviewErrors && PreviewUpdatedCount > 0 && !IsBusy;
+    /// <summary>
+    /// Spec V0.15: habilitación OR de la Vista previa — al menos una operación marcada con valor
+    /// válido O una modificación activa en "Redondeo y protección de margen" (regla USD/cash no
+    /// exacta, o protección de piso con piso numérico definido en algún canal).
+    /// </summary>
+    public bool CanPreview => !IsBusy && (HasValidOperationConfiguration || HasRoundingConfiguration);
+
+    /// <summary>Spec V0.15: Aplicar hereda la guarda OR y exige una vista previa vigente con cambios.</summary>
+    public bool CanApply => CanPreview && HasPreview && !HasPreviewErrors && PreviewUpdatedCount > 0;
 
     /// <summary>8.181-T2 (fix verificación): el cierre (botón/X/Esc) se bloquea con una operación en vuelo.</summary>
     public bool CanClose => !IsBusy;
 
+    /// <summary>
+    /// Resumen de la barra intermedia: sin vista previa queda vacío (la vista oculta el TextBlock) y
+    /// nunca repite el conteo de seleccionados, que ya vive en <see cref="SelectionSummary"/>.
+    /// </summary>
     public string PreviewSummary => HasPreview
-        ? $"Seleccionados: {SelectedCount} · A actualizar: {PreviewUpdatedCount} · Omitidos: {PreviewSkippedCount}"
-        : $"Seleccionados: {SelectedCount}";
+        ? $"A actualizar: {PreviewUpdatedCount} · Omitidos: {PreviewSkippedCount}"
+        : string.Empty;
 
     public string ExchangeRateSummary => ExchangeRate > 0
         ? $"Tasa BCV aplicada: {CurrencyDisplay.Number(ExchangeRate)}"
-        : "Sin tasa configurada: se conserva el Bs.S previo de cada producto.";
+        : $"Sin tasa configurada: se conserva el {CurrencyDisplay.LocalCurrencySymbol} previo de cada producto.";
 
     public BulkPriceEditDialogViewModel(IProductService productService, IDialogService? dialogService, BulkPriceSelection selection, PricingPoliciesDto? pricingPolicies = null)
     {
@@ -155,24 +229,28 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         _dialogService = dialogService;
         _selection = selection;
 
-        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.RetailPrice, "Precio Detal", "USD", SharedModeOptions));
-        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.WholesalePrice, "Precio Mayor", "USD", SharedModeOptions));
+        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.RetailPrice, "Precio Detal", CurrencyDisplay.PrimaryCurrencyCode, SharedModeOptions));
+        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.WholesalePrice, "Precio Mayor", CurrencyDisplay.PrimaryCurrencyCode, SharedModeOptions));
         Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.RetailMargin, "Margen Detal", "%", SharedModeOptions));
         Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.WholesaleMargin, "Margen Mayor", "%", SharedModeOptions));
-        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.CostPrice, "Costo", "USD", SharedModeOptions));
+        Operations.Add(new BulkPriceOperationRowViewModel(BulkPriceField.CostPrice, "Costo", CurrencyDisplay.PrimaryCurrencyCode, SharedModeOptions));
 
         foreach (var row in Operations)
         {
             row.PropertyChanged += OnOperationRowPropertyChanged;
         }
 
-        // 8.184-T4 (S6): la política global pre-inicializa las reglas de lote y el toggle de piso
-        // (el usuario puede cambiarlos igual). Sin políticas rigen los defaults ExactMath/sin piso
-        // = comportamiento 8.181 intacto.
+        // 8.184-T4 (S6) + Spec V0.15: la política global pre-inicializa las reglas USD por canal, la
+        // capa cash Bs.S y el toggle de piso (el usuario puede cambiarlos igual). Sin políticas rigen
+        // los defaults ExactMath/sin piso = comportamiento 8.181 intacto. Los baselines globales se
+        // retienen para que el motor compare "null hereda global" sin materializar la herencia.
+        _globalUsdRoundingRule = pricingPolicies?.UsdRoundingRule ?? RoundingRuleType.ExactMath;
+        _globalCashBsRoundingRule = pricingPolicies?.CashBsRoundingRule ?? RoundingRuleType.ExactMath;
         if (pricingPolicies is not null)
         {
             RetailRoundingRule = pricingPolicies.UsdRoundingRule;
             WholesaleRoundingRule = pricingPolicies.UsdRoundingRule;
+            CashBsRoundingRule = pricingPolicies.CashBsRoundingRule;
             EnforceMinimumMarginFloor = pricingPolicies.EnforceMinimumMarginFloor;
         }
     }
@@ -192,6 +270,13 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
             return;
         }
 
+        if (operations.Count == 0 && !HasRoundingConfiguration)
+        {
+            // Guarda OR (Spec V0.15): sin operaciones marcadas, la tarjeta 2 debe aportar la modificación.
+            ErrorMessage = NoOperationsMessage;
+            return;
+        }
+
         if (!TryBuildRoundingSettings(out var retailFloor, out var wholesaleFloor))
         {
             return;
@@ -206,6 +291,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
             StatusMessage = result.UpdatedCount > 0
                 ? "Vista previa lista: revise los cambios antes de aplicar."
                 : "La vista previa no contiene cambios a aplicar.";
+            StatusMessageIsWarning = result.UpdatedCount == 0;
         }
         catch (Exception ex)
         {
@@ -213,6 +299,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
             InvalidatePreview();
             ErrorMessage = ex.Message;
             StatusMessage = string.Empty;
+            StatusMessageIsWarning = false;
         }
         finally
         {
@@ -264,12 +351,14 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
             AppliedCount = result.UpdatedCount;
             HasApplied = true;
             StatusMessage = $"{AppliedCount} producto(s) actualizado(s) correctamente.";
+            StatusMessageIsWarning = false;
         }
         catch (Exception ex)
         {
             // 400/409 y fallos de red quedan visibles sin cerrar el diálogo (la vista previa sigue vigente).
             ErrorMessage = ex.Message;
             StatusMessage = string.Empty;
+            StatusMessageIsWarning = false;
         }
         finally
         {
@@ -308,19 +397,44 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     }
 
     private void OnOperationRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
-        => InvalidatePreviewOnConfigurationChange();
+        => OnConfigurationChanged();
 
-    // 8.182-T2 (S6): hooks generados por [ObservableProperty]; la vista previa solo representa la
-    // configuración con la que se generó, así que cualquier ajuste de reglas/pisos la descarta.
-    partial void OnRetailRoundingRuleChanged(RoundingRuleType value) => InvalidatePreviewOnConfigurationChange();
+    // 8.182-T2 (S6) + Spec V0.15: hooks generados por [ObservableProperty]; la vista previa solo
+    // representa la configuración con la que se generó y la guarda OR (CanPreview) depende de estos
+    // ajustes, así que cualquier cambio notifica la guarda y descarta una vista previa vigente.
+    partial void OnRetailRoundingRuleChanged(RoundingRuleType value) => OnConfigurationChanged();
 
-    partial void OnWholesaleRoundingRuleChanged(RoundingRuleType value) => InvalidatePreviewOnConfigurationChange();
+    partial void OnWholesaleRoundingRuleChanged(RoundingRuleType value) => OnConfigurationChanged();
 
-    partial void OnEnforceMinimumMarginFloorChanged(bool value) => InvalidatePreviewOnConfigurationChange();
+    partial void OnCashBsRoundingRuleChanged(RoundingRuleType value) => OnConfigurationChanged();
 
-    partial void OnRetailMarginFloorTextChanged(string value) => InvalidatePreviewOnConfigurationChange();
+    partial void OnEnforceMinimumMarginFloorChanged(bool value) => OnConfigurationChanged();
 
-    partial void OnWholesaleMarginFloorTextChanged(string value) => InvalidatePreviewOnConfigurationChange();
+    partial void OnRetailMarginFloorTextChanged(string value) => OnConfigurationChanged();
+
+    partial void OnWholesaleMarginFloorTextChanged(string value) => OnConfigurationChanged();
+
+    // Spec V0.15: guarda OR — operación marcada con valor válido o modificación de redondeo/protección.
+    private bool HasValidOperationConfiguration =>
+        Operations.Any(row => row.IsEnabled && TryParseValue(row.ValueText, out var value) && value >= 0m);
+
+    private bool HasRoundingConfiguration =>
+        RetailRoundingRule != RoundingRuleType.ExactMath
+        || WholesaleRoundingRule != RoundingRuleType.ExactMath
+        || CashBsRoundingRule != RoundingRuleType.ExactMath
+        || (EnforceMinimumMarginFloor && (HasDefinedFloor(RetailMarginFloorText) || HasDefinedFloor(WholesaleMarginFloorText)));
+
+    private static bool HasDefinedFloor(string? text) =>
+        TryParseValue(text, out var value) && value > 0m;
+
+    private void OnConfigurationChanged()
+    {
+        OnPropertyChanged(nameof(CanPreview));
+        OnPropertyChanged(nameof(TouchRetailUsdPolicy));
+        OnPropertyChanged(nameof(TouchWholesaleUsdPolicy));
+        OnPropertyChanged(nameof(TouchCashBsPolicy));
+        InvalidatePreviewOnConfigurationChange();
+    }
 
     private void InvalidatePreviewOnConfigurationChange()
     {
@@ -337,14 +451,9 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
     private bool TryBuildOperations(out List<BulkPriceOperationDto> operations)
     {
         operations = new List<BulkPriceOperationDto>();
-        var enabledRows = Operations.Where(row => row.IsEnabled).ToList();
-        if (enabledRows.Count == 0)
-        {
-            ErrorMessage = NoOperationsMessage;
-            return false;
-        }
-
-        foreach (var row in enabledRows)
+        // Spec V0.15: sin filas marcadas la lista viaja vacía — el modo "Solo Redondeo" es válido si
+        // la tarjeta 2 aporta una modificación (validación OR en Preview y en CanPreview).
+        foreach (var row in Operations.Where(row => row.IsEnabled))
         {
             if (!TryParseValue(row.ValueText, out var value) || value < 0m)
             {
@@ -372,10 +481,20 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         Filter = _selection.Filter,
         SelectAllFiltered = _selection.SelectAllFiltered,
         Operations = operations,
-        // 8.182-T2 (S6): reglas/pisos del lote; los pisos viajan solo con el toggle activo y valor
-        // válido (vacío = null = sin piso para ese canal).
+        // 8.182-T2 (S6) + Spec V0.15: reglas USD por canal, capa cash Bs.S y pisos del lote; los pisos
+        // viajan solo con el toggle activo y valor válido (vacío = null = sin piso para ese canal).
         RetailRoundingRule = RetailRoundingRule,
         WholesaleRoundingRule = WholesaleRoundingRule,
+        CashBsRoundingRule = CashBsRoundingRule,
+        // Spec V0.15: baselines globales sembrados — el motor compara la herencia contra ellos y solo
+        // materializa la política del artículo cuando difiere de la efectiva.
+        GlobalUsdRoundingRule = _globalUsdRoundingRule,
+        GlobalCashBsRoundingRule = _globalCashBsRoundingRule,
+        // Spec V0.15 (intención explícita): solo los canales con cambio explícito (o Solo Redondeo
+        // activo) materializan política; sin touch el motor preserva la del artículo.
+        TouchRetailUsdPolicy = TouchRetailUsdPolicy,
+        TouchWholesaleUsdPolicy = TouchWholesaleUsdPolicy,
+        TouchCashBsPolicy = TouchCashBsPolicy,
         EnforceMinimumMarginFloor = EnforceMinimumMarginFloor,
         RetailMarginFloorPct = retailFloor,
         WholesaleMarginFloorPct = wholesaleFloor
@@ -430,18 +549,16 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         PreviewRows.Clear();
         foreach (var row in result.Rows)
         {
-            // 8.182-T2 (S6): la unidad de la traza de redondeo (USD/Bs.S) depende de la regla del
-            // canal con la que se generó la vista previa.
-            PreviewRows.Add(BulkPricePreviewRowViewModel.FromDto(
-                row,
-                request.RetailRoundingRule,
-                request.WholesaleRoundingRule));
+            // Spec V0.15: la unidad de la traza de redondeo (USD/Bs.S) la define la capa de proyección
+            // cash (CashBsRoundingRule) con la que se generó la vista previa.
+            PreviewRows.Add(BulkPricePreviewRowViewModel.FromDto(row, request.CashBsRoundingRule));
         }
 
         PreviewUpdatedCount = result.UpdatedCount;
         PreviewSkippedCount = result.SkippedCount;
         ExchangeRate = result.ExchangeRate;
         HasPreview = true;
+        OnPropertyChanged(nameof(HasPreviewItems));
         OnPropertyChanged(nameof(HasPreviewErrors));
         OnPropertyChanged(nameof(CanApply));
     }
@@ -454,6 +571,7 @@ public partial class BulkPriceEditDialogViewModel : ObservableObject, IDisposabl
         PreviewSkippedCount = 0;
         ExchangeRate = 0m;
         HasPreview = false;
+        OnPropertyChanged(nameof(HasPreviewItems));
         OnPropertyChanged(nameof(HasPreviewErrors));
         OnPropertyChanged(nameof(CanApply));
     }
@@ -513,9 +631,14 @@ public partial class BulkPriceOperationRowViewModel : ObservableObject
     [ObservableProperty]
     private string _valueText = string.Empty;
 
-    /// <summary>Pista del valor esperado según el modo (absoluto en la unidad del campo o porcentaje).</summary>
+    /// <summary>Spec V0.15: true para las filas de margen, cuyo Δ en modos porcentuales se expresa en puntos porcentuales aditivos.</summary>
+    public bool IsMarginField => Field is BulkPriceField.RetailMargin or BulkPriceField.WholesaleMargin;
+
+    /// <summary>Pista del valor esperado según el modo (absoluto en la unidad del campo o porcentaje/puntos porcentuales).</summary>
     public string ValueHint => IsEnabled && SelectedMode != BulkPriceMode.SetFixed
-        ? "Porcentaje sobre el valor actual"
+        ? IsMarginField
+            ? "Puntos porcentuales sobre el margen actual"
+            : "Porcentaje sobre el valor actual"
         : $"Valor absoluto ({_unitHint})";
 
     public BulkPriceOperationRowViewModel(BulkPriceField field, string label, string unitHint, IReadOnlyList<BulkPriceModeOption> modeOptions)
@@ -582,21 +705,23 @@ public sealed class BulkPriceFieldChangeViewModel
 
     public static BulkPriceFieldChangeViewModel FromDto(
         BulkPriceFieldChangeDto dto,
-        RoundingRuleType retailRule,
-        RoundingRuleType wholesaleRule)
+        RoundingRuleType cashBsRoundingRule)
     {
         var isMargin = dto.Field is BulkPriceField.RetailMargin or BulkPriceField.WholesaleMargin;
+        // Spec V0.15: la transición de márgenes se muestra con el formato 2dp del diálogo
+        // (CurrencyDisplay, p. ej. "10,00% → 20,00%") para reflejar la semántica de pp aditivos.
         string Format(decimal value) => isMargin
-            ? $"{value.ToString("0.##", CultureInfo.InvariantCulture)}%"
+            ? $"{CurrencyDisplay.Number(value)}%"
             : $"${CurrencyDisplay.Number(value)}";
 
         string? bsSText = dto.BeforeBsS.HasValue || dto.AfterBsS.HasValue
             ? $"Bs.S {CurrencyDisplay.Number(dto.BeforeBsS ?? 0m)} → {CurrencyDisplay.Number(dto.AfterBsS ?? 0m)}"
             : null;
 
-        // 8.182-T2 (S6): la traza llega solo cuando la regla del canal movió el precio y está
-        // expresada en la unidad de esa regla: USD (psicológico) o Bs.S (efectivo rápido).
-        bool isBsSUnit = IsVesCashFriendlyRule(ResolveChannelRule(dto.Field, retailRule, wholesaleRule));
+        // Spec V0.15: la traza se rinde en la unidad de la capa que la produjo — con la proyección
+        // cash activa (VesCashFriendly*) viaja en Bs.S y reemplaza la traza USD del psicológico; con
+        // la capa cash apagada la traza del redondeo USD por canal queda en dólares.
+        bool isBsSUnit = IsVesCashFriendlyRule(cashBsRoundingRule);
 
         return new BulkPriceFieldChangeViewModel
         {
@@ -628,22 +753,13 @@ public sealed class BulkPriceFieldChangeViewModel
         };
     }
 
-    private static RoundingRuleType ResolveChannelRule(
-        BulkPriceField field,
-        RoundingRuleType retailRule,
-        RoundingRuleType wholesaleRule) => field switch
-    {
-        BulkPriceField.WholesalePrice or BulkPriceField.WholesaleMargin => wholesaleRule,
-        _ => retailRule
-    };
-
     private static bool IsVesCashFriendlyRule(RoundingRuleType rule)
         => rule is RoundingRuleType.VesCashFriendlyInteger
             or RoundingRuleType.VesCashFriendlyStep5
             or RoundingRuleType.VesCashFriendlyStep10;
 
     private static string FormatRoundingUnit(decimal value, bool isBsS)
-        => isBsS ? $"Bs.S {CurrencyDisplay.Number(value)}" : $"${CurrencyDisplay.Number(value)}";
+        => isBsS ? $"{CurrencyDisplay.LocalCurrencySymbol} {CurrencyDisplay.Number(value)}" : $"{CurrencyDisplay.PrimaryCurrencySymbol}{CurrencyDisplay.Number(value)}";
 
     private static string FormatRoundingDelta(decimal value, bool isBsS)
     {
@@ -674,6 +790,9 @@ public sealed class BulkPricePreviewRowViewModel
 
     public bool IsError { get; init; }
 
+    /// <summary>Spec V0.15: nota de política del lote (p. ej. reglas USD distintas por canal); null si no aplica.</summary>
+    public string? PolicyNote { get; init; }
+
     public IReadOnlyList<BulkPriceFieldChangeViewModel> Changes { get; init; } = Array.Empty<BulkPriceFieldChangeViewModel>();
 
     /// <summary>8.182-T2 (S6): margen efectivo al detal sobre el precio FINAL; null si no aplica.</summary>
@@ -694,15 +813,86 @@ public sealed class BulkPricePreviewRowViewModel
     public string RoundingDeltaText => BuildRoundingTrace(change => change.RoundingDeltaText);
 
     /// <summary>
-    /// 8.183-T2 (R4): columna "Bs.S efectivo (proy.)" — proyección en caliente por canal con la tasa
-    /// del día (una línea por canal; "—" si ningún canal tiene proyección). Es informativa: nunca
-    /// representa un valor persistido (el Bs.S guardado sigue siendo el canónico 8.104).
+    /// Spec V0.15 (tabla consolidada): columna "PRECIO USD (ANTES → DESPUÉS)" — una línea por canal
+    /// en USD ("Detal: $1,20 → $1,50"), sin Bs.S. "—" si ningún canal viaja con cambio de precio.
     /// </summary>
-    public string CashFriendlyText => BuildRoundingTrace(change => change.CashFriendlyText);
+    public string UsdTransitionText
+    {
+        get
+        {
+            var lines = Changes
+                .Where(change => change.Field is BulkPriceField.RetailPrice or BulkPriceField.WholesalePrice)
+                .Select(change => $"{change.FieldLabel}: {change.BeforeText} → {change.AfterText}")
+                .ToList();
+
+            return lines.Count == 0 ? "—" : string.Join(Environment.NewLine, lines);
+        }
+    }
+
+    /// <summary>
+    /// 8.183-T2 (R4) + Spec V0.15: columna "BS.S EFECTIVO (PROY.)" — una línea por canal con la
+    /// proyección redondeada y su delta de redondeo entre paréntesis cuando es distinto de cero
+    /// ("Detal: Bs.S 875,00 (+Bs.S 3,68)"); "—" sin proyección. El matemático exacto viaja en
+    /// <see cref="CashFriendlyToolTip"/>. NUNCA representa un valor persistido (canónico 8.104).
+    /// </summary>
+    public string CashFriendlyText
+    {
+        get
+        {
+            var lines = Changes
+                .Where(change => change.CashFriendlyAfterBsS.HasValue)
+                .Select(change => change.RoundingDelta is { } delta && delta != 0m && change.RoundingDeltaText is { } deltaText
+                    ? $"{change.FieldLabel}: {change.CashFriendlyText} ({deltaText})"
+                    : $"{change.FieldLabel}: {change.CashFriendlyText}")
+                .ToList();
+
+            return lines.Count == 0 ? "—" : string.Join(Environment.NewLine, lines);
+        }
+    }
+
+    /// <summary>
+    /// Spec V0.15: ToolTip de la columna PROY. con el Bs.S matemático exacto por canal (la entrada
+    /// de <c>PreRoundingValue</c> de la traza cash); null si ningún canal tiene traza.
+    /// </summary>
+    public string? CashFriendlyToolTip
+    {
+        get
+        {
+            var lines = Changes
+                .Where(change => change.CashFriendlyAfterBsS.HasValue && change.PreRoundingValue.HasValue)
+                .Select(change => $"{change.FieldLabel}: {CurrencyDisplay.LocalCurrencySymbol} {CurrencyDisplay.Number(change.PreRoundingValue!.Value)}")
+                .ToList();
+
+            return lines.Count == 0 ? null : string.Join(Environment.NewLine, lines);
+        }
+    }
 
     public string EffectiveRetailMarginText => FormatMarginPercent(EffectiveRetailMarginPct);
 
     public string EffectiveWholesaleMarginText => FormatMarginPercent(EffectiveWholesaleMarginPct);
+
+    /// <summary>
+    /// Spec V0.15: columna "MARGEN EFECTIVO %" — "Detal: 62,3%" arriba / "Mayor: 22,95%" abajo en la
+    /// misma celda; "—" si el backend no informó ningún margen efectivo.
+    /// </summary>
+    public string EffectiveMarginsText
+    {
+        get
+        {
+            var lines = new List<string>();
+            if (EffectiveRetailMarginPct.HasValue)
+            {
+                lines.Add($"Detal: {FormatMarginPercent(EffectiveRetailMarginPct)}");
+            }
+
+            if (EffectiveWholesaleMarginPct.HasValue)
+            {
+                lines.Add($"Mayor: {FormatMarginPercent(EffectiveWholesaleMarginPct)}");
+            }
+
+            return lines.Count == 0 ? "—" : string.Join(Environment.NewLine, lines);
+        }
+    }
 
     public string StatusText => IsError
         ? $"Error: {SkipReason}"
@@ -712,24 +902,49 @@ public sealed class BulkPricePreviewRowViewModel
 
     public string StatusColor => IsError ? "#DC2626" : HasSkipReason ? "#B45309" : "#16A34A";
 
+    /// <summary>
+    /// Spec V0.15: píldora compacta de ESTADO — "Actualiza" / motivo corto en UNA línea (texto antes
+    /// del primer ':') / "Error"; el motivo completo y la nota de política viajan en el tooltip.
+    /// </summary>
+    public string StatusBadgeText => IsError ? "Error" : HasSkipReason ? ShortSkipReason : "Actualiza";
+
+    public string StatusBadgeBackground => IsError ? "#FEE2E2" : HasSkipReason ? "#E2E8F0" : "#DCFCE7";
+
+    public string StatusBadgeForeground => IsError ? "#B91C1C" : HasSkipReason ? "#475569" : "#166534";
+
+    /// <summary>Spec V0.15: tooltip del ESTADO — detalle completo + nota de política cuando existe.</summary>
+    public string StatusToolTip => string.IsNullOrWhiteSpace(PolicyNote)
+        ? StatusText
+        : $"{StatusText}{Environment.NewLine}{PolicyNote}";
+
+    private string ShortSkipReason
+    {
+        get
+        {
+            var reason = SkipReason ?? string.Empty;
+            var separator = reason.IndexOf(':');
+            return separator > 0 ? reason[..separator] : reason;
+        }
+    }
+
     public string ChangesSummary => Changes.Count == 0
         ? "—"
         : string.Join(Environment.NewLine, Changes.Select(change => change.Summary));
 
     public static BulkPricePreviewRowViewModel FromDto(
         BulkPricePreviewRowDto dto,
-        RoundingRuleType retailRule,
-        RoundingRuleType wholesaleRule) => new()
+        RoundingRuleType cashBsRoundingRule) => new()
     {
         ProductId = dto.ProductId,
         SKU = dto.SKU,
         Name = dto.Name,
         SkipReason = dto.SkipReason,
         IsError = dto.IsError,
+        PolicyNote = dto.PolicyNote,
         EffectiveRetailMarginPct = dto.EffectiveRetailMarginPct,
         EffectiveWholesaleMarginPct = dto.EffectiveWholesaleMarginPct,
         Changes = dto.Changes
-            .Select(change => BulkPriceFieldChangeViewModel.FromDto(change, retailRule, wholesaleRule))
+            .Select(change => BulkPriceFieldChangeViewModel.FromDto(change, cashBsRoundingRule))
             .ToList()
     };
 
@@ -747,3 +962,4 @@ public sealed class BulkPricePreviewRowViewModel
     private static string FormatMarginPercent(decimal? value)
         => value.HasValue ? $"{value.Value.ToString("0.##", CultureInfo.InvariantCulture)}%" : "—";
 }
+

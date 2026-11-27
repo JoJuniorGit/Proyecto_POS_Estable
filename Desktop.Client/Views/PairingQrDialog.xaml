@@ -99,7 +99,7 @@
                                    FontSize="11" Foreground="#64748B" 
                                    TextWrapping="Wrap" TextAlignment="Center" Margin="0,8,0,8"/>
 
-                        <!-- Interface Selector & HTTPS Toggle -->
+                        <!-- Interface selector and server-advertised transport status -->
                         <StackPanel Grid.Row="3">
                             <TextBlock Text="Adaptador de Red:" FontSize="10" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,3"/>
                             <ComboBox ItemsSource="{Binding AvailableInterfaces}" 
@@ -109,12 +109,10 @@
                                       Height="40"
                                       Style="{StaticResource ModernOutlinedComboBoxStyle}"/>
                             
-                            <CheckBox IsChecked="{Binding UseHttps}" 
-                                      ToolTip="Habilita HTTPS (Puerto 5001) para permitir el uso del escáner por cámara en teléfonos y tablets."
-                                      FontSize="11" Margin="0,2,0,0"
-                                      Foreground="#334155">
-                                <TextBlock Text="Usar HTTPS (Puerto 5001)" FontWeight="Medium"/>
-                            </CheckBox>
+                            <TextBlock Text="{Binding HttpsStatusText}"
+                                       FontSize="11" Margin="0,2,0,0"
+                                       Foreground="#334155"
+                                       TextWrapping="Wrap"/>
                         </StackPanel>
                     </Grid>
                 </Border>

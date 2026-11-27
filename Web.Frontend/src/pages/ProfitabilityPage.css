@@ -1,0 +1,393 @@
+/* F4-WU2 (Paso 14): dashboard de rentabilidad. Solo tokens existentes; sin librerías de charts. */
+:root .profitability-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+:root .profitability-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+:root .profitability-title-block {
+  min-width: 0;
+}
+
+:root .profitability-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+:root .profitability-subtitle {
+  margin: 4px 0 0;
+  max-width: 760px;
+  font-size: 0.85rem;
+}
+
+:root .profitability-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Filtros ── */
+:root .profitability-filters {
+  margin-bottom: 16px;
+}
+
+:root .profitability-filter-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+:root .profitability-filter-row + .profitability-filter-row {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+:root .profitability-filter-row-secondary {
+  align-items: flex-end;
+}
+
+:root .profitability-preset-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+:root .profitability-custom-range {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+:root .profitability-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+
+:root .profitability-filter-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+:root .profitability-filter-field .form-input {
+  min-height: 36px;
+  padding: 0.35rem 0.6rem;
+}
+
+/* ── KPIs ── */
+:root .profitability-kpis-headline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+:root .profitability-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+:root .profitability-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+
+:root .profitability-kpi-headline {
+  border-left: 4px solid var(--accent-primary);
+  background-color: var(--bg-primary);
+}
+
+:root .profitability-kpi-secondary {
+  border-left: 4px solid var(--success);
+  background-color: var(--bg-primary);
+}
+
+:root .profitability-kpi-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+:root .profitability-kpi-value {
+  color: var(--text-primary);
+  font-size: 1.35rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+:root .profitability-kpi-headline .profitability-kpi-value {
+  font-size: 1.9rem;
+  color: var(--accent-primary);
+}
+
+:root .profitability-kpi-secondary .profitability-kpi-value {
+  font-size: 1.65rem;
+  color: var(--success);
+}
+
+:root .profitability-kpi-hint {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+/* ── Cobertura ── */
+:root .profitability-coverage {
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+:root .profitability-coverage.is-warning {
+  border-color: var(--warning);
+  background-color: var(--warning-light);
+}
+
+:root .profitability-coverage-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+:root .profitability-coverage-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  font-size: 0.8rem;
+}
+
+:root .profitability-coverage-note {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+:root .profitability-coverage-global {
+  color: var(--warning);
+}
+
+/* ── Toggle y estados ── */
+:root .profitability-view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+:root .profitability-loading,
+:root .profitability-error,
+:root .profitability-export-status {
+  margin-bottom: 14px;
+}
+
+:root .profitability-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+:root .profitability-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 16px;
+  text-align: center;
+  background-color: var(--bg-primary);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* ── Gráfico SVG ── */
+:root .profitability-chart-card {
+  margin-bottom: 16px;
+}
+
+:root .profitability-section-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+:root .profitability-section-subtitle {
+  margin: 3px 0 12px;
+  font-size: 0.75rem;
+}
+
+:root .profitability-chart-scroll {
+  overflow-x: auto;
+}
+
+:root .profitability-series-svg {
+  width: 100%;
+  min-width: 520px;
+  height: auto;
+  display: block;
+}
+
+:root .profitability-zero-line {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+:root .profitability-axis-label {
+  fill: var(--text-muted);
+  font-size: 10px;
+}
+
+:root .profitability-bar-accrued {
+  fill: var(--accent-primary);
+}
+
+:root .profitability-bar-realized {
+  fill: var(--warning);
+}
+
+:root .profitability-bar-negative {
+  fill: var(--danger);
+}
+
+/* ── Tablas y barras CSS ── */
+:root .profitability-table-card {
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+:root .profitability-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+:root .profitability-grid .profitability-table-card {
+  margin-bottom: 0;
+}
+
+:root .profitability-bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 150px;
+}
+
+:root .profitability-bar-track {
+  display: inline-block;
+  flex: 1;
+  min-width: 50px;
+  height: 8px;
+  background-color: var(--bg-hover);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+:root .profitability-bar {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+}
+
+:root .profitability-bar-primary {
+  background-color: var(--accent-primary);
+}
+
+:root .profitability-bar-success {
+  background-color: var(--success);
+}
+
+/* ── Alertas ── */
+:root .profitability-alerts {
+  margin-bottom: 16px;
+}
+
+:root .profitability-alert-row.profitability-alert-warning {
+  background-color: var(--warning-light);
+}
+
+:root .profitability-alert-row.profitability-alert-critical {
+  background-color: var(--danger-light);
+}
+
+:root .profitability-alert-row.profitability-alert-info {
+  background-color: var(--info-bg);
+}
+
+:root .profitability-alert-severity {
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+:root .profitability-alert-message {
+  min-width: 180px;
+}
+
+@media (max-width: 900px) {
+  :root .profitability-header {
+    flex-direction: column;
+  }
+
+  :root .profitability-grid {
+    grid-template-columns: 1fr;
+  }
+
+  :root .profitability-kpis-headline,
+  :root .profitability-kpis {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  :root .profitability-page {
+    padding: 10px;
+  }
+
+  :root .profitability-header-actions {
+    width: 100%;
+  }
+
+  :root .profitability-filter-field {
+    min-width: 100%;
+  }
+
+  :root .profitability-kpis-headline,
+  :root .profitability-kpis {
+    grid-template-columns: 1fr;
+  }
+}

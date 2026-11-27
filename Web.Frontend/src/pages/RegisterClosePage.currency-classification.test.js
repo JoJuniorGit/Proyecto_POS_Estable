@@ -45,6 +45,19 @@ describe('RegisterClosePage — REQ-PMC-05 no local heuristic', () => {
     // Must NOT contain name-based fallback
     assert.ok(!/\.name/i.test(helperBody), 'getMethodCurrency must not use method.name');
     assert.ok(!/\.includes\(/.test(helperBody), 'getMethodCurrency must not use .includes()');
+
+    // 8.211-T4b2b2a: the fallback is the profile's local currency, not a literal Bs.S.
+    assert.ok(/normalizeCurrencyCode\(method\?\.currency\)/.test(helperBody),
+      'getMethodCurrency must normalize the persisted ISO code');
+    assert.ok(!/['"]Bs\.S['"]/.test(helperBody),
+      'getMethodCurrency must not hardcode Bs.S as the fallback');
+  });
+
+  it('renders the currency badge and amount from the persisted code', () => {
+    assert.match(source, /displayCurrencyCode\(currency\)/);
+    assert.match(source, /symbolFor\(currency\)/);
+    assert.ok(!/\{isUsd \? 'USD' : 'Bs\.S'\}/.test(source),
+      'the badge label must not be a hardcoded USD/Bs.S ternary');
   });
 
   it('payload omits the currency key from declaredAmounts', () => {

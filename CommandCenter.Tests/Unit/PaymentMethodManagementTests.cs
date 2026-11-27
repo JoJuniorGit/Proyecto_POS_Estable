@@ -260,8 +260,13 @@ public class PaymentMethodManagementTests
         mockPayment.Setup(p => p.GetAllMethodsAsync())
             .ReturnsAsync(new List<PaymentMethodDto>());
 
-        mockDialog.Setup(d => d.ShowTextInputAsync(It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync("Nuevo Digital");
+        mockDialog.Setup(d => d.ShowPaymentMethodCreationDialogAsync())
+            .ReturnsAsync(new PaymentMethodDto
+            {
+                Name = "Nuevo Digital",
+                IsCash = false,
+                RequiresReference = false
+            });
 
         PaymentMethodDto? createdDto = null;
         mockPayment.Setup(p => p.CreateAsync(It.IsAny<PaymentMethodDto>()))
@@ -282,6 +287,54 @@ public class PaymentMethodManagementTests
         Assert.NotNull(createdDto);
         Assert.Equal("Nuevo Digital", createdDto.Name);
         Assert.False(createdDto.IsCash); // Regla obligatoria: Digital por defecto
+        Assert.Null(createdDto.Commission);
+    }
+
+    [Fact]
+    public async Task SettingsViewModel_AddNewMethodAsync_SendsTheCapturedCommission()
+    {
+        var mockPayment = new Mock<IPaymentService>();
+        var mockSettings = new Mock<ISettingsService>();
+        var mockDialog = new Mock<IDialogService>();
+
+        mockPayment.Setup(p => p.GetAllMethodsAsync())
+            .ReturnsAsync(new List<PaymentMethodDto>());
+        mockDialog.Setup(d => d.ShowPaymentMethodCreationDialogAsync())
+            .ReturnsAsync(new PaymentMethodDto
+            {
+                Name = "Tarjeta de Crédito (TDC)",
+                IsCash = false,
+                RequiresReference = true,
+                Commission = new PaymentMethodCommissionClientDto
+                {
+                    FeeType = 0,
+                    Percentage = 2.50m,
+                    CurrencyCode = "USD",
+                    IsActive = true
+                }
+            });
+
+        PaymentMethodDto? createdDto = null;
+        mockPayment.Setup(p => p.CreateAsync(It.IsAny<PaymentMethodDto>()))
+            .Callback<PaymentMethodDto>(dto => createdDto = dto)
+            .ReturnsAsync((PaymentMethodDto dto) => dto);
+
+        var session = new UserSession();
+        session.SetUser(new UserDto { Id = 1, Name = "Admin", Role = Core.Entities.UserRole.Admin });
+
+        using var vm = new SettingsViewModel(
+            mockPayment.Object,
+            mockSettings.Object,
+            session,
+            mockDialog.Object);
+
+        await vm.AddNewMethodCommand.ExecuteAsync(null);
+
+        Assert.NotNull(createdDto);
+        Assert.NotNull(createdDto.Commission);
+        Assert.Equal(0, createdDto.Commission.FeeType);
+        Assert.Equal(2.50m, createdDto.Commission.Percentage);
+        Assert.Equal("USD", createdDto.Commission.CurrencyCode);
     }
 
     [Fact]
@@ -314,5 +367,104 @@ public class PaymentMethodManagementTests
 
         mockPayment.Verify(p => p.UpdateAsync(It.Is<PaymentMethodDto>(m => m.Id == 10 && !m.IsCash)), Times.Once);
         Assert.False(vm.PaymentMethods.First().IsCash);
+    }
+
+    [Fact]
+    public async Task SettingsViewModel_TogglePaymentTypeAsync_PreservesCurrencyFromServerResponse()
+    {
+        var mockPayment = new Mock<IPaymentService>();
+        var mockSettings = new Mock<ISettingsService>();
+
+        var dto = new PaymentMethodDto
+        {
+            Id = 10,
+            Name = "Efectivo USD",
+            IsCash = true,
+            IsActive = true,
+            RequiresReference = true,
+            Currency = "USD",
+            DisplayOrder = 4
+        };
+        mockPayment.Setup(p => p.GetAllMethodsAsync())
+            .ReturnsAsync(new List<PaymentMethodDto> { dto });
+
+        // The server confirms the row with its stored currency; the replacement row must keep it
+        // instead of falling back to the DTO default ("Bs.S").
+        mockPayment.Setup(p => p.UpdateAsync(It.IsAny<PaymentMethodDto>()))
+            .ReturnsAsync((PaymentMethodDto input) => new PaymentMethodDto
+            {
+                Id = input.Id,
+                Name = input.Name,
+                IsCash = input.IsCash,
+                IsActive = input.IsActive,
+                RequiresReference = input.RequiresReference,
+                Currency = "USD",
+                DisplayOrder = input.DisplayOrder,
+                IsDeleted = false
+            });
+
+        var session = new UserSession();
+        session.SetUser(new UserDto { Id = 1, Name = "Admin", Role = Core.Entities.UserRole.Admin });
+
+        using var vm = new SettingsViewModel(
+            mockPayment.Object,
+            mockSettings.Object,
+            session);
+
+        await vm.EnsureLoadedAsync();
+        await vm.TogglePaymentTypeCommand.ExecuteAsync(vm.PaymentMethods.First());
+
+        Assert.False(vm.PaymentMethods.First().IsCash);
+        Assert.Equal("USD", vm.PaymentMethods.First().Currency);
+    }
+
+    [Fact]
+    public async Task SettingsViewModel_RenameMethodAsync_PreservesCurrencyFromServerResponse()
+    {
+        var mockPayment = new Mock<IPaymentService>();
+        var mockSettings = new Mock<ISettingsService>();
+        var mockDialog = new Mock<IDialogService>();
+
+        var dto = new PaymentMethodDto
+        {
+            Id = 11,
+            Name = "Pago Móvil Bs.S",
+            IsCash = false,
+            IsActive = true,
+            Currency = "Bs.S",
+            DisplayOrder = 2
+        };
+        mockPayment.Setup(p => p.GetAllMethodsAsync())
+            .ReturnsAsync(new List<PaymentMethodDto> { dto });
+        mockPayment.Setup(p => p.UpdateAsync(It.IsAny<PaymentMethodDto>()))
+            .ReturnsAsync((PaymentMethodDto input) => new PaymentMethodDto
+            {
+                Id = input.Id,
+                Name = input.Name,
+                IsCash = input.IsCash,
+                IsActive = input.IsActive,
+                RequiresReference = input.RequiresReference,
+                Currency = "Bs.S",
+                DisplayOrder = input.DisplayOrder,
+                IsDeleted = false
+            });
+
+        mockDialog.Setup(d => d.ShowTextInputAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync("Pago Móvil Renombrado");
+
+        var session = new UserSession();
+        session.SetUser(new UserDto { Id = 1, Name = "Admin", Role = Core.Entities.UserRole.Admin });
+
+        using var vm = new SettingsViewModel(
+            mockPayment.Object,
+            mockSettings.Object,
+            session,
+            mockDialog.Object);
+
+        await vm.EnsureLoadedAsync();
+        await vm.RenameMethodCommand.ExecuteAsync(vm.PaymentMethods.First());
+
+        Assert.Equal("Pago Móvil Renombrado", vm.PaymentMethods.First().Name);
+        Assert.Equal("Bs.S", vm.PaymentMethods.First().Currency);
     }
 }

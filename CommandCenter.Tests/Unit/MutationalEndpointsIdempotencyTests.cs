@@ -127,6 +127,34 @@ public class MutationalEndpointsIdempotencyTests
             ?.GetValue(value)?.ToString();
     }
 
+    private static void SetupAtomicAddItem(Mock<ISalesService> salesService, SalesDbContext context, SaleDto sale)
+    {
+        salesService.Setup(s => s.AddItemAsync(
+                1, 10, 2m, 50m, null, null, true, 1, It.IsAny<CancellationToken>(),
+                It.IsAny<string?>(), It.IsAny<byte[]?>(), It.IsAny<string?>()))
+            .Returns((int _, int _, decimal _, decimal _, decimal? _, decimal? _, bool _, int? _,
+                CancellationToken _, string? key, byte[]? hash, string? path) =>
+            {
+                if (!string.IsNullOrWhiteSpace(key) && hash != null)
+                {
+                    context.IdempotentRequests.Add(new IdempotentRequest
+                    {
+                        Key = key,
+                        RequestPath = path ?? "/api/sales/1/items",
+                        PayloadHash = hash,
+                        StatusCode = 200,
+                        ResponseBody = JsonSerializer.Serialize(sale),
+                        UserId = 1,
+                        CreatedAtUtc = DateTime.UtcNow,
+                        ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
+                    });
+                    context.SaveChanges();
+                }
+
+                return Task.FromResult(sale);
+            });
+    }
+
     private static AddItemRequest CreateItemRequest(decimal quantity = 2m) => new()
     {
         ProductId = 10,
@@ -178,7 +206,8 @@ public class MutationalEndpointsIdempotencyTests
         Assert.Contains("Idempotency-Key", GetProblemMessage(badRequest.Value));
         salesService.Verify(s => s.AddItemAsync(
             It.IsAny<int>(), It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
-            It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()),
+            It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<bool>(), It.IsAny<int?>(),
+            It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<byte[]?>(), It.IsAny<string?>()),
             Times.Never);
     }
 
@@ -187,8 +216,7 @@ public class MutationalEndpointsIdempotencyTests
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
         var salesService = new Mock<ISalesService>();
-        salesService.Setup(s => s.AddItemAsync(1, 10, 2m, 50m, null, null, true, 1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SaleDto { Id = 1, Status = "Pending", TotalUSD = 100m });
+        SetupAtomicAddItem(salesService, context, new SaleDto { Id = 1, Status = "Pending", TotalUSD = 100m });
         var controller = CreateSalesController(context, salesService);
 
         AttachHttpContext(controller, ItemsPath, "ITEMS-REPLAY-001");
@@ -207,7 +235,9 @@ public class MutationalEndpointsIdempotencyTests
         Assert.NotNull(replayedSale);
         Assert.Equal(1, replayedSale!.Id);
 
-        salesService.Verify(s => s.AddItemAsync(1, 10, 2m, 50m, null, null, true, 1, It.IsAny<CancellationToken>()), Times.Once);
+        salesService.Verify(s => s.AddItemAsync(
+            1, 10, 2m, 50m, null, null, true, 1, It.IsAny<CancellationToken>(),
+            "ITEMS-REPLAY-001", It.IsAny<byte[]>(), ItemsPath), Times.Once);
         Assert.Equal(1, await context.IdempotentRequests.CountAsync());
     }
 
@@ -216,8 +246,7 @@ public class MutationalEndpointsIdempotencyTests
     {
         using var context = TestDatabaseFactory.CreateSalesDbContext();
         var salesService = new Mock<ISalesService>();
-        salesService.Setup(s => s.AddItemAsync(1, 10, 2m, 50m, null, null, true, 1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new SaleDto { Id = 1, Status = "Pending" });
+        SetupAtomicAddItem(salesService, context, new SaleDto { Id = 1, Status = "Pending" });
         var controller = CreateSalesController(context, salesService);
 
         AttachHttpContext(controller, ItemsPath, "ITEMS-MISMATCH-001");
@@ -230,7 +259,8 @@ public class MutationalEndpointsIdempotencyTests
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, objectResult.StatusCode);
         salesService.Verify(s => s.AddItemAsync(
             It.IsAny<int>(), It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
-            It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<bool>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()),
+            It.IsAny<decimal?>(), It.IsAny<decimal?>(), It.IsAny<bool>(), It.IsAny<int?>(),
+            It.IsAny<CancellationToken>(), It.IsAny<string?>(), It.IsAny<byte[]?>(), It.IsAny<string?>()),
             Times.Once);
     }
 

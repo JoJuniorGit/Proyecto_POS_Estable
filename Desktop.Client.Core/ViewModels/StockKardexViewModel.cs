@@ -17,6 +17,15 @@ using Desktop.Client.Services;
 
 namespace Desktop.Client.ViewModels;
 
+/// <summary>Quick date range active in the Kardex filters; any manual date edit switches to <see cref="Custom"/>.</summary>
+public enum StockKardexDatePreset
+{
+    Custom,
+    Today,
+    ThisWeek,
+    CurrentMonth
+}
+
 /// <summary>
 /// 8.177-T3 (S2/S3): Centro de Auditoría de Inventario (Kardex) en Desktop. Filtros combinables
 /// con atajos de fecha local→UTC, búsqueda predictiva de producto, KPIs, grilla paginada
@@ -35,8 +44,10 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
     private readonly IDispatcherInvoker _dispatcherInvoker;
     private CancellationTokenSource? _loadCts;
     private CancellationTokenSource? _suggestionCts;
+    private StockKardexSummaryDto? _appliedSummary;
     private bool _hasLoaded;
     private bool _isSelectingProduct;
+    private bool _isApplyingPreset;
     private int _disposed;
 
     public UserSession? UserSession { get; }
@@ -55,6 +66,7 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
     // ── Filtros ─────────────────────────────────────────────────────────────
     [ObservableProperty] private DateTime? _dateFrom;
     [ObservableProperty] private DateTime? _dateTo;
+    [ObservableProperty] private StockKardexDatePreset _activeDatePreset = StockKardexDatePreset.Today;
     [ObservableProperty] private string _productSearchText = string.Empty;
     [ObservableProperty] private ProductQuickInfoDto? _selectedProduct;
     [ObservableProperty] private bool _isProductSuggestionsOpen;
@@ -122,13 +134,28 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
     public bool HasUnvaluedMovements => UnvaluedMovements > 0;
 
     public string UnvaluedWarningText => UnvaluedMovements > 0
-        ? $"{UnvaluedMovements} movimientos sin costo histórico, excluidos de la valorización"
+        ? UnvaluedMovements == 1
+            ? "1 movimiento sin costo histórico, excluido de la valorización"
+            : $"{UnvaluedMovements} movimientos sin costo histórico, excluidos de la valorización"
         : string.Empty;
+
+    // Raw KPI state (S3/S8): the view derives conditional colors and visibility from these
+    // instead of parsing the localized display strings.
+    public decimal NetVolumeValue => _appliedSummary?.NetVolume ?? 0m;
+    public decimal EntriesValueUsd => _appliedSummary?.EntriesValueUsd ?? 0m;
+    public decimal LossesValueUsd => _appliedSummary?.LossesValueUsd ?? 0m;
+    public decimal NetValueUsd => _appliedSummary?.NetValueUsd ?? 0m;
+    public bool IsNetVolumeNegative => NetVolumeValue < 0m;
+    public bool IsNetVolumePositive => NetVolumeValue > 0m;
+    public bool HasEntriesValue => EntriesValueUsd > 0m;
+    public bool HasLossesValue => LossesValueUsd > 0m;
 
     partial void OnCurrentPageChanged(int value) => NotifyPaginationChanged();
     partial void OnTotalCountChanged(int value) => NotifyPaginationChanged();
     partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanExport));
     partial void OnIsExportingChanged(bool value) => OnPropertyChanged(nameof(CanExport));
+    partial void OnDateFromChanged(DateTime? value) => MarkManualDateEdit();
+    partial void OnDateToChanged(DateTime? value) => MarkManualDateEdit();
 
     partial void OnUnvaluedMovementsChanged(long value)
     {
@@ -166,7 +193,7 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
     private Task ApplyTodayAsync()
     {
         var today = TimeZoneHelper.GetVenezuelaDate();
-        SetDateRange(today, today);
+        SetDateRange(today, today, StockKardexDatePreset.Today);
         return ApplyFiltersAsync();
     }
 
@@ -175,7 +202,7 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
     {
         var today = TimeZoneHelper.GetVenezuelaDate();
         var mondayOffset = ((int)today.DayOfWeek + 6) % 7; // lunes = inicio de semana
-        SetDateRange(today.AddDays(-mondayOffset), today);
+        SetDateRange(today.AddDays(-mondayOffset), today, StockKardexDatePreset.ThisWeek);
         return ApplyFiltersAsync();
     }
 
@@ -183,7 +210,7 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
     private Task ApplyCurrentMonthAsync()
     {
         var today = TimeZoneHelper.GetVenezuelaDate();
-        SetDateRange(new DateOnly(today.Year, today.Month, 1), today);
+        SetDateRange(new DateOnly(today.Year, today.Month, 1), today, StockKardexDatePreset.CurrentMonth);
         return ApplyFiltersAsync();
     }
 
@@ -198,7 +225,7 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
     private Task ClearFiltersAsync()
     {
         var today = TimeZoneHelper.GetVenezuelaDate();
-        SetDateRange(today, today);
+        SetDateRange(today, today, StockKardexDatePreset.Today);
         ResetProductSelection();
         SelectedReason = ReasonOptions[0];
         SelectedOrigin = OriginOptions[0];
@@ -206,10 +233,27 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
         return ApplyFiltersAsync();
     }
 
-    private void SetDateRange(DateOnly from, DateOnly to)
+    private void SetDateRange(DateOnly from, DateOnly to, StockKardexDatePreset preset)
     {
-        DateFrom = from.ToDateTime(TimeOnly.MinValue);
-        DateTo = to.ToDateTime(TimeOnly.MinValue);
+        _isApplyingPreset = true;
+        try
+        {
+            DateFrom = from.ToDateTime(TimeOnly.MinValue);
+            DateTo = to.ToDateTime(TimeOnly.MinValue);
+            ActiveDatePreset = preset;
+        }
+        finally
+        {
+            _isApplyingPreset = false;
+        }
+    }
+
+    private void MarkManualDateEdit()
+    {
+        if (!_isApplyingPreset && ActiveDatePreset != StockKardexDatePreset.Custom)
+        {
+            ActiveDatePreset = StockKardexDatePreset.Custom;
+        }
     }
 
     private void ResetProductSelection()
@@ -238,6 +282,9 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
         ProductSuggestions.Clear();
         IsProductSuggestionsOpen = false;
     }
+
+    [RelayCommand]
+    private void ClearProductSearch() => ResetProductSelection();
 
     // ── Búsqueda predictiva de producto ─────────────────────────────────────
     partial void OnProductSearchTextChanged(string value)
@@ -497,12 +544,26 @@ public partial class StockKardexViewModel : ObservableObject, IDisposable
 
     private void ApplySummary(StockKardexSummaryDto summary)
     {
+        _appliedSummary = summary;
         TotalMovementsDisplay = summary.TotalMovements.ToString("N0", MoneyFormat.Culture);
         NetVolumeDisplay = summary.NetVolume.ToString("#,##0.###", MoneyFormat.Culture);
-        EntriesValueDisplay = $"${MoneyFormat.N2(summary.EntriesValueUsd)}";
-        LossesValueDisplay = $"${MoneyFormat.N2(summary.LossesValueUsd)}";
-        NetValueDisplay = $"${MoneyFormat.N2(summary.NetValueUsd)}";
+        EntriesValueDisplay = StockKardexMoneyFormat.FormatSignedPrimary(summary.EntriesValueUsd);
+        LossesValueDisplay = StockKardexMoneyFormat.FormatSignedPrimary(summary.LossesValueUsd);
+        NetValueDisplay = StockKardexMoneyFormat.FormatSignedPrimary(summary.NetValueUsd);
         UnvaluedMovements = summary.UnvaluedMovements;
+        NotifyKpiStateChanged();
+    }
+
+    private void NotifyKpiStateChanged()
+    {
+        OnPropertyChanged(nameof(NetVolumeValue));
+        OnPropertyChanged(nameof(EntriesValueUsd));
+        OnPropertyChanged(nameof(LossesValueUsd));
+        OnPropertyChanged(nameof(NetValueUsd));
+        OnPropertyChanged(nameof(IsNetVolumeNegative));
+        OnPropertyChanged(nameof(IsNetVolumePositive));
+        OnPropertyChanged(nameof(HasEntriesValue));
+        OnPropertyChanged(nameof(HasLossesValue));
     }
 
     public void Dispose()
@@ -590,6 +651,43 @@ public static class StockMovementLabels
     };
 }
 
+/// <summary>Semantic kind of a Kardex movement, used by the MOVIMIENTO pill.</summary>
+public enum StockKardexMovementKind
+{
+    Unknown,
+    Sale,
+    Entry,
+    Loss,
+    Count,
+    Adjustment
+}
+
+/// <summary>Sign of a movement's valued impact; <see cref="None"/> = no historical cost snapshot.</summary>
+public enum StockKardexImpactKind
+{
+    None,
+    Zero,
+    Positive,
+    Negative
+}
+
+/// <summary>
+/// S4/S9: signed money presentation for the Kardex. Negative values place the sign before the
+/// profile primary currency symbol (es-VE: <c>-$193,26</c>), never <c>$-193,26</c>.
+/// </summary>
+public static class StockKardexMoneyFormat
+{
+    public static string FormatSignedPrimary(decimal value)
+        => (value < 0m ? "-" : string.Empty)
+            + CurrencyDisplay.PrimaryCurrencySymbol
+            + MoneyFormat.N2(Math.Abs(value));
+
+    public static string FormatImpactValue(decimal value)
+        => (value < 0m ? "-" : value > 0m ? "+" : string.Empty)
+            + CurrencyDisplay.PrimaryCurrencySymbol
+            + MoneyFormat.N2(Math.Abs(value));
+}
+
 /// <summary>Fila de la grilla del Kardex con los displays de auditoría (fecha local + UTC en tooltip).</summary>
 public sealed class StockKardexRowViewModel
 {
@@ -606,11 +704,15 @@ public sealed class StockKardexRowViewModel
 
     public string DateUtcText => _dto.MovementDateUtc.ToString("dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture) + " UTC";
 
+    /// <summary>Compact local date/time for the FECHA / REF. column: <c>dd/MM/yy · HH:mm:ss</c>.</summary>
+    public string DateCompactText => TimeZoneHelper.ToVenezuelaTime(_dto.MovementDateUtc)
+        .ToString("dd/MM/yy · HH:mm:ss", CultureInfo.InvariantCulture);
+
     public string Sku => _dto.SKU;
     public string ProductName => _dto.ProductName;
     public string ProductDisplay => $"{_dto.SKU} — {_dto.ProductName}";
 
-        public bool IsEntry => _dto.QuantityChange > 0;
+    public bool IsEntry => _dto.QuantityChange > 0;
 
     public string DeltaText => (_dto.QuantityChange > 0 ? "+" : string.Empty)
         + _dto.QuantityChange.ToString("#,##0.###", MoneyFormat.Culture);
@@ -618,8 +720,69 @@ public sealed class StockKardexRowViewModel
     public string StockBeforeText => _dto.StockBefore.ToString("#,##0.###", MoneyFormat.Culture);
     public string NewStockText => _dto.NewStockLevel.ToString("#,##0.###", MoneyFormat.Culture);
 
-    public string UnitCostDisplay => _dto.UnitCostUSD.HasValue ? $"${MoneyFormat.N2(_dto.UnitCostUSD.Value)}" : "—";
-    public string TotalValueDisplay => _dto.TotalValueUSD.HasValue ? $"${MoneyFormat.N2(_dto.TotalValueUSD.Value)}" : "—";
+    public string UnitCostDisplay => _dto.UnitCostUSD.HasValue
+        ? StockKardexMoneyFormat.FormatSignedPrimary(_dto.UnitCostUSD.Value)
+        : "—";
+
+    public string TotalValueDisplay => _dto.TotalValueUSD.HasValue
+        ? StockKardexMoneyFormat.FormatImpactValue(_dto.TotalValueUSD.Value)
+        : "—";
+
+    public string UnitCostInlineDisplay => _dto.UnitCostUSD.HasValue
+        ? $"Unit: {StockKardexMoneyFormat.FormatSignedPrimary(_dto.UnitCostUSD.Value)}"
+        : "Unit: —";
+
+    public StockKardexMovementKind MovementKind => _dto.ReasonCode switch
+    {
+        StockMovementReason.Sale => StockKardexMovementKind.Sale,
+        StockMovementReason.PurchaseEntry or StockMovementReason.InitialLoad => StockKardexMovementKind.Entry,
+        StockMovementReason.Damage or StockMovementReason.Expiry => StockKardexMovementKind.Loss,
+        StockMovementReason.PhysicalCountCorrection => StockKardexMovementKind.Count,
+        StockMovementReason.Return or StockMovementReason.ImportAdjustment => StockKardexMovementKind.Adjustment,
+        _ => StockKardexMovementKind.Unknown
+    };
+
+    public string ReasonPillLabel => _dto.ReasonCode switch
+    {
+        StockMovementReason.Sale => "Venta",
+        StockMovementReason.PurchaseEntry => "Compra",
+        StockMovementReason.InitialLoad => "Entrada",
+        StockMovementReason.Damage or StockMovementReason.Expiry => "Merma",
+        StockMovementReason.PhysicalCountCorrection => "Conteo Físico",
+        StockMovementReason.Return => "Devolución",
+        StockMovementReason.ImportAdjustment => "Ajuste",
+        _ => "Sin clasificar"
+    };
+
+    public bool IsNegativeQuantity => _dto.QuantityChange < 0m;
+    public bool IsPositiveQuantity => _dto.QuantityChange > 0m;
+    public bool IsZeroQuantity => _dto.QuantityChange == 0m;
+    public bool IsResultNegative => _dto.NewStockLevel < 0m;
+
+    public StockKardexImpactKind ImpactKind => _dto.TotalValueUSD switch
+    {
+        null => StockKardexImpactKind.None,
+        > 0m => StockKardexImpactKind.Positive,
+        < 0m => StockKardexImpactKind.Negative,
+        _ => StockKardexImpactKind.Zero
+    };
+
+    public bool HasReference => _dto.SaleId.HasValue || _dto.SupplierInvoiceId.HasValue;
+
+    public bool HasAuthorizer => !string.IsNullOrWhiteSpace(_dto.AuthorizedByUserId);
+
+    public string AuthorizerInlineDisplay => HasAuthorizer ? $"Aut: {_dto.AuthorizedByUserId}" : string.Empty;
+
+    public bool HasObservation => !string.IsNullOrWhiteSpace(_dto.Observation);
+
+    public string ObservationTooltip => HasObservation ? _dto.Observation! : string.Empty;
+
+    public string SourceDisplay => _dto.Source switch
+    {
+        "Active" => "Activo",
+        "Archived" => "Archivado",
+        _ => string.IsNullOrWhiteSpace(_dto.Source) ? "—" : _dto.Source
+    };
 
     public string OriginLabel => StockMovementLabels.Origin(_dto.OriginType);
     public string ReasonLabel => StockMovementLabels.Reason(_dto.ReasonCode);
@@ -640,3 +803,5 @@ public sealed class StockKardexRowViewModel
 
     private static string DisplayOrDash(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
 }
+
+

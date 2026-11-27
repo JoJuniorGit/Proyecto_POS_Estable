@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using Core.Logging;
 
 namespace Desktop.Client.Services;
 
@@ -43,8 +44,9 @@ public class SaleRecoveryStore : ISaleRecoveryStore
             {
                 Directory.CreateDirectory(folder);
             }
-            catch
+            catch (Exception ex)
             {
+                ClientStateLogger.LogWarning($"[RECOVERY] Failed to create recovery directory ({folder}): {ex.Message}", nameof(SaleRecoveryStore));
             }
 
             _recoveryFilePath = Path.Combine(folder, "active_sale_recovery.json");
@@ -68,8 +70,9 @@ public class SaleRecoveryStore : ISaleRecoveryStore
                 var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(_recoveryFilePath, json);
             }
-            catch
+            catch (Exception ex)
             {
+                ClientStateLogger.LogError($"[RECOVERY] Failed to save sale snapshot to disk ({_recoveryFilePath}): {ex.Message}", nameof(SaleRecoveryStore));
             }
         }
     }
@@ -93,8 +96,9 @@ public class SaleRecoveryStore : ISaleRecoveryStore
 
                 return JsonSerializer.Deserialize<SaleRecoverySnapshot>(json);
             }
-            catch
+            catch (Exception ex)
             {
+                ClientStateLogger.LogError($"[RECOVERY] Failed to load sale snapshot from disk ({_recoveryFilePath}): {ex.Message}", nameof(SaleRecoveryStore));
                 return null;
             }
         }
@@ -111,8 +115,9 @@ public class SaleRecoveryStore : ISaleRecoveryStore
                     File.Delete(_recoveryFilePath);
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                ClientStateLogger.LogWarning($"[RECOVERY] Failed to clear recovery file from disk ({_recoveryFilePath}): {ex.Message}", nameof(SaleRecoveryStore));
             }
         }
     }

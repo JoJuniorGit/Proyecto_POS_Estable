@@ -2,10 +2,16 @@ import { useRef, useState } from 'react';
 import Modal from '../ui/Modal';
 import { ArrowDownLeft, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '../../services/api';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
 import { createCheckoutKeyHolder } from '../../utils/idempotency';
+import { resolveLocalCurrencyProfile } from './registerFormLogic';
+import { resolveCashAmountRules } from '../checkout/PaymentForm';
 import './RegisterModals.css';
 
 export default function CashInModal({ isOpen, onClose, sessionId, exchangeRate, user, onSuccess }) {
+  const { profile, mode, secondaryCurrencyCode } = useMonetaryProfile();
+  const { label: localCurrencyLabel } = resolveLocalCurrencyProfile(profile);
+  const { requiresIntegerCash } = resolveCashAmountRules({ mode, secondaryCurrencyCode });
   const [amountBsS, setAmountBsS] = useState('');
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,7 +32,8 @@ export default function CashInModal({ isOpen, onClose, sessionId, exchangeRate, 
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '-') {
+    const blocked = requiresIntegerCash ? ['.', ',', 'e', 'E', '+', '-'] : ['e', 'E', '+', '-'];
+    if (blocked.includes(e.key)) {
       e.preventDefault();
     }
   };
@@ -46,8 +53,8 @@ export default function CashInModal({ isOpen, onClose, sessionId, exchangeRate, 
       return;
     }
 
-    if (!Number.isInteger(numAmount) || numAmount % 1 !== 0) {
-      setError('El monto de efectivo debe ser un número entero estrictamente sin decimales.');
+    if (requiresIntegerCash && (!Number.isInteger(numAmount) || numAmount % 1 !== 0)) {
+      setError(`El monto de efectivo en ${localCurrencyLabel} debe ser un número entero estrictamente sin decimales.`);
       return;
     }
 
@@ -93,11 +100,14 @@ export default function CashInModal({ isOpen, onClose, sessionId, exchangeRate, 
         )}
 
         <div className="form-group mb-3">
-          <label className="form-label font-medium">1. Monto a Ingresar (Bs.S - Solo Enteros) *</label>
+          <label className="form-label font-medium">
+            1. Monto a Ingresar ({localCurrencyLabel}{requiresIntegerCash ? ' - Solo Enteros' : ''}) *
+          </label>
           <input
             type="number"
-            step="1"
-            min="1"
+            step={requiresIntegerCash ? '1' : '0.01'}
+            inputMode={requiresIntegerCash ? 'numeric' : 'decimal'}
+            min={requiresIntegerCash ? '1' : '0.01'}
             className="form-control form-control-lg font-bold"
             placeholder="0"
             value={amountBsS}
@@ -107,7 +117,9 @@ export default function CashInModal({ isOpen, onClose, sessionId, exchangeRate, 
             autoFocus
           />
           <small className="text-muted text-xs mt-1 block">
-            Solo números enteros sin decimales (ej. 10, 50, 100).
+            {requiresIntegerCash
+              ? 'Solo números enteros sin decimales (ej. 10, 50, 100).'
+              : 'Puede incluir centavos cuando la moneda local los admite (ej. 10,50).'}
           </small>
         </div>
 

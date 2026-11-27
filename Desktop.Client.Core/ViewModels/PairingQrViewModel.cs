@@ -44,6 +44,10 @@ public partial class PairingQrViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _useHttps = true;
 
+    public string HttpsStatusText => UseHttps
+        ? $"HTTPS activo (puerto {HttpsPort}); las conexiones remotas usan canal cifrado."
+        : "HTTPS no disponible; se deshabilitó el QR remoto por seguridad.";
+
     [ObservableProperty]
     private string _fullUrl = "https://127.0.0.1:5001";
 
@@ -89,6 +93,7 @@ public partial class PairingQrViewModel : ObservableObject, IDisposable
                     MachineName = info.MachineName;
                     HttpPort = info.HttpPort;
                     HttpsPort = info.HttpsPort;
+                    UseHttps = info.IsHttpsEnabled;
 
                     if (!string.IsNullOrEmpty(info.QrPayload))
                     {
@@ -168,10 +173,19 @@ public partial class PairingQrViewModel : ObservableObject, IDisposable
     partial void OnUseHttpsChanged(bool value)
     {
         UpdateUrls();
+        OnPropertyChanged(nameof(HttpsStatusText));
     }
 
     private void UpdateUrls()
     {
+        if (!UseHttps)
+        {
+            ActivePort = HttpPort;
+            FullUrl = string.Empty;
+            QrPayload = string.Empty;
+            return;
+        }
+
         var scheme = UseHttps ? "https" : "http";
         var port = UseHttps ? HttpsPort : HttpPort;
         ActivePort = port;
@@ -264,6 +278,7 @@ public partial class PairingQrViewModel : ObservableObject, IDisposable
         public string PrimaryIpAddress { get; set; } = string.Empty;
         public int HttpPort { get; set; } = 5000;
         public int HttpsPort { get; set; } = 5001;
+        public bool IsHttpsEnabled { get; set; } = true;
         public string QrPayload { get; set; } = string.Empty;
         public NetworkInterfaceItem[]? NetworkInterfaces { get; set; }
     }

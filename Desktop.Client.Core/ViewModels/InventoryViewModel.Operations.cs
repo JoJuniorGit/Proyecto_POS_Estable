@@ -10,8 +10,93 @@ using System.Threading.Tasks;
 
 namespace Desktop.Client.ViewModels;
 
+/// <summary>Última operación de catálogo ejecutada por el usuario, repetible con Ctrl+R.</summary>
+public enum InventoryQuickActionKind
+{
+    AdjustStock,
+    EditProduct,
+    TogglePause,
+    Restore,
+    Delete
+}
+
 public partial class InventoryViewModel
 {
+    private InventoryQuickActionKind? _lastQuickActionKind;
+    private ProductItemViewModel? _lastQuickTarget;
+
+    /// <summary>Habilita el botón de repetición rápida (y su visibilidad en la fila).</summary>
+    public bool HasLastQuickRepeat => _lastQuickActionKind.HasValue && _lastQuickTarget is not null;
+
+    // PackIconKind vive en la capa WPF (Desktop.Client); el Core no referencia MaterialDesignThemes.
+    // El VM expone el nombre del ícono y el binding de PackIcon.Kind lo convierte al enum al vuelo.
+    public string LastQuickRepeatIcon => _lastQuickActionKind switch
+    {
+        InventoryQuickActionKind.AdjustStock => "PackageVariantClosed",
+        InventoryQuickActionKind.EditProduct => "Pencil",
+        InventoryQuickActionKind.TogglePause => "Pause",
+        InventoryQuickActionKind.Restore => "Play",
+        InventoryQuickActionKind.Delete => "Delete",
+        _ => "Repeat"
+    };
+
+    public string LastQuickRepeatToolTip => _lastQuickActionKind switch
+    {
+        InventoryQuickActionKind.AdjustStock => "Repetir: Ajustar stock (Ctrl+R)",
+        InventoryQuickActionKind.EditProduct => "Repetir: Editar producto (Ctrl+R)",
+        InventoryQuickActionKind.TogglePause => "Repetir: Pausar producto (Ctrl+R)",
+        InventoryQuickActionKind.Restore => "Repetir: Restaurar producto (Ctrl+R)",
+        InventoryQuickActionKind.Delete => "Repetir: Eliminar producto (Ctrl+R)",
+        _ => string.Empty
+    };
+
+    private void RememberQuickAction(InventoryQuickActionKind kind, ProductItemViewModel item)
+    {
+        _lastQuickActionKind = kind;
+        _lastQuickTarget = item;
+        OnPropertyChanged(nameof(HasLastQuickRepeat));
+        OnPropertyChanged(nameof(LastQuickRepeatIcon));
+        OnPropertyChanged(nameof(LastQuickRepeatToolTip));
+        RepeatLastActionCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Re-despacha la última operación recordada. Sin parámetro usa el target recordado; con
+    /// parámetro (botón de la fila) aplica la misma operación sobre esa fila. Delete conserva su
+    /// confirmación interna: repetir nunca omite ni duplica el gate de seguridad.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRepeatLastAction))]
+    private async Task RepeatLastAction(ProductItemViewModel? item)
+    {
+        var kind = _lastQuickActionKind;
+        var target = item ?? _lastQuickTarget;
+        if (kind is null || target is null)
+        {
+            return;
+        }
+
+        switch (kind.Value)
+        {
+            case InventoryQuickActionKind.AdjustStock:
+                await AdjustStock(target);
+                break;
+            case InventoryQuickActionKind.EditProduct:
+                await EditProduct(target);
+                break;
+            case InventoryQuickActionKind.TogglePause:
+                await TogglePauseProduct(target);
+                break;
+            case InventoryQuickActionKind.Restore:
+                await RestoreProduct(target);
+                break;
+            case InventoryQuickActionKind.Delete:
+                await DeleteProduct(target);
+                break;
+        }
+    }
+
+    private bool CanRepeatLastAction(ProductItemViewModel? item) => HasLastQuickRepeat;
+
     private void OnProductItemChanged(ProductItemViewModel item)
     {
         Core.Common.TaskExtensions.SafeFireAndForget(OnProductItemChangedAsync(item), "InventoryViewModel.ProductItemChanged");
@@ -48,6 +133,7 @@ public partial class InventoryViewModel
     [RelayCommand]
     private async Task TogglePauseProduct(ProductItemViewModel item)
     {
+        RememberQuickAction(InventoryQuickActionKind.TogglePause, item);
         try
         {
             bool newActive = !item.IsActive;
@@ -71,6 +157,7 @@ public partial class InventoryViewModel
     [RelayCommand]
     private async Task RestoreProduct(ProductItemViewModel item)
     {
+        RememberQuickAction(InventoryQuickActionKind.Restore, item);
         try
         {
             await _productService.RestoreAsync(item.Id);
@@ -94,6 +181,7 @@ public partial class InventoryViewModel
     [RelayCommand]
     private async Task DeleteProduct(ProductItemViewModel item)
     {
+        RememberQuickAction(InventoryQuickActionKind.Delete, item);
         if (_dialogService == null) return;
 
         // Paso 1: Preguntar si desea pausar/deshabilitar el producto
@@ -143,9 +231,10 @@ public partial class InventoryViewModel
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanMutateCatalogBar))]
     private async Task OpenAddProduct()
     {
+        if (!CanMutateCatalogBar()) return;
         if (_dialogService == null) return;
         var dialogVm = new ProductDialogViewModel(_productService, _exchangeRateService, null, UserSession, _dialogService, settingsService: _settingsService);
         
@@ -171,6 +260,7 @@ public partial class InventoryViewModel
     [RelayCommand]
     private async Task EditProduct(ProductItemViewModel item)
     {
+        RememberQuickAction(InventoryQuickActionKind.EditProduct, item);
         if (_dialogService == null) return;
         try
         {
@@ -217,6 +307,7 @@ public partial class InventoryViewModel
     [RelayCommand]
     private async Task AdjustStock(ProductItemViewModel item)
     {
+        RememberQuickAction(InventoryQuickActionKind.AdjustStock, item);
         if (_dialogService == null) return;
         if (!item.CanAdjustStock)
         {

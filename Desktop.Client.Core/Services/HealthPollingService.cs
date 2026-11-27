@@ -91,7 +91,7 @@ public class HealthPollingService : IHealthPollingService, IDisposable
 
             try
             {
-                var response = await _httpClient.GetAsync("health", cancellationToken);
+                using var response = await _httpClient.GetAsync("health", cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
                     ClientStateLogger.LogHealthRecovery();

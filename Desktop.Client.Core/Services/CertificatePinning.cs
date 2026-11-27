@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Security;
@@ -147,6 +148,17 @@ public sealed class CertificatePinValidator
 public static class CertificatePinning
 {
     private static readonly CertificatePinValidator Validator = new(new DpapiCertificatePinStore());
+
+    public static HttpClientHandler CreateHttpClientHandler()
+    {
+        var handler = new HttpClientHandler();
+        handler.ServerCertificateCustomValidationCallback = (request, certificate, _, errors) =>
+        {
+            var host = request?.RequestUri?.Host;
+            return !string.IsNullOrWhiteSpace(host) && Validator.IsTrusted(host, certificate, errors);
+        };
+        return handler;
+    }
 
     public static bool IsTrusted(string host, X509Certificate? cert, SslPolicyErrors errors)
     {

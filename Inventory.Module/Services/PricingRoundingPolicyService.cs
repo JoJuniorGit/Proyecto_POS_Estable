@@ -28,4 +28,27 @@ public sealed class PricingRoundingPolicyService : IPricingRoundingPolicyService
         decimal? marginFloorPct,
         bool enforceFloor)
         => PricingRoundingPolicy.ProjectCashFriendlyBsS(usdAmount, exchangeRate, rule, costUsd, marginFloorPct, enforceFloor);
+
+    /// <summary>
+    /// 8.186-T1 (S1/S3): proyección del precio efectivo Bs.S que consumen las superficies de lectura
+    /// server-side (catálogo web, buscador, quick-check y variantes). Misma semántica que el helper
+    /// único del cliente WPF (Desktop.Client.Helpers.EffectivePriceVesHelper): con regla cash efectiva
+    /// delega en el kernel geométrico (<see cref="PricingRoundingPolicy.ProjectCashFriendlyBsS(decimal, decimal, RoundingRuleType, bool)"/>,
+    /// neverRoundDown = toggle de piso); con regla null/ExactMath o tasa no válida conserva el techo
+    /// canónico 8.104 (<see cref="PricingCalculator.ToBsSCeiling"/>) — byte-idéntico al canónico de hoy.
+    /// </summary>
+    public static decimal ProjectEffectiveBsS(decimal priceUsd, decimal rate, RoundingRuleType? cashRule, bool neverRoundDown)
+    {
+        // Sin regla cash explícita o sin tasa convertible rige el techo canónico (paridad 8.143).
+        if (cashRule is null or RoundingRuleType.ExactMath || rate <= 0m)
+        {
+            return PricingCalculator.ToBsSCeiling(priceUsd, rate);
+        }
+
+        // El kernel devuelve null solo fuera de contrato (USD ≤ 0 o tasa ≤ 0, ya cubierta la tasa);
+        // el fallback conserva la garantía de retorno decimal con la conversión canónica.
+        return PricingRoundingPolicy
+            .ProjectCashFriendlyBsS(priceUsd, rate, cashRule.Value, neverRoundDown)
+            ?.RoundedValue ?? PricingCalculator.ToBsSCeiling(priceUsd, rate);
+    }
 }

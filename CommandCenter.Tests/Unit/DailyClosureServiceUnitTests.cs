@@ -152,7 +152,7 @@ public class DailyClosureServiceUnitTests
         // Venta completada a las 21:00 hora de Venezuela
         var sale = new Sale { Id = 888, Status = SaleStatus.Completed, Date = utcEveningTime };
         context.Sales.Add(sale);
-        context.SalePayments.Add(new SalePayment { SaleId = 888, PaymentMethodId = 1, AmountBsS = 1200m });
+        context.SalePayments.Add(new SalePayment { SaleId = 888, PaymentMethodId = 1, AmountBsS = 1200m, CreatedAt = utcEveningTime });
         await context.SaveChangesAsync();
 
         // Consulta de esperados a las 22:30 hora de Venezuela (02:30 UTC del día siguiente)
@@ -164,7 +164,38 @@ public class DailyClosureServiceUnitTests
     }
 
     [Fact]
-    public async Task CreateClosureFromCommand_MissingActivePaymentMethods_PopulatesAuthoritativeTotals()
+    public async Task CreateClosureFromCommandAtomicAsync_PersistsIdempotencyRecord()
+    {
+        var (service, context) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var command = new CreateClosureCommand(
+            DateTime.UtcNow,
+            "Cajero1",
+            null,
+            new List<DeclaredPaymentAmount> { new(1, 10m) });
+        var payloadHash = new byte[] { 1, 2, 3, 4 };
+
+        var result = await service.CreateClosureFromCommandAtomicAsync(
+            command,
+            "closure-atomic-1",
+            payloadHash,
+            "/api/dailyclosure",
+            _ => "masked-response",
+            CancellationToken.None);
+
+        var record = await context.IdempotentRequests
+            .AsNoTracking()
+            .SingleAsync(r => r.Key == "closure-atomic-1");
+
+        Assert.Equal("/api/dailyclosure", record.RequestPath);
+        Assert.Equal("masked-response", record.ResponseBody);
+        Assert.Equal(200, record.StatusCode);
+        Assert.True(result.ClosureId > 0);
+    }
+
+    [Fact]
+    public async Task CreateClosureFromCommand_MissingActiveElectronicMethod_ThrowsWithoutPersisting()
     {
         var (service, context) = CreateService();
         await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
@@ -182,17 +213,11 @@ public class DailyClosureServiceUnitTests
             null,
             new List<DeclaredPaymentAmount> { new(1, 10m) });
 
-        var result = await service.CreateClosureFromCommandAsync(command, CancellationToken.None);
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => service.CreateClosureFromCommandAsync(command, CancellationToken.None));
 
-        // El método 4 omitido debe haberse poblado automáticamente con su total esperado de 750 Bs.S
-        var method4Detail = await context.ClosureDetails
-            .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.DailyClosureId == result.ClosureId && d.PaymentMethodId == 4);
-        Assert.NotNull(method4Detail);
-        Assert.Equal(750m, method4Detail.ExpectedAmountBsS);
-        // Para métodos no-efectivo se consolida automáticamente
-        Assert.Equal(750m, method4Detail.ActualAmountBsS);
-        Assert.Equal(0m, method4Detail.DifferenceBsS);
+        Assert.Contains("Pago Móvil", ex.Message);
+        Assert.Empty(await context.DailyClosures.AsNoTracking().ToListAsync());
     }
 
     [Fact]
@@ -247,7 +272,9 @@ public class DailyClosureServiceUnitTests
 
         var totals = await service.GetExpectedTotalsByPaymentMethodAsync(now);
 
-        Assert.Equal(850m, totals.First(t => t.PaymentMethodId == 1).ExpectedAmountBsS);
+        // 1000 del cobro − 150 de vuelto − 700 del adelanto de efectivo (egreso físico);
+        // el ingreso de la venta ya está representado por SalePayments y no se duplica.
+        Assert.Equal(150m, totals.First(t => t.PaymentMethodId == 1).ExpectedAmountBsS);
         Assert.Equal(500m, totals.First(t => t.PaymentMethodId == 3).ExpectedAmountBsS);
         Assert.Equal(0m, totals.First(t => t.PaymentMethodId == 2).ExpectedAmountBsS);
     }
@@ -275,6 +302,57 @@ public class DailyClosureServiceUnitTests
 
         var totals = await service.GetExpectedTotalsByPaymentMethodAsync(now);
 
+        Assert.Equal(800m, totals.First(t => t.PaymentMethodId == 1).ExpectedAmountBsS);
+        Assert.Equal(0m, totals.First(t => t.PaymentMethodId == 2).ExpectedAmountBsS);
+    }
+
+    [Fact]
+    public async Task GetExpectedTotalsByPaymentMethodAsync_CreditRefundExpense_NetsOnlyPhysicalCashInWindow()
+    {
+        var (service, context) = CreateService();
+        await TestDatabaseFactory.SeedStandardSalesDataAsync(context);
+
+        var now = DateTime.UtcNow;
+        context.Sales.Add(new Sale { Id = 730, Status = SaleStatus.Completed, Date = now });
+        context.SalePayments.Add(new SalePayment { SaleId = 730, PaymentMethodId = 1, AmountBsS = 1000m });
+        // Reembolso físico sin método: se atribuye al primer método de efectivo, como el vuelto.
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.CreditRefund,
+            IsPhysicalCash = true,
+            AmountLocal = 200m,
+            PaymentMethodId = null,
+            SaleId = 730,
+            TransactionTime = now
+        });
+        // Fuera de la ventana del cierre: no se resta.
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.CreditRefund,
+            IsPhysicalCash = true,
+            AmountLocal = 300m,
+            PaymentMethodId = 1,
+            SaleId = 730,
+            TransactionTime = now.AddDays(-3)
+        });
+        // Reembolso no físico (ajuste de libros): no toca lo esperado de la gaveta.
+        context.CashTransactions.Add(new CashTransaction
+        {
+            Type = CashTransactionType.Expense,
+            Source = CashTransactionSource.CreditRefund,
+            IsPhysicalCash = false,
+            AmountLocal = 400m,
+            PaymentMethodId = 1,
+            SaleId = 730,
+            TransactionTime = now
+        });
+        await context.SaveChangesAsync();
+
+        var totals = await service.GetExpectedTotalsByPaymentMethodAsync(now);
+
+        // 1000 Bs.S del pago inicial − 200 Bs.S del reembolso físico de la ventana.
         Assert.Equal(800m, totals.First(t => t.PaymentMethodId == 1).ExpectedAmountBsS);
         Assert.Equal(0m, totals.First(t => t.PaymentMethodId == 2).ExpectedAmountBsS);
     }

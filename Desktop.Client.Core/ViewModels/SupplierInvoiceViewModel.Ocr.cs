@@ -229,9 +229,11 @@ public partial class SupplierInvoiceViewModel
             return;
         }
 
-        // 8.174: se registra ANTES de aplicar el estado OCR para poder avisar en el status que la
-        // moneda del documento se ajustó sola por la tasa impresa detectada.
-        var currencyAdjustedForDetectedRate = result.DetectedExchangeRate is > 0m && !IsBsSCurrency;
+        // 8.211-T4c2b4d3b: a printed rate only switches the document to the profile local secondary.
+        // Single has no secondary, so it never invents one.
+        var currencyAdjustedForDetectedRate = result.DetectedExchangeRate is > 0m
+            && HasSecondaryCurrency
+            && !IsLocalSecondaryCurrency;
         ApplyOcrReviewState(result);
 
         if (lines.Count == 0)
@@ -245,7 +247,7 @@ public partial class SupplierInvoiceViewModel
 
         if (currencyAdjustedForDetectedRate)
         {
-            StatusMessage += " Moneda ajustada a Bs.S por la tasa detectada en la factura.";
+            StatusMessage += $" Moneda ajustada a {DisplayCurrencyCode(LocalCurrencyOption)} por la tasa detectada en la factura.";
         }
     }
 
@@ -276,22 +278,25 @@ public partial class SupplierInvoiceViewModel
             : null;
         IsOcrSource = true;
 
-        // 8.174: la tasa impresa en el documento es evidencia de una factura en Bs.S. Si el selector
-        // aún no está en Bs.S (proveedor sin moneda recordada o primera factura), se ajusta para que
-        // la tasa quede aplicada y editable al terminar el escaneo; toda corrección posterior de la
-        // tasa recalcula los montos de la grilla en vivo (PropagateCurrencyAndRateToLines).
+        // 8.174/8.211-T4c2b4d3b: la tasa impresa en el documento es evidencia de una factura en la
+        // moneda local del perfil (secundaria en Dual). Si el selector aún no está en esa moneda, se
+        // ajusta para que la tasa quede aplicada y editable al terminar el escaneo; toda corrección
+        // posterior de la tasa recalcula los montos de la grilla en vivo (PropagateCurrencyAndRateToLines).
         if (OcrDetectedExchangeRate is decimal detectedRate)
         {
             // 8.178: una nueva detección OCR re-basa la tasa del documento; una corrección manual
             // previa deja de protegerse (el escaneo más reciente es la referencia).
             _isRateManuallyEdited = false;
 
-            if (!IsBsSCurrency)
+            if (HasSecondaryCurrency)
             {
-                SelectedCurrency = CurrencyCodes.BsS;
-            }
+                if (!IsLocalSecondaryCurrency)
+                {
+                    SelectedCurrency = LocalCurrencyOption;
+                }
 
-            SetAppliedRateTextProgrammatically(FormatAppliedRateText(detectedRate));
+                SetAppliedRateTextProgrammatically(FormatAppliedRateText(detectedRate));
+            }
         }
 
         // Sugerencia best-effort: nunca pisa un valor ya escrito ni selecciona proveedor.

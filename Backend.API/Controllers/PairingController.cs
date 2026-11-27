@@ -90,6 +90,18 @@ public class PairingController : ControllerBase
             }
         }
 
+        if (!isLocal && !_httpsRuntimeInfo.Enabled && !Request.IsHttps)
+        {
+            return StatusCode(
+                (int)HttpStatusCode.ServiceUnavailable,
+                new ProblemDetails
+                {
+                    Status = (int)HttpStatusCode.ServiceUnavailable,
+                    Title = "HTTPS requerido",
+                    Detail = "El emparejamiento remoto está deshabilitado hasta que HTTPS esté configurado."
+                });
+        }
+
         bool isHttps = _httpsRuntimeInfo.Enabled || Request.IsHttps;
 
         int httpPort = _httpsRuntimeInfo.HttpPort;
@@ -122,6 +134,20 @@ public class PairingController : ControllerBase
         if (remoteIp == null || !IsPrivateOrLocalAddress(remoteIp))
         {
             return this.ApiForbidden("El emparejamiento solo se admite desde la red local del establecimiento.");
+        }
+
+        bool isLoopback = IPAddress.IsLoopback(remoteIp)
+            || (remoteIp.IsIPv4MappedToIPv6 && IPAddress.IsLoopback(remoteIp.MapToIPv4()));
+        if (!isLoopback && !_httpsRuntimeInfo.Enabled && !Request.IsHttps)
+        {
+            return StatusCode(
+                (int)HttpStatusCode.ServiceUnavailable,
+                new ProblemDetails
+                {
+                    Status = (int)HttpStatusCode.ServiceUnavailable,
+                    Title = "HTTPS requerido",
+                    Detail = "El reclamo remoto de emparejamiento está deshabilitado hasta que HTTPS esté configurado."
+                });
         }
 
         if (!_networkDiscoveryService.TryClaimPairingToken(request.Token))

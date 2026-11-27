@@ -16,6 +16,33 @@ public class StringToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
 }
 
+/// <summary>Iniciales compactas para los avatares del directorio (máximo dos letras).</summary>
+public class InitialsConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var text = value as string;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return "?";
+        }
+
+        var parts = text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1)
+        {
+            return parts[0].Length >= 2
+                ? parts[0].Substring(0, 2).ToUpperInvariant()
+                : parts[0].ToUpperInvariant();
+        }
+
+        return string.Concat(
+            char.ToUpperInvariant(parts[0][0]),
+            char.ToUpperInvariant(parts[1][0]));
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+}
+
 public class BoolToStatusConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)

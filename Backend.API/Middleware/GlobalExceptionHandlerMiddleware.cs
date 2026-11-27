@@ -29,6 +29,22 @@ public class GlobalExceptionHandlerMiddleware
         catch (Exception ex)
         {
             await HandleExceptionAsync(context, ex);
+
+            // SRE-12: un único evento estructurado clave-valor por excepción, con el status
+            // final que resolvió el handler. Los 5xx van al log crítico.
+            int statusCode = context.Response.StatusCode;
+            AppLogger.LogStructured(
+                statusCode >= StatusCodes.Status500InternalServerError ? AppLogger.CrashLogPath : AppLogger.WarnLogPath,
+                statusCode >= StatusCodes.Status500InternalServerError ? "ERROR" : "WARN",
+                "Unhandled request exception",
+                new
+                {
+                    StatusCode = statusCode,
+                    Method = context.Request.Method,
+                    Path = context.Request.Path.Value,
+                    ExceptionType = ex.GetType().Name,
+                    ExceptionMessage = ex.Message
+                });
         }
     }
 

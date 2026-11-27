@@ -98,6 +98,29 @@ public class SettingsService : ISettingsService
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<CashAdvanceCommissionSettingsDto> GetCashAdvanceCommissionAsync()
+    {
+        try
+        {
+            return await _httpClient.GetFromJsonAsync<CashAdvanceCommissionSettingsDto>(
+                       "api/settings/cash-advance-commission")
+                   ?? new CashAdvanceCommissionSettingsDto();
+        }
+        catch
+        {
+            return new CashAdvanceCommissionSettingsDto();
+        }
+    }
+
+    public async Task SetCashAdvanceCommissionAsync(CashAdvanceCommissionSettingsDto settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        using var response = await _httpClient.PutAsJsonAsync(
+            "api/settings/cash-advance-commission",
+            settings);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task RestartSystemAsync()
     {
         using var response = await _httpClient.PostAsync("api/administration/restart", null);

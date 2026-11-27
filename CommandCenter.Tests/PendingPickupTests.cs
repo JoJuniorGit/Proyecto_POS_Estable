@@ -92,6 +92,9 @@ public class PendingPickupTests
 
         var defaultCustomer = new Customer { Id = 1, CedulaOrRif = "V-00000000", Name = "Consumidor Final", IsDefault = true };
         context.Customers.Add(defaultCustomer);
+        // El cobro valida el método antes de evaluar el apartado: sin seed, el fixture fallaba
+        // por método inexistente en vez de llegar al guard de cliente real.
+        context.PaymentMethods.Add(new PaymentMethod { Id = 1, Name = "Efectivo Bs.S", IsCash = true, IsActive = true });
 
         var sale = new Sale
         {

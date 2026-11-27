@@ -16,6 +16,10 @@
 * **Pruebas de Integración:**
   * CI: sobre `postgres:16` con `TEST_POSTGRES_CONNECTION`.
   * Local: PostgreSQL local o Testcontainers.
+  * **Carril Postgres sin credencial local (8.201):** `pwsh scripts/test-postgres-lane.ps1`.
+    Crea un clúster desechable con `initdb` (trust local, puerto 55432), corre el filtro
+    `~Postgres` con `TEST_POSTGRES_CONNECTION` apuntando a ese clúster y lo detiene al final.
+    No modifica el servidor PostgreSQL instalado. Opciones: `-Port`, `-DataDir`, `-Cleanup`.
 
 ## 6.2. Pipeline CI/CD (`ci.yml`)
 

@@ -1,12 +1,20 @@
 import { ChevronDown, ChevronRight, CheckCircle, Edit2, LockOpen, ShieldCheck, User } from 'lucide-react';
-import { formatBsS, formatUSD, formatQuantity } from '../../utils/formatters';
+import { formatQuantity, effectiveTotalUsd } from '../../utils/formatters';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { resolveLocalCurrencyProfile } from '../register/registerFormLogic';
 import PendingOrderLockBadge from './PendingOrderLockBadge';
 
 export default function PendingOrderMobileCard({ sale, isExpanded, lockInfo, isElevated, exchangeRate, onToggle, onCheckout, onEdit, onForceRelease }) {
+  const { profile, formatPrimary, formatSecondary } = useMonetaryProfile();
+  const { isDual } = resolveLocalCurrencyProfile(profile);
   const totalPaidUsd = sale.totalPaidUSD || 0;
   const remainingUsd = sale.remainingBalanceUSD || 0;
   const totalPaidBsS = (sale.payments || []).reduce((acc, p) => acc + (p.amountBsS > 0 ? p.amountBsS : (p.amount || 0) * (p.exchangeRate || exchangeRate)), 0);
   const remainingBsS = Math.max(0, (sale.totalBsS !== undefined && sale.totalBsS > 0 ? sale.totalBsS : remainingUsd * exchangeRate) - totalPaidBsS);
+  // ANEXO XV: la deuda mostrada en $ es el inverso del Bs.S restante efectivo (no el canonico).
+  const effectiveRemainingUsd = exchangeRate > 0
+    ? Math.round((remainingBsS / exchangeRate) * 100) / 100
+    : remainingUsd;
 
   return (
     <div className="pending-mobile-card">
@@ -44,17 +52,21 @@ export default function PendingOrderMobileCard({ sale, isExpanded, lockInfo, isE
       <div className="pending-mobile-card-summary">
         <div>
           <div className="text-xs text-muted mb-1">Total Factura</div>
-          <div className="font-bold amount-bss total-bss-highlight">{formatBsS(sale.totalBsS)}</div>
-          <div className="text-xs amount-usd">{formatUSD(sale.totalUSD)}</div>
+          <div className="font-bold amount-bss total-bss-highlight">{formatSecondary(sale.totalBsS)}</div>
+          {isDual && (
+            <div className="text-xs amount-usd">{formatPrimary(effectiveTotalUsd(sale))}</div>
+          )}
         </div>
         <div>
           <div className="text-xs text-muted mb-1">Abonado</div>
-          <div className="font-bold amount-usd">+{formatUSD(totalPaidUsd)}</div>
+          <div className="font-bold amount-usd">+{formatPrimary(totalPaidUsd)}</div>
         </div>
         <div>
           <div className="text-xs text-muted mb-1">Deuda Pendiente</div>
-          <div className="font-bold text-danger">{formatUSD(remainingUsd)}</div>
-          <div className="text-xs amount-bss">≈ {formatBsS(remainingBsS)}</div>
+          <div className="font-bold text-danger">{formatPrimary(effectiveRemainingUsd)}</div>
+          {isDual && (
+            <div className="text-xs amount-bss">≈ {formatSecondary(remainingBsS)}</div>
+          )}
         </div>
       </div>
 
@@ -107,9 +119,9 @@ export default function PendingOrderMobileCard({ sale, isExpanded, lockInfo, isE
               <div key={item.id} className="d-flex flex-between align-start border-bottom ppo-item-row">
                 <div className="ppo-item-main">
                   <div><strong>{item.displayProductName || item.productName}</strong></div>
-                  <div className="text-xs text-muted">{formatQuantity(item.quantity)} x {formatBsS(item.unitPriceBsS)}</div>
+                  <div className="text-xs text-muted">{formatQuantity(item.quantity)} x {formatSecondary(item.unitPriceBsS)}</div>
                 </div>
-                <div className="font-bold amount-bss text-right text-nowrap flex-shrink-0 ppo-item-total">{formatBsS(item.subtotalBsS)}</div>
+                <div className="font-bold amount-bss text-right text-nowrap flex-shrink-0 ppo-item-total">{formatSecondary(item.subtotalBsS)}</div>
               </div>
             ))}
           </div>
@@ -125,9 +137,11 @@ export default function PendingOrderMobileCard({ sale, isExpanded, lockInfo, isE
                 <div key={p.id} className="d-flex flex-between align-start border-bottom ppo-item-row ppo-payment-row">
                   <div className="ppo-item-main">
                     <span>{p.paymentMethodName}</span>
-                    <span className="text-muted ml-2">({formatBsS(p.amountBsS)})</span>
+                    <span className="text-muted ml-2">({formatSecondary(p.amountBsS)})</span>
                   </div>
-                  <div className="font-bold amount-usd text-right text-nowrap flex-shrink-0 ppo-item-total">+{formatUSD(p.amount)}</div>
+                  {isDual && (
+                    <div className="font-bold amount-usd text-right text-nowrap flex-shrink-0 ppo-item-total">+{formatPrimary(p.amount)}</div>
+                  )}
                 </div>
               ))}
             </div>

@@ -4,7 +4,7 @@ Las ideas originales se presentan **íntegras y textualmente tal como fueron red
 
 > **Sincronización con el código — 2026-10-15 (commits hasta `012583a`):**
 > Pasos **1, 2, 3, 4, 5, 6, 7, 8, 9 y 10 COMPLETADOS** (marcados `[x]` con evidencia de código/commits).
-> Pasos **11–15 PENDIENTES**, con notas de dependencias actualizadas donde el código ya
+> Pasos **11, 12, 13, 14 y 15 COMPLETADOS** (Paso 15 verificado 2026-11-16; ANEXO LXX), con notas de dependencias actualizadas donde el código ya
 > fusionado cambió el terreno (multi-moneda, auditoría de stock enriquecida, etc.).
 > El informe estratégico completo (correcciones arquitectónicas, funcionalidades sinérgicas y
 > reordenamiento óptimo propuesto) vive en `docs/roadmap-sync-2026-10-13.md`.
@@ -737,7 +737,7 @@ Mejora de la rentabilidad.
 
 ### Paso 15
 
-**[ ] PENDIENTE** — nota: el Kardex del Paso 5 ya expone la serie histórica de movimientos (unión activa+archivo) que las métricas de rotación necesitan; el puente a liquidación masiva requiere el Paso 9.
+**[x] COMPLETADO (Paso 15, verificado 2026-11-16)** — evidencia: reporte on-demand con calculadora pura, agregaciones SQL e indices idempotentes; endpoints `/api/inventory-rotation/report` y `/dead-stock-ids`; vista WPF `InventoryHealthDialog` y pagina Web `inventory-health`; puente al Paso 9 por seleccion explicita de IDs; ANEXO LXX. **Desvios:** sin vista materializada (calculo on-demand) y rotacion sobre ventas brutas emitidas, sin netear devoluciones. — nota: el Kardex del Paso 5 ya expone la serie histórica de movimientos (unión activa+archivo) que las métricas de rotación necesitan; el puente a liquidación masiva requiere el Paso 9.
 
 15. Análisis de rotación de inventario y detección de stock inmovilizado ("Stock Muerto")
 Objetivo: Identificar productos con baja o nula rotación para sugerir liquidaciones masivas y optimizar el capital de trabajo inmovilizado en el inventario.

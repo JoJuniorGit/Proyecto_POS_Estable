@@ -103,6 +103,28 @@ describe('signalr ForceDisconnect handler', () => {
   });
 });
 
+describe('signalr connectRateHub CashDrawerChanged integration', () => {
+  it('5. registers the drawer event and dispatches the session id', async () => {
+    const connection = createFakeConnection();
+    const dispatched = [];
+
+    globalThis.window = { dispatchEvent: (event) => dispatched.push(event) };
+    try {
+      await connectRateHub(() => {}, undefined, undefined, { connectionFactory: () => connection });
+      assert.strictEqual(connection.handlerCount('CashDrawerChanged'), 1);
+
+      connection.emit('CashDrawerChanged', 42);
+
+      assert.strictEqual(dispatched.length, 1);
+      assert.strictEqual(dispatched[0].type, 'onCashDrawerChanged');
+      assert.deepStrictEqual(dispatched[0].detail, { sessionId: 42 });
+    } finally {
+      delete globalThis.window;
+      await disconnectRateHub();
+    }
+  });
+});
+
 describe('signalr connectRateHub ForceDisconnect integration', () => {
   it('4. clears the stopped module connection so a later connectRateHub rebuilds', async () => {
     const first = createFakeConnection();

@@ -1,10 +1,41 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus } from 'lucide-react';
-import { formatNumberEs, amountToCents } from '../../utils/formatters';
-import { bsToUsd } from '../../utils/money';
+import { amountToCents } from '../../utils/formatters';
+import { bsToUsd, resolveSuggestedPaymentAmount } from '../../utils/money';
+import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
+import { MONETARY_MODE_DUAL } from '../../utils/monetaryProfile';
 import './PaymentForm.css';
 
+/**
+ * 8.211-T4b2b1 (S9): regla de efectivo del backend. El legacy Dual USD/VES exige enteros en
+ * la moneda local; Single y Dual con secundaria no-VES aceptan la unidad menor.
+ * @param {{ mode?: string, secondaryCurrencyCode?: string | null }} profile
+ * @returns {{ requiresIntegerCash: boolean, allowsFractionalCash: boolean }}
+ */
+export function resolveCashAmountRules({ mode, secondaryCurrencyCode } = {}) {
+  const isDual = mode === MONETARY_MODE_DUAL;
+  const requiresIntegerCash = isDual && secondaryCurrencyCode === 'VES';
+  return {
+    requiresIntegerCash,
+    allowsFractionalCash: !requiresIntegerCash,
+  };
+}
+
 export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAddPayment }) {
+  const {
+    mode,
+    primaryCurrencyCode,
+    primaryCurrencySymbol,
+    secondaryCurrencyCode,
+    secondaryCurrencySymbol,
+    formatPrimary,
+  } = useMonetaryProfile();
+  const isDual = mode === MONETARY_MODE_DUAL;
+  const localCurrencySymbol = (isDual && secondaryCurrencySymbol) || primaryCurrencySymbol;
+  const { requiresIntegerCash } = resolveCashAmountRules({ mode, secondaryCurrencyCode });
+  // 8.211-T4b2b1 (S9): la equivalencia solo tiene sentido si el USD pertenece al perfil; en
+  // Single la única moneda es la primaria y la línea se oculta por completo.
+  const showUsdEquivalent = isDual && (primaryCurrencyCode === 'USD' || secondaryCurrencyCode === 'USD');
   const [selectedMethodId, setSelectedMethodId] = useState('');
   const [amountText, setAmountText] = useState('');
   const [reference, setReference] = useState('');
@@ -23,14 +54,10 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
   const isCashSelected = !!selectedMethod?.isCash;
   const isManuallyEditedRef = useRef(false);
 
-  // Prellenar el monto al cambiar saldo restante o método de pago, sin sobreescribir edición manual
+  // Prellenar el monto al cambiar saldo restante o método de pago, sin sobreescribir edición manual (CLEAN-02)
   useEffect(() => {
     if (!isManuallyEditedRef.current) {
-      if (remainingBsS > 0) {
-        setAmountText(isCashSelected ? Math.round(remainingBsS).toString() : remainingBsS.toFixed(2));
-      } else {
-        setAmountText('');
-      }
+      setAmountText(resolveSuggestedPaymentAmount(remainingBsS, isCashSelected));
     }
   }, [remainingBsS, isCashSelected, selectedMethodId]);
 
@@ -44,11 +71,13 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
   // Verificación de número entero o terminación en .00 (ej: 10, 12.00, 15.00)
   const isIntegerOrZeroDecimal = isValidNum && (parsedCents % 100) === 0;
 
-  // Validación de monto:
-  // - Para efectivo: acepta enteros o .00 (ej: 10, 12.00, 15.00), pero rechaza centavos (ej: 15.01)
-  // - Para otros métodos: acepta cualquier monto decimal válido (ej: 15.01, 15.00, 15)
-  const isAmountValid = isCashSelected ? (isValidNum && isIntegerOrZeroDecimal) : isValidNum;
-  const hasDecimalError = isCashSelected && isValidNum && !isIntegerOrZeroDecimal;
+  // Validación de monto (8.211-T4b2b1): replica la regla del backend. El efectivo Dual USD/VES
+  // solo acepta enteros o .00; Single y Dual no-VES aceptan centavos. Los métodos no-efectivo
+  // conservan la validación decimal existente.
+  const isAmountValid = isCashSelected && requiresIntegerCash
+    ? (isValidNum && isIntegerOrZeroDecimal)
+    : isValidNum;
+  const hasDecimalError = isCashSelected && requiresIntegerCash && isValidNum && !isIntegerOrZeroDecimal;
 
   // Integración con el mensaje de validación nativo de HTML5 (Validation Bubble)
   useEffect(() => {
@@ -63,7 +92,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
     } else {
       inputRef.current.setCustomValidity('');
     }
-  }, [hasDecimalError, amountText, isValidNum]);
+  }, [hasDecimalError, amountText, isValidNum, requiresIntegerCash]);
 
   const finalAmountBsS = parsedCents / 100;
   const usdPreview = bsToUsd(finalAmountBsS, exchangeRate).toFixed(2);
@@ -123,7 +152,7 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
 
       <div className="form-row">
         <div className="form-group flex-1">
-          <label className="form-label">Monto (Bs.S)</label>
+          <label className="form-label">Monto ({localCurrencySymbol})</label>
           <input
             ref={inputRef}
             type="text"
@@ -147,15 +176,19 @@ export default function PaymentForm({ methods, remainingBsS, exchangeRate, onAdd
             >
               {hasDecimalError
                 ? 'El pago en efectivo solo acepta números enteros (ej: 10 o 10.00). Montos con centavos como 15.01 no son permitidos.'
-                : 'El pago en efectivo acepta números enteros (ej: 10 o 10.00).'}
+                : requiresIntegerCash
+                  ? 'El pago en efectivo acepta números enteros (ej: 10 o 10.00).'
+                  : 'El pago en efectivo acepta centavos de la moneda local (ej: 15.01).'}
             </small>
           )}
         </div>
 
-        <div className="form-group flex-1">
-          <label className="form-label">Equivalente USD</label>
-          <div className="form-read-only">$ {formatNumberEs(parseFloat(usdPreview))} USD</div>
-        </div>
+        {showUsdEquivalent && (
+          <div className="form-group flex-1">
+            <label className="form-label">Equivalente {primaryCurrencyCode}</label>
+            <div className="form-read-only">{formatPrimary(parseFloat(usdPreview))} {primaryCurrencyCode}</div>
+          </div>
+        )}
       </div>
 
       {selectedMethod?.requiresReference && (

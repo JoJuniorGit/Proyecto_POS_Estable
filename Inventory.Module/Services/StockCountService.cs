@@ -29,6 +29,7 @@ public class StockCountService : IStockCountService
 {
     private const int MaxNameLength = 80;
     private const int MaxNotesLength = 300;
+    private const int MaxScopeProducts = 1000;
 
     private readonly InventoryDbContext _context;
     private readonly IInventoryService _inventoryService;
@@ -70,20 +71,72 @@ public class StockCountService : IStockCountService
             throw new ArgumentException($"Las notas de la sesión de conteo no pueden exceder los {MaxNotesLength} caracteres.", nameof(request));
         }
 
-        if (request.ScopeCategoryId.HasValue
-            && !await _context.Categories.AsNoTracking().AnyAsync(c => c.Id == request.ScopeCategoryId.Value, cancellationToken))
+        var requestedProductIds = request.ScopeProductIds;
+        var scopeType = ResolveScopeType(request, requestedProductIds);
+        List<Product>? scopeProducts = null;
+
+        switch (scopeType)
         {
-            throw new KeyNotFoundException($"Categoría con ID {request.ScopeCategoryId.Value} no encontrada.");
+            case StockCountScopeType.All:
+                if (request.ScopeCategoryId.HasValue || requestedProductIds is { Count: > 0 })
+                {
+                    throw new ArgumentException(
+                        "El alcance 'All' no admite categoría ni productos seleccionados.",
+                        nameof(request));
+                }
+                break;
+
+            case StockCountScopeType.Category:
+                if (!request.ScopeCategoryId.HasValue)
+                {
+                    throw new ArgumentException(
+                        "El alcance 'Category' requiere ScopeCategoryId.",
+                        nameof(request));
+                }
+                if (requestedProductIds is { Count: > 0 })
+                {
+                    throw new ArgumentException(
+                        "El alcance 'Category' no admite ScopeProductIds.",
+                        nameof(request));
+                }
+                if (!await _context.Categories.AsNoTracking()
+                        .AnyAsync(c => c.Id == request.ScopeCategoryId.Value, cancellationToken))
+                {
+                    throw new KeyNotFoundException($"Categoría con ID {request.ScopeCategoryId.Value} no encontrada.");
+                }
+                break;
+
+            case StockCountScopeType.Products:
+                if (request.ScopeCategoryId.HasValue)
+                {
+                    throw new ArgumentException(
+                        "El alcance 'Products' no admite ScopeCategoryId.",
+                        nameof(request));
+                }
+                scopeProducts = await ResolveScopeProductsAsync(requestedProductIds, cancellationToken);
+                break;
+
+            default:
+                throw new ArgumentException("El tipo de alcance de la sesión no es válido.", nameof(request));
         }
 
         var session = new StockCountSession
         {
             Name = name,
             Status = StockCountStatus.Open,
-            ScopeCategoryId = request.ScopeCategoryId,
+            ScopeType = scopeType,
+            ScopeCategoryId = scopeType == StockCountScopeType.Category ? request.ScopeCategoryId : null,
             CreatedByUserId = _currentUserService?.UserId,
             Notes = notes
         };
+
+        if (scopeProducts is not null)
+        {
+            foreach (var product in scopeProducts)
+            {
+                session.ScopeProducts.Add(new StockCountSessionProduct { ProductId = product.Id });
+            }
+        }
 
         _context.StockCountSessions.Add(session);
         await _context.SaveChangesAsync(cancellationToken);
@@ -109,6 +162,11 @@ public class StockCountService : IStockCountService
             .Select(g => new { SessionId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.SessionId, x => x.Count, cancellationToken);
 
+        var scopeProductCounts = await _context.StockCountSessionProducts.AsNoTracking()
+            .GroupBy(sp => sp.StockCountSessionId)
+            .Select(g => new { SessionId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.SessionId, x => x.Count, cancellationToken);
+
         var categories = await _context.Categories.AsNoTracking().ToListAsync(cancellationToken);
         var byId = categories.ToDictionary(c => c.Id);
 
@@ -116,7 +174,8 @@ public class StockCountService : IStockCountService
             .Select(s => ToDto(
                 s,
                 itemCounts.TryGetValue(s.Id, out var count) ? count : 0,
-                ResolveScopePath(s.ScopeCategoryId, byId)))
+                ResolveScopePath(s.ScopeCategoryId, byId),
+                scopeProductCounts.TryGetValue(s.Id, out var scopeCount) ? scopeCount : 0))
             .ToList();
     }
 
@@ -140,7 +199,11 @@ public class StockCountService : IStockCountService
             .ToListAsync(cancellationToken);
 
         var path = await ResolveScopePathAsync(session.ScopeCategoryId, cancellationToken);
-        return new StockCountDetailDto(ToDto(session, items.Count, path), items);
+        var scopeProductCount = await _context.StockCountSessionProducts.AsNoTracking()
+            .CountAsync(sp => sp.StockCountSessionId == id, cancellationToken);
+        return new StockCountDetailDto(
+            ToDto(session, items.Count, path, scopeProductCount),
+            items);
     }
 
     public async Task<StockCountItemDto> ScanAsync(int id, ScanStockCountRequestDto request, CancellationToken cancellationToken = default)
@@ -159,7 +222,7 @@ public class StockCountService : IStockCountService
             ?? throw new KeyNotFoundException($"Código no encontrado: '{code}'. Verifique el SKU o código de barras.");
 
         ValidateCountableProduct(product);
-        await EnsureProductInScopeAsync(session, product.Id, cancellationToken);
+        await EnsureProductInScopeAsync(session, product, cancellationToken);
 
         var item = await _context.StockCountItems
             .FirstOrDefaultAsync(i => i.StockCountSessionId == id && i.ProductId == product.Id, cancellationToken);
@@ -193,7 +256,7 @@ public class StockCountService : IStockCountService
             ?? throw new KeyNotFoundException($"Producto {productId} no encontrado.");
 
         ValidateCountableProduct(product);
-        await EnsureProductInScopeAsync(session, product.Id, cancellationToken);
+        await EnsureProductInScopeAsync(session, product, cancellationToken);
 
         var item = await _context.StockCountItems
             .FirstOrDefaultAsync(i => i.StockCountSessionId == id && i.ProductId == productId, cancellationToken);
@@ -283,7 +346,7 @@ public class StockCountService : IStockCountService
             }
         }
 
-        var unscanned = await CountUnscannedInScopeAsync(session.ScopeCategoryId, reviewItems.Count, cancellationToken);
+        var unscanned = await CountUnscannedInScopeAsync(session, reviewItems.Count, cancellationToken);
 
         return new StockCountReviewDto(
             session.Id,
@@ -545,20 +608,51 @@ public class StockCountService : IStockCountService
         }
     }
 
-    private async Task EnsureProductInScopeAsync(StockCountSession session, int productId, CancellationToken cancellationToken)
+    private async Task EnsureProductInScopeAsync(
+        StockCountSession session,
+        Product product,
+        CancellationToken cancellationToken)
     {
-        if (session.ScopeCategoryId is not int scopeCategoryId)
+        switch (session.ScopeType)
         {
-            return;
-        }
+            case StockCountScopeType.All:
+                return;
 
-        var subtreeIds = await ResolveCategorySubtreeIdsAsync(scopeCategoryId, cancellationToken);
-        var inScope = await _context.ProductCategories.AsNoTracking()
-            .AnyAsync(pc => pc.ProductId == productId && subtreeIds.Contains(pc.CategoryId), cancellationToken);
+            case StockCountScopeType.Category:
+                if (session.ScopeCategoryId is not int scopeCategoryId)
+                {
+                    throw new InvalidOperationException(
+                        $"La sesión de conteo #{session.Id} no tiene una categoría de alcance válida.");
+                }
 
-        if (!inScope)
-        {
-            throw new InvalidOperationException($"El producto no pertenece al alcance de la sesión de conteo #{session.Id}.");
+                var subtreeIds = await ResolveCategorySubtreeIdsAsync(scopeCategoryId, cancellationToken);
+                var inScope = await _context.ProductCategories.AsNoTracking()
+                    .AnyAsync(pc => pc.ProductId == product.Id && subtreeIds.Contains(pc.CategoryId), cancellationToken);
+
+                if (!inScope)
+                {
+                    throw new InvalidOperationException(
+                        $"El producto '{product.Name}' (SKU {product.SKU}) no pertenece al alcance de la sesión de conteo #{session.Id}.");
+                }
+                return;
+
+            case StockCountScopeType.Products:
+                var inSelectedScope = await _context.StockCountSessionProducts.AsNoTracking()
+                    .AnyAsync(
+                        sp => sp.StockCountSessionId == session.Id && sp.ProductId == product.Id,
+                        cancellationToken);
+
+                if (!inSelectedScope)
+                {
+                    throw new InvalidOperationException(
+                        $"El producto '{product.Name}' (SKU {product.SKU}) no pertenece a los productos seleccionados de la sesión de conteo #{session.Id}. " +
+                        "Solo se pueden escanear o editar los productos del alcance.");
+                }
+                return;
+
+            default:
+                throw new InvalidOperationException(
+                    $"La sesión de conteo #{session.Id} tiene un alcance no válido.");
         }
     }
 
@@ -597,18 +691,145 @@ public class StockCountService : IStockCountService
     }
 
     /// <summary>
-    /// Productos CONTABLES del alcance que no fueron escaneados: activos, no borrados, sin adelanto
-    /// de efectivo, sin agrupador individual y sin variantes de stock compartido (esos no pueden
-    /// contarse, por lo que no deben inflar el pendiente). Supuesto L2: los no escaneados no se aplican.
+    /// Valida el alcance Products al crear la sesión. A diferencia de <see cref="ValidateCountableProduct"/>
+    /// (409 en scan/apply), una selección inválida en el alta es un error de payload (400).
     /// </summary>
-    private async Task<int> CountUnscannedInScopeAsync(int? scopeCategoryId, int scannedCount, CancellationToken cancellationToken)
+    private static void ValidateScopeProduct(Product product)
     {
+        if (!product.IsActive)
+        {
+            throw new ArgumentException(
+                $"El producto '{product.Name}' (SKU {product.SKU}) está inactivo y no puede incluirse en el alcance.");
+        }
+        if (product.IsDeleted)
+        {
+            throw new ArgumentException(
+                $"El producto '{product.Name}' (SKU {product.SKU}) está eliminado y no puede incluirse en el alcance.");
+        }
+        if (product.IsCashAdvance)
+        {
+            throw new ArgumentException(
+                $"El producto '{product.Name}' (SKU {product.SKU}) es un adelanto de efectivo y no es inventariable.");
+        }
+        if (product.IsGroupHeader && !product.IsStockShared)
+        {
+            throw new ArgumentException(
+                $"El producto '{product.Name}' (SKU {product.SKU}) es un agrupador sin stock propio y no es inventariable.");
+        }
+        if (product.ParentProductId.HasValue
+            && product.ParentProduct is not null
+            && product.ParentProduct.IsStockShared)
+        {
+            throw new ArgumentException(
+                $"El producto '{product.Name}' (SKU {product.SKU}) es una variante de stock compartido y no es inventariable.");
+        }
+    }
+
+    private static StockCountScopeType ResolveScopeType(
+        CreateStockCountRequestDto request,
+        IReadOnlyCollection<int>? productIds)
+    {
+        if (request.ScopeType.HasValue)
+        {
+            return request.ScopeType.Value;
+        }
+
+        var hasCategory = request.ScopeCategoryId.HasValue;
+        var hasProducts = productIds is { Count: > 0 };
+
+        if (hasCategory && hasProducts)
+        {
+            throw new ArgumentException(
+                "Especifique ScopeType cuando envía categoría y productos seleccionados.",
+                nameof(request));
+        }
+
+        if (hasCategory)
+        {
+            return StockCountScopeType.Category;
+        }
+
+        return hasProducts ? StockCountScopeType.Products : StockCountScopeType.All;
+    }
+
+    private async Task<List<Product>> ResolveScopeProductsAsync(
+        List<int>? requestedIds,
+        CancellationToken cancellationToken)
+    {
+        if (requestedIds is null || requestedIds.Count == 0)
+        {
+            throw new ArgumentException(
+                "El alcance 'Products' requiere al menos un producto seleccionado.",
+                nameof(requestedIds));
+        }
+
+        if (requestedIds.Count > MaxScopeProducts)
+        {
+            throw new ArgumentException(
+                $"La selección no puede exceder {MaxScopeProducts} productos.",
+                nameof(requestedIds));
+        }
+
+        if (requestedIds.Any(id => id <= 0))
+        {
+            throw new ArgumentException(
+                "La selección de productos contiene IDs inválidos.",
+                nameof(requestedIds));
+        }
+
+        var distinctIds = requestedIds.Distinct().ToList();
+        if (distinctIds.Count != requestedIds.Count)
+        {
+            throw new ArgumentException(
+                "La selección de productos contiene IDs duplicados.",
+                nameof(requestedIds));
+        }
+
+        var products = await _context.Products.AsNoTracking()
+            .Include(p => p.ParentProduct)
+            .Where(p => distinctIds.Contains(p.Id))
+            .ToListAsync(cancellationToken);
+
+        var missingIds = distinctIds.Except(products.Select(p => p.Id)).ToList();
+        if (missingIds.Count > 0)
+        {
+            throw new ArgumentException(
+                $"Producto(s) no encontrado(s): {string.Join(", ", missingIds)}.",
+                nameof(requestedIds));
+        }
+
+        foreach (var product in products)
+        {
+            ValidateScopeProduct(product);
+        }
+
+        var byId = products.ToDictionary(p => p.Id);
+        return distinctIds.Select(id => byId[id]).ToList();
+    }
+
+    /// <summary>
+    /// Productos del alcance que no fueron escaneados. En Products se cuenta exactamente la
+    /// selección persistida menos los escaneos; en All/Category se conserva el filtro contable
+    /// histórico.
+    /// </summary>
+    private async Task<int> CountUnscannedInScopeAsync(
+        StockCountSession session,
+        int scannedCount,
+        CancellationToken cancellationToken)
+    {
+        if (session.ScopeType == StockCountScopeType.Products)
+        {
+            var selectedCount = await _context.StockCountSessionProducts.AsNoTracking()
+                .CountAsync(sp => sp.StockCountSessionId == session.Id, cancellationToken);
+            return Math.Max(0, selectedCount - scannedCount);
+        }
+
         IQueryable<Product> query = _context.Products.AsNoTracking()
             .Where(p => p.IsActive && !p.IsDeleted && !p.IsCashAdvance)
             .Where(p => !(p.IsGroupHeader && !p.IsStockShared))
             .Where(p => p.ParentProduct == null || !p.ParentProduct.IsStockShared);
 
-        if (scopeCategoryId is int scopeId)
+        if (session.ScopeType == StockCountScopeType.Category && session.ScopeCategoryId is int scopeId)
         {
             var subtreeIds = await ResolveCategorySubtreeIdsAsync(scopeId, cancellationToken);
             var inScopeProductIds = _context.ProductCategories.AsNoTracking()
@@ -650,20 +871,30 @@ public class StockCountService : IStockCountService
 
         var itemsCount = await _context.StockCountItems.AsNoTracking()
             .CountAsync(i => i.StockCountSessionId == id, cancellationToken);
+        var scopeProductCount = await _context.StockCountSessionProducts.AsNoTracking()
+            .CountAsync(sp => sp.StockCountSessionId == id, cancellationToken);
         var path = await ResolveScopePathAsync(session.ScopeCategoryId, cancellationToken);
 
-        return ToDto(session, itemsCount, path);
+        return ToDto(session, itemsCount, path, scopeProductCount);
     }
 
-    private static StockCountSessionDto ToDto(StockCountSession session, int itemsCount, string? scopeCategoryPath) => new(
-        session.Id,
-        session.Name,
-        session.Status,
-        session.ScopeCategoryId,
-        scopeCategoryPath,
-        itemsCount,
-        session.CreatedByUserId,
-        session.CreatedAt,
-        session.ClosedAt,
-        session.AppliedAt);
+    private static StockCountSessionDto ToDto(
+        StockCountSession session,
+        int itemsCount,
+        string? scopeCategoryPath,
+        int scopeProductCount) => new(
+            session.Id,
+            session.Name,
+            session.Status,
+            session.ScopeCategoryId,
+            scopeCategoryPath,
+            itemsCount,
+            session.CreatedByUserId,
+            session.CreatedAt,
+            session.ClosedAt,
+            session.AppliedAt)
+    {
+        ScopeType = session.ScopeType,
+        ScopeProductCount = scopeProductCount
+    };
 }

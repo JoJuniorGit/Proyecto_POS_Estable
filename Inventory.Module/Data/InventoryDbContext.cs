@@ -16,6 +16,8 @@ public class InventoryDbContext : DbContext
     public DbSet<StockReservation> StockReservations { get; set; }
     public DbSet<SystemSetting> SystemSettings { get; set; }
     public DbSet<ExchangeRateHistory> ExchangeRateHistory { get; set; }
+    // 8.211-T2a (S4): tasas manuales diarias para pares distintos de USD/VES.
+    public DbSet<CurrencyPairRate> CurrencyPairRates { get; set; }
     public DbSet<Supplier> Suppliers { get; set; }
     public DbSet<SupplierColumnMapping> SupplierColumnMappings { get; set; }
     public DbSet<SupplierOcrTemplate> SupplierOcrTemplates { get; set; }
@@ -29,6 +31,7 @@ public class InventoryDbContext : DbContext
     // 8.180-T1 (S1): sesiones de conteo físico ciego + ítems contados (Paso 6).
     public DbSet<StockCountSession> StockCountSessions { get; set; }
     public DbSet<StockCountItem> StockCountItems { get; set; }
+    public DbSet<StockCountSessionProduct> StockCountSessionProducts { get; set; }
 
 
 
@@ -189,6 +192,22 @@ public class InventoryDbContext : DbContext
         {
             entity.HasKey(e => e.Date);
             entity.Property(e => e.Rate).HasPrecision(18, 4);
+        });
+
+        // 8.211-T2a (S4): una tasa manual por par y fecha. USD/VES no se persiste aquí (sigue en
+        // ExchangeRateHistory) y UpdatedByUserId es solo auditoría, sin FK a usuarios.
+        modelBuilder.Entity<CurrencyPairRate>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.FromCurrencyCode).IsRequired().HasMaxLength(3);
+            entity.Property(r => r.ToCurrencyCode).IsRequired().HasMaxLength(3);
+            entity.Property(r => r.RateDate).HasColumnType("date");
+            entity.Property(r => r.Rate).HasColumnType("numeric(18,8)").HasPrecision(18, 8);
+            entity.HasIndex(r => new { r.RateDate, r.FromCurrencyCode, r.ToCurrencyCode })
+                .IsUnique()
+                .HasDatabaseName("IX_CurrencyPairRates_RateDate_From_To");
+            entity.ToTable(t =>
+                t.HasCheckConstraint("CK_CurrencyPairRates_Rate_Positive", "\"Rate\" > 0"));
         });
 
         modelBuilder.Entity<Supplier>(entity =>
@@ -357,8 +376,8 @@ public class InventoryDbContext : DbContext
                 .HasDefaultValue(MatchMethod.None);
             entity.Property(line => line.IsApproved).HasDefaultValue(true);
             entity.Property(line => line.Quantity).HasColumnType("numeric(18,3)").HasPrecision(18, 3);
-            entity.Property(line => line.UnitCostDocument).HasColumnType("numeric(18,2)").HasPrecision(18, 2).HasDefaultValue(0m);
-            entity.Property(line => line.UnitCostUSD).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
+            entity.Property(line => line.UnitCostDocument).HasColumnType("numeric(18,4)").HasPrecision(18, 4).HasDefaultValue(0m);
+            entity.Property(line => line.UnitCostUSD).HasColumnType("numeric(18,4)").HasPrecision(18, 4);
             entity.Property(line => line.OldCostPriceUSD).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
             entity.Property(line => line.OldProfitMarginRetail).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
             entity.Property(line => line.OldProfitMarginWholesale).HasColumnType("numeric(18,2)").HasPrecision(18, 2);
@@ -384,6 +403,16 @@ public class InventoryDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(line => line.ResolvedProductId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // SRE-09: token de concurrencia para que dos confirmaciones simultáneas de la
+            // misma línea no dupliquen StockMovements.
+            if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+            {
+                entity.Property<uint>("xmin")
+                    .HasColumnType("xid")
+                    .ValueGeneratedOnAddOrUpdate()
+                    .IsConcurrencyToken();
+            }
         });
 
         // 8.180-T1 (S1): sesión de conteo físico (molde SupplierInvoice: status string(32) + xmin
@@ -396,6 +425,10 @@ public class InventoryDbContext : DbContext
                 .HasConversion<string>()
                 .HasMaxLength(32)
                 .HasDefaultValue(StockCountStatus.Open);
+            entity.Property(s => s.ScopeType)
+                .HasConversion<string>()
+                .HasMaxLength(32)
+                .HasDefaultValue(StockCountScopeType.All);
             entity.HasOne(s => s.ScopeCategory)
                 .WithMany()
                 .HasForeignKey(s => s.ScopeCategoryId)
@@ -431,5 +464,24 @@ public class InventoryDbContext : DbContext
                 .HasForeignKey(i => i.ProductId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+
+        // WU1: alcance estricto por producto. Clave compuesta (sesión, producto) + índice por
+        // producto para búsquedas de alcance; ambos FKs Restrict para no borrar en cascada.
+        modelBuilder.Entity<StockCountSessionProduct>(entity =>
+        {
+            entity.HasKey(sp => new { sp.StockCountSessionId, sp.ProductId });
+            entity.ToTable("StockCountSessionProducts");
+            entity.HasIndex(sp => sp.ProductId)
+                .HasDatabaseName("IX_StockCountSessionProducts_ProductId");
+            entity.HasOne(sp => sp.StockCountSession)
+                .WithMany(s => s.ScopeProducts)
+                .HasForeignKey(sp => sp.StockCountSessionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(sp => sp.Product)
+                .WithMany()
+                .HasForeignKey(sp => sp.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
     }
 }
+

@@ -9,6 +9,7 @@ using FlaUI.Core.Input;
 using FlaUI.Core.Tools;
 using FlaUI.Core.WindowsAPI;
 using FlaUI.UIA3;
+using Npgsql;
 using Xunit;
 
 namespace CommandCenter.Wpf.E2ETests.Tests;
@@ -88,7 +89,8 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
 
             decimal unitPriceUsd = Math.Ceiling(ProductCostUsd * (1m + (RetailMarginPercent / 100m)) * 100m) / 100m;
             decimal expectedUnitPriceBsS = Math.Ceiling(unitPriceUsd * appliedRate * 100m) / 100m;
-            decimal expectedCashPaidBsS = Math.Round(expectedUnitPriceBsS, 0, MidpointRounding.AwayFromZero);
+            decimal expectedTotalBsS = expectedUnitPriceBsS * 2m; // se venden 2 unidades tras editar la cantidad
+            decimal expectedCashPaidBsS = Math.Round(expectedTotalBsS, 0, MidpointRounding.AwayFromZero);
 
             // 2) POS real: búsqueda por SKU único + alta en el carrito. El total del resumen debe
             //    reflejar el precio costo+margen en Bs.S a la tasa vigente (ToBsSCeiling).
@@ -99,12 +101,59 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
                 $"para la tasa {appliedRate} leída al inicio. {DescribeCart(window, bootstrap.ProductName)}");
             AssertNoErrorDialogs();
 
+            // 2b) Edición de cantidad en el carrito real: +1 -> 2 (total duplica, fila intacta),
+            //     -1 -> 1 (vuelve al total original) y piso en 1 (la resta no elimina la línea ni
+            //     altera el total). Se deja en 2 para el cobro.
+            var increaseButton = WaitForEnabledButton(window, "Pos_IncreaseCartItemQuantityButton", findTimeout)
+                ?? throw new InvalidOperationException(
+                    $"El carrito no expuso el botón de aumentar cantidad. {DescribeUi(window)}");
+            increaseButton.Invoke();
+            Assert.Equal(2m, WaitForCartQuantity(window, 2m, findTimeout));
+
+            var decreaseButton = WaitForEnabledButton(window, "Pos_DecreaseCartItemQuantityButton", findTimeout)
+                ?? throw new InvalidOperationException(
+                    $"El carrito no expuso el botón de disminuir cantidad. {DescribeUi(window)}");
+            decreaseButton.Invoke();
+            Assert.Equal(1m, WaitForCartQuantity(window, 1m, findTimeout));
+
+            var floorButton = window.FindFirstDescendant(cf => cf.ByAutomationId("Pos_DecreaseCartItemQuantityButton"))?.AsButton();
+            if (floorButton is { IsEnabled: true })
+            {
+                floorButton.Invoke();
+                System.Threading.Thread.Sleep(500);
+            }
+            Assert.Equal(1m, ReadCartQuantity(window));
+            Assert.NotNull(window.FindFirstDescendant(cf => cf.ByAutomationId("Pos_CartGrid"))
+                ?.FindFirstDescendant(cf => cf.ByName(bootstrap.ProductName)));
+
+            increaseButton = WaitForEnabledButton(window, "Pos_IncreaseCartItemQuantityButton", findTimeout)
+                ?? throw new InvalidOperationException(
+                    $"El carrito no permitió volver a 2 unidades. {DescribeUi(window)}");
+            increaseButton.Invoke();
+            Assert.Equal(2m, WaitForCartQuantity(window, 2m, findTimeout));
+            AssertNoErrorDialogs();
+
             // 3) Cobro real en efectivo: la factura que muestra la UI es el ancla de la verificación
             //    y el monto pagado (Bs.S entero, RoundToCash) debe cubrir el 100% de la venta.
             var checkout = CompleteCashCheckout(window, findTimeout);
             Assert.True(checkout.InvoiceNumber > 0, "El diálogo de éxito mostró un N° de factura inválido.");
             Assert.Equal(expectedCashPaidBsS, checkout.PaidBsS);
             AssertNoErrorDialogs();
+
+            // 3b) Persistencia real: snapshot bimonetario, stock/Kardex y gaveta. La tasa y el total
+            //     Bs.S deben ser exactamente los de la política (ToBsSCeiling por unidad), y el USD
+            //     efectivo el inverso 4dp del Bs.S efectivo persistido.
+            using var api = new E2eApiClient(_fixture.BackendBaseAddress);
+            int productId = await api.GetProductIdBySkuAsync(
+                _fixture.AdminToken ?? throw new InvalidOperationException("El harness no expuso el token del admin."),
+                bootstrap.ProductSku);
+            await AssertPersistedSaleState(
+                checkout,
+                productId,
+                appliedRate,
+                expectedTotalBsS,
+                unitPriceUsd * 2m,
+                expectedCashPaidBsS);
 
             // 4) Historial de Ventas real: la factura localizada por su número debe aparecer con el
             //    total del período igual al monto cobrado que mostró la UI.
@@ -630,6 +679,104 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
     /// ("Bs.S 650.00", "11,328.00", "650,00", "Tasa: 871.37 Bs/$"). El regex arranca en un dígito
     /// para no capturar el punto de la etiqueta "Bs.S" como separador decimal.
     /// </summary>
+    private static decimal ReadCartQuantity(Window window)
+    {
+        var label = window.FindAllDescendants(cf => cf.ByControlType(ControlType.Text))
+            .FirstOrDefault(text => text.Name?.StartsWith("Cantidad ", StringComparison.Ordinal) == true);
+        return ParseUiNumber(label?.Name);
+    }
+
+    private static decimal WaitForCartQuantity(Window window, decimal expected, TimeSpan timeout)
+    {
+        var settled = Retry.WhileNull(
+            () => UiaRetry.RetryUia(() =>
+            {
+                var current = ReadCartQuantity(window);
+                return current == expected ? (decimal?)current : null;
+            }),
+            timeout);
+
+        Assert.True(
+            settled.Result.HasValue,
+            $"La cantidad del carrito no alcanzó {expected}; actual={ReadCartQuantity(window)}.");
+        return settled.Result!.Value;
+    }
+
+    /// <summary>
+    /// Verifica el snapshot persistido: TotalBsS/AppliedRate/TotalUSD, el USD efectivo 4dp derivado
+    /// del Bs.S efectivo, el descuento de stock, el movimiento de Kardex ligado a la venta y el
+    /// ingreso físico de la gaveta. Todo contra la base aislada real del harness.
+    /// </summary>
+    private async Task AssertPersistedSaleState(
+        CheckoutOutcome checkout,
+        int productId,
+        decimal appliedRate,
+        decimal expectedTotalBsS,
+        decimal expectedTotalUsd,
+        decimal expectedPaidBsS)
+    {
+        await using var connection = new NpgsqlConnection(_fixture.DatabaseConnectionString);
+        await connection.OpenAsync();
+
+        int saleId;
+        decimal persistedTotalBsS;
+        decimal persistedRate;
+        decimal persistedTotalUsd;
+
+        await using (var saleCommand = new NpgsqlCommand(
+            "SELECT \"Id\", \"TotalBsS\", \"AppliedRate\", \"TotalUSD\" FROM \"Sales\" WHERE \"InvoiceNumber\" = @invoice",
+            connection))
+        {
+            saleCommand.Parameters.AddWithValue("invoice", checkout.InvoiceNumber);
+            await using var reader = await saleCommand.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync(), $"La venta #{checkout.InvoiceNumber} no quedó persistida.");
+            saleId = reader.GetInt32(0);
+            persistedTotalBsS = reader.GetDecimal(1);
+            persistedRate = reader.GetDecimal(2);
+            persistedTotalUsd = reader.GetDecimal(3);
+        }
+
+        Assert.Equal(expectedTotalBsS, persistedTotalBsS);
+        Assert.Equal(appliedRate, persistedRate);
+        Assert.Equal(expectedTotalUsd, persistedTotalUsd);
+
+        decimal expectedEffectiveUsd = Math.Round(expectedTotalBsS / appliedRate, 4, MidpointRounding.AwayFromZero);
+        decimal persistedEffectiveUsd = Math.Round(persistedTotalBsS / persistedRate, 4, MidpointRounding.AwayFromZero);
+        Assert.Equal(expectedEffectiveUsd, persistedEffectiveUsd);
+
+        await using (var stockCommand = new NpgsqlCommand(
+            "SELECT \"StockQuantity\" FROM \"Products\" WHERE \"Id\" = @product",
+            connection))
+        {
+            stockCommand.Parameters.AddWithValue("product", productId);
+            var stock = (decimal)(await stockCommand.ExecuteScalarAsync()
+                ?? throw new InvalidOperationException("El producto sembrado no existe en la base aislada."));
+            Assert.Equal(98m, stock); // 100 iniciales - 2 vendidas
+        }
+
+        await using (var kardexCommand = new NpgsqlCommand(
+            "SELECT \"QuantityChange\" FROM \"StockMovements\" WHERE \"SaleId\" = @sale",
+            connection))
+        {
+            kardexCommand.Parameters.AddWithValue("sale", saleId);
+            await using var reader = await kardexCommand.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync(), $"No se registró el movimiento de Kardex de la venta {saleId}.");
+            Assert.Equal(-2m, reader.GetDecimal(0));
+            Assert.False(await reader.ReadAsync(), $"Kardex duplicado para la venta {saleId}.");
+        }
+
+        await using (var drawerCommand = new NpgsqlCommand(
+            "SELECT \"AmountLocal\" FROM \"CashTransactions\" WHERE \"SaleId\" = @sale AND \"Source\" = 1",
+            connection))
+        {
+            drawerCommand.Parameters.AddWithValue("sale", saleId);
+            await using var reader = await drawerCommand.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync(), $"No se registró el ingreso de gaveta de la venta {saleId}.");
+            Assert.Equal(expectedPaidBsS, reader.GetDecimal(0));
+            Assert.False(await reader.ReadAsync(), $"Ingreso de gaveta duplicado para la venta {saleId}.");
+        }
+    }
+
     private static decimal ParseUiNumber(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -644,11 +791,29 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
         }
 
         var digits = match.Value;
+        int lastComma = digits.LastIndexOf(',');
+        int lastDot = digits.LastIndexOf('.');
 
-        // "11,328.00" -> la coma separa miles; "650,00" -> la coma es decimal.
-        digits = digits.Contains(',') && digits.Contains('.')
-            ? digits.Replace(",", string.Empty)
-            : digits.Replace(',', '.');
+        // El separador MÁS A LA DERECHA es el decimal: "11,328.00" (en-US) y "1.300,00"
+        // (es-VE) se normalizan sin asumir una cultura fija. Con un solo punto y exactamente
+        // 3 dígitos finales ("1.300") es separador de miles, no decimal.
+        if (lastComma >= 0 && lastDot >= 0)
+        {
+            digits = lastComma > lastDot
+                ? digits.Replace(".", string.Empty).Replace(',', '.')
+                : digits.Replace(",", string.Empty);
+        }
+        else if (lastDot >= 0)
+        {
+            if (digits.Length - lastDot - 1 == 3)
+            {
+                digits = digits.Replace(".", string.Empty);
+            }
+        }
+        else if (lastComma >= 0)
+        {
+            digits = digits.Replace(',', '.');
+        }
 
         return decimal.TryParse(digits, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
             ? value

@@ -81,6 +81,25 @@ public class PendingOrdersClaimTests : IDisposable
     };
 
     [Fact]
+    public async Task AnularPedido_WhenConfirmed_CancelsAndReloads()
+    {
+        var session = CreateSession(3, UserRole.Manager);
+        var sale = CreateSale(10);
+        var vm = CreateViewModel(session, sale);
+        _salesServiceMock
+            .Setup(s => s.CancelSaleAsync(10, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _dialogServiceMock
+            .Setup(d => d.ShowConfirm("Anular pedido", It.IsAny<string>()))
+            .Returns(true);
+
+        await vm.EnsureLoadedAsync();
+        await vm.AnularPedidoCommand.ExecuteAsync(vm.PendingSales.First());
+
+        _salesServiceMock.Verify(s => s.CancelSaleAsync(10, It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Contains("anulado", vm.SuccessMessage);
+    }
+    [Fact]
     public async Task LiquidarAbonar_WhenOrderUnclaimed_ClaimsCheckoutOpensModalAndReleases()
     {
         var session = CreateSession(3, UserRole.Cashier);

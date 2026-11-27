@@ -56,6 +56,10 @@ public partial class AuthorizationNotificationViewModel : ObservableObject, IDis
     public const string FallbackResolverName = "otro usuario";
     public const string DefaultActionLabel = "una acción protegida";
     public const string ManualPriceOverrideActionLabel = "modificar el precio manual";
+
+    /// <summary>Quick win 8.188 (Paso 13): etiqueta espanola del gasto de caja chica en supervision.</summary>
+    public const string PettyCashExpenseActionLabel = "un gasto de caja chica";
+
     public const string CancelledNoticeMessage = "Solicitud cancelada por el cajero.";
 
     /// <summary>8.151 (W3, R7/design D4d): tope del set own-resolved, espejo de MAX_OWN_RESOLVED_IDS (W2).</summary>
@@ -238,7 +242,9 @@ public partial class AuthorizationNotificationViewModel : ObservableObject, IDis
 
         return string.Equals(actionType, "ManualPriceOverride", StringComparison.OrdinalIgnoreCase)
             ? ManualPriceOverrideActionLabel
-            : actionType;
+            : string.Equals(actionType, "PettyCashExpense", StringComparison.OrdinalIgnoreCase)
+                ? PettyCashExpenseActionLabel
+                : actionType;
     }
 
     /// <summary>8.150 (T10): detalle de presentacion del contexto (nunca se hashea, design D3).</summary>

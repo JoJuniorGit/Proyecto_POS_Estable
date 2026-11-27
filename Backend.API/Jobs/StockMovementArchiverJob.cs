@@ -43,6 +43,7 @@ public class StockMovementArchiverJob : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await Backend.API.Startup.StartupReadiness.WaitUntilReadyAsync(stoppingToken);
         using var timer = new PeriodicTimer(_period);
         try
         {

@@ -21,6 +21,19 @@ if (typeof window !== 'undefined' && window.localStorage) {
   }
 }
 
+// 8.211-T4b2 (S9): el formato numérico sigue siendo independiente del régimen monetario; solo
+// el símbolo de presentación viaja desde el perfil. Las pantallas que importan formatBsS/formatUSD
+// directamente se actualizan sin duplicar aritmética ni reescribir cada componente.
+let cachedMonetaryProfile = null;
+
+export function setCachedMonetaryProfile(profile) {
+  cachedMonetaryProfile = profile && typeof profile === 'object' ? profile : null;
+}
+
+export function getCachedMonetaryProfile() {
+  return cachedMonetaryProfile;
+}
+
 /**
  * Retorna la preferencia actual de formato de moneda ('Venezuelan' | 'International').
  * @returns {'Venezuelan' | 'International'}
@@ -107,8 +120,13 @@ export function formatNumberEs(amount, decimals = 2, format = getCurrencyFormat(
  * @param {'Venezuelan'|'International'} [format]
  * @returns {string}
  */
-export function formatBsS(amount, decimals = 2, format = getCurrencyFormat()) {
-  return `Bs.S ${formatAmount(amount, format, decimals)}`;
+export function formatBsS(amount, decimals = 2, format = getCurrencyFormat(), profile = cachedMonetaryProfile) {
+  const symbol = profile
+    ? (profile.mode === 'Single' || !profile.secondaryCurrencyCode
+      ? profile.primaryCurrencySymbol
+      : profile.secondaryCurrencySymbol)
+    : 'Bs.S';
+  return `${symbol} ${formatAmount(amount, format, decimals)}`;
 }
 
 /**
@@ -118,8 +136,9 @@ export function formatBsS(amount, decimals = 2, format = getCurrencyFormat()) {
  * @param {'Venezuelan'|'International'} [format]
  * @returns {string}
  */
-export function formatUSD(amount, decimals = 2, format = getCurrencyFormat()) {
-  return `$ ${formatAmount(amount, format, decimals)}`;
+export function formatUSD(amount, decimals = 2, format = getCurrencyFormat(), profile = cachedMonetaryProfile) {
+  const symbol = profile ? profile.primaryCurrencySymbol : '$';
+  return `${symbol} ${formatAmount(amount, format, decimals)}`;
 }
 
 /**
@@ -301,7 +320,40 @@ export function resolveBsSPrice(priceUSD, priceBsS, exchangeRate) {
 }
 
 /**
+ * 8.186 (S1/S3): precio Bs.S EFECTIVO ya proyectado por el servidor con el motor único de
+ * redondeo (PricingRoundingPolicy + tasa vigente). Web NO replica la política (pasos/techo):
+ * solo consume y formatea. Devuelve `effectiveBsS` cuando es un número > 0; si falta o viene
+ * <= 0 usa el fallback canónico (`canonicalFallback`) — documentado como compatibilidad de
+ * legado con respuestas sin el campo (el canónico es el de 8.143: USD × tasa con techo 2dp o
+ * snapshot persistido).
+ * @param {number} effectiveBsS Campo `effectivePriceBsS`/`effectiveWholesalePriceBsS` del DTO
+ * @param {number} canonicalFallback Valor canónico local (solo legado)
+ * @returns {number}
+ */
+export function resolveEffectiveBsS(effectiveBsS, canonicalFallback = 0) {
+  const effective = Number(effectiveBsS);
+  if (Number.isFinite(effective) && effective > 0) return effective;
+  const fallback = Number(canonicalFallback);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+}
+
+/**
+ * 8.186 (S1): decide si un cambio de tasa vigente (SignalR) debe relanzar un fetch que el
+ * servidor reproyecta (catálogo, sugerencias). Ignora la transición inicial 0 → tasa (el fetch
+ * de montaje ya usó la tasa del servidor) y los valores repetidos: evita el doble fetch inicial
+ * y los loops de refetch.
+ * @param {number} previousRate
+ * @param {number} nextRate
+ * @returns {boolean}
+ */
+export function shouldRefetchOnRateChange(previousRate, nextRate) {
+  return previousRate > 0 && nextRate > 0 && previousRate !== nextRate;
+}
+
+/**
  * Formats a product's price for catalog views, returning '—' if it's a group header with independent pricing.
+ * 8.186 (S1/S3): muestra el Bs.S EFECTIVO del servidor (`effectivePriceBsS`/`effectiveWholesalePriceBsS`);
+ * el canónico local queda solo como fallback documentado si el campo no viene.
  * @param {object} product
  * @param {boolean} isWholesale
  * @param {string} currency 'Bs.S' | 'USD'
@@ -315,7 +367,10 @@ export function formatProductDisplayPrice(product, isWholesale = false, currency
   }
 
   const retailUSD = product.priceUSD || 0;
-  const retailBsS = resolveBsSPrice(product.priceUSD, product.priceBsS, exchangeRate);
+  const retailBsS = resolveEffectiveBsS(
+    product.effectivePriceBsS,
+    resolveBsSPrice(product.priceUSD, product.priceBsS, exchangeRate)
+  );
 
   if (!isWholesale) {
     return currency === 'USD' ? formatUSD(retailUSD) : formatBsS(retailBsS);
@@ -323,7 +378,25 @@ export function formatProductDisplayPrice(product, isWholesale = false, currency
 
   const hasRealWholesale = (product.hasWholesale || product.priceWholesaleUSD > 0) && product.priceWholesaleUSD > 0 && product.priceWholesaleUSD < retailUSD;
   const wholesaleUSD = hasRealWholesale ? product.priceWholesaleUSD : retailUSD;
-  const wholesaleBsS = hasRealWholesale ? resolveBsSPrice(product.priceWholesaleUSD, 0, exchangeRate) : retailBsS;
+  const wholesaleBsS = hasRealWholesale
+    ? resolveEffectiveBsS(product.effectiveWholesalePriceBsS, resolveBsSPrice(product.priceWholesaleUSD, 0, exchangeRate))
+    : retailBsS;
 
   return currency === 'USD' ? formatUSD(wholesaleUSD) : formatBsS(wholesaleBsS);
+}
+
+/**
+ * Sincronización USD efectivo (ANEXO XV): el $ mostrado en historial/cuentas abiertas es el
+ * inverso del Bs.S EFECTIVO (monto realmente transado), no la suma canónica de precios base.
+ * Prefiere el valor derivado del servidor y cae al cálculo local / canónico si viniera incompleto.
+ * @param {object} entity venta/retiro con totalBsS, appliedRate, totalUSD y/o effectiveTotalUSD
+ * @returns {number} monto USD efectivo (2 decimales)
+ */
+export function effectiveTotalUsd(entity) {
+  if (!entity) return 0;
+  if (entity.effectiveTotalUSD > 0) return entity.effectiveTotalUSD;
+  if (entity.totalBsS > 0 && entity.appliedRate > 0) {
+    return Math.round((entity.totalBsS / entity.appliedRate) * 100) / 100;
+  }
+  return entity.totalUSD || 0;
 }

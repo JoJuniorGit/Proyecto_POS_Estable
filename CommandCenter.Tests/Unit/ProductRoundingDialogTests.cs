@@ -19,6 +19,7 @@ namespace CommandCenter.Tests.Unit;
 /// toggle global; proyección Bs.S de efectivo en caliente; validación viva Detal/Mayor sobre
 /// redondeados; persistencia de los overrides (null = heredar) y precarga desde la política global.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.WeakMessengerStateCollection.Name)]
 public class ProductRoundingDialogTests
 {
     // --- Redondeo USD en vivo ---

@@ -62,7 +62,11 @@ public class StampValidationHubFilter : IHubFilter
             throw new HubException(MissingStampMessage);
         }
 
-        if (!await _validator.ValidateStampAsync(userId, stampClaim, forceImmediateCheck: true))
+        if (!await _validator.ValidateStampAsync(
+                userId,
+                stampClaim,
+                forceImmediateCheck: true,
+                context.ConnectionAborted))
         {
             Reject(context, userId, InvalidStampMessage);
             throw new HubException(InvalidStampMessage);

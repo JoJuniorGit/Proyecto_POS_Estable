@@ -3,11 +3,13 @@ import assert from 'node:assert';
 import {
   AUTHORIZATION_PHASES,
   AUTHORIZATION_SETTLEMENTS,
+  AUTHORIZATION_STATUS_POLL_INTERVAL_MS,
   AUTHORIZATION_STRINGS,
   applyAuthorizationExpiry,
   applyAuthorizationResolution,
   cancelAuthorizationWait,
   createAuthorizationFlowState,
+  createAuthorizationStatusPoller,
   getAuthorizationSettlement,
   getRemainingSeconds,
   isAuthorizationExpired,
@@ -212,6 +214,26 @@ describe('authorizationFlow state machine', () => {
     assert.strictEqual(getAuthorizationSettlement(null, AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL), null);
   });
 
+  it('12b. closes a granted wait whose execution failed (WPF parity: Cancelar sigue disponible)', () => {
+    const granted = applyAuthorizationResolution(startWaiting(), { approved: true, token: 'tok-1', resolutionMode: 'Remote' });
+    assert.strictEqual(granted.phase, AUTHORIZATION_PHASES.GRANTED);
+    assert.deepStrictEqual(
+      getAuthorizationSettlement(granted, AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL),
+      { ok: false, cancelled: true }
+    );
+
+    const local = applyAuthorizationResolution(startWaiting(), { approved: true, token: 'tok-2', resolutionMode: 'Local' });
+    assert.strictEqual(local.phase, AUTHORIZATION_PHASES.LOCAL);
+    assert.deepStrictEqual(
+      getAuthorizationSettlement(local, AUTHORIZATION_SETTLEMENTS.MANUAL_CANCEL),
+      { ok: false, cancelled: true }
+    );
+
+    // La concesion vigente no se liquida por otros triggers.
+    assert.strictEqual(getAuthorizationSettlement(granted, AUTHORIZATION_SETTLEMENTS.REJECTION), null);
+    assert.strictEqual(getAuthorizationSettlement(granted, AUTHORIZATION_SETTLEMENTS.EXPIRED_DISMISSAL), null);
+  });
+
   it('13. only a waiting request with an id is cancellable on the server', () => {
     const waiting = startWaiting();
     assert.strictEqual(isAuthorizationPending(waiting), true);
@@ -225,5 +247,83 @@ describe('authorizationFlow state machine', () => {
       false
     );
     assert.strictEqual(isAuthorizationPending(null), false);
+  });
+});
+
+describe('authorizationFlow status polling fallback (residual 3, 8.188)', () => {
+  function createFakeTimers() {
+    const scheduled = [];
+    return {
+      scheduled,
+      setIntervalFn: (callback, intervalMs) => {
+        const handle = { callback, intervalMs, cleared: false };
+        scheduled.push(handle);
+        return handle;
+      },
+      clearIntervalFn: (handle) => {
+        handle.cleared = true;
+      },
+    };
+  }
+
+  it('14. recovers the status on each tick only while the hub socket is down', () => {
+    const timers = createFakeTimers();
+    let connected = false;
+    let recoveries = 0;
+    const poller = createAuthorizationStatusPoller({
+      isHubConnected: () => connected,
+      recover: () => { recoveries += 1; },
+      setIntervalFn: timers.setIntervalFn,
+      clearIntervalFn: timers.clearIntervalFn,
+    });
+
+    poller.start();
+    assert.strictEqual(poller.isRunning(), true);
+    assert.strictEqual(timers.scheduled.length, 1);
+    assert.strictEqual(timers.scheduled[0].intervalMs, AUTHORIZATION_STATUS_POLL_INTERVAL_MS);
+
+    timers.scheduled[0].callback();
+    assert.strictEqual(recoveries, 1, 'sin socket vivo el estado se recupera por REST');
+
+    connected = true;
+    timers.scheduled[0].callback();
+    assert.strictEqual(recoveries, 1, 'con el socket vivo manda el push de SignalR');
+  });
+
+  it('15. start is idempotent and stop clears the timer', () => {
+    const timers = createFakeTimers();
+    const poller = createAuthorizationStatusPoller({
+      isHubConnected: () => false,
+      recover: () => {},
+      setIntervalFn: timers.setIntervalFn,
+      clearIntervalFn: timers.clearIntervalFn,
+    });
+
+    poller.start();
+    poller.start();
+    assert.strictEqual(timers.scheduled.length, 1, 'la espera no acumula intervalos');
+
+    poller.stop();
+    assert.strictEqual(timers.scheduled[0].cleared, true);
+    assert.strictEqual(poller.isRunning(), false);
+
+    poller.stop();
+    assert.strictEqual(timers.scheduled.length, 1, 'stop sin timer no crea ni limpia nada');
+  });
+
+  it('16. the poller is injectable and interval-bounded for the 60s wait window', () => {
+    assert.strictEqual(AUTHORIZATION_STATUS_POLL_INTERVAL_MS, 2000);
+
+    const timers = createFakeTimers();
+    const poller = createAuthorizationStatusPoller({
+      intervalMs: 500,
+      isHubConnected: () => false,
+      recover: () => {},
+      setIntervalFn: timers.setIntervalFn,
+      clearIntervalFn: timers.clearIntervalFn,
+    });
+
+    poller.start();
+    assert.strictEqual(timers.scheduled[0].intervalMs, 500);
   });
 });

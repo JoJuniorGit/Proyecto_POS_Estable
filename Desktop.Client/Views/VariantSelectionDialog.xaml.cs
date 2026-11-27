@@ -25,6 +25,8 @@ public partial class VariantSelectionDialog : Window
         {
             VariantsListBox.Focus();
         };
+
+        Closed += (_, _) => _viewModel.RequestClose = null;
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)

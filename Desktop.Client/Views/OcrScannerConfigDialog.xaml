@@ -237,7 +237,7 @@
                                 <StackPanel Grid.Column="0">
                                     <TextBlock FontSize="12">
                                         <Run Text="Contraste: " />
-                                        <Run Text="{Binding ContrastFactor, StringFormat=N2}" FontWeight="SemiBold" />
+                                        <Run Text="{Binding ContrastFactor, StringFormat=N2, Mode=OneWay}" FontWeight="SemiBold" />
                                     </TextBlock>
                                     <Slider Minimum="0.5" Maximum="3.0" TickFrequency="0.1" IsSnapToTickEnabled="True"
                                             Value="{Binding ContrastFactor, Mode=TwoWay}" />
@@ -245,7 +245,7 @@
                                 <StackPanel Grid.Column="2">
                                     <TextBlock FontSize="12">
                                         <Run Text="Brillo: " />
-                                        <Run Text="{Binding BrightnessDelta, StringFormat=N0}" FontWeight="SemiBold" />
+                                        <Run Text="{Binding BrightnessDelta, StringFormat=N0, Mode=OneWay}" FontWeight="SemiBold" />
                                     </TextBlock>
                                     <Slider Minimum="-100" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
                                             Value="{Binding BrightnessDelta, Mode=TwoWay}" />
@@ -463,7 +463,7 @@
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="12">
-                                                    <Run Text="'" /><Run Text="{Binding From}" FontWeight="Bold" /><Run Text="'  →  '" /><Run Text="{Binding To}" FontWeight="Bold" /><Run Text="'" />
+                                                    <Run Text="'" /><Run Text="{Binding From, Mode=OneWay}" FontWeight="Bold" /><Run Text="'  →  '" /><Run Text="{Binding To, Mode=OneWay}" FontWeight="Bold" /><Run Text="'" />
                                                 </TextBlock>
                                                 <Button Grid.Column="1"
                                                         Command="{Binding DataContext.RemoveReplacementRuleCommand, RelativeSource={RelativeSource AncestorType=Window}}"

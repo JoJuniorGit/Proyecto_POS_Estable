@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -20,6 +21,7 @@ namespace CommandCenter.Tests.Unit;
 /// 8.177-T3 (S2/S3): Centro de Auditoría de Kardex en Desktop — atajos de fecha local→UTC,
 /// construcción de filtros/consulta, KPIs, paginación server-side, exportación y RBAC.
 /// </summary>
+[Collection(CurrencyDisplayStateCollection.Name)]
 public sealed class StockKardexViewModelTests
 {
     private readonly Mock<IStockKardexClientService> _kardexMock = new();
@@ -163,7 +165,9 @@ public sealed class StockKardexViewModelTests
         Assert.Equal("+2", row.DeltaText);
         Assert.Equal("#venta 77", row.ReferenceDisplay);
         Assert.Equal("$1,50", row.UnitCostDisplay);
-        Assert.Equal("$3,00", row.TotalValueDisplay);
+        Assert.Equal("Unit: $1,50", row.UnitCostInlineDisplay);
+        Assert.Equal("+$3,00", row.TotalValueDisplay);
+        Assert.Equal(StockKardexImpactKind.Positive, row.ImpactKind);
         Assert.Contains("00:00:00", row.DateLocalText);
 
         Assert.Equal("12", vm.TotalMovementsDisplay);
@@ -174,6 +178,20 @@ public sealed class StockKardexViewModelTests
         Assert.True(vm.HasUnvaluedMovements);
         Assert.Equal("3 movimientos sin costo histórico, excluidos de la valorización", vm.UnvaluedWarningText);
         Assert.False(vm.IsBusy);
+    }
+
+    [Fact]
+    public async Task EnsureLoaded_WithSingleUnvaluedMovement_UsesSingularWarning()
+    {
+        var vm = CreateViewModel();
+        _kardexMock
+            .Setup(s => s.GetSummaryAsync(It.IsAny<StockKardexFilterDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StockKardexSummaryDto { UnvaluedMovements = 1 });
+
+        await vm.EnsureLoadedAsync();
+
+        Assert.True(vm.HasUnvaluedMovements);
+        Assert.Equal("1 movimiento sin costo histórico, excluido de la valorización", vm.UnvaluedWarningText);
     }
 
     [Fact]
@@ -402,6 +420,323 @@ public sealed class StockKardexViewModelTests
         var ex = await Assert.ThrowsAsync<Exception>(() => service.GetMovementsAsync(new StockKardexFilterDto(), 1, 25));
 
         Assert.Contains("reasonCodes inválidos", ex.Message, StringComparison.Ordinal);
+    }
+
+    // ── T1 (S3/S4/S8/S9): signed money, KPI raw state, presets, row presentation ────────────
+
+    [Theory]
+    [InlineData("-193.26", "-$193,26")]
+    [InlineData("0", "$0,00")]
+    [InlineData("12.5", "$12,50")]
+    public void FormatSignedPrimary_PutsNegativeSignBeforeSymbolAndOmitsLeadingPlus(string raw, string expected)
+    {
+        var value = decimal.Parse(raw, CultureInfo.InvariantCulture);
+
+        Assert.Equal(expected, StockKardexMoneyFormat.FormatSignedPrimary(value));
+    }
+
+    [Theory]
+    [InlineData("12.5", "+$12,50")]
+    [InlineData("-175.42", "-$175,42")]
+    [InlineData("0", "$0,00")]
+    public void FormatImpactValue_PutsSignBeforeSymbolAndAddsLeadingPlusForPositives(string raw, string expected)
+    {
+        var value = decimal.Parse(raw, CultureInfo.InvariantCulture);
+
+        Assert.Equal(expected, StockKardexMoneyFormat.FormatImpactValue(value));
+    }
+
+    [Fact]
+    public async Task ApplySummary_NegativeValues_FormatsSignBeforeSymbolAndNotifiesRawKpiState()
+    {
+        var vm = CreateViewModel();
+        _kardexMock
+            .Setup(s => s.GetSummaryAsync(It.IsAny<StockKardexFilterDto>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StockKardexSummaryDto
+            {
+                TotalMovements = 9,
+                NetVolume = -182.3m,
+                EntriesValueUsd = 40m,
+                LossesValueUsd = 233.26m,
+                NetValueUsd = -193.26m
+            });
+
+        var notified = new List<string?>();
+        vm.PropertyChanged += (_, e) => notified.Add(e.PropertyName);
+
+        await vm.EnsureLoadedAsync();
+
+        Assert.Equal("-182,3", vm.NetVolumeDisplay);
+        Assert.Equal("$40,00", vm.EntriesValueDisplay);
+        Assert.Equal("$233,26", vm.LossesValueDisplay);
+        Assert.Equal("-$193,26", vm.NetValueDisplay);
+
+        Assert.Equal(-182.3m, vm.NetVolumeValue);
+        Assert.Equal(40m, vm.EntriesValueUsd);
+        Assert.Equal(233.26m, vm.LossesValueUsd);
+        Assert.Equal(-193.26m, vm.NetValueUsd);
+        Assert.True(vm.IsNetVolumeNegative);
+        Assert.False(vm.IsNetVolumePositive);
+        Assert.True(vm.HasEntriesValue);
+        Assert.True(vm.HasLossesValue);
+
+        foreach (var propertyName in new[]
+                 {
+                     nameof(StockKardexViewModel.NetVolumeValue),
+                     nameof(StockKardexViewModel.EntriesValueUsd),
+                     nameof(StockKardexViewModel.LossesValueUsd),
+                     nameof(StockKardexViewModel.NetValueUsd),
+                     nameof(StockKardexViewModel.IsNetVolumeNegative),
+                     nameof(StockKardexViewModel.IsNetVolumePositive),
+                     nameof(StockKardexViewModel.HasEntriesValue),
+                     nameof(StockKardexViewModel.HasLossesValue)
+                 })
+        {
+            Assert.Contains(propertyName, notified);
+        }
+    }
+
+    [Fact]
+    public async Task ApplySummary_ZeroValues_LeavesKpiFlagsFalse()
+    {
+        var vm = CreateViewModel();
+
+        await vm.EnsureLoadedAsync();
+
+        Assert.Equal(0m, vm.NetVolumeValue);
+        Assert.Equal(0m, vm.EntriesValueUsd);
+        Assert.Equal(0m, vm.LossesValueUsd);
+        Assert.Equal(0m, vm.NetValueUsd);
+        Assert.False(vm.IsNetVolumeNegative);
+        Assert.False(vm.IsNetVolumePositive);
+        Assert.False(vm.HasEntriesValue);
+        Assert.False(vm.HasLossesValue);
+    }
+
+    [Fact]
+    public async Task NextPageCommand_WithoutSummaryReload_KeepsPreviousKpiState()
+    {
+        var vm = CreateViewModel();
+        var summaryCalls = 0;
+        _kardexMock
+            .Setup(s => s.GetMovementsAsync(It.IsAny<StockKardexFilterDto>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PagedResultDto<StockKardexRowDto>(new[] { CreateRow() }, 60));
+        _kardexMock
+            .Setup(s => s.GetSummaryAsync(It.IsAny<StockKardexFilterDto>(), It.IsAny<CancellationToken>()))
+            .Callback(() => summaryCalls++)
+            .ReturnsAsync(new StockKardexSummaryDto
+            {
+                NetVolume = -182.3m,
+                EntriesValueUsd = 40m,
+                LossesValueUsd = 233.26m,
+                NetValueUsd = -193.26m
+            });
+
+        await vm.EnsureLoadedAsync();
+        await vm.NextPageCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, summaryCalls);
+        Assert.Equal(-182.3m, vm.NetVolumeValue);
+        Assert.Equal(40m, vm.EntriesValueUsd);
+        Assert.Equal(233.26m, vm.LossesValueUsd);
+        Assert.Equal(-193.26m, vm.NetValueUsd);
+        Assert.Equal("-$193,26", vm.NetValueDisplay);
+        Assert.True(vm.IsNetVolumeNegative);
+    }
+
+    [Fact]
+    public void Row_NegativeTotalValue_FormatsSignBeforeSymbolAndNegativeImpact()
+    {
+        var row = CreateRowViewModel(dto =>
+        {
+            dto.TotalValueUSD = -175.42m;
+            dto.UnitCostUSD = 0.98m;
+        });
+
+        Assert.Equal("-$175,42", row.TotalValueDisplay);
+        Assert.Equal("$0,98", row.UnitCostDisplay);
+        Assert.Equal("Unit: $0,98", row.UnitCostInlineDisplay);
+        Assert.Equal(StockKardexImpactKind.Negative, row.ImpactKind);
+    }
+
+    [Theory]
+    [InlineData("12.5", "+$12,50", StockKardexImpactKind.Positive)]
+    [InlineData("0", "$0,00", StockKardexImpactKind.Zero)]
+    public void Row_TotalValueDisplay_UsesImpactFormatAndKind(string raw, string expectedDisplay, StockKardexImpactKind expectedKind)
+    {
+        var row = CreateRowViewModel(dto => dto.TotalValueUSD = decimal.Parse(raw, CultureInfo.InvariantCulture));
+
+        Assert.Equal(expectedDisplay, row.TotalValueDisplay);
+        Assert.Equal(expectedKind, row.ImpactKind);
+    }
+
+    [Fact]
+    public void Row_WithoutValuation_DisplaysDashesAndNoImpact()
+    {
+        var row = CreateRowViewModel(dto =>
+        {
+            dto.TotalValueUSD = null;
+            dto.UnitCostUSD = null;
+        });
+
+        Assert.Equal("—", row.TotalValueDisplay);
+        Assert.Equal(StockKardexImpactKind.None, row.ImpactKind);
+        Assert.Equal("—", row.UnitCostDisplay);
+        Assert.Equal("Unit: —", row.UnitCostInlineDisplay);
+    }
+
+    [Theory]
+    [InlineData("-1", true, false, false)]
+    [InlineData("0", false, false, true)]
+    [InlineData("10", false, true, false)]
+    public void Row_QuantityFlags_ReflectQuantityChangeSign(string raw, bool negative, bool positive, bool zero)
+    {
+        var row = CreateRowViewModel(dto => dto.QuantityChange = decimal.Parse(raw, CultureInfo.InvariantCulture));
+
+        Assert.Equal(negative, row.IsNegativeQuantity);
+        Assert.Equal(positive, row.IsPositiveQuantity);
+        Assert.Equal(zero, row.IsZeroQuantity);
+    }
+
+    [Theory]
+    [InlineData("-1", true)]
+    [InlineData("0", false)]
+    [InlineData("5", false)]
+    public void Row_IsResultNegative_FlagsOnlyNegativeResultingStock(string raw, bool expected)
+    {
+        var row = CreateRowViewModel(dto => dto.NewStockLevel = decimal.Parse(raw, CultureInfo.InvariantCulture));
+
+        Assert.Equal(expected, row.IsResultNegative);
+    }
+
+    [Theory]
+    [InlineData(StockMovementReason.Sale, StockKardexMovementKind.Sale, "Venta")]
+    [InlineData(StockMovementReason.PurchaseEntry, StockKardexMovementKind.Entry, "Compra")]
+    [InlineData(StockMovementReason.InitialLoad, StockKardexMovementKind.Entry, "Entrada")]
+    [InlineData(StockMovementReason.Damage, StockKardexMovementKind.Loss, "Merma")]
+    [InlineData(StockMovementReason.Expiry, StockKardexMovementKind.Loss, "Merma")]
+    [InlineData(StockMovementReason.PhysicalCountCorrection, StockKardexMovementKind.Count, "Conteo Físico")]
+    [InlineData(StockMovementReason.Return, StockKardexMovementKind.Adjustment, "Devolución")]
+    [InlineData(StockMovementReason.ImportAdjustment, StockKardexMovementKind.Adjustment, "Ajuste")]
+    [InlineData(null, StockKardexMovementKind.Unknown, "Sin clasificar")]
+    public void Row_ReasonMapsToMovementKindAndPillLabel(
+        StockMovementReason? reason,
+        StockKardexMovementKind expectedKind,
+        string expectedLabel)
+    {
+        var row = CreateRowViewModel(dto => dto.ReasonCode = reason);
+
+        Assert.Equal(expectedKind, row.MovementKind);
+        Assert.Equal(expectedLabel, row.ReasonPillLabel);
+    }
+
+    [Fact]
+    public void Row_DateCompactText_UsesVenezuelaLocalTimeAndReferenceFlag()
+    {
+        var row = CreateRowViewModel();
+
+        Assert.Equal("12/10/26 · 00:00:00", row.DateCompactText);
+        Assert.True(row.HasReference);
+
+        var withoutReference = CreateRowViewModel(dto =>
+        {
+            dto.SaleId = null;
+            dto.SupplierInvoiceId = null;
+        });
+        Assert.False(withoutReference.HasReference);
+
+        var invoiceRow = CreateRowViewModel(dto =>
+        {
+            dto.SaleId = null;
+            dto.SupplierInvoiceId = 2620;
+        });
+        Assert.True(invoiceRow.HasReference);
+    }
+
+    [Fact]
+    public void Row_SourceDisplay_MapsAuditedSource()
+    {
+        Assert.Equal("Activo", CreateRowViewModel().SourceDisplay);
+        Assert.Equal("Archivado", CreateRowViewModel(dto => dto.Source = "Archived").SourceDisplay);
+        Assert.Equal("Legacy", CreateRowViewModel(dto => dto.Source = "Legacy").SourceDisplay);
+        Assert.Equal("—", CreateRowViewModel(dto => dto.Source = " ").SourceDisplay);
+    }
+
+    [Fact]
+    public void Row_AuthorizerAndObservation_FlagsAndInlineDisplays()
+    {
+        var row = CreateRowViewModel(dto =>
+        {
+            dto.AuthorizedByUserId = "mgr-7";
+            dto.Observation = "Ajuste autorizado por gerencia";
+        });
+
+        Assert.True(row.HasAuthorizer);
+        Assert.Equal("Aut: mgr-7", row.AuthorizerInlineDisplay);
+        Assert.True(row.HasObservation);
+        Assert.Equal("Ajuste autorizado por gerencia", row.ObservationTooltip);
+        Assert.Equal("Ajuste autorizado por gerencia", row.ObservationDisplay);
+
+        var blank = CreateRowViewModel(dto =>
+        {
+            dto.AuthorizedByUserId = "  ";
+            dto.Observation = null;
+        });
+
+        Assert.False(blank.HasAuthorizer);
+        Assert.Equal(string.Empty, blank.AuthorizerInlineDisplay);
+        Assert.False(blank.HasObservation);
+        Assert.Equal(string.Empty, blank.ObservationTooltip);
+        Assert.Equal("—", blank.ObservationDisplay);
+    }
+
+    [Fact]
+    public void ClearProductSearchCommand_ClearsTextSelectionSuggestionsAndPopup()
+    {
+        _productMock
+            .Setup(p => p.GetSuggestionsAsync(It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ProductQuickInfoDto>());
+        var vm = CreateViewModel();
+        vm.ProductSearchText = "harina";
+        vm.SelectedProduct = new ProductQuickInfoDto { Id = 9, SKU = "759000123", Name = "Harina P.A.N." };
+        vm.ProductSuggestions.Add(new ProductQuickInfoDto { Id = 9, SKU = "759000123" });
+        vm.IsProductSuggestionsOpen = true;
+
+        vm.ClearProductSearchCommand.Execute(null);
+
+        Assert.Equal(string.Empty, vm.ProductSearchText);
+        Assert.Null(vm.SelectedProduct);
+        Assert.Empty(vm.ProductSuggestions);
+        Assert.False(vm.IsProductSuggestionsOpen);
+    }
+
+    [Fact]
+    public async Task DatePresets_SetActivePresetAndManualDateEditResetsToCustom()
+    {
+        var vm = CreateViewModel();
+        Assert.Equal(StockKardexDatePreset.Today, vm.ActiveDatePreset);
+
+        await vm.ApplyThisWeekCommand.ExecuteAsync(null);
+        Assert.Equal(StockKardexDatePreset.ThisWeek, vm.ActiveDatePreset);
+
+        await vm.ApplyCurrentMonthCommand.ExecuteAsync(null);
+        Assert.Equal(StockKardexDatePreset.CurrentMonth, vm.ActiveDatePreset);
+
+        await vm.ApplyTodayCommand.ExecuteAsync(null);
+        Assert.Equal(StockKardexDatePreset.Today, vm.ActiveDatePreset);
+
+        vm.DateFrom = vm.DateFrom!.Value.AddDays(-2);
+        Assert.Equal(StockKardexDatePreset.Custom, vm.ActiveDatePreset);
+
+        await vm.ClearFiltersCommand.ExecuteAsync(null);
+        Assert.Equal(StockKardexDatePreset.Today, vm.ActiveDatePreset);
+    }
+
+    private static StockKardexRowViewModel CreateRowViewModel(Action<StockKardexRowDto>? customize = null)
+    {
+        var dto = CreateRow();
+        customize?.Invoke(dto);
+        return new StockKardexRowViewModel(dto);
     }
 
     private static HttpResponseMessage JsonResponse(string json) => new(HttpStatusCode.OK)

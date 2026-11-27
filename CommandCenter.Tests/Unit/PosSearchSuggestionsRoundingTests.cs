@@ -19,6 +19,7 @@ namespace CommandCenter.Tests.Unit;
 /// mensajes en memoria: políticas globales re-ejecutan la búsqueda activa (patrón 8.143) y el
 /// override de un artículo se recomputa en memoria sin consultas.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.WeakMessengerStateCollection.Name)]
 public class PosSearchSuggestionsRoundingTests
 {
     private static async Task<bool> WaitUntilAsync(Func<bool> condition, int timeoutMs = 3000)

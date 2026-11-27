@@ -21,6 +21,18 @@ namespace Inventory.Module.Services;
 // 8.183-T1 (R1/R3): el redondeo no muta datos persistidos — el margen persistido es SIEMPRE el
 // objetivo/operado y el Bs.S almacenado, el canónico 8.104; las reglas VES se exponen como
 // proyección en caliente (CashFriendlyAfterBsS del cambio), nunca como escritura.
+// Spec V0.15: los márgenes Detal/Mayor operan en PUNTOS PORCENTUALES aditivos (actual ± Δ) y sus
+// reducciones se clipean al piso del canal o a 0; precios/costo conservan su semántica vigente y el
+// pipeline de redondeo/piso/Bs.S queda intacto aguas abajo (solo cambia el INPUT del margen).
+// Spec V0.15 (split de capas): el redondeo USD usa las reglas por canal (RetailRoundingRule/
+// WholesaleRoundingRule) y la proyección Bs.S en caliente usa CashBsRoundingRule (etapa
+// independiente, nunca persistida; VES en la regla del canal quedó como vía defensiva sin efecto).
+// Spec V0.15 (persistencia de política): al aplicar, la tarjeta 2 materializa la política por
+// artículo (RoundingRuleUsd/RoundingRuleCashBs) solo cuando el canal fue touched (intención
+// explícita) y difiere de la efectiva (override ?? baseline global); un precio igual con política
+// distinta es fila Actualiza. Sin touch la política del producto se preserva y gobierna el cálculo.
+// Spec V0.15 (solo redondeo): sin operaciones de la familia del canal la base es el PRECIO ACTUAL
+// (el interceptor lo redondea; redondear(redondear(x)) = redondear(x) — sin ancla de costo/margen).
 public partial class InventoryService
 {
     private const int MaxBulkPriceSelectionSize = 1000;
@@ -52,7 +64,10 @@ public partial class InventoryService
         return BuildBulkPriceResult(exchangeRate, selectionIds.Count, plan);
     }
 
-    public async Task<BulkPriceUpdateResultDto> BulkUpdatePricesAsync(BulkPriceUpdateRequestDto request, CancellationToken cancellationToken = default)
+    public async Task<BulkPriceUpdateResultDto> BulkUpdatePricesAsync(
+        BulkPriceUpdateRequestDto request,
+        CancellationToken cancellationToken = default,
+        BulkPriceIdempotency? idempotency = null)
     {
         EnsureCatalogMutationPermission();
         ValidateBulkPriceRequest(request);
@@ -65,6 +80,7 @@ public partial class InventoryService
         }
 
         BulkPriceUpdateResultDto? result = null;
+        bool isReplay = false;
 
         // 8.16-H02: la transacción manual vive DENTRO de CreateExecutionStrategy().ExecuteAsync()
         // para no lanzar InvalidOperationException bajo NpgsqlRetryingExecutionStrategy.
@@ -72,39 +88,164 @@ public partial class InventoryService
         {
             await using var transaction = _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync(cancellationToken) : null;
 
-            var products = await _context.Products
-                .Where(p => selectionIds.Contains(p.Id))
-                .OrderBy(p => p.Id)
-                .ToListAsync(cancellationToken);
-
-            var plan = await BuildBulkPricePlanAsync(products, request, exchangeRate, cancellationToken);
-
-            var errorItem = plan.FirstOrDefault(item => item.Row.IsError);
-            if (errorItem != null)
+            try
             {
-                // All-or-nothing (S1): si algún producto resulta inválido no se escribe NINGUNO.
-                throw new ArgumentException($"La actualización masiva no se aplicó: {errorItem.Product.Name} ({errorItem.Product.SKU}): {errorItem.Row.SkipReason}");
-            }
+                if (idempotency is not null && _context.Database.IsNpgsql())
+                {
+                    // 8.203 (R-03): un lock global serializa applies concurrentes; luego la ventana
+                    // de idempotencia se reserva en la MISMA transacción del cambio de precios.
+                    await _context.Database.ExecuteSqlRawAsync(
+                        "SELECT pg_advisory_xact_lock({0}, {1})",
+                        new object[] { BulkPriceAdvisoryLockClass, BulkPriceAdvisoryLockKey },
+                        cancellationToken);
 
-            foreach (var item in plan.Where(item => item.HasChanges))
+                    await _context.Database.ExecuteSqlRawAsync(
+                        "DELETE FROM \"IdempotentRequests\" WHERE \"Key\" = {0} AND \"RequestPath\" = {1} AND \"ExpiresAtUtc\" <= NOW()",
+                        new object[] { idempotency.Key, idempotency.RequestPath },
+                        cancellationToken);
+
+                    var replay = await TryReadBulkPriceIdempotentResponseAsync(idempotency, cancellationToken);
+                    if (replay is not null)
+                    {
+                        result = replay;
+                        isReplay = true;
+                        if (transaction is not null)
+                        {
+                            await transaction.RollbackAsync(cancellationToken);
+                        }
+
+                        return;
+                    }
+
+                    await ReserveBulkPriceIdempotencyAsync(idempotency, cancellationToken);
+                }
+
+                var products = await _context.Products
+                    .Where(p => selectionIds.Contains(p.Id))
+                    .OrderBy(p => p.Id)
+                    .ToListAsync(cancellationToken);
+
+                var plan = await BuildBulkPricePlanAsync(products, request, exchangeRate, cancellationToken);
+
+                var errorItem = plan.FirstOrDefault(item => item.Row.IsError);
+                if (errorItem != null)
+                {
+                    // All-or-nothing (S1): si algún producto resulta inválido no se escribe NINGUNO.
+                    throw new ArgumentException($"La actualización masiva no se aplicó: {errorItem.Product.Name} ({errorItem.Product.SKU}): {errorItem.Row.SkipReason}");
+                }
+
+                foreach (var item in plan.Where(item => item.HasChanges))
+                {
+                    ApplyBulkPriceState(item);
+                }
+
+                await PropagateBulkPriceGroupsAsync(plan, exchangeRate, cancellationToken);
+                await _context.SaveChangesAsync(cancellationToken);
+
+                result = BuildBulkPriceResult(exchangeRate, selectionIds.Count, plan);
+
+                if (idempotency is not null && _context.Database.IsNpgsql())
+                {
+                    await _context.Database.ExecuteSqlRawAsync(
+                        "UPDATE \"IdempotentRequests\" SET \"ResponseBody\" = {0}, \"StatusCode\" = 200 WHERE \"Key\" = {1} AND \"RequestPath\" = {2}",
+                        new object[] { System.Text.Json.JsonSerializer.Serialize(result), idempotency.Key, idempotency.RequestPath },
+                        cancellationToken);
+                }
+
+                if (transaction != null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                }
+            }
+            catch (Exception ex) when (idempotency is not null && IsBulkPriceIdempotencyUniqueViolation(ex))
             {
-                ApplyBulkPriceState(item);
+                if (transaction is not null)
+                {
+                    try
+                    {
+                        await transaction.RollbackAsync(CancellationToken.None);
+                    }
+                    catch (Exception rollbackException)
+                    {
+                        Core.Logging.AppLogger.LogWarn(
+                            $"[BulkPrices] Falló el rollback tras colisión de idempotencia: {rollbackException.Message}",
+                            "Inventory");
+                    }
+                }
+
+                _context.ChangeTracker.Clear();
+                var replay = await TryReadBulkPriceIdempotentResponseAsync(idempotency, CancellationToken.None);
+                if (replay is not null)
+                {
+                    result = replay;
+                    isReplay = true;
+                    return;
+                }
+
+                throw;
             }
-
-            await PropagateBulkPriceGroupsAsync(plan, exchangeRate, cancellationToken);
-            await _context.SaveChangesAsync(cancellationToken);
-
-            if (transaction != null)
-            {
-                await transaction.CommitAsync(cancellationToken);
-            }
-
-            result = BuildBulkPriceResult(exchangeRate, selectionIds.Count, plan);
         }, cancellationToken);
 
-        // S1: invalidación de cachés de producto recién después del commit.
-        InvalidateAllProductCaches();
+        // S1: invalidación de cachés de producto recién después del commit. Un replay no escribió.
+        if (!isReplay)
+        {
+            InvalidateAllProductCaches();
+        }
+
         return result!;
+    }
+
+    private const int BulkPriceAdvisoryLockClass = 6;
+    private const int BulkPriceAdvisoryLockKey = 0;
+
+    private async Task ReserveBulkPriceIdempotencyAsync(
+        BulkPriceIdempotency idempotency,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        await _context.Database.ExecuteSqlRawAsync(
+            "INSERT INTO \"IdempotentRequests\" (\"Key\", \"RequestPath\", \"PayloadHash\", \"StatusCode\", \"ResponseBody\", \"UserId\", \"CreatedAtUtc\", \"ExpiresAtUtc\") " +
+            "VALUES ({0}, {1}, {2}, 200, '', {3}, {4}, {5})",
+            new object[]
+            {
+                idempotency.Key,
+                idempotency.RequestPath,
+                idempotency.PayloadHash,
+                idempotency.UserId.HasValue ? idempotency.UserId.Value : DBNull.Value,
+                now,
+                now.Add(idempotency.Ttl)
+            },
+            cancellationToken);
+    }
+
+    private async Task<BulkPriceUpdateResultDto?> TryReadBulkPriceIdempotentResponseAsync(
+        BulkPriceIdempotency idempotency,
+        CancellationToken cancellationToken)
+    {
+        var body = await _context.Database
+            .SqlQueryRaw<string>(
+                "SELECT \"ResponseBody\" AS \"Value\" FROM \"IdempotentRequests\" WHERE \"Key\" = {0} AND \"RequestPath\" = {1} AND \"ExpiresAtUtc\" > NOW()",
+                idempotency.Key,
+                idempotency.RequestPath)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return null;
+        }
+
+        return System.Text.Json.JsonSerializer.Deserialize<BulkPriceUpdateResultDto>(body);
+    }
+
+    private static bool IsBulkPriceIdempotencyUniqueViolation(Exception exception)
+    {
+        var postgresException = exception as Npgsql.PostgresException
+            ?? exception.InnerException as Npgsql.PostgresException;
+
+        return postgresException is not null
+            && postgresException.SqlState == "23505"
+            && (string.IsNullOrEmpty(postgresException.ConstraintName)
+                || postgresException.ConstraintName.Contains("IdempotentRequests", StringComparison.Ordinal));
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -131,17 +272,21 @@ public partial class InventoryService
             throw new ArgumentException($"La selección excede el máximo permitido ({MaxBulkPriceSelectionSize} productos).");
         }
 
-        if (request.Operations == null || request.Operations.Count == 0)
+        bool hasOperations = request.Operations is { Count: > 0 };
+
+        // Spec V0.15: modo "Solo Redondeo" — sin operaciones por campo la solicitud es válida si la
+        // tarjeta de redondeo/protección aporta una modificación activa (misma guarda OR de la VM).
+        if (!hasOperations && !HasRoundingConfiguration(request))
         {
-            throw new ArgumentException("La solicitud no contiene operaciones de precio.");
+            throw new ArgumentException("La solicitud no contiene operaciones de precio ni una configuración de redondeo/protección activa: nada que aplicar.");
         }
 
-        if (request.Operations.Count > 5 || request.Operations.Select(op => op.Field).Distinct().Count() != request.Operations.Count)
+        if (hasOperations && (request.Operations!.Count > 5 || request.Operations.Select(op => op.Field).Distinct().Count() != request.Operations.Count))
         {
             throw new ArgumentException("Solo se permite una operación por campo en la edición masiva de precios.");
         }
 
-        foreach (var operation in request.Operations)
+        foreach (var operation in request.Operations ?? new List<BulkPriceOperationDto>())
         {
             if (!Enum.IsDefined(operation.Field) || !Enum.IsDefined(operation.Mode))
             {
@@ -155,7 +300,9 @@ public partial class InventoryService
         }
 
         // 8.182-T1 (S5): contrato de la política de redondeo y de los pisos de margen por lote.
-        if (!Enum.IsDefined(request.RetailRoundingRule) || !Enum.IsDefined(request.WholesaleRoundingRule))
+        if (!Enum.IsDefined(request.RetailRoundingRule) || !Enum.IsDefined(request.WholesaleRoundingRule)
+            || !Enum.IsDefined(request.CashBsRoundingRule)
+            || !Enum.IsDefined(request.GlobalUsdRoundingRule) || !Enum.IsDefined(request.GlobalCashBsRoundingRule))
         {
             throw new ArgumentException("La política de redondeo contiene una regla no reconocida.");
         }
@@ -165,6 +312,15 @@ public partial class InventoryService
             throw new ArgumentException("El piso de margen no puede ser negativo.");
         }
     }
+
+    // Spec V0.15: una solicitud aporta configuración activa cuando alguna capa de la tarjeta de
+    // redondeo/protección no está en su valor neutro (regla USD/cash distinta de ExactMath, o piso
+    // numérico definido con la protección encendida).
+    private static bool HasRoundingConfiguration(BulkPriceUpdateRequestDto request) =>
+        request.RetailRoundingRule != RoundingRuleType.ExactMath
+        || request.WholesaleRoundingRule != RoundingRuleType.ExactMath
+        || request.CashBsRoundingRule != RoundingRuleType.ExactMath
+        || (request.EnforceMinimumMarginFloor && ((request.RetailMarginFloorPct ?? 0m) > 0m || (request.WholesaleMarginFloorPct ?? 0m) > 0m));
 
     private async Task<List<int>> ResolveBulkPriceSelectionIdsAsync(BulkPriceUpdateRequestDto request, CancellationToken cancellationToken)
     {
@@ -262,16 +418,14 @@ public partial class InventoryService
 
         foreach (var operation in operations)
         {
-            decimal current = ReadBulkPriceField(scratch, operation.Field);
-            decimal raw = operation.Mode switch
-            {
-                BulkPriceMode.SetFixed => operation.Value,
-                BulkPriceMode.IncreasePercent => current * (1m + operation.Value / 100m),
-                BulkPriceMode.DecreasePercent => current * (1m - operation.Value / 100m),
-                _ => current
-            };
+            var raw = ComputeBulkPriceOperationValue(scratch, request, operation);
             WriteBulkPriceField(scratch, operation.Field, RoundBulkPriceField(operation.Field, raw));
         }
+
+        // Spec V0.15 "Solo Redondeo": sin operaciones de la familia del canal (precio/margen) la base
+        // es el PRECIO ACTUAL del scratch — el interceptor de abajo lo redondea. La idempotencia se
+        // mantiene porque redondear(redondear(x)) = redondear(x) y el margen no se realimenta (a
+        // diferencia del ancla costo×(1+margen) del tramo anterior, que ya no se usa).
 
         // Los negativos se detectan ANTES de las rutinas vigentes: su derivación
         // precio=costo×(1+margen) reemplazaría (enmascararía) un resultado negativo silenciosamente.
@@ -299,8 +453,23 @@ public partial class InventoryService
         // ANTES de la validación vigente: `ValidateAndCalculateProductPrices` sigue siendo la
         // última palabra (negativos / mayor≤detal / cap). Con ExactMath todo queda como en 8.181.
         // -----------------------------------------------------------------------------------------
-        bool retailRoundingActive = request.RetailRoundingRule != RoundingRuleType.ExactMath;
-        bool wholesaleRoundingActive = request.WholesaleRoundingRule != RoundingRuleType.ExactMath;
+        // Spec V0.15 (preservación de overrides): la regla EFECTIVA de cálculo por canal respeta la
+        // intención explícita — canal touched ⇒ regla del lote; sin touch ⇒ regla del PRODUCTO
+        // (override ?? baseline global), así un lote de sección 1 redondea el precio nuevo con la
+        // política propia del artículo y la preserva. Aplica al redondeo USD, a la salvaguarda
+        // Detal/Mayor y a las proyecciones cash.
+        RoundingRuleType effectiveRetailUsdRule = request.TouchRetailUsdPolicy
+            ? request.RetailRoundingRule
+            : product.RoundingRuleUsd ?? request.GlobalUsdRoundingRule;
+        RoundingRuleType effectiveWholesaleUsdRule = request.TouchWholesaleUsdPolicy
+            ? request.WholesaleRoundingRule
+            : product.RoundingRuleUsd ?? request.GlobalUsdRoundingRule;
+        RoundingRuleType effectiveCashRule = request.TouchCashBsPolicy
+            ? request.CashBsRoundingRule
+            : product.RoundingRuleCashBs ?? request.GlobalCashBsRoundingRule;
+
+        bool retailRoundingActive = effectiveRetailUsdRule != RoundingRuleType.ExactMath;
+        bool wholesaleRoundingActive = effectiveWholesaleUsdRule != RoundingRuleType.ExactMath;
         decimal? retailPreRounding = null;
         decimal? retailRoundingDelta = null;
         decimal? retailCashFriendlyAfterBsS = null;
@@ -311,16 +480,17 @@ public partial class InventoryService
         bool retailUsdRoundingApplied = false;
         bool wholesaleUsdRoundingApplied = false;
 
-        // Redondeo USD del canal al detal (UsdPsychological): la rama VES se aplica en la etapa del
-        // Bs.S (más abajo), porque opera sobre la conversión y no sobre el USD.
-        if (retailRoundingActive && !IsVesCashFriendly(request.RetailRoundingRule))
+        // Redondeo USD del canal al detal (UsdPsychological). Spec V0.15: la proyección Bs.S vive en
+        // una etapa aparte gobernada por la regla cash efectiva; la guarda !IsVesCashFriendly es
+        // defensiva — una regla VES efectiva (override o canal touched) no redondea el USD.
+        if (retailRoundingActive && !IsVesCashFriendly(effectiveRetailUsdRule))
         {
             decimal retailUsd = EffectiveBulkRetailUsd(scratch);
             if (retailUsd > 0m)
             {
                 var retailRounding = RoundingPolicy.Round(
                     retailUsd,
-                    request.RetailRoundingRule,
+                    effectiveRetailUsdRule,
                     scratch.CostPriceUSD,
                     request.RetailMarginFloorPct,
                     request.EnforceMinimumMarginFloor);
@@ -334,13 +504,13 @@ public partial class InventoryService
             }
         }
 
-        // Redondeo USD del canal al mayor (UsdPsychological). VES al mayor no tiene columna Bs.S
-        // propia: su Bs.S informativo se calcula en la etapa del Bs.S canónico.
-        if (wholesaleRoundingActive && !IsVesCashFriendly(request.WholesaleRoundingRule) && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m)
+        // Redondeo USD del canal al mayor (UsdPsychological); misma guarda defensiva que el detal.
+        // El Bs.S informativo del mayor se calcula en la etapa de proyección cash (más abajo).
+        if (wholesaleRoundingActive && !IsVesCashFriendly(effectiveWholesaleUsdRule) && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m)
         {
             var wholesaleRounding = RoundingPolicy.Round(
                 scratch.PriceWholesaleUSD,
-                request.WholesaleRoundingRule,
+                effectiveWholesaleUsdRule,
                 scratch.CostPriceUSD,
                 request.WholesaleMarginFloorPct,
                 request.EnforceMinimumMarginFloor);
@@ -363,12 +533,12 @@ public partial class InventoryService
             if (retailUsd > 0m && scratch.PriceWholesaleUSD > 0m && scratch.PriceWholesaleUSD >= retailUsd)
             {
                 decimal wholesaleBeforeSalvage = scratch.PriceWholesaleUSD;
-                decimal? lowered = RoundingPolicy.FindLowerStep(wholesaleBeforeSalvage, request.WholesaleRoundingRule);
+                decimal? lowered = RoundingPolicy.FindLowerStep(wholesaleBeforeSalvage, effectiveWholesaleUsdRule);
                 if (lowered is > 0m && (scratch.CostPriceUSD <= 0m || lowered.Value > scratch.CostPriceUSD))
                 {
                     scratch.PriceWholesaleUSD = lowered.Value;
                     wholesaleUsdRoundingApplied = true;
-                    if (!IsVesCashFriendly(request.WholesaleRoundingRule))
+                    if (!IsVesCashFriendly(effectiveWholesaleUsdRule))
                     {
                         // El ajuste de la salvaguarda también se reporta como delta del canal.
                         wholesalePreRounding ??= wholesaleBeforeSalvage;
@@ -415,16 +585,16 @@ public partial class InventoryService
             newPriceBsS = PricingCalculator.ToBsSCeiling(afterRetail, exchangeRate);
         }
 
-        // 8.183 (R1): la regla VES del canal al detal NO persiste nada — el Bs.S almacenado es
-        // SIEMPRE el canónico 8.104 calculado arriba (el USD y el margen no cambian). La regla se
-        // evalúa en caliente como proyección de efectivo con la tasa del día y solo se informa en
-        // CashFriendlyAfterBsS del cambio (nunca participa del estado ni de la persistencia).
-        if (retailRoundingActive && IsVesCashFriendly(request.RetailRoundingRule))
+        // 8.183 (R1) + Spec V0.15: la proyección Bs.S del detal NO persiste nada — el Bs.S almacenado
+        // es SIEMPRE el canónico 8.104 calculado arriba (el USD y el margen no cambian). La regla cash
+        // EFECTIVA (touch ? lote : override/global del producto) se evalúa en caliente con la tasa del
+        // día y solo se informa en CashFriendlyAfterBsS del cambio (nunca participa de la persistencia).
+        if (IsVesCashFriendly(effectiveCashRule))
         {
             var retailCashProjection = RoundingPolicy.ProjectCashFriendlyBsS(
                 afterRetail,
                 exchangeRate,
-                request.RetailRoundingRule,
+                effectiveCashRule,
                 scratch.CostPriceUSD,
                 request.RetailMarginFloorPct,
                 request.EnforceMinimumMarginFloor);
@@ -436,16 +606,16 @@ public partial class InventoryService
             }
         }
 
-        // 8.182-T1 (S4) / 8.183 (R1): proyección de efectivo del canal al mayor con regla VES (la
-        // entidad no tiene columna Bs.S propia para ese canal); informativa y nunca persistida, solo
-        // acompaña a un cambio real del precio USD.
-        if (wholesaleRoundingActive && IsVesCashFriendly(request.WholesaleRoundingRule)
+        // 8.182-T1 (S4) / 8.183 (R1) + Spec V0.15: proyección cash del canal al mayor con la regla
+        // cash EFECTIVA (la entidad no tiene columna Bs.S propia para ese canal); informativa y nunca
+        // persistida, solo acompaña a un cambio real del precio USD.
+        if (IsVesCashFriendly(effectiveCashRule)
             && scratch.HasWholesale && scratch.PriceWholesaleUSD > 0m
             && scratch.PriceWholesaleUSD != product.PriceWholesaleUSD && exchangeRate > 0m)
         {
             var wholesaleVesRounding = RoundingPolicy.Round(
                 scratch.PriceWholesaleUSD * exchangeRate,
-                request.WholesaleRoundingRule,
+                effectiveCashRule,
                 scratch.CostPriceUSD * exchangeRate,
                 request.WholesaleMarginFloorPct,
                 request.EnforceMinimumMarginFloor);
@@ -455,8 +625,34 @@ public partial class InventoryService
             wholesaleRoundingDelta = wholesaleVesRounding.RoundingDelta;
         }
 
+        // Spec V0.15 (intención explícita): la tarjeta 2 materializa la política por artículo (8.184:
+        // RoundingRuleUsd/RoundingRuleCashBs) SOLO cuando el canal fue touched (el usuario cambió el
+        // selector respecto de su seed, o ejecuta Solo Redondeo con esa regla activa) Y la wanted
+        // difiere de la efectiva (override ?? baseline global). Sin touch la política del producto se
+        // PRESERVA — un lote de sección 1 jamás normaliza overrides ajenos. Lo único que se persiste
+        // es la POLÍTICA — el Bs.S amigable y el margen efectivo siguen siendo proyección.
+        bool anyUsdTouched = request.TouchRetailUsdPolicy || request.TouchWholesaleUsdPolicy;
+        RoundingRuleType? wantedUsd = anyUsdTouched && request.RetailRoundingRule == request.WholesaleRoundingRule
+            ? request.RetailRoundingRule
+            : null;
+        if (wantedUsd.HasValue && wantedUsd.Value != (product.RoundingRuleUsd ?? request.GlobalUsdRoundingRule))
+        {
+            scratch.RoundingRuleUsd = wantedUsd.Value;
+        }
+
+        if (request.TouchCashBsPolicy && request.CashBsRoundingRule != (product.RoundingRuleCashBs ?? request.GlobalCashBsRoundingRule))
+        {
+            scratch.RoundingRuleCashBs = request.CashBsRoundingRule;
+        }
+
         bool stateChanged = BulkPriceStateChanged(product, scratch, newPriceBsS);
         var row = CreateBulkPriceRow(product);
+        if (anyUsdTouched && !wantedUsd.HasValue)
+        {
+            // Canales touched con reglas distintas: la columna es única por producto y no se materializa.
+            row.PolicyNote = "Reglas USD distintas por canal (Detal/Mayor): la política por artículo no se materializa (columna única por producto).";
+        }
+
         row.Changes = BuildBulkPriceChanges(product, scratch, newPriceBsS, new BulkPriceRoundingInfo(
             retailPreRounding,
             retailRoundingDelta,
@@ -466,11 +662,13 @@ public partial class InventoryService
             wholesaleBsSBefore,
             wholesaleBsSAfter));
 
-        // S5: margen efectivo (precio final vs costo) del canal, solo cuando el precio USD cambió.
-        row.EffectiveRetailMarginPct = afterRetail != beforeRetail && scratch.CostPriceUSD > 0m
+        // Spec V0.15: el margen efectivo REAL (precio final vs costo) se informa siempre que el costo
+        // exista — no solo cuando el precio cambió — para que la columna MARGEN EFECTIVO % muestre el
+        // margen de precio/costo actuales en vez de "—" con datos disponibles.
+        row.EffectiveRetailMarginPct = scratch.CostPriceUSD > 0m
             ? CalculateEffectiveMarginPct(afterRetail, scratch.CostPriceUSD)
             : null;
-        row.EffectiveWholesaleMarginPct = scratch.HasWholesale && scratch.PriceWholesaleUSD != product.PriceWholesaleUSD && scratch.CostPriceUSD > 0m
+        row.EffectiveWholesaleMarginPct = scratch.HasWholesale && scratch.CostPriceUSD > 0m
             ? CalculateEffectiveMarginPct(scratch.PriceWholesaleUSD, scratch.CostPriceUSD)
             : null;
 
@@ -490,6 +688,7 @@ public partial class InventoryService
     {
         var product = item.Product;
         var scratch = item.Scratch;
+        bool retailChannelChanged = EffectiveBulkRetailUsd(product) != EffectiveBulkRetailUsd(scratch);
         product.PriceRetailUSD = scratch.PriceRetailUSD;
         product.PriceWholesaleUSD = scratch.PriceWholesaleUSD;
         product.CostPriceUSD = scratch.CostPriceUSD;
@@ -497,9 +696,16 @@ public partial class InventoryService
         product.ProfitMarginWholesale = scratch.ProfitMarginWholesale;
         product.HasWholesale = scratch.HasWholesale;
         product.MinWholesaleQuantity = scratch.MinWholesaleQuantity;
-        product.PriceUSD = scratch.PriceUSD;
+        // Invariante de todo el catálogo: PriceUSD espeja el canal Detal. Create/Update/Import y
+        // facturas de proveedor ya lo mantienen; la edición masiva debe hacer lo mismo o las
+        // superficies que leen PriceUSD (POS/grid WPF) muestran el precio anterior.
+        product.PriceUSD = retailChannelChanged ? scratch.PriceRetailUSD : scratch.PriceUSD;
         product.Cost = scratch.Cost;
         product.ProfitPercentage = scratch.ProfitPercentage;
+        // Spec V0.15: la política por artículo (override 8.184) se escribe solo si el plan la cambió;
+        // en el resto de las filas el scratch conserva el valor del producto (asignación no-op).
+        product.RoundingRuleUsd = scratch.RoundingRuleUsd;
+        product.RoundingRuleCashBs = scratch.RoundingRuleCashBs;
         // S2: LastConversionRate no se escribe (igual que create/update actuales).
         product.PriceBsS = item.NewPriceBsS;
         product.UpdatedAt = DateTime.UtcNow;
@@ -573,7 +779,10 @@ public partial class InventoryService
         ProfitMarginWholesale = product.ProfitMarginWholesale,
         HasWholesale = product.HasWholesale,
         MinWholesaleQuantity = product.MinWholesaleQuantity,
-        PriceBsS = product.PriceBsS
+        PriceBsS = product.PriceBsS,
+        // Spec V0.15: la política por artículo viaja al scratch para detectar/persistir sus cambios.
+        RoundingRuleUsd = product.RoundingRuleUsd,
+        RoundingRuleCashBs = product.RoundingRuleCashBs
     };
 
     private static decimal EffectiveBulkRetailUsd(Product product) =>
@@ -617,6 +826,42 @@ public partial class InventoryService
         BulkPriceField.RetailPrice or BulkPriceField.WholesalePrice => PricingCalculator.RoundPriceUp(value),
         _ => PricingCalculator.RoundToDigital(value)
     };
+
+    // Spec V0.15: valor resultante de UNA operación del lote sobre el scratch.
+    // Los campos de margen (Detal/Mayor) operan en PUNTOS PORCENTUALES aditivos: aumentar/reducir
+    // suma/resta Δ al margen actual (10 + 10 pp = 20; antes el modo % era multiplicativo y daba 11).
+    // Fijar valor sigue siendo Δ exacto. Precio Detal/Mayor y Costo conservan intacta la variación
+    // porcentual multiplicativa (o la suma/resta fija en USD) del lote 8.181.
+    private static decimal ComputeBulkPriceOperationValue(Product scratch, BulkPriceUpdateRequestDto request, BulkPriceOperationDto operation)
+    {
+        decimal current = ReadBulkPriceField(scratch, operation.Field);
+        bool isMargin = operation.Field is BulkPriceField.RetailMargin or BulkPriceField.WholesaleMargin;
+
+        decimal raw = operation.Mode switch
+        {
+            BulkPriceMode.SetFixed => operation.Value,
+            BulkPriceMode.IncreasePercent when isMargin => current + operation.Value,
+            BulkPriceMode.DecreasePercent when isMargin => current - operation.Value,
+            BulkPriceMode.IncreasePercent => current * (1m + operation.Value / 100m),
+            BulkPriceMode.DecreasePercent => current * (1m - operation.Value / 100m),
+            _ => current
+        };
+
+        // Salvaguarda SOLO en REDUCCIONES de margen (incrementar/fijar no cambian): el margen nunca
+        // queda bajo el piso del canal con el toggle activo (piso null/≤0 ⇒ cota 0) ni bajo 0 sin
+        // él. Clamp literal (max): si el margen actual YA está bajo el piso, una reducción lo SUBE
+        // al piso — no existe reducción efectiva por debajo de esa cota.
+        if (isMargin && operation.Mode == BulkPriceMode.DecreasePercent)
+        {
+            decimal? channelFloor = operation.Field == BulkPriceField.RetailMargin
+                ? request.RetailMarginFloorPct
+                : request.WholesaleMarginFloorPct;
+            decimal floor = request.EnforceMinimumMarginFloor ? channelFloor ?? 0m : 0m;
+            raw = Math.Max(raw, floor);
+        }
+
+        return raw;
+    }
 
     private static string? FindNegativeBulkPriceField(Product scratch)
     {
@@ -664,6 +909,9 @@ public partial class InventoryService
         || before.PriceUSD != after.PriceUSD
         || before.Cost != after.Cost
         || before.ProfitPercentage != after.ProfitPercentage
+        // Spec V0.15: un precio igual con POLÍTICA distinta también es un cambio accionable.
+        || before.RoundingRuleUsd != after.RoundingRuleUsd
+        || before.RoundingRuleCashBs != after.RoundingRuleCashBs
         || before.PriceBsS != newPriceBsS;
 
     private static List<BulkPriceFieldChangeDto> BuildBulkPriceChanges(Product before, Product after, decimal newPriceBsS, BulkPriceRoundingInfo rounding)

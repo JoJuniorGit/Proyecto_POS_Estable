@@ -1,86 +1,54 @@
+using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
+using Core.Helpers;
+using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
 
 namespace Desktop.Client.Views;
 
 public partial class DailyClosureView : UserControl
 {
-    private DailyClosureViewModel? _boundViewModel;
-
     public DailyClosureView()
     {
         InitializeComponent();
-        DataContextChanged += OnDataContextChanged;
-        Loaded += OnLoaded;
-        Unloaded += OnUnloaded;
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private void AmountInput_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        HookViewModel(DataContext as DailyClosureViewModel);
+        if (sender is not TextBox textBox) return;
+
+        // Select the current amount so typing replaces it instead of appending cents.
+        textBox.Dispatcher.BeginInvoke(new Action(textBox.SelectAll), DispatcherPriority.Input);
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e)
+    private void AmountInput_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        UnhookViewModel();
+        if (e.Key != Key.Enter || sender is not TextBox textBox) return;
+
+        // Keep the operator's flow: Enter advances to the next amount field.
+        textBox.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+        e.Handled = true;
     }
 
-    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    private void UsdInput_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        if (e.OldValue is DailyClosureViewModel oldVm)
+        if (sender is not TextBox textBox || DataContext is not DailyClosureViewModel viewModel) return;
+
+        var raw = textBox.Text;
+        if (string.IsNullOrWhiteSpace(raw))
         {
-            if (ReferenceEquals(_boundViewModel, oldVm))
-            {
-                UnhookViewModel();
-            }
+            viewModel.ActualClosingBalanceUsdText = string.Empty;
+            return;
         }
 
-        if (e.NewValue is DailyClosureViewModel newVm)
-        {
-            HookViewModel(newVm);
-        }
-    }
+        if (!FlexibleDecimalParser.TryParse(raw, out var parsed)) return;
 
-    private void HookViewModel(DailyClosureViewModel? vm)
-    {
-        if (vm == null || ReferenceEquals(_boundViewModel, vm)) return;
-
-        UnhookViewModel();
-        _boundViewModel = vm;
-        _boundViewModel.PropertyChanged += OnViewModelPropertyChanged;
-        UpdateBlindClosingVisibility(_boundViewModel.IsBlindClosing);
-    }
-
-    private void UnhookViewModel()
-    {
-        if (_boundViewModel != null)
-        {
-            _boundViewModel.PropertyChanged -= OnViewModelPropertyChanged;
-            _boundViewModel = null;
-        }
-    }
-
-    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(DailyClosureViewModel.IsBlindClosing) && _boundViewModel != null)
-        {
-            UpdateBlindClosingVisibility(_boundViewModel.IsBlindClosing);
-        }
-    }
-
-    private void UpdateBlindClosingVisibility(bool isBlind)
-    {
-        if (ExpectedColumn != null)
-            ExpectedColumn.Visibility = isBlind ? Visibility.Collapsed : Visibility.Visible;
-            
-        if (ExpectedTotalPanel != null)
-            ExpectedTotalPanel.Visibility = isBlind ? Visibility.Collapsed : Visibility.Visible;
-            
-        if (DifferenceColumn != null)
-            DifferenceColumn.Visibility = isBlind ? Visibility.Collapsed : Visibility.Visible;
-            
-        if (DifferenceTotalPanel != null)
-            DifferenceTotalPanel.Visibility = isBlind ? Visibility.Collapsed : Visibility.Visible;
+        var formatted = CurrencyDisplay.Number(parsed);
+        textBox.Text = formatted;
+        textBox.CaretIndex = formatted.Length;
+        viewModel.ActualClosingBalanceUsdText = formatted;
     }
 }

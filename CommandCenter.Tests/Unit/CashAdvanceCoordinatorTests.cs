@@ -30,7 +30,9 @@ public class CashAdvanceCoordinatorTests
 
     private (CashAdvanceCoordinator coordinator, ICashDrawerService drawerService) CreateCoordinator(
         SalesDbContext context,
-        ISystemSettingsService? settingsService = null)
+        ISystemSettingsService? settingsService = null,
+        IMonetaryProfileService? monetaryProfileService = null,
+        ICurrencyRateService? currencyRateService = null)
     {
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
@@ -43,11 +45,22 @@ public class CashAdvanceCoordinatorTests
         var mediatorMock = new Mock<IMediator>();
         var settings = settingsService ?? new Mock<ISystemSettingsService>().Object;
 
-        var salesService = new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settings);
+        var salesService = new SalesService(
+            context,
+            inventoryMock.Object,
+            mediatorMock.Object,
+            cashDrawerMock.Object,
+            settings,
+            monetaryProfileService: monetaryProfileService,
+            currencyRateService: currencyRateService);
 
-        var drawerService = new CashDrawerService(context);
+        // 8.211-T3c3c2 (S7): the drawer follows the same profile so local (COP) movements and the
+        // fractional cash check use the same currency as the sale.
+        var drawerService = new CashDrawerService(context, monetaryProfileService);
 
-        return (new CashAdvanceCoordinator(context, salesService, drawerService, settings), drawerService);
+        return (
+            new CashAdvanceCoordinator(context, salesService, drawerService, settings, monetaryProfileService),
+            drawerService);
     }
 
     [Fact]
@@ -75,6 +88,67 @@ public class CashAdvanceCoordinatorTests
         Assert.Equal(55m, result.CommissionAmountLocal);
         Assert.Equal(5.5m, result.CommissionPercentage);
         Assert.Equal(1055m, result.TotalChargedLocal);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_DualUsdEur_UsesSalePayment8dpRateForDrawerMovements()
+    {
+        using var context = GetInMemoryDbContext();
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 1,
+            Name = "Transferencia EUR",
+            IsCash = false,
+            IsActive = true,
+            Currency = "EUR"
+        });
+        await context.SaveChangesAsync();
+
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("0.01");
+
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = MonetaryMode.Dual,
+                PrimaryCurrencyCode = "USD",
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = "EUR",
+                SecondaryCurrencySymbol = "EUR",
+                IsConfigured = true
+            });
+
+        var rates = new Mock<ICurrencyRateService>();
+        rates.Setup(r => r.GetRateAsync("USD", "EUR", It.IsAny<DateOnly?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CurrencyRateQuote(0.924049m, CurrencyRateSource.Manual, Core.Helpers.TimeZoneHelper.GetVenezuelaDate(), "USD", "EUR"));
+
+        var (coordinator, drawerService) = CreateCoordinator(
+            context,
+            settingsMock.Object,
+            profile.Object,
+            rates.Object);
+        var session = await drawerService.OpenSessionAsync(1000m, 0.924049m);
+
+        var result = await coordinator.ProcessAsync(
+            sessionId: session.Id,
+            requestedAmountLocal: 100m,
+            paymentMethodId: 1,
+            paymentMethodName: "Transferencia EUR",
+            isTransfer: true,
+            exchangeRate: 0.924049m
+        );
+
+        Assert.Equal(0.924049m, result.ExpenseTransaction.ExchangeRate);
+        Assert.Equal(0.924049m, result.IncomeTransaction.ExchangeRate);
+
+        var movement = await context.CashTransactions.AsNoTracking()
+            .SingleAsync(t => t.Source == CashTransactionSource.CashAdvance && t.Type == CashTransactionType.Expense);
+        Assert.Equal(0.924049m, movement.ExchangeRate);
+
+        var sale = await context.Sales.AsNoTracking().SingleAsync();
+        Assert.Equal(0.9240m, sale.AppliedRate);
     }
 
     [Fact]
@@ -275,5 +349,113 @@ public class CashAdvanceCoordinatorTests
             ));
 
         Assert.Contains("número entero sin decimales", ex.Message);
+    }
+
+    private static Mock<IMonetaryProfileService> CreateProfileMock(
+        MonetaryMode mode,
+        string primaryCode,
+        string? secondaryCode)
+    {
+        var profile = new Mock<IMonetaryProfileService>();
+        profile.Setup(p => p.GetAsync(It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync(new MonetaryProfileDto
+            {
+                Mode = mode,
+                PrimaryCurrencyCode = primaryCode,
+                PrimaryCurrencySymbol = "$",
+                SecondaryCurrencyCode = secondaryCode,
+                SecondaryCurrencySymbol = secondaryCode is null ? null : secondaryCode,
+                IsConfigured = true
+            });
+        return profile;
+    }
+
+    [Fact]
+    public async Task ProcessAsync_FractionalAmountWithSingleProfile_SkipsIntegerRuleAndReachesCheckoutGuard()
+    {
+        using var context = GetInMemoryDbContext();
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+
+        var profile = CreateProfileMock(MonetaryMode.Single, "USD", null);
+        var (coordinator, drawerService) = CreateCoordinator(context, settingsMock.Object, profile.Object);
+        var session = await drawerService.OpenSessionAsync(2000m, 50.0m);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            coordinator.ProcessAsync(
+                sessionId: session.Id,
+                requestedAmountLocal: 100.50m,
+                paymentMethodId: 2,
+                paymentMethodName: "Transferencia",
+                isTransfer: true,
+                exchangeRate: 50.0m));
+
+        // The fractional check passed; the Single checkout guard is the next rejection.
+        Assert.Contains("moneda única", ex.Message);
+        Assert.DoesNotContain("número entero sin decimales", ex.Message);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_FractionalAmountWithDualNonVesProfile_CompletesInCopWithManualSource()
+    {
+        using var context = GetInMemoryDbContext();
+        context.Customers.Add(new Customer
+        {
+            Id = 1,
+            Name = "Consumidor Final",
+            CedulaOrRif = "V-00000000",
+            IsDefault = true,
+            IsActive = true
+        });
+        context.PaymentMethods.Add(new PaymentMethod
+        {
+            Id = 6,
+            Name = "Transferencia COP",
+            IsCash = false,
+            IsActive = true,
+            Currency = "COP"
+        });
+        await context.SaveChangesAsync();
+
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+
+        var profile = CreateProfileMock(MonetaryMode.Dual, "USD", "COP");
+        var rateMock = new Mock<ICurrencyRateService>();
+        rateMock
+            .Setup(r => r.GetRateAsync("USD", "COP", It.IsAny<DateOnly?>(), It.IsAny<System.Threading.CancellationToken>()))
+            .ReturnsAsync(new CurrencyRateQuote(
+                4000m,
+                CurrencyRateSource.Manual,
+                Core.Helpers.TimeZoneHelper.GetVenezuelaDate(),
+                "USD",
+                "COP"));
+
+        var (coordinator, drawerService) = CreateCoordinator(context, settingsMock.Object, profile.Object, rateMock.Object);
+        var session = await drawerService.OpenSessionAsync(20000m, 4000m);
+
+        // 8.211-T3c3c2 (S7): the fractional local request passes the integer guard and completes.
+        var result = await coordinator.ProcessAsync(
+            sessionId: session.Id,
+            requestedAmountLocal: 1000.50m,
+            paymentMethodId: 6,
+            paymentMethodName: "Transferencia COP",
+            isTransfer: true,
+            exchangeRate: 4000m);
+
+        Assert.Equal(1000.50m, result.RequestedAmountLocal);
+        Assert.Equal("COP", result.ExpenseTransaction.CurrencyCode);
+        Assert.Equal("COP", result.IncomeTransaction.CurrencyCode);
+
+        var sale = await context.Sales.AsNoTracking().SingleAsync(s => s.Id == result.RelatedSaleId!.Value);
+        Assert.Equal("Manual", sale.AppliedRateSource);
+        Assert.Equal("COP", sale.SecondaryCurrencyCode);
+        Assert.Equal("USD", sale.PrimaryCurrencyCode);
+
+        var payment = await context.SalePayments.AsNoTracking()
+            .SingleAsync(p => p.SaleId == result.RelatedSaleId!.Value);
+        Assert.Equal("COP", payment.CurrencyCode);
     }
 }

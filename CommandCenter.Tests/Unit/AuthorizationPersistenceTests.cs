@@ -279,11 +279,8 @@ public class AuthorizationPersistenceTests
     [Trait("Category", "RequiresDocker")]
     public async Task PostgreSql_NullSalePendingDuplicates_AreRejectedByNullSafeDedupeIndex()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            return;
-        }
+        // Carril: sin conexión utilizable falla EXPLÍCITO (nunca silent-pass).
+        var connectionString = PostgresTestLane.RequireResolution().ConnectionString;
 
         var databaseName = $"pos_authorization_nullsafe_{Guid.NewGuid():N}";
         var testConnectionString = new NpgsqlConnectionStringBuilder(connectionString)
@@ -326,11 +323,8 @@ public class AuthorizationPersistenceTests
     [Trait("Category", "RequiresDocker")]
     public async Task PostgreSql_AppendOnlyTrigger_RejectsAuditMutation_AndKeepsRow()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            return;
-        }
+        // Carril: sin conexión utilizable falla EXPLÍCITO (nunca silent-pass).
+        var connectionString = PostgresTestLane.RequireResolution().ConnectionString;
 
         var databaseName = $"pos_authorization_persistence_{Guid.NewGuid():N}";
         var testConnectionString = new NpgsqlConnectionStringBuilder(connectionString)

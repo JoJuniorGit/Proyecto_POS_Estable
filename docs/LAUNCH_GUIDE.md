@@ -131,7 +131,7 @@ powershell -ExecutionPolicy Bypass -File "...\tools\monitoring\monitor-health.ps
 
 ### 6.c SaaS (UptimeRobot / StatusCake)
 
-- Monitor HTTP(S) -> `http://localhost:5000/health`, keyword `"Healthy"`, intervalo 5 min,
+- Monitor HTTPS -> `https://localhost:5001/health`, keyword `"Healthy"`, intervalo 5 min,
   alerta tras 3 fallos. Suficiente para disponibilidad del puesto; sin p95 de latencia
   (para eso el script o Prometheus).
 
@@ -142,6 +142,6 @@ powershell -ExecutionPolicy Bypass -File "...\tools\monitoring\monitor-health.ps
 - [ ] `secrets.json` por sitio con ACL; cambio obligatorio de contrasena del admin.
 - [ ] Backup programado ON; `lastBackupFresh == true` en `/api/health/details`.
 - [ ] Monitoreo del piloto activo (script o Prometheus) con alertas de servicio caido y backup stale.
-- [ ] Firewall 5000/5001 (subred local); decision HTTP/HTTPS (DQ-006).
-- [ ] Cajas: importar `.cer` si usan HTTPS 5001.
+- [ ] Firewall 5000/5001 (subred local); HTTP remoto redirige a HTTPS y queda solo HTTP loopback.
+- [ ] Cajas: verificar el pin TLS DPAPI del desktop; navegador/móviles deben confiar en el `.cer` o en la CA del sitio.
 - [ ] Notificacion (correo/webhook) probada con una alerta de prueba.

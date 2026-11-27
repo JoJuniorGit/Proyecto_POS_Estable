@@ -124,6 +124,7 @@ public class SettingsPricingPoliciesViewModelTests
         Assert.Equal(RoundingRuleType.UsdPsychological, _lastSavedPolicies!.UsdRoundingRule);
         Assert.Equal(RoundingRuleType.ExactMath, _lastSavedPolicies.CashBsRoundingRule);
         Assert.True(_lastSavedPolicies.EnforceMinimumMarginFloor);
+        Assert.Equal("\u2713 Guardado", vm.PricingPoliciesAutoSaveStatus);
     }
 
     [Fact]
@@ -171,6 +172,7 @@ public class SettingsPricingPoliciesViewModelTests
         await vm.PricingPoliciesSaveTask;
 
         Assert.True(vm.EnforceMinimumMarginFloor);
+        Assert.Equal("Auto-guardado", vm.PricingPoliciesAutoSaveStatus);
         _dialogServiceMock.Verify(
             d => d.ShowError("Políticas de Precios y Redondeo", It.IsAny<string>()),
             Times.Once);

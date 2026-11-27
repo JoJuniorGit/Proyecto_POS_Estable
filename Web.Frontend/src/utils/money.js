@@ -48,3 +48,16 @@ export function bsToUsd(bs, rate) {
   const usdCents = Math.round((parsedCents * 10000) / rateScaled);
   return usdCents / 100;
 }
+
+/**
+ * Resolves the suggested payment amount text based on payment method type (cash vs electronic).
+ * Cash payments default to integer Bs.S, while non-cash payments default to 2 decimal places.
+ * @param {number} remainingBsS
+ * @param {boolean} isCash
+ * @returns {string}
+ */
+export function resolveSuggestedPaymentAmount(remainingBsS, isCash) {
+  const rem = Number(remainingBsS) || 0;
+  if (rem <= 0) return '';
+  return isCash ? Math.round(rem).toString() : rem.toFixed(2);
+}

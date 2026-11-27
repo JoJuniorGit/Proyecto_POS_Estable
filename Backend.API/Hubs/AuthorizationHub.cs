@@ -22,11 +22,15 @@ public class AuthorizationHub : Hub
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> ConnectionUsers = new();
 
     private readonly IAuthorizationCoordinator _coordinator;
+    private readonly IAuthorizationHubRateLimiter? _rateLimiter;
 
-    public AuthorizationHub(IAuthorizationCoordinator coordinator)
+    public AuthorizationHub(
+        IAuthorizationCoordinator coordinator,
+        IAuthorizationHubRateLimiter? rateLimiter = null)
     {
         ArgumentNullException.ThrowIfNull(coordinator);
         _coordinator = coordinator;
+        _rateLimiter = rateLimiter;
     }
 
     public static string UserGroup(int userId) => $"user:{userId}";
@@ -76,6 +80,11 @@ public class AuthorizationHub : Hub
         return base.OnDisconnectedAsync(exception);
     }
 
+    // E2E: al responder, OnConnectedAsync (alta al grupo) ya terminó. Evita que un push
+    // enviado inmediatamente después de StartAsync se pierda por una carrera de suscripción.
+    [HubMethodName("Ping")]
+    public Task PingAsync() => Task.CompletedTask;
+
     [HubMethodName("RequestAuthorization")]
     public async Task<HubAuthorizationRequestResult> RequestAuthorizationAsync(RequestAuthorizationContract request)
     {
@@ -86,12 +95,19 @@ public class AuthorizationHub : Hub
             return new HubAuthorizationRequestResult(false);
         }
 
+        if (IsRateLimited(identity.UserId, "RequestAuthorization", out var requestRetryAfterSeconds))
+        {
+            return new HubAuthorizationRequestResult(
+                false,
+                Message: $"Demasiadas solicitudes de autorización. Reintente en {requestRetryAfterSeconds} segundos.");
+        }
+
         var result = await _coordinator.CreateAsync(
             request,
             identity.UserId,
             identity.Name,
             identity.Role,
-            CancellationToken.None);
+            Context.ConnectionAborted);
 
         if (result.Request is not null
             && result.Outcome is CreateAuthorizationOutcome.Created or CreateAuthorizationOutcome.Deduplicated)
@@ -121,13 +137,20 @@ public class AuthorizationHub : Hub
             return new HubAuthorizationResolveResult(false);
         }
 
+        if (IsRateLimited(identity.UserId, "ResolveAuthorization", out var resolveRetryAfterSeconds))
+        {
+            return new HubAuthorizationResolveResult(
+                false,
+                Message: $"Demasiadas resoluciones de autorización. Reintente en {resolveRetryAfterSeconds} segundos.");
+        }
+
         var result = await _coordinator.ResolveAsync(
             requestId,
             identity.UserId,
             identity.Name,
             approved,
             reason,
-            CancellationToken.None);
+            Context.ConnectionAborted);
 
         if (result.Outcome == ResolveAuthorizationOutcome.Resolved && result.Request is not null)
         {
@@ -144,6 +167,13 @@ public class AuthorizationHub : Hub
             result.Request?.ResolvedByName,
             result.Request?.ResolutionReason,
             result.Message);
+    }
+
+    private bool IsRateLimited(int userId, string operation, out int retryAfterSeconds)
+    {
+        retryAfterSeconds = 0;
+        return _rateLimiter is not null
+            && !_rateLimiter.TryAcquire(userId, operation, out retryAfterSeconds);
     }
 
     private static bool TryReadIdentity(ClaimsPrincipal? user, out HubIdentity identity)

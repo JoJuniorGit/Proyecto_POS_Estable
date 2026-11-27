@@ -4,8 +4,6 @@ using CommandCenter.Tests.Builders;
 using Core.DTOs;
 using Core.Entities;
 using Core.Interfaces;
-using Inventory.Module.Data;
-using Inventory.Module.Services;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -18,45 +16,28 @@ using Xunit;
 
 namespace CommandCenter.Tests.Integration;
 
+/// <summary>
+/// Envelope atómico del adelanto de efectivo (venta + movimientos de gaveta) contra PostgreSQL real
+/// en base AISLADA por test (carril <see cref="PostgresTestLane"/>). La versión anterior tomaba la
+/// base COMPARTIDA del harness legacy (TestSchemaBootstrap): una sesión de caja residual de otra
+/// corrida o el estado sucio de la base degradaban el open y las aserciones de conteo. Sin conexión
+/// utilizable el carril falla EXPLÍCITO con la instrucción de configuración (nunca silent-pass).
+/// </summary>
+[Trait("Category", "RequiresDocker")]
 [Collection(PostgresRealCollection.Name)]
-public class CashAdvanceEnvelopeTests : IDisposable
+public class CashAdvanceEnvelopeTests
 {
-    private readonly SalesDbContext? _context;
-
-    public CashAdvanceEnvelopeTests()
+    private static Mock<ISystemSettingsService> CreateSettingsMock()
     {
-        _context = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
+        var settingsMock = new Mock<ISystemSettingsService>();
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
+            .ReturnsAsync("7.0");
+        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
+            .ReturnsAsync("10.0");
+        return settingsMock;
     }
 
-    public void Dispose()
-    {
-        _context?.Dispose();
-    }
-
-    private bool IsPostgresAvailable => _context != null;
-
-    private void SkipIfNoPostgres()
-    {
-        if (IsPostgresAvailable) return;
-        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")))
-        {
-            throw new InvalidOperationException(
-                "TEST_POSTGRES_CONNECTION no está definida en CI. Configure PostgreSQL real para ejecutar CashAdvanceEnvelopeTests.");
-        }
-    }
-
-    private async Task EnsureNoActiveSessionAsync()
-    {
-        if (_context == null) return;
-        var service = new CashDrawerService(_context);
-        var active = await service.GetActiveSessionAsync();
-        if (active != null)
-        {
-            await service.CloseSessionAsync(await service.GetCurrentBalanceLocalAsync(active.Id), 50m);
-        }
-    }
-
-    private (CashAdvanceCoordinator coordinator, ICashDrawerService drawerService) CreateCoordinator()
+    private static (CashAdvanceCoordinator coordinator, ICashDrawerService drawerService) CreateCoordinator(SalesDbContext context)
     {
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
@@ -67,126 +48,94 @@ public class CashAdvanceEnvelopeTests : IDisposable
             .ReturnsAsync(new CashDrawerSessionResponseDto { Id = 1, Status = CashDrawerStatus.Open });
 
         var mediatorMock = new Mock<IMediator>();
-        var settingsMock = new Mock<ISystemSettingsService>();
-        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
-            .ReturnsAsync("7.0");
-        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
-            .ReturnsAsync("10.0");
+        var settingsMock = CreateSettingsMock();
 
-        var salesService = new SalesService(_context!, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
-        var drawerService = new CashDrawerService(_context!);
+        var salesService = new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
+        var drawerService = new CashDrawerService(context);
 
-        return (new CashAdvanceCoordinator(_context!, salesService, drawerService, settingsMock.Object), drawerService);
+        return (new CashAdvanceCoordinator(context, salesService, drawerService, settingsMock.Object), drawerService);
     }
 
     [Fact]
     public async Task Envelope_CommitsBothSaleAndDrawerMovementsAtomically()
     {
-        SkipIfNoPostgres();
-        if (!IsPostgresAvailable) return;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(seedStandardSalesData: true);
+        await using var context = database.CreateSalesDbContext();
 
-        await EnsureNoActiveSessionAsync();
-        await TestDatabaseFactory.SeedStandardSalesDataAsync(_context!);
-        var (coordinator, drawerService) = CreateCoordinator();
+        var (coordinator, drawerService) = CreateCoordinator(context);
         var session = await drawerService.OpenSessionAsync(5000m, 50.0m);
 
-        try
-        {
-            var result = await coordinator.ProcessAsync(
+        var result = await coordinator.ProcessAsync(
+            sessionId: session.Id,
+            requestedAmountLocal: 1000m,
+            paymentMethodId: 3,
+            paymentMethodName: "Punto de Venta",
+            isTransfer: true,
+            exchangeRate: 50.0m
+        );
+
+        Assert.NotNull(result.RelatedSaleId);
+
+        await using var verifyContext = database.CreateSalesDbContext();
+        var sale = await verifyContext.Sales.FindAsync(result.RelatedSaleId!.Value);
+        Assert.NotNull(sale);
+        Assert.Equal(SaleStatus.Completed, sale.Status);
+
+        var drawerTxs = await verifyContext.CashTransactions
+            .CountAsync(t => t.SessionId == session.Id && t.Source == CashTransactionSource.CashAdvance);
+        Assert.Equal(2, drawerTxs);
+    }
+
+    [Fact]
+    public async Task Envelope_SaleFailure_NoDrawerTransactionPersists()
+    {
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(seedStandardSalesData: true);
+        await using var context = database.CreateSalesDbContext();
+
+        var settingsMock = CreateSettingsMock();
+
+        var inventoryMock = new Mock<IInventoryService>();
+        inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
+            .ThrowsAsync(new InvalidOperationException("Simulated DB failure"));
+
+        var drawerService = new CashDrawerService(context);
+        var session = await drawerService.OpenSessionAsync(5000m, 50.0m);
+
+        var mediatorMock = new Mock<IMediator>();
+        var cashDrawerMock = new Mock<ICashDrawerService>();
+        var salesService = new SalesService(context, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
+        var coordinator = new CashAdvanceCoordinator(context, salesService, drawerService, settingsMock.Object);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            coordinator.ProcessAsync(
                 sessionId: session.Id,
                 requestedAmountLocal: 1000m,
                 paymentMethodId: 3,
                 paymentMethodName: "Punto de Venta",
                 isTransfer: true,
                 exchangeRate: 50.0m
-            );
+            ));
 
-            Assert.NotNull(result.RelatedSaleId);
-
-            var sale = await _context!.Sales.FindAsync(result.RelatedSaleId!.Value);
-            Assert.NotNull(sale);
-            Assert.Equal(SaleStatus.Completed, sale.Status);
-
-            var drawerTxs = await _context!.CashTransactions
-                .CountAsync(t => t.SessionId == session.Id && t.Source == CashTransactionSource.CashAdvance);
-            Assert.Equal(2, drawerTxs);
-        }
-        finally
-        {
-            try { await EnsureNoActiveSessionAsync(); } catch { /* best-effort: la limpieza del próximo test reintenta */ }
-        }
-    }
-
-    [Fact]
-    public async Task Envelope_SaleFailure_NoDrawerTransactionPersists()
-    {
-        SkipIfNoPostgres();
-        if (!IsPostgresAvailable) return;
-
-        await EnsureNoActiveSessionAsync();
-        await TestDatabaseFactory.SeedStandardSalesDataAsync(_context!);
-
-        var settingsMock = new Mock<ISystemSettingsService>();
-        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
-            .ReturnsAsync("7.0");
-        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
-            .ReturnsAsync("10.0");
-
-        var inventoryMock = new Mock<IInventoryService>();
-        inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
-            .ThrowsAsync(new InvalidOperationException("Simulated DB failure"));
-
-        var drawerService = new CashDrawerService(_context!);
-        var session = await drawerService.OpenSessionAsync(5000m, 50.0m);
-
-        try
-        {
-            var mediatorMock = new Mock<IMediator>();
-            var cashDrawerMock = new Mock<ICashDrawerService>();
-            var salesService = new SalesService(_context!, inventoryMock.Object, mediatorMock.Object, cashDrawerMock.Object, settingsMock.Object);
-            var coordinator = new CashAdvanceCoordinator(_context!, salesService, drawerService, settingsMock.Object);
-
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                coordinator.ProcessAsync(
-                    sessionId: session.Id,
-                    requestedAmountLocal: 1000m,
-                    paymentMethodId: 3,
-                    paymentMethodName: "Punto de Venta",
-                    isTransfer: true,
-                    exchangeRate: 50.0m
-                ));
-
-            var drawerTxs = await _context!.CashTransactions
-                .CountAsync(t => t.SessionId == session.Id && t.Source == CashTransactionSource.CashAdvance);
-            Assert.Equal(0, drawerTxs);
-        }
-        finally
-        {
-            try { await EnsureNoActiveSessionAsync(); } catch { /* best-effort: la limpieza del próximo test reintenta */ }
-        }
+        await using var verifyContext = database.CreateSalesDbContext();
+        var drawerTxs = await verifyContext.CashTransactions
+            .CountAsync(t => t.SessionId == session.Id && t.Source == CashTransactionSource.CashAdvance);
+        Assert.Equal(0, drawerTxs);
     }
 
     [Fact]
     public async Task Envelope_DrawerFailure_RollsBackSaleAndTransactions()
     {
-        SkipIfNoPostgres();
-        if (!IsPostgresAvailable) return;
-
-        await EnsureNoActiveSessionAsync();
-        await TestDatabaseFactory.SeedStandardSalesDataAsync(_context!);
+        await using var database = await IsolatedPostgresDatabase.CreateAsync(seedStandardSalesData: true);
+        await using var context = database.CreateSalesDbContext();
 
         var inventoryMock = new Mock<IInventoryService>();
         inventoryMock.Setup(i => i.GetCashAdvanceProductAsync())
             .ReturnsAsync(new SaleProductInfoDto { Id = 1, Name = "Adelanto de Efectivo", IsCashAdvance = true });
 
-        var settingsMock = new Mock<ISystemSettingsService>();
-        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceTransferCommissionPct))
-            .ReturnsAsync("7.0");
-        settingsMock.Setup(s => s.GetSettingAsync(Core.Constants.SettingKeys.CashAdvanceCashCommissionPct))
-            .ReturnsAsync("10.0");
+        var settingsMock = CreateSettingsMock();
 
         var mediatorMock = new Mock<IMediator>();
-        var salesService = new SalesService(_context!, inventoryMock.Object, mediatorMock.Object,
+        var salesService = new SalesService(context, inventoryMock.Object, mediatorMock.Object,
             Mock.Of<ICashDrawerService>(), settingsMock.Object);
 
         var fakeDrawer = new Mock<ICashDrawerService>();
@@ -195,34 +144,28 @@ public class CashAdvanceEnvelopeTests : IDisposable
         fakeDrawer.Setup(c => c.AddTransactionAsync(
             It.IsAny<int>(), It.IsAny<CashTransactionType>(), It.IsAny<CashTransactionSource>(),
             It.IsAny<decimal>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
-            It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>()))
+            It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<bool>(), It.IsAny<int?>(),
+            It.IsAny<CancellationToken>(), It.IsAny<Sales.Module.DTOs.CashTransactionIdempotency?>()))
             .ThrowsAsync(new InvalidOperationException("Simulated drawer failure"));
 
-        var coordinator = new CashAdvanceCoordinator(_context!, salesService, fakeDrawer.Object, settingsMock.Object);
+        var coordinator = new CashAdvanceCoordinator(context, salesService, fakeDrawer.Object, settingsMock.Object);
 
-        var realDrawer = new CashDrawerService(_context!);
+        var realDrawer = new CashDrawerService(context);
         var session = await realDrawer.OpenSessionAsync(5000m, 50.0m);
 
-        try
-        {
-            var saleCountBefore = await _context!.Sales.CountAsync();
+        var saleCountBefore = await context.Sales.CountAsync();
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                coordinator.ProcessAsync(
-                    sessionId: session.Id,
-                    requestedAmountLocal: 1000m,
-                    paymentMethodId: 3,
-                    paymentMethodName: "Punto de Venta",
-                    isTransfer: true,
-                    exchangeRate: 50.0m
-                ));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            coordinator.ProcessAsync(
+                sessionId: session.Id,
+                requestedAmountLocal: 1000m,
+                paymentMethodId: 3,
+                paymentMethodName: "Punto de Venta",
+                isTransfer: true,
+                exchangeRate: 50.0m
+            ));
 
-            var saleCountAfter = await _context!.Sales.CountAsync();
-            Assert.Equal(saleCountBefore, saleCountAfter);
-        }
-        finally
-        {
-            try { await EnsureNoActiveSessionAsync(); } catch { /* best-effort: la limpieza del próximo test reintenta */ }
-        }
+        var saleCountAfter = await context.Sales.CountAsync();
+        Assert.Equal(saleCountBefore, saleCountAfter);
     }
 }

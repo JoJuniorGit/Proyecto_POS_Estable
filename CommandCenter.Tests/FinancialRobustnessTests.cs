@@ -319,7 +319,7 @@ public class FinancialRobustnessTests
             Status = SaleStatus.Pending,
             Items = new List<SaleItem>
             {
-                new SaleItem { Id = 1, ProductId = 20, Quantity = 1, UnitPrice = 50m }
+                new SaleItem { Id = 1, ProductId = 20, Quantity = 1, UnitPrice = 50m, UnitCostUSD = 20m }
             }
         };
         context.Sales.Add(sale);
@@ -345,6 +345,12 @@ public class FinancialRobustnessTests
         Assert.Equal("Completed", result.Status);
         Assert.Equal(SaleStatus.Completed, savedSale.Status);
         Assert.NotNull(savedSale.InvoiceNumber);
+
+        // Paso 14 (S4/S9): el camino de hold con pago inicial del 100% completa la venta sin pasar
+        // por CompleteSaleCoreAsync; el snapshot local del costo debe materializarse igualmente.
+        var savedItem = Assert.Single(savedSale.Items);
+        Assert.Equal(20m, savedItem.UnitCostUSD);
+        Assert.Equal(1000m, savedItem.UnitCostLocal);
 
         // Publicación de SaleMadeEvent garantizada post-commit
         mediatorMock.Verify(m => m.Publish(It.IsAny<SaleMadeEvent>(), default), Times.Once);

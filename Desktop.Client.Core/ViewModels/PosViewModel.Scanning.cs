@@ -109,6 +109,10 @@ public partial class PosViewModel
                 // últimos escaneados muestra el Bs.S efectivo con la regla resuelta + toggle.
                 RewriteEffectivePriceBsS(product);
 
+                // ANEXO XIV: commitear ediciones de cantidad pendientes antes del alta por
+                // escaneo — la respuesta del servidor reconstruye la colección del carrito.
+                await Cart.FlushAllQuantitiesAsync();
+
                 IsProcessing = true;
                 try
                 {

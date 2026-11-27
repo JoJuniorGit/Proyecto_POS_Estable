@@ -9,7 +9,7 @@ namespace CommandCenter.Tests.Unit;
 /// <summary>
 /// 8.156 (W1 de la verificación): el mock del modo --e2e debe servir /checkout-preview con el
 /// contrato real del servidor; sin él, el gate del checkout WPF (preview fresco requerido) queda
-/// cerrado para siempre en modo mock y "COBRAR Y FINALIZAR" nunca se habilita.
+/// cerrado para siempre en modo mock y "Cobrar y Finalizar" nunca se habilita.
 /// </summary>
 public class E2EMockCheckoutPreviewTests
 {

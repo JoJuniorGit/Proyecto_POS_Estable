@@ -109,6 +109,8 @@ public partial class InventoryViewModel
         OnPropertyChanged(nameof(IsAllFilteredSelected));
         OnPropertyChanged(nameof(SelectionSummary));
         OnPropertyChanged(nameof(CanEditSelectedPrices));
+        // El comando es dueño del enable-state del botón de edición masiva (RBAC + selección).
+        OpenBulkPriceEditCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>Actualiza la dimensión del modo "todos los filtrados" tras cada listado/merge.</summary>
@@ -163,7 +165,7 @@ public partial class InventoryViewModel
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanMutateCatalogBar))]
     private void SelectAllFiltered()
     {
         if (_filteredMatchCount <= 0)
@@ -177,10 +179,13 @@ public partial class InventoryViewModel
         NotifySelectionChanged();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanMutateCatalogBar))]
     private void ClearSelection() => ResetSelection();
 
-    [RelayCommand]
+    /// <summary>RBAC + selección: única fuente del enable-state del botón de edición masiva.</summary>
+    private bool CanOpenBulkPriceEdit() => CanMutateCatalogBar() && HasSelection;
+
+    [RelayCommand(CanExecute = nameof(CanOpenBulkPriceEdit))]
     private async Task OpenBulkPriceEdit()
     {
         if (_dialogService == null)

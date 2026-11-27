@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommandCenter.Tests.Builders;
+using CommandCenter.Tests.Integration;
 using Core.Entities;
 using Core.Security;
 using Microsoft.Data.Sqlite;
@@ -81,7 +82,8 @@ public class AuthorizationServiceTests
         string? password = null,
         bool isActive = true,
         int accessFailedCount = 0,
-        DateTime? lockoutEndUtc = null)
+        DateTime? lockoutEndUtc = null,
+        bool mustChangePassword = false)
     {
         var user = new User
         {
@@ -94,7 +96,8 @@ public class AuthorizationServiceTests
             IsActive = isActive,
             PasswordHash = password is null ? string.Empty : PasswordHasher.HashPassword(password),
             AccessFailedCount = accessFailedCount,
-            LockoutEndUtc = lockoutEndUtc
+            LockoutEndUtc = lockoutEndUtc,
+            MustChangePassword = mustChangePassword
         };
         db.Users.Add(user);
         await db.SaveChangesAsync();
@@ -524,6 +527,54 @@ public class AuthorizationServiceTests
         Assert.Equal(80, audit.ResolvedByUserId);
         Assert.Equal("Usuario 80", audit.ResolvedByName);
         Assert.Equal("Autorizado en sitio", audit.Reason);
+    }
+
+    [Fact]
+    public async Task ResolveLocalAsync_NonElevatedCallerForAnotherUsersRequest_ReturnsNotFoundWithoutAudit()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        await SeedUserAsync(db, 80, UserRole.Admin, password: "SuperClave123!");
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+
+        var result = await service.ResolveLocalAsync(
+            created.Request!.Id,
+            "usuario80",
+            "SuperClave123!",
+            callerUserId: 99,
+            callerIsElevated: false);
+
+        Assert.Equal(LocalResolveOutcome.NotFound, result.Outcome);
+        Assert.Equal("La solicitud de autorización no existe.", result.Message);
+        Assert.Equal(0, await db.AuthorizationAudits.CountAsync());
+
+        var persisted = await LoadRequestAsync(db, created.Request.Id);
+        Assert.Equal(AuthorizationStatus.Pending, persisted.Status);
+    }
+
+    [Fact]
+    public async Task ResolveLocalAsync_SupervisorMustChangePassword_FailsClosedWithoutAudit()
+    {
+        using var scope = new DatabaseScope();
+        var db = scope.Db;
+        await SeedUserAsync(db, 82, UserRole.Admin, password: "SuperClave123!", mustChangePassword: true);
+        var service = CreateService(db);
+        var created = await service.CreateAsync(Command(userId: 70));
+
+        var result = await service.ResolveLocalAsync(
+            created.Request!.Id,
+            "usuario82",
+            "SuperClave123!",
+            callerUserId: 70,
+            callerIsElevated: false);
+
+        Assert.Equal(LocalResolveOutcome.InvalidCredentials, result.Outcome);
+        Assert.Equal("Credenciales inválidas o sin privilegios para autorizar.", result.Message);
+        Assert.Equal(0, await db.AuthorizationAudits.CountAsync());
+
+        var persisted = await LoadRequestAsync(db, created.Request.Id);
+        Assert.Equal(AuthorizationStatus.Pending, persisted.Status);
     }
 
     [Fact]
@@ -1443,15 +1494,13 @@ public class AuthorizationServiceTests
     [Fact]
     public async Task CreateAsync_ConcurrentPostgresCreates_OneCreatedAndOneDeduplicated()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        await using var database = await IsolatedPostgresDatabase.CreateAsync();
 
         var userId = Random.Shared.Next(800_000, 899_999);
         var saleId = Random.Shared.Next(800_000, 899_999);
 
-        using var firstContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        using var secondContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        if (firstContext is null || secondContext is null) return;
+        await using var firstContext = database.CreateSalesDbContext();
+        await using var secondContext = database.CreateSalesDbContext();
 
         var firstService = CreateService(firstContext);
         var secondService = CreateService(secondContext);
@@ -1465,22 +1514,18 @@ public class AuthorizationServiceTests
         Assert.NotNull(results[0].Request);
         Assert.Equal(results[0].Request!.Id, results[1].Request!.Id);
 
-        using var verificationContext = TestDatabaseFactory.CreatePostgreSqlSalesDbContext();
-        if (verificationContext is null) return;
+        await using var verificationContext = database.CreateSalesDbContext();
         var pending = await verificationContext.AuthorizationRequests.AsNoTracking()
             .Where(row => row.RequestedByUserId == userId && row.SaleId == saleId && row.Status == AuthorizationStatus.Pending)
             .ToListAsync();
         Assert.Single(pending);
-        await verificationContext.AuthorizationRequests
-            .Where(row => row.RequestedByUserId == userId)
-            .ExecuteDeleteAsync();
     }
 
     [Fact]
     public async Task CreateAsync_ConcurrentNullSaleCollisionOnPostgres_TranslatesUniqueViolationToDeduplicated()
     {
-        var connectionString = Environment.GetEnvironmentVariable("TEST_POSTGRES_CONNECTION");
-        if (string.IsNullOrWhiteSpace(connectionString)) return;
+        // Carril: sin conexión utilizable falla EXPLÍCITO (nunca silent-pass).
+        var connectionString = PostgresTestLane.RequireResolution().ConnectionString;
 
         const int userId = 86001;
         var databaseName = $"pos_auth_null_sale_{Guid.NewGuid():N}";

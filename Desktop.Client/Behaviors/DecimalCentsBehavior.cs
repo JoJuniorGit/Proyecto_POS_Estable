@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Desktop.Client.Services;
 
 namespace Desktop.Client.Behaviors;
 
@@ -160,7 +161,7 @@ public static class DecimalCentsBehavior
     {
         if (string.IsNullOrEmpty(rawDigits))
         {
-            tb.Text = "0.00";
+            tb.Text = CurrencyDisplay.Number(0m, 2);
             tb.CaretIndex = tb.Text.Length;
             return;
         }
@@ -174,7 +175,7 @@ public static class DecimalCentsBehavior
 
         if (decimal.TryParse($"{wholePart}.{decimalPart}", System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal val))
         {
-            tb.Text = val.ToString("#,##0.00", System.Globalization.CultureInfo.InvariantCulture);
+            tb.Text = CurrencyDisplay.Number(val, 2);
         }
         else
         {

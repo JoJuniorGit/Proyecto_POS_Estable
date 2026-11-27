@@ -249,7 +249,17 @@ public partial class CustomerPickerViewModel : ObservableObject, IDisposable
                 Customers.Add(c);
 
         }
-        catch { /* silently ignore search errors */ }
+        catch (OperationCanceledException)
+        {
+            // Cancelación cooperativa del debounce: no es un error de búsqueda.
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = "No se pudieron cargar los clientes. Verifique la conexión.";
+            Core.Logging.ClientStateLogger.LogError(
+                $"Error al buscar clientes: {ex.Message}",
+                nameof(CustomerPickerViewModel));
+        }
         finally
         {
             IsSearching = false;

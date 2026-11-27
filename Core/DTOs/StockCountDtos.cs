@@ -19,7 +19,27 @@ public sealed record StockCountSessionDto(
     string? CreatedByUserId,
     DateTime CreatedAt,
     DateTime? ClosedAt,
-    DateTime? AppliedAt);
+    DateTime? AppliedAt)
+{
+    /// <summary>WU2: tipo de alcance de la sesión.</summary>
+    public StockCountScopeType ScopeType { get; init; } = StockCountScopeType.All;
+
+    /// <summary>WU2: cantidad de productos seleccionados cuando el alcance es Products.</summary>
+    public int ScopeProductCount { get; init; }
+
+    /// <summary>
+    /// Etiqueta única de alcance para WPF/Web: todo el inventario, la ruta de categoría o
+    /// "Productos seleccionados (N)".
+    /// </summary>
+    public string ScopeDisplay => ScopeType switch
+    {
+        StockCountScopeType.Category => string.IsNullOrWhiteSpace(ScopeCategoryPath)
+            ? "Por categoría"
+            : ScopeCategoryPath!,
+        StockCountScopeType.Products => $"Productos seleccionados ({ScopeProductCount})",
+        _ => "Todo el inventario"
+    };
+}
 
 /// <summary>
 /// 8.180-T1 (S3): ítem ciego para la vista de conteo — producto + cantidad contada + timestamps.
@@ -73,11 +93,17 @@ public sealed record StockCountReviewDto(
     decimal NetValueUsd,
     int UnscannedInScopeCount);
 
-/// <summary>8.180-T1 (S2): alta de sesión (Admin/Manager). <c>ScopeCategoryId</c> null = todo el inventario.</summary>
+/// <summary>
+/// 8.180-T1 (S2) + WU2: alta de sesión (Admin/Manager). <c>ScopeType</c> nulo se infiere por
+/// retrocompatibilidad: categoría si viene <c>ScopeCategoryId</c>, productos si vienen IDs y
+/// todo el inventario en el resto. Con <c>ScopeType</c> explícito se valida la exclusividad.
+/// </summary>
 public sealed record CreateStockCountRequestDto(
     string Name,
     int? ScopeCategoryId = null,
-    string? Notes = null);
+    string? Notes = null,
+    StockCountScopeType? ScopeType = null,
+    List<int>? ScopeProductIds = null);
 
 /// <summary>
 /// 8.180-T1 (S2): escaneo por SKU/código de barras. <c>QuantityDelta</c> suma al ítem existente

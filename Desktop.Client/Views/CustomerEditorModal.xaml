@@ -1,0 +1,471 @@
+<UserControl x:Class="Desktop.Client.Views.CustomerEditorModal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:Desktop.Client.Converters"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignWidth="480" d:DesignHeight="700">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="ManagementEditorStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+            <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter"/>
+            <converters:PrimaryAmountConverter x:Key="PrimaryAmountConverter"/>
+            <converters:InverseBooleanConverter x:Key="InverseBoolConverter"/>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <UserControl.InputBindings>
+        <KeyBinding Key="Escape" Command="{Binding CloseCustomerModalCommand}"/>
+        <KeyBinding Modifiers="Control" Key="Enter" Command="{Binding SaveCustomerCommand}"/>
+    </UserControl.InputBindings>
+
+    <Border Width="480" MaxHeight="720"
+            Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1"
+            CornerRadius="14" SnapsToDevicePixels="True">
+        <Border.Effect>
+            <DropShadowEffect Color="#0F172A" BlurRadius="24" ShadowDepth="4"
+                              Direction="270" Opacity="0.06"/>
+        </Border.Effect>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1"
+                    CornerRadius="14,14,0,0" Padding="24,18">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Width="36" Height="36" CornerRadius="8" Background="#EDE9FE"
+                            VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="AccountBox" Width="19" Height="19" Foreground="#6D28D9"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="12,0,12,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding CustomerModalTitle}" FontSize="16" FontWeight="Bold" Foreground="#0F172A"/>
+                        <TextBlock Text="{Binding CustomerModalSubtitle}" FontSize="11.5" Foreground="#64748B"
+                                   Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <Button Grid.Column="2" Style="{StaticResource ModalCloseButtonStyle}"
+                            Command="{Binding CloseCustomerModalCommand}" ToolTip="Cerrar">
+                        <materialDesign:PackIcon Kind="Close" Width="18" Height="18"/>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="24,20">
+
+                    <TextBlock Text="Cédula o RIF *" Style="{StaticResource ModalFieldLabelStyle}"/>
+                    <Border Style="{StaticResource ModalFieldFrameStyle}" Margin="0,0,0,4"
+                            IsEnabled="{Binding CanEditCustomerContact}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="CedulaOrRifTextBox" Grid.Column="0"
+                                     Text="{Binding CedulaOrRif, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource ModalTextBoxStyle}"
+                                     IsReadOnly="{Binding IsDefaultCustomer}"
+                                     AutomationProperties.AutomationId="CustomerModal_Cedula"/>
+                            <TextBlock Grid.Column="0" Text="Ej. V-12345678" FontSize="12" Foreground="#94A3B8"
+                                       Margin="12,0,38,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CedulaOrRif}" Value="">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <materialDesign:PackIcon Grid.Column="1" Kind="CheckCircle" Width="18" Height="18"
+                                                     Foreground="#059669" VerticalAlignment="Center" Margin="0,0,10,0"
+                                                     Visibility="{Binding IsCedulaValid, Converter={StaticResource BoolToVis}}"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock Text="Formato: V, E, J, G o P seguido de los dígitos"
+                               Style="{StaticResource ModalHelperStyle}" Margin="2,0,0,14"/>
+                    <TextBlock Text="Cliente del sistema: la cédula/RIF no se edita."
+                               FontSize="11.5" Foreground="#B45309" Margin="2,0,0,14"
+                               Visibility="{Binding IsDefaultCustomer, Converter={StaticResource BoolToVis}}"/>
+
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Nombre Completo o Razón Social *"
+                                   Style="{StaticResource ModalFieldLabelStyle}" Margin="0"/>
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="11">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#64748B"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsNameNearLimit}" Value="True">
+                                            <Setter Property="Foreground" Value="#D97706"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                            <Run Text="{Binding NameLength, Mode=OneWay}"/>
+                            <Run Text=" / 50"/>
+                        </TextBlock>
+                    </Grid>
+                    <Border Style="{StaticResource ModalFieldFrameStyle}" Margin="0,0,0,4"
+                            IsEnabled="{Binding CanEditCustomerContact}">
+                        <Grid>
+                            <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                     MaxLength="50"
+                                     Style="{StaticResource ModalTextBoxStyle}"
+                                     AutomationProperties.AutomationId="CustomerModal_Name"/>
+                            <TextBlock Text="Ej. Distribuidora Los Andes, C.A." FontSize="12" Foreground="#94A3B8"
+                                       Margin="12,0,12,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Name}" Value="">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+                    <TextBlock Text="Máximo 50 caracteres para facturas y reportes."
+                               Style="{StaticResource ModalHelperStyle}" Margin="2,0,0,14"/>
+
+                    <TextBlock Text="Teléfono *" Style="{StaticResource ModalFieldLabelStyle}"/>
+                    <Border Style="{StaticResource ModalFieldFrameStyle}" Margin="0,0,0,4"
+                            IsEnabled="{Binding CanEditCustomerContact}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding Phone, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource ModalTextBoxStyle}"
+                                     AutomationProperties.AutomationId="CustomerModal_Phone"/>
+                            <TextBlock Grid.Column="0" Text="Ej. 0412-1234567" FontSize="12" Foreground="#94A3B8"
+                                       Margin="12,0,38,0" VerticalAlignment="Center" IsHitTestVisible="False">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Phone}" Value="">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <materialDesign:PackIcon Grid.Column="1" Kind="CheckCircle" Width="18" Height="18"
+                                                     Foreground="#059669" VerticalAlignment="Center" Margin="0,0,10,0"
+                                                     Visibility="{Binding IsPhoneValid, Converter={StaticResource BoolToVis}}"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock Text="11 dígitos nacionales" Style="{StaticResource ModalHelperStyle}" Margin="2,0,0,14"/>
+
+                    <Border Style="{StaticResource ModalStatusCardStyle}" Margin="0,0,0,16"
+                            IsEnabled="{Binding CanMutate}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Cliente Activo" FontSize="12" FontWeight="SemiBold" Foreground="#334155"/>
+                                <TextBlock Text="Habilitado para facturación y ventas a crédito" FontSize="11"
+                                           Foreground="#64748B" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                          IsChecked="{Binding IsActive, Mode=TwoWay}"
+                                          VerticalAlignment="Center"
+                                          AutomationProperties.AutomationId="CustomerModal_ActiveToggle"/>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"
+                                Margin="0,4,0,0">
+                        <TextBlock Text="Acciones de cuenta" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="#64748B" Margin="0,0,0,8"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Command="{Binding ToggleActiveCustomerCommand}"
+                                    Style="{StaticResource ModalSecondaryButtonStyle}"
+                                    Height="34" Margin="0,0,8,0"
+                                    IsEnabled="{Binding CanMutate}"
+                                    AutomationProperties.AutomationId="CustomerModal_ToggleActive">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Width="15" Height="15" VerticalAlignment="Center" Margin="0,0,5,0">
+                                        <materialDesign:PackIcon.Style>
+                                            <Style TargetType="materialDesign:PackIcon">
+                                                <Setter Property="Kind" Value="AccountCancel"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                        <Setter Property="Kind" Value="AccountCheck"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </materialDesign:PackIcon.Style>
+                                    </materialDesign:PackIcon>
+                                    <TextBlock VerticalAlignment="Center" FontSize="11">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="Desactivar"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                        <Setter Property="Text" Value="Activar"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{Binding DeleteCustomerCommand}"
+                                    Style="{StaticResource ModalDangerButtonStyle}"
+                                    Height="34"
+                                    IsEnabled="{Binding CanDeleteCustomer}"
+                                    AutomationProperties.AutomationId="CustomerModal_Delete">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="DeleteForever" Width="15" Height="15"
+                                                             VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                    <TextBlock Text="Eliminar" VerticalAlignment="Center" FontSize="11"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Separator Margin="0,18,0,10" Visibility="{Binding CanViewCreditProfile, Converter={StaticResource BoolToVis}}"/>
+
+                    <Expander AutomationProperties.AutomationId="Customers_CreditProfilePanel"
+                              Header="Perfil Crediticio"
+                              IsExpanded="False"
+                              Visibility="{Binding CanViewCreditProfile, Converter={StaticResource BoolToVis}}"
+                              Margin="0,0,0,8">
+                        <StackPanel Margin="0,10,0,0">
+                            <TextBlock Text="Consultando perfil crediticio..."
+                                       Visibility="{Binding IsCreditProfileLoading, Converter={StaticResource BoolToVis}}"
+                                       FontSize="11" FontStyle="Italic" Foreground="#64748B" Margin="0,0,0,6"/>
+
+                            <TextBlock Text="{Binding CreditProfileError}"
+                                       Visibility="{Binding CreditProfileError, Converter={StaticResource StringToVisibilityConverter}}"
+                                       FontSize="11" Foreground="#B91C1C" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                            <CheckBox AutomationProperties.AutomationId="Customers_IsCreditEnabled"
+                                      Content="Habilitar línea de crédito"
+                                      IsChecked="{Binding IsCreditEnabled}"
+                                      IsEnabled="{Binding CanEditCreditProfile}"
+                                      Margin="0,0,0,10"/>
+
+                            <TextBox AutomationProperties.AutomationId="Customers_CreditLimit"
+                                     Text="{Binding CreditLimitText, UpdateSourceTrigger=PropertyChanged}"
+                                     materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Límite de crédito ({0})'}"
+                                     materialDesign:HintAssist.IsFloating="True"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     IsEnabled="{Binding CanEditCreditProfile}"
+                                     Margin="0,0,0,10"/>
+
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Grid.Column="0"
+                                         AutomationProperties.AutomationId="Customers_PaymentTermDays"
+                                         Text="{Binding PaymentTermDaysText, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="Plazo de pago (días)"
+                                         materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         IsEnabled="{Binding CanEditCreditProfile}"/>
+                                <TextBox Grid.Column="2"
+                                         AutomationProperties.AutomationId="Customers_CreditGraceDays"
+                                         Text="{Binding CreditGraceDaysText, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="Días de gracia"
+                                         materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         IsEnabled="{Binding CanEditCreditProfile}"/>
+                            </Grid>
+
+                            <TextBox AutomationProperties.AutomationId="Customers_CreditNotes"
+                                     Text="{Binding CreditNotes, UpdateSourceTrigger=PropertyChanged}"
+                                     MaxLength="1000"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     MinHeight="56"
+                                     materialDesign:HintAssist.Hint="Notas, garantías o acuerdos especiales"
+                                     materialDesign:HintAssist.IsFloating="True"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                     IsEnabled="{Binding CanEditCreditProfile}"
+                                     Margin="0,0,0,12"/>
+
+                            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                    CornerRadius="6" Padding="12" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="DEUDA ACTUAL" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                                            <TextBlock Text="{Binding CreditProfile.CurrentDebtUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='—'}"
+                                                       AutomationProperties.AutomationId="Customers_CreditDebt"
+                                                       FontSize="15" FontWeight="Bold" Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="DISPONIBLE" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                                            <TextBlock Text="{Binding CreditProfile.AvailableCreditUSD, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='—'}"
+                                                       AutomationProperties.AutomationId="Customers_CreditAvailable"
+                                                       FontSize="15" FontWeight="Bold" Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="UTILIZACIÓN" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                                            <TextBlock Text="{Binding CreditProfile.UtilizationPercent, StringFormat='{}{0:N2}%', FallbackValue='—'}"
+                                                       AutomationProperties.AutomationId="Customers_CreditUtilization"
+                                                       FontSize="15" FontWeight="Bold" Foreground="#0F172A"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="MORA / ESTADO" FontSize="10" FontWeight="Bold" Foreground="#64748B"/>
+                                            <TextBlock FontSize="13" FontWeight="SemiBold">
+                                                <Run Text="{Binding CreditStatusLabel, Mode=OneWay}"/>
+                                                <Run Text=" · "/><Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, Mode=OneWay}"/>
+                                                <Run Text="{Binding CreditProfile.OverdueUSD, Mode=OneWay, Converter={StaticResource PrimaryAmountConverter}, FallbackValue='0.00'}"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Button Command="{Binding SaveCreditProfileCommand}"
+                                    AutomationProperties.AutomationId="Customers_SaveCreditProfile"
+                                    Style="{StaticResource ModalPrimaryButtonStyle}"
+                                    Height="38" FontSize="12"
+                                    IsEnabled="{Binding CanEditCreditProfile}"
+                                    Margin="0,0,0,8">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="ContentSave" Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock Text="GUARDAR PERFIL CREDITICIO" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Command="{Binding ToggleCreditBlockCommand}"
+                                    AutomationProperties.AutomationId="Customers_ToggleCreditBlock"
+                                    Style="{StaticResource ModalSecondaryButtonStyle}"
+                                    Height="36" FontSize="12"
+                                    IsEnabled="{Binding CanEditCreditProfile}">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,6,0">
+                                        <materialDesign:PackIcon.Style>
+                                            <Style TargetType="materialDesign:PackIcon">
+                                                <Setter Property="Kind" Value="LockOutline"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsManuallyBlocked}" Value="True">
+                                                        <Setter Property="Kind" Value="LockOpenOutline"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </materialDesign:PackIcon.Style>
+                                    </materialDesign:PackIcon>
+                                    <TextBlock VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="BLOQUEAR CRÉDITO"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsManuallyBlocked}" Value="True">
+                                                        <Setter Property="Text" Value="DESBLOQUEAR CRÉDITO"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Expander>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Border Grid.Row="2" Style="{StaticResource ModalErrorBannerStyle}"
+                    Visibility="{Binding HasCustomerModalError, Converter={StaticResource BoolToVis}}">
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="AlertCircleOutline" Width="18" Height="18"
+                                             Foreground="#B91C1C" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="{Binding CustomerModalError}" Foreground="#991B1B" FontSize="12"
+                               TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="3" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0"
+                    CornerRadius="0,0,14,14" Padding="24,14">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" Text="Los campos con * son obligatorios."
+                               FontSize="11" Foreground="#64748B" VerticalAlignment="Center"/>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="Cancelar" Command="{Binding CloseCustomerModalCommand}"
+                                Style="{StaticResource ModalSecondaryButtonStyle}"
+                                IsEnabled="{Binding IsSavingCustomer, Converter={StaticResource InverseBoolConverter}}"
+                                Margin="0,0,8,0"/>
+                        <Button Command="{Binding SaveCustomerCommand}"
+                                Style="{StaticResource ModalPrimaryButtonStyle}"
+                                IsEnabled="{Binding IsCustomerSaveEnabled}"
+                                AutomationProperties.AutomationId="CustomerModal_Save">
+                            <TextBlock>
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text" Value="Crear Cliente"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                                <Setter Property="Text" Value="Guardar Cambios"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsSavingCustomer}" Value="True">
+                                                <Setter Property="Text" Value="Guardando..."/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>
