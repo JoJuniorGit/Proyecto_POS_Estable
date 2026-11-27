@@ -223,7 +223,8 @@ public partial class CreditReceivablesViewModel : ObservableObject, IDisposable
                 openReceivables,
                 methods,
                 book.TodayRate,
-                row.BalanceUSD);
+                row.BalanceUSD,
+                row.CustomerCedulaOrRif);
 
             var result = await _dialogService.ShowModalAsync(dialogVm, "RootDialog") as CreditPaymentResultClientDto;
             if (result == null) return;

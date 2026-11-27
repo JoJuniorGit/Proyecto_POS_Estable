@@ -19457,3 +19457,37 @@ D. LIMITE CONOCIDO
 D1. Las lineas con Precio Manual siguen protegidas por el backend: cambiar la
     cantidad exige reautorizacion; no se relajo esa regla de seguridad.
 ================================================================================
+
+================================================================================
+ANEXO XCIII - REGISTRAR ABONO CxC: MODAL ENTERPRISE 1:1 CON FINALIZAR COBRO - 2026-11-27
+================================================================================
+
+A. ALCANCE
+A1. Rediseno de CreditPaymentDialog.xaml y CreditPaymentDialogViewModel como hermano
+    visual de CheckoutDialog: cabecera y pie #F8FAFC, tarjetas #F8FAFC, bordes #E2E8F0,
+    inputs #CBD5E1 con foco #6D28D9, primario #6D28D9, sin sombras ni MAYUSCULAS.
+A2. Seis bandas: cabecera contextual, resumen de 3 KPIs, imputacion segmentada, datos
+    del abono, obligaciones a imputar y banner de validacion con pie fijo. Laterales
+    de 24 px uniformes en cabecera, cuerpo, banner y pie.
+A3. La captura arranca en Bs.S con el saldo del renglon convertido a la tasa vigente;
+    solo los metodos USD cambian prefijo y valor a USD. El servicio sigue recibiendo
+    AmountUSD y el monto local exacto liquida el 100% sin centavos fantasma.
+A4. En regimen Single se ocultan la tasa y las equivalencias secundarias.
+A5. Esc cierra y Ctrl+Enter registra solo con el formulario valido; el boton queda
+    deshabilitado por metodo, monto, referencia obligatoria, factura o exceso.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. CreditReceivablesPaymentTests: 10/10. Carril CxC sin PostgreSQL: 47/47.
+B3. Suite .NET: 4596/4658 superadas. Los 62 fallos restantes son exclusivamente el
+    carril PostgreSQL real sin TEST_POSTGRES_CONNECTION; ninguno pertenece a CxC.
+B4. Harness WPF con RenderTargetBitmap: modal abierto, listo en Bs.S, metodo USD y
+    modo Factura especifica a 96 y 120 DPI (125%): sin recortes ni solapamientos.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+
+D. LIMITE CONOCIDO
+D1. La validacion visual se hizo con RenderTargetBitmap a 96/120 DPI; la revision
+    fisica final en monitor a 125% sigue recomendable.
+================================================================================

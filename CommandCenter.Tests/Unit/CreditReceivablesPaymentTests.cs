@@ -11,9 +11,11 @@ using Xunit;
 namespace CommandCenter.Tests.Unit;
 
 /// <summary>
-/// T4 (F3, S3/S6): modal de abono CxC. La deuda se expresa en USD, la equivalencia Bs.S se
-/// proyecta a la tasa del día y la imputación es FIFO de cartera o explícita por factura.
+/// T4 (F3, S3/S6/S9): modal de abono CxC. La captura arranca en la moneda local (Bs.S en Dual) y
+/// sólo cambia a USD con métodos de divisas; el monto exacto liquida el saldo sin residuo de
+/// redondeo. La imputación sigue siendo FIFO de cartera o explícita por factura.
 /// </summary>
+[Xunit.Collection(CommandCenter.Tests.CurrencyDisplayStateCollection.Name)]
 public class CreditReceivablesPaymentTests
 {
     private static CreditReceivableClientItemDto Row(int id, decimal balance, string status = "Vigente") => new()
@@ -63,17 +65,82 @@ public class CreditReceivablesPaymentTests
             rows ?? new[] { Row(1, 100m), Row(2, 50m, "Parcial") },
             new[] { Cash(), Transfer() },
             rate,
-            suggested);
+            suggested,
+            "V-12345678");
     }
 
     [Fact]
-    public void AmountBsSUsesTodayRateForDualDisplay()
+    public void Open_DefaultsToLocalCurrencyAndPrefillsExactUsdEquivalent()
     {
-        var vm = Create(new Mock<ISalesService>(), new Mock<IDialogService>(), rate: 40m);
-        vm.AmountUsdText = "25.50";
+        var vm = Create(new Mock<ISalesService>(), new Mock<IDialogService>(), rate: 40m, suggested: 19.50m);
 
-        Assert.Equal(25.50m, vm.AmountUSD);
-        Assert.Equal(1020.00m, vm.AmountBsS);
+        Assert.Equal("Bs.S", vm.InputCurrencyLabel);
+        Assert.False(vm.IsInputUsd);
+        Assert.Equal(19.50m, vm.AmountUSD);
+        Assert.Equal(780.00m, vm.AmountBsS);
+        Assert.Contains("≈", vm.LiveConversionDisplay);
+        Assert.Contains("19", vm.LiveConversionDisplay);
+        Assert.Contains("V-12345678", vm.CustomerContextDisplay);
+    }
+
+    [Fact]
+    public void SelectingUsdMethod_SwitchesCaptureCurrencyAndLocalMethodReturnsToBsS()
+    {
+        var vm = Create(new Mock<ISalesService>(), new Mock<IDialogService>(), rate: 40m, suggested: 19.50m);
+
+        vm.SelectedMethod = vm.AvailableMethods.First(m => m.Id == 1);
+
+        Assert.True(vm.IsInputUsd);
+        Assert.Equal("USD", vm.InputCurrencyLabel);
+        Assert.Equal(19.50m, vm.AmountUSD);
+
+        vm.SelectedMethod = vm.AvailableMethods.First(m => m.Id == 2);
+
+        Assert.False(vm.IsInputUsd);
+        Assert.Equal("Bs.S", vm.InputCurrencyLabel);
+        Assert.Equal(19.50m, vm.AmountUSD);
+        Assert.Equal(780.00m, vm.AmountBsS);
+    }
+
+    [Fact]
+    public void FullLocalPayment_LiquidatesWithoutRoundingResidue()
+    {
+        var rows = new[] { Row(1, 19.50m) };
+        var vm = Create(new Mock<ISalesService>(), new Mock<IDialogService>(), rows, rate: 926.36m);
+
+        Assert.Equal(19.50m, vm.AmountUSD);
+        Assert.Equal(0m, vm.RemainingAfterUSD);
+        Assert.True(vm.IsRemainingZero);
+        Assert.Equal(vm.PendingLocalDisplay, vm.PaymentLocalDisplay);
+    }
+
+    [Fact]
+    public void CanConfirm_RequiresMethodReferenceAndExplicitInvoiceSelection()
+    {
+        var vm = Create(
+            new Mock<ISalesService>(),
+            new Mock<IDialogService>(),
+            rows: new[] { Row(1, 100m) },
+            rate: 40m,
+            suggested: 100m);
+
+        Assert.False(vm.CanConfirm);
+        Assert.Contains("método de pago", vm.ValidationMessage);
+
+        vm.SelectedMethod = vm.AvailableMethods.First(m => m.Id == 2);
+
+        Assert.False(vm.CanConfirm);
+        Assert.Contains("referencia", vm.ValidationMessage);
+
+        vm.Reference = "REF-99";
+        Assert.True(vm.CanConfirm);
+
+        vm.SelectExplicitModeCommand.Execute(null);
+        Assert.False(vm.CanConfirm);
+        Assert.Contains("factura", vm.ValidationMessage);
+
+        vm.OpenReceivables.First().IsSelected = true;
+        Assert.True(vm.CanConfirm);
     }
 
     [Fact]
@@ -83,7 +150,7 @@ public class CreditReceivablesPaymentTests
         var dialog = new Mock<IDialogService>();
         var vm = Create(sales, dialog, suggested: 120m);
         vm.SelectedMethod = vm.AvailableMethods.First();
-        vm.AmountUsdText = "120.00";
+        vm.AmountText = "120.00";
         CreditPaymentRequestClientDto? request = null;
         sales.Setup(s => s.RegisterCreditPaymentAsync(It.IsAny<CreditPaymentRequestClientDto>(), It.IsAny<CancellationToken>()))
             .Callback<CreditPaymentRequestClientDto, CancellationToken>((r, _) => request = r)
@@ -110,7 +177,7 @@ public class CreditReceivablesPaymentTests
         vm.SelectedMethod = vm.AvailableMethods.First();
         vm.SelectExplicitModeCommand.Execute(null);
         vm.OpenReceivables.First(o => o.Receivable.ReceivableId == 2).IsSelected = true;
-        vm.AmountUsdText = "30.00";
+        vm.AmountText = "30.00";
         CreditPaymentRequestClientDto? request = null;
         sales.Setup(s => s.RegisterCreditPaymentAsync(It.IsAny<CreditPaymentRequestClientDto>(), It.IsAny<CancellationToken>()))
             .Callback<CreditPaymentRequestClientDto, CancellationToken>((r, _) => request = r)
@@ -130,7 +197,7 @@ public class CreditReceivablesPaymentTests
         var vm = Create(sales, dialog);
         vm.SelectedMethod = vm.AvailableMethods.First();
         vm.SelectExplicitModeCommand.Execute(null);
-        vm.AmountUsdText = "30.00";
+        vm.AmountText = "30.00";
 
         await vm.ConfirmCommand.ExecuteAsync(null);
 
@@ -145,7 +212,7 @@ public class CreditReceivablesPaymentTests
         var dialog = new Mock<IDialogService>();
         var vm = Create(sales, dialog);
         vm.SelectedMethod = vm.AvailableMethods.First(m => m.Id == 2);
-        vm.AmountUsdText = "20.00";
+        vm.AmountText = "800.00";
 
         await vm.ConfirmCommand.ExecuteAsync(null);
         dialog.Verify(d => d.ShowWarning("Abono CxC", It.Is<string>(m => m.Contains("referencia"))), Times.Once);
@@ -167,7 +234,7 @@ public class CreditReceivablesPaymentTests
         vm.SelectedMethod = vm.AvailableMethods.First();
         vm.SelectExplicitModeCommand.Execute(null);
         vm.OpenReceivables.First().IsSelected = true;
-        vm.AmountUsdText = "150.00";
+        vm.AmountText = "150.00";
 
         await vm.ConfirmCommand.ExecuteAsync(null);
 
@@ -182,7 +249,7 @@ public class CreditReceivablesPaymentTests
         var dialog = new Mock<IDialogService>();
         var vm = Create(sales, dialog);
         vm.SelectedMethod = vm.AvailableMethods.First();
-        vm.AmountUsdText = "10.00";
+        vm.AmountText = "10.00";
         sales.Setup(s => s.RegisterCreditPaymentAsync(It.IsAny<CreditPaymentRequestClientDto>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("El abono excede el saldo pendiente."));
 

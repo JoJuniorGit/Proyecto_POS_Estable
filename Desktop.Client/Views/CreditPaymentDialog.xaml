@@ -5,206 +5,647 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
+             xmlns:behaviors="clr-namespace:Desktop.Client.Behaviors"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              mc:Ignorable="d"
-             Width="680" MinHeight="480"
-             d:DataContext="{d:DesignInstance Type=vm:CreditPaymentDialogViewModel}">
+             d:DataContext="{d:DesignInstance Type=vm:CreditPaymentDialogViewModel}"
+             Width="680" MinWidth="620" MaxWidth="720"
+             Background="#FFFFFF"
+             VerticalAlignment="Center"
+             TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+             TextElement.FontSize="13"
+             TextOptions.TextFormattingMode="Ideal"
+             TextOptions.TextRenderingMode="Auto"
+             FontFamily="{DynamicResource MaterialDesignFont}"
+             PreviewKeyDown="Dialog_PreviewKeyDown">
 
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="SettingsStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsThinScrollBarStyle}"/>
+
+            <Style x:Key="CxcDialogCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="16"/>
+            </Style>
+
+            <Style x:Key="CxcDialogPrimaryButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource SettingsPrimaryButtonStyle}">
+                <Setter Property="Height" Value="42"/>
+                <Setter Property="Padding" Value="22,0"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+            </Style>
+
+            <Style x:Key="CxcDialogSecondaryButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource SettingsSecondaryButtonStyle}">
+                <Setter Property="Height" Value="42"/>
+                <Setter Property="Padding" Value="18,0"/>
+                <Setter Property="FontSize" Value="12.5"/>
+            </Style>
+
+            <Style x:Key="CxcDialogCloseButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="32"/>
+                <Setter Property="Height" Value="32"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground" Value="#64748B"/>
+                <Setter Property="FontSize" Value="20"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="CloseBorder" Background="{TemplateBinding Background}"
+                                    CornerRadius="6" SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="CloseBorder" Property="Background" Value="#E2E8F0"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="CloseBorder" Property="Background" Value="#CBD5E1"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CxcDialogInputBorderStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                        <Setter Property="BorderThickness" Value="1.5"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="CxcDialogComboBoxStyle" TargetType="ComboBox"
+                   BasedOn="{StaticResource MaterialDesignOutlinedComboBox}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="12,0"/>
+                <Setter Property="MinHeight" Value="38"/>
+                <Setter Property="Height" Value="38"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="CxcDialogComboBoxItemStyle" TargetType="ComboBoxItem">
+                <Setter Property="Padding" Value="10,7"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="#334155"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Style.Triggers>
+                    <Trigger Property="IsHighlighted" Value="True">
+                        <Setter Property="Background" Value="#EDE9FE"/>
+                        <Setter Property="Foreground" Value="#5B21B6"/>
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="#EDE9FE"/>
+                        <Setter Property="Foreground" Value="#5B21B6"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="CxcDialogSegmentButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="32"/>
+                <Setter Property="Padding" Value="18,0"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="SegmentBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="SegmentBorder" Property="Background" Value="#FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="SegmentBorder" Property="Opacity" Value="0.55"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CxcStatusPillStyle" TargetType="Border">
+                <Setter Property="Background" Value="#F1F5F9"/>
+                <Setter Property="CornerRadius" Value="999"/>
+                <Setter Property="Padding" Value="7,2"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding StatusDisplay}" Value="En mora">
+                        <Setter Property="Background" Value="#FEF2F2"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="CxcStatusPillTextStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="10.5"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding StatusDisplay}" Value="En mora">
+                        <Setter Property="Foreground" Value="#DC2626"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="CxcObligationRowStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Padding" Value="10,8"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#F8FAFC"/>
+                    </Trigger>
+                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                        <Setter Property="Background" Value="#F5F3FF"/>
+                        <Setter Property="BorderBrush" Value="#DDD6FE"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid Margin="24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <Border Style="{StaticResource CxcDialogCardStyle}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <Border Grid.Row="0" Background="#F5F3FF" BorderBrush="#DDD6FE" BorderThickness="1" CornerRadius="8" Padding="16,12" Margin="0,0,0,16">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel>
-                    <TextBlock Text="Registrar Abono CxC" FontSize="18" FontWeight="Bold" Foreground="#1E293B"/>
-                    <TextBlock Text="{Binding CustomerName}" FontSize="12" Foreground="#5E35B1" FontWeight="SemiBold" Margin="0,2,0,0"/>
-                </StackPanel>
-                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                    <TextBlock Text="SALDO PENDIENTE" FontSize="10" FontWeight="Bold" Foreground="#64748B" HorizontalAlignment="Right"/>
-                    <TextBlock Text="{Binding TotalOpenUSD, Converter={StaticResource PrimaryAmountConverter}}" FontSize="13" FontWeight="Bold" Foreground="#0F172A" HorizontalAlignment="Right"/>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- Amount + method -->
-        <Border Grid.Row="1" Background="{DynamicResource MaterialDesignPaper}" materialDesign:ElevationAssist.Elevation="Dp1" CornerRadius="6" Padding="14" Margin="0,0,0,16">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1.2*"/>
-                    <ColumnDefinition Width="1.2*"/>
-                    <ColumnDefinition Width="1.4*"/>
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                    <TextBox AutomationProperties.AutomationId="CreditPayment_AmountUsdInput"
-                             Text="{Binding AmountUsdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             materialDesign:HintAssist.Hint="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Monto del abono ({0})'}"
-                             Style="{DynamicResource MaterialDesignFloatingHintTextBox}"
-                             FontWeight="Bold" FontSize="16"
-                             HorizontalContentAlignment="Right"/>
-                    <!-- 8.211-T4c2b4 (S9): the local projection only exists in Dual. -->
-                    <TextBlock FontSize="11" Foreground="#64748B" HorizontalAlignment="Right" Margin="0,2,0,0"
-                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
-                        <Run Text="≈ "/>
-                        <Run Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}, Mode=OneWay}"/>
-                        <Run Text=" a la tasa del día"/>
-                    </TextBlock>
-                    <TextBlock AutomationProperties.AutomationId="CreditPayment_RemainingAfter"
-                               FontSize="11" FontWeight="SemiBold" Foreground="#475569" HorizontalAlignment="Right" Margin="0,2,0,0">
-                        <Run Text="Saldo resultante: "/>
-                        <Run Text="{Binding RemainingAfterUSD, Converter={StaticResource PrimaryAmountConverter}, Mode=OneWay}"/>
-                    </TextBlock>
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                    <ComboBox AutomationProperties.AutomationId="CreditPayment_MethodCombo"
-                              ItemsSource="{Binding AvailableMethods}"
-                              SelectedItem="{Binding SelectedMethod, Mode=TwoWay}"
-                              materialDesign:HintAssist.Hint="Método de pago"
-                              Style="{DynamicResource MaterialDesignFloatingHintComboBox}"
-                              DisplayMemberPath="Name"/>
-                </StackPanel>
-
-                <TextBox Grid.Column="2"
-                         AutomationProperties.AutomationId="CreditPayment_ReferenceInput"
-                         Text="{Binding Reference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                         materialDesign:HintAssist.Hint="Referencia / comprobante"
-                         Style="{DynamicResource MaterialDesignFloatingHintTextBox}"/>
-            </Grid>
-        </Border>
-
-        <!-- Allocation -->
-        <Border Grid.Row="2" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="14" Margin="0,0,0,16">
-            <DockPanel>
-                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+            <!-- BANDA 1: CABECERA -->
+            <Border Grid.Row="0" Background="#F8FAFC"
+                    BorderBrush="#E2E8F0" BorderThickness="0,0,0,1"
+                    CornerRadius="16,16,0,0" Padding="24,16">
+                <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Imputación del abono" FontWeight="SemiBold" Foreground="#475569" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Command="{Binding SelectFifoModeCommand}"
-                                AutomationProperties.AutomationId="CreditPayment_FifoMode"
-                                Content="FIFO (más antigua)"
-                                Height="30" Padding="14,0" FontSize="11" FontWeight="SemiBold" Margin="0,0,8,0"
-                                materialDesign:ButtonAssist.CornerRadius="5">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-                                    <Setter Property="Background" Value="Transparent"/>
-                                    <Setter Property="Foreground" Value="#475569"/>
-                                    <Setter Property="BorderBrush" Value="#CBD5E1"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsFifoAllocation}" Value="True">
-                                            <Setter Property="Background" Value="#5E35B1"/>
-                                            <Setter Property="Foreground" Value="White"/>
-                                            <Setter Property="BorderBrush" Value="#5E35B1"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
-                        <Button Command="{Binding SelectExplicitModeCommand}"
-                                AutomationProperties.AutomationId="CreditPayment_ExplicitMode"
-                                Content="Factura específica"
-                                Height="30" Padding="14,0" FontSize="11" FontWeight="SemiBold"
-                                materialDesign:ButtonAssist.CornerRadius="5">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-                                    <Setter Property="Background" Value="Transparent"/>
-                                    <Setter Property="Foreground" Value="#475569"/>
-                                    <Setter Property="BorderBrush" Value="#CBD5E1"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsExplicitAllocation}" Value="True">
-                                            <Setter Property="Background" Value="#D97706"/>
-                                            <Setter Property="Foreground" Value="White"/>
-                                            <Setter Property="BorderBrush" Value="#D97706"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
+
+                    <StackPanel Grid.Column="0">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Width="36" Height="36" CornerRadius="8" Background="#EDE9FE"
+                                    VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="CashMultiple" Width="20" Height="20"
+                                                         Foreground="#6D28D9"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Registrar Abono CxC"
+                                       AutomationProperties.AutomationId="CreditPayment_Title"
+                                       FontSize="18" FontWeight="Bold" Foreground="#0F172A"
+                                       Margin="12,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <WrapPanel Margin="0,9,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding CustomerContextDisplay}"
+                                       FontSize="12" Foreground="#64748B"
+                                       MaxWidth="330" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding CustomerContextDisplay}"/>
+                            <TextBlock Text="|"
+                                       FontSize="12" Foreground="#CBD5E1"
+                                       Margin="8,0"
+                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                            <TextBlock Text="{Binding RateContextDisplay}"
+                                       FontSize="12" Foreground="#64748B"
+                                       Typography.NumeralAlignment="Tabular"
+                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                        </WrapPanel>
                     </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Content="×"
+                            Command="{Binding CloseCommand}"
+                            AutomationProperties.AutomationId="CreditPayment_CloseButton"
+                            Style="{StaticResource CxcDialogCloseButtonStyle}"
+                            ToolTip="Cerrar"
+                            VerticalAlignment="Top"/>
                 </Grid>
+            </Border>
 
-                <TextBlock DockPanel.Dock="Top"
-                           Text="La cartera se imputa de la obligación más antigua a la más reciente."
-                           Visibility="{Binding IsFifoAllocation, Converter={StaticResource BoolToVis}}"
-                           FontSize="11" FontStyle="Italic" Foreground="#64748B" Margin="0,0,0,8"/>
+            <!-- CUERPO -->
+            <ScrollViewer Grid.Row="1"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          MaxHeight="560">
+                <StackPanel Margin="24,0,24,14">
+                    <!-- BANDA 2: RESUMEN 3 KPIs -->
+                    <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                            CornerRadius="12" Margin="0,16,0,14">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="1"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="1"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                <ListBox ItemsSource="{Binding OpenReceivables}"
-                         AutomationProperties.AutomationId="CreditPayment_ReceivablesList"
-                         BorderThickness="0" Background="Transparent"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                         MaxHeight="180">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Margin="0,5">
+                            <Border Grid.Column="0" Padding="16,10">
+                                <StackPanel>
+                                    <TextBlock Text="SALDO PENDIENTE" FontSize="10.5" FontWeight="Bold"
+                                               Foreground="#64748B"/>
+                                    <TextBlock Text="{Binding PendingLocalDisplay}"
+                                               AutomationProperties.AutomationId="CreditPayment_PendingLocal"
+                                               FontSize="19" FontWeight="Bold" Foreground="#0F172A"
+                                               Typography.NumeralAlignment="Tabular" Margin="0,3,0,0"/>
+                                    <TextBlock Text="{Binding PendingUsdDisplay}"
+                                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                               FontSize="12" Foreground="#64748B" Margin="0,2,0,0"
+                                               Typography.NumeralAlignment="Tabular"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="1" Background="#E2E8F0" Margin="0,10"/>
+
+                            <Border Grid.Column="2" Padding="16,10">
+                                <StackPanel>
+                                    <TextBlock Text="ABONO A REGISTRAR" FontSize="10.5" FontWeight="Bold"
+                                               Foreground="#64748B"/>
+                                    <TextBlock Text="{Binding PaymentLocalDisplay}"
+                                               AutomationProperties.AutomationId="CreditPayment_AmountLocal"
+                                               FontSize="19" FontWeight="Bold"
+                                               Typography.NumeralAlignment="Tabular" Margin="0,3,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#64748B"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasPositiveAmount}" Value="True">
+                                                        <Setter Property="Foreground" Value="#15803D"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding PaymentUsdDisplay}"
+                                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                               FontSize="12" Foreground="#64748B" Margin="0,2,0,0"
+                                               Typography.NumeralAlignment="Tabular"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="3" Background="#E2E8F0" Margin="0,10"/>
+
+                            <Border Grid.Column="4" Padding="16,10" CornerRadius="0,12,12,0">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#F5F3FF"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRemainingZero}" Value="True">
+                                                <Setter Property="Background" Value="#F0FDF4"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel>
+                                    <TextBlock Text="SALDO RESTANTE" FontSize="10.5" FontWeight="Bold">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#5B21B6"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsRemainingZero}" Value="True">
+                                                        <Setter Property="Foreground" Value="#15803D"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                        <TextBlock Text="{Binding RemainingLocalDisplay}"
+                                                   AutomationProperties.AutomationId="CreditPayment_RemainingAfter"
+                                                   FontSize="19" FontWeight="Bold"
+                                                   Typography.NumeralAlignment="Tabular">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#6D28D9"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsRemainingZero}" Value="True">
+                                                            <Setter Property="Foreground" Value="#15803D"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="✓ Saldado" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="#15803D" Margin="8,0,0,2"
+                                                   VerticalAlignment="Bottom"
+                                                   Visibility="{Binding IsRemainingZero, Converter={StaticResource BoolToVis}}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding RemainingUsdDisplay}"
+                                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                               FontSize="12" Foreground="#64748B" Margin="0,2,0,0"
+                                               Typography.NumeralAlignment="Tabular"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <!-- BANDA 3: IMPUTACIÓN -->
+                    <Grid Margin="0,0,0,12">
+                        <Grid Margin="2,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Imputación del abono" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="#334155" VerticalAlignment="Center"/>
+                            <Border Grid.Column="1" Background="#E2E8F0" CornerRadius="8"
+                                    Padding="3" HorizontalAlignment="Right">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Command="{Binding SelectFifoModeCommand}"
+                                            Content="FIFO (más antigua)"
+                                            AutomationProperties.AutomationId="CreditPayment_FifoMode">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CxcDialogSegmentButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsFifoAllocation}" Value="True">
+                                                        <Setter Property="Background" Value="#6D28D9"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                    <Button Command="{Binding SelectExplicitModeCommand}"
+                                            Content="Factura específica"
+                                            AutomationProperties.AutomationId="CreditPayment_ExplicitMode">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource CxcDialogSegmentButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsExplicitAllocation}" Value="True">
+                                                        <Setter Property="Background" Value="#6D28D9"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
+
+                    <!-- BANDA 4: DATOS DEL ABONO -->
+                    <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                            CornerRadius="12" Padding="16,14" Margin="0,0,0,12">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Datos del abono" FontSize="12.5" FontWeight="SemiBold"
+                                           Foreground="#334155" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding LiveConversionDisplay}"
+                                           AutomationProperties.AutomationId="CreditPayment_LiveConversion"
+                                           FontSize="12" Foreground="#64748B"
+                                           Typography.NumeralAlignment="Tabular"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="215"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Border Grid.Column="0" Style="{StaticResource CxcDialogInputBorderStyle}">
+                                    <Grid>
+                                        <ComboBox ItemsSource="{Binding AvailableMethods}"
+                                                  SelectedItem="{Binding SelectedMethod, Mode=TwoWay}"
+                                                  DisplayMemberPath="Name"
+                                                  AutomationProperties.AutomationId="CreditPayment_MethodCombo"
+                                                  Style="{StaticResource CxcDialogComboBoxStyle}"
+                                                  ItemContainerStyle="{StaticResource CxcDialogComboBoxItemStyle}"/>
+                                        <TextBlock Text="Seleccione método de pago"
+                                                   IsHitTestVisible="False"
+                                                   FontSize="12" Foreground="#94A3B8"
+                                                   Margin="12,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedMethod}" Value="{x:Null}">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </Border>
+
+                                <Border Grid.Column="1" Style="{StaticResource CxcDialogInputBorderStyle}"
+                                        Margin="10,0,0,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding InputCurrencyLabel}"
+                                                   AutomationProperties.AutomationId="CreditPayment_AmountCurrency"
+                                                   Margin="10,0,6,0"
+                                                   FontSize="12" FontWeight="SemiBold" Foreground="#64748B"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBox Grid.Column="1"
+                                                 AutomationProperties.AutomationId="CreditPayment_AmountUsdInput"
+                                                 Text="{Binding AmountText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 behaviors:DecimalCentsBehavior.IsEnabled="True"
+                                                 PreviewMouseLeftButtonDown="AmountInput_PreviewMouseLeftButtonDown"
+                                                 BorderThickness="0" Background="Transparent"
+                                                 FontSize="15" FontWeight="SemiBold" Foreground="#0F172A"
+                                                 HorizontalContentAlignment="Right"
+                                                 VerticalContentAlignment="Center"
+                                                 Padding="0,0,10,0"/>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <Border Style="{StaticResource CxcDialogInputBorderStyle}" Height="38"
+                                    Margin="0,10,0,0">
+                                <Grid>
+                                    <TextBox Text="{Binding Reference, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             AutomationProperties.AutomationId="CreditPayment_ReferenceInput"
+                                             BorderThickness="0" Background="Transparent"
+                                             FontSize="12" Foreground="#0F172A"
+                                             VerticalContentAlignment="Center"
+                                             Padding="10,0"/>
+                                    <TextBlock Text="{Binding ReferencePlaceholder}"
+                                               IsHitTestVisible="False"
+                                               FontSize="12" Foreground="#94A3B8"
+                                               Margin="10,0,0,0" VerticalAlignment="Center"
+                                               Visibility="{Binding ShowReferencePlaceholder, Converter={StaticResource BoolToVis}}"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- BANDA 5: OBLIGACIONES -->
+                    <Border Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1"
+                            CornerRadius="12" Padding="14,12">
+                        <StackPanel>
+                            <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <CheckBox Grid.Column="0"
-                                          IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                          IsEnabled="{Binding DataContext.IsExplicitAllocation, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                          VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding InvoiceDisplay}" FontWeight="SemiBold" FontSize="12" Foreground="#1E293B"/>
-                                    <TextBlock Text="{Binding Receivable.Status}" FontSize="10" Foreground="#64748B"/>
-                                </StackPanel>
-                                <TextBlock Grid.Column="2" Text="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}"
-                                           FontWeight="Bold" FontSize="12" Foreground="#0F172A" VerticalAlignment="Center" Margin="0,0,16,0"
-                                           Typography.NumeralAlignment="Tabular"/>
-                                <!-- 8.211-T4c2b4 (S9): today projection only exists in Dual. -->
-                                <TextBlock Grid.Column="3" Text="{Binding Receivable.BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}"
-                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
-                                           FontSize="11" Foreground="#166534" VerticalAlignment="Center"
-                                           Typography.NumeralAlignment="Tabular"/>
+                                <TextBlock Text="Obligaciones a imputar" FontSize="12.5" FontWeight="SemiBold"
+                                           Foreground="#334155" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding AllocationHint}"
+                                           AutomationProperties.AutomationId="CreditPayment_AllocationHint"
+                                           FontSize="11.5" Foreground="#64748B"
+                                           TextWrapping="Wrap" TextAlignment="Right"
+                                           Margin="12,0,0,0" MaxWidth="360"
+                                           HorizontalAlignment="Right" VerticalAlignment="Center"/>
                             </Grid>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </DockPanel>
-        </Border>
 
-        <!-- Footer -->
-        <Grid Grid.Row="3">
-            <TextBlock Text="{Binding ValidationMessage}"
-                       Foreground="#B45309" FontWeight="SemiBold" FontSize="11" TextWrapping="Wrap"
-                       VerticalAlignment="Center" Margin="0,0,220,0"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="CANCELAR"
-                        Command="{Binding CloseCommand}"
-                        AutomationProperties.AutomationId="CreditPayment_CancelButton"
-                        Style="{DynamicResource MaterialDesignOutlinedButton}"
-                        Height="40" Padding="18,0" Margin="0,0,10,0"/>
-                <Button Content="REGISTRAR ABONO"
-                        Command="{Binding ConfirmCommand}"
-                        AutomationProperties.AutomationId="CreditPayment_ConfirmButton"
-                        Style="{DynamicResource MaterialDesignRaisedButton}"
-                        Background="#5E35B1" Foreground="White"
-                        Height="40" Padding="22,0" FontWeight="Bold"
-                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
-                        materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsProcessing}"
-                        materialDesign:ButtonProgressAssist.IsIndeterminate="True"
-                        materialDesign:ButtonProgressAssist.Value="-1"/>
-            </StackPanel>
+                            <ListBox ItemsSource="{Binding OpenReceivables}"
+                                     AutomationProperties.AutomationId="CreditPayment_ReceivablesList"
+                                     BorderThickness="0" Background="Transparent"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     MaxHeight="150" Margin="0,8,0,0">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Padding" Value="0"/>
+                                        <Setter Property="Margin" Value="0,0,0,4"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="Focusable" Value="False"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource CxcObligationRowStyle}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <CheckBox Grid.Column="0"
+                                                          IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                          IsEnabled="{Binding DataContext.IsExplicitAllocation, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                          Style="{StaticResource SettingsCheckBoxStyle}"
+                                                          Width="18" Height="18"
+                                                          VerticalAlignment="Center" Margin="0,0,10,0"/>
+
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                                            VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding InvoiceDisplay}"
+                                                               FontSize="13" FontWeight="Bold"
+                                                               Foreground="#0F172A"
+                                                               VerticalAlignment="Center"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <Border Style="{StaticResource CxcStatusPillStyle}"
+                                                            Margin="8,0,0,0">
+                                                        <TextBlock Text="{Binding StatusDisplay}"
+                                                                   Style="{StaticResource CxcStatusPillTextStyle}"/>
+                                                    </Border>
+                                                </StackPanel>
+
+                                                <StackPanel Grid.Column="2" Margin="12,0,0,0"
+                                                            HorizontalAlignment="Right"
+                                                            VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding BalanceLocalDisplay}"
+                                                               FontSize="13" FontWeight="Bold"
+                                                               Foreground="#0F172A"
+                                                               HorizontalAlignment="Right"
+                                                               Typography.NumeralAlignment="Tabular"/>
+                                                    <TextBlock Text="{Binding BalanceUsdDisplay}"
+                                                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                                               FontSize="11.5" Foreground="#64748B"
+                                                               HorizontalAlignment="Right"
+                                                               Typography.NumeralAlignment="Tabular"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- BANDA 6a: BANNER DE VALIDACIÓN -->
+            <Border Grid.Row="2" Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="1"
+                    CornerRadius="8" Padding="12,8" Margin="24,0,24,10"
+                    Visibility="{Binding ValidationMessage, Converter={StaticResource StringToVisibilityConverter}}">
+                <StackPanel Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="InformationOutline" Width="16" Height="16"
+                                             Foreground="#B45309" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding ValidationMessage}" FontSize="12"
+                               Foreground="#B45309" TextWrapping="Wrap" Margin="8,0,0,0"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- BANDA 6b: PIE FIJO -->
+            <Border Grid.Row="3" Background="#F8FAFC" BorderBrush="#E2E8F0"
+                    BorderThickness="0,1,0,0" CornerRadius="0,0,16,16" Padding="24,14">
+                <Grid>
+                    <Button Content="Cancelar"
+                            Command="{Binding CloseCommand}"
+                            AutomationProperties.AutomationId="CreditPayment_CancelButton"
+                            Style="{StaticResource CxcDialogSecondaryButtonStyle}"
+                            HorizontalAlignment="Left"
+                            IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
+                    <Button Content="Registrar Abono"
+                            AutomationProperties.AutomationId="CreditPayment_ConfirmButton"
+                            Command="{Binding ConfirmCommand}"
+                            Style="{StaticResource CxcDialogPrimaryButtonStyle}"
+                            HorizontalAlignment="Right"
+                            IsEnabled="{Binding CanConfirm}"
+                            materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsProcessing}"
+                            materialDesign:ButtonProgressAssist.IsIndeterminate="True"
+                            materialDesign:ButtonProgressAssist.Value="-1"/>
+                </Grid>
+            </Border>
         </Grid>
-    </Grid>
+    </Border>
 </UserControl>
-
