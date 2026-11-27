@@ -290,7 +290,12 @@ describe('ExchangeRateHistory — S6 mapping, statuses and variation', () => {
   });
 
   test('12. formats Actualizada in America/Caracas with Spanish AM/PM', () => {
-    assert.strictEqual(formatCaracasUpdatedAt('2026-11-25T14:30:00Z'), '25/11/2026 · 10:30 a. m.');
+    // Node/ICU versiona el espacio entre "a." y "m." como regular o como no-break estrecho
+    // (U+202F). El contrato es el formato fecha/hora, no el code point del separador.
+    const normalizeSpaces = (value) => value?.replace(/[\u00A0\u202F]/g, ' ') ?? value;
+    assert.strictEqual(
+      normalizeSpaces(formatCaracasUpdatedAt('2026-11-25T14:30:00Z')),
+      normalizeSpaces('25/11/2026 · 10:30 a. m.'));
     assert.strictEqual(formatCaracasUpdatedAt(null), null);
     assert.strictEqual(formatCaracasUpdatedAt('not-a-date'), null);
   });
