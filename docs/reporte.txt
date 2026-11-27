@@ -19224,3 +19224,53 @@ D. PENDIENTE / RIESGOS
 D1. La validacion visual se hizo con harness fuera del repositorio; la
     prueba manual de la instalacion final sigue siendo recomendable.
 ================================================================================
+
+ANEXO LXXXIX - CIERRE DIARIO: REDISENO ENTERPRISE Y ARQUEO - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Shell de tres filas con cabecera fija, un unico ScrollViewer para el
+    cuerpo y footer sticky; margen de trabajo 24 px, fondo #F8FAFC y tarjetas
+    blancas con borde #E2E8F0 y sombra #0F172A al 3%.
+A2. Cabecera con badge de 42x42, titulo "CIERRE DIARIO Y ARQUEO DE CAJA",
+    subtitulo, toggle compacto de Cierre a Ciegas, Recargar y menu.
+A3. Tres KPI directos: Esperado en caja, Declarado con resumen de metodos y
+    Diferencia con color semantico (verde #15803D, ambar #B45309, rojo
+    #DC2626, gris #94A3B8). En ciego el esperado muestra "Oculto en cierre
+    a ciegas" y la diferencia "Se calculara al procesar el cierre".
+A4. Metodos de pago con ItemsControl, sin DataGrid y sin scroll interno.
+    Cabeceras MÉTODO DE PAGO, ESPERADO (Bs.S), DECLARADO (Bs.S) y
+    DIFERENCIA (Bs.S), con simbolo tomado del perfil activo.
+A5. Inputs de monto con prefijo de moneda, foco #6D28D9, SelectAll al foco,
+    Enter avanza al siguiente campo y formateo unificado mediante
+    CurrencyDisplay.Number. Se agrego "Igualar todo" y el boton "=" por
+    fila para copiar el esperado al declarado; ambos se ocultan en ciego.
+A6. Tarjeta USD y Observaciones en grid 38/16/62. En Single la tarjeta USD
+    se colapsa y Observaciones ocupa el 100%; el contador 0 / 500 queda una
+    sola vez, alineado a la derecha.
+A7. En Cierre a Ciegas se ocultan Esperado y Diferencia por fila, se muestra
+    "—" neutro y se conserva la declaracion del cajero. El toggle queda
+    bloqueado para cajeros y el footer muestra "Modo Cierre a Ciegas activo".
+A8. Titulo de navegacion actualizado a "CIERRE DIARIO Y ARQUEO DE CAJA".
+    No se modificaron calculos, DTOs, endpoints ni contratos del cierre.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Tests de Cierre Diario y navegacion: 20/20.
+B3. Suite .NET: 4518/4580 superadas. Los 62 fallos restantes son del carril
+    PostgreSQL real sin TEST_POSTGRES_CONNECTION; no hay fallos en Cierre
+    Diario, ViewModels ni converters.
+B4. Harness WPF 1024x720 (DIPs): estados normal, ciego y Single. Sin
+    duplicado de 0,00 en inputs, sin scroll interno en metodos, USD oculto
+    y Observaciones a ancho completo en Single.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La revalidacion fisica a 125% DPI queda pendiente; el layout se valido
+    en DIPs a 1024x720 y no depende de pixeles fijos.
+D2. La suite completa requiere PostgreSQL real configurado para alcanzar
+    el 100%; el resto de la suite ejecutable quedo verde.
+================================================================================

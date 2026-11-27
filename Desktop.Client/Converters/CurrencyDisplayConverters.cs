@@ -78,6 +78,40 @@ public sealed class PrimaryCurrencyCodeConverter : IValueConverter
 }
 
 /// <summary>
+/// Collapses a grid track in <c>Single</c> mode and restores its authored width in <c>Dual</c>.
+/// The parameter carries the dual width (<c>38*</c> or <c>16</c>); a collapsed track becomes 0,
+/// allowing the remaining star track to fill the available space without a nested layout.
+/// </summary>
+public sealed class SingleCurrencyGridLengthConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool isSingle && isSingle)
+        {
+            return new GridLength(0);
+        }
+
+        var raw = parameter as string;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return new GridLength(0);
+        }
+
+        if (raw.EndsWith("*", StringComparison.Ordinal))
+        {
+            return new GridLength(
+                double.Parse(raw.TrimEnd('*'), CultureInfo.InvariantCulture),
+                GridUnitType.Star);
+        }
+
+        return new GridLength(double.Parse(raw, CultureInfo.InvariantCulture));
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException("Grid lengths are display-only.");
+}
+
+/// <summary>
 /// Shows an element only when the active profile is <c>Dual</c>; collapses it in <c>Single</c>
 /// so the checkout does not render a second-currency line that no longer exists. The bound
 /// value is intentionally ignored: the mode comes from the shared <see cref="CurrencyDisplay"/>.

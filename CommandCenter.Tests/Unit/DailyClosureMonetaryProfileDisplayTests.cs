@@ -237,6 +237,12 @@ public class DailyClosureMonetaryProfileDisplayTests
             Assert.Equal("€ 550,00", Convert(new LocalAmountConverter(), 550m));
             Assert.Equal("€ 12,50", Convert(new PrimaryAmountConverter(), 12.5m));
             Assert.Equal(Visibility.Collapsed, Convert(new DualOnlyVisibilityConverter(), true));
+
+            var gridConverter = new SingleCurrencyGridLengthConverter();
+            var collapsed = (GridLength)gridConverter.Convert(true, typeof(GridLength), "38*", CultureInfo.InvariantCulture);
+            var restored = (GridLength)gridConverter.Convert(false, typeof(GridLength), "38*", CultureInfo.InvariantCulture);
+            Assert.Equal(0d, collapsed.Value);
+            Assert.Equal(new GridLength(38, GridUnitType.Star), restored);
         }
         finally
         {

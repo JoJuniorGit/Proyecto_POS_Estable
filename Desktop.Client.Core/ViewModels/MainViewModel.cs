@@ -485,7 +485,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToDailyClosure()
     {
         if (!CanNavigate(WpfNavigationPolicy.Closing) || _dailyClosureViewModel == null) return;
-        Title = "CIERRE DIARIO";
+        Title = "CIERRE DIARIO Y ARQUEO DE CAJA";
         CurrentViewModel = _dailyClosureViewModel;
         _dailyClosureViewModel.LoadExpectedTotalsAsync().SafeFireAndForget("MainViewModel.NavigateToDailyClosure");
     }

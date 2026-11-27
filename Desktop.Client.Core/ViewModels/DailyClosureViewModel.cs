@@ -35,7 +35,14 @@ public partial class ClosureDetailRow : ObservableObject
     public decimal ExpectedAmountBsS
     {
         get => _expectedAmountBsS;
-        set => SetProperty(ref _expectedAmountBsS, value);
+        set
+        {
+            if (SetProperty(ref _expectedAmountBsS, value))
+            {
+                NotifyDifferenceProperties();
+                _onChanged?.Invoke();
+            }
+        }
     }
 
     private decimal _actualAmountBsS;
@@ -46,9 +53,7 @@ public partial class ClosureDetailRow : ObservableObject
         {
             if (SetProperty(ref _actualAmountBsS, value))
             {
-                OnPropertyChanged(nameof(DifferenceBsS));
-                OnPropertyChanged(nameof(DifferenceColor));
-                OnPropertyChanged(nameof(DifferenceDisplay));
+                NotifyDifferenceProperties();
                 _onChanged?.Invoke();
             }
         }
@@ -56,12 +61,50 @@ public partial class ClosureDetailRow : ObservableObject
 
     public decimal DifferenceBsS => ActualAmountBsS - ExpectedAmountBsS;
 
-    public string DifferenceColor => DifferenceBsS switch
+    public bool IsEmptyDifference => ExpectedAmountBsS == 0m && ActualAmountBsS == 0m;
+
+    public string DifferenceColor => IsEmptyDifference
+        ? "#94A3B8"
+        : DifferenceBsS < 0m
+            ? "#DC2626"
+            : DifferenceBsS > 0m
+                ? "#B45309"
+                : "#15803D";
+
+    public string DifferenceStatusText => IsEmptyDifference
+        ? "—"
+        : DifferenceBsS < 0m
+            ? "Faltante"
+            : DifferenceBsS > 0m
+                ? "Sobrante"
+                : "Cuadra";
+
+    public string DifferenceBadgeBackground => IsEmptyDifference
+        ? "#F1F5F9"
+        : DifferenceBsS < 0m
+            ? "#FEE2E2"
+            : DifferenceBsS > 0m
+                ? "#FEF3C7"
+                : "#DCFCE7";
+
+    public string DifferenceBadgeForeground => IsEmptyDifference
+        ? "#64748B"
+        : DifferenceBsS < 0m
+            ? "#B91C1C"
+            : DifferenceBsS > 0m
+                ? "#B45309"
+                : "#15803D";
+
+    private void NotifyDifferenceProperties()
     {
-        < 0 => "#EF4444",
-        > 0 => "#10B981",
-        _ => "#94A3B8"
-    };
+        OnPropertyChanged(nameof(DifferenceBsS));
+        OnPropertyChanged(nameof(IsEmptyDifference));
+        OnPropertyChanged(nameof(DifferenceColor));
+        OnPropertyChanged(nameof(DifferenceDisplay));
+        OnPropertyChanged(nameof(DifferenceStatusText));
+        OnPropertyChanged(nameof(DifferenceBadgeBackground));
+        OnPropertyChanged(nameof(DifferenceBadgeForeground));
+    }
 
     // 8.143: la diferencia mostrada honra el ajuste activo (Venezolano/Internacional) y se
     // re-formatea al vuelo cuando el formato cambia.
@@ -111,6 +154,7 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             var vm = (DailyClosureViewModel)r;
             vm.OnPropertyChanged(nameof(DifferenceStatusLabel));
             vm.OnPropertyChanged(nameof(DifferenceStatusColor));
+            vm.OnPropertyChanged(nameof(FooterStatusText));
             foreach (var row in vm.DetailRows)
             {
                 row.NotifyCurrencyFormatChanged();
@@ -159,10 +203,18 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
             {
                 OnPropertyChanged(nameof(DifferenceStatusLabel));
                 OnPropertyChanged(nameof(DifferenceStatusColor));
+                OnPropertyChanged(nameof(DifferenceBadgeLabel));
+                OnPropertyChanged(nameof(DifferenceBadgeBackground));
+                OnPropertyChanged(nameof(DifferenceBadgeForeground));
+                OnPropertyChanged(nameof(DifferenceCardBackground));
+                OnPropertyChanged(nameof(DifferenceCardBorder));
+                OnPropertyChanged(nameof(FooterStatusText));
+                OnPropertyChanged(nameof(FooterStatusColor));
                 OnPropertyChanged(nameof(CanViewUsdExpected));
                 OnPropertyChanged(nameof(ShowUsdReconciliation));
                 OnPropertyChanged(nameof(ExpectedClosingBalanceUsdDisplay));
                 OnPropertyChanged(nameof(DifferenceUsdDisplay));
+                OnPropertyChanged(nameof(CanEqualize));
             }
         }
     }
@@ -298,23 +350,82 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         ? $"SOBRANTE EN CAJA (+{CurrencyDisplay.Number(TotalDifferenceBsS)} {CurrencyDisplay.LocalCurrencySymbol})"
         : (TotalDifferenceBsS < 0 ? $"FALTANTE EN CAJA ({CurrencyDisplay.Number(TotalDifferenceBsS)} {CurrencyDisplay.LocalCurrencySymbol})" : "CUADRADO EXACTO");
 
-    public string DifferenceStatusColor => TotalDifferenceBsS > 0
-        ? "#10B981"
-        : (TotalDifferenceBsS < 0 ? "#EF4444" : "#3B82F6");
+    public string DifferenceStatusColor => IsBlindClosing
+        ? "#94A3B8"
+        : TotalDifferenceBsS > 0
+            ? "#B45309"
+            : TotalDifferenceBsS < 0
+                ? "#DC2626"
+                : "#15803D";
 
-    public string DifferenceCardBackground => TotalDifferenceBsS switch
-    {
-        < 0 => "#FEF2F2",
-        > 0 => "#F0FDF4",
-        _ => "#F8FAFC"
-    };
+    public string DifferenceCardBackground => IsBlindClosing
+        ? "#F8FAFC"
+        : TotalDifferenceBsS switch
+        {
+            < 0 => "#FEF2F2",
+            > 0 => "#FFFBEB",
+            _ => "#F0FDF4"
+        };
 
-    public string DifferenceCardBorder => TotalDifferenceBsS switch
-    {
-        < 0 => "#FECACA",
-        > 0 => "#BBF7D0",
-        _ => "#E2E8F0"
-    };
+    public string DifferenceCardBorder => IsBlindClosing
+        ? "#E2E8F0"
+        : TotalDifferenceBsS switch
+        {
+            < 0 => "#FECACA",
+            > 0 => "#FDE68A",
+            _ => "#BBF7D0"
+        };
+
+    public string DifferenceBadgeLabel => IsBlindClosing
+        ? "Se calculará al procesar"
+        : !DetailRows.Any()
+            ? "Sin métodos cargados"
+            : TotalDifferenceBsS < 0
+                ? "Faltante en caja"
+                : TotalDifferenceBsS > 0
+                    ? "Sobrante en caja"
+                    : "Caja cuadrada";
+
+    public string DifferenceBadgeBackground => IsBlindClosing
+        ? "#F1F5F9"
+        : TotalDifferenceBsS < 0
+            ? "#FEE2E2"
+            : TotalDifferenceBsS > 0
+                ? "#FEF3C7"
+                : "#DCFCE7";
+
+    public string DifferenceBadgeForeground => IsBlindClosing
+        ? "#64748B"
+        : TotalDifferenceBsS < 0
+            ? "#B91C1C"
+            : TotalDifferenceBsS > 0
+                ? "#B45309"
+                : "#15803D";
+
+    public bool CanEqualize => !IsBlindClosing && DetailRows.Count > 0;
+
+    public string DeclaredMethodsSummary =>
+        $"{DetailRows.Count(r => r.ActualAmountBsS != 0m)} de {DetailRows.Count} métodos declarados";
+
+    public string FooterStatusColor => IsBlindClosing
+        ? "#94A3B8"
+        : !DetailRows.Any()
+            ? "#94A3B8"
+            : TotalDifferenceBsS < 0
+                ? "#DC2626"
+                : TotalDifferenceBsS > 0
+                    ? "#B45309"
+                    : "#15803D";
+
+    public string FooterStatusText => IsBlindClosing
+        ? "Modo Cierre a Ciegas activo"
+        : !DetailRows.Any()
+            ? "Sin métodos de pago cargados"
+            : TotalDifferenceBsS < 0
+                ? $"Diferencia actual: {CurrencyDisplay.FormatSecondary(TotalDifferenceBsS)} (Faltante)"
+                : TotalDifferenceBsS > 0
+                    ? $"Diferencia actual: {CurrencyDisplay.FormatSecondary(TotalDifferenceBsS)} (Sobrante)"
+                    : "Arqueo cuadrado · Listo para cerrar";
 
     private bool _isLoading;
     public bool IsLoading
@@ -339,6 +450,34 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(DifferenceStatusColor));
         OnPropertyChanged(nameof(DifferenceCardBackground));
         OnPropertyChanged(nameof(DifferenceCardBorder));
+        OnPropertyChanged(nameof(DifferenceBadgeLabel));
+        OnPropertyChanged(nameof(DifferenceBadgeBackground));
+        OnPropertyChanged(nameof(DifferenceBadgeForeground));
+        OnPropertyChanged(nameof(DeclaredMethodsSummary));
+        OnPropertyChanged(nameof(FooterStatusText));
+        OnPropertyChanged(nameof(FooterStatusColor));
+        OnPropertyChanged(nameof(CanEqualize));
+    }
+
+    [RelayCommand]
+    private void EqualizeAll()
+    {
+        if (!CanEqualize) return;
+
+        foreach (var row in DetailRows)
+        {
+            row.ActualAmountBsS = row.ExpectedAmountBsS;
+        }
+
+        RecalculateTotals();
+    }
+
+    [RelayCommand]
+    private void EqualizeRow(ClosureDetailRow? row)
+    {
+        if (row is null || IsBlindClosing) return;
+
+        row.ActualAmountBsS = row.ExpectedAmountBsS;
     }
 
     [RelayCommand]

@@ -133,6 +133,28 @@ public class DailyClosureViewModelTests
     }
 
     [Fact]
+    public async Task EqualizeAllCommand_CopiesExpectedIntoDeclaredAndUpdatesPresentationTotals()
+    {
+        _closureServiceMock
+            .Setup(s => s.GetExpectedTotalsAsync(It.IsAny<DateTime>()))
+            .ReturnsAsync(new List<ExpectedTotalDto>
+            {
+                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo", ExpectedAmountBsS = 500m },
+                new() { PaymentMethodId = 2, PaymentMethodName = "Pago Móvil", ExpectedAmountBsS = 300m }
+            });
+
+        var vm = CreateViewModel();
+        await vm.LoadExpectedTotalsCommand.ExecuteAsync(null);
+
+        vm.EqualizeAllCommand.Execute(null);
+
+        Assert.Equal(800m, vm.TotalActualBsS);
+        Assert.Equal(0m, vm.TotalDifferenceBsS);
+        Assert.Equal("2 de 2 métodos declarados", vm.DeclaredMethodsSummary);
+        Assert.Equal("Caja cuadrada", vm.DifferenceBadgeLabel);
+    }
+
+    [Fact]
     public void BlindClosing_WhenUserIsCashier_DisallowsDisabling()
     {
         var cashierSession = new UserSession();

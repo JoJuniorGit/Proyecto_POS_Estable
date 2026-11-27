@@ -4,6 +4,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Desktop.Client.Services;
 
 namespace Desktop.Client.Behaviors;
 
@@ -157,7 +158,10 @@ public class NumericCalculatorBehavior : Behavior<TextBox>
     {
         if (AssociatedObject != null)
         {
-            AssociatedObject.Text = Value.ToString("N2");
+            // 8.143: the active CurrencyDisplay profile owns separators everywhere, including
+            // the live amount editor. Avoid OS-culture N2 so the closure grid never mixes
+            // "0,00" with "424,368.20".
+            AssociatedObject.Text = CurrencyDisplay.Number(Value);
             AssociatedObject.CaretIndex = AssociatedObject.Text.Length;
         }
     }
