@@ -19274,3 +19274,54 @@ D1. La revalidacion fisica a 125% DPI queda pendiente; el layout se valido
 D2. La suite completa requiere PostgreSQL real configurado para alcanzar
     el 100%; el resto de la suite ejecutable quedo verde.
 ================================================================================
+
+ANEXO XC - RETIRO PARCIAL: MODAL MASTERCHIP Y CANTIDAD ESTRICTA - 2026-11-27
+================================================================================
+
+A. CAMBIOS
+A1. Modal de tres bandas: cabecera fija #F8FAFC con badge 38x38 e icono de
+    paquete, titulo Registrar Retiro Parcial, subtitulo, pildora de factura
+    con cliente y cierre de 32x32; cuerpo blanco; pie fijo #F8FAFC.
+    Ventana Width=700, MinWidth=640, MaxHeight=85% del owner y sombra suave
+    BlurRadius=24/Opacity=0.16.
+A2. Barra auxiliar con nota de limite pendiente y botones Entregar todo /
+    Poner en 0. Tabla con encabezado fijo e ItemsControl: PRODUCTO,
+    PENDIENTE, ENTREGAR HOY y QUEDARÍA; sin DataGrid, sin bordes negros de
+    foco y con scroll vertical delgado de 6 px, MinHeight=110/MaxHeight=300.
+A3. Fila: nombre con ellipsis/tooltip y badge Fraccionado, pildora ambar de
+    pendiente, input 115x36 con prefijo de moneda, boton Max, error inline
+    Máximo: X y vista previa QUEDARÍA (✓ Completo verde, N pend. gris,
+    Excede rojo).
+A4. Notas (opcional) con un unico contador 0 / 300, placeholder y textbox
+    compacto; pie con resumen vivo y botones Cancelar / Confirmar retiro con
+    estados disabled #E2E8F0/#94A3B8.
+A5. QuantityInputBehavior adjunto y QuantityInputParser puro compartido:
+    SelectAll al foco y clic con Focus+Handled, reemplazo del valor previo,
+    Backspace/Delete deja vacio, bloqueo de letras/espacios/signos, un solo
+    separador, precision maxima de 3, prefijo .5 -> 0.5, pegado validado,
+    normalizacion en LostFocus y separacion entero/fraccionado.
+A6. Validacion en vivo: sobrependiente no se recorta, marca fila y deshabilita
+    Confirmar; Entregar todo, Poner en 0 y Max actualizan el resumen y
+    QUEDARÍA. Enter avanza entre cantidades; Ctrl+Enter confirma; Esc cancela.
+A7. No se modificaron endpoints, DTOs, inventario ni reglas contables.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Tests de parseo, ViewModel y comandos de retiro parcial: 42/42.
+B3. Suite .NET: 4553/4615 superadas. Los 62 fallos restantes son del carril
+    PostgreSQL real sin TEST_POSTGRES_CONNECTION; no hay fallos en retiro
+    parcial ni en QuantityInputParser.
+B4. Harness WPF: estado normal 700x588, estado denso de 15 productos 700x612
+    con scroll, y estado de error/confirm disabled. Capturas a 96 y 120 DPI;
+    sin borde negro de celda, sin recortes y con MaxHeight respetado.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La suite completa requiere PostgreSQL real configurado para alcanzar
+    el 100%; el resto de la suite ejecutable quedo verde.
+D2. La validacion fisica a 125% DPI se hizo mediante render del harness a
+    120 DPI; la prueba manual sobre el monitor final sigue recomendable.
+================================================================================
