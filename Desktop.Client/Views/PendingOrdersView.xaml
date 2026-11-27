@@ -297,8 +297,6 @@
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="32"/>
-                            <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0">
@@ -334,53 +332,6 @@
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </StackPanel>
-
-                        <Rectangle Grid.Column="1" Width="1" Fill="#F1F5F9" HorizontalAlignment="Center"/>
-
-                        <StackPanel Grid.Column="2">
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <materialDesign:PackIcon Kind="ShieldCheckOutline" Width="16" Height="16"
-                                                         Foreground="#64748B" VerticalAlignment="Center"/>
-                                <TextBlock Text="HISTORIAL DE ABONOS" FontWeight="Bold" FontSize="11"
-                                           Margin="6,0,0,0" Foreground="#475569" VerticalAlignment="Center"/>
-                            </StackPanel>
-                            <ItemsControl ItemsSource="{Binding Payments}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid Margin="0,4">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="90"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="80"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0"
-                                                       Text="{Binding CreatedAt, StringFormat='{}{0:dd/MM HH:mm}'}"
-                                                       FontSize="11" Foreground="#64748B"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding PaymentMethodName}"
-                                                       FontSize="11" Foreground="#1E293B"
-                                                       TextTrimming="CharacterEllipsis"/>
-                                            <StackPanel Grid.Column="2" HorizontalAlignment="Right">
-                                                <TextBlock Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"
-                                                           FontSize="11" FontWeight="SemiBold"
-                                                           HorizontalAlignment="Right" Foreground="#166534"
-                                                           Typography.NumeralAlignment="Tabular"/>
-                                                <TextBlock Text="{Binding Amount, Converter={StaticResource PrimaryAmountConverter}}"
-                                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
-                                                           FontSize="10" HorizontalAlignment="Right"
-                                                           Foreground="#64748B" Typography.NumeralAlignment="Tabular"/>
-                                            </StackPanel>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <StackPanel HorizontalAlignment="Center" Margin="0,12,0,4"
-                                        Visibility="{Binding Payments, Converter={StaticResource CollectionEmptyToVisibilityConverter}}">
-                                <materialDesign:PackIcon Kind="ReceiptTextRemoveOutline" Width="28" Height="28"
-                                                         Foreground="#CBD5E1" HorizontalAlignment="Center"/>
-                                <TextBlock Text="Sin abonos registrados" FontSize="11" Foreground="#94A3B8"
-                                           FontStyle="Italic" Margin="0,6,0,0" HorizontalAlignment="Center"/>
-                            </StackPanel>
-                        </StackPanel>
                     </Grid>
                 </Border>
             </DataTemplate>
@@ -410,7 +361,7 @@
                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="Cuentas Abiertas (Pedidos en Espera)"
+                    <TextBlock Text="Pedidos Guardados"
                                AutomationProperties.AutomationId="PendingOrders_Title"
                                FontSize="22" FontWeight="Bold" Foreground="#0F172A"/>
                     <TextBlock Text="Gestión de abonos y liquidaciones de pedidos pendientes de pago."

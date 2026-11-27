@@ -148,15 +148,17 @@ public class CreditReceivablesDashboardTests
         Assert.Equal("En mora", open.StatusDisplay);
         Assert.Equal(60m, open.PaidAmountUSD);
         Assert.Equal(60m, open.CollectionProgressPercent);
-        Assert.True(open.HasSecondaryActions);
+        Assert.True(open.CanReturn);
+        Assert.False(open.IsCancelable);
 
         var paid = Row(original: 100m, balance: 0m, overdue: false, status: "Pagada");
         Assert.Equal("Pagada", paid.StatusDisplay);
-        Assert.True(paid.HasSecondaryActions);
+        Assert.True(paid.CanReturn);
 
         var cancelled = Row(original: 100m, balance: 0m, overdue: false, status: "Anulada");
         Assert.Equal("Anulada", cancelled.StatusDisplay);
-        Assert.False(cancelled.HasSecondaryActions);
+        Assert.False(cancelled.CanReturn);
+        Assert.False(cancelled.IsCancelable);
     }
 
     [Fact]

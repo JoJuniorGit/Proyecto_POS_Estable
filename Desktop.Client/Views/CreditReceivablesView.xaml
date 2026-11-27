@@ -732,7 +732,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="TOTAL / ABONADO" MinWidth="135" Width="SizeToCells"
+                        <DataGridTemplateColumn Header="TOTAL" MinWidth="135" Width="SizeToCells"
                                                 HeaderStyle="{StaticResource CxcRightColumnHeaderStyle}">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -754,38 +754,32 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="SALDO (USD)" MinWidth="120" Width="SizeToCells"
+                        <DataGridTemplateColumn Header="DEUDA" MinWidth="150" Width="SizeToCells"
                                                 HeaderStyle="{StaticResource CxcRightColumnHeaderStyle}">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}"
-                                               FontSize="14" FontWeight="Bold"
-                                               HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Margin="12,0" Typography.NumeralAlignment="Tabular">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Foreground" Value="#0F172A"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsOverdue}" Value="True">
-                                                        <Setter Property="Foreground" Value="#DC2626"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <DataGridTemplateColumn Header="EQUIV. HOY (Bs.S)" MinWidth="145" Width="SizeToCells"
-                                                HeaderStyle="{StaticResource CxcRightColumnHeaderStyle}"
-                                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}"
-                                               FontSize="12" FontWeight="SemiBold" Foreground="#334155"
-                                               HorizontalAlignment="Right" VerticalAlignment="Center"
-                                               Margin="12,0" Typography.NumeralAlignment="Tabular"/>
+                                    <StackPanel Margin="12,0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding BalanceUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                                   FontSize="14" FontWeight="Bold"
+                                                   HorizontalAlignment="Right"
+                                                   Typography.NumeralAlignment="Tabular">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#0F172A"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsOverdue}" Value="True">
+                                                            <Setter Property="Foreground" Value="#DC2626"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding BalanceTodayBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                   FontSize="11" FontWeight="SemiBold" Foreground="#64748B"
+                                                   HorizontalAlignment="Right" Margin="0,2,0,0"
+                                                   Typography.NumeralAlignment="Tabular"
+                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -842,7 +836,7 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
-                        <DataGridTemplateColumn Header="ACCIONES" MinWidth="225" Width="SizeToCells"
+                        <DataGridTemplateColumn Header="ACCIONES" MinWidth="140" Width="SizeToCells"
                                                 HeaderStyle="{StaticResource CxcRightColumnHeaderStyle}">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -855,32 +849,52 @@
                                                 Style="{StaticResource CxcPrimaryCompactButtonStyle}"
                                                 IsEnabled="{Binding IsOpen}"
                                                 Margin="0,0,4,0"/>
-                                        <Button Content="Edo. Cuenta"
-                                                Command="{Binding Data.ViewStatementCommand, Source={StaticResource Proxy}}"
-                                                CommandParameter="{Binding}"
-                                                AutomationProperties.AutomationId="CreditReceivables_ViewStatement"
-                                                Style="{StaticResource CxcSecondaryCompactButtonStyle}"
-                                                ToolTip="Consultar estado de cuenta"
-                                                Margin="0,0,4,0"/>
-                                        <Button Content="PDF"
-                                                Command="{Binding Data.PrintCreditSaleReceiptCommand, Source={StaticResource Proxy}}"
-                                                CommandParameter="{Binding}"
-                                                AutomationProperties.AutomationId="CreditReceivables_PrintCreditReceipt"
-                                                Style="{StaticResource CxcSecondaryCompactButtonStyle}"
-                                                ToolTip="Descargar estado de cuenta en PDF"
-                                                Margin="0,0,4,0"/>
                                         <Button x:Name="MoreActionsButton"
                                                 Content="⋯"
                                                 AutomationProperties.AutomationId="CreditReceivables_MoreActions"
                                                 Tag="{Binding Data, Source={StaticResource Proxy}}"
                                                 Style="{StaticResource CxcMoreButtonStyle}"
-                                                IsEnabled="{Binding HasSecondaryActions}"
                                                 ToolTip="Más acciones"
                                                 Click="MoreActionsButton_Click">
                                             <Button.ContextMenu>
                                                 <ContextMenu Style="{StaticResource CxcContextMenuStyle}"
                                                              DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
                                                              Placement="Bottom">
+                                                    <MenuItem Command="{Binding PlacementTarget.Tag.ViewStatementCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}"
+                                                              AutomationProperties.AutomationId="CreditReceivables_ViewStatement">
+                                                        <MenuItem.Style>
+                                                            <Style TargetType="MenuItem" BasedOn="{StaticResource CxcMenuItemStyle}"/>
+                                                        </MenuItem.Style>
+                                                        <MenuItem.Header>
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <materialDesign:PackIcon Kind="FileDocumentOutline" Width="16" Height="16"
+                                                                                         VerticalAlignment="Center"
+                                                                                         Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                                <TextBlock Text="Edo. Cuenta" Margin="9,0,0,0"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                            </StackPanel>
+                                                        </MenuItem.Header>
+                                                    </MenuItem>
+                                                    <MenuItem Command="{Binding PlacementTarget.Tag.PrintCreditSaleReceiptCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                              CommandParameter="{Binding}"
+                                                              AutomationProperties.AutomationId="CreditReceivables_PrintCreditReceipt">
+                                                        <MenuItem.Style>
+                                                            <Style TargetType="MenuItem" BasedOn="{StaticResource CxcMenuItemStyle}"/>
+                                                        </MenuItem.Style>
+                                                        <MenuItem.Header>
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <materialDesign:PackIcon Kind="FilePdfBox" Width="16" Height="16"
+                                                                                         VerticalAlignment="Center"
+                                                                                         Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                                <TextBlock Text="PDF" Margin="9,0,0,0"
+                                                                           VerticalAlignment="Center"
+                                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                            </StackPanel>
+                                                        </MenuItem.Header>
+                                                    </MenuItem>
+                                                    <Separator/>
                                                     <MenuItem Command="{Binding PlacementTarget.Tag.ReturnCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                               CommandParameter="{Binding}"
                                                               AutomationProperties.AutomationId="CreditReceivables_Return">

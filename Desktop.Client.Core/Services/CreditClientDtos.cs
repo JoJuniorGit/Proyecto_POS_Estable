@@ -115,9 +115,6 @@ public class CreditReceivableClientItemDto
     public bool CanReturn => IsOpen || string.Equals(Status, "Pagada", StringComparison.OrdinalIgnoreCase);
 
     [JsonIgnore]
-    public bool HasSecondaryActions => CanReturn || IsCancelable;
-
-    [JsonIgnore]
     public string StatusDisplay => IsOverdue || string.Equals(Status, "Vencida", StringComparison.OrdinalIgnoreCase)
         ? "En mora"
         : Status;

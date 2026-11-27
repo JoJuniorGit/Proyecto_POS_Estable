@@ -14,7 +14,7 @@ S4. Enterprise header, filter card, and four KPI cards with the requested palett
 
 S5. Eight-column virtualized grid: document, client, due date, total/paid progress, balance, today local equivalent, status pill, and actions. Row hover/selection must not leave a permanent lavender background.
 
-S6. Compact inline actions (`Cobrar`, `Edo. Cuenta`, `PDF`) plus a left-click overflow menu for `Devolver` and `Anular`, using safe ContextMenu PlacementTarget bindings and existing commands/RBAC.
+S6. Compact inline action `Cobrar` only, plus a left-click overflow menu for `Edo. Cuenta`, `PDF`, `Devolver`, and `Anular`, using safe ContextMenu PlacementTarget bindings and existing commands/RBAC.
 
 S7. Preserve payment, statement, PDF, cancel, return, filter, and reload behavior; add tests for the new read-only presentation state.
 
@@ -35,3 +35,5 @@ L1. User requested a Senior WPF UI/UX and MVVM refactor of the local CxC view, i
 L2. Implemented `ShowEmptyState`, pluralized `HeaderSubtitle`, `TodayRateDisplay` with configured separators, local KPI equivalence, status/progress/initials DTO helpers, compact actions, and a ContextMenu driven by `PlacementTarget.Tag`/`PlacementTarget.DataContext`.
 
 L3. Evidence: build 0 warnings/0 errors; CxC tests 15/15; full suite 4544/4544; harness screenshots at 96 and 125 DPI for populated, selected-row, and empty states, plus overflow menu; no row overlap, no ComboBox clipping, neutral zero-mora card, and full-width column layout.
+
+L4. User correction (27/11): "En cuentas por cobrar para todas las acciones al menu "los puntos suspensivos" excepto por el boton de cobrar". Moved `Edo. Cuenta` and `PDF` into the overflow menu, leaving `Cobrar` as the only inline action; the menu no longer depends on `HasSecondaryActions` because statement and PDF are always available. Evidence: Release build 0/0; CxC filter 44/45 with the only failure being the existing PostgreSQL-lane environment requirement; full suite 4593/4655 with all 62 failures in PostgreSQL-lane tests requiring `TEST_POSTGRES_CONNECTION`.
