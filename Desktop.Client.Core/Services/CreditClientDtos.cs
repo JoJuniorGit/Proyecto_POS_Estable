@@ -337,3 +337,268 @@ public sealed class CreditOverLimitAuthorizationException : Exception
     /// <summary>Discriminador del contrato 403, equivalente a AuthorizationRequiredException.AuthorizationAction.</summary>
     public string AuthorizationAction => nameof(Core.Entities.AuthorizationActionType.CreditOverLimit);
 }
+
+// =====================================================================================
+// CxC - Deudas Pagadas (historial realizado)
+// =====================================================================================
+
+public class PaidReceivablesFilterClientDto
+{
+    public string? Search { get; set; }
+    public DateTime? PaidFrom { get; set; }
+    public DateTime? PaidTo { get; set; }
+    public int? PaymentMethodId { get; set; }
+    public int? Page { get; set; }
+    public int? PageSize { get; set; }
+}
+
+public class PaidReceivablesSummaryClientDto
+{
+    public int PaidDebtsCount { get; set; }
+    public decimal TotalCollectedUsd { get; set; }
+    public decimal TotalCollectedLocalHistorical { get; set; }
+    public int TotalPaymentsCount { get; set; }
+    public decimal AverageDaysToSettle { get; set; }
+
+    [JsonIgnore]
+    public string PaidDebtsCountDisplay => PaidDebtsCount.ToString("N0");
+
+    [JsonIgnore]
+    public string TotalCollectedUsdDisplay => CurrencyDisplay.FormatPrimary(TotalCollectedUsd);
+
+    [JsonIgnore]
+    public string TotalCollectedLocalDisplay => CurrencyDisplay.FormatSecondary(TotalCollectedLocalHistorical);
+
+    [JsonIgnore]
+    public string TotalPaymentsCountDisplay => TotalPaymentsCount.ToString("N0");
+
+    [JsonIgnore]
+    public string AverageDaysDisplay => $"{CurrencyDisplay.Number(AverageDaysToSettle, 1)} {(AverageDaysToSettle == 1m ? "día" : "días")}";
+}
+
+public class PaidReceivablesClientDto
+{
+    public List<PaidReceivableClientItemDto> Items { get; set; } = new();
+    public PaidReceivablesSummaryClientDto Summary { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int? Page { get; set; }
+    public int? PageSize { get; set; }
+    public bool HasMore { get; set; }
+}
+
+public class PaidReceivableClientItemDto
+{
+    public int ObligationId { get; set; }
+    public int? InvoiceNumber { get; set; }
+    public int SaleId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public string CustomerDocument { get; set; } = string.Empty;
+    public DateTime IssuedAt { get; set; }
+    public DateTime DueDate { get; set; }
+    public DateTime PaidAt { get; set; }
+    public int DaysToSettle { get; set; }
+    public bool SettledOnTime { get; set; }
+    public decimal OriginalAmountUsd { get; set; }
+    public decimal TotalPaidUsd { get; set; }
+    public decimal TotalPaidLocalHistorical { get; set; }
+    public int PaymentsCount { get; set; }
+    public string PaymentMethodsSummary { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string InvoiceDisplay => InvoiceNumber.HasValue ? $"F{InvoiceNumber.Value:D5}" : $"V{SaleId}";
+
+    [JsonIgnore]
+    public string CustomerInitials
+    {
+        get
+        {
+            var parts = CustomerName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return "?";
+            return parts.Length == 1
+                ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
+                : string.Concat(char.ToUpperInvariant(parts[0][0]), char.ToUpperInvariant(parts[1][0]));
+        }
+    }
+
+    [JsonIgnore]
+    public string PaidAtDisplay => ToLocal(PaidAt).ToString("dd/MM/yyyy");
+
+    [JsonIgnore]
+    public string IssuedAtDisplay => ToLocal(IssuedAt).ToString("dd/MM/yyyy");
+
+    [JsonIgnore]
+    public string PaymentsLabel => PaymentsCount == 1 ? "1 abono" : $"{PaymentsCount} abonos";
+
+    [JsonIgnore]
+    public string TotalPaidUsdDisplay => CurrencyDisplay.FormatPrimary(TotalPaidUsd);
+
+    [JsonIgnore]
+    public string TotalPaidLocalDisplay => CurrencyDisplay.FormatSecondary(TotalPaidLocalHistorical);
+
+    [JsonIgnore]
+    public string SettledOnTimeLabel => SettledOnTime ? "A tiempo" : "Tras mora";
+
+    [JsonIgnore]
+    public string StatusDisplay => "Pagada";
+
+    private static DateTime ToLocal(DateTime value)
+    {
+        var utc = value.Kind == DateTimeKind.Utc ? value : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+        return Core.Helpers.TimeZoneHelper.ToVenezuelaTime(utc);
+    }
+}
+
+public class ReceivablePaymentTimelineClientDto
+{
+    public int ObligationId { get; set; }
+    public int? InvoiceNumber { get; set; }
+    public int SaleId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public string CustomerDocument { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public decimal OriginalAmountUsd { get; set; }
+    public decimal TotalPaidUsd { get; set; }
+    public decimal BalanceUsd { get; set; }
+    public DateTime IssuedAt { get; set; }
+    public DateTime DueDate { get; set; }
+    public List<ObligationPaymentTimelineItemClientDto> Payments { get; set; } = new();
+
+    [JsonIgnore]
+    public string InvoiceDisplay => InvoiceNumber.HasValue ? $"F{InvoiceNumber.Value:D5}" : $"V{SaleId}";
+
+    [JsonIgnore]
+    public string OriginalDisplay => CurrencyDisplay.FormatPrimary(OriginalAmountUsd);
+
+    [JsonIgnore]
+    public string TotalPaidDisplay => CurrencyDisplay.FormatPrimary(TotalPaidUsd);
+
+    [JsonIgnore]
+    public string BalanceDisplay => CurrencyDisplay.FormatPrimary(BalanceUsd);
+
+    [JsonIgnore]
+    public bool IsSettled => BalanceUsd <= 0.005m;
+
+    [JsonIgnore]
+    public string StatusDisplay => IsSettled ? "Pagada" : Status;
+}
+
+public class ObligationPaymentTimelineItemClientDto
+{
+    public int PaymentId { get; set; }
+    public int SequenceNumber { get; set; }
+    public DateTime PaidAt { get; set; }
+    public string PaymentMethodName { get; set; } = string.Empty;
+    public string PaymentCurrency { get; set; } = string.Empty;
+    public decimal AmountPaidInCurrency { get; set; }
+    public decimal ExchangeRateApplied { get; set; }
+    public decimal AmountCreditedUsd { get; set; }
+    public string? Reference { get; set; }
+    public string ImputationMode { get; set; } = string.Empty;
+    public string CashierName { get; set; } = string.Empty;
+    public decimal RunningBalanceAfterUsd { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? Notes { get; set; }
+
+    [JsonIgnore]
+    public string SequenceLabel => $"Abono #{SequenceNumber}";
+
+    [JsonIgnore]
+    public string PaidAtDisplay => Core.Helpers.TimeZoneHelper.ToVenezuelaTime(
+        PaidAt.Kind == DateTimeKind.Utc ? PaidAt : DateTime.SpecifyKind(PaidAt, DateTimeKind.Utc))
+        .ToString("dd/MM/yyyy HH:mm");
+
+    [JsonIgnore]
+    public bool IsUsd => string.Equals(PaymentCurrency, "USD", StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public string AmountPaidDisplay => IsUsd
+        ? CurrencyDisplay.FormatPrimary(AmountPaidInCurrency)
+        : CurrencyDisplay.FormatSecondary(AmountPaidInCurrency);
+
+    [JsonIgnore]
+    public string CreditedUsdDisplay => CurrencyDisplay.FormatPrimary(AmountCreditedUsd);
+
+    [JsonIgnore]
+    public string ExchangeRateDisplay => CurrencyDisplay.Number(ExchangeRateApplied, 2);
+
+    [JsonIgnore]
+    public string RunningBalanceDisplay => CurrencyDisplay.FormatPrimary(RunningBalanceAfterUsd);
+
+    [JsonIgnore]
+    public bool IsFinalPayment => RunningBalanceAfterUsd <= 0.005m;
+}
+
+public class PaidReceivablePaymentsClientDto
+{
+    public List<PaidReceivablePaymentItemClientDto> Items { get; set; } = new();
+    public PaidReceivablesSummaryClientDto Summary { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int? Page { get; set; }
+    public int? PageSize { get; set; }
+    public bool HasMore { get; set; }
+}
+
+public class PaidReceivablePaymentItemClientDto
+{
+    public int PaymentId { get; set; }
+    public DateTime PaidAt { get; set; }
+    public string CashierName { get; set; } = string.Empty;
+    public string CustomerName { get; set; } = string.Empty;
+    public string CustomerDocument { get; set; } = string.Empty;
+    public string PaymentMethodName { get; set; } = string.Empty;
+    public string PaymentCurrency { get; set; } = string.Empty;
+    public decimal AmountPaidInCurrency { get; set; }
+    public decimal ExchangeRateApplied { get; set; }
+    public decimal AmountCreditedUsd { get; set; }
+    public string? Reference { get; set; }
+    public string ImputationMode { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public List<PaidPaymentAllocationClientDto> Allocations { get; set; } = new();
+    public string InvoiceSummary { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string PaidAtDisplay => Core.Helpers.TimeZoneHelper.ToVenezuelaTime(
+        PaidAt.Kind == DateTimeKind.Utc ? PaidAt : DateTime.SpecifyKind(PaidAt, DateTimeKind.Utc))
+        .ToString("dd/MM/yy · HH:mm");
+
+    [JsonIgnore]
+    public bool IsUsd => string.Equals(PaymentCurrency, "USD", StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public string AmountPaidDisplay => IsUsd
+        ? CurrencyDisplay.FormatPrimary(AmountPaidInCurrency)
+        : CurrencyDisplay.FormatSecondary(AmountPaidInCurrency);
+
+    [JsonIgnore]
+    public string CreditedUsdDisplay => CurrencyDisplay.FormatPrimary(AmountCreditedUsd);
+
+    [JsonIgnore]
+    public string ExchangeRateDisplay => CurrencyDisplay.Number(ExchangeRateApplied, 2);
+
+    [JsonIgnore]
+    public string ReferenceDisplay => string.IsNullOrWhiteSpace(Reference) ? "—" : $"Ref: {Reference}";
+
+    [JsonIgnore]
+    public string CustomerInitials
+    {
+        get
+        {
+            var parts = CustomerName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return "?";
+            return parts.Length == 1
+                ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
+                : string.Concat(char.ToUpperInvariant(parts[0][0]), char.ToUpperInvariant(parts[1][0]));
+        }
+    }
+}
+
+public class PaidPaymentAllocationClientDto
+{
+    public int ObligationId { get; set; }
+    public int? InvoiceNumber { get; set; }
+    public decimal AmountUsd { get; set; }
+    public decimal AmountBsS { get; set; }
+
+    [JsonIgnore]
+    public string InvoiceDisplay => InvoiceNumber.HasValue ? $"F{InvoiceNumber.Value:D5}" : $"CxC-{ObligationId}";
+}

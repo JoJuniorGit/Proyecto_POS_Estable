@@ -313,3 +313,146 @@ public class CreditStatementPaymentDto
     public int? ReceivedByUserId { get; set; }
     public int? CashTransactionId { get; set; }
 }
+
+// =====================================================================================
+// CxC - Deudas Pagadas (historial realizado e inmutable)
+// =====================================================================================
+
+/// <summary>Filtros server-side del historial de deudas pagadas y de la bitacora de abonos.</summary>
+public class PaidReceivablesFilterDto
+{
+    /// <summary>Cliente, cedula/RIF, numero de factura o referencia de pago.</summary>
+    public string? Search { get; set; }
+
+    /// <summary>Fecha local (Venezuela) desde la cual se busca el abono que saldo la deuda.</summary>
+    public System.DateTime? PaidFrom { get; set; }
+
+    /// <summary>Fecha local (Venezuela) inclusive hasta la cual se busca el abono que saldo la deuda.</summary>
+    public System.DateTime? PaidTo { get; set; }
+
+    public int? PaymentMethodId { get; set; }
+
+    public int? Page { get; set; }
+
+    public int? PageSize { get; set; }
+}
+
+/// <summary>Listado paginado de obligaciones 100% pagadas con su recaudacion realizada.</summary>
+public class PaidReceivablesListDto
+{
+    public System.Collections.Generic.List<PaidReceivableItemDto> Items { get; set; } = new();
+    public PaidReceivablesSummaryDto Summary { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int? Page { get; set; }
+    public int? PageSize { get; set; }
+    public bool HasMore { get; set; }
+}
+
+/// <summary>KPIs de recaudacion realizada del conjunto filtrado (sin doble conteo).</summary>
+public class PaidReceivablesSummaryDto
+{
+    public int PaidDebtsCount { get; set; }
+    public decimal TotalCollectedUsd { get; set; }
+    public decimal TotalCollectedLocalHistorical { get; set; }
+    public int TotalPaymentsCount { get; set; }
+    public decimal AverageDaysToSettle { get; set; }
+}
+
+/// <summary>Obligacion pagada: totales historicos realizados, nunca reproyectados a la tasa de hoy.</summary>
+public class PaidReceivableItemDto
+{
+    public int ObligationId { get; set; }
+    public int? InvoiceNumber { get; set; }
+    public int SaleId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public string CustomerDocument { get; set; } = string.Empty;
+    public System.DateTime IssuedAt { get; set; }
+    public System.DateTime DueDate { get; set; }
+
+    /// <summary>Fecha/hora UTC del abono que dejo el saldo en cero.</summary>
+    public System.DateTime PaidAt { get; set; }
+
+    public int DaysToSettle { get; set; }
+    public bool SettledOnTime { get; set; }
+    public decimal OriginalAmountUsd { get; set; }
+    public decimal TotalPaidUsd { get; set; }
+    public decimal TotalPaidLocalHistorical { get; set; }
+    public int PaymentsCount { get; set; }
+    public string PaymentMethodsSummary { get; set; } = string.Empty;
+}
+
+/// <summary>Cronologia completa de abonos de una obligacion (pagada o parcial).</summary>
+public class ReceivablePaymentTimelineDto
+{
+    public int ObligationId { get; set; }
+    public int? InvoiceNumber { get; set; }
+    public int SaleId { get; set; }
+    public string CustomerName { get; set; } = string.Empty;
+    public string CustomerDocument { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public decimal OriginalAmountUsd { get; set; }
+    public decimal TotalPaidUsd { get; set; }
+    public decimal BalanceUsd { get; set; }
+    public System.DateTime IssuedAt { get; set; }
+    public System.DateTime DueDate { get; set; }
+    public System.Collections.Generic.List<ObligationPaymentTimelineItemDto> Payments { get; set; } = new();
+}
+
+/// <summary>Abono de la cronologia: moneda, tasa congelada y saldo exacto tras el cobro.</summary>
+public class ObligationPaymentTimelineItemDto
+{
+    public int PaymentId { get; set; }
+    public int SequenceNumber { get; set; }
+    public System.DateTime PaidAt { get; set; }
+    public string PaymentMethodName { get; set; } = string.Empty;
+    public string PaymentCurrency { get; set; } = string.Empty;
+    public decimal AmountPaidInCurrency { get; set; }
+    public decimal ExchangeRateApplied { get; set; }
+    public decimal AmountCreditedUsd { get; set; }
+    public string? Reference { get; set; }
+    public string ImputationMode { get; set; } = string.Empty;
+    public string CashierName { get; set; } = string.Empty;
+    public decimal RunningBalanceAfterUsd { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? Notes { get; set; }
+}
+
+/// <summary>Bitacora plana paginada de abonos que pertenecen a deudas pagadas.</summary>
+public class PaidReceivablePaymentsListDto
+{
+    public System.Collections.Generic.List<PaidReceivablePaymentItemDto> Items { get; set; } = new();
+    public PaidReceivablesSummaryDto Summary { get; set; } = new();
+    public int TotalCount { get; set; }
+    public int? Page { get; set; }
+    public int? PageSize { get; set; }
+    public bool HasMore { get; set; }
+}
+
+/// <summary>Abono individual con sus imputaciones, para evitar doble conteo de un pago FIFO.</summary>
+public class PaidReceivablePaymentItemDto
+{
+    public int PaymentId { get; set; }
+    public System.DateTime PaidAt { get; set; }
+    public string CashierName { get; set; } = string.Empty;
+    public string CustomerName { get; set; } = string.Empty;
+    public string CustomerDocument { get; set; } = string.Empty;
+    public string PaymentMethodName { get; set; } = string.Empty;
+    public string PaymentCurrency { get; set; } = string.Empty;
+    public decimal AmountPaidInCurrency { get; set; }
+    public decimal ExchangeRateApplied { get; set; }
+    public decimal AmountCreditedUsd { get; set; }
+    public string? Reference { get; set; }
+    public string ImputationMode { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public System.Collections.Generic.List<PaidPaymentAllocationDto> Allocations { get; set; } = new();
+    public string InvoiceSummary { get; set; } = string.Empty;
+}
+
+/// <summary>Imputacion de un abono contra una factura pagada.</summary>
+public class PaidPaymentAllocationDto
+{
+    public int ObligationId { get; set; }
+    public int? InvoiceNumber { get; set; }
+    public decimal AmountUsd { get; set; }
+    public decimal AmountBsS { get; set; }
+}
