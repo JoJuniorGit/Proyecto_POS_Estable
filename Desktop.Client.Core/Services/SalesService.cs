@@ -281,6 +281,15 @@ public class SalesService : ISalesService
         return await _response.Content.ReadFromJsonAsync<SaleDto>(cancellationToken: cancellationToken) ?? throw new System.Exception("Failed to release sale.");
     }
 
+    public async Task CancelSaleAsync(int saleId, System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.PostAsync($"api/sales/{saleId}/cancel", null, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new System.Exception(ApiErrorParser.FromBody(errorContent, $"Error del servidor ({(int)response.StatusCode})"));
+        }
+    }
     public async Task<(IEnumerable<SaleDto> Items, int TotalCount)> GetPendingSalesPagedAsync(int limit = 200, int offset = 0)
     {
         var response = await _httpClient.GetAsync($"api/sales/pending?limit={limit}&offset={offset}");

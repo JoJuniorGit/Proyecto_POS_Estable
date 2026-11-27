@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Messages;
 using Desktop.Client.Services;
 using Core.DTOs;
+using Core.Entities;
 using Core.Diagnostics;
 using Core.Logging;
 using System;
@@ -29,6 +30,7 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
     private string _searchQuery = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ExchangeRateDisplay))]
     private decimal _currentExchangeRate = 1m;
 
     [ObservableProperty]
@@ -66,9 +68,44 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
         }
     }
 
-    partial void OnSearchQueryChanged(string value) => OnPropertyChanged(nameof(FilteredPendingSales));
+    partial void OnSearchQueryChanged(string value) => NotifyListPresentation();
+
+    partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(ShowEmptyState));
+
+    public int PendingCount => PendingSales.Count;
+    public int VisibleCount => FilteredPendingSales.Count();
+    public decimal FilteredTotalLocal => FilteredPendingSales.Sum(item => item.TotalBsS);
+    public decimal FilteredTotalUsd => FilteredPendingSales.Sum(item => item.EffectiveTotalUSD);
+    public bool ShowEmptyState => _loaded && !IsLoading && VisibleCount == 0;
+    public string EmptyStateTitle => PendingSales.Count == 0
+        ? "No hay pedidos en espera"
+        : "Sin resultados para tu búsqueda";
+    public string EmptyStateSubtitle => PendingSales.Count == 0
+        ? "Los pedidos pendientes de pago aparecerán aquí."
+        : "Prueba con otro cliente, cédula/RIF o número de pedido.";
+    public string VisibleCountText => VisibleCount == 1
+        ? "Mostrando 1 pedido en espera"
+        : $"Mostrando {VisibleCount} pedidos en espera";
+    public string ExchangeRateDisplay => CurrencyDisplay.Number(CurrentExchangeRate, 2);
+
+    private void NotifyListPresentation()
+    {
+        OnPropertyChanged(nameof(FilteredPendingSales));
+        OnPropertyChanged(nameof(PendingCount));
+        OnPropertyChanged(nameof(VisibleCount));
+        OnPropertyChanged(nameof(FilteredTotalLocal));
+        OnPropertyChanged(nameof(FilteredTotalUsd));
+        OnPropertyChanged(nameof(ShowEmptyState));
+        OnPropertyChanged(nameof(EmptyStateTitle));
+        OnPropertyChanged(nameof(EmptyStateSubtitle));
+        OnPropertyChanged(nameof(VisibleCountText));
+    }
 
     public bool CanForceRelease => _userSession?.IsAdmin == true || _userSession?.IsManager == true;
+
+    public bool CanCancelOrders => _userSession?.CurrentUser?.Role is UserRole.Admin or UserRole.Manager or UserRole.Cashier;
+
+    private bool CanCancelOrder(SaleDto? sale) => CanCancelOrders && CanActOnOrder(sale);
 
     private bool CanActOnOrder(SaleDto? sale) => sale != null && (sale.ClaimedByUserId == null || sale.ClaimedByUserId == _userSession?.CurrentUser?.Id);
 
@@ -85,7 +122,7 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
         _dialogService = dialogService;
         _userSession = userSession;
 
-        PendingSales.CollectionChanged += (_, _) => OnPropertyChanged(nameof(FilteredPendingSales));
+        PendingSales.CollectionChanged += (_, _) => NotifyListPresentation();
 
         WeakReferenceMessenger.Default.Register<OnHoldSalesRefreshMessage>(this, async (r, m) =>
         {
@@ -135,9 +172,11 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
             foreach (var item in list.OrderByDescending(s => s.Date))
                 PendingSales.Add(item);
             _loaded = true;
+            NotifyListPresentation();
             UpdateHasMore();
             LiquidarAbonarCommand.NotifyCanExecuteChanged();
             EditarCommand.NotifyCanExecuteChanged();
+            AnularPedidoCommand.NotifyCanExecuteChanged();
         }
         catch (System.Net.Http.HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
         {
@@ -185,6 +224,7 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
             UpdateHasMore();
             LiquidarAbonarCommand.NotifyCanExecuteChanged();
             EditarCommand.NotifyCanExecuteChanged();
+            AnularPedidoCommand.NotifyCanExecuteChanged();
         }
         catch (Exception ex)
         {
@@ -198,6 +238,9 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private async Task RefreshAsync() => await EnsureLoadedAsync();
+
+    [RelayCommand]
+    private void ClearSearch() => SearchQuery = string.Empty;
 
     [RelayCommand]
     private void ToggleExpand(SaleDto? sale)
@@ -309,6 +352,32 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanCancelOrder))]
+    private async Task AnularPedidoAsync(SaleDto? sale)
+    {
+        if (!CanCancelOrder(sale)) return;
+
+        var customer = string.IsNullOrWhiteSpace(sale!.CustomerName) ? "Cliente general" : sale.CustomerName;
+        var amount = CurrencyDisplay.FormatSecondary(sale.TotalBsS);
+        if (!_dialogService.ShowConfirm(
+                "Anular pedido",
+                $"¿Anular el pedido #{sale.Id} del cliente '{customer}' por {amount}? " +
+                "El pedido se descartará de las cuentas abiertas."))
+        {
+            return;
+        }
+
+        try
+        {
+            await _salesService.CancelSaleAsync(sale.Id);
+            await EnsureLoadedAsync();
+            SuccessMessage = $"Pedido #{sale.Id} anulado correctamente.";
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Anular pedido", $"No se pudo anular el pedido: {ex.Message}");
+        }
+    }
     [RelayCommand(CanExecute = nameof(CanForceRelease))]
     private async Task LiberarBloqueoAsync(SaleDto? sale)
     {

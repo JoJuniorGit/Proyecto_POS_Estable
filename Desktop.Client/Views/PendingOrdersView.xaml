@@ -7,205 +7,387 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
              xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
+             xmlns:controls="clr-namespace:Desktop.Client.Controls"
+             xmlns:converters="clr-namespace:Desktop.Client.Converters"
              mc:Ignorable="d"
-             Background="#F1F5F9"
+             Background="#F8FAFC"
+             d:DesignHeight="820" d:DesignWidth="1280"
              d:DataContext="{d:DesignInstance Type=vm:PendingOrdersViewModel}">
 
     <UserControl.Resources>
-        <helpers:BindingProxy x:Key="Proxy" Data="{Binding}" />
-        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="SettingsStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
 
-        <DropShadowEffect x:Key="EnterpriseCardShadow"
-                          Color="#000000"
-                          BlurRadius="10"
-                          Opacity="0.05"
-                          Direction="270"
-                          ShadowDepth="2"/>
+            <helpers:BindingProxy x:Key="Proxy" Data="{Binding}"/>
+            <converters:InitialsConverter x:Key="InitialsConverter"/>
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
-        <Style x:Key="StandardHeaderStyle" TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#F8FAFC"/>
-            <Setter Property="Foreground" Value="#64748B"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Padding" Value="16,14"/>
-            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        </Style>
+            <DropShadowEffect x:Key="PendingCardShadow"
+                              Color="#0F172A"
+                              BlurRadius="12"
+                              Opacity="0.03"
+                              Direction="270"
+                              ShadowDepth="2"/>
 
-        <Style x:Key="RightAlignedHeaderStyle" TargetType="DataGridColumnHeader" BasedOn="{StaticResource StandardHeaderStyle}">
-            <Setter Property="HorizontalContentAlignment" Value="Right"/>
-        </Style>
+            <DropShadowEffect x:Key="PendingMenuShadow"
+                              Color="#0F172A"
+                              BlurRadius="14"
+                              Opacity="0.10"
+                              Direction="270"
+                              ShadowDepth="2"/>
 
-        <Style x:Key="GhostEditButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="#CBD5E1"/>
-            <Setter Property="Foreground" Value="#475569"/>
-            <Setter Property="Height" Value="32"/>
-            <Setter Property="Padding" Value="14,0"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="materialDesign:ButtonAssist.CornerRadius" Value="6"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="BorderBrush" Value="#5E35B1"/>
-                    <Setter Property="Foreground" Value="#5E35B1"/>
-                    <Setter Property="Background" Value="#F5F3FF"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsThinScrollBarStyle}"/>
 
-        <Style x:Key="GhostReleaseLockButtonStyle" TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="#B45309"/>
-            <Setter Property="Foreground" Value="#B45309"/>
-            <Setter Property="Height" Value="32"/>
-            <Setter Property="Padding" Value="12,0"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="8,0,0,0"/>
-            <Setter Property="materialDesign:ButtonAssist.CornerRadius" Value="6"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="BorderBrush" Value="#B45309"/>
-                    <Setter Property="Foreground" Value="#B45309"/>
-                    <Setter Property="Background" Value="#FFF7ED"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
+            <Style x:Key="PendingCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="12"/>
+                <Setter Property="Effect" Value="{StaticResource PendingCardShadow}"/>
+            </Style>
 
-        <Style x:Key="ModernDataGridRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource MaterialDesignDataGridRow}">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="4,0,0,0"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding ClaimedByUserId, Converter={StaticResource InverseNullToBooleanConverter}}" Value="True">
-                    <Setter Property="Background" Value="#FFF7ED"/>
-                </DataTrigger>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#F5F3FF"/>
-                    <Setter Property="BorderBrush" Value="#5E35B1"/>
-                </Trigger>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#F8FAFC"/>
-                </Trigger>
-                <MultiTrigger>
-                    <MultiTrigger.Conditions>
-                        <Condition Property="IsSelected" Value="True"/>
-                        <Condition Property="IsMouseOver" Value="True"/>
-                    </MultiTrigger.Conditions>
-                    <Setter Property="Background" Value="#EDE9FE"/>
-                    <Setter Property="BorderBrush" Value="#5E35B1"/>
-                </MultiTrigger>
-            </Style.Triggers>
-        </Style>
+            <Style x:Key="PendingSearchFrameStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
 
-        <Style x:Key="CleanDataGridCellStyle" TargetType="DataGridCell" BasedOn="{StaticResource MaterialDesignDataGridCell}">
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Style.Triggers>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="Transparent"/>
-                    <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource AncestorType=DataGridRow}, Path=Foreground}"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
+            <Style x:Key="PendingColumnHeaderStyle" TargetType="DataGridColumnHeader"
+                   BasedOn="{StaticResource SettingsTableHeaderStyle}">
+                <Setter Property="FontSize" Value="11.5"/>
+                <Setter Property="Padding" Value="12,10"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            </Style>
 
-        <DataTemplate x:Key="ExpandedRowTemplate">
-            <Border Background="#FFFFFF"
-                    CornerRadius="0,0,8,8" Padding="24,18"
-                    BorderBrush="#E2E8F0" BorderThickness="0,1,0,1">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="32"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
+            <Style x:Key="PendingRightColumnHeaderStyle" TargetType="DataGridColumnHeader"
+                   BasedOn="{StaticResource PendingColumnHeaderStyle}">
+                <Setter Property="HorizontalContentAlignment" Value="Right"/>
+                <Setter Property="Padding" Value="12,10,16,10"/>
+            </Style>
 
-                    <StackPanel Grid.Column="0">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <materialDesign:PackIcon Kind="PackageVariantClosed" Width="16" Height="16" Foreground="#64748B" VerticalAlignment="Center"/>
-                            <TextBlock Text="PRODUCTOS DEL PEDIDO"
-                                       FontWeight="Bold" FontSize="11" Margin="6,0,0,0"
-                                       Foreground="#475569" VerticalAlignment="Center"/>
+            <Style x:Key="PendingRowStyle" TargetType="DataGridRow"
+                   BasedOn="{StaticResource SettingsTableRowStyle}">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="3,0,0,0"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#F8FAFC"/>
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="#F5F3FF"/>
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="PendingCellStyle" TargetType="DataGridCell"
+                   BasedOn="{StaticResource SettingsTableCellStyle}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            </Style>
+
+            <Style x:Key="PendingPrimaryButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#6D28D9"/>
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Height" Value="32"/>
+                <Setter Property="Padding" Value="14,0"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="PrimaryBorder" Background="{TemplateBinding Background}"
+                                    CornerRadius="6" Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="PrimaryBorder" Property="Background" Value="#5B21B6"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="PrimaryBorder" Property="Background" Value="#4C1D95"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="PrimaryBorder" Property="Background" Value="#E2E8F0"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PendingSecondaryButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#334155"/>
+                <Setter Property="Height" Value="32"/>
+                <Setter Property="Padding" Value="14,0"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="SecondaryBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="SecondaryBorder" Property="Background" Value="#F1F5F9"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="SecondaryBorder" Property="Opacity" Value="0.5"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PendingMoreButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="32"/>
+                <Setter Property="Height" Value="32"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="FontSize" Value="18"/>
+                <Setter Property="FontWeight" Value="Bold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="MoreBorder" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6" SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="MoreBorder" Property="Background" Value="#F1F5F9"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="MoreBorder" Property="Background" Value="#E2E8F0"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PendingMenuItemStyle" TargetType="MenuItem">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="#334155"/>
+                <Setter Property="Height" Value="34"/>
+                <Setter Property="Padding" Value="10,0"/>
+                <Setter Property="FontSize" Value="11.5"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Border x:Name="MenuItemBorder" Background="{TemplateBinding Background}"
+                                    CornerRadius="6" Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="MenuItemBorder" Property="Background" Value="#F5F3FF"/>
+                                    <Setter Property="Foreground" Value="#6D28D9"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="MenuItemBorder" Property="Opacity" Value="0.45"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PendingDangerMenuItemStyle" TargetType="MenuItem"
+                   BasedOn="{StaticResource PendingMenuItemStyle}">
+                <Setter Property="Foreground" Value="#DC2626"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Border x:Name="MenuItemBorder" Background="{TemplateBinding Background}"
+                                    CornerRadius="6" Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="MenuItemBorder" Property="Background" Value="#FEF2F2"/>
+                                    <Setter Property="Foreground" Value="#B91C1C"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="MenuItemBorder" Property="Opacity" Value="0.45"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PendingContextMenuStyle" TargetType="ContextMenu">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="4"/>
+                <Setter Property="MinWidth" Value="175"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ContextMenu">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="10" Padding="{TemplateBinding Padding}"
+                                    Effect="{StaticResource PendingMenuShadow}"
+                                    SnapsToDevicePixels="True">
+                                <StackPanel IsItemsHost="True"
+                                            KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="Separator">
+                <Setter Property="Height" Value="1"/>
+                <Setter Property="Margin" Value="6,4"/>
+                <Setter Property="Background" Value="#F1F5F9"/>
+            </Style>
+
+            <DataTemplate x:Key="ExpandedRowTemplate">
+                <Border Background="#FFFFFF" CornerRadius="0,0,8,8" Padding="24,18"
+                        BorderBrush="#E2E8F0" BorderThickness="0,1,0,1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="32"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <materialDesign:PackIcon Kind="PackageVariantClosed" Width="16" Height="16"
+                                                         Foreground="#64748B" VerticalAlignment="Center"/>
+                                <TextBlock Text="PRODUCTOS DEL PEDIDO" FontWeight="Bold" FontSize="11"
+                                           Margin="6,0,0,0" Foreground="#475569" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding Items}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="70"/>
+                                                <ColumnDefinition Width="90"/>
+                                                <ColumnDefinition Width="110"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding ProductName}"
+                                                       FontSize="12" Foreground="#1E293B"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat='x{0:0.###}'}"
+                                                       FontSize="12" HorizontalAlignment="Right" Foreground="#64748B"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                       FontSize="12" HorizontalAlignment="Right" FontWeight="Medium"
+                                                       Foreground="#475569" Typography.NumeralAlignment="Tabular"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                       FontSize="12" HorizontalAlignment="Right" FontWeight="SemiBold"
+                                                       Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
-                        <ItemsControl ItemsSource="{Binding Items}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="0,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="70"/>
-                                            <ColumnDefinition Width="90"/>
-                                            <ColumnDefinition Width="110"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="{Binding ProductName}"
-                                                   FontSize="12" Foreground="#1E293B" TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding Quantity, StringFormat='x{0:0.###}'}"
-                                                   FontSize="12" HorizontalAlignment="Right" Foreground="#64748B"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}}"
-                                                   FontSize="12" HorizontalAlignment="Right" FontWeight="Medium" Foreground="#475569"
-                                                   Typography.NumeralAlignment="Tabular"/>
-                                        <TextBlock Grid.Column="3" Text="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}}"
-                                                   FontSize="12" HorizontalAlignment="Right" FontWeight="SemiBold" Foreground="#0F172A"
-                                                   Typography.NumeralAlignment="Tabular"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
 
-                    <Rectangle Grid.Column="1" Width="1" Fill="#F1F5F9" HorizontalAlignment="Center"/>
+                        <Rectangle Grid.Column="1" Width="1" Fill="#F1F5F9" HorizontalAlignment="Center"/>
 
-                    <StackPanel Grid.Column="2">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <materialDesign:PackIcon Kind="ShieldCheckOutline" Width="16" Height="16" Foreground="#64748B" VerticalAlignment="Center"/>
-                            <TextBlock Text="HISTORIAL DE ABONOS"
-                                       FontWeight="Bold" FontSize="11" Margin="6,0,0,0"
-                                       Foreground="#475569" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="2">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <materialDesign:PackIcon Kind="ShieldCheckOutline" Width="16" Height="16"
+                                                         Foreground="#64748B" VerticalAlignment="Center"/>
+                                <TextBlock Text="HISTORIAL DE ABONOS" FontWeight="Bold" FontSize="11"
+                                           Margin="6,0,0,0" Foreground="#475569" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding Payments}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="90"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="80"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding CreatedAt, StringFormat='{}{0:dd/MM HH:mm}'}"
+                                                       FontSize="11" Foreground="#64748B"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding PaymentMethodName}"
+                                                       FontSize="11" Foreground="#1E293B"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                                                <TextBlock Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                           FontSize="11" FontWeight="SemiBold"
+                                                           HorizontalAlignment="Right" Foreground="#166534"
+                                                           Typography.NumeralAlignment="Tabular"/>
+                                                <TextBlock Text="{Binding Amount, Converter={StaticResource PrimaryAmountConverter}}"
+                                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                                           FontSize="10" HorizontalAlignment="Right"
+                                                           Foreground="#64748B" Typography.NumeralAlignment="Tabular"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <StackPanel HorizontalAlignment="Center" Margin="0,12,0,4"
+                                        Visibility="{Binding Payments, Converter={StaticResource CollectionEmptyToVisibilityConverter}}">
+                                <materialDesign:PackIcon Kind="ReceiptTextRemoveOutline" Width="28" Height="28"
+                                                         Foreground="#CBD5E1" HorizontalAlignment="Center"/>
+                                <TextBlock Text="Sin abonos registrados" FontSize="11" Foreground="#94A3B8"
+                                           FontStyle="Italic" Margin="0,6,0,0" HorizontalAlignment="Center"/>
+                            </StackPanel>
                         </StackPanel>
-                        <ItemsControl ItemsSource="{Binding Payments}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="0,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="90"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="80"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0"
-                                                   Text="{Binding CreatedAt, StringFormat='{}{0:dd/MM HH:mm}'}"
-                                                   FontSize="11" Foreground="#64748B"/>
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding PaymentMethodName}"
-                                                   FontSize="11" Foreground="#1E293B" TextTrimming="CharacterEllipsis"/>
-                                        <StackPanel Grid.Column="2" HorizontalAlignment="Right">
-                                            <TextBlock Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"
-                                                       FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Right"
-                                                       Foreground="#166534" Typography.NumeralAlignment="Tabular"/>
-                                            <TextBlock Text="{Binding Amount, Converter={StaticResource PrimaryAmountConverter}}"
-                                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
-                                                       FontSize="10" HorizontalAlignment="Right"
-                                                       Foreground="#64748B" Typography.NumeralAlignment="Tabular"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <StackPanel HorizontalAlignment="Center" Margin="0,12,0,4"
-                                    Visibility="{Binding Payments, Converter={StaticResource CollectionEmptyToVisibilityConverter}}">
-                            <materialDesign:PackIcon Kind="ReceiptTextRemoveOutline" Width="28" Height="28" Foreground="#CBD5E1" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Sin abonos registrados" FontSize="11" Foreground="#94A3B8" FontStyle="Italic" Margin="0,6,0,0" HorizontalAlignment="Center"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Grid>
-            </Border>
-        </DataTemplate>
+                    </Grid>
+                </Border>
+            </DataTemplate>
+        </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid>
+    <Grid Margin="24,20,24,16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -213,18 +395,35 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- ── Header ── -->
-        <DockPanel Grid.Row="0" Margin="24,20,24,14" LastChildFill="True">
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+        <!-- HEADER -->
+        <Grid Grid.Row="0" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Width="42" Height="42" CornerRadius="10" Background="#EDE9FE"
+                        VerticalAlignment="Center">
+                    <materialDesign:PackIcon Kind="ClockOutline" Width="22" Height="22"
+                                             Foreground="#6D28D9"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="Cuentas Abiertas (Pedidos en Espera)"
+                               AutomationProperties.AutomationId="PendingOrders_Title"
+                               FontSize="22" FontWeight="Bold" Foreground="#0F172A"/>
+                    <TextBlock Text="Gestión de abonos y liquidaciones de pedidos pendientes de pago."
+                               FontSize="13" Foreground="#64748B" Margin="0,3,0,0"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Command="{Binding RefreshCommand}"
                         AutomationProperties.AutomationId="PendingOrders_RefreshButton"
-                        Style="{DynamicResource MaterialDesignOutlinedButton}"
-                        BorderBrush="#CBD5E1"
-                        Foreground="#475569"
-                        VerticalAlignment="Center"
-                        Height="36"
-                        Padding="14,0"
-                        Margin="0,0,8,0"
+                        Style="{StaticResource SettingsSecondaryButtonStyle}"
+                        Height="38" Padding="14,0" Margin="0,0,8,0"
                         materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsLoading}"
                         materialDesign:ButtonProgressAssist.IsIndeterminate="True"
                         materialDesign:ButtonProgressAssist.Value="-1">
@@ -233,276 +432,347 @@
                         <TextBlock Text="Refrescar" FontWeight="SemiBold" FontSize="12" Margin="6,0,0,0"/>
                     </StackPanel>
                 </Button>
-
-                <Button Style="{StaticResource SidebarMenuButtonStyle}" VerticalAlignment="Center"/>
+                <Button Style="{StaticResource SidebarMenuButtonStyle}"
+                        Width="38" Height="38" VerticalAlignment="Center"/>
             </StackPanel>
+        </Grid>
 
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <materialDesign:PackIcon Kind="ClockOutline" Width="26" Height="26" Foreground="#5E35B1" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Cuentas Abiertas (Pedidos en Espera)" FontSize="20" FontWeight="Bold" Foreground="#1E293B"/>
-                    <TextBlock Text="Gestión de abonos y liquidaciones de pedidos pendientes de pago" FontSize="12" Foreground="#64748B" Margin="0,2,0,0"/>
-                </StackPanel>
-            </StackPanel>
-        </DockPanel>
-
-        <!-- ── Search bar + Rate + Success message ── -->
-        <Border Grid.Row="1"
-                Margin="24,0,24,16"
-                Padding="20,16"
-                CornerRadius="8"
-                Background="#FFFFFF"
-                BorderBrush="#E2E8F0"
-                BorderThickness="1"
-                Effect="{StaticResource EnterpriseCardShadow}">
+        <!-- TOOLBAR -->
+        <Border Grid.Row="1" Style="{StaticResource PendingCardStyle}" Padding="14,12" Margin="0,0,0,12">
             <StackPanel>
                 <Grid>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0"
-                            Background="#F8FAFC"
-                            BorderBrush="#E2E8F0"
-                            BorderThickness="1"
-                            CornerRadius="6"
-                            Height="42"
-                            MaxWidth="600"
-                            HorizontalAlignment="Left"
-                            Margin="0,0,16,0">
+                    <Border Grid.Column="0" Style="{StaticResource PendingSearchFrameStyle}"
+                            MinWidth="380" MaxWidth="460" HorizontalAlignment="Left" Margin="0,0,10,0">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,2,0"/>
-                            <TextBox Grid.Column="1"
-                                     AutomationProperties.AutomationId="PendingOrders_SearchInput"
-                                     Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                     materialDesign:HintAssist.Hint="Buscar por cliente, cédula/RIF o N° de pedido..."
-                                     materialDesign:TextFieldAssist.HasClearButton="True"
-                                     BorderThickness="0"
-                                     Background="Transparent"
-                                     VerticalAlignment="Center"
-                                     FontSize="13"
-                                     Foreground="#1E293B"
-                                     Padding="6,0,10,0"/>
+                            <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18"
+                                                     Foreground="#94A3B8" VerticalAlignment="Center"
+                                                     Margin="10,0,2,0"/>
+                            <Grid Grid.Column="1">
+                                <TextBox AutomationProperties.AutomationId="PendingOrders_SearchInput"
+                                         Text="{Binding SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         BorderThickness="0" Background="Transparent"
+                                         VerticalContentAlignment="Center" FontSize="13"
+                                         Foreground="#0F172A" Padding="6,0,4,0"/>
+                                <TextBlock Text="Buscar por cliente, cédula/RIF o N° de pedido..."
+                                           IsHitTestVisible="False" FontSize="13" Foreground="#94A3B8"
+                                           VerticalAlignment="Center" Margin="6,0,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SearchQuery}" Value="">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding SearchQuery}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                            <Button Grid.Column="2" Content="×"
+                                    Command="{Binding ClearSearchCommand}"
+                                    Style="{StaticResource SettingsBareButtonStyle}"
+                                    Width="26" Height="26" Margin="0,0,3,0"
+                                    FontSize="16" Foreground="#64748B"
+                                    Visibility="{Binding SearchQuery, Converter={StaticResource StringToVisibilityConverter}}"
+                                    ToolTip="Limpiar búsqueda"/>
                         </Grid>
                     </Border>
 
-                    <Border Grid.Column="1"
-                            Background="#DCFCE7"
-                            BorderBrush="#86EFAC"
-                            BorderThickness="1"
-                            CornerRadius="100"
-                            Padding="14,6"
-                            VerticalAlignment="Center"
-                            Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <materialDesign:PackIcon Kind="CurrencyUsd" Width="16" Height="16" VerticalAlignment="Center" Foreground="#166534"/>
-                            <TextBlock Margin="4,0,0,0" FontSize="12" VerticalAlignment="Center" Foreground="#166534">
-                                <Run Text="Tasa BCV: "/>
-                                <Run Text="{Binding CurrentExchangeRate, Mode=OneWay, StringFormat='{}{0:N2}'}" FontWeight="Bold"/>
-                                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, Mode=OneWay, StringFormat=' {0}'}" FontWeight="Bold"/>
-                                <Run Text="/" FontWeight="Bold"/>
-                                <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol, Mode=OneWay}" FontWeight="Bold"/>
+                    <Border Grid.Column="1" Background="#F5F3FF" BorderBrush="#DDD6FE"
+                            BorderThickness="1" CornerRadius="8" Padding="10,6"
+                            VerticalAlignment="Center" Margin="0,0,8,0">
+                        <TextBlock Text="{Binding PendingCount, StringFormat='En espera: {0}'}"
+                                   FontSize="11.5" FontWeight="SemiBold" Foreground="#5B21B6"/>
+                    </Border>
+
+                    <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#E2E8F0"
+                            BorderThickness="1" CornerRadius="8" Padding="10,6"
+                            VerticalAlignment="Center" Margin="0,0,10,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontSize="11.5" Foreground="#0F172A">
+                                <Run Text="Total acumulado: "/>
+                                <Run Text="{Binding FilteredTotalLocal, Converter={StaticResource LocalAmountConverter}, Mode=OneWay}"
+                                     FontWeight="SemiBold"/>
+                            </TextBlock>
+                            <TextBlock FontSize="11.5" Foreground="#64748B" Margin="5,0,0,0"
+                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                <Run Text="· "/>
+                                <Run Text="{Binding FilteredTotalUsd, Converter={StaticResource PrimaryAmountConverter}, Mode=OneWay}"/>
                             </TextBlock>
                         </StackPanel>
                     </Border>
+
+                    <Border Grid.Column="4" Background="#ECFDF5" BorderBrush="#A7F3D0"
+                            BorderThickness="1" CornerRadius="8" Padding="12,6"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                        <TextBlock FontSize="11.5" Foreground="#047857" VerticalAlignment="Center">
+                            <Run Text="Tasa BCV: "/>
+                            <Run Text="{Binding ExchangeRateDisplay, Mode=OneWay}" FontWeight="SemiBold"/>
+                            <Run Text=" "/>
+                            <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyDisplayCode, Mode=OneWay}"/>
+                            <Run Text=" / "/>
+                            <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyDisplayCode, Mode=OneWay}"/>
+                        </TextBlock>
+                    </Border>
                 </Grid>
 
-                <!-- Success message banner -->
                 <Border Visibility="{Binding SuccessMessage, Converter={StaticResource StringToVisibilityConverter}}"
-                        Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="6" Padding="14,8" Margin="0,12,0,0">
+                        Background="#DCFCE7" BorderBrush="#86EFAC" BorderThickness="1"
+                        CornerRadius="8" Padding="12,8" Margin="0,10,0,0">
                     <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="CheckCircleOutline" Width="18" Height="18" VerticalAlignment="Center" Foreground="#166534"/>
-                        <TextBlock Text="{Binding SuccessMessage}" Foreground="#166534"
-                                   FontWeight="SemiBold" FontSize="12" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        <materialDesign:PackIcon Kind="CheckCircleOutline" Width="17" Height="17"
+                                                 Foreground="#166534" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding SuccessMessage}" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="#166534" Margin="8,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
             </StackPanel>
         </Border>
 
-        <!-- ── DataGrid ── -->
-        <Border Grid.Row="2"
-                Margin="24,0,24,16"
-                Background="#FFFFFF"
-                BorderBrush="#E2E8F0"
-                BorderThickness="1"
-                CornerRadius="8"
-                Effect="{StaticResource EnterpriseCardShadow}"
-                ClipToBounds="True">
+        <!-- GRID CARD -->
+        <Border Grid.Row="2" Style="{StaticResource PendingCardStyle}" ClipToBounds="True">
             <Grid>
-                <DataGrid ItemsSource="{Binding FilteredPendingSales}"
-                          AutomationProperties.AutomationId="PendingOrders_DataGrid"
-                          AutoGenerateColumns="False" CanUserAddRows="False"
-                          IsReadOnly="True" SelectionMode="Single"
-                          Background="#FFFFFF"
-                          BorderThickness="0"
-                          VirtualizingStackPanel.IsVirtualizing="True"
-                          VirtualizingStackPanel.VirtualizationMode="Recycling"
-                          VirtualizingPanel.ScrollUnit="Pixel"
-                          RowDetailsVisibilityMode="VisibleWhenSelected"
-                          GridLinesVisibility="Horizontal"
-                          HorizontalGridLinesBrush="#E2E8F0"
-                          VerticalGridLinesBrush="Transparent"
-                          HeadersVisibility="Column"
-                          ColumnHeaderStyle="{StaticResource StandardHeaderStyle}"
-                          RowStyle="{StaticResource ModernDataGridRowStyle}"
-                          CellStyle="{StaticResource CleanDataGridCellStyle}"
-                          RowHeight="50"
-                          VerticalScrollBarVisibility="Auto"
-                          materialDesign:DataGridAssist.CellPadding="16,8"
-                          materialDesign:DataGridAssist.ColumnHeaderPadding="16,14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                    <DataGrid.RowDetailsTemplate>
-                        <DataTemplate>
-                            <ContentControl Content="{Binding}"
-                                            ContentTemplate="{StaticResource ExpandedRowTemplate}"/>
-                        </DataTemplate>
-                    </DataGrid.RowDetailsTemplate>
+                <Grid Grid.Row="0">
+                    <DataGrid x:Name="PendingOrdersGrid" ItemsSource="{Binding FilteredPendingSales}"
+                              AutomationProperties.AutomationId="PendingOrders_DataGrid"
+                              SizeChanged="PendingOrdersGrid_SizeChanged"
+                              AutoGenerateColumns="False" CanUserAddRows="False"
+                              IsReadOnly="True" SelectionMode="Single"
+                              Background="#FFFFFF" BorderThickness="0"
+                              VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Pixel"
+                              RowDetailsVisibilityMode="VisibleWhenSelected"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#F1F5F9"
+                              VerticalGridLinesBrush="Transparent"
+                              HeadersVisibility="Column"
+                              ColumnHeaderStyle="{StaticResource PendingColumnHeaderStyle}"
+                              RowStyle="{StaticResource PendingRowStyle}"
+                              CellStyle="{StaticResource PendingCellStyle}"
+                              RowHeight="56"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <DataGrid.RowDetailsTemplate>
+                            <DataTemplate>
+                                <ContentControl Content="{Binding}"
+                                                ContentTemplate="{StaticResource ExpandedRowTemplate}"/>
+                            </DataTemplate>
+                        </DataGrid.RowDetailsTemplate>
 
-                    <DataGrid.Columns>
-                        <!-- ID + Date -->
-                        <DataGridTemplateColumn Header="ID / FECHA" Width="130" IsReadOnly="True"
-                                                HeaderStyle="{StaticResource StandardHeaderStyle}">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Id, StringFormat='Pedido #{0}'}"
-                                                   FontWeight="Bold" FontSize="13" Foreground="#1E293B"/>
-                                        <TextBlock Text="{Binding Date, StringFormat='{}{0:dd/MM/yy HH:mm}'}"
-                                                   FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <!-- Customer -->
-                        <DataGridTemplateColumn Header="CLIENTE" Width="220" IsReadOnly="True"
-                                                HeaderStyle="{StaticResource StandardHeaderStyle}">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding CustomerName, Converter={StaticResource TitleCaseConverter}}"
-                                                   FontWeight="SemiBold" FontSize="13"
-                                                   Foreground="#1E293B" TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Text="{Binding CustomerCedula}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-
-                        <DataGridTemplateColumn Header="ESTADO" Width="210" IsReadOnly="True"
-                                                HeaderStyle="{StaticResource StandardHeaderStyle}">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Border Visibility="{Binding ClaimedByUserName, Converter={StaticResource StringToVisibilityConverter}}"
-                                            Background="#FFF7ED" BorderBrush="#FDBA74" BorderThickness="1"
-                                            CornerRadius="100" Padding="10,4"
-                                            HorizontalAlignment="Left" VerticalAlignment="Center">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <materialDesign:PackIcon Kind="LockOutline" Width="14" Height="14" Foreground="#B45309" VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding Converter={StaticResource HoldLockDisplayConverter}}"
-                                                       FontSize="11" FontWeight="SemiBold" Foreground="#B45309"
-                                                       Margin="6,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="PEDIDO / FECHA" Width="165" IsReadOnly="True">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="12,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Id, StringFormat='Pedido #{0}'}"
+                                                       FontSize="13.5" FontWeight="SemiBold" Foreground="#0F172A"
+                                                       Typography.NumeralAlignment="Tabular"/>
+                                            <TextBlock Text="{Binding Date, StringFormat='{}{0:dd/MM/yy · HH:mm}'}"
+                                                       FontSize="11.5" Foreground="#64748B" Margin="0,2,0,0"/>
                                         </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
 
-                        <!-- Total Factura: Bs.S principal + USD secundario -->
-                        <DataGridTemplateColumn Header="TOTAL FACTURA" Width="150" IsReadOnly="True"
-                                                HeaderStyle="{StaticResource RightAlignedHeaderStyle}">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding TotalBsS, Converter={StaticResource LocalAmountConverter}}"
-                                                   FontWeight="Bold" FontSize="14"
-                                                   Foreground="#0F172A"
-                                                   Typography.NumeralAlignment="Tabular"
-                                                   HorizontalAlignment="Right"/>
-                                        <TextBlock Text="{Binding EffectiveTotalUSD, Converter={StaticResource PrimaryAmountConverter}}"
-                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
-                                                   FontSize="11" Foreground="#64748B"
-                                                   Typography.NumeralAlignment="Tabular"
-                                                   HorizontalAlignment="Right"
-                                                   Margin="0,2,0,0"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                            <DataGridTemplateColumn x:Name="CustomerColumn" Header="CLIENTE" Width="*" MinWidth="260" IsReadOnly="True">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="12,0" VerticalAlignment="Center">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="32"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Grid.Column="0" Width="32" Height="32" CornerRadius="16"
+                                                    Background="#F1F5F9" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding CustomerName, Converter={StaticResource InitialsConverter}}"
+                                                           FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="#334155" HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding CustomerName, Converter={StaticResource TitleCaseConverter}}"
+                                                           FontSize="13.5" FontWeight="SemiBold"
+                                                           Foreground="#0F172A" TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding CustomerName}"/>
+                                                <TextBlock Text="{Binding CustomerCedula}" FontSize="11.5"
+                                                           Foreground="#64748B" Margin="0,2,0,0"
+                                                           Typography.NumeralAlignment="Tabular"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
 
-                        <!-- Actions -->
-                        <DataGridTemplateColumn Header="ACCIONES" Width="*" IsReadOnly="True"
-                                                HeaderStyle="{StaticResource StandardHeaderStyle}">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Button Content="Cobrar"
-                                                Command="{Binding Data.LiquidarAbonarCommand, Source={StaticResource Proxy}}"
-                                                CommandParameter="{Binding}"
-                                                Style="{DynamicResource MaterialDesignFlatMidBgButton}"
-                                                Height="32" Padding="16,0" FontSize="12" FontWeight="SemiBold" Margin="0,0,8,0"
-                                                Background="#5E35B1" Foreground="White"
-                                                materialDesign:ButtonAssist.CornerRadius="6"/>
-                                        <Button Content="Editar"
-                                                Command="{Binding Data.EditarCommand, Source={StaticResource Proxy}}"
-                                                CommandParameter="{Binding}"
-                                                Style="{StaticResource GhostEditButtonStyle}"/>
-                                        <Button Content="Liberar"
-                                                Command="{Binding Data.LiberarBloqueoCommand, Source={StaticResource Proxy}}"
-                                                CommandParameter="{Binding}">
-                                            <Button.Style>
-                                                <Style TargetType="Button" BasedOn="{StaticResource GhostReleaseLockButtonStyle}">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <MultiDataTrigger>
-                                                            <MultiDataTrigger.Conditions>
-                                                                <Condition Binding="{Binding Data.CanForceRelease, Source={StaticResource Proxy}}" Value="True"/>
-                                                                <Condition Binding="{Binding ClaimedByUserName, Converter={StaticResource StringToVisibilityConverter}}" Value="Visible"/>
-                                                            </MultiDataTrigger.Conditions>
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </MultiDataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Button.Style>
-                                        </Button>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
+                            <DataGridTemplateColumn Header="TOTAL FACTURA" Width="185" IsReadOnly="True"
+                                                    HeaderStyle="{StaticResource PendingRightColumnHeaderStyle}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="12,0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding TotalBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                       FontSize="14" FontWeight="Bold" Foreground="#0F172A"
+                                                       HorizontalAlignment="Right" Typography.NumeralAlignment="Tabular"/>
+                                            <TextBlock Text="{Binding EffectiveTotalUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                                       FontSize="12" Foreground="#64748B" HorizontalAlignment="Right"
+                                                       Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
 
-                <!-- Loading overlay -->
-                <Grid Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
-                      Background="#60FFFFFF">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}"
-                                     Foreground="#5E35B1"
-                                     IsIndeterminate="True" Width="44" Height="44"/>
-                        <TextBlock Text="Cargando pedidos..." Foreground="#475569" FontWeight="SemiBold" Margin="0,12,0,0" FontSize="13" HorizontalAlignment="Center"/>
+                            <DataGridTemplateColumn Header="ACCIONES" Width="155" IsReadOnly="True"
+                                                    HeaderStyle="{StaticResource PendingRightColumnHeaderStyle}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                    VerticalAlignment="Center" Margin="0,0,16,0">
+                                            <Button Content="Cobrar"
+                                                    Command="{Binding Data.LiquidarAbonarCommand, Source={StaticResource Proxy}}"
+                                                    CommandParameter="{Binding}"
+                                                    AutomationProperties.AutomationId="PendingOrders_CheckoutButton"
+                                                    Style="{StaticResource PendingPrimaryButtonStyle}"
+                                                    Margin="0,0,8,0"/>
+                                            <Button x:Name="MoreActionsButton"
+                                                    Content="⋯"
+                                                    AutomationProperties.AutomationId="PendingOrders_MoreActions"
+                                                    Tag="{Binding Data, Source={StaticResource Proxy}}"
+                                                    Style="{StaticResource PendingMoreButtonStyle}"
+                                                    ToolTip="Más opciones"
+                                                    Click="MoreActionsButton_Click">
+                                                <Button.ContextMenu>
+                                                    <ContextMenu Style="{StaticResource PendingContextMenuStyle}"
+                                                                 Placement="Bottom"
+                                                                 DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                        <MenuItem Command="{Binding PlacementTarget.Tag.EditarCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                  CommandParameter="{Binding}"
+                                                                  AutomationProperties.AutomationId="PendingOrders_EditAction">
+                                                            <MenuItem.Style>
+                                                                <Style TargetType="MenuItem" BasedOn="{StaticResource PendingMenuItemStyle}"/>
+                                                            </MenuItem.Style>
+                                                            <MenuItem.Header>
+                                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                    <materialDesign:PackIcon Kind="Pencil" Width="16" Height="16"
+                                                                                             VerticalAlignment="Center"
+                                                                                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                                    <TextBlock Text="Editar pedido" Margin="9,0,0,0"
+                                                                               VerticalAlignment="Center"
+                                                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                                </StackPanel>
+                                                            </MenuItem.Header>
+                                                        </MenuItem>
+                                                        <Separator/>
+                                                        <MenuItem Command="{Binding PlacementTarget.Tag.AnularPedidoCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                                                  CommandParameter="{Binding}"
+                                                                  AutomationProperties.AutomationId="PendingOrders_CancelAction">
+                                                            <MenuItem.Style>
+                                                                <Style TargetType="MenuItem" BasedOn="{StaticResource PendingDangerMenuItemStyle}"/>
+                                                            </MenuItem.Style>
+                                                            <MenuItem.Header>
+                                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                    <materialDesign:PackIcon Kind="Cancel" Width="16" Height="16"
+                                                                                             VerticalAlignment="Center"
+                                                                                             Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                                    <TextBlock Text="Anular pedido" Margin="9,0,0,0"
+                                                                               VerticalAlignment="Center"
+                                                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=MenuItem}}"/>
+                                                                </StackPanel>
+                                                            </MenuItem.Header>
+                                                        </MenuItem>
+                                                    </ContextMenu>
+                                                </Button.ContextMenu>
+                                            </Button>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Grid Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
+                          Background="#70FFFFFF">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <ProgressBar Style="{DynamicResource MaterialDesignCircularProgressBar}"
+                                         Foreground="#6D28D9" IsIndeterminate="True"
+                                         Width="44" Height="44"/>
+                            <TextBlock Text="Cargando pedidos..." Foreground="#475569"
+                                       FontWeight="SemiBold" Margin="0,12,0,0" FontSize="13"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="{Binding ShowEmptyState, Converter={StaticResource BoolToVis}}">
+                        <Border Width="56" Height="56" CornerRadius="28" Background="#F1F5F9"
+                                HorizontalAlignment="Center">
+                            <materialDesign:PackIcon Kind="ClockOutline" Width="28" Height="28"
+                                                     Foreground="#CBD5E1"
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="{Binding EmptyStateTitle}" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#64748B" Margin="0,12,0,0" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding EmptyStateSubtitle}" FontSize="12" Foreground="#94A3B8"
+                                   Margin="0,4,0,0" HorizontalAlignment="Center"
+                                   TextWrapping="Wrap" MaxWidth="360" TextAlignment="Center"/>
                     </StackPanel>
                 </Grid>
+
+                <!-- FOOTER -->
+                <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#F1F5F9"
+                        BorderThickness="0,1,0,0" CornerRadius="0,0,12,12"
+                        Padding="16,10">
+                    <Grid>
+                        <TextBlock Text="{Binding VisibleCountText}" FontSize="11.5"
+                                   Foreground="#64748B" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="Total filtrado: " FontSize="11.5" Foreground="#64748B"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding FilteredTotalLocal, Converter={StaticResource LocalAmountConverter}}"
+                                       FontSize="11.5" FontWeight="SemiBold" Foreground="#334155"
+                                       Typography.NumeralAlignment="Tabular" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding FilteredTotalUsd, Converter={StaticResource PrimaryAmountConverter}}"
+                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                       FontSize="11.5" Foreground="#64748B" Margin="6,0,0,0"
+                                       Typography.NumeralAlignment="Tabular" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </Grid>
         </Border>
 
-        <!-- ── Load more button ── -->
-        <StackPanel Grid.Row="3" HorizontalAlignment="Center" Margin="0,0,0,16"
+        <!-- LOAD MORE -->
+        <StackPanel Grid.Row="3" HorizontalAlignment="Center" Margin="0,12,0,0"
                     Visibility="{Binding HasMore, Converter={StaticResource BoolToVis}}">
             <Button Content="Cargar más pedidos"
                     Command="{Binding LoadMoreCommand}"
-                    Style="{DynamicResource MaterialDesignOutlinedButton}"
-                    BorderBrush="#CBD5E1" Foreground="#475569"
+                    Style="{StaticResource SettingsSecondaryButtonStyle}"
                     Height="36" Padding="20,0" FontSize="12" FontWeight="SemiBold"
-                    materialDesign:ButtonAssist.CornerRadius="6"
                     materialDesign:ButtonProgressAssist.IsIndicatorVisible="{Binding IsLoadingMore}"
                     materialDesign:ButtonProgressAssist.IsIndeterminate="True"
                     materialDesign:ButtonProgressAssist.Value="-1"/>
         </StackPanel>
     </Grid>
 </UserControl>
-

@@ -19140,3 +19140,50 @@ D1. La validacion visual se hizo con harness fuera del repositorio; la
     prueba manual dentro del DialogHost de la aplicacion final sigue siendo
     recomendable para confirmar el backdrop y el tamano en cada monitor.
 ================================================================================
+
+ANEXO LXXXVII - CUENTAS ABIERTAS: UI ENTERPRISE Y ANULACION - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Cabecera con badge 42x42, titulo y subtitulo enterprise, Refrescar y
+    menu de 38px con hover neutro.
+A2. Barra de herramientas blanca con buscador de 380-460px, boton interno
+    para limpiar, chips de pedidos cargados/total acumulado y capsula BCV
+    #ECFDF5/#A7F3D0 de radio 8, texto Bs.S / USD y formato de Ajustes.
+    La capsula se oculta en regimen Single.
+A3. Se elimino completamente la columna ESTADO y el resaltado permanente de
+    pedidos bloqueados. La tabla queda con PEDIDO/FECHA, CLIENTE,
+    TOTAL FACTURA y ACCIONES, ocupando todo el ancho de la tarjeta.
+A4. Cliente con iniciales, nombre/RIF, totales tabulares y acciones
+    alineadas a la derecha con padding 0,0,16,0. Filas blancas, hover
+    #F8FAFC y seleccion #F5F3FF con borde izquierdo #6D28D9.
+A5. Cobrar queda como accion primaria; Editar pedido y Anular pedido viven
+    en el menu contextual de clic izquierdo. El ContextMenu usa
+    PlacementTarget.Tag/DataContext y conserva los comandos existentes.
+A6. Anular solicita confirmacion con numero de pedido, cliente y monto, y
+    usa el endpoint existente POST /api/sales/{id}/cancel mediante un
+    wrapper de cliente; no se modificaron contratos de API, cobro, edicion
+    ni calculos.
+A7. Pie integrado con conteo plural y total filtrado. Estado vacio y
+    busqueda sin resultados tienen copy propio y visibilidad estricta.
+A8. ScrollBar delgado, virtualizacion recycling, cabecera #F8FAFC de 11.5px,
+    lineas #F1F5F9 y sin ScrollViewer externo.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Tests del modulo PendingOrders: 13/13.
+B3. Suite .NET completa con PostgreSQL real: 4576/4576, 0 skipped.
+B4. Harness WPF 96/125 DPI: cartera poblada, vacia y busqueda sin resultados;
+    sin columna ESTADO, sin hueco derecho tras ACCIONES y con la capsula BCV
+    sin deformacion.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La validacion visual se hizo con harness fuera del repositorio; la
+    prueba manual de la instalacion final sigue siendo recomendable.
+D2. El endpoint de anulacion ya existia; el cambio agrega solo el wrapper
+    del cliente y la confirmacion de UI.
+================================================================================
