@@ -32,7 +32,7 @@ S9. Verification: Release build 0/0; .NET suite green except the known PostgreSQ
 - [x] WU2-T3 (S8) - WPF unit tests.
 - [x] WU3-T1 (S6) - Web paid sub-section, modes, timeline drawer and client exports.
 - [x] WU3-T2 (S7/S8) - Web tests and Single/RBAC coverage.
-- [ ] WU3-T3 (S9) - Build, .NET suite, web checks, visual validation.
+- [x] WU3-T3 (S9) - Build, .NET suite, web checks, visual validation.
 
 ## Log
 
@@ -46,4 +46,9 @@ L4. WU3 Web implemented: same Deudas Pendientes/Deudas Pagadas segmented section
 pm test 829/829, 
 pm run lint clean, 
 pm run build clean; .NET Release build 0/0. WPF Excel/PDF export and server-side historical exports remain open.
+
+L5. Final evidence: Release build 0/0; .NET suite 4608/4670 with only the 62 known PostgreSQL-lane environment failures and no unrelated regressions; 
+pm test 829/829, 
+pm run lint clean, 
+pm run build clean; WPF harness at 96 and 120 DPI for pending, paid and timeline states (paid invoices absent from pending). Pending: server-side CSV/XLSX/PDF export and per-debt cancellation PDF; annulled-payment status requires a data-model field not present today.
 
