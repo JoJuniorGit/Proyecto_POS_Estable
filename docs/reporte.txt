@@ -19187,3 +19187,40 @@ D1. La validacion visual se hizo con harness fuera del repositorio; la
 D2. El endpoint de anulacion ya existia; el cambio agrega solo el wrapper
     del cliente y la confirmacion de UI.
 ================================================================================
+
+ANEXO LXXXVIII - IMPORTACION: PULIDO VISUAL FINAL WPF - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. El titulo de ventana de la seccion quedo como
+    "IMPORTACION Y EXPORTACION DE PRODUCTOS".
+A2. Stepper: conectores de 28x1.5, color base #CBD5E1 y #6D28D9 cuando el
+    paso anterior esta completo; bloque verticalmente centrado con el menu.
+A3. Merge: toggle compacto de 36x20, riel #CBD5E1 y thumb blanco 14x14;
+    encendido en ambar #D97706; contenedor de 40px con padding 10,4.
+A4. Chip "Sin archivo cargado" con radio 8, fondo #F1F5F9, borde #E2E8F0,
+    texto 12px SemiBold y punto neutro #94A3B8.
+A5. Dropzone de 600px, margen interno 44,36 y contenido MaxWidth 480;
+    trazo punteado 1.5, dash 5/4, extremos redondeados. Se ajustaron
+    separaciones, boton con icono de carga, enlace de plantilla separado y
+    tira de especificaciones con tres chips.
+A6. Pie: icono informativo, titulo "Listo para importar" y subtitulo de
+    accion; eliminada la repeticion de estado. El boton Guardar incorpora
+    icono de guardado y conserva los estados disabled/enabled.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Tests de ImportProductsViewModel: 8/8.
+B3. Suite .NET completa con PostgreSQL real: 4576/4576, 0 skipped.
+B4. Harness WPF 96/125 DPI: estado vacio y estado poblado; dropzone con
+    margen interno amplio, sin colision con el borde punteado, stepper y
+    merge con proporcion compacta, y titulo en espanol.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La validacion visual se hizo con harness fuera del repositorio; la
+    prueba manual de la instalacion final sigue siendo recomendable.
+================================================================================

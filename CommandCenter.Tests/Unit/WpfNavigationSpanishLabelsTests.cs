@@ -40,7 +40,7 @@ public sealed class WpfNavigationSpanishLabelsTests
         Assert.Contains("Title = \"CONFIGURACI\u00D3N DEL SISTEMA\"", mainViewModel, StringComparison.Ordinal);
         Assert.Contains("Title = \"TASA DE CAMBIO\"", mainViewModel, StringComparison.Ordinal);
         Assert.Contains("Title = \"CAJA / REGISTRO DE CAJA\"", mainViewModel, StringComparison.Ordinal);
-        Assert.Contains("Title = \"IMPORTACI\u00D3N DE PRODUCTOS\"", mainViewModel, StringComparison.Ordinal);
+        Assert.Contains("Title = \"IMPORTACI\u00D3N Y EXPORTACI\u00D3N DE PRODUCTOS\"", mainViewModel, StringComparison.Ordinal);
         Assert.Contains("Title = \"CIERRE DIARIO\"", mainViewModel, StringComparison.Ordinal);
 
         Assert.DoesNotContain("Title = \"POINT OF SALE\"", mainViewModel, StringComparison.Ordinal);

@@ -286,7 +286,7 @@ public partial class ImportProductsViewModel : ObservableObject, IDisposable
 
             if (!HasFileData && !HasActiveFile)
             {
-                return "Sin archivo cargado.";
+                return "Listo para importar";
             }
 
             if (!HasFileData)

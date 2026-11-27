@@ -176,6 +176,46 @@
                 <Setter Property="Foreground" Value="#334155"/>
                 <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
             </Style>
+
+            <Style x:Key="ImportMergeToggleStyle" TargetType="ToggleButton">
+                <Setter Property="Width" Value="36"/>
+                <Setter Property="Height" Value="20"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Grid Width="36" Height="20">
+                                <Border x:Name="MergeTrack" Background="#CBD5E1" CornerRadius="10"/>
+                                <Border x:Name="MergeThumb" Width="14" Height="14" CornerRadius="7"
+                                        Background="#FFFFFF" HorizontalAlignment="Left"
+                                        Margin="3,0,0,0" VerticalAlignment="Center"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="MergeTrack" Property="Background" Value="#D97706"/>
+                                    <Setter TargetName="MergeThumb" Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter TargetName="MergeThumb" Property="Margin" Value="0,0,3,0"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.55"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ImportLinkTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="#6D28D9"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="TextDecorations" Value="{x:Null}"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Button}}" Value="True">
+                        <Setter Property="TextDecorations" Value="Underline"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -284,7 +324,18 @@
                         </TextBlock>
                     </StackPanel>
 
-                    <Rectangle Width="20" Height="1" Fill="#E2E8F0" Margin="10,0" VerticalAlignment="Center"/>
+                    <Rectangle Width="28" Height="1.5" Margin="10,0" VerticalAlignment="Center">
+                        <Rectangle.Style>
+                            <Style TargetType="Rectangle">
+                                <Setter Property="Fill" Value="#CBD5E1"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsStep1Complete}" Value="True">
+                                        <Setter Property="Fill" Value="#6D28D9"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Rectangle.Style>
+                    </Rectangle>
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Border>
@@ -353,7 +404,18 @@
                         </TextBlock>
                     </StackPanel>
 
-                    <Rectangle Width="20" Height="1" Fill="#E2E8F0" Margin="10,0" VerticalAlignment="Center"/>
+                    <Rectangle Width="28" Height="1.5" Margin="10,0" VerticalAlignment="Center">
+                        <Rectangle.Style>
+                            <Style TargetType="Rectangle">
+                                <Setter Property="Fill" Value="#CBD5E1"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsStep2Complete}" Value="True">
+                                        <Setter Property="Fill" Value="#6D28D9"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Rectangle.Style>
+                    </Rectangle>
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Border>
@@ -485,7 +547,7 @@
                 <Rectangle Grid.Column="3" Width="1" Height="28" Fill="#E2E8F0"
                            Margin="4,0,12,0" VerticalAlignment="Center"/>
 
-                <Border Grid.Column="4" Height="42" Padding="12,6" CornerRadius="10"
+                <Border Grid.Column="4" Height="40" Padding="10,4" CornerRadius="10"
                         BorderThickness="1" VerticalAlignment="Center" Margin="0,0,12,0"
                         ToolTip="{Binding MergeTooltip}">
                     <Border.Style>
@@ -506,7 +568,7 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <ToggleButton Grid.Column="0"
-                                      Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                      Style="{StaticResource ImportMergeToggleStyle}"
                                       IsChecked="{Binding OverwriteMerge, Mode=TwoWay}"
                                       IsEnabled="{Binding CanMutateCatalog}"
                                       AutomationProperties.AutomationId="ImportProducts_MergeToggle"
@@ -573,8 +635,12 @@
                 </Border>
 
                 <Border Grid.Column="7" Visibility="{Binding HasActiveFile, Converter={StaticResource InverseBoolToVis}}"
-                        Background="#F1F5F9" CornerRadius="999" Padding="10,5" VerticalAlignment="Center">
-                    <TextBlock Text="Sin archivo cargado" FontSize="11" Foreground="#64748B"/>
+                        Background="#F1F5F9" BorderBrush="#E2E8F0" BorderThickness="1"
+                        CornerRadius="8" Padding="10,5" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="6" Height="6" Fill="#94A3B8" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="Sin archivo cargado" FontSize="12" FontWeight="SemiBold" Foreground="#64748B"/>
+                    </StackPanel>
                 </Border>
             </Grid>
         </Border>
@@ -686,39 +752,60 @@
                 <!-- EMPTY DROPZONE -->
                 <Border x:Name="DropZoneBorder" Grid.Row="1" Margin="20" Background="#F8FAFC"
                         BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="14"
-                        MaxWidth="560"
+                        Width="600" MinWidth="560" MaxWidth="640"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
                         Visibility="{Binding HasFileData, Converter={StaticResource InverseBoolToVis}}">
                     <Grid>
-                        <Rectangle x:Name="DropZoneDashedBorder" Stroke="#CBD5E1" StrokeThickness="1"
-                                   StrokeDashArray="4 3" RadiusX="14" RadiusY="14" Fill="Transparent"
-                                   IsHitTestVisible="False"/>
+                        <Rectangle x:Name="DropZoneDashedBorder" Stroke="#CBD5E1" StrokeThickness="1.5"
+                                   StrokeDashArray="5 4" StrokeDashCap="Round"
+                                   RadiusX="14" RadiusY="14" Fill="Transparent"
+                                   SnapsToDevicePixels="True" IsHitTestVisible="False"/>
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
-                                    MaxWidth="488">
+                                    Margin="44,36" MaxWidth="480">
                             <Border Width="56" Height="56" CornerRadius="28" Background="#EDE9FE"
-                                    HorizontalAlignment="Center">
+                                    HorizontalAlignment="Center" Margin="0,0,0,16">
                                 <materialDesign:PackIcon Kind="CloudUploadOutline" Width="28" Height="28"
                                                          Foreground="#6D28D9"
                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <TextBlock Text="Arrastra tu archivo Excel (.xlsx) o CSV aquí"
                                        FontSize="16" FontWeight="Bold" Foreground="#0F172A"
-                                       TextAlignment="Center" TextWrapping="Wrap" Margin="0,16,0,0"/>
+                                       TextAlignment="Center" TextWrapping="Wrap" Margin="0,0,0,8"/>
                             <TextBlock Text="Previsualizaremos y validaremos cada SKU, costo, margen y categoría antes de tocar la base de datos."
                                        FontSize="13" Foreground="#64748B" TextAlignment="Center"
-                                       TextWrapping="Wrap" Margin="0,6,0,0"/>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,18,0,0">
-                                <Button Content="Seleccionar archivo" Command="{Binding SelectFileCommand}"
+                                       TextWrapping="Wrap" Margin="0,0,0,24"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,0">
+                                <Button Command="{Binding SelectFileCommand}"
                                         Style="{StaticResource SettingsPrimaryButtonStyle}"
-                                        Height="38" Padding="16,0" IsEnabled="{Binding CanMutateCatalog}"/>
-                                <Button Command="{Binding DownloadTemplateCommand}"
-                                        Style="{StaticResource SettingsBareButtonStyle}"
-                                        Margin="16,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="¿Necesitas el formato? Descargar plantilla"
-                                               FontSize="11.5" Foreground="#6D28D9"
-                                               TextDecorations="Underline"/>
+                                        Height="40" Padding="18,0" IsEnabled="{Binding CanMutateCatalog}">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <materialDesign:PackIcon Kind="CloudUploadOutline" Width="15" Height="15"
+                                                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                                        <TextBlock Text="Seleccionar archivo" VerticalAlignment="Center"/>
+                                    </StackPanel>
                                 </Button>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                                    <TextBlock Text="¿Necesitas el formato?" FontSize="11.5"
+                                               Foreground="#64748B" VerticalAlignment="Center"/>
+                                    <Button Command="{Binding DownloadTemplateCommand}"
+                                            Style="{StaticResource SettingsBareButtonStyle}"
+                                            Margin="4,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Descargar plantilla" FontSize="11.5"
+                                                   Style="{StaticResource ImportLinkTextStyle}"/>
+                                    </Button>
+                                </StackPanel>
                             </StackPanel>
+
+                            <Border Margin="0,24,0,0" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0"
+                                    Padding="0,14,0,0">
+                                <WrapPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="Formatos: .xlsx / .csv" FontSize="11.5" Foreground="#64748B"/>
+                                    <TextBlock Text="·" FontSize="11.5" Foreground="#CBD5E1" Margin="10,0"/>
+                                    <TextBlock Text="Validación previa sin riesgos" FontSize="11.5" Foreground="#64748B"/>
+                                    <TextBlock Text="·" FontSize="11.5" Foreground="#CBD5E1" Margin="10,0"/>
+                                    <TextBlock Text="Sobrescritura opcional por SKU" FontSize="11.5" Foreground="#64748B"/>
+                                </WrapPanel>
+                            </Border>
                         </StackPanel>
                     </Grid>
                 </Border>
@@ -925,23 +1012,39 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                    <TextBlock Text="{Binding ImportStatusText}" FontSize="13" FontWeight="SemiBold"
-                               Foreground="#334155" TextTrimming="CharacterEllipsis"/>
-                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#64748B"
-                               Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
+                <Grid Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Grid.Column="0" Kind="InformationOutline" Width="17" Height="17"
+                                             Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding ImportStatusText}" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="#0F172A" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="Seleccione o arrastre un archivo Excel/CSV para previsualizar antes de guardar."
+                                   FontSize="12" Foreground="#64748B" Margin="0,2,0,0"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </Grid>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Content="Limpiar" Command="{Binding ClearDataCommand}"
                             Style="{StaticResource SettingsSecondaryButtonStyle}"
                             Height="38" Padding="14,0" Margin="0,0,10,0"
                             Visibility="{Binding HasFileData, Converter={StaticResource BoolToVis}}"/>
-                    <Button Content="{Binding SaveButtonText}" Command="{Binding CommitImportCommand}"
+                    <Button Command="{Binding CommitImportCommand}"
                             Style="{StaticResource SettingsPrimaryButtonStyle}"
                             Height="42" Padding="20,0"
                             IsEnabled="{Binding CanCommit}"
-                            ToolTip="Guardar filas válidas en la base de datos PostgreSQL."/>
+                            ToolTip="Guardar filas válidas en la base de datos PostgreSQL.">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="ContentSave" Width="15" Height="15"
+                                                     Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                     VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding SaveButtonText}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>

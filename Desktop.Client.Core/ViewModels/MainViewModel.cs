@@ -469,7 +469,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToImportProducts()
     {
         if (!CanNavigate(WpfNavigationPolicy.Import) || _importProductsViewModel == null) return;
-        Title = "IMPORTACIÓN DE PRODUCTOS";
+        Title = "IMPORTACIÓN Y EXPORTACIÓN DE PRODUCTOS";
         CurrentViewModel = _importProductsViewModel;
     }
 
