@@ -19097,3 +19097,46 @@ D. PENDIENTE / RIESGOS
 D1. Validacion estatica de XAML y titulos; la prueba visual final en la
     instalacion sigue siendo recomendable.
 ================================================================================
+
+ANEXO LXXXVI - CHECKOUT WPF: UI ENTERPRISE, IDIOMA Y PAGOS - 2026-11-26
+================================================================================
+
+A. CAMBIOS
+A1. Modal de cobro enterprise de 640px, fondo blanco, borde #E2E8F0,
+    radio 16, sombra ambiental y backdrop #730F172A. Cabecera #F8FAFC con
+    badge, titulo Finalizar Cobro, cliente/RIF y tasa Dual, mas cierre.
+A2. KPIs de Total a Cobrar, Pagado y Restante/Vuelto con estados neutral,
+    verde, violeta, cubierto y ambar; equivalentes USD visibles solo en
+    Dual y montos con el formato configurado.
+A3. Modalidad Contado/Credito como segmented control limpio. Panel de
+    credito en acento violeta con cupo, financiado, vencimiento y estado.
+A4. Bloque Registrar pago con metodo en caja, prefijo de moneda, monto
+    tabular, conversion discreta, referencia condicional y boton Agregar
+    plano violeta; sin inputs subrayados ni boton negro.
+A5. Pagos Aplicados con columnas METODO, REFERENCIA, MONTO (Bs.S),
+    EQUIV. (USD), ACCIONES; edicion/eliminacion explicitas, doble clic
+    conservado y estado vacio limpio.
+A6. Mercancia en Custodia con contraste corregido (gris/ambar), checkbox
+    vectorial y nota de retiro; banner de validacion separado del footer.
+A7. Footer fijo con Cancelar secundario y Cobrar y Finalizar primario,
+    estados disabled/enabled y progreso de procesamiento. Se mantienen
+    todos los comandos, bindings, calculos, DTOs y reglas de credito.
+A8. POS padre: titulo PUNTO DE VENTA y barra inferior Bs.S / USD usando
+    los codigos de display del perfil; sin VES visible.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET completa con PostgreSQL real: 4545/4545, 0 skipped.
+B3. Harness WPF 96/125 DPI: Contado, multipago parcial, vuelto, cubierto
+    con custodia y Credito. Sin textos en ingles, campos recortados,
+    lineas negras de tabla ni colisiones del banner con el footer.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La validacion visual se hizo con harness fuera del repositorio; la
+    prueba manual dentro del DialogHost de la aplicacion final sigue siendo
+    recomendable para confirmar el backdrop y el tamano en cada monitor.
+================================================================================

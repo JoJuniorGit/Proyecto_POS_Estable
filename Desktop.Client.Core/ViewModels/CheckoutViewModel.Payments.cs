@@ -142,6 +142,7 @@ public class CheckoutPaymentItem
     public decimal AmountBsS { get; }
     public bool IsCash { get; }
     public decimal AmountUsd => Dto.Amount;
+    public string ReferenceDisplay => string.IsNullOrWhiteSpace(Dto.ReferenceNumber) ? "—" : Dto.ReferenceNumber!;
 
     public CheckoutPaymentItem(SalePaymentDto dto, string methodName, decimal amountBsS, bool isCash)
     {

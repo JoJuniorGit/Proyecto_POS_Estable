@@ -361,7 +361,7 @@
         <!-- ════════════════════════════════════════
              MAIN CONTENT AREA (Wrapped in DialogHost for checkouts)
              ════════════════════════════════════════ -->
-        <materialDesign:DialogHost Identifier="RootDialog">
+        <materialDesign:DialogHost Identifier="RootDialog" OverlayBackground="#730F172A">
             <!-- The currently active View (e.g. POS or Inventory or Login) -->
             <!-- Cache de vistas: MainWindow.xaml.cs reutiliza la instancia por ViewModel para
                  no reconstruir el arbol XAML en cada cambio de vista. -->

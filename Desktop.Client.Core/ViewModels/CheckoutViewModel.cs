@@ -47,7 +47,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
 
     public string CheckoutTitle => IsOverrideMode
         ? $"Liquidar / Abonar — Pedido #{OverrideSale!.Id}"
-        : "Checkout";
+        : "Finalizar Cobro";
 
     private decimal _totalUsd;
     public decimal TotalUSD
@@ -113,6 +113,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     public decimal SubtotalLocal => _sale.SubtotalBsS > 0m ? _sale.SubtotalBsS : PricingHelper.ToBsS(_sale.Subtotal, CurrentExchangeRate);
 
     public decimal PaidAmountUsd => Payments.Sum(p => p.AmountUsd);
+    public bool HasPaidAmount => PaidAmountLocal > 0m;
     
     public decimal PaidAmountLocal => Payments.Sum(p => p.AmountBsS);
 
@@ -138,6 +139,14 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     /// como respaldo de presentación) — elimina el desfase contra la cifra Bs.S que se cobra.</summary>
     public decimal RemainingUsdEffective => PricingHelper.ToUSD(RemainingBalanceLocal, ResolvePreviewRate());
 
+    public bool HasChange => IsPreviewFresh && _preview is { ChangeDueBsS: > 0m };
+    public bool IsRemainingCovered => !HasChange && RemainingBalanceLocal <= 0.005m;
+    public decimal ChangeDueLocal => IsPreviewFresh ? _preview!.ChangeDueBsS : 0m;
+    public decimal ChangeDueUsd => IsPreviewFresh ? _preview!.ChangeDueUSD : 0m;
+    public decimal RemainingOrChangeLocal => HasChange ? ChangeDueLocal : RemainingBalanceLocal;
+    public decimal RemainingOrChangeUsd => HasChange ? ChangeDueUsd : RemainingUsdEffective;
+    public string RemainingLabel => HasChange ? "VUELTO A ENTREGAR" : "RESTANTE";
+
     public decimal RoundingAdjustment => IsPreviewFresh ? _preview!.RoundingAdjustment : 0m;
 
     public ObservableCollection<CheckoutPaymentItem> Payments { get; } = new();
@@ -158,10 +167,23 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         {
             if (SetProperty(ref _selectedMethod, value))
             {
+                OnPropertyChanged(nameof(SelectedPaymentCurrencySymbol));
+                OnPropertyChanged(nameof(PaymentEntryTitle));
                 SetAmountToRemainingBalance();
             }
         }
     }
+
+    public string SelectedPaymentCurrencySymbol => SelectedMethod?.Currency switch
+    {
+        "USD" => "$",
+        "VES" or "Bs.S" => "Bs.S",
+        _ => string.IsNullOrWhiteSpace(SelectedMethod?.Currency) ? "Bs.S" : SelectedMethod!.Currency
+    };
+
+    public string PaymentEntryTitle => string.IsNullOrWhiteSpace(SelectedMethod?.Currency)
+        ? "Registrar pago"
+        : $"Registrar pago ({SelectedPaymentCurrencySymbol})";
 
     private string _amountBsSText = "0.00";
     public string AmountBsSText
@@ -290,6 +312,31 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     public string CustomerDisplay => string.IsNullOrWhiteSpace(_sale.CustomerName)
         ? "Sin cliente"
         : _sale.CustomerName!;
+
+    public string CustomerContextDisplay
+    {
+        get
+        {
+            if (IsDefaultCustomer)
+            {
+                return "CLIENTE GENERAL · V-00000000";
+            }
+
+            var cedula = _sale.CustomerCedula;
+            if (string.IsNullOrWhiteSpace(cedula))
+            {
+                cedula = _sale.Customer?.CedulaOrRif;
+            }
+
+            return $"{CustomerDisplay} · {(string.IsNullOrWhiteSpace(cedula) ? "—" : cedula)}";
+        }
+    }
+
+    public string ExchangeRateContextDisplay =>
+        $"1 {DisplayCode(CurrencyDisplay.PrimaryCurrencyCode)} = {CurrencyDisplay.Number(CurrentExchangeRate, 2)} {DisplayCode(CurrencyDisplay.LocalCurrencyCode)}";
+
+    private static string DisplayCode(string? code) =>
+        string.Equals(code, "VES", System.StringComparison.OrdinalIgnoreCase) ? "Bs.S" : code ?? string.Empty;
 
     /// <summary>
     /// Monto efectivo que se financia. Con preview fresco rige el saldo canónico del servidor;
@@ -470,6 +517,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     private void NotifyCreditDependentProperties()
     {
         OnPropertyChanged(nameof(CustomerDisplay));
+        OnPropertyChanged(nameof(CustomerContextDisplay));
         OnPropertyChanged(nameof(HasRegisteredCustomer));
         OnPropertyChanged(nameof(CanUseCreditMode));
         OnPropertyChanged(nameof(FinancedUSD));
@@ -537,6 +585,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
         OnPropertyChanged(nameof(ValidationHelperMessage));
         OnPropertyChanged(nameof(CustomerDisplay));
+        OnPropertyChanged(nameof(CustomerContextDisplay));
         OnPropertyChanged(nameof(HasRegisteredCustomer));
         OnPropertyChanged(nameof(CreditValidationMessage));
         FinalizeSaleCommand.NotifyCanExecuteChanged();
@@ -558,9 +607,17 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
     {
         OnPropertyChanged(nameof(PaidAmountUsd));
         OnPropertyChanged(nameof(PaidAmountLocal));
+        OnPropertyChanged(nameof(HasPaidAmount));
         OnPropertyChanged(nameof(TotalAmountLocal));
         OnPropertyChanged(nameof(RemainingBalanceUsd));
         OnPropertyChanged(nameof(RemainingBalanceLocal));
+        OnPropertyChanged(nameof(HasChange));
+        OnPropertyChanged(nameof(IsRemainingCovered));
+        OnPropertyChanged(nameof(ChangeDueLocal));
+        OnPropertyChanged(nameof(ChangeDueUsd));
+        OnPropertyChanged(nameof(RemainingOrChangeLocal));
+        OnPropertyChanged(nameof(RemainingOrChangeUsd));
+        OnPropertyChanged(nameof(RemainingLabel));
         OnPropertyChanged(nameof(RoundingAdjustment));
         OnPropertyChanged(nameof(TotalUsdEffective));
         OnPropertyChanged(nameof(RemainingUsdEffective));
@@ -676,6 +733,14 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         OnPropertyChanged(nameof(RemainingBalanceLocal));
         OnPropertyChanged(nameof(TotalUsdEffective));
         OnPropertyChanged(nameof(RemainingUsdEffective));
+        OnPropertyChanged(nameof(HasPaidAmount));
+        OnPropertyChanged(nameof(HasChange));
+        OnPropertyChanged(nameof(IsRemainingCovered));
+        OnPropertyChanged(nameof(ChangeDueLocal));
+        OnPropertyChanged(nameof(ChangeDueUsd));
+        OnPropertyChanged(nameof(RemainingOrChangeLocal));
+        OnPropertyChanged(nameof(RemainingOrChangeUsd));
+        OnPropertyChanged(nameof(RemainingLabel));
         OnPropertyChanged(nameof(FinalizeSaleButtonLabel));
         OnPropertyChanged(nameof(ValidationHelperMessage));
         FinalizeSaleCommand.NotifyCanExecuteChanged();
