@@ -211,3 +211,48 @@ export function extractCreditOverLimitContext(error) {
     availableCreditUSD: Number.isFinite(availableCreditUSD) ? availableCreditUSD : 0,
   };
 }
+
+/**
+ * CxC (Deudas Pagadas): query server-side del historial realizado. Fechas ISO locales,
+ * método y búsqueda; la paginación es 1-based.
+ */
+export function buildPaidReceivablesQuery(path, filter = {}) {
+  const parts = [];
+  const search = typeof filter.search === 'string' ? filter.search.trim() : '';
+  if (search) parts.push(`search=${encodeURIComponent(search)}`);
+  if (filter.paidFrom) parts.push(`paidFrom=${encodeURIComponent(filter.paidFrom)}`);
+  if (filter.paidTo) parts.push(`paidTo=${encodeURIComponent(filter.paidTo)}`);
+  if (filter.paymentMethodId !== null && filter.paymentMethodId !== undefined && filter.paymentMethodId !== '') {
+    parts.push(`paymentMethodId=${encodeURIComponent(filter.paymentMethodId)}`);
+  }
+  if (filter.page) parts.push(`page=${encodeURIComponent(filter.page)}`);
+  if (filter.pageSize) parts.push(`pageSize=${encodeURIComponent(filter.pageSize)}`);
+  return `${path}${parts.length > 0 ? `?${parts.join('&')}` : ''}`;
+}
+
+/** Listado paginado de deudas 100% pagadas con KPIs realizados. */
+export async function getPaidReceivables(filter = {}, signal) {
+  return await api.get(buildPaidReceivablesQuery('/api/receivables/paid', filter), signal);
+}
+
+/** Cronología de abonos de una obligación (pagada o parcial) con tasas congeladas. */
+export async function getReceivablePaymentTimeline(obligationId, signal) {
+  return await api.get(`/api/receivables/${obligationId}/payments`, signal);
+}
+
+/** Bitácora plana de abonos de deudas pagadas, con imputaciones para evitar doble conteo. */
+export async function getPaidReceivablePayments(filter = {}, signal) {
+  return await api.get(buildPaidReceivablesQuery('/api/receivables/paid/payments', filter), signal);
+}
+
+/** Exportación server-side del historial filtrado (csv, xlsx, pdf). */
+export async function getPaidReceivablesExport(filter = {}, mode = 'invoice', format = 'csv', signal) {
+  const path = buildPaidReceivablesQuery('/api/receivables/paid/export', { ...filter, page: null, pageSize: null });
+  const separator = path.includes('?') ? '&' : '?';
+  return await api.getBlob(`${path}${separator}format=${encodeURIComponent(format)}&mode=${encodeURIComponent(mode)}`, signal);
+}
+
+/** Constancia de cancelación / estado de cuenta saldado en PDF. */
+export async function getReceivableStatementPdf(obligationId, signal) {
+  return await api.getBlob(`/api/receivables/${obligationId}/payments/pdf`, signal);
+}

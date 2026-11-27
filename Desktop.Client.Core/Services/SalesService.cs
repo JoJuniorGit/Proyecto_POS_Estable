@@ -573,6 +573,145 @@ public class SalesService : ISalesService
             ?? throw new System.Exception("No se pudo leer la cartera de cuentas por cobrar.");
     }
 
+    public async Task<PaidReceivablesClientDto> GetPaidReceivablesAsync(
+        PaidReceivablesFilterClientDto filter,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        filter ??= new PaidReceivablesFilterClientDto();
+        string path = BuildPaidReceivablesQuery("api/receivables/paid", filter);
+        using var response = await _httpClient.GetAsync(path, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo cargar el historial de deudas pagadas.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<PaidReceivablesClientDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer el historial de deudas pagadas.");
+    }
+
+    public async Task<ReceivablePaymentTimelineClientDto> GetReceivablePaymentTimelineAsync(
+        int obligationId,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync($"api/receivables/{obligationId}/payments", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo cargar la cronología de abonos.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<ReceivablePaymentTimelineClientDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer la cronología de abonos.");
+    }
+
+    public async Task<PaidReceivablePaymentsClientDto> GetPaidReceivablePaymentsAsync(
+        PaidReceivablesFilterClientDto filter,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        filter ??= new PaidReceivablesFilterClientDto();
+        string path = BuildPaidReceivablesQuery("api/receivables/paid/payments", filter);
+        using var response = await _httpClient.GetAsync(path, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo cargar la bitácora de abonos.");
+        }
+
+        return await response.Content.ReadFromJsonAsync<PaidReceivablePaymentsClientDto>(cancellationToken: cancellationToken)
+            ?? throw new System.Exception("No se pudo leer la bitácora de abonos.");
+    }
+
+    public async Task<ExportFileClientDto> GetPaidReceivablesExportAsync(
+        PaidReceivablesFilterClientDto filter,
+        string mode,
+        string format,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        filter ??= new PaidReceivablesFilterClientDto();
+        string path = BuildPaidReceivablesQuery("api/receivables/paid/export", filter);
+        path += (path.Contains('?') ? "&" : "?") + $"format={Uri.EscapeDataString(format)}&mode={Uri.EscapeDataString(mode)}";
+        using var response = await _httpClient.GetAsync(path, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo exportar el historial de deudas pagadas.");
+        }
+
+        return await ReadExportFileAsync(response, $"DeudasPagadas.{format}", cancellationToken);
+    }
+
+    public async Task<ExportFileClientDto> GetReceivableStatementPdfAsync(
+        int obligationId,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync($"api/receivables/{obligationId}/payments/pdf", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo generar la constancia de cancelación.");
+        }
+
+        return await ReadExportFileAsync(response, $"Constancia_CxC_{obligationId}.pdf", cancellationToken);
+    }
+
+    private static async Task<ExportFileClientDto> ReadExportFileAsync(
+        HttpResponseMessage response,
+        string fallbackFileName,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        byte[] content = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        string fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+            ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+            ?? fallbackFileName;
+
+        return new ExportFileClientDto
+        {
+            Content = content,
+            ContentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream",
+            FileName = fileName
+        };
+    }
+
+    private static string BuildPaidReceivablesQuery(string path, PaidReceivablesFilterClientDto filter)
+    {
+        var query = new System.Text.StringBuilder(path);
+        var separator = '?';
+
+        void Append(string name, string value)
+        {
+            query.Append(separator).Append(name).Append('=').Append(value);
+            separator = '&';
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            Append("search", Uri.EscapeDataString(filter.Search.Trim()));
+        }
+
+        if (filter.PaidFrom.HasValue)
+        {
+            Append("paidFrom", filter.PaidFrom.Value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (filter.PaidTo.HasValue)
+        {
+            Append("paidTo", filter.PaidTo.Value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (filter.PaymentMethodId.HasValue)
+        {
+            Append("paymentMethodId", filter.PaymentMethodId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (filter.Page.HasValue)
+        {
+            Append("page", filter.Page.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (filter.PageSize.HasValue)
+        {
+            Append("pageSize", filter.PageSize.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        return query.ToString();
+    }
+
     public async Task<int> CompleteCreditSaleAsync(
         int saleId,
         decimal exchangeRate,
@@ -822,3 +961,4 @@ public class SalesHistoryResponse
     public IEnumerable<SaleHistoryDto> Items { get; set; } = new List<SaleHistoryDto>();
     public int TotalCount { get; set; }
 }
+

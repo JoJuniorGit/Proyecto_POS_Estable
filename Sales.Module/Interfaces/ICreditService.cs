@@ -54,6 +54,30 @@ public interface ICreditService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// CxC (historial realizado): obligaciones 100% pagadas con su recaudacion historica,
+    /// filtros server-side y bloque Summary para los KPIs del periodo.
+    /// </summary>
+    Task<PaidReceivablesListDto> GetPaidReceivablesAsync(
+        PaidReceivablesFilterDto filter,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cronologia ascendente de abonos de una obligacion (pagada o parcial). Conserva la tasa
+    /// historica de cada abono y el saldo exacto resultante hasta cero.
+    /// </summary>
+    Task<ReceivablePaymentTimelineDto> GetReceivablePaymentTimelineAsync(
+        int obligationId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Bitacora plana paginada de abonos de deudas pagadas, con sus imputaciones para evitar
+    /// doble conteo de un pago FIFO.
+    /// </summary>
+    Task<PaidReceivablePaymentsListDto> GetPaidReceivablePaymentsAsync(
+        PaidReceivablesFilterDto filter,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// H1 (T6, S3/S4): barrido diario de cartera. Materializa como Vencida las obligaciones
     /// abiertas (Vigente/Parcial) vencidas más allá de la gracia del cliente y aplica la
     /// suspensión/reactivación automática por mora a los clientes con crédito habilitado

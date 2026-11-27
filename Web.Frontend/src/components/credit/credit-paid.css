@@ -1,0 +1,682 @@
+/* CxC — Deudas Pagadas (historial realizado). Paleta institucional vía tokens. */
+
+.credit-paid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+
+.credit-paid-toolbar,
+.credit-paid-table-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.credit-paid-toolbar {
+  padding: 12px 14px;
+}
+
+.credit-paid-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.credit-paid-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 260px;
+  min-width: 220px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+}
+
+.credit-paid-search input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+}
+
+.credit-paid-clear {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+}
+
+.credit-paid-date {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: var(--bg-surface);
+}
+
+.credit-paid-date input {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  min-width: 104px;
+}
+
+.credit-paid-method {
+  height: 38px;
+  min-width: 165px;
+  max-width: 210px;
+}
+
+.credit-paid-second-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-color);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.credit-paid-presets,
+.credit-paid-exports,
+.credit-paid-mode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.credit-paid-chip,
+.credit-paid-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.credit-paid-chip:hover,
+.credit-paid-export:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-primary-light);
+}
+
+.credit-paid-export--xlsx {
+  color: #047857;
+  border-color: #A7F3D0;
+  background: #ECFDF5;
+}
+
+.credit-paid-export--pdf {
+  color: #B91C1C;
+  border-color: #FECACA;
+  background: #FEF2F2;
+}
+
+.credit-paid-mode {
+  padding: 3px;
+  margin-left: 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+}
+
+.credit-paid-mode button {
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.credit-paid-mode button.is-active {
+  background: var(--accent-primary);
+  color: #FFFFFF;
+}
+
+.credit-paid-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.credit-paid-kpi {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 16px 12px 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.credit-paid-kpi::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--accent-primary);
+}
+
+.credit-paid-kpi--green::before { background: #16A34A; }
+.credit-paid-kpi--purple::before { background: #6D28D9; }
+.credit-paid-kpi--blue::before { background: #0284C7; }
+.credit-paid-kpi--slate::before { background: #64748B; }
+
+.credit-paid-kpi span {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.credit-paid-kpi strong {
+  font-size: 1.35rem;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.credit-paid-kpi small {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.credit-paid-kpi--green small { color: #15803D; }
+
+.credit-paid-table-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 360px;
+  overflow: hidden;
+}
+
+.credit-paid-table-wrap {
+  overflow: auto;
+  flex: 1;
+}
+
+.credit-paid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.credit-paid-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.credit-paid-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.credit-paid-table tbody tr:hover { background: var(--bg-primary); }
+.credit-paid-table .text-right { text-align: right; }
+.credit-paid-table .text-center { text-align: center; }
+
+.credit-paid-sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 400;
+}
+
+.credit-paid-customer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.credit-paid-customer > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.credit-paid-customer strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credit-paid-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.credit-paid-paid-date { color: #15803D; font-size: 0.76rem; }
+
+.credit-paid-pill,
+.credit-paid-tag,
+.credit-paid-status {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.credit-paid-pill,
+.credit-paid-tag {
+  background: var(--accent-primary-light);
+  color: var(--accent-primary);
+}
+
+.credit-paid-status {
+  background: #DCFCE7;
+  color: #15803D;
+}
+
+.credit-paid-status.is-partial {
+  background: var(--accent-primary-light);
+  color: var(--accent-primary);
+}
+
+.credit-paid-credited { color: #15803D; font-weight: 700; }
+
+.credit-paid-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.credit-paid-soft-btn {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #DDD6FE;
+  border-radius: 7px;
+  background: #F5F3FF;
+  color: #6D28D9;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.credit-paid-soft-btn:hover {
+  background: #6D28D9;
+  border-color: #6D28D9;
+  color: #FFFFFF;
+}
+
+.credit-paid-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 36px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.credit-paid-state--error { color: #B91C1C; }
+
+.credit-paid-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #FAFAFA;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.credit-paid-pagination > div { display: flex; gap: 6px; }
+
+.credit-paid-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+}
+
+.credit-paid-alert--error {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #B91C1C;
+}
+
+/* Drawer lateral */
+.credit-paid-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 23, 42, 0.30);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.credit-paid-drawer {
+  width: min(540px, 100vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-color);
+  box-shadow: -12px 0 30px rgba(15, 23, 42, 0.12);
+}
+
+.credit-paid-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px 20px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.credit-paid-drawer-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.credit-paid-drawer-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--accent-primary-light);
+  color: var(--accent-primary);
+}
+
+.credit-paid-drawer-title > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.credit-paid-drawer-title strong { font-size: 1rem; color: var(--text-primary); }
+.credit-paid-drawer-title span { font-size: 0.72rem; color: var(--text-muted); }
+
+.credit-paid-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.credit-paid-drawer-body {
+  flex: 1;
+  overflow: auto;
+  padding: 16px 20px;
+}
+
+.credit-paid-summary-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.credit-paid-summary-bar > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+}
+
+.credit-paid-summary-bar span {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.credit-paid-summary-bar strong {
+  font-size: 0.98rem;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.credit-paid-summary-bar .is-settled { color: #15803D; }
+
+.credit-paid-timeline {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.credit-paid-timeline li {
+  position: relative;
+  padding-left: 18px;
+}
+
+.credit-paid-timeline li::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 18px;
+  bottom: -18px;
+  width: 2px;
+  background: var(--border-color);
+}
+
+.credit-paid-timeline li:last-child::before { display: none; }
+
+.credit-paid-timeline-dot {
+  position: absolute;
+  left: 0;
+  top: 14px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #6D28D9;
+}
+
+.credit-paid-timeline li.is-final .credit-paid-timeline-dot { background: #16A34A; }
+
+.credit-paid-timeline-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: var(--bg-surface);
+}
+
+.credit-paid-timeline-card header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.credit-paid-timeline-card header strong { font-size: 0.78rem; color: var(--text-primary); }
+.credit-paid-timeline-card header span { font-size: 0.68rem; color: var(--text-muted); }
+.credit-paid-timeline-card header em {
+  font-style: normal;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  background: var(--accent-primary-light);
+  color: var(--accent-primary);
+}
+
+.credit-paid-timeline-card p {
+  margin: 5px 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.credit-paid-timeline-money {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.credit-paid-timeline-money > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.credit-paid-timeline-money strong { font-size: 0.82rem; color: var(--text-primary); }
+.credit-paid-timeline-money span { font-size: 0.66rem; color: var(--text-muted); }
+.credit-paid-timeline-money .credit-paid-credited { text-align: right; }
+.credit-paid-timeline-money .credit-paid-credited strong { color: #15803D; }
+
+.credit-paid-timeline-card footer {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-primary);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.credit-paid-drawer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 20px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-color);
+}
+
+@media (max-width: 900px) {
+  .credit-paid-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .credit-paid-filters { align-items: stretch; }
+  .credit-paid-search { flex-basis: 100%; }
+}
+
+@media (max-width: 640px) {
+  .credit-paid-kpis { grid-template-columns: 1fr; }
+  .credit-paid-second-row { align-items: flex-start; }
+  .credit-paid-drawer { width: 100vw; }
+  .credit-paid-summary-bar { grid-template-columns: 1fr; }
+  .credit-paid-table { font-size: 0.72rem; }
+}
+
+/* Subsecciones CxC (Deudas Pendientes / Deudas Pagadas) */
+.credit-sections {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+}
+
+.credit-section-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.credit-section-tab span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.credit-section-tab:hover { background: var(--bg-surface); }
+
+.credit-section-tab.is-active {
+  background: var(--accent-primary);
+  color: #FFFFFF;
+}
+
+.credit-section-tab.is-active span {
+  background: rgba(255, 255, 255, 0.22);
+  color: #FFFFFF;
+}
+
+.credit-section-hidden { display: none; }
+.credit-paid-section { display: block; }
+
+.credit-paid-timeline-card header em.credit-paid-void {
+  background: #FEF2F2;
+  color: #DC2626;
+}

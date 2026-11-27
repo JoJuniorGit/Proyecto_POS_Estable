@@ -13,6 +13,7 @@ import Modal from '../components/ui/Modal';
 import CreditPaymentModal from '../components/credit/CreditPaymentModal';
 import CreditStatementModal from '../components/credit/CreditStatementModal';
 import CreditReturnModal from '../components/credit/CreditReturnModal';
+import CreditReceivablesPaidSection from '../components/credit/CreditReceivablesPaidSection';
 import {
   canReturnReceivable,
   formatDateVe,
@@ -74,12 +75,16 @@ function CreditReceivablesPageContent() {
   const [loadError, setLoadError] = useState(null);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [status, setStatus] = useState('Todos');
+  const [status, setStatus] = useState('Todas las pendientes');
   const [overdueOnly, setOverdueOnly] = useState(false);
   const debouncedSearch = useDebounce(searchQuery, 300);
 
   const [successMessage, setSuccessMessage] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [activeSection, setActiveSection] = useState('pending');
+  const [paidCount, setPaidCount] = useState(0);
+  const [paidRefreshKey, setPaidRefreshKey] = useState(0);
+  const [settledNotice, setSettledNotice] = useState(null);
 
   const [paymentRow, setPaymentRow] = useState(null);
   const [statementRow, setStatementRow] = useState(null);
@@ -94,7 +99,7 @@ function CreditReceivablesPageContent() {
     setLoadError(null);
     try {
       const result = await getCreditReceivables({
-        status: status === 'Todos' ? null : status,
+        status: status === 'Todas las pendientes' ? null : (status === 'En mora' ? 'Vencida' : status),
         overdueOnly,
         search: debouncedSearch,
       });
@@ -105,10 +110,12 @@ function CreditReceivablesPageContent() {
         openCount: Number(result?.openCount || 0),
         todayRate: Number(result?.todayRate || 0),
       });
+      return result?.items || [];
     } catch (err) {
       console.error('[CreditReceivablesPage] Error al cargar la cartera CxC:', err);
       setLoadError(err?.message || 'No se pudo cargar la cartera de cuentas por cobrar.');
       setItems([]);
+      return [];
     } finally {
       setIsLoading(false);
     }
@@ -122,13 +129,20 @@ function CreditReceivablesPageContent() {
 
   const handleCancelFilters = () => {
     setSearchQuery('');
-    setStatus('Todos');
+    setStatus('Todas las pendientes');
     setOverdueOnly(false);
   };
 
   const handlePaymentSuccess = async (result) => {
+    const rowBeingPaid = paymentRow;
     setPaymentRow(null);
-    await loadList();
+    const loadedItems = await loadList();
+    setPaidRefreshKey((current) => current + 1);
+    const settled = Boolean(rowBeingPaid)
+      && !(loadedItems || []).some((item) => item.receivableId === rowBeingPaid.receivableId);
+    setSettledNotice(settled
+      ? `Factura ${invoiceLabel(rowBeingPaid)} saldada al 100%. Disponible en Deudas Pagadas.`
+      : null);
     setActionError(null);
     setSuccessMessage({
       text: `Abono registrado (comprobante N° ${result?.paymentId ?? '—'}): ${formatPrimary(result?.amountUSD || 0)} `
@@ -232,6 +246,29 @@ function CreditReceivablesPageContent() {
         </button>
       </div>
 
+      <div className="credit-sections" role="tablist" aria-label="Secciones de cuentas por cobrar">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeSection === 'pending'}
+          className={`credit-section-tab${activeSection === 'pending' ? ' is-active' : ''}`}
+          onClick={() => setActiveSection('pending')}
+        >
+          Deudas Pendientes <span>{totals.openCount}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeSection === 'paid'}
+          className={`credit-section-tab${activeSection === 'paid' ? ' is-active' : ''}`}
+          onClick={() => setActiveSection('paid')}
+        >
+          Deudas Pagadas <span>{paidCount}</span>
+        </button>
+      </div>
+
+      {activeSection === 'pending' && (
+        <>
       {/* ── 2. Métricas de la cartera filtrada ── */}
       <div className="credit-metrics">
         <div className="credit-metric-card">
@@ -279,7 +316,7 @@ function CreditReceivablesPageContent() {
             aria-label="Estado de la obligación"
           >
             {RECEIVABLE_STATUS_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option === 'Todos' ? 'Todos los estados' : option}</option>
+              <option key={option} value={option}>{option === 'Todas las pendientes' ? 'Todas las pendientes' : option}</option>
             ))}
           </select>
         </div>
@@ -311,6 +348,18 @@ function CreditReceivablesPageContent() {
             >
               <Download size={14} /> Descargar comprobante de abono
             </button>
+          )}
+          {settledNotice && (
+            <>
+              <span className="text-xs">{settledNotice}</span>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => { setActiveSection('paid'); setSettledNotice(null); }}
+              >
+                Ver en Pagadas
+              </button>
+            </>
           )}
         </div>
       )}
@@ -349,7 +398,6 @@ function CreditReceivablesPageContent() {
                   <th>Emisión</th>
                   <th>Vencimiento</th>
                   <th className="text-right">Saldo {primaryLabel}</th>
-                  {isDual && <th className="text-right">Saldo hoy {localLabel}</th>}
                   <th>Estado</th>
                   <th className="text-right">Acciones</th>
                 </tr>
@@ -367,10 +415,14 @@ function CreditReceivablesPageContent() {
                       {formatDateVe(row.dueDateUtc)}
                       {row.isOverdue && <span className="credit-overdue-badge">En mora</span>}
                     </td>
-                    <td className="text-right credit-amount">{formatPrimary(row.balanceUSD)}</td>
-                    {isDual && (
-                      <td className="text-right credit-amount">{formatSecondary(row.balanceTodayBsS || 0)}</td>
-                    )}
+                    <td className="text-right credit-amount">
+                      <span className="credit-amount-stack">
+                        <span className="credit-amount-primary">{formatPrimary(row.balanceUSD)}</span>
+                        {isDual && (
+                          <span className="credit-amount-secondary">{formatSecondary(row.balanceTodayBsS || 0)}</span>
+                        )}
+                      </span>
+                    </td>
                     <td><span className={statusBadgeClass(row)}>{row.status}</span></td>
                     <td>
                       <div className="credit-row-actions">
@@ -444,14 +496,13 @@ function CreditReceivablesPageContent() {
                 <div className="credit-mobile-card-grid">
                   <div className="d-flex justify-between">
                     <span className="text-muted">Saldo {primaryLabel}</span>
-                    <strong>{formatPrimary(row.balanceUSD)}</strong>
+                    <span className="credit-amount-stack">
+                      <strong className="credit-amount-primary">{formatPrimary(row.balanceUSD)}</strong>
+                      {isDual && (
+                        <span className="credit-amount-secondary">{formatSecondary(row.balanceTodayBsS || 0)}</span>
+                      )}
+                    </span>
                   </div>
-                  {isDual && (
-                    <div className="d-flex justify-between">
-                      <span className="text-muted">Saldo hoy {localLabel}</span>
-                      <strong>{formatSecondary(row.balanceTodayBsS || 0)}</strong>
-                    </div>
-                  )}
                   <div className="d-flex justify-between">
                     <span className="text-muted">Vencimiento</span>
                     <span>{formatDateVe(row.dueDateUtc)}{row.isOverdue ? ' ⚠️' : ''}</span>
@@ -557,6 +608,14 @@ function CreditReceivablesPageContent() {
           </div>
         </Modal>
       )}
+        </>
+      )}
+
+      <div className={activeSection === 'paid' ? 'credit-paid-section' : 'credit-section-hidden'}>
+        <CreditReceivablesPaidSection refreshKey={paidRefreshKey} onCountChange={setPaidCount} />
+      </div>
     </div>
   );
 }
+
+

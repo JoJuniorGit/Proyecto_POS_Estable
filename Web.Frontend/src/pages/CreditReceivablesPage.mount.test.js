@@ -43,6 +43,8 @@ describe('CreditReceivablesPage real mount [T5]', () => {
     assert.match(html, /Tasa del día/);
     assert.match(html, /Solo en mora/);
     assert.match(html, /Buscar por cliente, cédula\/RIF o factura/);
+    assert.match(html, /Deudas Pendientes/);
+    assert.match(html, /Deudas Pagadas/);
   });
 
   it('2. renders for an Admin with the return action available', () => {

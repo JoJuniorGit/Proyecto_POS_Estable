@@ -139,7 +139,8 @@ public class CreditReceivablesListTests
 
         var list = await CreateService(context).GetCreditReceivablesAsync(new CreditReceivablesFilterDto());
 
-        Assert.Equal(6, list.Items.Count);
+        Assert.Equal(3, list.Items.Count);
+        Assert.DoesNotContain(list.Items, item => item.Status is "Pagada" or "Anulada");
         Assert.Equal(210m, list.TotalOpenUSD);
         Assert.Equal(40m, list.TotalOverdueUSD);
         Assert.Equal(3, list.OpenCount);

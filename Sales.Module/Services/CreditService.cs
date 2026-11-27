@@ -324,6 +324,14 @@ public partial class CreditService : ICreditService
     {
         var query = _context.Receivables.AsNoTracking().AsQueryable();
 
+        // Aislamiento estricto (Deudas Pendientes): la cartera operativa solo contiene deuda
+        // viva. Pagadas y anuladas viven en la subseccion historica dedicada.
+        query = query.Where(receivable =>
+            (receivable.Status == ReceivableStatus.Vigente
+                || receivable.Status == ReceivableStatus.Parcial
+                || receivable.Status == ReceivableStatus.Vencida)
+            && receivable.BalanceUSD > BalanceToleranceUsd);
+
         if (filter.CustomerId.HasValue)
         {
             int customerId = filter.CustomerId.Value;
@@ -483,6 +491,13 @@ public partial class CreditService : ICreditService
             .Include(receivable => receivable.Sale)
             .Include(receivable => receivable.Customer)
             .AsQueryable();
+
+        // Aislamiento estricto (Deudas Pendientes): nunca se mezcla deuda pagada/anulada.
+        query = query.Where(receivable =>
+            (receivable.Status == ReceivableStatus.Vigente
+                || receivable.Status == ReceivableStatus.Parcial
+                || receivable.Status == ReceivableStatus.Vencida)
+            && receivable.BalanceUSD > BalanceToleranceUsd);
 
         if (filter.CustomerId.HasValue)
         {

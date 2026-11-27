@@ -47,8 +47,16 @@ public class ReceivablePayment
     [MaxLength(100)]
     public string? IdempotencyKey { get; set; }
 
-    public int? ReceivedByUserId { get; set; }
+public int? ReceivedByUserId { get; set; }
     public User? ReceivedByUser { get; set; }
+
+    /// <summary>Abono anulado: conserva la fila para trazabilidad pero no computa en totales.</summary>
+    public bool IsVoided { get; set; }
+
+    public DateTime? VoidedAtUtc { get; set; }
+
+    [MaxLength(200)]
+    public string? VoidReason { get; set; }
 
     // Paso 14 (S7): snapshot inmutable de la regla de comision resuelta al recibir el abono.
     // La comision es un costo del negocio (nunca se carga al cliente). FeeConfigured distingue
@@ -82,3 +90,4 @@ public class ReceivablePayment
 
     public List<CreditPaymentAllocation> Allocations { get; set; } = new();
 }
+

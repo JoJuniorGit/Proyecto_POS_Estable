@@ -1,0 +1,726 @@
+<UserControl x:Class="Desktop.Client.Views.CreditReceivablesPaidView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             mc:Ignorable="d"
+             d:DesignHeight="760" d:DesignWidth="1280"
+             FontFamily="{DynamicResource MaterialDesignFont}"
+             TextElement.FontSize="13"
+             TextOptions.TextFormattingMode="Ideal"
+             TextOptions.TextRenderingMode="Auto">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="SettingsStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+            <Style x:Key="PaidCardStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="12"/>
+            </Style>
+
+            <Style x:Key="PaidKpiCardStyle" TargetType="Border" BasedOn="{StaticResource PaidCardStyle}">
+                <Setter Property="Padding" Value="0"/>
+            </Style>
+
+            <Style x:Key="PaidKpiAccentStyle" TargetType="Border">
+                <Setter Property="Width" Value="4"/>
+                <Setter Property="HorizontalAlignment" Value="Left"/>
+                <Setter Property="CornerRadius" Value="12,0,0,12"/>
+            </Style>
+
+            <Style x:Key="PaidColumnHeaderStyle" TargetType="DataGridColumnHeader"
+                   BasedOn="{StaticResource SettingsTableHeaderStyle}">
+                <Setter Property="FontSize" Value="10.5"/>
+                <Setter Property="Padding" Value="12,10"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            </Style>
+
+            <Style x:Key="PaidRightColumnHeaderStyle" TargetType="DataGridColumnHeader"
+                   BasedOn="{StaticResource PaidColumnHeaderStyle}">
+                <Setter Property="HorizontalContentAlignment" Value="Right"/>
+            </Style>
+
+            <Style x:Key="PaidCenterColumnHeaderStyle" TargetType="DataGridColumnHeader"
+                   BasedOn="{StaticResource PaidColumnHeaderStyle}">
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="PaidRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource SettingsTableRowStyle}">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+            </Style>
+
+            <Style x:Key="PaidCellStyle" TargetType="DataGridCell" BasedOn="{StaticResource SettingsTableCellStyle}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            </Style>
+
+            <Style x:Key="PaidSegmentButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="Padding" Value="12,0"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="FontSize" Value="11.5"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="SegmentBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="SegmentBorder" Property="Background" Value="#FFFFFF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PaidChipButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="Padding" Value="10,0"/>
+                <Setter Property="Background" Value="#F8FAFC"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Margin" Value="0,0,6,0"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="ChipBorder" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="999"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="ChipBorder" Property="Background" Value="#F5F3FF"/>
+                                    <Setter TargetName="ChipBorder" Property="BorderBrush" Value="#DDD6FE"/>
+                                    <Setter Property="Foreground" Value="#6D28D9"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PaidSoftPrimaryButtonStyle" TargetType="Button">
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Padding" Value="10,0"/>
+                <Setter Property="Background" Value="#F5F3FF"/>
+                <Setter Property="BorderBrush" Value="#DDD6FE"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#6D28D9"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="SoftBorder" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="7"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="SoftBorder" Property="Background" Value="#6D28D9"/>
+                                    <Setter TargetName="SoftBorder" Property="BorderBrush" Value="#6D28D9"/>
+                                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="SoftBorder" Property="Opacity" Value="0.55"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PaidInputFrameStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Height" Value="38"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                        <Setter Property="BorderThickness" Value="1.5"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- FILTROS -->
+        <Border Grid.Row="0" Style="{StaticResource PaidCardStyle}" Padding="14,12" Margin="0,0,0,12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource PaidInputFrameStyle}" Margin="0,0,10,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <materialDesign:PackIcon Kind="Magnify" Grid.Column="0" Width="17" Height="17"
+                                                     Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,2,0"/>
+                            <TextBox Grid.Column="1"
+                                     AutomationProperties.AutomationId="CreditReceivablesPaid_Search"
+                                     Text="{Binding PaidSearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     BorderThickness="0" Background="Transparent"
+                                     VerticalContentAlignment="Center" FontSize="12" Foreground="#0F172A"
+                                     Padding="6,0,4,0"/>
+                            <Button Grid.Column="2" Content="×"
+                                    Command="{Binding ClearPaidSearchCommand}"
+                                    Style="{StaticResource SettingsBareButtonStyle}"
+                                    Width="24" Height="24" Margin="0,0,4,0"
+                                    FontSize="15" Foreground="#64748B"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="1" Width="150" Style="{StaticResource PaidInputFrameStyle}" Margin="0,0,10,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="42"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Desde" FontSize="10.5" Foreground="#64748B"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            <DatePicker Grid.Column="1" Height="34" BorderThickness="0" Background="Transparent"
+                                        AutomationProperties.AutomationId="CreditReceivablesPaid_From"
+                                        SelectedDate="{Binding PaidFrom, Mode=TwoWay}"
+                                        VerticalContentAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="2" Width="150" Style="{StaticResource PaidInputFrameStyle}" Margin="0,0,10,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="42"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Hasta" FontSize="10.5" Foreground="#64748B"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            <DatePicker Grid.Column="1" Height="34" BorderThickness="0" Background="Transparent"
+                                        AutomationProperties.AutomationId="CreditReceivablesPaid_To"
+                                        SelectedDate="{Binding PaidTo, Mode=TwoWay}"
+                                        VerticalContentAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <Border Grid.Column="3" Width="190" Style="{StaticResource PaidInputFrameStyle}" Margin="0,0,10,0">
+                        <Grid>
+                            <ComboBox ItemsSource="{Binding PaidMethods}"
+                                      SelectedItem="{Binding SelectedPaidMethod, Mode=TwoWay}"
+                                      DisplayMemberPath="Name"
+                                      AutomationProperties.AutomationId="CreditReceivablesPaid_Method"
+                                      BorderThickness="0" Background="Transparent"
+                                      Height="34" Padding="10,0"
+                                      VerticalContentAlignment="Center"/>
+                            <TextBlock Text="Método de pago" IsHitTestVisible="False"
+                                       FontSize="12" Foreground="#94A3B8"
+                                       VerticalAlignment="Center" Margin="12,0,0,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedPaidMethod}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+
+
+                    <Button Grid.Column="4" Content="Aplicar"
+                            AutomationProperties.AutomationId="CreditReceivablesPaid_Apply"
+                            Command="{Binding ApplyPaidFiltersCommand}"
+                            Style="{StaticResource SettingsPrimaryButtonStyle}"
+                            Height="38" Padding="16,0" Margin="0,0,8,0"/>
+
+                    <Button Grid.Column="5" Content="Limpiar"
+                            Command="{Binding ClearPaidFiltersCommand}"
+                            Style="{StaticResource SettingsSecondaryButtonStyle}"
+                            Height="38" Padding="14,0"/>
+                </Grid>
+
+                <Border Grid.Row="1" BorderBrush="#F1F5F9" BorderThickness="0,1,0,0" Margin="0,10,0,0" Padding="0,10,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="Hoy" Command="{Binding SetPaidPresetCommand}" CommandParameter="Hoy"
+                                    Style="{StaticResource PaidChipButtonStyle}"/>
+                            <Button Content="Esta Semana" Command="{Binding SetPaidPresetCommand}" CommandParameter="Semana"
+                                    Style="{StaticResource PaidChipButtonStyle}"/>
+                            <Button Content="Mes Actual" Command="{Binding SetPaidPresetCommand}" CommandParameter="Mes"
+                                    Style="{StaticResource PaidChipButtonStyle}"/>
+                            <Button Content="Todo" Command="{Binding SetPaidPresetCommand}" CommandParameter="Todo"
+                                    Style="{StaticResource PaidChipButtonStyle}"/>
+
+                            <Border Background="#F1F5F9" CornerRadius="8" Padding="3" Margin="10,0,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="Por factura"
+                                            AutomationProperties.AutomationId="CreditReceivablesPaid_InvoiceMode"
+                                            Command="{Binding SetPaidViewModeCommand}" CommandParameter="invoice">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource PaidSegmentButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsPaidInvoiceMode}" Value="True">
+                                                        <Setter Property="Background" Value="#6D28D9"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                    <Button Content="Por abono"
+                                            AutomationProperties.AutomationId="CreditReceivablesPaid_PaymentMode"
+                                            Command="{Binding SetPaidViewModeCommand}" CommandParameter="payment">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource PaidSegmentButtonStyle}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsPaidPaymentMode}" Value="True">
+                                                        <Setter Property="Background" Value="#6D28D9"/>
+                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="CSV" Command="{Binding ExportPaidCommand}" CommandParameter="csv"
+                                    Style="{StaticResource PaidChipButtonStyle}" ToolTip="Exportar CSV del historial filtrado"/>
+                            <Button Content="Excel" Command="{Binding ExportPaidCommand}" CommandParameter="xlsx"
+                                    Style="{StaticResource PaidChipButtonStyle}" ToolTip="Exportar Excel del historial filtrado"/>
+                            <Button Content="PDF" Command="{Binding ExportPaidCommand}" CommandParameter="pdf"
+                                    Style="{StaticResource PaidChipButtonStyle}" ToolTip="Exportar PDF del historial filtrado"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- KPIs DE RECAUDACION REALIZADA -->
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource PaidKpiCardStyle}" Margin="0,0,10,0">
+                <Grid>
+                    <Border Style="{StaticResource PaidKpiAccentStyle}" Background="#16A34A"/>
+                    <StackPanel Margin="18,12,14,12">
+                        <TextBlock Text="DEUDAS PAGADAS" FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
+                        <TextBlock Text="{Binding PaidDebtsCountDisplay}" FontSize="22" FontWeight="Bold"
+                                   Foreground="#0F172A" Margin="0,3,0,0" Typography.NumeralAlignment="Tabular"/>
+                        <TextBlock Text="✓ 100% saldadas" FontSize="11" Foreground="#15803D" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource PaidKpiCardStyle}" Margin="0,0,10,0">
+                <Grid>
+                    <Border Style="{StaticResource PaidKpiAccentStyle}" Background="#6D28D9"/>
+                    <StackPanel Margin="18,12,14,12">
+                        <TextBlock Text="COBRADO REAL (USD)" FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
+                        <TextBlock Text="{Binding PaidCollectedUsdDisplay}" FontSize="22" FontWeight="Bold"
+                                   Foreground="#0F172A" Margin="0,3,0,0" Typography.NumeralAlignment="Tabular"/>
+                        <TextBlock Text="{Binding PaidCollectedLocalDisplay}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"
+                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource PaidKpiCardStyle}" Margin="0,0,10,0">
+                <Grid>
+                    <Border Style="{StaticResource PaidKpiAccentStyle}" Background="#0284C7"/>
+                    <StackPanel Margin="18,12,14,12">
+                        <TextBlock Text="ABONOS REGISTRADOS" FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
+                        <TextBlock Text="{Binding PaidPaymentsCountDisplay}" FontSize="22" FontWeight="Bold"
+                                   Foreground="#0F172A" Margin="0,3,0,0" Typography.NumeralAlignment="Tabular"/>
+                        <TextBlock Text="Pagos/cuotas aplicados" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="3" Style="{StaticResource PaidKpiCardStyle}">
+                <Grid>
+                    <Border Style="{StaticResource PaidKpiAccentStyle}" Background="#64748B"/>
+                    <StackPanel Margin="18,12,14,12">
+                        <TextBlock Text="TIEMPO PROM. DE PAGO" FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
+                        <TextBlock Text="{Binding PaidAverageDaysDisplay}" FontSize="22" FontWeight="Bold"
+                                   Foreground="#0F172A" Margin="0,3,0,0" Typography.NumeralAlignment="Tabular"/>
+                        <TextBlock Text="Emisión → cancelación" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- TABLA + PAGINACION -->
+        <Border Grid.Row="2" Style="{StaticResource PaidCardStyle}" ClipToBounds="True">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0">
+                    <DataGrid ItemsSource="{Binding PaidDebts}"
+                              AutomationProperties.AutomationId="CreditReceivablesPaid_DebtsGrid"
+                              Visibility="{Binding IsPaidInvoiceMode, Converter={StaticResource BoolToVis}}"
+                              AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                              SelectionMode="Single" Background="#FFFFFF" BorderThickness="0"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#F1F5F9" VerticalGridLinesBrush="Transparent"
+                              RowHeight="56" VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              ColumnHeaderStyle="{StaticResource PaidColumnHeaderStyle}"
+                              RowStyle="{StaticResource PaidRowStyle}"
+                              CellStyle="{StaticResource PaidCellStyle}">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="DOCUMENTO" MinWidth="115" Width="SizeToCells">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="12,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding InvoiceDisplay}" FontSize="12" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                            <TextBlock Text="{Binding SaleId, StringFormat='Venta #{0}'}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="CLIENTE" MinWidth="190" Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="12,0" VerticalAlignment="Center">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="30"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="30" Height="30" CornerRadius="15" Background="#F1F5F9" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding CustomerInitials}" FontSize="10" FontWeight="Bold"
+                                                           Foreground="#334155" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding CustomerName}" FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="#0F172A" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding CustomerDocument}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="EMISIÓN / PAGADA" MinWidth="165" Width="SizeToCells">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="12,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding PaidAtDisplay, StringFormat='Pagada: {0}'}"
+                                                       FontSize="12" FontWeight="SemiBold" Foreground="#15803D"/>
+                                            <TextBlock Text="{Binding IssuedAtDisplay, StringFormat='Emisión: {0}'}"
+                                                       FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="ABONOS" MinWidth="135" Width="SizeToCells"
+                                                    HeaderStyle="{StaticResource PaidCenterColumnHeaderStyle}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                            <Border Background="#F5F3FF" CornerRadius="999" Padding="8,3" HorizontalAlignment="Center">
+                                                <TextBlock Text="{Binding PaymentsLabel}" FontSize="10.5" FontWeight="SemiBold" Foreground="#5B21B6"/>
+                                            </Border>
+                                            <TextBlock Text="{Binding PaymentMethodsSummary}" FontSize="10.5"
+                                                       Foreground="#64748B" Margin="0,3,0,0"
+                                                       TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="TOTAL SALDADO" MinWidth="150" Width="SizeToCells"
+                                                    HeaderStyle="{StaticResource PaidRightColumnHeaderStyle}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="12,0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding TotalPaidUsdDisplay}" FontSize="13" FontWeight="Bold"
+                                                       Foreground="#0F172A" HorizontalAlignment="Right" Typography.NumeralAlignment="Tabular"/>
+                                            <TextBlock Text="{Binding TotalPaidLocalDisplay}" FontSize="11" Foreground="#64748B"
+                                                       HorizontalAlignment="Right" Margin="0,2,0,0" Typography.NumeralAlignment="Tabular"
+                                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="ESTADO" MinWidth="115" Width="SizeToCells"
+                                                    HeaderStyle="{StaticResource PaidCenterColumnHeaderStyle}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                            <Border Background="#DCFCE7" CornerRadius="999" Padding="8,3">
+                                                <TextBlock Text="● Pagada" FontSize="10.5" FontWeight="SemiBold" Foreground="#15803D"/>
+                                            </Border>
+                                            <TextBlock Text="{Binding SettledOnTimeLabel}" FontSize="10" Foreground="#64748B" Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="ACCIONES" MinWidth="175" Width="SizeToCells"
+                                                    HeaderStyle="{StaticResource PaidRightColumnHeaderStyle}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="6,0">
+                                            <Button Content="Ver abonos"
+                                                    Command="{Binding DataContext.OpenTimelineCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource PaidSoftPrimaryButtonStyle}"
+                                                    Margin="0,0,6,0" ToolTip="Abrir cronología de abonos"/>
+                                            <Button Content="PDF"
+                                                    Command="{Binding DataContext.DownloadPaidStatementCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource SettingsSecondaryButtonStyle}"
+                                                    Height="30" Padding="10,0" ToolTip="Constancia de cancelación"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <DataGrid ItemsSource="{Binding PaidPayments}"
+                              AutomationProperties.AutomationId="CreditReceivablesPaid_PaymentsGrid"
+                              Visibility="{Binding IsPaidPaymentMode, Converter={StaticResource BoolToVis}}"
+                              AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                              SelectionMode="Single" Background="#FFFFFF" BorderThickness="0"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#F1F5F9" VerticalGridLinesBrush="Transparent"
+                              RowHeight="56" VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling"
+                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                              ColumnHeaderStyle="{StaticResource PaidColumnHeaderStyle}"
+                              RowStyle="{StaticResource PaidRowStyle}"
+                              CellStyle="{StaticResource PaidCellStyle}">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="FECHA / CAJERO" Width="150">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="12,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding PaidAtDisplay}" FontSize="11.5" FontWeight="SemiBold"
+                                                       Foreground="#0F172A" Typography.NumeralAlignment="Tabular"/>
+                                            <TextBlock Text="{Binding CashierName}" FontSize="10.5" Foreground="#64748B" Margin="0,2,0,0"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="CLIENTE" MinWidth="180" Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="12,0" VerticalAlignment="Center">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="30"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="30" Height="30" CornerRadius="15" Background="#F1F5F9" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding CustomerInitials}" FontSize="10" FontWeight="Bold"
+                                                           Foreground="#334155" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding CustomerName}" FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="#0F172A" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding CustomerDocument}" FontSize="11" Foreground="#64748B" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="FACTURA(S)" Width="145">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="12,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding InvoiceSummary}" FontSize="11.5" FontWeight="SemiBold"
+                                                       Foreground="#0F172A" TextTrimming="CharacterEllipsis"/>
+                                            <Border Background="#F1F5F9" CornerRadius="4" Padding="5,2"
+                                                    HorizontalAlignment="Left" Margin="0,3,0,0">
+                                                <TextBlock Text="{Binding ImputationMode}" FontSize="9.5" FontWeight="SemiBold" Foreground="#475569"/>
+                                            </Border>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="MÉTODO / REF." Width="175">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="12,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding PaymentMethodName}" FontSize="11.5" FontWeight="SemiBold"
+                                                       Foreground="#0F172A" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding ReferenceDisplay}" FontSize="10.5" Foreground="#64748B"
+                                                       Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="MONTO COBRADO" Width="155"
+                                                    HeaderStyle="{StaticResource PaidRightColumnHeaderStyle}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="12,0" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding AmountPaidDisplay}" FontSize="12" FontWeight="Bold"
+                                                       Foreground="#0F172A" HorizontalAlignment="Right" Typography.NumeralAlignment="Tabular"/>
+                                            <TextBlock Text="{Binding ExchangeRateDisplay, StringFormat='Tasa: {0}'}"
+                                                       FontSize="10.5" Foreground="#64748B" HorizontalAlignment="Right"
+                                                       Margin="0,2,0,0"
+                                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="ACREDITADO" Width="115"
+                                                    HeaderStyle="{StaticResource PaidRightColumnHeaderStyle}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding CreditedUsdDisplay}" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="#15803D" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                   Margin="12,0" Typography.NumeralAlignment="Tabular"
+                                                   Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <DataGridTemplateColumn Header="ACCIONES" Width="95"
+                                                    HeaderStyle="{StaticResource PaidRightColumnHeaderStyle}">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="Detalle"
+                                                Command="{Binding DataContext.OpenTimelineCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource PaidSoftPrimaryButtonStyle}"
+                                                HorizontalAlignment="Right" Margin="0,0,8,0"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Border Background="#FFFFFF" Visibility="{Binding ShowPaidEmptyState, Converter={StaticResource BoolToVis}}">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="CheckCircleOutline" Width="30" Height="30"
+                                                     Foreground="#CBD5E1" HorizontalAlignment="Center"/>
+                            <TextBlock Text="No hay deudas pagadas para los filtros seleccionados."
+                                       FontSize="12.5" FontWeight="SemiBold" Foreground="#64748B"
+                                       Margin="0,8,0,0" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="#FFFFFF" Visibility="{Binding ShowPaidPaymentsEmptyState, Converter={StaticResource BoolToVis}}">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="ReceiptTextRemoveOutline" Width="30" Height="30"
+                                                     Foreground="#CBD5E1" HorizontalAlignment="Center"/>
+                            <TextBlock Text="No hay abonos registrados para los filtros seleccionados."
+                                       FontSize="12.5" FontWeight="SemiBold" Foreground="#64748B"
+                                       Margin="0,8,0,0" HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#F1F5F9" BorderThickness="0,1,0,0" Padding="14,8">
+                    <Grid>
+                        <TextBlock Text="{Binding PaidPageLabel}" FontSize="11" Foreground="#64748B" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="‹ Anterior" Command="{Binding PaidPreviousPageCommand}"
+                                    IsEnabled="{Binding CanPaidPreviousPage}"
+                                    Style="{StaticResource SettingsSecondaryButtonStyle}"
+                                    Height="28" Padding="10,0" Margin="0,0,6,0"/>
+                            <Button Content="Siguiente ›" Command="{Binding PaidNextPageCommand}"
+                                    IsEnabled="{Binding CanPaidNextPage}"
+                                    Style="{StaticResource SettingsSecondaryButtonStyle}"
+                                    Height="28" Padding="10,0"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
+
+

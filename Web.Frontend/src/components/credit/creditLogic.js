@@ -333,7 +333,7 @@ export function canReturnReceivable(item) {
 }
 
 /** Opciones del filtro de estado de la cartera (''/Todos ⇒ sin filtro server-side). */
-export const RECEIVABLE_STATUS_OPTIONS = Object.freeze(['Todos', 'Vigente', 'Parcial', 'Vencida', 'Pagada', 'Anulada']);
+export const RECEIVABLE_STATUS_OPTIONS = Object.freeze(['Todas las pendientes', 'Vigente', 'Parcial', 'En mora']);
 
 /**
  * Parsea el monto USD capturado por el operador (acepta coma decimal y separadores de miles)
@@ -344,3 +344,4 @@ export function parseCreditAmount(rawValue) {
   if (!Number.isFinite(parsed)) return 0;
   return Math.round(parsed * 10000) / 10000;
 }
+

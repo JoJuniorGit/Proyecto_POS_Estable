@@ -310,7 +310,7 @@ describe('creditLogic — cartera: estados y acciones por fila', () => {
   const openRow = { balanceUSD: 100, originalUSD: 100, status: 'Vigente' };
 
   it('20. exposes the canonical status filter options', () => {
-    assert.deepStrictEqual(RECEIVABLE_STATUS_OPTIONS, ['Todos', 'Vigente', 'Parcial', 'Vencida', 'Pagada', 'Anulada']);
+    assert.deepStrictEqual(RECEIVABLE_STATUS_OPTIONS, ['Todas las pendientes', 'Vigente', 'Parcial', 'En mora']);
   });
 
   it('21. marks open obligations by balance > 0.005 and open status', () => {

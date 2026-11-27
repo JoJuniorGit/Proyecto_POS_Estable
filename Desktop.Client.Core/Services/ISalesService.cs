@@ -366,6 +366,33 @@ public interface ISalesService
         CreditReceivablesFilterClientDto filter,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Historial realizado de deudas 100% pagadas (facturas liquidadas y KPIs).</summary>
+    Task<PaidReceivablesClientDto> GetPaidReceivablesAsync(
+        PaidReceivablesFilterClientDto filter,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Cronología de abonos de una obligación, con tasas históricas congeladas.</summary>
+    Task<ReceivablePaymentTimelineClientDto> GetReceivablePaymentTimelineAsync(
+        int obligationId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Bitácora plana de abonos que pertenecen a deudas pagadas.</summary>
+    Task<PaidReceivablePaymentsClientDto> GetPaidReceivablePaymentsAsync(
+        PaidReceivablesFilterClientDto filter,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Exportación server-side del historial realizado (csv, xlsx o pdf).</summary>
+    Task<ExportFileClientDto> GetPaidReceivablesExportAsync(
+        PaidReceivablesFilterClientDto filter,
+        string mode,
+        string format,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Constancia de cancelación PDF de una obligación.</summary>
+    Task<ExportFileClientDto> GetReceivableStatementPdfAsync(
+        int obligationId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Cierra la venta a crédito (total o mixta). Un 403 de sobregiro se traduce a
     /// <see cref="CreditOverLimitAuthorizationException"/> con el contexto exacto del hub; el
@@ -412,5 +439,6 @@ public class UpdateSaleItemDto
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
 }
+
 
 
