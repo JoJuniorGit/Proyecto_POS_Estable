@@ -155,6 +155,59 @@ public class DailyClosureViewModelTests
     }
 
     [Fact]
+    public void EmptyState_IsOnlyVisibleWhenNotLoadingAndThereAreNoRows()
+    {
+        var vm = CreateViewModel();
+
+        Assert.True(vm.IsEmptyStateVisible);
+
+        vm.IsLoading = true;
+        Assert.False(vm.IsEmptyStateVisible);
+
+        vm.IsLoading = false;
+        Assert.True(vm.IsEmptyStateVisible);
+
+        vm.DetailRows.Add(new ClosureDetailRow(1, "Efectivo", 10m, () => { }));
+        Assert.False(vm.IsEmptyStateVisible);
+    }
+
+    [Fact]
+    public void BlindFooter_ReportsDeclaredProgressAndVioletStatus()
+    {
+        var session = new UserSession();
+        session.CurrentUser = new UserDto { Id = 1, Name = "Supervisor", Role = UserRole.Admin };
+        var vm = CreateViewModel(session);
+        vm.DetailRows.Add(new ClosureDetailRow(1, "Efectivo", 10m, () => { }));
+        vm.DetailRows.Add(new ClosureDetailRow(2, "Pago Móvil", 20m, () => { }));
+        vm.DetailRows.Add(new ClosureDetailRow(3, "Punto de Venta", 30m, () => { }));
+        vm.DetailRows[0].ActualAmountBsS = 10m;
+        vm.DetailRows[1].ActualAmountBsS = 20m;
+
+        vm.IsBlindClosing = true;
+
+        Assert.Equal(2, vm.DeclaredMethodCount);
+        Assert.Equal(3, vm.PaymentMethodCount);
+        Assert.Equal(2d / 3d * 100d, vm.DeclaredMethodsProgress, 3);
+        Assert.Equal("Modo Cierre a Ciegas · 2 de 3 métodos declarados", vm.FooterStatusText);
+        Assert.Equal("#6D28D9", vm.FooterStatusColor);
+    }
+
+    [Fact]
+    public void DifferenceBadge_IsHiddenForEmptyRowsAndShowsCuadradoForEqualAmounts()
+    {
+        var empty = new ClosureDetailRow(1, "Efectivo", 0m, () => { });
+        Assert.False(empty.ShowDifferenceBadge);
+        Assert.Equal("—", empty.DifferenceStatusText);
+
+        var equal = new ClosureDetailRow(2, "Efectivo", 100m, () => { });
+        equal.ActualAmountBsS = 100m;
+
+        Assert.True(equal.ShowDifferenceBadge);
+        Assert.Equal("✓ Cuadrado", equal.DifferenceStatusText);
+        Assert.Equal("#15803D", equal.DifferenceBadgeForeground);
+    }
+
+    [Fact]
     public void BlindClosing_WhenUserIsCashier_DisallowsDisabling()
     {
         var cashierSession = new UserSession();

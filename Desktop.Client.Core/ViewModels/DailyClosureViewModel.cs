@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using Desktop.Client.Services;
 using System;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Net.Http;
@@ -77,7 +78,9 @@ public partial class ClosureDetailRow : ObservableObject
             ? "Faltante"
             : DifferenceBsS > 0m
                 ? "Sobrante"
-                : "Cuadra";
+                : "✓ Cuadrado";
+
+    public bool ShowDifferenceBadge => !IsEmptyDifference;
 
     public string DifferenceBadgeBackground => IsEmptyDifference
         ? "#F1F5F9"
@@ -90,7 +93,7 @@ public partial class ClosureDetailRow : ObservableObject
     public string DifferenceBadgeForeground => IsEmptyDifference
         ? "#64748B"
         : DifferenceBsS < 0m
-            ? "#B91C1C"
+            ? "#DC2626"
             : DifferenceBsS > 0m
                 ? "#B45309"
                 : "#15803D";
@@ -102,6 +105,7 @@ public partial class ClosureDetailRow : ObservableObject
         OnPropertyChanged(nameof(DifferenceColor));
         OnPropertyChanged(nameof(DifferenceDisplay));
         OnPropertyChanged(nameof(DifferenceStatusText));
+        OnPropertyChanged(nameof(ShowDifferenceBadge));
         OnPropertyChanged(nameof(DifferenceBadgeBackground));
         OnPropertyChanged(nameof(DifferenceBadgeForeground));
     }
@@ -404,11 +408,21 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
 
     public bool CanEqualize => !IsBlindClosing && DetailRows.Count > 0;
 
+    public int PaymentMethodCount => DetailRows.Count;
+
+    public int DeclaredMethodCount => DetailRows.Count(r => r.ActualAmountBsS != 0m);
+
+    public double DeclaredMethodsProgress => PaymentMethodCount == 0
+        ? 0d
+        : DeclaredMethodCount * 100d / PaymentMethodCount;
+
     public string DeclaredMethodsSummary =>
-        $"{DetailRows.Count(r => r.ActualAmountBsS != 0m)} de {DetailRows.Count} métodos declarados";
+        $"{DeclaredMethodCount} de {PaymentMethodCount} métodos declarados";
+
+    public bool IsEmptyStateVisible => !IsLoading && DetailRows.Count == 0;
 
     public string FooterStatusColor => IsBlindClosing
-        ? "#94A3B8"
+        ? "#6D28D9"
         : !DetailRows.Any()
             ? "#94A3B8"
             : TotalDifferenceBsS < 0
@@ -418,7 +432,7 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
                     : "#15803D";
 
     public string FooterStatusText => IsBlindClosing
-        ? "Modo Cierre a Ciegas activo"
+        ? $"Modo Cierre a Ciegas · {DeclaredMethodCount} de {PaymentMethodCount} métodos declarados"
         : !DetailRows.Any()
             ? "Sin métodos de pago cargados"
             : TotalDifferenceBsS < 0
@@ -431,7 +445,13 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
     public bool IsLoading
     {
         get => _isLoading;
-        set => SetProperty(ref _isLoading, value);
+        set
+        {
+            if (SetProperty(ref _isLoading, value))
+            {
+                OnPropertyChanged(nameof(IsEmptyStateVisible));
+            }
+        }
     }
 
     private bool _isSaved;
@@ -453,7 +473,11 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(DifferenceBadgeLabel));
         OnPropertyChanged(nameof(DifferenceBadgeBackground));
         OnPropertyChanged(nameof(DifferenceBadgeForeground));
+        OnPropertyChanged(nameof(PaymentMethodCount));
+        OnPropertyChanged(nameof(DeclaredMethodCount));
+        OnPropertyChanged(nameof(DeclaredMethodsProgress));
         OnPropertyChanged(nameof(DeclaredMethodsSummary));
+        OnPropertyChanged(nameof(IsEmptyStateVisible));
         OnPropertyChanged(nameof(FooterStatusText));
         OnPropertyChanged(nameof(FooterStatusColor));
         OnPropertyChanged(nameof(CanEqualize));

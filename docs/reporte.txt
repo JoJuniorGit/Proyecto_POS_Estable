@@ -19374,3 +19374,50 @@ D1. La suite completa requiere PostgreSQL real configurado para alcanzar
 D2. La validacion final en monitor a 125% DPI sigue recomendable; el harness
     se renderizo a 120 DPI con el layout en DIPs.
 ================================================================================
+
+ANEXO XCII - CIERRE DIARIO: MODO CIEGO Y ALINEACION 1:1 - 2026-11-27
+================================================================================
+
+A. CAMBIOS
+A1. Se corrigio el estado vacio: IsEmptyStateVisible exige !IsLoading y
+    DetailRows.Count == 0; el overlay escucha CollectionChanged y queda
+    Collapsed en cuanto existen metodos, sin superponerse a las filas.
+A2. En Cierre a Ciegas se colapsan las tarjetas ESPERADO y DIFERENCIA. En su
+    lugar aparece una franja de 380 px + banner flexible: declarado total,
+    progreso X de N metodos y barra de 4 px, junto al aviso de modo ciego
+    #F5F3FF/#DDD6FE.
+A3. La tabla ciega deja solo METODO DE PAGO y DECLARADO (240 px); se ocultan
+    ESPERADO, el boton = y DIFERENCIA tanto en header como en filas. El
+    subtitulo cambia a "Ingresa el total contado o cerrado en lote..." y el
+    pie muestra punto violeta y "Modo Cierre a Ciegas . X de N".
+A4. Header y filas comparten Padding horizontal 24 y columnas: metodo *
+    MinWidth 240, esperado 160, declarado 220 (240 en ciego), acciones/igual
+    44 y diferencia 175. El boton = tiene columna propia; el header declarado
+    usa margen derecho 12 y el input el mismo padding interno.
+A5. Esperado y diferencia de fila omiten el simbolo monetario; ambos headers
+    ya declaran (Bs.S). El badge desaparece cuando esperado y declarado son
+    cero; solo aparece Faltante, Sobrante o "✓ Cuadrado" cuando hay estado
+    real. El monto vacio queda 0.00 gris.
+A6. Se corrigieron las esquinas KPI con borde uniforme y barra interna de 4 px;
+    cabecera, KPIs, metodos y bloque inferior usan 24 px laterales. Titulo a
+    22 px en formato oracion, toggle 36x20 y padding inferior del scroll 24.
+A7. No se modificaron contratos, calculos, endpoints ni reglas contables.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Tests de Cierre Diario y formato: 25/25.
+B3. Suite .NET: 4590/4652 superadas. Los 62 fallos restantes son del carril
+    PostgreSQL real sin TEST_POSTGRES_CONNECTION; no hay fallos de Cierre.
+B4. Harness WPF normal, ciego y vacio a 96/120 DPI: sin overlay superpuesto,
+    sin columnas de guiones en ciego y encabezados alineados con sus cifras.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La suite completa requiere PostgreSQL real configurado para alcanzar
+    el 100%; el resto de la suite ejecutable quedo verde.
+D2. La revision fisica final a 125% DPI sobre el monitor instalado sigue
+    recomendable; el harness se renderizo a 120 DPI.
+================================================================================

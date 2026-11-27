@@ -25,6 +25,40 @@ public sealed class LocalAmountConverter : IValueConverter
         => throw new NotSupportedException("Currency amounts are display-only.");
 }
 
+/// <summary>Formats a local amount without its currency symbol, for table cells whose
+/// header already declares the currency.</summary>
+public sealed class LocalNumberConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => CurrencyAmountValue.TryGetDecimal(value, out var amount)
+            ? CurrencyDisplay.Number(amount)
+            : string.Empty;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException("Currency amounts are display-only.");
+}
+
+/// <summary>
+/// Returns a pixel column width selected by the blind-closing flag. The parameter uses
+/// "normal|blind" syntax (for example "220|240"); a zero width collapses the track.
+/// </summary>
+public sealed class BlindColumnWidthConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var widths = (parameter as string ?? string.Empty).Split('|');
+        var raw = value is bool isBlind && isBlind
+            ? (widths.Length > 1 ? widths[1] : widths[0])
+            : widths[0];
+
+        return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var width)
+            ? new GridLength(width)
+            : new GridLength(0);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException("Grid lengths are display-only.");
+}
 /// <summary>Formats an amount in the primary currency of the active profile.</summary>
 public sealed class PrimaryAmountConverter : IValueConverter
 {

@@ -9,6 +9,7 @@
              xmlns:behaviors="clr-namespace:Desktop.Client.Behaviors"
              xmlns:converters="clr-namespace:Desktop.Client.Converters"
              xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
+             xmlns:helpers="clr-namespace:Desktop.Client.Helpers"
              mc:Ignorable="d"
              d:DesignHeight="900"
              d:DesignWidth="1280"
@@ -26,6 +27,9 @@
 
             <BooleanToVisibilityConverter x:Key="BoolToVis"/>
             <converters:SingleCurrencyGridLengthConverter x:Key="SingleCurrencyGridLengthConverter"/>
+            <converters:BlindColumnWidthConverter x:Key="BlindColumnWidthConverter"/>
+            <converters:LocalNumberConverter x:Key="LocalNumberConverter"/>
+            <helpers:BindingProxy x:Key="VmProxy" Data="{Binding}"/>
 
             <DropShadowEffect x:Key="DailyCardShadow"
                               Color="#0F172A"
@@ -52,7 +56,35 @@
             <Style x:Key="DailyKpiAccentStyle" TargetType="Border">
                 <Setter Property="Width" Value="4"/>
                 <Setter Property="HorizontalAlignment" Value="Left"/>
-                <Setter Property="CornerRadius" Value="12,0,0,12"/>
+                <Setter Property="CornerRadius" Value="2"/>
+                <Setter Property="Margin" Value="0,12,14,12"/>
+            </Style>
+
+            <Style x:Key="DailyBlindToggleStyle" TargetType="ToggleButton">
+                <Setter Property="Width" Value="36"/>
+                <Setter Property="Height" Value="20"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Grid Width="36" Height="20">
+                                <Border x:Name="Track" Background="#CBD5E1" CornerRadius="10"/>
+                                <Ellipse x:Name="Thumb" Width="14" Height="14"
+                                         Fill="#FFFFFF" HorizontalAlignment="Left"
+                                         Margin="3,0,0,0"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Track" Property="Background" Value="#6D28D9"/>
+                                    <Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter TargetName="Thumb" Property="Margin" Value="0,0,3,0"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <Style x:Key="DailyInputFrameStyle" TargetType="Border">
@@ -171,9 +203,9 @@
                 </Border>
 
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="CIERRE DIARIO Y ARQUEO DE CAJA"
+                    <TextBlock Text="Cierre Diario y Arqueo de Caja"
                                AutomationProperties.AutomationId="DailyClosure_Title"
-                               FontSize="20"
+                               FontSize="22"
                                FontWeight="Bold"
                                Foreground="#0F172A"
                                TextTrimming="CharacterEllipsis"/>
@@ -204,7 +236,7 @@
                                    FontWeight="SemiBold"
                                    Foreground="#334155"
                                    ToolTip="Oculta los montos esperados del sistema para obligar al conteo físico a ciegas"/>
-                        <ToggleButton Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                        <ToggleButton Style="{StaticResource DailyBlindToggleStyle}"
                                       IsChecked="{Binding IsBlindClosing, Mode=TwoWay}"
                                       IsEnabled="{Binding CanToggleBlindClosing}"
                                       ToolTip="Activar o desactivar el modo de arqueo a ciegas"/>
@@ -233,15 +265,16 @@
                       VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled"
                       Focusable="False"
-                      Padding="24,0,24,16">
-            <StackPanel>
+                      Padding="0,0,0,24">
+            <StackPanel Margin="24,0,24,0">
                 <ProgressBar Height="3"
                              IsIndeterminate="True"
                              Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
                              Margin="0,0,0,12"/>
 
                 <!-- KPI row: three direct cards, no wrapper container -->
-                <Grid Margin="0,0,0,16">
+                <Grid Margin="0,0,0,16"
+                      Visibility="{Binding IsBlindClosing, Converter={StaticResource InverseBoolToVis}}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
@@ -366,6 +399,89 @@
                     </Border>
                 </Grid>
 
+                <!-- Blind mode: declared summary + guidance -->
+                <Grid Margin="0,0,0,16"
+                      Visibility="{Binding IsBlindClosing, Converter={StaticResource BoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="380"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Style="{StaticResource DailyCardStyle}"
+                            Padding="20,16">
+                        <StackPanel>
+                            <TextBlock Text="DECLARADO EN CAJA"
+                                       FontSize="10.5"
+                                       FontWeight="Bold"
+                                       Foreground="#64748B"/>
+                            <TextBlock Text="{Binding TotalActualBsS, Converter={StaticResource LocalAmountConverter}}"
+                                       AutomationProperties.AutomationId="DailyClosure_ActualTotalText"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="#0F172A"
+                                       Margin="0,4,0,0"
+                                       Typography.NumeralAlignment="Tabular"/>
+                            <TextBlock Text="{Binding DeclaredMethodsSummary}"
+                                       FontSize="11"
+                                       Foreground="#64748B"
+                                       Margin="0,3,0,0"/>
+                            <ProgressBar Height="4"
+                                         Minimum="0"
+                                         Maximum="100"
+                                         Value="{Binding DeclaredMethodsProgress, Mode=OneWay}"
+                                         Background="#E2E8F0"
+                                         Foreground="#6D28D9"
+                                         BorderThickness="0"
+                                         Margin="0,10,0,0"
+                                         IsHitTestVisible="False">
+                                <ProgressBar.Template>
+                                    <ControlTemplate TargetType="ProgressBar">
+                                        <Grid>
+                                            <Border x:Name="PART_Track"
+                                                    Background="{TemplateBinding Background}"
+                                                    CornerRadius="2"/>
+                                            <Border x:Name="PART_Indicator"
+                                                    Background="{TemplateBinding Foreground}"
+                                                    CornerRadius="2"
+                                                    HorizontalAlignment="Left"/>
+                                        </Grid>
+                                    </ControlTemplate>
+                                </ProgressBar.Template>
+                            </ProgressBar>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1"
+                            Background="#F5F3FF"
+                            BorderBrush="#DDD6FE"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="20,16"
+                            Margin="16,0,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <materialDesign:PackIcon Kind="ShieldLock"
+                                                     Width="24" Height="24"
+                                                     Foreground="#6D28D9"
+                                                     VerticalAlignment="Top"/>
+                            <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                <TextBlock Text="Modo Cierre a Ciegas activo"
+                                           FontSize="14"
+                                           FontWeight="SemiBold"
+                                           Foreground="#5B21B6"/>
+                                <TextBlock Text="Ingresa los montos contados en efectivo y los cierres de lote. Las diferencias frente al sistema se calcularán al procesar el cierre."
+                                           FontSize="12.5"
+                                           Foreground="#64748B"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
                 <!-- Methods card: ItemsControl only, no nested scrollbar -->
                 <Border Style="{StaticResource DailyCardStyle}">
                     <Grid>
@@ -378,7 +494,7 @@
                         <Border Grid.Row="0"
                                 BorderBrush="#E2E8F0"
                                 BorderThickness="0,0,0,1"
-                                Padding="20,14">
+                                Padding="24,14">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
@@ -393,7 +509,13 @@
                                     <TextBlock Text="Esperado, declarado y diferencia por método de pago."
                                                FontSize="11.5"
                                                Foreground="#64748B"
-                                               Margin="0,2,0,0"/>
+                                               Margin="0,2,0,0"
+                                               Visibility="{Binding IsBlindClosing, Converter={StaticResource InverseBoolToVis}}"/>
+                                    <TextBlock Text="Ingresa el total contado o cerrado en lote para cada método de pago."
+                                               FontSize="11.5"
+                                               Foreground="#64748B"
+                                               Margin="0,2,0,0"
+                                               Visibility="{Binding IsBlindClosing, Converter={StaticResource BoolToVis}}"/>
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -424,47 +546,51 @@
                             </Grid>
                         </Border>
 
-                        <Grid Grid.Row="1" Background="#F8FAFC" Height="38">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" MinWidth="200"/>
-                                <ColumnDefinition Width="150"/>
-                                <ColumnDefinition Width="210"/>
-                                <ColumnDefinition Width="170"/>
-                            </Grid.ColumnDefinitions>
+                        <Border Grid.Row="1" Background="#F8FAFC" Height="38">
+                            <Grid Margin="24,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" MinWidth="240"/>
+                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='160|0'}"/>
+                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='220|240'}"/>
+                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='44|0'}"/>
+                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='175|0'}"/>
+                                </Grid.ColumnDefinitions>
 
-                            <TextBlock Grid.Column="0"
-                                       Text="MÉTODO DE PAGO"
-                                       FontSize="10.5"
-                                       FontWeight="Bold"
-                                       Foreground="#64748B"
-                                       VerticalAlignment="Center"
-                                       Margin="20,0,0,0"/>
-                            <TextBlock Grid.Column="1"
-                                       Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='ESPERADO ({0})'}"
-                                       FontSize="10.5"
-                                       FontWeight="Bold"
-                                       Foreground="#64748B"
-                                       TextAlignment="Right"
-                                       VerticalAlignment="Center"
-                                       Margin="0,0,16,0"/>
-                            <TextBlock Grid.Column="2"
-                                       Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='DECLARADO ({0})'}"
-                                       FontSize="10.5"
-                                       FontWeight="Bold"
-                                       Foreground="#64748B"
-                                       TextAlignment="Right"
-                                       VerticalAlignment="Center"
-                                       Margin="0,0,16,0"/>
-                            <TextBlock Grid.Column="3"
-                                       Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='DIFERENCIA ({0})'}"
-                                       FontSize="10.5"
-                                       FontWeight="Bold"
-                                       Foreground="#64748B"
-                                       TextAlignment="Right"
-                                       VerticalAlignment="Center"
-                                       Margin="0,0,20,0"/>
-                        </Grid>
-
+                                <TextBlock Grid.Column="0"
+                                           Text="MÉTODO DE PAGO"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Left"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='ESPERADO ({0})'}"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"
+                                           TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"/>
+                                <TextBlock Grid.Column="2"
+                                           Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='DECLARADO ({0})'}"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"
+                                           TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,12,0"/>
+                                <TextBlock Grid.Column="3" Text=""
+                                           FontSize="10.5" FontWeight="Bold" Foreground="#64748B"/>
+                                <TextBlock Grid.Column="4"
+                                           Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='DIFERENCIA ({0})'}"
+                                           FontSize="10.5"
+                                           FontWeight="Bold"
+                                           Foreground="#64748B"
+                                           TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"/>
+                            </Grid>
+                        </Border>
                         <Grid Grid.Row="2">
                             <ItemsControl ItemsSource="{Binding DetailRows}" Focusable="False">
                                 <ItemsControl.ItemTemplate>
@@ -473,14 +599,15 @@
                                                 Background="#FFFFFF"
                                                 BorderBrush="#E2E8F0"
                                                 BorderThickness="0,0,0,1"
-                                                Padding="20,10"
+                                                Padding="24,10"
                                                 MinHeight="58">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" MinWidth="200"/>
-                                                    <ColumnDefinition Width="150"/>
-                                                    <ColumnDefinition Width="210"/>
-                                                    <ColumnDefinition Width="170"/>
+                                                    <ColumnDefinition Width="*" MinWidth="240"/>
+                                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='160|0'}"/>
+                                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='220|240'}"/>
+                                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='44|0'}"/>
+                                                    <ColumnDefinition Width="{Binding Data.IsBlindClosing, Source={StaticResource VmProxy}, Converter={StaticResource BlindColumnWidthConverter}, ConverterParameter='175|0'}"/>
                                                 </Grid.ColumnDefinitions>
 
                                                 <StackPanel Grid.Column="0"
@@ -503,101 +630,81 @@
                                                 </StackPanel>
 
                                                 <TextBlock Grid.Column="1"
-                                                           Text="{Binding ExpectedAmountBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                           Text="{Binding ExpectedAmountBsS, Converter={StaticResource LocalNumberConverter}}"
                                                            FontSize="13"
                                                            FontWeight="Medium"
-                                                           Foreground="#475569"
+                                                           Foreground="#334155"
                                                            TextAlignment="Right"
                                                            VerticalAlignment="Center"
-                                                           Margin="0,0,16,0"
                                                            Typography.NumeralAlignment="Tabular"
                                                            Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"/>
-                                                <TextBlock Grid.Column="1"
-                                                           Text="—"
-                                                           FontSize="13"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="#94A3B8"
-                                                           TextAlignment="Right"
-                                                           VerticalAlignment="Center"
-                                                           Margin="0,0,16,0"
-                                                           Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}"/>
 
-                                                <Grid Grid.Column="2">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
+                                                <Border Grid.Column="2"
+                                                        Style="{StaticResource DailyInputFrameStyle}"
+                                                        Margin="16,0,0,0"
+                                                        HorizontalAlignment="Stretch">
+                                                    <Grid>
+                                                        <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol}"
+                                                                   FontSize="11"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#94A3B8"
+                                                                   VerticalAlignment="Center"
+                                                                   Margin="10,0,0,0"
+                                                                   IsHitTestVisible="False"/>
+                                                        <TextBox TextAlignment="Right"
+                                                                 BorderThickness="0"
+                                                                 Background="Transparent"
+                                                                 Padding="30,0,12,0"
+                                                                 FontWeight="Bold"
+                                                                 FontSize="13"
+                                                                 Foreground="#0F172A"
+                                                                 CaretBrush="#6D28D9"
+                                                                 HorizontalAlignment="Stretch"
+                                                                 Typography.NumeralAlignment="Tabular"
+                                                                 GotKeyboardFocus="AmountInput_GotKeyboardFocus"
+                                                                 PreviewKeyDown="AmountInput_PreviewKeyDown">
+                                                            <i:Interaction.Behaviors>
+                                                                <behaviors:NumericCalculatorBehavior Value="{Binding ActualAmountBsS, Mode=TwoWay}"/>
+                                                            </i:Interaction.Behaviors>
+                                                        </TextBox>
+                                                    </Grid>
+                                                </Border>
 
-                                                    <Border Grid.Column="0" Style="{StaticResource DailyInputFrameStyle}">
-                                                        <Grid>
-                                                            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol}"
-                                                                       FontSize="11"
-                                                                       FontWeight="SemiBold"
-                                                                       Foreground="#94A3B8"
-                                                                       VerticalAlignment="Center"
-                                                                       Margin="10,0,0,0"
-                                                                       IsHitTestVisible="False"/>
-                                                            <TextBox TextAlignment="Right"
-                                                                     MinWidth="120"
-                                                                     BorderThickness="0"
-                                                                     Background="Transparent"
-                                                                     Padding="30,0,10,0"
-                                                                     FontWeight="Bold"
-                                                                     FontSize="13"
-                                                                     Foreground="#0F172A"
-                                                                     CaretBrush="#6D28D9"
-                                                                     Typography.NumeralAlignment="Tabular"
-                                                                     GotKeyboardFocus="AmountInput_GotKeyboardFocus"
-                                                                     PreviewKeyDown="AmountInput_PreviewKeyDown">
-                                                                <i:Interaction.Behaviors>
-                                                                    <behaviors:NumericCalculatorBehavior Value="{Binding ActualAmountBsS, Mode=TwoWay}"/>
-                                                                </i:Interaction.Behaviors>
-                                                            </TextBox>
-                                                        </Grid>
-                                                    </Border>
+                                                <Button Grid.Column="3"
+                                                        Content="="
+                                                        Width="30"
+                                                        Height="30"
+                                                        Style="{StaticResource DailyCompactButtonStyle}"
+                                                        HorizontalAlignment="Center"
+                                                        Command="{Binding DataContext.EqualizeRowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="Igualar esta fila al esperado"
+                                                        Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"/>
 
-                                                    <Button Grid.Column="1"
-                                                            Content="="
-                                                            Style="{StaticResource DailyCompactButtonStyle}"
-                                                            Margin="6,0,0,0"
-                                                            Command="{Binding DataContext.EqualizeRowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                            CommandParameter="{Binding}"
-                                                            ToolTip="Igualar esta fila al esperado"
-                                                            Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"/>
-                                                </Grid>
-
-                                                <StackPanel Grid.Column="3"
+                                                <StackPanel Grid.Column="4"
                                                             VerticalAlignment="Center"
                                                             HorizontalAlignment="Right"
-                                                            Margin="0,0,20,0">
+                                                            Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}">
                                                     <TextBlock Text="{Binding DifferenceDisplay}"
                                                                FontSize="13"
                                                                FontWeight="Bold"
                                                                Foreground="{Binding DifferenceColor}"
                                                                TextAlignment="Right"
-                                                               Typography.NumeralAlignment="Tabular"
-                                                               Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"/>
+                                                               Typography.NumeralAlignment="Tabular"/>
                                                     <Border Background="{Binding DifferenceBadgeBackground}"
                                                             CornerRadius="4"
                                                             Padding="6,2"
                                                             HorizontalAlignment="Right"
                                                             Margin="0,3,0,0"
-                                                            Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}">
+                                                            Visibility="{Binding ShowDifferenceBadge, Converter={StaticResource BoolToVis}}">
                                                         <TextBlock Text="{Binding DifferenceStatusText}"
                                                                    FontSize="10"
                                                                    FontWeight="SemiBold"
                                                                    Foreground="{Binding DifferenceBadgeForeground}"/>
                                                     </Border>
-                                                    <TextBlock Text="—"
-                                                               FontSize="13"
-                                                               FontWeight="SemiBold"
-                                                               Foreground="#94A3B8"
-                                                               TextAlignment="Right"
-                                                               Visibility="{Binding DataContext.IsBlindClosing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}"/>
                                                 </StackPanel>
                                             </Grid>
-                                        </Border>
-                                        <DataTemplate.Triggers>
+                                        </Border>                                        <DataTemplate.Triggers>
                                             <Trigger SourceName="MethodRow" Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="MethodRow" Property="Background" Value="#F8FAFC"/>
                                             </Trigger>
@@ -607,7 +714,7 @@
                             </ItemsControl>
 
                             <Border Padding="20,24"
-                                    Visibility="{Binding DetailRows, Converter={StaticResource CollectionEmptyToVis}}">
+                                    Visibility="{Binding IsEmptyStateVisible, Converter={StaticResource BoolToVis}}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <materialDesign:PackIcon Kind="WalletOutline"
                                                              Width="28" Height="28"
