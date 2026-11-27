@@ -359,6 +359,7 @@
                                            FontWeight="Bold"
                                            Foreground="#64748B"/>
                                 <TextBlock Text="{Binding TotalDifferenceBsS, Converter={StaticResource LocalAmountConverter}}"
+                                           AutomationProperties.AutomationId="DailyClosure_DifferenceText"
                                            FontSize="24"
                                            FontWeight="ExtraBold"
                                            Foreground="{Binding DifferenceStatusColor}"

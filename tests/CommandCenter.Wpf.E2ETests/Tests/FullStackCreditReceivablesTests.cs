@@ -20,6 +20,7 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// acción de cobro se ejerce contra el MISMO endpoint del botón y la UI solo se usa para verificar
 /// los totales reactivos del panel.
 /// </summary>
+[Collection(FullStackCollection.Name)]
 public class FullStackCreditReceivablesTests : IClassFixture<FullStackFixture>
 {
     private const decimal ProductCostUsd = 10.00m;

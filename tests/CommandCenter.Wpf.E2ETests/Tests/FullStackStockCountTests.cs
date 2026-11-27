@@ -14,6 +14,7 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// bootstrap product. The assertion lives on the blind item grid, so a broken client/API contract
 /// or a missing navigation entry fails here.
 /// </summary>
+[Collection(FullStackCollection.Name)]
 public sealed class FullStackStockCountTests : IClassFixture<FullStackFixture>
 {
     private readonly FullStackFixture _fixture;

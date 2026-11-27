@@ -18,6 +18,7 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// Gateado por <c>E2E_POSTGRES_CONNECTION</c>: sin variable retorna en silencio como el resto
 /// del harness.
 /// </summary>
+[Collection(FullStackCollection.Name)]
 public class FullStackProfitabilityTests : IClassFixture<FullStackFixture>
 {
     private readonly FullStackFixture _fixture;

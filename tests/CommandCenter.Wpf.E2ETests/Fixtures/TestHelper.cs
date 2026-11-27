@@ -1,5 +1,7 @@
 using System;
+using System.Threading;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Exceptions;
 using FlaUI.Core.Tools;
 
 namespace CommandCenter.Wpf.E2ETests.Fixtures;
@@ -90,22 +92,78 @@ public static class TestHelper
     }
 
     public static bool NavigateTo(Window window, string navButtonAutomationId)
-    {
-        var navBtn = Retry.WhileNull(
-            () => UiaRetry.RetryUia(() =>
-            {
-                var btn = window.FindFirstDescendant(cf => cf.ByAutomationId(navButtonAutomationId))?.AsButton();
-                return (btn != null && btn.IsEnabled) ? btn : null;
-            }),
-            TimeSpan.FromSeconds(8)
-        );
+        => NavigateTo(window, navButtonAutomationId, TimeSpan.FromSeconds(8));
 
-        if (navBtn.Result != null)
+    /// <summary>
+    /// Navega por la barra lateral dentro del presupuesto indicado. El contenido del DrawerHost
+    /// derecho queda deshabilitado mientras el drawer está cerrado, por lo que si el botón de
+    /// navegación no está accionable se abre con el menú de la vista actual y se reintenta; una
+    /// transición de UIA nunca aborta la navegación.
+    /// </summary>
+    public static bool NavigateTo(Window window, string navButtonAutomationId, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+
+        do
         {
-            navBtn.Result.Invoke();
-            return true;
+            var navButton = FindEnabledButton(window, navButtonAutomationId);
+            if (navButton != null && TryInvoke(navButton))
+            {
+                return true;
+            }
+
+            TryOpenSidebar(window);
+            Thread.Sleep(150);
         }
+        while (DateTime.UtcNow < deadline);
 
         return false;
+    }
+
+    private static Button? FindEnabledButton(Window window, string automationId)
+    {
+        try
+        {
+            var button = UiaRetry.RetryUia(
+                () => window.FindFirstDescendant(cf => cf.ByAutomationId(automationId))?.AsButton());
+            return button is { IsEnabled: true } ? button : null;
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            return null;
+        }
+        catch (ElementNotAvailableException)
+        {
+            return null;
+        }
+    }
+
+    private static bool TryInvoke(Button button)
+    {
+        try
+        {
+            button.Invoke();
+            return true;
+        }
+        catch (ElementNotEnabledException)
+        {
+            return false;
+        }
+        catch (ElementNotAvailableException)
+        {
+            return false;
+        }
+    }
+
+    private static void TryOpenSidebar(Window window)
+    {
+        foreach (var menuAutomationId in new[] { "Shell_OpenMenuButton", "Pos_OpenMenuButton" })
+        {
+            var menuButton = FindEnabledButton(window, menuAutomationId);
+            if (menuButton != null && TryInvoke(menuButton))
+            {
+                return;
+            }
+        }
     }
 }

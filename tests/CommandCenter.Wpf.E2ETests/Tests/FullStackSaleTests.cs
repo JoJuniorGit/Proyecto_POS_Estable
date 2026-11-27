@@ -21,6 +21,7 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// <c>--e2e</c>). Gateado por <c>E2E_POSTGRES_CONNECTION</c>: local sin variable retorna en
 /// silencio; en CI falla cerrado (mismo contrato que el smoke del harness).
 /// </summary>
+[Collection(FullStackCollection.Name)]
 public class FullStackSaleTests : IClassFixture<FullStackFixture>
 {
     // Datos fijos del producto que el bootstrap crea por API (E2eApiClient.CreateTestProductAsync):
@@ -285,7 +286,7 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
                     throw new InvalidOperationException($"El guardado de la tasa falló en la UI: '{error}'.");
                 }
 
-                return texts.FirstOrDefault(name => name!.Contains("guardada correctamente", StringComparison.OrdinalIgnoreCase));
+                return texts.FirstOrDefault(name => name!.Contains("actualizada correctamente", StringComparison.OrdinalIgnoreCase));
             }),
             findTimeout);
 

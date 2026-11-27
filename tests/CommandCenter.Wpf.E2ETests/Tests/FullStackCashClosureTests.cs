@@ -43,6 +43,7 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// Gateado por <c>E2E_POSTGRES_CONNECTION</c>: local sin variable retorna en silencio; en CI sin
 /// variable falla cerrado (mismo contrato que el resto del harness).
 /// </remarks>
+[Collection(FullStackCollection.Name)]
 public class FullStackCashClosureTests : IClassFixture<FullStackFixture>
 {
     // Datos fijos del producto que el bootstrap crea por API (E2eApiClient.CreateTestProductAsync):
@@ -175,10 +176,11 @@ public class FullStackCashClosureTests : IClassFixture<FullStackFixture>
             decimal expectedBeforeClosure = WaitForPositiveAmountText(window, "DailyClosure_ExpectedTotalText", findTimeout);
             decimal actualBeforeClosure = ReadAmountText(window, "DailyClosure_ActualTotalText");
             string statusBeforeClosure = WaitForStatusText(window, "DailyClosure_DifferenceStatusLabel", "FALTANTE", findTimeout);
+            decimal differenceBeforeClosure = ReadAmountText(window, "DailyClosure_DifferenceText");
             Assert.True(actualBeforeClosure == 0m, $"El total declarado inicial debería ser 0: {actualBeforeClosure}. {DescribeUi(window)}");
             Assert.True(
-                ParseUiAmount(statusBeforeClosure) == -expectedBeforeClosure,
-                $"La diferencia mostrada ('{statusBeforeClosure}') no es el declarado (0) menos el esperado ({expectedBeforeClosure}).");
+                differenceBeforeClosure == -expectedBeforeClosure,
+                $"La diferencia mostrada ({differenceBeforeClosure}) no es el declarado (0) menos el esperado ({expectedBeforeClosure}); estado='{statusBeforeClosure}'.");
 
             // 5b) Coherencia contra el estado real del servidor en la MISMA sesión: el esperado del
             //     cierre incluye el CASH IN manual, por lo que con apertura 0 y sin egresos coincide
@@ -202,7 +204,7 @@ public class FullStackCashClosureTests : IClassFixture<FullStackFixture>
 
             // 6) Estado resultante del cierre en la UI: el servidor cerró la sesión y abrió una nueva
             //    con el saldo arrastrado; la ventana de esperados del nuevo turno queda en cero.
-            WaitForStatusText(window, "DailyClosure_DifferenceStatusLabel", "CUADRADO EXACTO", findTimeout);
+            WaitForExactAmountText(window, "DailyClosure_DifferenceText", 0m, findTimeout);
             WaitForExactAmountText(window, "DailyClosure_ExpectedTotalText", 0m, findTimeout);
 
             NavigateToView(window, "Nav_BtnCashDrawer", findTimeout);
@@ -542,7 +544,7 @@ public class FullStackCashClosureTests : IClassFixture<FullStackFixture>
                     throw new InvalidOperationException($"El guardado de la tasa falló en la UI: '{error}'.");
                 }
 
-                return texts.FirstOrDefault(name => name!.Contains("guardada correctamente", StringComparison.OrdinalIgnoreCase));
+                return texts.FirstOrDefault(name => name!.Contains("actualizada correctamente", StringComparison.OrdinalIgnoreCase));
             }),
             findTimeout);
 
