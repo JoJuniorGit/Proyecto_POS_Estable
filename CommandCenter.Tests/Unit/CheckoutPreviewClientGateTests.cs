@@ -168,7 +168,7 @@ public class CheckoutPreviewClientGateTests
 
         Assert.False(vm.IsFullLiquidation);
         Assert.True(vm.CanFinalize);
-        Assert.Equal("REGISTRAR ABONO", vm.FinalizeSaleButtonLabel);
+        Assert.Equal("Registrar abono", vm.FinalizeSaleButtonLabel);
     }
 
     [Fact]

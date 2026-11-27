@@ -38,12 +38,12 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         : TotalUSD;
 
     public string FinalizeSaleButtonLabel => IsCreditMode
-        ? "REGISTRAR VENTA A CRÉDITO"
+        ? "Registrar venta a crédito"
         : (IsPendingPickup && IsCustodyAllowed)
-            ? "COBRAR Y ENVIAR A RETIRO"
+            ? "Cobrar y enviar a retiro"
             : IsOverrideMode
-                ? (IsFullLiquidation ? "LIQUIDAR CUENTA" : "REGISTRAR ABONO")
-                : "COBRAR Y FINALIZAR";
+                ? (IsFullLiquidation ? "Liquidar cuenta" : "Registrar abono")
+                : "Cobrar y Finalizar";
 
     public string CheckoutTitle => IsOverrideMode
         ? $"Liquidar / Abonar — Pedido #{OverrideSale!.Id}"

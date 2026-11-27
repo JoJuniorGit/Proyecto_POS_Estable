@@ -19325,3 +19325,52 @@ D1. La suite completa requiere PostgreSQL real configurado para alcanzar
 D2. La validacion fisica a 125% DPI se hizo mediante render del harness a
     120 DPI; la prueba manual sobre el monitor final sigue recomendable.
 ================================================================================
+
+ANEXO XCI - CHECKOUT: PULIDO MINIMALISTA Y TABLA DE 4 COLUMNAS - 2026-11-27
+================================================================================
+
+A. CAMBIOS
+A1. El contenido del cuerpo usa exactamente 24 px de margen lateral, igual
+    que la cabecera y el pie; las tarjetas y banners ya no se apoyan en los
+    bordes del modal.
+A2. Los tres KPI se unificaron en una sola barra #F8FAFC con borde #E2E8F0,
+    radio 12 y dos divisores verticales de 1 px #E2E8F0. El tinte #F5F3FF y
+    el texto #6D28D9 quedan solo en la celda RESTANTE; al cubrirse pasa a
+    #F0FDF4.
+A3. Modalidad de cobro quedo como fila limpia sin caja, con margen 0,14,0,12
+    y el segmented control a la derecha. Mercancia en Custodia se muestra
+    como fila sin fondo/borde cuando esta desmarcada y solo toma
+    #FFFBEB/#FDE68A/B45309 al marcarse.
+A4. La cabecera reemplazo las dos pildoras por una linea de 12 px #64748B:
+    CLIENTE GENERAL · V-00000000 | Tasa: 1 USD = X Bs.S; la tasa y el divisor
+    se ocultan en regimen Single.
+A5. Registrar pago usa un unico borde sutil #CBD5E1 de 1 px y radio 8 para
+    ComboBox y monto; el foco usa #6D28D9 a 1.5 px.
+A6. Pagos Aplicados quedo con 4 columnas: METODO (*, MinWidth 180),
+    REFERENCIA (140), MONTO (135, tabular/right) y ACCIONES (84, right).
+    Se elimino EQUIV. (USD) y el header MONTO (Bs.S) paso a MONTO. Se usa
+    ItemsControl para garantizar el ancho y que ACCIONES no toque el borde.
+A7. Estado vacio centrado con Padding 16,24 y sin header ni lineas de filas;
+    el pie muestra Cobrar y Finalizar en formato oracion y conserva los
+    estados disabled #E2E8F0/#94A3B8.
+A8. No se modificaron bindings de cobro, endpoints, DTOs ni reglas de negocio.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Tests de Checkout/UX afectados: 27/27.
+B3. Suite .NET: 4586/4648 superadas. Los 62 fallos restantes son del carril
+    PostgreSQL real sin TEST_POSTGRES_CONNECTION; no hay fallos de Checkout.
+B4. Harness WPF: normal, vacio y custodia marcada, a 96 y 120 DPI; margenes
+    laterales alineados, 4 columnas exactas, acciones a la derecha, sin
+    columna EQUIV. (USD), sin scroll horizontal y con tarjeta compacta.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+C2. Documentacion en el commit correspondiente.
+
+D. PENDIENTE / RIESGOS
+D1. La suite completa requiere PostgreSQL real configurado para alcanzar
+    el 100%; el resto de la suite ejecutable quedo verde.
+D2. La validacion final en monitor a 125% DPI sigue recomendable; el harness
+    se renderizo a 120 DPI con el layout en DIPs.
+================================================================================
