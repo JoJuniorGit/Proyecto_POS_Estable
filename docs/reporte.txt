@@ -19491,3 +19491,30 @@ D. LIMITE CONOCIDO
 D1. La validacion visual se hizo con RenderTargetBitmap a 96/120 DPI; la revision
     fisica final en monitor a 125% sigue recomendable.
 ================================================================================
+
+================================================================================
+ANEXO XCIV - CIERRE DIARIO: SOLO METODOS EMPLEADOS Y ARQUEO USD INTEGRADO - 2026-11-27
+================================================================================
+
+A. ALCANCE
+A1. El arqueo WPF solo lista metodos con esperado distinto de cero (actividad en la
+    jornada); los metodos sin movimientos dejan de pedir declaracion.
+A2. El bloque "Efectivo USD contado" se movio dentro de la tarjeta "Metodos de pago"
+    (arqueo de efectivo), como seccion con separador; la tarjeta de observaciones pasa
+    a ancho completo.
+A3. Se oculto el contador de caracteres duplicado de MaterialDesign en observaciones,
+    conservando el contador del encabezado.
+A4. Sin cambios de contrato API, backend, calculos ni reglas de cierre. El alcance es
+    la vista WPF de cierre diario; la web mantiene su contrato actual.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Carril DailyClosure sin PostgreSQL: 100/100.
+B3. Suite .NET: 4598/4661 superadas. Los 62 fallos restantes son exclusivamente el
+    carril PostgreSQL real sin TEST_POSTGRES_CONNECTION; un test POS flaky paso aislado.
+B4. Harness WPF 96/120 DPI: metodos usados, USD dentro del arqueo, observaciones full
+    width, sin solapamientos.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+================================================================================

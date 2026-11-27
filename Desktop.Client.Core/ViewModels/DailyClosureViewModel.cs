@@ -513,7 +513,12 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         IsSaved = false;
         try
         {
-            var totals = await _closureService.GetExpectedTotalsAsync(DateTime.UtcNow);
+            // Solo se declaran montos para los metodos empleados en la jornada. El endpoint
+            // devuelve todos los metodos activos (incluidos los de esperado cero) para la
+            // auditoria; la UI de arqueo se limita a los que tuvieron movimiento real.
+            var totals = (await _closureService.GetExpectedTotalsAsync(DateTime.UtcNow))
+                .Where(t => t.ExpectedAmountBsS != 0m)
+                .ToList();
 
             DetailRows.Clear();
             foreach (var t in totals)

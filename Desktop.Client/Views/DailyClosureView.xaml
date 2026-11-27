@@ -489,6 +489,7 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
                         <Border Grid.Row="0"
@@ -729,156 +730,157 @@
                                 </StackPanel>
                             </Border>
                         </Grid>
+
+                        <!-- Arqueo USD dentro del arqueo de efectivo, no en una tarjeta aparte -->
+                        <Border Grid.Row="3"
+                                Background="#FFFFFF"
+                                BorderBrush="#E2E8F0"
+                                BorderThickness="0,1,0,0"
+                                Padding="24,16"
+                                Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Border Width="30" Height="30" CornerRadius="8" Background="#DCFCE7" Margin="0,0,9,0">
+                                            <materialDesign:PackIcon Kind="CurrencyUsd"
+                                                                     Width="16" Height="16"
+                                                                     Foreground="#15803D"
+                                                                     HorizontalAlignment="Center"
+                                                                     VerticalAlignment="Center"/>
+                                        </Border>
+                                        <StackPanel>
+                                            <TextBlock Text="Efectivo USD contado"
+                                                       FontSize="13"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#0F172A"/>
+                                            <TextBlock Text="Arqueo físico opcional"
+                                                       FontSize="11"
+                                                       Foreground="#64748B"
+                                                       Margin="0,1,0,0"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <Border Grid.Column="1"
+                                            Background="#F1F5F9"
+                                            CornerRadius="4"
+                                            Padding="6,2"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="Opcional"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#64748B"/>
+                                    </Border>
+                                </Grid>
+
+                                <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Conteo físico de {0}. Si se deja vacío no se registra arqueo de esa moneda.'}"
+                                           FontSize="11"
+                                           Foreground="#64748B"
+                                           TextWrapping="Wrap"
+                                           Margin="0,10,0,8"/>
+
+                                <Border Style="{StaticResource DailyInputFrameStyle}">
+                                    <Grid>
+                                        <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol}"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="#94A3B8"
+                                                   VerticalAlignment="Center"
+                                                   Margin="10,0,0,0"
+                                                   IsHitTestVisible="False"/>
+                                        <TextBox Text="{Binding ActualClosingBalanceUsdText, UpdateSourceTrigger=PropertyChanged}"
+                                                 AutomationProperties.AutomationId="DailyClosure_UsdCountText"
+                                                 TextAlignment="Right"
+                                                 BorderThickness="0"
+                                                 Background="Transparent"
+                                                 Padding="30,0,10,0"
+                                                 FontWeight="Bold"
+                                                 FontSize="13"
+                                                 Foreground="#0F172A"
+                                                 CaretBrush="#6D28D9"
+                                                 Typography.NumeralAlignment="Tabular"
+                                                 GotKeyboardFocus="AmountInput_GotKeyboardFocus"
+                                                 PreviewKeyDown="AmountInput_PreviewKeyDown"
+                                                 LostKeyboardFocus="UsdInput_LostKeyboardFocus"/>
+                                        <TextBlock Text="0,00"
+                                                   FontSize="13"
+                                                   FontWeight="Bold"
+                                                   Foreground="#94A3B8"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,10,0"
+                                                   IsHitTestVisible="False">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ActualClosingBalanceUsdText}" Value="">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </Border>
+
+                                <StackPanel Orientation="Horizontal"
+                                            Margin="0,10,0,0"
+                                            Visibility="{Binding ShowUsdReconciliation, Converter={StaticResource BoolToVis}}">
+                                    <Border Background="#F8FAFC"
+                                            BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="8,5"
+                                            Margin="0,0,6,0">
+                                        <StackPanel>
+                                            <TextBlock Text="Esperado USD"
+                                                       FontSize="9.5"
+                                                       FontWeight="Bold"
+                                                       Foreground="#64748B"/>
+                                            <TextBlock Text="{Binding ExpectedClosingBalanceUsdDisplay}"
+                                                       AutomationProperties.AutomationId="DailyClosure_ExpectedUsdText"
+                                                       FontSize="13"
+                                                       FontWeight="Bold"
+                                                       Foreground="#5B21B6"
+                                                       Margin="0,2,0,0"
+                                                       Typography.NumeralAlignment="Tabular"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Background="#F8FAFC"
+                                            BorderBrush="#E2E8F0"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Padding="8,5">
+                                        <StackPanel>
+                                            <TextBlock Text="Diferencia USD"
+                                                       FontSize="9.5"
+                                                       FontWeight="Bold"
+                                                       Foreground="#64748B"/>
+                                            <TextBlock Text="{Binding DifferenceUsdDisplay}"
+                                                       AutomationProperties.AutomationId="DailyClosure_DifferenceUsdText"
+                                                       FontSize="13"
+                                                       FontWeight="Bold"
+                                                       Foreground="#0F172A"
+                                                       Margin="0,2,0,0"
+                                                       Typography.NumeralAlignment="Tabular"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                     </Grid>
                 </Border>
 
-                <!-- Bottom reconciliation: USD and observations adapt to Single/Dual -->
+                <!-- Observaciones del arqueo -->
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource SingleCurrencyGridLengthConverter}, ConverterParameter='38*'}"/>
-                        <ColumnDefinition Width="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource SingleCurrencyGridLengthConverter}, ConverterParameter='16'}"/>
-                        <ColumnDefinition Width="62*"/>
+                        <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
-                    <Border Grid.Column="0"
-                            Style="{StaticResource DailyCardStyle}"
-                            Padding="20"
-                            Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Border Width="30" Height="30" CornerRadius="8" Background="#DCFCE7" Margin="0,0,9,0">
-                                        <materialDesign:PackIcon Kind="CurrencyUsd"
-                                                                 Width="16" Height="16"
-                                                                 Foreground="#15803D"
-                                                                 HorizontalAlignment="Center"
-                                                                 VerticalAlignment="Center"/>
-                                    </Border>
-                                    <StackPanel>
-                                        <TextBlock Text="Efectivo USD contado"
-                                                   FontSize="13"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="#0F172A"/>
-                                        <TextBlock Text="Arqueo físico opcional"
-                                                   FontSize="11"
-                                                   Foreground="#64748B"
-                                                   Margin="0,1,0,0"/>
-                                    </StackPanel>
-                                </StackPanel>
-                                <Border Grid.Column="1"
-                                        Background="#F1F5F9"
-                                        CornerRadius="4"
-                                        Padding="6,2"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Text="Opcional"
-                                               FontSize="10"
-                                               FontWeight="SemiBold"
-                                               Foreground="#64748B"/>
-                                </Border>
-                            </Grid>
-
-                            <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Conteo físico de {0}. Si se deja vacío no se registra arqueo de esa moneda.'}"
-                                       FontSize="11"
-                                       Foreground="#64748B"
-                                       TextWrapping="Wrap"
-                                       Margin="0,10,0,8"/>
-
-                            <Border Style="{StaticResource DailyInputFrameStyle}">
-                                <Grid>
-                                    <TextBlock Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencySymbol}"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               Foreground="#94A3B8"
-                                               VerticalAlignment="Center"
-                                               Margin="10,0,0,0"
-                                               IsHitTestVisible="False"/>
-                                    <TextBox Text="{Binding ActualClosingBalanceUsdText, UpdateSourceTrigger=PropertyChanged}"
-                                             AutomationProperties.AutomationId="DailyClosure_UsdCountText"
-                                             TextAlignment="Right"
-                                             BorderThickness="0"
-                                             Background="Transparent"
-                                             Padding="30,0,10,0"
-                                             FontWeight="Bold"
-                                             FontSize="13"
-                                             Foreground="#0F172A"
-                                             CaretBrush="#6D28D9"
-                                             Typography.NumeralAlignment="Tabular"
-                                             GotKeyboardFocus="AmountInput_GotKeyboardFocus"
-                                             PreviewKeyDown="AmountInput_PreviewKeyDown"
-                                             LostKeyboardFocus="UsdInput_LostKeyboardFocus"/>
-                                    <TextBlock Text="0,00"
-                                               FontSize="13"
-                                               FontWeight="Bold"
-                                               Foreground="#94A3B8"
-                                               HorizontalAlignment="Right"
-                                               VerticalAlignment="Center"
-                                               Margin="0,0,10,0"
-                                               IsHitTestVisible="False">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ActualClosingBalanceUsdText}" Value="">
-                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Grid>
-                            </Border>
-
-                            <StackPanel Orientation="Horizontal"
-                                        Margin="0,10,0,0"
-                                        Visibility="{Binding ShowUsdReconciliation, Converter={StaticResource BoolToVis}}">
-                                <Border Background="#F8FAFC"
-                                        BorderBrush="#E2E8F0"
-                                        BorderThickness="1"
-                                        CornerRadius="6"
-                                        Padding="8,5"
-                                        Margin="0,0,6,0">
-                                    <StackPanel>
-                                        <TextBlock Text="Esperado USD"
-                                                   FontSize="9.5"
-                                                   FontWeight="Bold"
-                                                   Foreground="#64748B"/>
-                                        <TextBlock Text="{Binding ExpectedClosingBalanceUsdDisplay}"
-                                                   AutomationProperties.AutomationId="DailyClosure_ExpectedUsdText"
-                                                   FontSize="13"
-                                                   FontWeight="Bold"
-                                                   Foreground="#5B21B6"
-                                                   Margin="0,2,0,0"
-                                                   Typography.NumeralAlignment="Tabular"/>
-                                    </StackPanel>
-                                </Border>
-                                <Border Background="#F8FAFC"
-                                        BorderBrush="#E2E8F0"
-                                        BorderThickness="1"
-                                        CornerRadius="6"
-                                        Padding="8,5">
-                                    <StackPanel>
-                                        <TextBlock Text="Diferencia USD"
-                                                   FontSize="9.5"
-                                                   FontWeight="Bold"
-                                                   Foreground="#64748B"/>
-                                        <TextBlock Text="{Binding DifferenceUsdDisplay}"
-                                                   AutomationProperties.AutomationId="DailyClosure_DifferenceUsdText"
-                                                   FontSize="13"
-                                                   FontWeight="Bold"
-                                                   Foreground="#0F172A"
-                                                   Margin="0,2,0,0"
-                                                   Typography.NumeralAlignment="Tabular"/>
-                                    </StackPanel>
-                                </Border>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Grid.Column="2" Style="{StaticResource DailyCardStyle}" Padding="20">
+                    <Border Style="{StaticResource DailyCardStyle}" Padding="20">
                         <StackPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -920,6 +922,7 @@
                                              MinHeight="80"
                                              MaxHeight="130"
                                              MaxLength="500"
+                                             materialDesign:TextFieldAssist.CharacterCounterVisibility="Collapsed"
                                              FontSize="13"
                                              Foreground="#0F172A"
                                              BorderThickness="0"

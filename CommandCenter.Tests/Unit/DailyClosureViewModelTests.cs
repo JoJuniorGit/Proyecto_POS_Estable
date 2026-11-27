@@ -133,6 +133,26 @@ public class DailyClosureViewModelTests
     }
 
     [Fact]
+    public async Task LoadExpectedTotalsCommand_ExcludesMethodsWithoutActivityInTheJourney()
+    {
+        _closureServiceMock
+            .Setup(s => s.GetExpectedTotalsAsync(It.IsAny<DateTime>()))
+            .ReturnsAsync(new List<ExpectedTotalDto>
+            {
+                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 500m },
+                new() { PaymentMethodId = 2, PaymentMethodName = "Punto de Venta", ExpectedAmountBsS = 0m },
+                new() { PaymentMethodId = 3, PaymentMethodName = "Pago Móvil", ExpectedAmountBsS = 120m }
+            });
+
+        var vm = CreateViewModel();
+        await vm.LoadExpectedTotalsCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, vm.DetailRows.Count);
+        Assert.DoesNotContain(vm.DetailRows, row => row.PaymentMethodId == 2);
+        Assert.Equal(620m, vm.TotalExpectedBsS);
+    }
+
+    [Fact]
     public async Task EqualizeAllCommand_CopiesExpectedIntoDeclaredAndUpdatesPresentationTotals()
     {
         _closureServiceMock
