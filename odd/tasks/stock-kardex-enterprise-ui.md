@@ -67,8 +67,8 @@ Assumptions:
 
 ## Tasks
 
-- [x] T1 (S3, S4, S8, S9) - ViewModel/row presentation layer: signed formatting, KPI raw state, date presets, clear-product command, semantic row flags, row-detail members, and unit tests. Route: delegated writer + parent singular-warning fix. RED: missing-member compile failure; GREEN: 98/98 focused Kardex lane after the singular test.
-- [x] T2 (S1, S2, S5, S6, S7) - Rewrite `StockKardexView.xaml`: unified header, filter/export card, five-cell KPI bar, seven-column grid with row details, integrated pagination and empty state. Route: delegated writer + parent visual fixes (MinWidth/scroll, placeholder, dynamic impact header, audit grid, compact row details). Build 0/0.
+- [x] T1 (S3, S4, S8, S9) - ViewModel/row presentation layer: signed formatting, KPI raw state, date presets, clear-product command, semantic row flags, row-detail members, and unit tests. Route: delegated writer + parent singular-warning fix. RED: missing-member compile failure; GREEN: 98/98 focused Kardex lane after the singular test. Commit 68d045.
+- [x] T2 (S1, S2, S5, S6, S7) - Rewrite `StockKardexView.xaml`: unified header, filter/export card, five-cell KPI bar, seven-column grid with row details, integrated pagination and empty state. Route: delegated writer + parent visual fixes (MinWidth/scroll, placeholder, dynamic impact header, audit grid, compact row details). Build 0/0. Commit 895e29.
 - [x] T3 (S10) - Release build, focused/full test lanes, offscreen 100%/125% DPI visual validation, fixes and final work-unit commit. Route: parent. Build 0/0; ViewModel 48/48; export subset 8/8; combined Kardex lane 98/98 before the final XAML-only polish; DatePicker popup verified as Calendar/open; harness at 1280/1600/1024 and 125% DPI.
 
 ## Log
@@ -161,3 +161,5 @@ L5. T2 executed by `gentle-ai-worker`: complete seven-column XAML with the custo
 L6. Verification: solution build `0 warnings / 0 errors`; `StockKardexViewModelTests` 48/48; export tests (`StockKardexServiceTests.ExportAsync`) 8/8; the combined `~StockKardex` lane was 98/98 before the final XAML-only polish (a later isolated run of the whole service class hit an environmental testhost OOM; the export subset re-ran green). The offscreen harness confirmed no `$-` ordering, `+$` positive impact, negative stock alert, full product name at 1280+, RowDetails with all fields, and the DatePicker chrome/text alignment; at the app's 1024-DIP minimum the exact 865px + 240px column set shows the horizontal scrollbar fallback (A3), while 1280+ fills without forced scrolling. Backend exports and their detailed columns were untouched.
 
 L7. Concurrent sessions have unrelated working-tree changes/commits on V0.15; this work unit stages only `StockKardexView.xaml`, `StockKardexViewModel.cs`, `StockKardexViewModelTests.cs`, and this ODD document.
+
+L8. Commits: 68d045 (T1 signed currency/seven-column presentation state + tests) and 895e29 (T2 enterprise seven-column view + ODD document). T3 verification remains parent-owned and produced no additional source changes.
