@@ -71,8 +71,8 @@ Assumptions:
 ## Tasks
 
 - [x] T1 (S10, S11, S13) - Client DTO display/aggregate helpers + ViewModel KPIs, filters, sorting, auto-selection, clear/copy commands + unit tests. Route: delegated writer (`gentle-ai-worker`). RED: compile-time missing members; GREEN: 47/47 focused tests. Commit `8b0c696`.
-- [x] T2 (S1-S9, S13) - Rewrite `PendingPickupsView.xaml` and its code-behind with the enterprise header, KPI strip, filter bar, master-detail split, product grid, footer actions, empty states, and clipboard handling. Route: delegated writer + parent visual fixes. Build 0/0; focused suite 50/50; offscreen WPF harness at 96/125 DPI.
-- [x] T3 (S12) - Release build, targeted + full test suite, visual/Dpi validation at 96/125 DPI (offscreen harness), fix regressions, final work-unit commit. Full main suite 4517/4579; the 62 non-green are the PostgreSQL lane gated by a missing connection and an OOM in the full lane run; the 3 custody PostgreSQL tests pass against an isolated cluster.
+- [x] T2 (S1-S9, S13) - Rewrite `PendingPickupsView.xaml` and its code-behind with the enterprise header, KPI strip, filter bar, master-detail split, product grid, footer actions, empty states, and clipboard handling. Route: delegated writer + parent visual fixes. Build 0/0; focused suite 50/50; offscreen WPF harness at 96/125 DPI. Commit 1ccf75.
+- [x] T3 (S12) - Release build, targeted + full test suite, visual/Dpi validation at 96/125 DPI (offscreen harness), fix regressions, final work-unit commit. Full main suite 4517/4579; the 62 non-green are the PostgreSQL lane gated by a missing connection and an OOM in the full lane run; the 3 custody PostgreSQL tests pass against an isolated cluster. Commit 1ccf75.
 
 ## Log
 
