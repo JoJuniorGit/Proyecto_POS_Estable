@@ -9,6 +9,9 @@ public class ExpectedTotalDto
     public int PaymentMethodId { get; set; }
     public string PaymentMethodName { get; set; } = string.Empty;
     public decimal ExpectedAmountBsS { get; set; }
+
+    /// <summary>Moneda persistida del método; permite distinguir la actividad USD del cierre.</summary>
+    public string? PaymentMethodCurrency { get; set; }
 }
 
 public class DailyClosureDto

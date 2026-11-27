@@ -19518,3 +19518,31 @@ B4. Harness WPF 96/120 DPI: metodos usados, USD dentro del arqueo, observaciones
 C. COMMITS
 C1. Commit local en la rama V0.15; sin push.
 ================================================================================
+
+================================================================================
+ANEXO XCV - CIERRE DIARIO: ARQUEO USD CONDICIONAL Y OBLIGATORIO - 2026-11-27
+================================================================================
+
+A. ALCANCE
+A1. El bloque de conteo USD se muestra solo cuando el metodo USD tuvo actividad
+    (esperado distinto de cero) en la jornada; sin actividad no se renderiza ni viaja
+    al cierre.
+A2. Cuando se muestra, el conteo es obligatorio: el cierre no procesa con el campo
+    vacio. Un conteo de cero sigue siendo un valor fisico valido.
+A3. Se normalizo visualmente como fila de metodo: icono y acento morado, etiqueta
+    "Efectivo USD", subtitulo "Conteo fisico obligatorio", input de 220 px con prefijo
+    "$" y sin badge "Opcional".
+A4. Se agrego PaymentMethodCurrency al DTO cliente de totales esperados para detectar
+    actividad USD; sin cambios de API ni de calculos.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Carril DailyClosure sin PostgreSQL: 101/101.
+B3. Suite .NET: 4600/4662 superadas; los 62 fallos restantes son el carril PostgreSQL
+    real sin TEST_POSTGRES_CONNECTION, sin fallos ajenos.
+B4. Harness WPF 96/120 DPI: bloque USD normalizado, visible con actividad y ausente
+    sin actividad, sin solapamientos.
+
+C. COMMITS
+C1. Commit local en la rama V0.15; sin push.
+================================================================================

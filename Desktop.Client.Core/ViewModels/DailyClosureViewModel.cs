@@ -18,12 +18,18 @@ public partial class ClosureDetailRow : ObservableObject
 {
     private readonly Action _onChanged;
 
-    public ClosureDetailRow(int paymentMethodId, string paymentMethodName, decimal expectedAmountBsS, Action onChanged)
+    public ClosureDetailRow(
+        int paymentMethodId,
+        string paymentMethodName,
+        decimal expectedAmountBsS,
+        Action onChanged,
+        string? currency = null)
     {
         _paymentMethodId = paymentMethodId;
         _paymentMethodName = paymentMethodName;
         _expectedAmountBsS = expectedAmountBsS;
         _onChanged = onChanged;
+        Currency = currency;
     }
 
     private int _paymentMethodId;
@@ -31,6 +37,11 @@ public partial class ClosureDetailRow : ObservableObject
 
     private string _paymentMethodName;
     public string PaymentMethodName => _paymentMethodName;
+
+    /// <summary>Moneda persistida del método, para distinguir el arqueo USD.</summary>
+    public string? Currency { get; }
+
+    public bool IsUsd => string.Equals(Currency, "USD", StringComparison.OrdinalIgnoreCase);
 
     private decimal _expectedAmountBsS;
     public decimal ExpectedAmountBsS
@@ -141,6 +152,14 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
     /// igual que el esperado Bs.S (blind closing 8.153). El cajero conserva el conteo ciego.
     /// </summary>
     public bool CanViewExpectedUsd => UserSession?.IsAdmin == true || UserSession?.IsManager == true;
+
+    /// <summary>
+    /// El metodo USD solo participa del cierre cuando tuvo cobros en la jornada. En ese caso
+    /// el conteo fisico es obligatorio; sin actividad no se muestra ni se envia.
+    /// </summary>
+    public bool HasUsdActivity => DetailRows.Any(row => row.IsUsd && row.ExpectedAmountBsS != 0m);
+
+    public bool ShowUsdCount => !CurrencyDisplay.IsSingle && HasUsdActivity;
 
     public DailyClosureViewModel(IDailyClosureClientService closureService, IDialogService dialogService, UserSession? userSession = null, IFilePickerDialog? filePicker = null)
     {
@@ -308,12 +327,20 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
 
         if (string.IsNullOrWhiteSpace(ActualClosingBalanceUsdText))
         {
+            if (HasUsdActivity)
+            {
+                error = $"Debe ingresar el conteo físico {CurrencyDisplay.PrimaryCurrencyCode}: se recibieron pagos por ese método durante la jornada.";
+                return false;
+            }
+
             return true;
         }
 
         if (!FlexibleDecimalParser.TryParse(ActualClosingBalanceUsdText, out decimal parsed))
         {
-            error = $"Ingrese un conteo {CurrencyDisplay.PrimaryCurrencyCode} válido o deje el campo vacío.";
+            error = HasUsdActivity
+                ? $"Ingrese un conteo {CurrencyDisplay.PrimaryCurrencyCode} válido."
+                : $"Ingrese un conteo {CurrencyDisplay.PrimaryCurrencyCode} válido o deje el campo vacío.";
             return false;
         }
 
@@ -481,6 +508,8 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(FooterStatusText));
         OnPropertyChanged(nameof(FooterStatusColor));
         OnPropertyChanged(nameof(CanEqualize));
+        OnPropertyChanged(nameof(HasUsdActivity));
+        OnPropertyChanged(nameof(ShowUsdCount));
     }
 
     [RelayCommand]
@@ -527,7 +556,15 @@ public partial class DailyClosureViewModel : ObservableObject, IDisposable
                     t.PaymentMethodId,
                     t.PaymentMethodName,
                     t.ExpectedAmountBsS,
-                    RecalculateTotals));
+                    RecalculateTotals,
+                    t.PaymentMethodCurrency));
+            }
+
+            // El bloque USD solo existe si el metodo USD tuvo actividad en la jornada. Al
+            // ocultarse, cualquier conteo residual de una carga anterior no debe viajar al cierre.
+            if (!HasUsdActivity)
+            {
+                ActualClosingBalanceUsdText = string.Empty;
             }
 
             RecalculateTotals();

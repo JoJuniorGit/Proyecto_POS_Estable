@@ -34,7 +34,7 @@ public class DailyClosureUsdCountViewModelTests
             .Setup(s => s.GetExpectedTotalsAsync(It.IsAny<DateTime>()))
             .ReturnsAsync(new List<ExpectedTotalDto>
             {
-                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 500m }
+                new() { PaymentMethodId = 1, PaymentMethodName = "Efectivo USD", ExpectedAmountBsS = 500m, PaymentMethodCurrency = "USD" }
             });
         _dialogService
             .Setup(d => d.ShowConfirm(It.IsAny<string>(), It.IsAny<string>()))
@@ -79,13 +79,35 @@ public class DailyClosureUsdCountViewModelTests
     }
 
     [Fact]
-    public async Task ConfirmClosure_WithoutUsdCount_SendsNullAndKeepsLegacyBehavior()
+    public async Task ConfirmClosure_WithUsdActivityAndNoUsdCount_IsBlockedAsMandatory()
+    {
+        var vm = CreateViewModel(UserRole.Admin);
+        await vm.LoadExpectedTotalsCommand.ExecuteAsync(null);
+        vm.DetailRows[0].ActualAmountBsS = 500m;
+
+        await vm.ConfirmClosureCommand.ExecuteAsync(null);
+
+        _dialogService.Verify(d => d.ShowWarning("Advertencia", It.Is<string>(m => m.Contains("conteo"))), Times.Once);
+        _closureService.Verify(s => s.CreateClosureAsync(It.IsAny<CreateClosureRequest>()), Times.Never);
+        Assert.True(vm.HasUsdActivity);
+        Assert.True(vm.ShowUsdCount);
+    }
+
+    [Fact]
+    public async Task ConfirmClosure_WithoutUsdActivity_SendsNullAndKeepsLegacyBehavior()
     {
         _closureService
             .Setup(s => s.CreateClosureAsync(It.IsAny<CreateClosureRequest>()))
             .ReturnsAsync(new DailyClosureDto { Id = 6 });
 
         var vm = CreateViewModel(UserRole.Admin);
+        _closureService
+            .Setup(s => s.GetExpectedTotalsAsync(It.IsAny<DateTime>()))
+            .ReturnsAsync(new List<ExpectedTotalDto>
+            {
+                new() { PaymentMethodId = 2, PaymentMethodName = "Pago Móvil", ExpectedAmountBsS = 500m, PaymentMethodCurrency = "VES" }
+            });
+
         await vm.LoadExpectedTotalsCommand.ExecuteAsync(null);
         vm.DetailRows[0].ActualAmountBsS = 500m;
 
@@ -93,6 +115,8 @@ public class DailyClosureUsdCountViewModelTests
 
         _closureService.Verify(s => s.CreateClosureAsync(It.Is<CreateClosureRequest>(request =>
             request.ActualClosingBalanceUsd == null)), Times.Once);
+        Assert.False(vm.HasUsdActivity);
+        Assert.False(vm.ShowUsdCount);
     }
 
     [Fact]

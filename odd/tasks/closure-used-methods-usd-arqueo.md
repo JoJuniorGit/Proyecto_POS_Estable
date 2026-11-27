@@ -28,6 +28,8 @@ L2. Implemented the `ExpectedAmountBsS != 0` row filter in `DailyClosureViewMode
 
 L3. Evidence: Release build 0 warnings/0 errors; DailyClosure lane 100/100; full suite 4598/4661 with 62 PostgreSQL-lane environment failures and one POS flaky test that passes in isolation; WPF harness screenshots at 96 and 120 DPI showing the integrated USD section and full-width observations without overlap.
 
+L4. Refinement: the USD block now only renders when the USD method had activity in the journey (`ExpectedAmountBsS != 0` and `PaymentMethodCurrency == USD`), and its count is mandatory in that case (empty blocks closure; zero remains a valid physical count). It was visually normalized as a method row: purple wallet icon, `Efectivo USD` / `Conteo físico obligatorio`, 220px input with `$` prefix, no `Opcional` badge. Evidence: Release build 0/0; DailyClosure 101/101; full suite 4600/4662 with only the 62 PostgreSQL-lane environment failures; WPF harness rendered the normalized block at 96/120 DPI.
+
 Assumptions:
 - Scope is the WPF daily closure; the web `RegisterClosePage` keeps its current contract for this change.
 - "Used method" is the method with a non-zero expected amount in the closure window; zero-activity rows are hidden from declaration.
