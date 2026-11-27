@@ -46,8 +46,8 @@ Assumptions:
 
 ## Tasks
 
-- [x] T1 (S1-S10, S12) - Implement the shared shell, scoped light/dark design system, card headers, currency choices/preview, payment method + fee rule cards, pairing and critical system card; preserve all behavior. Route: delegated writer. Evidence: `npm test` 827/827, lint clean, Vite production build successful.
-- [x] T2 (S11) - Parent verification: tests/lint/build, Playwright light/dark desktop/mobile screenshots, contrast/overflow fixes, final work-unit commit. Evidence: 4/4 Playwright visual tests passed at 1440x1000 (light/dark, four sections) and 390x844 (light/dark, currency/payments); fixed mobile preview gap, 2x2 tab rail, mobile fee-rule cards, ARIA orientation and method-name wrapping; primary button contrast computed as white-on-purple in light and #0F172A-on-lavender in dark.
+- [x] T1 (S1-S10, S12) - Implement the shared shell, scoped light/dark design system, card headers, currency choices/preview, payment method + fee rule cards, pairing and critical system card; preserve all behavior. Route: delegated writer. Evidence: `npm test` 827/827, lint clean, Vite production build successful. Commit dcf332c.
+- [x] T2 (S11) - Parent verification: tests/lint/build, Playwright light/dark desktop/mobile screenshots, contrast/overflow fixes, final work-unit commit. Evidence: 4/4 Playwright visual tests passed at 1440x1000 (light/dark, four sections) and 390x844 (light/dark, currency/payments); fixed mobile preview gap, 2x2 tab rail, mobile fee-rule cards, ARIA orientation and method-name wrapping; primary button contrast computed as white-on-purple in light and #0F172A-on-lavender in dark. Commit dcf332c.
 
 ## Log
 
@@ -66,3 +66,5 @@ L5. Parent visual verification with Playwright + mocked APIs at 1440x1000 and 39
 L6. Final verification: `npm test` 827/827 (188 suites), `npm run lint` clean, `npx vite build --outDir dist --emptyOutDir` successful (SettingsPage 44.77 kB JS / 22.67 kB CSS), Playwright 4/4 visual tests passed. The console SignalR negotiate errors are expected because the visual harness has no backend; they did not affect rendering. Unrelated ProductPicker WIP in the working tree was not touched.
 
 L7. The settings page still owns only the four existing web domains; no WPF-only endpoint or feature was added. The QR remains white in dark mode for scannability.
+
+L8. Work-unit commit dcf332c contains the nine settings source/test files plus this ODD document. Unrelated ProductPicker WIP remained unstaged.
