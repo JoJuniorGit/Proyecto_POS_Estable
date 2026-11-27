@@ -30,8 +30,8 @@ S9. Verification: Release build 0/0; .NET suite green except the known PostgreSQ
 - [x] WU2-T1 (S5) - WPF view model state, filters, KPIs, modes, pagination and settlement transition.
 - [x] WU2-T2 (S5) - WPF segmented sub-sections, paid tables and timeline slide-over.
 - [x] WU2-T3 (S8) - WPF unit tests.
-- [ ] WU3-T1 (S6) - Web paid sub-section, modes, timeline drawer and exports.
-- [ ] WU3-T2 (S7/S8) - Web tests and Single/RBAC coverage.
+- [x] WU3-T1 (S6) - Web paid sub-section, modes, timeline drawer and client exports.
+- [x] WU3-T2 (S7/S8) - Web tests and Single/RBAC coverage.
 - [ ] WU3-T3 (S9) - Build, .NET suite, web checks, visual validation.
 
 ## Log
@@ -41,4 +41,9 @@ L1. User requested separating paid debts from pending in CxC, with a dedicated `
 L2. WU1 backend implemented: open-only default portfolio, `PaidReceivablesListDto`/`ReceivablePaymentTimelineDto`/`PaidReceivablePaymentsListDto` contracts, `CreditService.Paid` queries with frozen payment snapshots, `ReceivablesController` routes and client transport. Evidence: Release build 0/0; new paid tests 5/5; existing CxC list tests 14/14 after updating the isolation expectation.
 
 L3. WU2 WPF implemented: segmented Deudas Pendientes/Deudas Pagadas with live counters, open-only status options, paid filters/presets, invoice/payment modes, 4 realized KPIs, paginated tables, settlement notice with Ver en Pagadas, per-obligation slide-over with frozen rates/running balance and Esc/backdrop/close. CSV export works; Excel/PDF and the cancellation PDF remain for WU3. Evidence: Release build 0/0; paid WPF tests 3/3; CxC suite 55/56 with only the PostgreSQL-lane environment failure; harness screenshots show paid section, pending section and timeline slide-over.
+
+L4. WU3 Web implemented: same Deudas Pendientes/Deudas Pagadas segmented sections, open-only status options, paid filters/presets, invoice/payment modes, realized KPIs, paginated tables and a right-side timeline drawer with frozen rates and Esc/backdrop close. CSV/Excel/print-PDF exports are client-side; the backend PDF constancia and server-side exports remain pending. Evidence: 
+pm test 829/829, 
+pm run lint clean, 
+pm run build clean; .NET Release build 0/0. WPF Excel/PDF export and server-side historical exports remain open.
 
