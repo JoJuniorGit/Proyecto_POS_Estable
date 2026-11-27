@@ -9,6 +9,7 @@ import SettingsCurrencyFormat from './SettingsCurrencyFormat';
 import SettingsPaymentMethods from './SettingsPaymentMethods';
 import PaymentMethodFeeRules from '../components/settings/PaymentMethodFeeRules';
 import { SETTINGS_SECTIONS, resolveTabIndex } from './settingsSections';
+import { useMediaQuery } from '../utils/useMediaQuery';
 import RoleGuard from '../navigation/RoleGuard';
 import './SettingsPage.css';
 
@@ -37,6 +38,7 @@ function SettingsPageContent() {
   const [pairingInfo, setPairingInfo] = useState(null);
   const [activeSection, setActiveSection] = useState(SETTINGS_SECTIONS[0].id);
   const tabRefs = useRef([]);
+  const compactNav = useMediaQuery('(max-width: 980px)');
 
   const handleTabKeyDown = (event, index) => {
     const nextIndex = resolveTabIndex(index, event.key);
@@ -109,46 +111,77 @@ function SettingsPageContent() {
 
   return (
     <div className="settings-page set-page">
-      <h2 className="page-title mb-4 font-bold text-xl sm:text-2xl flex-align-center gap-2">
-        <Settings size={24} className="color-primary flex-shrink-0" />
-        <span>Configuración del Sistema</span>
-      </h2>
+      <header className="set-hero">
+        <div className="set-hero-main">
+          <span className="set-hero-badge" aria-hidden="true">
+            <Settings size={22} />
+          </span>
+          <div className="set-hero-copy">
+            <h2 className="set-hero-title">Configuración del Sistema</h2>
+            <p className="set-hero-subtitle">
+              Gestione las preferencias globales, conectividad, métodos de pago y mantenimiento del sistema.
+            </p>
+          </div>
+        </div>
+        <div className="set-meta-pill">
+          <span className="set-meta-dot" aria-hidden="true" />
+          Configuración global
+        </div>
+      </header>
 
-      {message && <div className={`alert alert-${message.type} mb-4 text-sm p-3`}>{message.text}</div>}
+      {message && (
+        <div className={`set-alert set-alert--${message.type}`} role="status">
+          {message.text}
+        </div>
+      )}
 
       <div className="set-layout">
-        <div
-          className="set-tabs"
-          role="tablist"
-          aria-label="Secciones de Configuración"
-          aria-orientation="vertical"
-        >
-          {SETTINGS_SECTIONS.map((section, index) => {
-            const Icon = SECTION_ICONS[section.icon];
-            const isActive = activeSection === section.id;
+        <nav className="set-nav" aria-label="Navegación de configuración">
+          <div className="set-nav-head">
+            <span className="set-nav-kicker">SECCIONES</span>
+            <span className="set-nav-count">{String(SETTINGS_SECTIONS.length).padStart(2, '0')}</span>
+          </div>
 
-            return (
-              <button
-                key={section.id}
-                ref={(element) => {
-                  tabRefs.current[index] = element;
-                }}
-                type="button"
-                role="tab"
-                id={`settings-tab-${section.id}`}
-                aria-selected={isActive}
-                aria-controls={`settings-panel-${section.id}`}
-                tabIndex={isActive ? 0 : -1}
-                className={`set-tab${isActive ? ' is-active' : ''}`}
-                onClick={() => setActiveSection(section.id)}
-                onKeyDown={(event) => handleTabKeyDown(event, index)}
-              >
-                <Icon size={18} aria-hidden="true" />
-                <span>{section.label}</span>
-              </button>
-            );
-          })}
-        </div>
+          <div
+            className="set-nav-tabs"
+            role="tablist"
+            aria-label="Secciones de Configuración"
+            aria-orientation={compactNav ? 'horizontal' : 'vertical'}
+          >
+            {SETTINGS_SECTIONS.map((section, index) => {
+              const Icon = SECTION_ICONS[section.icon];
+              const isActive = activeSection === section.id;
+
+              return (
+                <button
+                  key={section.id}
+                  ref={(element) => {
+                    tabRefs.current[index] = element;
+                  }}
+                  type="button"
+                  role="tab"
+                  id={`settings-tab-${section.id}`}
+                  aria-selected={isActive}
+                  aria-controls={`settings-panel-${section.id}`}
+                  tabIndex={isActive ? 0 : -1}
+                  className={`set-tab${isActive ? ' is-active' : ''}`}
+                  onClick={() => setActiveSection(section.id)}
+                  onKeyDown={(event) => handleTabKeyDown(event, index)}
+                >
+                  <span className="set-tab-icon" aria-hidden="true">
+                    <Icon size={16} />
+                  </span>
+                  <span className="set-tab-copy">
+                    <span className="set-tab-label">{section.label}</span>
+                    <span className="set-tab-desc">{section.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="set-nav-foot">Los cambios se aplican de inmediato en este equipo.</p>
+        </nav>
 
         <div className="set-panels">
           <section
@@ -200,22 +233,27 @@ function SettingsPageContent() {
             hidden={activeSection !== 'system'}
             className="set-panel"
           >
-            <p className="set-critical-label">Zona de Acciones Críticas</p>
-            <div className="card set-critical-zone p-3 sm:p-4">
-              <div className="flex-between flex-align-center flex-wrap gap-3">
-                <div className="flex-1 min-w-0">
-                  <h3 className="card-title flex-align-center gap-2 text-base font-bold mb-2">
-                    <Power size={20} className="color-primary flex-shrink-0" />
-                    <span>Reiniciar Sistema</span>
-                  </h3>
-                  <p className="text-muted text-xs sm:text-sm mb-0 set-restart-hint">
+            <p className="set-section-label set-section-label--warning">ZONA DE ACCIONES CRÍTICAS</p>
+            <div className="set-card set-critical-card">
+              <div className="set-critical-main">
+                <span className="set-card-icon set-card-icon--warning" aria-hidden="true">
+                  <Power size={18} />
+                </span>
+                <div className="set-critical-copy">
+                  <div className="set-critical-title-row">
+                    <h3 className="set-card-title">Reiniciar Sistema</h3>
+                    <span className="set-status-pill set-status-pill--warning">Acción crítica</span>
+                  </div>
+                  <p className="set-card-subtitle">
                     Reinicie el servicio del sistema POS cuando presente lentitud o comportamiento anómalo.
                     Las ventas y la configuración se conservan; la caja se restablece en segundos.
                   </p>
                 </div>
+              </div>
+              <div className="set-critical-action">
                 <button
                   type="button"
-                  className="btn btn-primary flex-align-center gap-1 text-sm flex-shrink-0"
+                  className="set-btn-warning"
                   onClick={() => setRestartModalOpen(true)}
                   disabled={restarting}
                   title="Reiniciar el servicio del sistema POS"

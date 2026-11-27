@@ -353,32 +353,60 @@ function PaymentMethodFeeRulesCard({ methods = [], setMessage }) {
   };
 
   return (
-    <div className="card pmf-card mb-4 p-3 sm:p-4" data-testid="payment-method-fee-rules">
-      <div className="pmf-header">
-        <div className="pmf-heading">
-          <h3 className="card-title flex-align-center gap-2 text-base font-bold">
-            <Percent size={20} className="color-primary flex-shrink-0" />
-            <span>Comisiones de Medios de Pago</span>
-          </h3>
-          <p className="text-muted text-xs pmf-subtitle">
+    <section className="set-card" data-testid="payment-method-fee-rules">
+      <header className="set-card-head">
+        <span className="set-card-icon" aria-hidden="true">
+          <Percent size={18} />
+        </span>
+        <div className="set-card-heading">
+          <h3 className="set-card-title">Comisiones de Medios de Pago</h3>
+          <p className="set-card-subtitle">
             Costo del negocio por cobros electrónicos. Nunca se suma al cliente ni al checkout.
           </p>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary btn-sm flex-align-center gap-2"
-          onClick={startNewRule}
-          disabled={eligibleMethods.length === 0}
-        >
-          <Plus size={16} /> Nueva Regla
-        </button>
-      </div>
+        <div className="set-card-head-actions">
+          <span className="set-status-pill set-status-pill--neutral">
+            {rules.length} {rules.length === 1 ? 'regla' : 'reglas'}
+          </span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={startNewRule}
+            disabled={eligibleMethods.length === 0}
+          >
+            <Plus size={16} /> Nueva Regla
+          </button>
+        </div>
+      </header>
 
-      {status && <div className={`alert alert-${status.type} pmf-status`}>{status.text}</div>}
+      {status && (
+        <div className={`set-alert set-alert--${status.type}`} role="status">
+          {status.text}
+        </div>
+      )}
 
       {formOpen && (
-        <form className="pmf-form" onSubmit={handleSave}>
-          <div className="pmf-form-grid">
+        <form className="set-form-panel" onSubmit={handleSave}>
+          <div className="set-form-head">
+            <h4 className="set-form-title">
+              {editingId ? 'Editar Regla de Comisión' : 'Nueva Regla de Comisión'}
+            </h4>
+            <p className="set-form-subtitle">
+              La comisión se registra como costo del negocio y no modifica el precio cobrado al cliente.
+            </p>
+          </div>
+
+          <div className="set-callout set-callout--info">
+            <div>
+              <span className="set-callout-title">Vigencia y moneda</span>
+              <p>
+                Defina el rango de fechas y la moneda en la que se expresa la comisión.
+                Los cobros históricos conservan la regla que tenían aplicada.
+              </p>
+            </div>
+          </div>
+
+          <div className="set-form-grid set-form-grid--fees">
             <div className="form-group">
               <label className="form-label" htmlFor="pmf-payment-method">Método de pago</label>
               <select
@@ -477,18 +505,20 @@ function PaymentMethodFeeRulesCard({ methods = [], setMessage }) {
               />
             </div>
 
-            <div className="form-group pmf-active-field">
-              <label className="form-label" htmlFor="pmf-active">Activa</label>
-              <input
-                id="pmf-active"
-                type="checkbox"
-                checked={form.isActive}
-                onChange={updateField('isActive')}
-              />
+            <div className="set-check-field">
+              <label className="set-check-label">
+                <input
+                  id="pmf-active"
+                  type="checkbox"
+                  checked={form.isActive}
+                  onChange={updateField('isActive')}
+                />
+                <span>Activa</span>
+              </label>
             </div>
           </div>
 
-          <div className="pmf-form-actions">
+          <div className="set-form-actions">
             <button type="button" className="btn btn-outline btn-sm" onClick={cancelEdit}>
               Cancelar
             </button>
@@ -500,8 +530,76 @@ function PaymentMethodFeeRulesCard({ methods = [], setMessage }) {
         </form>
       )}
 
-      <div className="overflow-x-auto pmf-table-wrapper">
-        <table className="cart-table">
+      <div className="settings-mobile-cards-view set-fee-mobile-list">
+        {loading ? (
+          <div className="set-loading">
+            <Loader2 size={18} className="animate-spin" />
+            <span>Cargando reglas de comisión...</span>
+          </div>
+        ) : rules.length === 0 ? (
+          <div className="set-fee-mobile-empty">No hay reglas de comisión configuradas.</div>
+        ) : (
+          rules.map((rule) => (
+            <article
+              key={rule.id}
+              className={`set-fee-mobile-card${rule.isActive === false ? ' is-inactive' : ''}`}
+            >
+              <div className="set-fee-mobile-head">
+                <span className="set-fee-mobile-name">{rule.paymentMethodName}</span>
+                <span className={`set-chip set-chip--static ${rule.isActive === false ? 'set-chip--danger' : 'set-chip--success'}`}>
+                  {rule.isActive === false ? 'Inactiva' : 'Activa'}
+                </span>
+              </div>
+              <div className="set-fee-mobile-grid">
+                <div>
+                  <span>Tipo</span>
+                  <strong>{FEE_TYPE_OPTIONS.find((option) => option.value === Number(rule.feeType))?.label || '—'}</strong>
+                </div>
+                <div>
+                  <span>Valor</span>
+                  <strong className="font-mono">{formatFeeRuleValue(rule)}</strong>
+                </div>
+                <div>
+                  <span>Moneda</span>
+                  <strong>{rule.currencyCode}</strong>
+                </div>
+                <div>
+                  <span>Desde</span>
+                  <strong>{formatFeeRuleDate(rule.effectiveFromUtc)}</strong>
+                </div>
+                <div>
+                  <span>Hasta</span>
+                  <strong>{formatFeeRuleDate(rule.effectiveToUtc)}</strong>
+                </div>
+              </div>
+              <div className="set-row-actions">
+                <button
+                  type="button"
+                  className="set-icon-btn"
+                  onClick={() => startEditRule(rule)}
+                  aria-label={`Editar regla de comisión de ${rule.paymentMethodName}`}
+                  title="Editar regla de comisión"
+                >
+                  <Pencil size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="set-icon-btn set-icon-btn--danger"
+                  onClick={() => setRuleToDelete(rule)}
+                  disabled={rule.isActive === false}
+                  aria-label={`Desactivar regla de comisión de ${rule.paymentMethodName}`}
+                  title="Desactivar regla de comisión"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+
+      <div className="set-table-wrap pmf-table-wrap settings-desktop-table-view">
+        <table className="set-table set-table--fees">
           <thead>
             <tr>
               <th>Método</th>
@@ -511,26 +609,26 @@ function PaymentMethodFeeRulesCard({ methods = [], setMessage }) {
               <th>Desde</th>
               <th>Hasta</th>
               <th>Estado</th>
-              <th className="text-center">Acciones</th>
+              <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="text-center text-muted pmf-state-cell">
+                <td colSpan={8} className="set-empty-cell">
                   <Loader2 size={18} className="animate-spin inline-block mr-2" />
                   Cargando reglas de comisión...
                 </td>
               </tr>
             ) : rules.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center text-muted pmf-state-cell">
+                <td colSpan={8} className="set-empty-cell">
                   No hay reglas de comisión configuradas.
                 </td>
               </tr>
             ) : (
               rules.map((rule) => (
-                <tr key={rule.id} className={rule.isActive === false ? 'pmf-row-inactive' : ''}>
+                <tr key={rule.id} className={rule.isActive === false ? 'set-row-inactive' : ''}>
                   <td className="font-medium">{rule.paymentMethodName}</td>
                   <td>{FEE_TYPE_OPTIONS.find((option) => option.value === Number(rule.feeType))?.label || '—'}</td>
                   <td className="font-mono">{formatFeeRuleValue(rule)}</td>
@@ -538,15 +636,15 @@ function PaymentMethodFeeRulesCard({ methods = [], setMessage }) {
                   <td>{formatFeeRuleDate(rule.effectiveFromUtc)}</td>
                   <td>{formatFeeRuleDate(rule.effectiveToUtc)}</td>
                   <td>
-                    <span className={`badge ${rule.isActive === false ? 'badge-danger' : 'badge-success'}`}>
+                    <span className={`set-chip set-chip--static ${rule.isActive === false ? 'set-chip--danger' : 'set-chip--success'}`}>
                       {rule.isActive === false ? 'Inactiva' : 'Activa'}
                     </span>
                   </td>
-                  <td className="text-center">
-                    <div className="pmf-row-actions">
+                  <td>
+                    <div className="set-row-actions pmf-row-actions">
                       <button
                         type="button"
-                        className="btn btn-sm btn-outline p-1"
+                        className="set-icon-btn"
                         onClick={() => startEditRule(rule)}
                         aria-label={`Editar regla de comisión de ${rule.paymentMethodName}`}
                         title="Editar regla de comisión"
@@ -555,7 +653,7 @@ function PaymentMethodFeeRulesCard({ methods = [], setMessage }) {
                       </button>
                       <button
                         type="button"
-                        className="btn btn-sm btn-outline text-danger p-1"
+                        className="set-icon-btn set-icon-btn--danger"
                         onClick={() => setRuleToDelete(rule)}
                         disabled={rule.isActive === false}
                         aria-label={`Desactivar regla de comisión de ${rule.paymentMethodName}`}
@@ -582,7 +680,7 @@ function PaymentMethodFeeRulesCard({ methods = [], setMessage }) {
         cancelText="Cancelar"
         variant="danger"
       />
-    </div>
+    </section>
   );
 }
 

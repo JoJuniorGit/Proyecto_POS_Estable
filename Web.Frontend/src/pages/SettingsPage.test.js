@@ -33,4 +33,27 @@ describe('SettingsPage modular shell', () => {
     assert.match(html, /id="settings-panel-payments"[^>]*hidden/);
     assert.match(html, /Moneda<\/th>/);
   });
+
+  it('renders the enterprise hero and the four section descriptions', () => {
+    const html = renderToString(
+      <AuthProvider>
+        <CurrencyFormatProvider>
+          <SettingsPage />
+        </CurrencyFormatProvider>
+      </AuthProvider>
+    );
+
+    assert.match(html, /Configuración del Sistema/);
+    assert.ok(
+      html.includes('Gestione las preferencias globales, conectividad, métodos de pago y mantenimiento del sistema.')
+    );
+    for (const description of [
+      'Formato, separadores y vista previa de montos.',
+      'Medios habilitados, comisiones y reglas de cobro.',
+      'Emparejamiento QR, direcciones IP y acceso local.',
+      'Reinicio del servicio y estado de la terminal.',
+    ]) {
+      assert.ok(html.includes(description), `falta la descripción de sección: ${description}`);
+    }
+  });
 });

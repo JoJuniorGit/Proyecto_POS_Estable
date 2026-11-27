@@ -193,30 +193,43 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
   };
 
   return (
-    <div className="card mb-4 p-3 sm:p-4">
-      <h3 className="card-title mb-3 flex-align-center gap-2 text-base font-bold">
-        <CreditCard size={20} className="color-primary flex-shrink-0" /> Métodos de Pago Habilitados
-      </h3>
+    <section className="set-card">
+      <header className="set-card-head">
+        <span className="set-card-icon" aria-hidden="true">
+          <CreditCard size={18} />
+        </span>
+        <div className="set-card-heading">
+          <h3 className="set-card-title">Métodos de Pago Habilitados</h3>
+          <p className="set-card-subtitle">
+            Administre los medios de cobro disponibles, su tipo y los requerimientos operativos del POS.
+          </p>
+        </div>
+        <div className="set-card-head-actions">
+          <span className="set-status-pill set-status-pill--neutral">
+            {methods.length} {methods.length === 1 ? 'método' : 'métodos'}
+          </span>
+        </div>
+      </header>
 
       {loadingMethods ? (
-        <div className="p-4 text-center text-muted">
-          <Loader2 className="animate-spin mb-2 inline-block" size={24} />
-          <div>Cargando métodos de pago...</div>
+        <div className="set-loading">
+          <Loader2 className="animate-spin" size={24} />
+          <span>Cargando métodos de pago...</span>
         </div>
       ) : (
         <>
-          <div className="settings-mobile-cards-view mb-4">
+          <div className="settings-mobile-cards-view set-mobile-list">
             {methods.map((m) => (
-              <div key={m.id} className="settings-method-card p-3 mb-3 border rounded-lg bg-surface shadow-xs">
-                <div className="flex-between flex-align-center mb-2.5 pb-2 border-bottom">
-                  <div className="flex-align-center gap-2 min-w-0">
-                    <span className="font-bold text-base color-primary">{m.name}</span>
-                    <span className="set-currency-chip">{m.currency || 'Bs.S'}</span>
+              <div key={m.id} className="settings-method-card set-method-card">
+                <div className="set-method-card-head">
+                  <div className="set-method-name">
+                    <span className="set-method-name-text">{m.name}</span>
+                    <span className="set-chip set-chip--neutral set-chip--static">{m.currency || 'Bs.S'}</span>
                   </div>
-                  <div className="flex-align-center gap-2">
+                  <div className="set-method-actions">
                     <button
                       type="button"
-                      className={`btn btn-sm ${m.isActive ? 'btn-primary' : 'btn-danger'} text-xs font-bold px-3 set-state-btn`}
+                      className={`set-chip set-chip--button ${m.isActive ? 'set-chip--success' : 'set-chip--danger'}`}
                       onClick={() => handleToggleActive(m)}
                       title="Alternar estado activo"
                       aria-label={`Alternar estado activo para ${m.name}`}
@@ -225,7 +238,7 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
                     </button>
                     <button
                       type="button"
-                      className="btn btn-sm btn-outline text-danger p-1 set-delete-btn"
+                      className="set-icon-btn set-icon-btn--danger"
                       onClick={() => handleDeleteMethod(m)}
                       title="Eliminar método de pago"
                       aria-label={`Eliminar método ${m.name}`}
@@ -234,66 +247,53 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
                     </button>
                   </div>
                 </div>
-                <div className="flex-between flex-align-center text-xs">
-                  <div className="flex-align-center gap-1.5">
-                    <span className="text-muted text-xs">Tipo:</span>
-                    <button
-                      type="button"
-                      className={`btn btn-xs ${m.isCash ? 'btn-success' : 'btn-outline'} text-xs font-bold set-chip-btn`}
-                      onClick={() => handleToggleCash(m)}
-                      style={{
-                        backgroundColor: m.isCash ? '#DCFCE7' : 'transparent',
-                        color: m.isCash ? '#166534' : 'inherit',
-                        borderColor: m.isCash ? '#86EFAC' : 'var(--border)'
-                      }}
-                      title="Clic para cambiar entre Físico y Digital"
-                      aria-label={`Cambiar tipo de ${m.name}. Actualmente ${m.isCash ? 'Físico' : 'Digital'}`}
-                    >
-                      {m.isCash ? 'Físico' : 'Digital'}
-                    </button>
-                  </div>
-                  <div className="flex-align-center gap-1.5">
-                    <span className="text-muted text-xs">Requiere Ref.:</span>
-                    <button
-                      type="button"
-                      className={`btn btn-xs ${m.requiresReference ? 'btn-primary' : 'btn-outline'} text-xs font-bold set-chip-btn`}
-                      onClick={() => handleToggleRef(m)}
-                      title="Alternar requerimiento de referencia"
-                      aria-label={`Alternar requerimiento de referencia para ${m.name}`}
-                    >
-                      {m.requiresReference ? 'Sí' : 'No'}
-                    </button>
-                  </div>
+
+                <div className="set-method-card-meta">
+                  <span className="set-method-meta-label">Tipo:</span>
+                  <button
+                    type="button"
+                    className={`set-chip set-chip--button ${m.isCash ? 'set-chip--success' : 'set-chip--accent'}`}
+                    onClick={() => handleToggleCash(m)}
+                    title="Clic para cambiar entre Físico y Digital"
+                    aria-label={`Cambiar tipo de ${m.name}. Actualmente ${m.isCash ? 'Físico' : 'Digital'}`}
+                  >
+                    {m.isCash ? 'Físico' : 'Digital'}
+                  </button>
+                  <span className="set-method-meta-label">Requiere Ref.:</span>
+                  <button
+                    type="button"
+                    className={`set-chip set-chip--button ${m.requiresReference ? 'set-chip--accent' : 'set-chip--neutral'}`}
+                    onClick={() => handleToggleRef(m)}
+                    title="Alternar requerimiento de referencia"
+                    aria-label={`Alternar requerimiento de referencia para ${m.name}`}
+                  >
+                    {m.requiresReference ? 'Sí' : 'No'}
+                  </button>
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="overflow-x-auto settings-desktop-table-view mb-4">
-            <table className="cart-table mb-2">
+          <div className="settings-desktop-table-view set-table-wrap">
+            <table className="set-table set-table--payments">
               <thead>
                 <tr>
                   <th>Nombre</th>
-                  <th className="text-center">Tipo</th>
-                  <th className="text-center">Moneda</th>
-                  <th className="text-center">Requiere Referencia</th>
-                  <th className="text-center">Estado</th>
-                  <th className="text-center">Acciones</th>
+                  <th>Tipo</th>
+                  <th>Moneda</th>
+                  <th>Requiere Referencia</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {methods.map((m) => (
                   <tr key={m.id}>
                     <td className="font-medium">{m.name}</td>
-                    <td className="text-center">
+                    <td>
                       <button
                         type="button"
-                        className={`btn btn-sm ${m.isCash ? 'btn-success' : 'btn-outline'} text-xs font-bold set-table-chip`}
-                        style={{
-                          backgroundColor: m.isCash ? '#DCFCE7' : 'transparent',
-                          color: m.isCash ? '#166534' : 'inherit',
-                          borderColor: m.isCash ? '#86EFAC' : 'var(--border)'
-                        }}
+                        className={`set-chip set-chip--button ${m.isCash ? 'set-chip--success' : 'set-chip--accent'}`}
                         onClick={() => handleToggleCash(m)}
                         title="Clic para cambiar entre Físico y Digital"
                         aria-label={`Cambiar tipo de método ${m.name}. Actualmente ${m.isCash ? 'Físico' : 'Digital'}`}
@@ -301,13 +301,13 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
                         {m.isCash ? 'Físico' : 'Digital'}
                       </button>
                     </td>
-                    <td className="text-center">
-                      <span className="set-currency-chip">{m.currency || 'Bs.S'}</span>
+                    <td>
+                      <span className="set-chip set-chip--neutral set-chip--static">{m.currency || 'Bs.S'}</span>
                     </td>
-                    <td className="text-center">
+                    <td>
                       <button
                         type="button"
-                        className={`btn btn-sm ${m.requiresReference ? 'btn-primary' : 'btn-outline'}`}
+                        className={`set-chip set-chip--button ${m.requiresReference ? 'set-chip--accent' : 'set-chip--neutral'}`}
                         onClick={() => handleToggleRef(m)}
                         title="Alternar requerimiento de referencia"
                         aria-label={`Alternar requerimiento de referencia para ${m.name}`}
@@ -315,10 +315,10 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
                         {m.requiresReference ? 'Sí' : 'No'}
                       </button>
                     </td>
-                    <td className="text-center">
+                    <td>
                       <button
                         type="button"
-                        className={`btn btn-sm ${m.isActive ? 'btn-primary' : 'btn-danger'}`}
+                        className={`set-chip set-chip--button ${m.isActive ? 'set-chip--success' : 'set-chip--danger'}`}
                         onClick={() => handleToggleActive(m)}
                         title="Alternar activación en POS"
                         aria-label={`Alternar activación para ${m.name}`}
@@ -326,15 +326,15 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
                         {m.isActive ? 'Activo' : 'Inactivo'}
                       </button>
                     </td>
-                    <td className="text-center">
+                    <td>
                       <button
                         type="button"
-                        className="btn btn-sm btn-outline text-danger p-1.5 set-delete-btn"
+                        className="set-icon-btn set-icon-btn--danger"
                         onClick={() => handleDeleteMethod(m)}
                         title="Eliminar método de pago"
                         aria-label={`Eliminar método ${m.name}`}
                       >
-                        <Trash2 size={16} />
+                        <Trash2 size={15} />
                       </button>
                     </td>
                   </tr>
@@ -345,75 +345,89 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
         </>
       )}
 
-      <form onSubmit={handleAddMethod} className="border-top pt-3 mt-2">
-        <h4 className="font-bold mb-3 text-sm sm:text-base">Agregar Nuevo Método de Pago</h4>
-
-        <div className="border rounded-lg p-3 mb-3">
-          <div className="font-bold text-sm mb-1">Comisión del método (opcional)</div>
-          <p className="text-xs text-muted mb-2">
-            Es un costo del negocio y no se suma al cliente. El mantenimiento de cuenta y los gastos mensuales del POS no se ingresan acá: se registran como gasto operativo del período.
+      <form onSubmit={handleAddMethod} className="set-form-panel">
+        <div className="set-form-head">
+          <h4 className="set-form-title">Nuevo Método de Pago</h4>
+          <p className="set-form-subtitle">
+            Registre el medio de cobro y, si corresponde, la comisión que asume el negocio por su uso.
           </p>
-          <div className="form-row align-end flex-wrap gap-3">
-            <div className="form-group mb-0">
-              <label className="form-label text-xs text-muted mb-1 block">Tipo de comisión</label>
-              <select
-                className="form-input"
-                value={newMethodFeeType}
-                onChange={(e) => setNewMethodFeeType(Number(e.target.value))}
-                disabled={newMethodIsCash}
-              >
-                {FEE_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group mb-0">
-              <label className="form-label text-xs text-muted mb-1 block">Porcentaje (%)</label>
-              <input
-                type="number"
-                className="form-input"
-                min="0"
-                max="100"
-                step="0.01"
-                placeholder="0.75"
-                value={newMethodPercentage}
-                onChange={(e) => setNewMethodPercentage(e.target.value)}
-                disabled={newMethodIsCash || newMethodFeeType === FEE_TYPE_FIXED}
-              />
-            </div>
-            <div className="form-group mb-0">
-              <label className="form-label text-xs text-muted mb-1 block">Fijo por transacción</label>
-              <input
-                type="number"
-                className="form-input"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                value={newMethodFixedAmount}
-                onChange={(e) => setNewMethodFixedAmount(e.target.value)}
-                disabled={newMethodIsCash || newMethodFeeType === FEE_TYPE_PERCENTAGE}
-              />
-            </div>
-            <div className="form-group mb-0">
-              <label className="form-label text-xs text-muted mb-1 block">Moneda de la comisión</label>
-              <select
-                className="form-input"
-                value={newMethodFeeCurrency}
-                onChange={(e) => setNewMethodFeeCurrency(e.target.value)}
-                disabled={newMethodIsCash}
-              >
-                {feeCurrencyOptions.map((code) => (
-                  <option key={code} value={code}>{code}</option>
-                ))}
-              </select>
-            </div>
+        </div>
+
+        <div className="set-callout set-callout--info">
+          <div>
+            <span className="set-callout-title">Comisión del método (opcional)</span>
+            <p>
+              Es un costo del negocio y no se suma al cliente. El mantenimiento de cuenta y los gastos
+              mensuales del POS no se ingresan acá: se registran como gasto operativo del período.
+            </p>
           </div>
         </div>
 
-        <div className="form-row align-end flex-wrap gap-3">
-          <div className="form-group flex-2 mb-0 set-form-name">
-            <label className="form-label text-xs text-muted mb-1 block">Nombre del Método</label>
+        <div className="set-form-grid set-form-grid--commission">
+          <div className="form-group">
+            <label className="form-label" htmlFor="pm-new-fee-type">Tipo de comisión</label>
+            <select
+              id="pm-new-fee-type"
+              className="form-input"
+              value={newMethodFeeType}
+              onChange={(e) => setNewMethodFeeType(Number(e.target.value))}
+              disabled={newMethodIsCash}
+            >
+              {FEE_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="pm-new-percentage">Porcentaje (%)</label>
             <input
+              id="pm-new-percentage"
+              type="number"
+              className="form-input"
+              min="0"
+              max="100"
+              step="0.01"
+              placeholder="0.75"
+              value={newMethodPercentage}
+              onChange={(e) => setNewMethodPercentage(e.target.value)}
+              disabled={newMethodIsCash || newMethodFeeType === FEE_TYPE_FIXED}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="pm-new-fixed">Fijo por transacción</label>
+            <input
+              id="pm-new-fixed"
+              type="number"
+              className="form-input"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={newMethodFixedAmount}
+              onChange={(e) => setNewMethodFixedAmount(e.target.value)}
+              disabled={newMethodIsCash || newMethodFeeType === FEE_TYPE_PERCENTAGE}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="pm-new-currency">Moneda de la comisión</label>
+            <select
+              id="pm-new-currency"
+              className="form-input"
+              value={newMethodFeeCurrency}
+              onChange={(e) => setNewMethodFeeCurrency(e.target.value)}
+              disabled={newMethodIsCash}
+            >
+              {feeCurrencyOptions.map((code) => (
+                <option key={code} value={code}>{code}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="set-form-grid set-form-grid--name">
+          <div className="form-group">
+            <label className="form-label" htmlFor="pm-new-name">Nombre del Método</label>
+            <input
+              id="pm-new-name"
               type="text"
               className="form-input"
               placeholder="Ej. Pago Móvil Banesco"
@@ -422,8 +436,8 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
               required
             />
           </div>
-          <div className="form-group mb-0 flex-align-center pb-2">
-            <label className="form-label cursor-pointer flex-align-center gap-2 text-sm mb-0" title="Desmarcado por defecto: se creará como Digital">
+          <div className="set-check-field">
+            <label className="set-check-label" title="Desmarcado por defecto: se creará como Digital">
               <input
                 type="checkbox"
                 checked={newMethodIsCash}
@@ -438,8 +452,8 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
               <span>Es Efectivo (Físico)</span>
             </label>
           </div>
-          <div className="form-group mb-0 flex-align-center pb-2">
-            <label className="form-label cursor-pointer flex-align-center gap-2 text-sm mb-0">
+          <div className="set-check-field">
+            <label className="set-check-label">
               <input
                 type="checkbox"
                 checked={newMethodRequiresRef}
@@ -448,11 +462,9 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
               <span>Req. Referencia</span>
             </label>
           </div>
-          <div className="form-group mb-0">
-            <button type="submit" className="btn btn-primary flex-center gap-2">
-              <Plus size={16} /> Agregar
-            </button>
-          </div>
+          <button type="submit" className="btn btn-primary set-submit">
+            <Plus size={16} /> Agregar
+          </button>
         </div>
       </form>
 
@@ -466,6 +478,6 @@ export default function SettingsPaymentMethods({ methods, setMethods, setMessage
         cancelText="Cancelar"
         variant="danger"
       />
-    </div>
+    </section>
   );
 }

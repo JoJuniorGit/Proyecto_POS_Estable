@@ -1,8 +1,28 @@
 export const SETTINGS_SECTIONS = Object.freeze([
-  { id: 'currency', label: 'Moneda, Tasas y Formato', icon: 'currency' },
-  { id: 'payments', label: 'Métodos de Pago y Caja', icon: 'payments' },
-  { id: 'network', label: 'Conectividad y Red Local', icon: 'network' },
-  { id: 'system', label: 'Sistema y Mantenimiento', icon: 'system' },
+  {
+    id: 'currency',
+    label: 'Moneda, Tasas y Formato',
+    icon: 'currency',
+    description: 'Formato, separadores y vista previa de montos.',
+  },
+  {
+    id: 'payments',
+    label: 'Métodos de Pago y Caja',
+    icon: 'payments',
+    description: 'Medios habilitados, comisiones y reglas de cobro.',
+  },
+  {
+    id: 'network',
+    label: 'Conectividad y Red Local',
+    icon: 'network',
+    description: 'Emparejamiento QR, direcciones IP y acceso local.',
+  },
+  {
+    id: 'system',
+    label: 'Sistema y Mantenimiento',
+    icon: 'system',
+    description: 'Reinicio del servicio y estado de la terminal.',
+  },
 ]);
 
 /**
