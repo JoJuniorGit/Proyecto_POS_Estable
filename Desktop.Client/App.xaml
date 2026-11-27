@@ -47,6 +47,10 @@
                 <Setter Property="Height" Value="40"/>
                 <Setter Property="Padding" Value="0"/>
                 <Setter Property="Cursor" Value="Hand"/>
+                <!-- Identificador estable compartido por el menú de todas las vistas: permite al
+                     harness E2E reabrir el drawer sin depender de un id por vista. PosView define
+                     su propio Pos_OpenMenuButton como valor local (gana sobre este setter). -->
+                <Setter Property="AutomationProperties.AutomationId" Value="Shell_OpenMenuButton"/>
                 <Setter Property="Command" Value="{x:Static materialDesign:DrawerHost.OpenDrawerCommand}"/>
                 <Setter Property="CommandParameter" Value="{x:Static Dock.Right}"/>
                 <Setter Property="ToolTip" Value="Abrir menú lateral"/>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using Core.Common;
 using Desktop.Client.Services;
 using Desktop.Client.ViewModels;
@@ -89,6 +90,14 @@ public partial class MainWindow : Window
         }
 
         MainContent.Content = view;
+
+        // WPF solo reconsulta CanExecute de los comandos ante entrada/foco; un cambio de vista
+        // disparado por automatización o auto-login puede dejar controles con Command (menú
+        // lateral, navegación) deshabilitados con un CanExecute obsoleto hasta el próximo input.
+        // Se difiere al dispatcher para que el nuevo árbol visual ya esté conectado al DrawerHost.
+        Dispatcher.BeginInvoke(
+            new Action(CommandManager.InvalidateRequerySuggested),
+            System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     protected override void OnClosing(CancelEventArgs e)
