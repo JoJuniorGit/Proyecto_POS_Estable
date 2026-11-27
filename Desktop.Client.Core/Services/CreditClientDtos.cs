@@ -603,3 +603,11 @@ public class PaidPaymentAllocationClientDto
     public string InvoiceDisplay => InvoiceNumber.HasValue ? $"F{InvoiceNumber.Value:D5}" : $"CxC-{ObligationId}";
 }
 
+
+/// <summary>Archivo binario descargado de un endpoint de exportación server-side.</summary>
+public class ExportFileClientDto
+{
+    public byte[] Content { get; set; } = Array.Empty<byte>();
+    public string ContentType { get; set; } = "application/octet-stream";
+    public string FileName { get; set; } = "export.bin";
+}

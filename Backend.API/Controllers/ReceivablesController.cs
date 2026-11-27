@@ -49,6 +49,48 @@ public class ReceivablesController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>Exportacion server-side del historial filtrado (CSV, XLSX o PDF).</summary>
+    [HttpGet("paid/export")]
+    public async Task<IActionResult> ExportPaidAsync(
+        [FromQuery] PaidReceivablesFilterDto filter,
+        [FromQuery] string format = "csv",
+        [FromQuery] string mode = "invoice",
+        [FromServices] IReceivablesExportService exportService = null!,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var file = await exportService.ExportPaidAsync(
+                filter ?? new PaidReceivablesFilterDto(),
+                mode,
+                format,
+                cancellationToken);
+            return File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (ArgumentException ex)
+        {
+            return this.ApiBadRequest(ex.Message);
+        }
+    }
+
+    /// <summary>Constancia de cancelacion / estado de cuenta saldado de una obligacion.</summary>
+    [HttpGet("{obligationId:int}/payments/pdf")]
+    public async Task<IActionResult> ExportStatementAsync(
+        int obligationId,
+        [FromServices] IReceivablesExportService exportService,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var file = await exportService.ExportStatementAsync(obligationId, cancellationToken);
+            return File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (System.Collections.Generic.KeyNotFoundException ex)
+        {
+            return this.ApiNotFound(ex.Message);
+        }
+    }
+
     /// <summary>
     /// Cronologia ascendente de abonos de una obligacion. Sirve para deudas pagadas y parciales;
     /// conserva la tasa historica de cada abono y el saldo exacto resultante.

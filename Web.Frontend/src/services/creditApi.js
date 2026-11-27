@@ -244,3 +244,15 @@ export async function getReceivablePaymentTimeline(obligationId, signal) {
 export async function getPaidReceivablePayments(filter = {}, signal) {
   return await api.get(buildPaidReceivablesQuery('/api/receivables/paid/payments', filter), signal);
 }
+
+/** Exportación server-side del historial filtrado (csv, xlsx, pdf). */
+export async function getPaidReceivablesExport(filter = {}, mode = 'invoice', format = 'csv', signal) {
+  const path = buildPaidReceivablesQuery('/api/receivables/paid/export', { ...filter, page: null, pageSize: null });
+  const separator = path.includes('?') ? '&' : '?';
+  return await api.getBlob(`${path}${separator}format=${encodeURIComponent(format)}&mode=${encodeURIComponent(mode)}`, signal);
+}
+
+/** Constancia de cancelación / estado de cuenta saldado en PDF. */
+export async function getReceivableStatementPdf(obligationId, signal) {
+  return await api.getBlob(`/api/receivables/${obligationId}/payments/pdf`, signal);
+}

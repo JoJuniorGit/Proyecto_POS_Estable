@@ -1243,6 +1243,9 @@
                                                                 <DataTrigger Binding="{Binding IsFinalPayment}" Value="True">
                                                                     <Setter Property="Fill" Value="#16A34A"/>
                                                                 </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Anulado">
+                                                                    <Setter Property="Fill" Value="#DC2626"/>
+                                                                </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
                                                     </Ellipse.Style>
@@ -1260,6 +1263,19 @@
                                                             <TextBlock Text="{Binding SequenceLabel}" FontSize="12" FontWeight="Bold" Foreground="#0F172A"/>
                                                             <Border Background="#F5F3FF" CornerRadius="999" Padding="6,2" Margin="7,0,0,0">
                                                                 <TextBlock Text="{Binding ImputationMode}" FontSize="9.5" FontWeight="SemiBold" Foreground="#5B21B6"/>
+                                                            </Border>
+                                                            <Border Background="#FEF2F2" CornerRadius="999" Padding="6,2" Margin="5,0,0,0">
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Status}" Value="Anulado">
+                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                                <TextBlock Text="Anulado" FontSize="9.5" FontWeight="SemiBold" Foreground="#DC2626"/>
                                                             </Border>
                                                         </StackPanel>
                                                         <TextBlock Grid.Column="1" Text="{Binding PaidAtDisplay}" FontSize="10.5"
@@ -1315,7 +1331,7 @@
                                     Style="{StaticResource SettingsSecondaryButtonStyle}" Height="38" Padding="14,0"
                                     HorizontalAlignment="Left"/>
                             <Button Content="Descargar Constancia PDF"
-                                    Command="{Binding ExportPaidCommand}" CommandParameter="pdf"
+                                    Command="{Binding DownloadTimelinePdfCommand}"
                                     Style="{StaticResource SettingsPrimaryButtonStyle}" Height="38" Padding="16,0"
                                     HorizontalAlignment="Right"/>
                         </Grid>
@@ -1325,3 +1341,4 @@
         </Grid>
     </Grid>
 </UserControl>
+

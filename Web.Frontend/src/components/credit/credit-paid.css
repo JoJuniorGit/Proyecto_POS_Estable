@@ -675,3 +675,8 @@
 
 .credit-section-hidden { display: none; }
 .credit-paid-section { display: block; }
+
+.credit-paid-timeline-card header em.credit-paid-void {
+  background: #FEF2F2;
+  color: #DC2626;
+}

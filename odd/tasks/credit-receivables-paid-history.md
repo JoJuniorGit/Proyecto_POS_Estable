@@ -26,7 +26,7 @@ S9. Verification: Release build 0/0; .NET suite green except the known PostgreSQ
 
 - [x] WU1-T1 (S1) - Default open-only filter in the Postgres and memory receivable queries + regression test.
 - [x] WU1-T2 (S2-S4) - Core DTOs, service queries and `ReceivablesController` endpoints for paid list, timeline and flat payments; client DTOs and `ISalesService` transport.
-- [ ] WU1-T3 (S5) - Export CSV/XLSX/PDF and paid cancellation PDF.
+- [x] WU1-T3 (S5) - Export CSV/XLSX/PDF and paid cancellation PDF.
 - [x] WU2-T1 (S5) - WPF view model state, filters, KPIs, modes, pagination and settlement transition.
 - [x] WU2-T2 (S5) - WPF segmented sub-sections, paid tables and timeline slide-over.
 - [x] WU2-T3 (S8) - WPF unit tests.
@@ -51,4 +51,6 @@ L5. Final evidence: Release build 0/0; .NET suite 4608/4670 with only the 62 kno
 pm test 829/829, 
 pm run lint clean, 
 pm run build clean; WPF harness at 96 and 120 DPI for pending, paid and timeline states (paid invoices absent from pending). Pending: server-side CSV/XLSX/PDF export and per-debt cancellation PDF; annulled-payment status requires a data-model field not present today.
+
+L6. Brechas cerradas: ReceivablesExportService server-side CSV/XLSX/PDF y ReceivablesPdfGenerator para la constancia de cancelación; endpoints paid/export y {id}/payments/pdf; WPF y web consumen esos binarios. Se agregó IsVoided/VoidedAtUtc/VoidReason a ReceivablePayment con migración AddReceivablePaymentVoiding; los totales y KPIs excluyen abonos anulados y el timeline los conserva como Anulado. Evidencia: build 0/0; .NET 4612/4674 con solo 62 fallos PostgreSQL sin TEST_POSTGRES_CONNECTION; web 829/829, lint/build clean.
 

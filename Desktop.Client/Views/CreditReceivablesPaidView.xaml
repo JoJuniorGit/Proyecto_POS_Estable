@@ -550,8 +550,8 @@
                                                     Style="{StaticResource PaidSoftPrimaryButtonStyle}"
                                                     Margin="0,0,6,0" ToolTip="Abrir cronología de abonos"/>
                                             <Button Content="PDF"
-                                                    Command="{Binding DataContext.ExportPaidCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="pdf"
+                                                    Command="{Binding DataContext.DownloadPaidStatementCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
                                                     Style="{StaticResource SettingsSecondaryButtonStyle}"
                                                     Height="30" Padding="10,0" ToolTip="Constancia de cancelación"/>
                                         </StackPanel>
@@ -722,4 +722,5 @@
         </Border>
     </Grid>
 </UserControl>
+
 

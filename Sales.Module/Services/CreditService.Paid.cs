@@ -32,7 +32,8 @@ public partial class CreditService
 
         var paidReceivableIds = await _context.Receivables
             .AsNoTracking()
-            .Where(receivable => receivable.Status == ReceivableStatus.Pagada)
+            .Where(receivable => receivable.Status == ReceivableStatus.Pagada
+                && receivable.PaymentAllocations.Any(allocation => !allocation.ReceivablePayment.IsVoided))
             .Select(receivable => receivable.Id)
             .ToListAsync(cancellationToken);
 
@@ -161,9 +162,13 @@ public partial class CreditService
                 ? allocation.AmountUSD
                 : allocation.AmountBsS;
 
-            runningBalance = Math.Max(
-                0m,
-                Math.Round(runningBalance - allocation.AmountUSD, 4, MidpointRounding.AwayFromZero));
+            if (!payment.IsVoided)
+            {
+                runningBalance = Math.Max(
+                    0m,
+                    Math.Round(runningBalance - allocation.AmountUSD, 4, MidpointRounding.AwayFromZero));
+            }
+
 
             timeline.Add(new ObligationPaymentTimelineItemDto
             {
@@ -179,12 +184,14 @@ public partial class CreditService
                 ImputationMode = paymentAllocationCounts.GetValueOrDefault(payment.Id) > 1 ? "FIFO" : "Factura específica",
                 CashierName = payment.ReceivedByUser?.Name ?? "Usuario",
                 RunningBalanceAfterUsd = runningBalance,
-                Status = "Aplicado",
-                Notes = null
+                Status = payment.IsVoided ? "Anulado" : "Aplicado",
+                Notes = payment.VoidReason
             });
         }
 
-        decimal totalPaidUsd = allocations.Sum(allocation => allocation.AmountUSD);
+        decimal totalPaidUsd = allocations
+            .Where(allocation => !allocation.ReceivablePayment.IsVoided)
+            .Sum(allocation => allocation.AmountUSD);
 
         return new ReceivablePaymentTimelineDto
         {
@@ -284,6 +291,7 @@ public partial class CreditService
         List<CreditPaymentAllocation> allocations)
     {
         var ordered = allocations
+            .Where(allocation => !allocation.ReceivablePayment.IsVoided)
             .OrderBy(allocation => allocation.ReceivablePayment.ReceivedAtUtc)
             .ThenBy(allocation => allocation.ReceivablePaymentId)
             .ThenBy(allocation => allocation.Id)
@@ -336,7 +344,9 @@ public partial class CreditService
         }
 
         var paymentIds = rows
-            .SelectMany(row => row.Allocations.Select(allocation => allocation.ReceivablePaymentId))
+            .SelectMany(row => row.Allocations
+                .Where(allocation => !allocation.ReceivablePayment.IsVoided)
+                .Select(allocation => allocation.ReceivablePaymentId))
             .Distinct()
             .ToList();
 
@@ -416,7 +426,7 @@ public partial class CreditService
             AmountCreditedUsd = payment.AmountUSD,
             Reference = payment.ReferenceNumber,
             ImputationMode = allocations.Count > 1 ? "FIFO" : "Factura específica",
-            Status = "Aplicado",
+            Status = payment.IsVoided ? "Anulado" : "Aplicado",
             Allocations = allocations,
             InvoiceSummary = invoiceSummary
         };
@@ -441,3 +451,4 @@ public partial class CreditService
             : $"{invoices[0]} + {invoices.Count - 1} más";
     }
 }
+

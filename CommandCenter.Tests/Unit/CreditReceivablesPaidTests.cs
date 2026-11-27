@@ -142,6 +142,53 @@ public class CreditReceivablesPaidTests
         Assert.Single(result.Items);
         Assert.Equal(receivable.Id, result.Items[0].ObligationId);
     }
+    [Fact]
+    public async Task VoidedPayments_AreExcludedFromTotalsAndKeptInTimelineTraceability()
+    {
+        using var context = TestDatabaseFactory.CreateSalesDbContext();
+        var customer = await SeedCustomerAsync(context, "Cliente Anulado");
+        var method = await SeedMethodAsync(context);
+        var receivable = await SeedReceivableAsync(context, customer, 600, 100m, ReceivableStatus.Pagada, balance: 0m);
+        await SeedPaymentAsync(context, customer, receivable, method, 100m, 40m, "REF-VALIDA", NowUtc.AddDays(-2));
+
+        var voided = new ReceivablePayment
+        {
+            CustomerId = customer.Id,
+            AmountUSD = 20m,
+            AmountBsS = 800m,
+            PaymentRate = 40m,
+            PaymentMethodId = method.Id,
+            ReferenceNumber = "REF-ANULADA",
+            ReceivedAtUtc = NowUtc.AddDays(-1),
+            IsVoided = true,
+            VoidedAtUtc = NowUtc.AddHours(-12),
+            VoidReason = "Pago duplicado"
+        };
+        context.ReceivablePayments.Add(voided);
+        await context.SaveChangesAsync();
+        context.CreditPaymentAllocations.Add(new CreditPaymentAllocation
+        {
+            ReceivablePaymentId = voided.Id,
+            ReceivableId = receivable.Id,
+            AmountUSD = 20m,
+            AmountBsS = 800m
+        });
+        await context.SaveChangesAsync();
+
+        var paid = await CreateService(context).GetPaidReceivablesAsync(new PaidReceivablesFilterDto());
+        var item = Assert.Single(paid.Items);
+        Assert.Equal(100m, item.TotalPaidUsd);
+        Assert.Equal(1, item.PaymentsCount);
+        Assert.Equal(100m, paid.Summary.TotalCollectedUsd);
+
+        var timeline = await CreateService(context).GetReceivablePaymentTimelineAsync(receivable.Id);
+        Assert.Equal(2, timeline.Payments.Count);
+        Assert.Equal("Anulado", timeline.Payments[1].Status);
+        Assert.Equal("Pago duplicado", timeline.Payments[1].Notes);
+        Assert.Equal(0m, timeline.Payments[1].RunningBalanceAfterUsd);
+        Assert.Equal(0m, timeline.Payments[0].RunningBalanceAfterUsd - 0m);
+    }
+
 
     private static CreditService CreateService(SalesDbContext context) =>
         new(context, new FixedRateProvider(50m));
@@ -279,3 +326,4 @@ public class CreditReceivablesPaidTests
             Task.FromResult(_rate);
     }
 }
+

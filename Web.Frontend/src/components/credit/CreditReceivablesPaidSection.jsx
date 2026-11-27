@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   AlertTriangle,
   Calendar,
@@ -16,8 +16,11 @@ import { getActivePaymentMethods } from '../../services/paymentApi';
 import {
   getPaidReceivablePayments,
   getPaidReceivables,
+  getPaidReceivablesExport,
   getReceivablePaymentTimeline,
+  getReceivableStatementPdf,
 } from '../../services/creditApi';
+import { saveReceiptBlob } from './receipts';
 import { useMonetaryProfile } from '../../context/MonetaryProfileContext';
 import { displayCurrencyCode } from '../../utils/monetaryProfile';
 import { resolveLocalCurrencyProfile } from '../register/registerFormLogic';
@@ -78,40 +81,6 @@ function formatDateTime(value) {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function downloadCsv(filename, rows) {
-  const content = rows.map((row) => row.map((cell) => {
-    const text = String(cell ?? '');
-    return /[;"\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-  }).join(';')).join('\n');
-  const blob = new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-function downloadExcel(filename, rows) {
-  const html = `<table>${rows.map((row) => `<tr>${row.map((cell) => `<td>${String(cell ?? '')}</td>`).join('')}</tr>`).join('')}</table>`;
-  const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-function printHtml(title, bodyHtml) {
-  const win = window.open('', '_blank', 'width=900,height=700');
-  if (!win) return;
-  win.document.write(`<html><head><title>${title}</title><style>body{font-family:Segoe UI,Arial,sans-serif;padding:24px;color:#0F172A}h1{font-size:20px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid #E2E8F0;padding:8px;text-align:left}th{background:#F8FAFC;color:#64748B}</style></head><body>${bodyHtml}</body></html>`);
-  win.document.close();
-  win.focus();
-  win.print();
 }
 
 export default function CreditReceivablesPaidSection({ refreshKey = 0, onCountChange }) {
@@ -253,66 +222,35 @@ export default function CreditReceivablesPaidSection({ refreshKey = 0, onCountCh
     await loadTimeline(timelineIds[next]);
   };
 
-  const exportRows = useMemo(() => {
-    if (mode === 'payment') {
-      return [
-        ['Fecha', 'Cajero', 'Cliente', 'Documento', 'Facturas', 'Método', 'Moneda', 'Monto cobrado', 'Tasa', 'Acreditado USD', 'Referencia', 'Imputación'],
-        ...items.map((row) => [
-          formatDateTime(row.paidAt),
-          row.cashierName,
-          row.customerName,
-          row.customerDocument,
-          row.invoiceSummary,
-          row.paymentMethodName,
-          row.paymentCurrency,
-          row.amountPaidInCurrency,
-          row.exchangeRateApplied,
-          row.amountCreditedUsd,
-          row.reference || '',
-          row.imputationMode,
-        ]),
-      ];
-    }
-    return [
-      ['Documento', 'Cliente', 'Documento cliente', 'Emisión', 'Pagada', 'Días', 'A tiempo', 'Total pagado USD', 'Pagado Bs.S histórico', 'Abonos', 'Métodos'],
-      ...items.map((row) => [
-        invoiceLabel(row),
-        row.customerName,
-        row.customerDocument,
-        formatDateVe(row.issuedAt),
-        formatDateVe(row.paidAt),
-        row.daysToSettle,
-        row.settledOnTime ? 'A tiempo' : 'Tras mora',
-        row.totalPaidUsd,
-        row.totalPaidLocalHistorical,
-        row.paymentsCount,
-        row.paymentMethodsSummary,
-      ]),
-    ];
-  }, [items, mode]);
-
-  const handleExport = (format) => {
+  const handleExport = async (format) => {
     const stamp = new Date().toISOString().slice(0, 10);
-    if (format === 'csv') {
-      downloadCsv(`deudas-pagadas-${stamp}.csv`, exportRows);
-      return;
+    const extension = format === 'xlsx' ? 'xlsx' : format;
+    try {
+      const blob = await getPaidReceivablesExport(
+        {
+          search: filters.search,
+          paidFrom: filters.from,
+          paidTo: filters.to,
+          paymentMethodId: filters.methodId,
+        },
+        mode,
+        format
+      );
+      saveReceiptBlob(blob, `DeudasPagadas_${stamp}.${extension}`);
+    } catch (err) {
+      setError(err?.message || 'No se pudo exportar el historial de deudas pagadas.');
     }
-    if (format === 'xlsx') {
-      downloadExcel(`deudas-pagadas-${stamp}.xls`, exportRows);
-      return;
-    }
-    printHtml('Deudas pagadas', `<h1>Deudas pagadas</h1><table>${exportRows.map((row, index) => `<tr>${row.map((cell) => `<${index === 0 ? 'th' : 'td'}>${String(cell ?? '')}</${index === 0 ? 'th' : 'td'}>`).join('')}</tr>`).join('')}</table>`);
   };
 
-  const printCancellation = () => {
+  const printCancellation = async () => {
     if (!timeline) return;
-    const rows = (timeline.payments || []).map((payment) => `<tr><td>${formatDateTime(payment.paidAt)}</td><td>${payment.paymentMethodName}</td><td>${payment.reference || '—'}</td><td>${formatNumberEs(payment.amountPaidInCurrency)} ${payment.paymentCurrency}</td><td>${formatNumberEs(payment.exchangeRateApplied)}</td><td>${formatNumberEs(payment.amountCreditedUsd)} USD</td></tr>`).join('');
-    printHtml(
-      `Constancia ${invoiceLabel(timeline)}`,
-      `<h1>Constancia de cancelación</h1><p><strong>Factura:</strong> ${invoiceLabel(timeline)} · <strong>Cliente:</strong> ${timeline.customerName} (${timeline.customerDocument})</p><p><strong>Original:</strong> ${formatPrimary(timeline.originalAmountUsd)} · <strong>Total abonado:</strong> ${formatPrimary(timeline.totalPaidUsd)} · <strong>Saldo final:</strong> ${formatPrimary(timeline.balanceUsd)}</p><table><tr><th>Fecha</th><th>Método</th><th>Referencia</th><th>Monto</th><th>Tasa</th><th>Acreditado</th></tr>${rows}</table>`
-    );
+    try {
+      const blob = await getReceivableStatementPdf(timeline.obligationId);
+      saveReceiptBlob(blob, `Constancia_Cancelacion_${invoiceLabel(timeline)}.pdf`);
+    } catch (err) {
+      setTimelineError(err?.message || 'No se pudo generar la constancia de cancelación.');
+    }
   };
-
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
@@ -537,6 +475,7 @@ export default function CreditReceivablesPaidSection({ refreshKey = 0, onCountCh
                             <strong>Abono #{payment.sequenceNumber}</strong>
                             <span>{formatDateTime(payment.paidAt)}</span>
                             <em>{payment.imputationMode}</em>
+                            {payment.status === 'Anulado' && <em className="credit-paid-void">Anulado</em>}
                           </header>
                           <p>{payment.paymentMethodName} · {payment.cashierName}{payment.reference ? ` · Ref: ${payment.reference}` : ''}</p>
                           <div className="credit-paid-timeline-money">
@@ -562,4 +501,7 @@ export default function CreditReceivablesPaidSection({ refreshKey = 0, onCountCh
     </div>
   );
 }
+
+
+
 

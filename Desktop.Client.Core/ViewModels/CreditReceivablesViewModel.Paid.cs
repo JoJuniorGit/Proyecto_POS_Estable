@@ -375,67 +375,49 @@ public partial class CreditReceivablesViewModel
     private async Task ExportPaidAsync(string? format)
     {
         string normalized = (format ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized != "csv")
+        if (normalized is not ("csv" or "xlsx" or "pdf"))
         {
-            _dialogService.ShowWarning("Exportación", "La exportación Excel/PDF del historial se habilitará en la verificación final (WU3).");
+            _dialogService.ShowWarning("Exportación", "Formato de exportación no soportado.");
             return;
         }
 
-        var sb = new System.Text.StringBuilder();
-        if (IsPaidPaymentMode)
+        try
         {
-            sb.AppendLine("Fecha;Cajero;Cliente;Documento;Facturas;Metodo;Moneda;Monto cobrado;Tasa;Acreditado USD;Referencia;Imputacion");
-            foreach (var item in PaidPayments)
-            {
-                sb.AppendLine(string.Join(';',
-                    Escape(item.PaidAtDisplay),
-                    Escape(item.CashierName),
-                    Escape(item.CustomerName),
-                    Escape(item.CustomerDocument),
-                    Escape(item.InvoiceSummary),
-                    Escape(item.PaymentMethodName),
-                    Escape(item.PaymentCurrency),
-                    Escape(CurrencyDisplay.Number(item.AmountPaidInCurrency)),
-                    Escape(CurrencyDisplay.Number(item.ExchangeRateApplied)),
-                    Escape(CurrencyDisplay.Number(item.AmountCreditedUsd)),
-                    Escape(item.Reference ?? string.Empty),
-                    Escape(item.ImputationMode)));
-            }
+            var file = await _salesService.GetPaidReceivablesExportAsync(
+                BuildPaidFilter(),
+                IsPaidPaymentMode ? "payment" : "invoice",
+                normalized);
+            await ReceiptOpener(file.Content, file.FileName);
         }
-        else
+        catch (Exception ex)
         {
-            sb.AppendLine("Documento;Cliente;Documento cliente;Emision;Pagada;Dias;A tiempo;Total pagado USD;Total pagado Bs.S historico;Abonos;Metodos");
-            foreach (var item in PaidDebts)
-            {
-                sb.AppendLine(string.Join(';',
-                    Escape(item.InvoiceDisplay),
-                    Escape(item.CustomerName),
-                    Escape(item.CustomerDocument),
-                    Escape(item.IssuedAtDisplay),
-                    Escape(item.PaidAtDisplay),
-                    Escape(item.DaysToSettle.ToString()),
-                    Escape(item.SettledOnTimeLabel),
-                    Escape(CurrencyDisplay.Number(item.TotalPaidUsd)),
-                    Escape(CurrencyDisplay.Number(item.TotalPaidLocalHistorical)),
-                    Escape(item.PaymentsCount.ToString()),
-                    Escape(item.PaymentMethodsSummary)));
-            }
+            _dialogService.ShowError("Exportación", $"No se pudo exportar el historial: {ex.Message}");
         }
-
-        byte[] payload = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
-        byte[] bom = System.Text.Encoding.UTF8.GetPreamble();
-        byte[] file = new byte[bom.Length + payload.Length];
-        Buffer.BlockCopy(bom, 0, file, 0, bom.Length);
-        Buffer.BlockCopy(payload, 0, file, bom.Length, payload.Length);
-        await ReceiptOpener(file, $"DeudasPagadas_{DateTime.Now:yyyyMMdd_HHmm}.csv");
     }
 
-    private static string Escape(string value)
+    [RelayCommand]
+    private async Task DownloadPaidStatementAsync(object? parameter)
     {
-        string text = value ?? string.Empty;
-        return text.Contains(';') || text.Contains('"') || text.Contains('\n')
-            ? '"' + text.Replace("\"", "\"\"") + '"'
-            : text;
+        int obligationId = ResolveObligationId(parameter);
+        if (obligationId <= 0) return;
+
+        try
+        {
+            var file = await _salesService.GetReceivableStatementPdfAsync(obligationId);
+            await ReceiptOpener(file.Content, file.FileName);
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("Constancia de Cancelación", $"No se pudo generar la constancia: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private async Task DownloadTimelinePdfAsync()
+    {
+        if (Timeline == null) return;
+        await DownloadPaidStatementAsync(Timeline.ObligationId);
     }
 }
+
 

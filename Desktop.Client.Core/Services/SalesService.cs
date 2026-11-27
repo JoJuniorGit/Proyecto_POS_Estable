@@ -619,6 +619,55 @@ public class SalesService : ISalesService
             ?? throw new System.Exception("No se pudo leer la bitácora de abonos.");
     }
 
+    public async Task<ExportFileClientDto> GetPaidReceivablesExportAsync(
+        PaidReceivablesFilterClientDto filter,
+        string mode,
+        string format,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        filter ??= new PaidReceivablesFilterClientDto();
+        string path = BuildPaidReceivablesQuery("api/receivables/paid/export", filter);
+        path += (path.Contains('?') ? "&" : "?") + $"format={Uri.EscapeDataString(format)}&mode={Uri.EscapeDataString(mode)}";
+        using var response = await _httpClient.GetAsync(path, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo exportar el historial de deudas pagadas.");
+        }
+
+        return await ReadExportFileAsync(response, $"DeudasPagadas.{format}", cancellationToken);
+    }
+
+    public async Task<ExportFileClientDto> GetReceivableStatementPdfAsync(
+        int obligationId,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        using var response = await _httpClient.GetAsync($"api/receivables/{obligationId}/payments/pdf", cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            await ThrowCreditErrorAsync(response, "No se pudo generar la constancia de cancelación.");
+        }
+
+        return await ReadExportFileAsync(response, $"Constancia_CxC_{obligationId}.pdf", cancellationToken);
+    }
+
+    private static async Task<ExportFileClientDto> ReadExportFileAsync(
+        HttpResponseMessage response,
+        string fallbackFileName,
+        System.Threading.CancellationToken cancellationToken)
+    {
+        byte[] content = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+        string fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+            ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+            ?? fallbackFileName;
+
+        return new ExportFileClientDto
+        {
+            Content = content,
+            ContentType = response.Content.Headers.ContentType?.MediaType ?? "application/octet-stream",
+            FileName = fileName
+        };
+    }
+
     private static string BuildPaidReceivablesQuery(string path, PaidReceivablesFilterClientDto filter)
     {
         var query = new System.Text.StringBuilder(path);
