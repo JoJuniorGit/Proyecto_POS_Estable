@@ -19,6 +19,7 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// margen retail, cambia la tasa BCV por la UI, y verifica que el POS busque el SKU y calcule el
 /// precio efectivo Bs.S con la política ToBsSCeiling, además de la persistencia del margen/precio.
 /// </summary>
+[Collection(FullStackCollection.Name)]
 public class FullStackCatalogPricingTests : IClassFixture<FullStackFixture>
 {
     private const decimal CostUsd = 10.00m;
@@ -93,13 +94,15 @@ public class FullStackCatalogPricingTests : IClassFixture<FullStackFixture>
         await using var connection = new NpgsqlConnection(_fixture.DatabaseConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
-            "SELECT \"PriceRetailUSD\", \"ProfitMarginRetail\" FROM \"Products\" WHERE \"Id\" = @id",
+            "SELECT \"PriceRetailUSD\", \"ProfitMarginRetail\", \"IsActive\", \"IsDeleted\" FROM \"Products\" WHERE \"Id\" = @id",
             connection);
         command.Parameters.AddWithValue("id", productId);
         await using var reader = await command.ExecuteReaderAsync();
         Assert.True(await reader.ReadAsync(), "El producto sembrado no existe en la base aislada.");
         Assert.Equal(expectedPriceUsd, reader.GetDecimal(0));
         Assert.Equal(expectedMargin, reader.GetDecimal(1));
+        Assert.True(reader.GetBoolean(2), "El producto quedó inactivo tras la edición masiva de margen.");
+        Assert.False(reader.GetBoolean(3), "El producto quedó marcado como eliminado tras la edición masiva de margen.");
     }
 
     private static void SetExchangeRateThroughUi(Window window, decimal rate, TimeSpan timeout)
@@ -132,7 +135,7 @@ public class FullStackCatalogPricingTests : IClassFixture<FullStackFixture>
             () => UiaRetry.RetryUia(() => window
                 .FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Text))
                 .Select(text => text.Name)
-                .FirstOrDefault(name => name?.Contains("guardada correctamente", StringComparison.OrdinalIgnoreCase) == true)),
+                .FirstOrDefault(name => name?.Contains("actualizada correctamente", StringComparison.OrdinalIgnoreCase) == true)),
             timeout);
         Assert.True(confirmed.Result != null, "La UI no confirmó el guardado de la tasa.");
     }
@@ -144,11 +147,8 @@ public class FullStackCatalogPricingTests : IClassFixture<FullStackFixture>
         search.Text = sku;
 
         bool dispatched = false;
-        // The search is debounced (300 ms) and then hits the API. On slower CI runners the
-        // suggestions popup is not ready on the first UI iteration; pressing Enter immediately
-        // would consume the only dispatch attempt before any result exists. Give the debounce
-        // and the request a bounded grace period, then use Enter only as a fallback.
-        var enterFallbackAt = DateTime.UtcNow.AddSeconds(10);
+        // Wait for the suggestions popup: Enter is only pressed once the list is open and the
+        // first item is not actionable, so the single commit is never consumed too early.
         using var automation = new UIA3Automation();
         var row = Retry.WhileNull(
             () => UiaRetry.RetryUia(() =>
@@ -165,35 +165,70 @@ public class FullStackCatalogPricingTests : IClassFixture<FullStackFixture>
                     return null;
                 }
 
-                var list = FindSuggestionsList(window, automation);
-                var suggestion = list?.FindAllChildren(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.ListItem))
-                    .FirstOrDefault();
-                if (suggestion != null)
+                // La vista puede reiniciar el buscador al terminar de inicializar la venta;
+                // se re-escribe el SKU para relanzar la búsqueda sin despachar un segundo commit.
+                if (!string.Equals(search.Text, sku, StringComparison.Ordinal))
                 {
-                    try
-                    {
-                        suggestion.AsListBoxItem().Select();
-                        suggestion.Click();
-                        dispatched = true;
-                        return null;
-                    }
-                    catch (FlaUI.Core.Exceptions.ElementNotAvailableException)
-                    {
-                    }
-                    catch (FlaUI.Core.Exceptions.NoClickablePointException)
-                    {
-                    }
+                    search.Text = sku;
                 }
 
-                if (DateTime.UtcNow >= enterFallbackAt)
+                var list = FindSuggestionsList(window, automation);
+                if (list == null)
                 {
-                    search.Focus();
-                    Keyboard.Press(VirtualKeyShort.RETURN);
-                    dispatched = true;
+                    return null;
                 }
+
+                var suggestion = list.FindAllChildren(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.ListItem))
+                    .FirstOrDefault();
+                if (suggestion == null)
+                {
+                    // El popup puede abrirse antes de que lleguen los resultados: no consumir el
+                    // único commit; se espera a que el primer ítem esté materializado.
+                    return null;
+                }
+
+                try
+                {
+                    window.SetForeground();
+                }
+                catch (Exception)
+                {
+                }
+
+                try
+                {
+                    suggestion.AsListBoxItem().Select();
+                    suggestion.Click();
+                    dispatched = true;
+                    return null;
+                }
+                catch (FlaUI.Core.Exceptions.ElementNotAvailableException)
+                {
+                }
+                catch (FlaUI.Core.Exceptions.NoClickablePointException)
+                {
+                }
+
+                try
+                {
+                    window.SetForeground();
+                }
+                catch (Exception)
+                {
+                }
+
+                search.Focus();
+                Keyboard.Press(VirtualKeyShort.RETURN);
+                dispatched = true;
                 return null;
             }),
             timeout);
+
+        if (row.Result == null)
+        {
+            Console.WriteLine(
+                $"[CATALOG-DBG] search='{search.Text}' {DescribeSuggestions(window, automation)} {DescribeCart(window)}");
+        }
 
         Assert.True(row.Result != null, $"El producto '{productName}' no se agregó al carrito desde el POS.");
     }
@@ -259,6 +294,48 @@ public class FullStackCatalogPricingTests : IClassFixture<FullStackFixture>
             () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId(automationId))),
             timeout);
         return result.Result;
+    }
+
+    private static string DescribeSuggestions(Window window, UIA3Automation automation)
+    {
+        try
+        {
+            var list = FindSuggestionsList(window, automation);
+            if (list == null)
+            {
+                return "Sugerencias: (sin popup).";
+            }
+
+            var items = list.FindAllChildren(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.ListItem))
+                .Select(item => item.Name)
+                .ToArray();
+            return $"Sugerencias: [{string.Join(" | ", items)}].";
+        }
+        catch (Exception ex)
+        {
+            return $"Sugerencias: error {ex.GetType().Name}.";
+        }
+    }
+
+    private static string DescribeCart(Window window)
+    {
+        try
+        {
+            var grid = window.FindFirstDescendant(cf => cf.ByAutomationId("Pos_CartGrid"));
+            if (grid == null)
+            {
+                return "Carrito: (sin grilla).";
+            }
+
+            var rows = grid.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.DataItem))
+                .Select(row => row.Name)
+                .ToArray();
+            return $"Carrito: [{string.Join(" | ", rows)}].";
+        }
+        catch (Exception ex)
+        {
+            return $"Carrito: error {ex.GetType().Name}.";
+        }
     }
 
     private static decimal ParseUiNumber(string? text)

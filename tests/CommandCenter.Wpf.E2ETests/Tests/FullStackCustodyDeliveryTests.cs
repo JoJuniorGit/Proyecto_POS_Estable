@@ -16,6 +16,7 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// entregadas quedaron persistidas (TotalUnits=2, DeliveredUnits=1), sin pruebas estáticas ni
 /// pasos aislados del mismo flujo.
 /// </summary>
+[Collection(FullStackCollection.Name)]
 public class FullStackCustodyDeliveryTests : IClassFixture<FullStackFixture>
 {
     private readonly FullStackFixture _fixture;

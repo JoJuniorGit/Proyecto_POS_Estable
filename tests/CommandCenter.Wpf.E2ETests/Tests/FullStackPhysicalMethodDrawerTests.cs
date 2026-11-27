@@ -13,6 +13,7 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// advance against the real backend/PostgreSQL stack, and verifies the resulting balances.
 /// Gateado por <c>E2E_POSTGRES_CONNECTION</c>, igual que el resto del harness full-stack.
 /// </summary>
+[Collection(FullStackCollection.Name)]
 public class FullStackPhysicalMethodDrawerTests : IClassFixture<FullStackFixture>
 {
     private readonly FullStackFixture _fixture;

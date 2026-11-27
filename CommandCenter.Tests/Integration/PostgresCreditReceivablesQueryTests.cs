@@ -42,8 +42,10 @@ public class PostgresCreditReceivablesQueryTests
         var service = new CreditService(context, new FixedRateProvider(50m));
 
         var all = await service.GetCreditReceivablesAsync(new CreditReceivablesFilterDto());
-        Assert.Equal(5, all.Items.Count);
-        Assert.Equal(5, all.TotalCount);
+        // Deudas Pendientes: excluye la Anulada y el saldo bajo la tolerancia (0.004); ambas
+        // viven en la subsección histórica de deudas pagadas.
+        Assert.Equal(3, all.Items.Count);
+        Assert.Equal(3, all.TotalCount);
         Assert.Equal(210m, all.TotalOpenUSD);
         Assert.Equal(40m, all.TotalOverdueUSD);
         Assert.Equal(3, all.OpenCount);
@@ -59,7 +61,7 @@ public class PostgresCreditReceivablesQueryTests
         Assert.Equal(1, overdueOnly.OpenCount);
 
         var byName = await service.GetCreditReceivablesAsync(new CreditReceivablesFilterDto { Search = "Alfa" });
-        Assert.Equal(3, byName.Items.Count);
+        Assert.Equal(2, byName.Items.Count);
         Assert.All(byName.Items, item => Assert.Equal(alpha.Id, item.CustomerId));
 
         var byInvoice = await service.GetCreditReceivablesAsync(new CreditReceivablesFilterDto { Search = "1002" });
@@ -80,7 +82,7 @@ public class PostgresCreditReceivablesQueryTests
             PageSize = 2
         });
         Assert.Equal(2, firstPage.Items.Count);
-        Assert.Equal(5, firstPage.TotalCount);
+        Assert.Equal(3, firstPage.TotalCount);
         Assert.Equal(1, firstPage.Page);
         Assert.Equal(2, firstPage.PageSize);
         Assert.True(firstPage.HasMore);
@@ -88,7 +90,7 @@ public class PostgresCreditReceivablesQueryTests
 
         var lastPage = await service.GetCreditReceivablesAsync(new CreditReceivablesFilterDto
         {
-            Page = 3,
+            Page = 2,
             PageSize = 2
         });
         var lastItem = Assert.Single(lastPage.Items);

@@ -39,6 +39,7 @@ namespace CommandCenter.Wpf.E2ETests.Tests;
 /// Gateado por <c>E2E_POSTGRES_CONNECTION</c>: local sin variable retorna en silencio; en CI sin
 /// variable falla cerrado (mismo contrato que el resto del harness full-stack).
 /// </remarks>
+[Collection(FullStackCollection.Name)]
 public class PettyCashExpenseTests : IClassFixture<FullStackFixture>
 {
     private const decimal OpeningBalanceBsS = 5000m;
@@ -198,7 +199,7 @@ public class PettyCashExpenseTests : IClassFixture<FullStackFixture>
                 WaitForSummaryText(window, "1 activo(s)", findTimeout),
                 $"El panel no reflejó el gasto activo del cierre. {DescribePettyCashGrid(window)}");
             Assert.True(
-                WaitForPettyCashRowCount(window, 2, findTimeout),
+                WaitForPettyCashRowsVisibleInFilters(window, findTimeout),
                 $"El listado no conservó la fila anulada junto a la activa. {DescribePettyCashGrid(window)}");
 
             // 12) Cierre Z real: el renglón OPEX solo suma el gasto Active; el par Expense/Reversal
@@ -627,6 +628,41 @@ public class PettyCashExpenseTests : IClassFixture<FullStackFixture>
             }),
             timeout);
         return result.Result == true;
+    }
+
+    /// <summary>
+    /// La grilla es virtualizada: con dos filas el viewport puede materializar solo una. Se
+    /// verifica cada estado con los filtros Activos/Anulados, que materializan la fila
+    /// correspondiente del turno, y se restaura "Todos" al final.
+    /// </summary>
+    private static bool WaitForPettyCashRowsVisibleInFilters(Window window, TimeSpan timeout)
+    {
+        var cancelledFilter = WaitForEnabledButton(window, "CashDrawer_PettyCashFilterCancelled", timeout);
+        if (cancelledFilter == null)
+        {
+            return false;
+        }
+
+        cancelledFilter.Invoke();
+        if (!WaitForPettyCashRowCount(window, 1, timeout))
+        {
+            return false;
+        }
+
+        var activeFilter = WaitForEnabledButton(window, "CashDrawer_PettyCashFilterActive", timeout);
+        if (activeFilter == null)
+        {
+            return false;
+        }
+
+        activeFilter.Invoke();
+        if (!WaitForPettyCashRowCount(window, 1, timeout))
+        {
+            return false;
+        }
+
+        WaitForEnabledButton(window, "CashDrawer_PettyCashFilterAll", timeout)?.Invoke();
+        return true;
     }
 
     /// <summary>Espera un texto visible que contenga el fragmento (p. ej. el resumen "N activo(s)" del panel).</summary>

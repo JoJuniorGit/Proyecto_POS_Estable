@@ -19546,3 +19546,32 @@ B4. Harness WPF 96/120 DPI: bloque USD normalizado, visible con actividad y ause
 C. COMMITS
 C1. Commit local en la rama V0.15; sin push.
 ================================================================================
+
+================================================================================
+ANEXO XCVII - ESTABILIZACION DEL PIPELINE CI: E2E WPF, CXC Y FRONTEND - 2026-11-27
+================================================================================
+
+A. ALCANCE
+A1. WPF: se corrigio el CanExecute obsoleto de los RoutedCommand tras un cambio de
+    vista disparado por UI Automation o auto-login. MainWindow reconsulta los
+    comandos en el dispatcher y el menu lateral expone un AutomationId estable.
+A2. Harness WPF: TestHelper.NavigateTo reintenta la invocacion y abre el drawer con
+    el menu de la vista; las clases full-stack se serializan en una coleccion xUnit
+    para evitar carreras de FindFreePort y contencion de foco/UIA.
+A3. Expectativas E2E desalineadas: confirmacion de tasa ("actualizada correctamente"),
+    fila anulada de caja chica verificada por filtros (grilla virtualizada), busqueda
+    de producto del catalogo y diferencia del cierre diario con AutomationId propio.
+A4. Backend: PostgresCreditReceivablesQueryTests se alineo al contrato de Deudas
+    Pendientes (solo deuda viva; pagadas/anuladas viven en el historial dedicado).
+A5. Web: la prueba de Actualizada normaliza el espacio ICU (U+202F/U+00A0) antes de
+    comparar el formato fecha/hora.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. WPF E2E local contra PostgreSQL 18 aislado: 11/11 superadas.
+B3. PostgresCreditReceivablesQueryTests: 1/1.
+B4. `node --test src/pages/ExchangeRatePage.test.js`: 12/12; `npm run lint` limpio.
+
+C. COMMITS
+C1. Commits en la rama V0.15; push y supervision del pipeline en GitHub Actions.
+================================================================================
