@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Loader2, Search, X } from 'lucide-react';
 import Modal from '../ui/Modal';
+import Pagination from '../ui/Pagination';
 import useDebounce from '../../hooks/useDebounce';
 import { getProductsPaged } from '../../services/productsApi';
 import './ProductPickerModal.css';
@@ -63,7 +64,7 @@ export default function ProductPickerModal({
   const [selectionError, setSelectionError] = useState(null);
 
   const selectedIds = useMemo(() => new Set(selected.map((item) => item.id)), [selected]);
-  const totalPages = Math.max(1, Math.ceil(totalCount / PICKER_PAGE_SIZE));
+  const totalPages = totalCount > 0 ? Math.ceil(totalCount / PICKER_PAGE_SIZE) : 0;
 
   const categoryOptions = useMemo(
     () => [
@@ -181,38 +182,49 @@ export default function ProductPickerModal({
         </div>
 
         <div className="pp-content">
-          <div className="pp-results" aria-live="polite">
-            {loading ? (
-              <div className="pp-state">
-                <Loader2 size={20} className="spin" aria-hidden="true" /> Cargando productos…
-              </div>
-            ) : error ? (
-              <div className="pp-state pp-error" role="alert">
-                {error}
-              </div>
-            ) : items.length === 0 ? (
-              <div className="pp-state">No se encontraron productos contables con ese filtro.</div>
-            ) : (
-              <ul className="pp-list">
-                {items.map((product) => {
-                  const checked = selectedIds.has(product.id);
-                  return (
-                    <li key={product.id}>
-                      <label className={`pp-row${checked ? ' is-selected' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => handleToggle(product)}
-                        />
-                        <span className="pp-sku">{product.sku}</span>
-                        <span className="pp-name">{product.name}</span>
-                        {checked && <Check size={16} className="pp-check" aria-hidden="true" />}
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+          <div className="pp-left">
+            <div className="pp-results" aria-live="polite">
+              {loading ? (
+                <div className="pp-state">
+                  <Loader2 size={20} className="spin" aria-hidden="true" /> Cargando productos…
+                </div>
+              ) : error ? (
+                <div className="pp-state pp-error" role="alert">
+                  {error}
+                </div>
+              ) : items.length === 0 ? (
+                <div className="pp-state">No se encontraron productos contables con ese filtro.</div>
+              ) : (
+                <ul className="pp-list">
+                  {items.map((product) => {
+                    const checked = selectedIds.has(product.id);
+                    return (
+                      <li key={product.id}>
+                        <label className={`pp-row${checked ? ' is-selected' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => handleToggle(product)}
+                          />
+                          <span className="pp-sku">{product.sku}</span>
+                          <span className="pp-name">{product.name}</span>
+                          {checked && <Check size={16} className="pp-check" aria-hidden="true" />}
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            <Pagination
+              currentPage={totalPages > 0 ? page : 0}
+              totalPages={totalPages}
+              totalCount={totalCount}
+              onPageChange={setPage}
+              loading={loading}
+              itemLabel="productos"
+            />
           </div>
 
           <aside className="pp-selected" aria-label="Productos seleccionados">
@@ -250,27 +262,6 @@ export default function ProductPickerModal({
         )}
 
         <div className="pp-footer">
-          <div className="pp-pagination">
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              disabled={page <= 1 || loading}
-            >
-              Anterior
-            </button>
-            <span>
-              Página {page} de {totalPages} · {totalCount} productos activos
-            </span>
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              disabled={page >= totalPages || loading}
-            >
-              Siguiente
-            </button>
-          </div>
           <div className="pp-actions">
             <button type="button" className="btn btn-outline" onClick={onClose}>
               Cancelar

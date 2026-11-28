@@ -68,13 +68,20 @@
   min-height: 0;
 }
 
+.pp-left {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .pp-results,
 .pp-selected {
   min-height: 320px;
   max-height: 380px;
   border: 1px solid var(--border, #E2E8F0);
   border-radius: 8px;
-  background: var(--bg-card, #FFFFFF);
+  background: var(--bg-surface, #FFFFFF);
   overflow: auto;
 }
 
@@ -93,6 +100,7 @@
   padding: 9px 12px;
   border-bottom: 1px solid #F1F5F9;
   cursor: pointer;
+  transition: background-color 120ms ease;
 }
 
 .pp-row:last-child {
@@ -104,7 +112,24 @@
 }
 
 .pp-row.is-selected {
-  background: #EDE9FE;
+  background: #F5F3FF;
+}
+
+.pp-row.is-selected:hover {
+  background: #F5F3FF;
+}
+
+[data-theme='dark'] .pp-row {
+  border-bottom-color: #334155;
+}
+
+[data-theme='dark'] .pp-row:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+[data-theme='dark'] .pp-row.is-selected,
+[data-theme='dark'] .pp-row.is-selected:hover {
+  background: rgba(109, 40, 217, 0.24);
 }
 
 .pp-row input[type='checkbox'] {
@@ -220,6 +245,45 @@
   background: #DDD6FE;
 }
 
+[data-theme='dark'] .pp-check {
+  color: #DDD6FE;
+}
+
+[data-theme='dark'] .pp-counter {
+  background: rgba(109, 40, 217, 0.24);
+  color: #DDD6FE;
+}
+
+[data-theme='dark'] .pp-selected-head span {
+  color: #DDD6FE;
+}
+
+[data-theme='dark'] .pp-chip {
+  background: rgba(109, 40, 217, 0.24);
+}
+
+[data-theme='dark'] .pp-chip-name {
+  color: #DDD6FE;
+}
+
+[data-theme='dark'] .pp-chip-sku {
+  color: #C4B5FD;
+}
+
+[data-theme='dark'] .pp-chip-remove {
+  color: #DDD6FE;
+}
+
+[data-theme='dark'] .pp-chip-remove:hover {
+  background: rgba(196, 181, 253, 0.18);
+}
+
+[data-theme='dark'] .pp-selection-error {
+  background: #451A03;
+  border-color: #B45309;
+  color: #FCD34D;
+}
+
 .pp-selection-error {
   padding: 8px 10px;
   border: 1px solid #FCD34D;
@@ -233,19 +297,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   padding-top: 12px;
   border-top: 1px solid #F1F5F9;
-}
-
-.pp-pagination {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary, #64748B);
-  font-size: 12px;
 }
 
 .pp-actions {

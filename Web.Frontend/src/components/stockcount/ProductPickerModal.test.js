@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { renderToString } from 'react-dom/server';
 import React from 'react';
 import ProductPickerModal, {
@@ -71,7 +74,22 @@ describe('ProductPickerModal — WU3 product scope', () => {
     assert.match(html, /1 \/ 1000/);
     assert.match(html, /Harina/);
     assert.match(html, /SKU-1/);
+    assert.match(html, /pagination-container/);
+    assert.match(html, /Página/);
+    assert.match(html, /Ir a:/);
     assert.doesNotMatch(html, /stockQuantity|costPriceUSD|priceUSD/i);
     assert.strictEqual(MAX_SCOPE_PRODUCTS, 1000);
+  });
+
+  it('4. uses the theme surface and soft theme-aware row states', () => {
+    const cssPath = join(dirname(fileURLToPath(import.meta.url)), 'ProductPickerModal.css');
+    const css = readFileSync(cssPath, 'utf8');
+
+    assert.match(css, /\.pp-results,[\s\S]*?\.pp-selected\s*\{[\s\S]*?background:\s*var\(--bg-surface/);
+    assert.doesNotMatch(css, /background:\s*var\(--bg-card/);
+    assert.match(css, /\.pp-row:hover\s*\{[\s\S]*?background:\s*#F8FAFC/);
+    assert.match(css, /\.pp-row\.is-selected\s*\{[\s\S]*?background:\s*#F5F3FF/);
+    assert.match(css, /\[data-theme='dark'\] \.pp-row:hover\s*\{[\s\S]*?background:\s*rgba\(148, 163, 184, 0\.12\)/);
+    assert.match(css, /\[data-theme='dark'\] \.pp-row\.is-selected/);
   });
 });

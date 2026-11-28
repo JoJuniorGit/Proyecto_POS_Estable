@@ -70,6 +70,7 @@ public partial class ProductPickerDialogViewModel : ObservableObject, IDisposabl
     private readonly ICategoryService? _categoryService;
     private readonly Dictionary<int, ProductPickerSelection> _selected = new();
     private CancellationTokenSource? _loadCts;
+    private CancellationTokenSource? _categoryAddCts;
     private bool _initialized;
     private bool _suppressSelectionCallback;
     private bool _suppressCategoryReload;
@@ -80,6 +81,7 @@ public partial class ProductPickerDialogViewModel : ObservableObject, IDisposabl
     public ObservableCollection<ProductPickerCategoryOption> Categories { get; } = new();
     public ObservableCollection<ProductPickerRowViewModel> Results { get; } = new();
     public ObservableCollection<ProductPickerSelection> SelectedProducts { get; } = new();
+    public ObservableCollection<PageNumberItem> PageNumbers { get; } = new();
 
     [ObservableProperty] private string _searchText = string.Empty;
     [ObservableProperty] private ProductPickerCategoryOption? _selectedCategory;
@@ -88,16 +90,89 @@ public partial class ProductPickerDialogViewModel : ObservableObject, IDisposabl
     [ObservableProperty] private int _page = 1;
     [ObservableProperty] private int _totalPages = 1;
     [ObservableProperty] private int _totalCount;
+    [ObservableProperty] private string _targetPageInput = "1";
 
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
     public bool HasResults => Results.Count > 0;
     public bool HasSelection => SelectedProducts.Count > 0;
     public int SelectedCount => SelectedProducts.Count;
-    public string SelectionCounterText => $"{SelectedCount} / {MaxSelection}";
+    public string SelectionCounterText => $"Seleccionados: {SelectedCount} / {MaxSelection}";
     public string PageText => $"Página {Page} de {TotalPages}";
-    public bool HasPreviousPage => Page > 1;
-    public bool HasNextPage => Page < TotalPages;
+    public string PageSummary => $"Página {Page} de {TotalPages} · {TotalCount} productos";
+    public bool HasPreviousPage => CanGoPrevious;
+    public bool HasNextPage => CanGoNext;
+    public bool CanGoFirst => Page > 1 && TotalPages > 1;
+    public bool CanGoPrevious => Page > 1 && TotalPages > 1;
+    public bool CanGoNext => Page < TotalPages && TotalPages > 1;
+    public bool CanGoLast => Page < TotalPages && TotalPages > 1;
     public bool CanConfirm => SelectedCount > 0;
+    public string ConfirmButtonText => SelectedCount > 0
+        ? $"Confirmar selección ({SelectedCount})"
+        : "Confirmar selección";
+    public string SelectionCounterBackground => SelectedCount >= MaxSelection - 100
+        ? "#FEF3C7"
+        : "#F5F3FF";
+    public string SelectionCounterForeground => SelectedCount >= MaxSelection - 100
+        ? "#B45309"
+        : "#5B21B6";
+    public string SelectionCounterBorder => SelectedCount >= MaxSelection - 100
+        ? "#FCD34D"
+        : "#DDD6FE";
+    public bool CanAddCategory => SelectedCategory?.Id is not null && !IsBusy;
+    public string AddCategoryToolTip => SelectedCategory?.Id is not null
+        ? "Agregar todos los productos de la categoría seleccionada"
+        : "Selecciona una categoría específica para agregar todos sus productos";
+
+    public bool? PageSelectionState
+    {
+        get
+        {
+            if (Results.Count == 0)
+            {
+                return false;
+            }
+
+            var selectedOnPage = Results.Count(row => row.IsSelected);
+            if (selectedOnPage == 0)
+            {
+                return false;
+            }
+
+            return selectedOnPage == Results.Count ? true : null;
+        }
+        set
+        {
+            if (value == PageSelectionState)
+            {
+                return;
+            }
+
+            if (PageSelectionState is null)
+            {
+                SetPageSelection(true);
+                return;
+            }
+
+            if (value.HasValue)
+            {
+                SetPageSelection(value.Value);
+            }
+        }
+    }
+
+    public bool IsPageSelected
+    {
+        get => PageSelectionState == true;
+        set
+        {
+            if (value == IsPageSelected)
+            {
+                return;
+            }
+
+            SetPageSelection(value);
+        }
+    }
 
     public ProductPickerDialogViewModel(
         IProductService productService,
@@ -153,6 +228,35 @@ public partial class ProductPickerDialogViewModel : ObservableObject, IDisposabl
         : Task.CompletedTask;
 
     [RelayCommand]
+    private Task FirstPageAsync() => LoadPageAsync(1);
+
+    [RelayCommand]
+    private Task LastPageAsync() => TotalPages > 1
+        ? LoadPageAsync(TotalPages)
+        : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task GoToPageAsync(int page) => page >= 1 && page <= TotalPages && page != Page
+        ? LoadPageAsync(page)
+        : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task SubmitGoToPageAsync()
+    {
+        if (int.TryParse(TargetPageInput, out var target) && TotalPages > 0)
+        {
+            var clamped = Math.Clamp(target, 1, TotalPages);
+            if (clamped != Page)
+            {
+                return LoadPageAsync(clamped);
+            }
+        }
+
+        TargetPageInput = Page.ToString();
+        return Task.CompletedTask;
+    }
+
+    [RelayCommand]
     private void RemoveSelected(ProductPickerSelection? item)
     {
         if (item is null)
@@ -173,6 +277,111 @@ public partial class ProductPickerDialogViewModel : ObservableObject, IDisposabl
     }
 
     [RelayCommand]
+    private void ClearSelection()
+    {
+        _selected.Clear();
+        _suppressSelectionCallback = true;
+        foreach (var row in Results)
+        {
+            row.IsSelected = false;
+        }
+        _suppressSelectionCallback = false;
+        SyncSelectedProducts();
+    }
+
+    [RelayCommand]
+    private async Task AddCategoryProductsAsync()
+    {
+        if (SelectedCategory?.Id is not int categoryId || IsBusy || _disposed != 0)
+        {
+            return;
+        }
+
+        var newCts = new CancellationTokenSource();
+        var oldCts = Interlocked.Exchange(ref _categoryAddCts, newCts);
+        try
+        {
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+        }
+        catch (ObjectDisposedException) { }
+
+        var token = newCts.Token;
+        IsBusy = true;
+        ErrorMessage = null;
+
+        try
+        {
+            var pageNumber = 1;
+            var hasMore = true;
+            while (hasMore && _selected.Count < MaxSelection && !token.IsCancellationRequested)
+            {
+                var result = await _productService.GetPagedAsync(
+                    null,
+                    pageNumber,
+                    100,
+                    "active",
+                    "name",
+                    false,
+                    token,
+                    categoryId);
+
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                foreach (var product in result.Items.Where(IsCountable))
+                {
+                    if (_selected.Count >= MaxSelection)
+                    {
+                        ErrorMessage = $"Máximo {MaxSelection} productos seleccionados.";
+                        break;
+                    }
+
+                    if (!_selected.ContainsKey(product.Id))
+                    {
+                        _selected[product.Id] = new ProductPickerSelection(
+                            product.Id,
+                            product.SKU,
+                            product.Name);
+                    }
+                }
+
+                hasMore = result.HasMore;
+                pageNumber++;
+            }
+
+            _suppressSelectionCallback = true;
+            foreach (var row in Results)
+            {
+                if (_selected.ContainsKey(row.ProductId) && !row.IsSelected)
+                {
+                    row.IsSelected = true;
+                }
+            }
+            _suppressSelectionCallback = false;
+
+            SyncSelectedProducts();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            ClientStateLogger.LogError(
+                $"Fallo al agregar los productos de la categoría: {ex.Message}",
+                nameof(ProductPickerDialogViewModel));
+            ErrorMessage = "No se pudieron agregar los productos de la categoría.";
+        }
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                IsBusy = false;
+            }
+        }
+    }
+
+    [RelayCommand]
     private void Confirm()
     {
         if (!CanConfirm)
@@ -188,11 +397,16 @@ public partial class ProductPickerDialogViewModel : ObservableObject, IDisposabl
 
     partial void OnSelectedCategoryChanged(ProductPickerCategoryOption? value)
     {
+        OnPropertyChanged(nameof(CanAddCategory));
+        OnPropertyChanged(nameof(AddCategoryToolTip));
+
         if (_initialized && !_suppressCategoryReload && _disposed == 0)
         {
             LoadPageAsync(1).SafeFireAndForget("ProductPickerDialogViewModel.Category");
         }
     }
+
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanAddCategory));
 
     partial void OnErrorMessageChanged(string? value) => OnPropertyChanged(nameof(HasError));
 
@@ -277,7 +491,7 @@ public partial class ProductPickerDialogViewModel : ObservableObject, IDisposabl
                     OnRowSelectionChanged));
             }
 
-            NotifyPageState();
+            UpdatePageNumbers();
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -294,6 +508,44 @@ public partial class ProductPickerDialogViewModel : ObservableObject, IDisposabl
                 IsBusy = false;
             }
         }
+    }
+
+    private void SetPageSelection(bool selected)
+    {
+        _suppressSelectionCallback = true;
+        try
+        {
+            foreach (var row in Results)
+            {
+                if (row.IsSelected == selected)
+                {
+                    continue;
+                }
+
+                if (selected)
+                {
+                    if (_selected.Count >= MaxSelection)
+                    {
+                        ErrorMessage = $"Máximo {MaxSelection} productos seleccionados.";
+                        break;
+                    }
+
+                    _selected[row.ProductId] = new ProductPickerSelection(row.ProductId, row.Sku, row.Name);
+                }
+                else
+                {
+                    _selected.Remove(row.ProductId);
+                }
+
+                row.IsSelected = selected;
+            }
+        }
+        finally
+        {
+            _suppressSelectionCallback = false;
+        }
+
+        SyncSelectedProducts();
     }
 
     private void OnRowSelectionChanged(ProductPickerRowViewModel row)
@@ -338,14 +590,62 @@ public partial class ProductPickerDialogViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(SelectionCounterText));
         OnPropertyChanged(nameof(CanConfirm));
+        OnPropertyChanged(nameof(ConfirmButtonText));
+        OnPropertyChanged(nameof(SelectionCounterBackground));
+        OnPropertyChanged(nameof(SelectionCounterForeground));
+        OnPropertyChanged(nameof(SelectionCounterBorder));
+        OnPropertyChanged(nameof(PageSelectionState));
+        OnPropertyChanged(nameof(IsPageSelected));
     }
 
-    private void NotifyPageState()
+    private void UpdatePageNumbers()
+    {
+        PageNumbers.Clear();
+
+        if (TotalPages <= 0 || TotalCount == 0)
+        {
+            TargetPageInput = Page.ToString();
+            NotifyPaginationState();
+            return;
+        }
+
+        if (Page <= 0)
+        {
+            Page = 1;
+        }
+        if (Page > TotalPages)
+        {
+            Page = TotalPages;
+        }
+
+        var startPage = Math.Max(1, Page - 2);
+        var endPage = Math.Min(TotalPages, Page + 2);
+        for (var pageNumber = startPage; pageNumber <= endPage; pageNumber++)
+        {
+            PageNumbers.Add(new PageNumberItem
+            {
+                PageNumber = pageNumber,
+                IsActive = pageNumber == Page
+            });
+        }
+
+        TargetPageInput = Page.ToString();
+        NotifyPaginationState();
+    }
+
+    private void NotifyPaginationState()
     {
         OnPropertyChanged(nameof(HasResults));
+        OnPropertyChanged(nameof(PageSummary));
         OnPropertyChanged(nameof(PageText));
         OnPropertyChanged(nameof(HasPreviousPage));
         OnPropertyChanged(nameof(HasNextPage));
+        OnPropertyChanged(nameof(CanGoFirst));
+        OnPropertyChanged(nameof(CanGoPrevious));
+        OnPropertyChanged(nameof(CanGoNext));
+        OnPropertyChanged(nameof(CanGoLast));
+        OnPropertyChanged(nameof(PageSelectionState));
+        OnPropertyChanged(nameof(IsPageSelected));
     }
 
     public void Dispose()
@@ -359,10 +659,13 @@ public partial class ProductPickerDialogViewModel : ObservableObject, IDisposabl
         {
             _loadCts?.Cancel();
             _loadCts?.Dispose();
+            _categoryAddCts?.Cancel();
+            _categoryAddCts?.Dispose();
         }
         catch (ObjectDisposedException) { }
 
         _loadCts = null;
+        _categoryAddCts = null;
         GC.SuppressFinalize(this);
     }
 }
