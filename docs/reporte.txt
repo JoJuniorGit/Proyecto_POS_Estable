@@ -19548,6 +19548,35 @@ C1. Commit local en la rama V0.15; sin push.
 ================================================================================
 
 ================================================================================
+ANEXO XCVI - RENOMBRE VISUAL: CUENTAS ABIERTAS -> PEDIDOS GUARDADOS - 2026-11-27
+================================================================================
+
+A. ALCANCE
+A1. Se renombro visualmente el modulo "Cuentas Abiertas" a "Pedidos Guardados" en
+    todas las vistas WPF y Web: navegacion lateral, titulo de pantalla, titulo de
+    ventana, tooltips de guardado y textos de carga/error/paginacion.
+A2. Se alineo el copy del flujo: liquidacion y abonos ahora hablan de "pedido" en
+    lugar de "cuenta"; "Cuentas por Cobrar (CxC)" quedo intacto por ser otro modulo.
+A3. Sin cambios de contratos, endpoints, identificadores internos ni logica de
+    negocio; solo cadenas visibles al usuario.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Suite .NET (previa al ultimo ajuste de label): 4600/4662 superadas; los 62 fallos
+    restantes son el carril PostgreSQL real sin TEST_POSTGRES_CONNECTION (baseline
+    conocido). Tras el ajuste de `CheckoutUxTests`: build 0/0, focalizado
+    CheckoutUxTests 19/19; el re-run completo se corto por OOM/bloqueo del host de
+    pruebas tras 4178/4178 aprobadas. WPF E2E: 11/11.
+B3. Web: `npm test` 827/827 (concurrencia reducida por OOM del runner en paralelo),
+    `npm run lint` limpio, `npm run build` correcto con `Backend.API/wwwroot`
+    regenerado.
+
+C. COMMITS
+C1. Commit 00cb83d en V0.15 (refactor(copy): unify saved orders and checkout
+    wording); push y supervision del pipeline.
+================================================================================
+
+================================================================================
 ANEXO XCVII - ESTABILIZACION DEL PIPELINE CI: E2E WPF, CXC Y FRONTEND - 2026-11-27
 ================================================================================
 
@@ -19574,4 +19603,40 @@ B4. `node --test src/pages/ExchangeRatePage.test.js`: 12/12; `npm run lint` limp
 
 C. COMMITS
 C1. Commits en la rama V0.15; push y supervision del pipeline en GitHub Actions.
+================================================================================
+
+================================================================================
+ANEXO XCVIII - HISTORIAL SLIDE-OVER, SELECTOR DE PRODUCTOS Y COPY DE PEDIDOS - 2026-11-27
+================================================================================
+
+A. ALCANCE
+A1. Historial de Ventas WPF: el detalle de factura pasa a un inspector slide-over con
+    navegacion anterior/siguiente, total USD del periodo filtrado y resumen
+    "Pag. X de Y - N ventas". El panel inferior embebido se elimina.
+A2. Selector de productos WPF/Web: paginacion completa (primera/anterior/siguiente/
+    ultima e ir a pagina), seleccion de toda la pagina, agregado masivo por categoria,
+    contador de seleccion y estado del boton de confirmacion.
+A3. Copy: "Cuentas Abiertas" -> "Pedidos Guardados" y "cuenta" -> "pedido" en la
+    navegacion, pantallas de pendientes y checkout WPF/Web.
+A4. Web CxC: se agrega el estilo del saldo unificado (primario arriba, local abajo)
+    que consume CreditReceivablesPage.
+A5. E2E: el backend aislado desactiva el auto-sync BCV para que la tasa del bootstrap
+    no sea pisada durante el test.
+
+B. EVIDENCIA
+B1. `dotnet build CommandCenter.slnx -c Release`: 0 warnings, 0 errors.
+B2. Tests focalizados: CheckoutUxTests + ProductPickerDialogViewModelTests +
+    SalesHistoryViewModelTests: 62/62.
+B3. Web: `npm test` 829/829; `npm run lint` limpio; `npm run build` correcto con
+    Backend.API/wwwroot regenerado.
+B4. WPF E2E local contra PostgreSQL aislado: 11/11 en 6m56s.
+
+C. COMMITS
+C1. 44c1c8f feat(sales-history): move invoice detail into a slide-over inspector.
+C2. 508b713 feat(products): redesign the product picker with bulk selection and pagination.
+C3. 00cb83d refactor(copy): unify saved orders and checkout wording.
+C4. 14c0c95 fix(credit): style the unified balance stack.
+C5. fdefccd test(e2e): disable BCV auto-sync in the isolated backend.
+C6. 66411bb chore(web): rebuild static assets for the UI update.
+C7. docs(odd): registro de este ANEXO.
 ================================================================================
