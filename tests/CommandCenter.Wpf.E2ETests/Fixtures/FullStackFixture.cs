@@ -335,6 +335,9 @@ public sealed class FullStackFixture : IDisposable
         startInfo.Environment["ASPNETCORE_HTTP_PORT"] = BackendPort.ToString();
         startInfo.Environment["ConnectionStrings__DefaultConnection"] = _derivedConnectionString;
         startInfo.Environment["SystemSettings__AdminSeedPassword"] = SeedPassword;
+        // El job de sincronización BCV no debe pisar la tasa fijada por el bootstrap durante el
+        // test: el harness necesita una tasa determinística para precios y arqueos.
+        startInfo.Environment["BcvSettings__AutoSyncIntervalMinutes"] = "0";
 
         // En Development Program.cs carga Backend.API/.env (DotNetEnv) y ese archivo puede pisar
         // variables del proceso; se setea DB_PASSWORD con el valor de la cadena base para que la

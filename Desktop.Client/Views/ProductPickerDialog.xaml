@@ -23,47 +23,436 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
 
-        <Style x:Key="PickerHeaderStyle" TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#F8FAFC"/>
-            <Setter Property="Foreground" Value="#64748B"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="11"/>
-            <Setter Property="Padding" Value="10,0"/>
-            <Setter Property="BorderBrush" Value="#F1F5F9"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Style x:Key="PickerCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="12"/>
         </Style>
 
-        <Style x:Key="PickerGridStyle" TargetType="DataGrid">
-            <Setter Property="AutoGenerateColumns" Value="False"/>
-            <Setter Property="CanUserAddRows" Value="False"/>
-            <Setter Property="CanUserDeleteRows" Value="False"/>
-            <Setter Property="IsReadOnly" Value="True"/>
-            <Setter Property="SelectionMode" Value="Single"/>
-            <Setter Property="SelectionUnit" Value="FullRow"/>
-            <Setter Property="HeadersVisibility" Value="Column"/>
-            <Setter Property="ColumnHeaderHeight" Value="40"/>
-            <Setter Property="RowHeight" Value="40"/>
+        <Style x:Key="FilterBorderStyle" TargetType="Border">
             <Setter Property="Background" Value="#FFFFFF"/>
-            <Setter Property="RowBackground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="MinHeight" Value="40"/>
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="#6D28D9"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PickerHeaderTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="10,0,0,0"/>
+        </Style>
+
+        <Style x:Key="PickerCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Box"
+                                Width="18" Height="18"
+                                CornerRadius="4"
+                                BorderThickness="1.5"
+                                BorderBrush="#CBD5E1"
+                                Background="#FFFFFF"
+                                SnapsToDevicePixels="True"
+                                UseLayoutRounding="True">
+                            <Grid>
+                                <Path x:Name="CheckMark"
+                                      Data="M 4 9 L 7.5 12.5 L 14 5"
+                                      Stroke="White"
+                                      StrokeThickness="2"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Visibility="Collapsed"/>
+                                <Rectangle x:Name="IndeterminateMark"
+                                           Width="9" Height="2"
+                                           RadiusX="1" RadiusY="1"
+                                           Fill="White"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Visibility="Collapsed"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="#6D28D9"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="#6D28D9"/>
+                                <Setter TargetName="Box" Property="BorderBrush" Value="#6D28D9"/>
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="{x:Null}">
+                                <Setter TargetName="Box" Property="Background" Value="#6D28D9"/>
+                                <Setter TargetName="Box" Property="BorderBrush" Value="#6D28D9"/>
+                                <Setter TargetName="IndeterminateMark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Box" Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PickerSkuStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#64748B"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="ToolTip" Value="{Binding Sku}"/>
+        </Style>
+
+        <Style x:Key="PickerProductStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#0F172A"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="ToolTip" Value="{Binding Name}"/>
+        </Style>
+
+        <Style x:Key="PickerRowContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Row"
+                                Background="#FFFFFF"
+                                BorderBrush="#F1F5F9"
+                                BorderThickness="0,0,0,1"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="#F8FAFC"/>
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="#F5F3FF"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PickerListStyle" TargetType="ListBox">
+            <Setter Property="Background" Value="#FFFFFF"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="#F1F5F9"/>
-            <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="SelectionMode" Value="Single"/>
             <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
             <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
             <Setter Property="VirtualizingStackPanel.IsVirtualizing" Value="True"/>
             <Setter Property="VirtualizingStackPanel.VirtualizationMode" Value="Recycling"/>
             <Setter Property="VirtualizingPanel.ScrollUnit" Value="Pixel"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource PickerRowContainerStyle}"/>
         </Style>
 
-        <Style x:Key="PickerSecondaryButtonStyle" TargetType="Button"
-               BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-            <Setter Property="MinHeight" Value="34"/>
-            <Setter Property="Padding" Value="14,0"/>
+        <Style x:Key="PickerPrimaryButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#6D28D9"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="16,0"/>
             <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True" UseLayoutRounding="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#5B21B6"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#4C1D95"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Background" Value="#E2E8F0"/>
+                                <Setter Property="Foreground" Value="#94A3B8"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                                <Setter Property="Opacity" Value="1"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
+
+        <Style x:Key="PickerNeutralButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True" UseLayoutRounding="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F1F5F9"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E2E8F0"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PickerPagerButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource PickerNeutralButtonStyle}">
+            <Setter Property="MinHeight" Value="28"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="Normal"/>
+        </Style>
+
+        <Style x:Key="PickerPagerIconButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource PickerPagerButtonStyle}">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="1,0"/>
+        </Style>
+
+        <Style x:Key="PickerPagerNumberButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="MinWidth" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="3,0"/>
+            <Setter Property="Margin" Value="1,0"/>
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#F1F5F9"/>
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#6D28D9"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PagerGoToBorderStyle" TargetType="Border">
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#CBD5E1"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="#6D28D9"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PickerTextDangerButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#DC2626"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#FEE2E2"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PickerCategoryAddButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#F5F3FF"/>
+            <Setter Property="BorderBrush" Value="#DDD6FE"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#6D28D9"/>
+            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True" UseLayoutRounding="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#EDE9FE"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#DDD6FE"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PickerGoButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#F1F5F9"/>
+            <Setter Property="BorderBrush" Value="#E2E8F0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="MinHeight" Value="24"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E2E8F0"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#CBD5E1"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PickerScrollBarStyle" TargetType="ScrollBar">
+            <Setter Property="Width" Value="6"/>
+            <Setter Property="MinWidth" Value="6"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                                  CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                  Opacity="0" Focusable="False" IsTabStop="False"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb MinHeight="24">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="ThumbBorder" Background="#CBD5E1"
+                                                        CornerRadius="3" Width="6"/>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ThumbBorder" Property="Background"
+                                                                Value="#94A3B8"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                                  CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                  Opacity="0" Focusable="False" IsTabStop="False"/>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ScrollBar" BasedOn="{StaticResource PickerScrollBarStyle}"/>
     </Window.Resources>
 
     <Grid Margin="24">
@@ -76,10 +465,12 @@
 
         <!-- Header -->
         <DockPanel Grid.Row="0" Margin="0,0,0,16" LastChildFill="True">
-            <Border DockPanel.Dock="Right" Background="#EDE9FE" CornerRadius="10"
-                    Padding="12,6" VerticalAlignment="Top">
+            <Border DockPanel.Dock="Right" Background="{Binding SelectionCounterBackground}"
+                    BorderBrush="{Binding SelectionCounterBorder}" BorderThickness="1"
+                    CornerRadius="999" Padding="12,5" VerticalAlignment="Top">
                 <TextBlock Text="{Binding SelectionCounterText}"
-                           Foreground="#5B21B6" FontWeight="SemiBold" FontSize="12"/>
+                           Foreground="{Binding SelectionCounterForeground}"
+                           FontWeight="SemiBold" FontSize="12"/>
             </Border>
             <StackPanel>
                 <TextBlock Text="Seleccionar productos"
@@ -95,29 +486,75 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBox Grid.Column="0"
-                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                     materialDesign:HintAssist.Hint="Buscar por nombre o SKU / código de barras"
-                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                     MinHeight="40" Padding="12,8" VerticalContentAlignment="Center"
-                     FontSize="13" Margin="0,0,8,0">
-                <TextBox.InputBindings>
-                    <KeyBinding Key="Enter" Command="{Binding SearchCommand}"/>
-                </TextBox.InputBindings>
-            </TextBox>
-            <ComboBox Grid.Column="1"
-                      ItemsSource="{Binding Categories}"
-                      SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"
-                      DisplayMemberPath="Label"
-                      Style="{DynamicResource MaterialDesignOutlinedComboBox}"
-                      MinWidth="190" MinHeight="40" Padding="12,6"
-                      VerticalContentAlignment="Center" VerticalAlignment="Center"
-                      FontSize="12" Margin="0,0,8,0"/>
-            <Button Grid.Column="2" Content="Buscar"
+
+            <Border Grid.Column="0" Style="{StaticResource FilterBorderStyle}" Margin="0,0,8,0">
+                <Grid Margin="10,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Grid.Column="0" Kind="Magnify"
+                                             Width="16" Height="16" Foreground="#94A3B8"
+                                             VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Grid Grid.Column="1">
+                        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 BorderThickness="0" Background="Transparent"
+                                 Foreground="#0F172A" FontSize="13"
+                                 VerticalContentAlignment="Center" Padding="0" Margin="0,0,6,0">
+                            <TextBox.InputBindings>
+                                <KeyBinding Key="Enter" Command="{Binding SearchCommand}"/>
+                            </TextBox.InputBindings>
+                        </TextBox>
+                        <TextBlock Text="Buscar por nombre o SKU / código de barras"
+                                   Foreground="#94A3B8" FontSize="13"
+                                   VerticalAlignment="Center" IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SearchText}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                    <Button Grid.Column="2" Command="{Binding ClearSearchCommand}"
+                            Style="{DynamicResource MaterialDesignIconButton}"
+                            Width="24" Height="24" Padding="0" VerticalAlignment="Center"
+                            ToolTip="Limpiar búsqueda"
+                            Visibility="{Binding SearchText, Converter={StaticResource StringToVisibilityConverter}}">
+                        <materialDesign:PackIcon Kind="Close" Width="14" Height="14" Foreground="#94A3B8"/>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource FilterBorderStyle}"
+                    MinWidth="190" Margin="0,0,8,0">
+                <ComboBox ItemsSource="{Binding Categories}"
+                          SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"
+                          DisplayMemberPath="Label"
+                          Style="{DynamicResource MaterialDesignOutlinedComboBox}"
+                          BorderThickness="0" Background="Transparent"
+                          MinHeight="38" Padding="10,0"
+                          VerticalContentAlignment="Center" VerticalAlignment="Center"
+                          FontSize="12"/>
+            </Border>
+
+            <Button Grid.Column="2" Content="Agregar toda la categoría"
+                    Command="{Binding AddCategoryProductsCommand}"
+                    IsEnabled="{Binding CanAddCategory}"
+                    ToolTip="{Binding AddCategoryToolTip}"
+                    Style="{StaticResource PickerCategoryAddButtonStyle}"
+                    Margin="0,0,8,0" VerticalAlignment="Center"/>
+
+            <Button Grid.Column="3" Content="Buscar"
                     Command="{Binding SearchCommand}"
-                    Style="{DynamicResource MaterialDesignRaisedButton}"
-                    Background="#6D28D9" Foreground="#FFFFFF"
+                    Style="{StaticResource PickerPrimaryButtonStyle}"
                     MinHeight="40" Padding="18,0" VerticalAlignment="Center"/>
         </Grid>
 
@@ -128,88 +565,195 @@
                 <ColumnDefinition Width="320"/>
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1"
-                    CornerRadius="8" Padding="0" Margin="0,0,12,0">
+            <Border Grid.Column="0" Style="{StaticResource PickerCardStyle}"
+                    Padding="0" Margin="0,0,12,0">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <DataGrid Grid.Row="0"
-                              ItemsSource="{Binding Results}"
-                              Style="{StaticResource PickerGridStyle}">
-                        <DataGrid.Columns>
-                            <DataGridTemplateColumn Width="44" HeaderStyle="{StaticResource PickerHeaderStyle}">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="SKU" Binding="{Binding Sku}" Width="140"
-                                                HeaderStyle="{StaticResource PickerHeaderStyle}"/>
-                            <DataGridTextColumn Header="PRODUCTO" Binding="{Binding Name}" Width="*"
-                                                HeaderStyle="{StaticResource PickerHeaderStyle}"/>
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <Border Grid.Row="0" Background="#F8FAFC"
+                            BorderBrush="#E2E8F0" BorderThickness="0,0,0,1"
+                            CornerRadius="12,12,0,0" Height="44">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="44"/>
+                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0"
+                                      IsChecked="{Binding PageSelectionState, Mode=TwoWay}"
+                                      IsEnabled="{Binding HasResults}"
+                                      Style="{StaticResource PickerCheckBoxStyle}"
+                                      ToolTip="Seleccionar o limpiar los productos de esta página"/>
+                            <TextBlock Grid.Column="1" Text="SKU"
+                                       Style="{StaticResource PickerHeaderTextStyle}"/>
+                            <TextBlock Grid.Column="2" Text="PRODUCTO"
+                                       Style="{StaticResource PickerHeaderTextStyle}"/>
+                        </Grid>
+                    </Border>
 
-                    <StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center"
-                                Background="Transparent" Margin="16" IsHitTestVisible="False">
-                        <ProgressBar IsIndeterminate="True" Width="160" Height="4"
-                                     Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                        <TextBlock Text="No se encontraron productos contables con ese filtro."
-                                   FontSize="12" Foreground="#64748B" TextAlignment="Center"
-                                   Margin="0,8,0,0">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                    <Style.Triggers>
-                                        <MultiDataTrigger>
-                                            <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding IsBusy}" Value="False"/>
-                                                <Condition Binding="{Binding HasResults}" Value="False"/>
-                                            </MultiDataTrigger.Conditions>
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                        </MultiDataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
+                    <Grid Grid.Row="1">
+                        <ListBox ItemsSource="{Binding Results}"
+                                 PreviewMouseLeftButtonDown="ResultsList_PreviewMouseLeftButtonDown"
+                                 Style="{StaticResource PickerListStyle}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Height="40">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="44"/>
+                                            <ColumnDefinition Width="140"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  Style="{StaticResource PickerCheckBoxStyle}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Sku}"
+                                                   Style="{StaticResource PickerSkuStyle}"
+                                                   Margin="10,0,0,0"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Name}"
+                                                   Style="{StaticResource PickerProductStyle}"
+                                                   Margin="10,0,10,0"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
 
-                    <DockPanel Grid.Row="1" Margin="12,8" LastChildFill="True">
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="Anterior" Command="{Binding PreviousPageCommand}"
-                                    IsEnabled="{Binding HasPreviousPage}"
-                                    Style="{StaticResource PickerSecondaryButtonStyle}"
-                                    Margin="0,0,8,0"/>
-                            <TextBlock Text="{Binding PageText}" FontSize="12" Foreground="#475569"
-                                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <Button Content="Siguiente" Command="{Binding NextPageCommand}"
-                                    IsEnabled="{Binding HasNextPage}"
-                                    Style="{StaticResource PickerSecondaryButtonStyle}"/>
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    Background="Transparent" Margin="16" IsHitTestVisible="False">
+                            <ProgressBar IsIndeterminate="True" Width="160" Height="4"
+                                         Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                            <TextBlock Text="No se encontraron productos contables con ese filtro."
+                                       FontSize="12" Foreground="#64748B" TextAlignment="Center"
+                                       Margin="0,8,0,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding IsBusy}" Value="False"/>
+                                                    <Condition Binding="{Binding HasResults}" Value="False"/>
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
-                        <TextBlock Text="{Binding TotalCount, StringFormat={}{0} productos activos}"
-                                   FontSize="12" Foreground="#94A3B8" VerticalAlignment="Center"/>
-                    </DockPanel>
+                    </Grid>
+
+                    <Border Grid.Row="2" Background="#FAFAFA"
+                            BorderBrush="#F1F5F9" BorderThickness="0,1,0,0"
+                            CornerRadius="0,0,12,12"
+                            Padding="14,10">
+                        <DockPanel LastChildFill="True">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <Button Command="{Binding FirstPageCommand}"
+                                        IsEnabled="{Binding CanGoFirst}"
+                                        Style="{StaticResource PickerPagerIconButtonStyle}"
+                                        ToolTip="Primera página">
+                                    <materialDesign:PackIcon Kind="PageFirst" Width="14" Height="14"/>
+                                </Button>
+                                <Button Command="{Binding PreviousPageCommand}"
+                                        IsEnabled="{Binding CanGoPrevious}"
+                                        Style="{StaticResource PickerPagerIconButtonStyle}"
+                                        ToolTip="Página anterior">
+                                    <materialDesign:PackIcon Kind="ChevronLeft" Width="14" Height="14"/>
+                                </Button>
+
+                                <ItemsControl ItemsSource="{Binding PageNumbers}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.GoToPageCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                    CommandParameter="{Binding PageNumber}"
+                                                    Content="{Binding PageNumber}"
+                                                    Style="{StaticResource PickerPagerNumberButtonStyle}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Button Command="{Binding NextPageCommand}"
+                                        IsEnabled="{Binding CanGoNext}"
+                                        Style="{StaticResource PickerPagerIconButtonStyle}"
+                                        ToolTip="Página siguiente">
+                                    <materialDesign:PackIcon Kind="ChevronRight" Width="14" Height="14"/>
+                                </Button>
+                                <Button Command="{Binding LastPageCommand}"
+                                        IsEnabled="{Binding CanGoLast}"
+                                        Style="{StaticResource PickerPagerIconButtonStyle}"
+                                        ToolTip="Última página">
+                                    <materialDesign:PackIcon Kind="PageLast" Width="14" Height="14"/>
+                                </Button>
+
+                                <Rectangle Width="1" Height="16" Fill="#E2E8F0" Margin="6,0"/>
+
+                                <TextBlock Text="Ir a:" FontSize="10.5" Foreground="#64748B"
+                                           VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <Border Style="{StaticResource PagerGoToBorderStyle}"
+                                        Width="44" Height="24" Margin="0,0,4,0">
+                                    <TextBox Text="{Binding TargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             BorderThickness="0" Background="Transparent"
+                                             HorizontalContentAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             FontSize="10.5" FontWeight="Bold"
+                                             Padding="0">
+                                        <TextBox.InputBindings>
+                                            <KeyBinding Key="Return" Command="{Binding SubmitGoToPageCommand}"/>
+                                        </TextBox.InputBindings>
+                                    </TextBox>
+                                </Border>
+                                <Button Command="{Binding SubmitGoToPageCommand}"
+                                        Style="{StaticResource PickerGoButtonStyle}"
+                                        ToolTip="Ir a la página especificada">
+                                    <materialDesign:PackIcon Kind="ArrowRight" Width="13" Height="13"/>
+                                </Button>
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding PageSummary}"
+                                       FontSize="12" Foreground="#64748B"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       Margin="0,0,8,0"/>
+                        </DockPanel>
+                    </Border>
                 </Grid>
             </Border>
 
-            <Border Grid.Column="1" Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1"
-                    CornerRadius="8" Padding="12">
+            <Border Grid.Column="1" Style="{StaticResource PickerCardStyle}" Padding="0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="Seleccionados"
-                               FontSize="14" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,0,10"/>
+                    <Border Grid.Row="0" Background="#F8FAFC"
+                            BorderBrush="#E2E8F0" BorderThickness="0,0,0,1"
+                            CornerRadius="12,12,0,0" Height="44"
+                            Padding="14,0">
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right" Content="Limpiar"
+                                    Command="{Binding ClearSelectionCommand}"
+                                    Style="{StaticResource PickerTextDangerButtonStyle}"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                            <TextBlock Text="Seleccionados"
+                                       FontSize="14" FontWeight="Bold" Foreground="#1E293B"
+                                       VerticalAlignment="Center"/>
+                        </DockPanel>
+                    </Border>
 
-                    <Grid Grid.Row="1">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid Grid.Row="1" Margin="12">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
                             <ItemsControl ItemsSource="{Binding SelectedProducts}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -225,7 +769,8 @@
                                                                FontWeight="SemiBold" FontSize="12"
                                                                TextTrimming="CharacterEllipsis"/>
                                                     <TextBlock Text="{Binding Sku}" Foreground="#7C3AED"
-                                                               FontSize="11" Margin="0,2,0,0"/>
+                                                               FontFamily="Consolas" FontSize="10.5"
+                                                               Margin="0,2,0,0"/>
                                                 </StackPanel>
                                                 <Button Grid.Column="1"
                                                         Command="{Binding DataContext.RemoveSelectedCommand, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -243,11 +788,19 @@
                             </ItemsControl>
                         </ScrollViewer>
 
-                        <TextBlock Text="Aún no has seleccionado productos."
-                                   FontSize="12" Foreground="#94A3B8" TextAlignment="Center"
-                                   VerticalAlignment="Center" HorizontalAlignment="Center"
-                                   TextWrapping="Wrap"
-                                   Visibility="{Binding HasSelection, Converter={StaticResource InverseBooleanToVisibilityConverter}}"/>
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    MaxWidth="220"
+                                    Visibility="{Binding HasSelection, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                            <materialDesign:PackIcon Kind="PlaylistPlus" Width="40" Height="40"
+                                                     Foreground="#CBD5E1"
+                                                     HorizontalAlignment="Center"/>
+                            <TextBlock Text="Sin productos seleccionados"
+                                       FontSize="14" FontWeight="SemiBold" Foreground="#475569"
+                                       HorizontalAlignment="Center" Margin="0,12,0,4"/>
+                            <TextBlock Text="Haz clic en los artículos de la izquierda para agregarlos al conteo."
+                                       FontSize="12" Foreground="#94A3B8"
+                                       TextAlignment="Center" TextWrapping="Wrap"/>
+                        </StackPanel>
                     </Grid>
                 </Grid>
             </Border>
@@ -257,12 +810,12 @@
         <DockPanel Grid.Row="3" Margin="0,16,0,0" LastChildFill="True">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                 <Button Content="Cancelar" Command="{Binding CancelCommand}"
-                        Style="{StaticResource PickerSecondaryButtonStyle}"
-                        Margin="0,0,8,0"/>
-                <Button Content="Confirmar selección" Command="{Binding ConfirmCommand}"
+                        Style="{StaticResource PickerNeutralButtonStyle}"
+                        MinHeight="36" Margin="0,0,8,0"/>
+                <Button Content="{Binding ConfirmButtonText}"
+                        Command="{Binding ConfirmCommand}"
                         IsEnabled="{Binding CanConfirm}"
-                        Style="{DynamicResource MaterialDesignRaisedButton}"
-                        Background="#6D28D9" Foreground="#FFFFFF"
+                        Style="{StaticResource PickerPrimaryButtonStyle}"
                         MinHeight="36" Padding="18,0"/>
             </StackPanel>
             <TextBlock Text="{Binding ErrorMessage}"

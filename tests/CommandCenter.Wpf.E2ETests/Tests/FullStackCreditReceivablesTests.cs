@@ -87,12 +87,14 @@ public class FullStackCreditReceivablesTests : IClassFixture<FullStackFixture>
             TestHelper.EnsureLoggedInWithCredentials(window, _fixture.AdminUsername, _fixture.AdminPassword);
             NavigateToView(window, "Nav_BtnCreditReceivables", timeout);
 
-            var totalOpen = WaitForElement(window, "CreditReceivables_TotalOpen", timeout)
-                ?? throw new InvalidOperationException("El panel CxC no expuso el total abierto.");
+            var totalOpen = WaitForAmount(window, "CreditReceivables_TotalOpen", 6m, timeout)
+                ?? throw new InvalidOperationException(
+                    "El panel CxC no alcanzó el total abierto esperado ($6).");
             Assert.Equal(6m, ParseUiNumber(totalOpen.Name));
 
-            var openCount = WaitForElement(window, "CreditReceivables_OpenCount", timeout)
-                ?? throw new InvalidOperationException("El panel CxC no expuso el conteo de obligaciones.");
+            var openCount = WaitForAmount(window, "CreditReceivables_OpenCount", 1m, timeout)
+                ?? throw new InvalidOperationException(
+                    "El panel CxC no alcanzó el conteo de obligaciones esperado (1).");
             Assert.Equal(1m, ParseUiNumber(openCount.Name));
 
             AssertNoErrorDialogs();
@@ -177,6 +179,19 @@ public class FullStackCreditReceivablesTests : IClassFixture<FullStackFixture>
     {
         var result = Retry.WhileNull(
             () => UiaRetry.RetryUia(() => window.FindFirstDescendant(cf => cf.ByAutomationId(automationId))),
+            timeout);
+        return result.Result;
+    }
+
+    /// <summary>Espera a que el monto visible del elemento converja al valor esperado (la vista carga async).</summary>
+    private static AutomationElement? WaitForAmount(Window window, string automationId, decimal expected, TimeSpan timeout)
+    {
+        var result = Retry.WhileNull(
+            () => UiaRetry.RetryUia(() =>
+            {
+                var element = window.FindFirstDescendant(cf => cf.ByAutomationId(automationId));
+                return element != null && ParseUiNumber(element.Name) == expected ? element : null;
+            }),
             timeout);
         return result.Result;
     }

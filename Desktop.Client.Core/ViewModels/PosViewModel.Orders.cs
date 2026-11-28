@@ -441,7 +441,7 @@ public partial class PosViewModel
             var heldSale = await _salesService.HoldSaleAsync(Cart.CurrentSale.Id, request);
 
             string customerName = heldSale.CustomerName ?? Cart.CurrentSale.CustomerName ?? "Cliente";
-            string successMsg = $"¡Pedido #{heldSale.Id} guardado exitosamente en Cuentas Abiertas para {customerName}!";
+            string successMsg = $"¡Pedido #{heldSale.Id} guardado exitosamente en Pedidos Guardados para {customerName}!";
 
             _dialogService?.ShowSuccessDialog(successMsg);
 

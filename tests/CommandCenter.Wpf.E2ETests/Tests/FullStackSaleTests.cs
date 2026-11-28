@@ -39,7 +39,7 @@ public class FullStackSaleTests : IClassFixture<FullStackFixture>
     private static readonly TimeSpan BcvSettlementWindow = TimeSpan.FromSeconds(25);
 
     private static readonly Regex InvoiceNumberPattern = new(@"Factura N° (\d+)", RegexOptions.Compiled);
-    private static readonly Regex SalesCountPattern = new(@"\((\d+) ventas\)", RegexOptions.Compiled);
+    private static readonly Regex SalesCountPattern = new(@"·\s*(\d+) ventas", RegexOptions.Compiled);
 
     private readonly FullStackFixture _fixture;
 

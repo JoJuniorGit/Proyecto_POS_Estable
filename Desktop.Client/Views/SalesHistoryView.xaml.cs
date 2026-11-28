@@ -58,9 +58,26 @@ public partial class SalesHistoryView : UserControl
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key != Key.Escape || DataContext is not SalesHistoryViewModel vm) return;
+
+        if (vm.IsDetailOpen)
+        {
+            vm.CloseDetailCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
         if (!vm.IsFilterFlyoutOpen) return;
         vm.CloseFilterFlyoutCommand.Execute(null);
         e.Handled = true;
+    }
+
+    private void DetailBackdrop_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is SalesHistoryViewModel vm && vm.IsDetailOpen)
+        {
+            vm.CloseDetailCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     private void FilterFlyoutPanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)

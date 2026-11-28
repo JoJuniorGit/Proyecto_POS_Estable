@@ -406,7 +406,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void NavigateToPendingOrders()
     {
         if (!CanNavigate(WpfNavigationPolicy.Pending) || _pendingOrdersViewModel == null) return;
-        Title = "CUENTAS ABIERTAS (EN ESPERA)";
+        Title = "PEDIDOS GUARDADOS";
         CurrentViewModel = _pendingOrdersViewModel;
         _pendingOrdersViewModel.EnsureLoadedAsync().SafeFireAndForget("MainViewModel.NavigateToPendingOrders");
     }

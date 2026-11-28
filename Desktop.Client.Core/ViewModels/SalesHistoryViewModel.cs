@@ -115,18 +115,20 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         set => SetProperty(ref _detailDateLocalFormatted, value);
     }
 
-    private bool _isPurchaseDetailsExpanded = true;
-    public bool IsPurchaseDetailsExpanded
+    private bool _isDetailOpen;
+    /// <summary>Estado del slide-over de inspección de factura; se abre al seleccionar una venta.</summary>
+    public bool IsDetailOpen
     {
-        get => _isPurchaseDetailsExpanded;
-        set => SetProperty(ref _isPurchaseDetailsExpanded, value);
+        get => _isDetailOpen;
+        set => SetProperty(ref _isDetailOpen, value);
     }
 
-    private bool _isPurchaseDetailsVisible = true;
-    public bool IsPurchaseDetailsVisible
+    private decimal _totalUsdForThePeriod;
+    /// <summary>Equivalente primario del período filtrado; solo se presenta en régimen Dual.</summary>
+    public decimal TotalUsdForThePeriod
     {
-        get => _isPurchaseDetailsVisible;
-        set => SetProperty(ref _isPurchaseDetailsVisible, value);
+        get => _totalUsdForThePeriod;
+        set => SetProperty(ref _totalUsdForThePeriod, value);
     }
 
     private DateTime? _startDate;
@@ -278,7 +280,7 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         if (TotalPages <= 0 || _totalItems == 0)
         {
             CurrentPage = 0;
-            PageSummary = "Página 0 de 0 (0 ventas)";
+            PageSummary = "Pág. 0 de 0 · 0 ventas";
             TargetPageInput = "0";
             NotifyPaginationCanExecute();
             return;
@@ -299,7 +301,7 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
             });
         }
 
-        PageSummary = $"Pág. {CurrentPage} de {TotalPages} ({_totalItems} ventas)";
+        PageSummary = $"Pág. {CurrentPage} de {TotalPages} · {_totalItems} ventas";
         TargetPageInput = CurrentPage.ToString();
         NotifyPaginationCanExecute();
     }
@@ -379,9 +381,8 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
     {
         if (_value != null)
         {
-            IsPurchaseDetailsVisible = true;
-            IsPurchaseDetailsExpanded = true;
-            DetailDateLocalFormatted = _value.DateLocal.ToString("dd/MM/yyyy hh:mm tt", CultureInfo.CurrentCulture);
+            IsDetailOpen = true;
+            DetailDateLocalFormatted = _value.DateLocal.ToString("dd/MM/yyyy · hh:mm tt", CultureInfo.CurrentCulture);
             DetailAppliedRate = _value.AppliedRate;
             // ANEXO XIII: el "Total USD" del panel muestra el efectivo (inverso del Bs.S cobrado).
             DetailTotalUSD = _value.EffectiveTotalUSD;
@@ -389,20 +390,69 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
             DetailSubtotalBsS = 0;
             DetailErrorMessage = null;
         }
+        else
+        {
+            IsDetailOpen = false;
+        }
 
+        NotifyInvoiceNavigationCanExecute();
         LoadSelectedSaleDetailsWithDebounceAsync(_value).SafeFireAndForget("SalesHistoryViewModel.SelectedSaleDetails");
     }
 
+    /// <summary>Índice de la venta inspeccionada dentro de la página actual (-1 si no hay selección).</summary>
+    private int SelectedInvoiceIndex => SelectedSale is null ? -1 : Sales.IndexOf(SelectedSale);
+
+    public bool CanGoPreviousInvoice => SelectedInvoiceIndex > 0;
+    public bool CanGoNextInvoice => SelectedInvoiceIndex >= 0 && SelectedInvoiceIndex < Sales.Count - 1;
+
+    /// <summary>Abre el slide-over para la fila indicada (botón "Ver" y clic de fila).</summary>
     [RelayCommand]
-    private void TogglePurchaseDetailsPanel()
+    private void OpenDetail(SaleHistoryDto? sale)
     {
-        IsPurchaseDetailsExpanded = !IsPurchaseDetailsExpanded;
+        if (sale is null) return;
+
+        if (!ReferenceEquals(SelectedSale, sale))
+        {
+            SelectedSale = sale;
+        }
+
+        IsDetailOpen = true;
+        NotifyInvoiceNavigationCanExecute();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanGoPreviousInvoice))]
+    private void PreviousInvoice()
+    {
+        int index = SelectedInvoiceIndex;
+        if (index > 0)
+        {
+            SelectedSale = Sales[index - 1];
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanGoNextInvoice))]
+    private void NextInvoice()
+    {
+        int index = SelectedInvoiceIndex;
+        if (index >= 0 && index < Sales.Count - 1)
+        {
+            SelectedSale = Sales[index + 1];
+        }
+    }
+
+    private void NotifyInvoiceNavigationCanExecute()
+    {
+        OnPropertyChanged(nameof(CanGoPreviousInvoice));
+        OnPropertyChanged(nameof(CanGoNextInvoice));
+        PreviousInvoiceCommand.NotifyCanExecuteChanged();
+        NextInvoiceCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
-    private void ClosePurchaseDetails()
+    private void CloseDetail()
     {
-        IsPurchaseDetailsVisible = false;
+        // Limpia la selección: el DataGrid vuelve a reposo y cualquier clic reabre el inspector.
+        SelectedSale = null;
     }
 
     [RelayCommand]
@@ -597,7 +647,7 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
             {
                 ReplaceCollection(SelectedSaleItems, _detail.Items);
                 ReplaceCollection(SelectedSalePayments, _detail.Payments);
-                DetailDateLocalFormatted = _detail.DateLocal.ToString("dd/MM/yyyy hh:mm tt", CultureInfo.CurrentCulture);
+                DetailDateLocalFormatted = _detail.DateLocal.ToString("dd/MM/yyyy · hh:mm tt", CultureInfo.CurrentCulture);
                 DetailAppliedRate = _detail.AppliedRate;
                 // ANEXO XIII: idem precarga — el detalle confirmado tambien muestra el efectivo.
                 DetailTotalUSD = _detail.EffectiveTotalUSD;
@@ -630,8 +680,7 @@ public partial class SalesHistoryViewModel : ObservableObject, IDisposable
         IsDetailDebouncing = false;
         IsDetailFetching = false;
         DetailErrorMessage = null;
-        IsPurchaseDetailsVisible = true;
-        IsPurchaseDetailsExpanded = true;
+        IsDetailOpen = false;
         DetailAppliedRate = 0;
         DetailTotalUSD = 0;
         DetailTotalBsS = 0;

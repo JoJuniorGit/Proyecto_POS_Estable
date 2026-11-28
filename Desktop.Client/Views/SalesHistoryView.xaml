@@ -1,292 +1,579 @@
 <UserControl x:Class="Desktop.Client.Views.SalesHistoryView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-             xmlns:local="clr-namespace:Desktop.Client.Views"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:vm="clr-namespace:Desktop.Client.ViewModels;assembly=Desktop.Client.Core"
              xmlns:controls="clr-namespace:Desktop.Client.Controls"
              xmlns:core="clr-namespace:Desktop.Client.Services;assembly=Desktop.Client.Core"
-             mc:Ignorable="d" 
+             xmlns:converters="clr-namespace:Desktop.Client.Converters"
+             mc:Ignorable="d"
              d:DataContext="{d:DesignInstance vm:SalesHistoryViewModel}"
-             Background="#F1F5F9"
-             d:DesignHeight="650" d:DesignWidth="950">
+             Background="#F8FAFC"
+             d:DesignHeight="720" d:DesignWidth="1100">
     <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
-        
-        <!-- Enterprise Subtle Drop Shadow (0 4px 6px -1px rgba(0,0,0,0.05)) -->
-        <DropShadowEffect x:Key="EnterpriseCardShadow"
-                          Color="#000000"
-                          BlurRadius="10"
-                          Opacity="0.05"
-                          Direction="270"
-                          ShadowDepth="2"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="SettingsStyles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
 
-        <!-- Standard column header style -->
-        <Style x:Key="StandardHeaderStyle" TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#F8FAFC"/>
-            <Setter Property="Foreground" Value="#64748B"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Padding" Value="14,12"/>
-            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        </Style>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+            <converters:LocalNumberConverter x:Key="LocalNumberConverter"/>
 
-        <!-- Right aligned column header style -->
-        <Style x:Key="RightAlignedHeaderStyle" TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#F8FAFC"/>
-            <Setter Property="Foreground" Value="#64748B"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Padding" Value="14,12"/>
-            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="HorizontalContentAlignment" Value="Right"/>
-        </Style>
+            <!-- Scrollbars delgados modernos (sin flechas) en toda la vista. -->
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsThinScrollBarStyle}"/>
 
-        <!-- Center aligned column header style -->
-        <Style x:Key="CenterAlignedHeaderStyle" TargetType="DataGridColumnHeader">
-            <Setter Property="Background" Value="#F8FAFC"/>
-            <Setter Property="Foreground" Value="#64748B"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Padding" Value="14,12"/>
-            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-            <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
-        </Style>
+            <!-- Sombra lateral suave exclusiva del slide-over. -->
+            <DropShadowEffect x:Key="DrawerShadow"
+                              Color="#0F172A"
+                              BlurRadius="24"
+                              ShadowDepth="4"
+                              Direction="180"
+                              Opacity="0.14"/>
 
-        <!-- Right aligned cell style -->
-        <Style x:Key="RightAlignedElementStyle" TargetType="TextBlock">
-            <Setter Property="HorizontalAlignment" Value="Right"/>
-            <Setter Property="Padding" Value="0,0,14,0"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
+            <!-- ── Encabezados de tabla ── -->
+            <Style x:Key="SalesHeaderStyle" TargetType="DataGridColumnHeader">
+                <Setter Property="Background" Value="#F8FAFC"/>
+                <Setter Property="Foreground" Value="#64748B"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="FontSize" Value="11.5"/>
+                <Setter Property="Padding" Value="14,11"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                <Setter Property="HorizontalContentAlignment" Value="Left"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+            </Style>
 
-        <!-- White card panel for invoice details -->
-        <Style x:Key="InvoiceDetailPanelBorderStyle" TargetType="Border">
-            <Setter Property="Background" Value="#FFFFFF"/>
-            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Padding" Value="16,14"/>
-            <Setter Property="Margin" Value="0,12,0,0"/>
-            <Setter Property="Effect" Value="{StaticResource EnterpriseCardShadow}"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Setter Property="Visibility" Value="Visible"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding SelectedSale}" Value="{x:Null}">
-                    <Setter Property="Visibility" Value="Collapsed"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding IsPurchaseDetailsVisible}" Value="False">
-                    <Setter Property="Visibility" Value="Collapsed"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
+            <Style x:Key="SalesRightHeaderStyle" TargetType="DataGridColumnHeader"
+                   BasedOn="{StaticResource SalesHeaderStyle}">
+                <Setter Property="HorizontalContentAlignment" Value="Right"/>
+            </Style>
+
+            <Style x:Key="SalesCenterHeaderStyle" TargetType="DataGridColumnHeader"
+                   BasedOn="{StaticResource SalesHeaderStyle}">
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            </Style>
+
+            <!-- ── Filas y celdas: reposo blanco, hover tenue, selección #F5F3FF + indicador izquierdo ── -->
+            <Style x:Key="SalesRowStyle" TargetType="DataGridRow">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="Foreground" Value="#0F172A"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="3,0,0,0"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Background" Value="#F8FAFC"/>
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background" Value="#F5F3FF"/>
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="SalesCellStyle" TargetType="DataGridCell">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground" Value="#0F172A"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="DataGridCell">
+                            <Border Background="{TemplateBinding Background}"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- ── Píldora de estado compartida por la tabla y el drawer ── -->
+            <DataTemplate x:Key="SaleStatusPillTemplate">
+                <Border x:Name="PillBorder"
+                        Background="#F1F5F9"
+                        BorderBrush="#E2E8F0"
+                        BorderThickness="1"
+                        CornerRadius="999"
+                        Padding="10,3"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon x:Name="PillIcon"
+                                                 Kind="ClockOutline"
+                                                 Width="12" Height="12"
+                                                 Foreground="#475569"
+                                                 VerticalAlignment="Center"
+                                                 Margin="0,0,5,0"/>
+                        <TextBlock x:Name="PillText"
+                                   Text="{Binding Status}"
+                                   FontSize="11"
+                                   FontWeight="Bold"
+                                   Foreground="#475569"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+                <DataTemplate.Triggers>
+                    <DataTrigger Binding="{Binding Status}" Value="Completed">
+                        <Setter TargetName="PillBorder" Property="Background" Value="#DCFCE7"/>
+                        <Setter TargetName="PillBorder" Property="BorderBrush" Value="#BBF7D0"/>
+                        <Setter TargetName="PillIcon" Property="Kind" Value="CheckCircle"/>
+                        <Setter TargetName="PillIcon" Property="Foreground" Value="#16A34A"/>
+                        <Setter TargetName="PillText" Property="Text" Value="Completada"/>
+                        <Setter TargetName="PillText" Property="Foreground" Value="#15803D"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Status}" Value="Pagado">
+                        <Setter TargetName="PillBorder" Property="Background" Value="#DCFCE7"/>
+                        <Setter TargetName="PillBorder" Property="BorderBrush" Value="#BBF7D0"/>
+                        <Setter TargetName="PillIcon" Property="Kind" Value="CheckCircle"/>
+                        <Setter TargetName="PillIcon" Property="Foreground" Value="#16A34A"/>
+                        <Setter TargetName="PillText" Property="Text" Value="Completada"/>
+                        <Setter TargetName="PillText" Property="Foreground" Value="#15803D"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Status}" Value="Cancelled">
+                        <Setter TargetName="PillBorder" Property="Background" Value="#FEE2E2"/>
+                        <Setter TargetName="PillBorder" Property="BorderBrush" Value="#FECACA"/>
+                        <Setter TargetName="PillIcon" Property="Kind" Value="CloseCircle"/>
+                        <Setter TargetName="PillIcon" Property="Foreground" Value="#DC2626"/>
+                        <Setter TargetName="PillText" Property="Text" Value="Anulada"/>
+                        <Setter TargetName="PillText" Property="Foreground" Value="#B91C1C"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Status}" Value="Anulada">
+                        <Setter TargetName="PillBorder" Property="Background" Value="#FEE2E2"/>
+                        <Setter TargetName="PillBorder" Property="BorderBrush" Value="#FECACA"/>
+                        <Setter TargetName="PillIcon" Property="Kind" Value="CloseCircle"/>
+                        <Setter TargetName="PillIcon" Property="Foreground" Value="#DC2626"/>
+                        <Setter TargetName="PillText" Property="Text" Value="Anulada"/>
+                        <Setter TargetName="PillText" Property="Foreground" Value="#B91C1C"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Status}" Value="Pending">
+                        <Setter TargetName="PillBorder" Property="Background" Value="#FEF3C7"/>
+                        <Setter TargetName="PillBorder" Property="BorderBrush" Value="#FDE68A"/>
+                        <Setter TargetName="PillIcon" Property="Kind" Value="ClockOutline"/>
+                        <Setter TargetName="PillIcon" Property="Foreground" Value="#D97706"/>
+                        <Setter TargetName="PillText" Property="Text" Value="Pendiente"/>
+                        <Setter TargetName="PillText" Property="Foreground" Value="#92400E"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Status}" Value="OnHold">
+                        <Setter TargetName="PillBorder" Property="Background" Value="#FEF3C7"/>
+                        <Setter TargetName="PillBorder" Property="BorderBrush" Value="#FDE68A"/>
+                        <Setter TargetName="PillIcon" Property="Kind" Value="ClockOutline"/>
+                        <Setter TargetName="PillIcon" Property="Foreground" Value="#D97706"/>
+                        <Setter TargetName="PillText" Property="Text" Value="En Espera"/>
+                        <Setter TargetName="PillText" Property="Foreground" Value="#92400E"/>
+                    </DataTrigger>
+                </DataTemplate.Triggers>
+            </DataTemplate>
+
+            <!-- ── Botones ── -->
+            <Style x:Key="PrimaryActionButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#6D28D9"/>
+                <Setter Property="Foreground" Value="#FFFFFF"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="Padding" Value="18,0"/>
+                <Setter Property="FontSize" Value="12.5"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="PrimaryChrome"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="8"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="PrimaryChrome" Property="Background" Value="#5B21B6"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="PrimaryChrome" Property="Background" Value="#4C1D95"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="PrimaryChrome" Property="Background" Value="#E2E8F0"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="SecondaryActionButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="Height" Value="36"/>
+                <Setter Property="Padding" Value="12,0"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="SecondaryChrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="SecondaryChrome" Property="Background" Value="#F1F5F9"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="SecondaryChrome" Property="Opacity" Value="0.55"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="DrawerIconButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="transparent"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="Width" Value="30"/>
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="IconChrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="7"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="IconChrome" Property="Background" Value="#E2E8F0"/>
+                                    <Setter Property="Foreground" Value="#0F172A"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="IconChrome" Property="Background" Value="#CBD5E1"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.4"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="RowActionButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#F8FAFC"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="Height" Value="28"/>
+                <Setter Property="Padding" Value="8,0"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="RowActionChrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="RowActionChrome" Property="Background" Value="#EDE9FE"/>
+                                    <Setter TargetName="RowActionChrome" Property="BorderBrush" Value="#DDD6FE"/>
+                                    <Setter Property="Foreground" Value="#6D28D9"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PagerButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#F1F5F9"/>
+                <Setter Property="BorderBrush" Value="#E2E8F0"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Foreground" Value="#475569"/>
+                <Setter Property="Width" Value="30"/>
+                <Setter Property="Height" Value="30"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="FontSize" Value="11.5"/>
+                <Setter Property="FontWeight" Value="SemiBold"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="PagerChrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="7"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="PagerChrome" Property="Background" Value="#E2E8F0"/>
+                                    <Setter Property="Foreground" Value="#0F172A"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.45"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="PagerNumberButtonStyle" TargetType="Button"
+                   BasedOn="{StaticResource PagerButtonStyle}">
+                <Setter Property="MinWidth" Value="30"/>
+                <Setter Property="Padding" Value="6,0"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                        <Setter Property="Background" Value="#EDE9FE"/>
+                        <Setter Property="BorderBrush" Value="#DDD6FE"/>
+                        <Setter Property="Foreground" Value="#6D28D9"/>
+                        <Setter Property="FontWeight" Value="Bold"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <!-- ── Filtros ── -->
+            <Style x:Key="SearchFrameStyle" TargetType="Border">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="SnapsToDevicePixels" Value="True"/>
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="FiltersDatePickerStyle" TargetType="DatePicker"
+                   BasedOn="{StaticResource MaterialDesignOutlinedDatePicker}">
+                <Setter Property="Background" Value="#FFFFFF"/>
+                <Setter Property="BorderBrush" Value="#CBD5E1"/>
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="Width" Value="155"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Padding" Value="10,0"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="BorderBrush" Value="#6D28D9"/>
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+
+            <Style x:Key="SectionCaptionStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="10.5"/>
+                <Setter Property="FontWeight" Value="Bold"/>
+                <Setter Property="Foreground" Value="#64748B"/>
+                <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
+            </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <Grid>
+        <!-- ═══════════════════════════════════════════════════════════
+             CONTENIDO PRINCIPAL (la tabla ocupa siempre el 100% del alto)
+             ═══════════════════════════════════════════════════════════ -->
+        <Grid Margin="20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-        <!-- ═══════════════════════════════════════════
-             0. CABECERA Y ACCIONES
-             ═══════════════════════════════════════════ -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,16" LastChildFill="True">
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button Command="{Binding LoadHistoryCommand}"
-                        AutomationProperties.AutomationId="SalesHistory_RefreshButton"
-                        Style="{DynamicResource MaterialDesignOutlinedButton}" 
-                        BorderBrush="#CBD5E1"
-                        Foreground="#475569"
-                        VerticalAlignment="Center"
-                        Height="36"
-                        Padding="14,0"
-                        Margin="0,0,8,0">
-                    <Button.ContentTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <materialDesign:PackIcon Kind="Refresh" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Actualizar" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </Button.ContentTemplate>
-                </Button>
-
-                <!-- Botón de Menú Principal -->
-                <Button Style="{StaticResource SidebarMenuButtonStyle}" VerticalAlignment="Center"/>
-            </StackPanel>
-
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <materialDesign:PackIcon Kind="ReceiptText" Width="26" Height="26" Foreground="#5E35B1" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                <TextBlock Text="Historial de Ventas" 
-                           AutomationProperties.AutomationId="SalesHistory_Title"
-                           FontSize="20" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
-            </StackPanel>
-        </DockPanel>
-
-        <!-- ═══════════════════════════════════════════
-             1. TARJETA DE FILTROS Y BÚSQUEDA
-             ═══════════════════════════════════════════ -->
-        <Border Grid.Row="1" 
-                Margin="0,0,0,16" 
-                Padding="16,14" 
-                CornerRadius="8" 
-                Background="#FFFFFF"
-                BorderBrush="#E2E8F0"
-                BorderThickness="1"
-                Effect="{StaticResource EnterpriseCardShadow}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <Grid Grid.Row="0" VerticalAlignment="Bottom">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <!-- Buscador multicampo: N° de factura / Cliente / Cajero con Ícono Integrado -->
-                    <StackPanel Grid.Column="0" Margin="0,0,14,0" VerticalAlignment="Bottom">
-                        <TextBlock Text="Buscar (Factura / Cliente / Cajero)" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
-                        <Border Background="#FFFFFF" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Height="42">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18" Foreground="#94A3B8" VerticalAlignment="Center" Margin="10,0,2,0"/>
-                                <TextBox Grid.Column="1"
-                                         AutomationProperties.AutomationId="SalesHistory_SearchInput"
-                                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                         materialDesign:HintAssist.Hint="N° de factura, cliente o cajero..."
-                                         materialDesign:TextFieldAssist.HasClearButton="True"
-                                         BorderThickness="0"
-                                         Background="Transparent"
-                                         VerticalAlignment="Center"
-                                         FontSize="13"
-                                         Foreground="#1E293B"
-                                         Padding="6,0,10,0"/>
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-
-                    <!-- Fecha Inicio -->
-                    <StackPanel Grid.Column="1" Margin="0,0,14,0" VerticalAlignment="Bottom">
-                        <TextBlock Text="Fecha Inicio" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
-                        <DatePicker SelectedDate="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}" 
-                                    Style="{DynamicResource MaterialDesignOutlinedDatePicker}"
-                                    Background="#FFFFFF"
-                                    BorderBrush="#E2E8F0"
-                                    Width="155" Height="42" 
-                                    FontSize="13"
-                                    Padding="10,6" 
-                                    VerticalAlignment="Center"/>
-                    </StackPanel>
-
-                    <!-- Fecha Fin -->
-                    <StackPanel Grid.Column="2" Margin="0,0,14,0" VerticalAlignment="Bottom">
-                        <TextBlock Text="Fecha Fin" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
-                        <DatePicker SelectedDate="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}" 
-                                    Style="{DynamicResource MaterialDesignOutlinedDatePicker}"
-                                    Background="#FFFFFF"
-                                    BorderBrush="#E2E8F0"
-                                    Width="155" Height="42" 
-                                    FontSize="13"
-                                    Padding="10,6" 
-                                    VerticalAlignment="Center"/>
-                    </StackPanel>
-
-                    <!-- Botón Principal Buscar (Alineación Pixel-Perfect a 42px de altura) -->
-                    <StackPanel Grid.Column="3" VerticalAlignment="Bottom">
-                        <TextBlock Text=" " FontSize="12" Margin="0,0,0,6"/>
-                        <Button Command="{Binding LoadHistoryCommand}"
-                                Background="#5E35B1"
-                                BorderBrush="#5E35B1"
-                                Foreground="#FFFFFF"
-                                Height="42"
-                                Padding="20,0"
-                                materialDesign:ButtonAssist.CornerRadius="6">
-                            <Button.ContentTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <materialDesign:PackIcon Kind="Magnify" Width="18" Height="18" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="#FFFFFF"/>
-                                        <TextBlock Text="Buscar" VerticalAlignment="Center" FontWeight="Bold" FontSize="13" Foreground="#FFFFFF"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </Button.ContentTemplate>
-                        </Button>
-                    </StackPanel>
-
-                    <!-- Indicador de Carga -->
-                    <ProgressBar Grid.Column="4" 
-                                 IsIndeterminate="True" 
-                                 Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                 Foreground="#5E35B1"
-                                 HorizontalAlignment="Right" VerticalAlignment="Center" Width="30" Height="30" Margin="14,18,0,0" />
-
-                    <Button x:Name="FunnelButton"
-                            Grid.Column="5"
-                            Command="{Binding OpenFilterFlyoutCommand}"
-                            Style="{DynamicResource MaterialDesignOutlinedButton}"
-                            Background="#FFFFFF"
-                            BorderBrush="#CBD5E1"
-                            Foreground="#475569"
-                            Height="42"
-                            Padding="14,0"
-                            Margin="14,0,0,0"
-                            VerticalAlignment="Bottom"
-                            ToolTip="Filtros secundarios (cajero / ocultar pruebas)">
-                        <Button.ContentTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <materialDesign:PackIcon Kind="FilterVariant" Width="16" Height="16" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="#5E35B1"/>
-                                    <TextBlock Text="Filtros" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12"/>
-                                    <Ellipse Width="8" Height="8" Fill="#EF4444" Margin="8,0,0,0"
-                                             VerticalAlignment="Center"
-                                             Visibility="{Binding HasActiveSecondaryFilters, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </Button.ContentTemplate>
+            <!-- 0. CABECERA -->
+            <DockPanel Grid.Row="0" Margin="0,0,0,16" LastChildFill="True">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Command="{Binding LoadHistoryCommand}"
+                            AutomationProperties.AutomationId="SalesHistory_RefreshButton"
+                            Style="{StaticResource SecondaryActionButtonStyle}"
+                            Height="36" Padding="14,0" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="Refresh" Width="16" Height="16"
+                                                     VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Actualizar" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12"/>
+                        </StackPanel>
                     </Button>
-                </Grid>
+                    <Button Style="{StaticResource SidebarMenuButtonStyle}" VerticalAlignment="Center"/>
+                </StackPanel>
 
-                <Grid Grid.Row="1" Margin="0,12,0,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="42" Height="42" CornerRadius="10" Background="#EDE9FE"
+                            VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="ReceiptText" Width="22" Height="22"
+                                                 Foreground="#6D28D9"
+                                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="Historial de Ventas"
+                                   AutomationProperties.AutomationId="SalesHistory_Title"
+                                   FontSize="20" FontWeight="Bold" Foreground="#0F172A"/>
+                        <TextBlock Text="Consulta, filtra y audita el detalle de facturas emitidas por período."
+                                   FontSize="13" Foreground="#64748B" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+            </DockPanel>
+
+            <!-- 1. TARJETA DE FILTROS -->
+            <Border Grid.Row="1"
+                    Margin="0,0,0,16"
+                    Padding="16,14"
+                    CornerRadius="12"
+                    Background="#FFFFFF"
+                    BorderBrush="#E2E8F0"
+                    BorderThickness="1">
+                <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <TextBlock Text="{Binding HiddenByFilterSummary}"
-                               FontSize="11"
-                               Foreground="#64748B"
-                               VerticalAlignment="Center"
-                               HorizontalAlignment="Left"/>
+                    <Grid Grid.Row="0" VerticalAlignment="Bottom">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
+                        <StackPanel Grid.Column="0" Margin="0,0,14,0" VerticalAlignment="Bottom">
+                            <TextBlock Text="Buscar (Factura / Cliente / Cajero)" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="#475569" Margin="0,0,0,6"/>
+                            <Border Style="{StaticResource SearchFrameStyle}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <materialDesign:PackIcon Grid.Column="0" Kind="Magnify" Width="18" Height="18"
+                                                             Foreground="#94A3B8" VerticalAlignment="Center"
+                                                             Margin="10,0,2,0"/>
+                                    <TextBox Grid.Column="1"
+                                             AutomationProperties.AutomationId="SalesHistory_SearchInput"
+                                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                             materialDesign:HintAssist.Hint="N° de factura, cliente o cajero..."
+                                             materialDesign:TextFieldAssist.HasClearButton="True"
+                                             BorderThickness="0"
+                                             Background="Transparent"
+                                             VerticalAlignment="Center"
+                                             FontSize="13"
+                                             Foreground="#0F172A"
+                                             Padding="6,0,10,0"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Margin="0,0,14,0" VerticalAlignment="Bottom">
+                            <TextBlock Text="Fecha Inicio" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="#475569" Margin="0,0,0,6"/>
+                            <DatePicker SelectedDate="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}"
+                                        Style="{StaticResource FiltersDatePickerStyle}"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Margin="0,0,14,0" VerticalAlignment="Bottom">
+                            <TextBlock Text="Fecha Fin" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="#475569" Margin="0,0,0,6"/>
+                            <DatePicker SelectedDate="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}"
+                                        Style="{StaticResource FiltersDatePickerStyle}"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="3" VerticalAlignment="Bottom">
+                            <TextBlock Text=" " FontSize="12" Margin="0,0,0,6"/>
+                            <Button Command="{Binding LoadHistoryCommand}"
+                                    Style="{StaticResource PrimaryActionButtonStyle}">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="Magnify" Width="18" Height="18"
+                                                             Margin="0,0,6,0" VerticalAlignment="Center"
+                                                             Foreground="#FFFFFF"/>
+                                    <TextBlock Text="Buscar" VerticalAlignment="Center" FontWeight="Bold"
+                                               FontSize="13" Foreground="#FFFFFF"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <ProgressBar Grid.Column="4"
+                                     IsIndeterminate="True"
+                                     Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}"
+                                     Foreground="#6D28D9"
+                                     HorizontalAlignment="Right" VerticalAlignment="Center"
+                                     Width="30" Height="30" Margin="14,16,0,0"/>
+
+                        <Button x:Name="FunnelButton"
+                                Grid.Column="5"
+                                Command="{Binding OpenFilterFlyoutCommand}"
+                                Style="{StaticResource SecondaryActionButtonStyle}"
+                                Height="40"
+                                Padding="14,0"
+                                Margin="14,0,0,0"
+                                VerticalAlignment="Bottom"
+                                ToolTip="Filtros secundarios (cajero / ocultar pruebas)">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <materialDesign:PackIcon Kind="FilterVariant" Width="16" Height="16"
+                                                         Margin="0,0,6,0" VerticalAlignment="Center"
+                                                         Foreground="#6D28D9"/>
+                                <TextBlock Text="Filtros" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12"/>
+                                <Ellipse Width="8" Height="8" Fill="#EF4444" Margin="8,0,0,0"
+                                         VerticalAlignment="Center"
+                                         Visibility="{Binding HasActiveSecondaryFilters, Converter={StaticResource BoolToVisibility}}"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <!-- Filtros secundarios (sin texto ruidoso de resumen) -->
                     <Border Grid.Row="1"
                             x:Name="FilterFlyoutPanel"
                             Margin="0,12,0,0"
                             Background="#F8FAFC"
                             BorderBrush="#E2E8F0"
                             BorderThickness="1"
-                            CornerRadius="8"
+                            CornerRadius="10"
                             Padding="14,12"
                             IsVisibleChanged="FilterFlyoutPanel_IsVisibleChanged"
-                            Visibility="{Binding IsFilterFlyoutOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            Visibility="{Binding IsFilterFlyoutOpen, Converter={StaticResource BoolToVisibility}}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -295,7 +582,8 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Margin="0,0,18,0">
-                                <TextBlock Text="Cajero (buscador por usuario)" FontSize="12" FontWeight="SemiBold" Foreground="#475569" Margin="0,0,0,6"/>
+                                <TextBlock Text="Cajero (buscador por usuario)" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#475569" Margin="0,0,0,6"/>
                                 <ComboBox x:Name="DraftCashierCombo"
                                           IsEditable="True"
                                           IsTextSearchEnabled="True"
@@ -305,8 +593,8 @@
                                           materialDesign:HintAssist.Hint="Buscar por nombre de usuario..."
                                           materialDesign:TextFieldAssist.HasClearButton="True"
                                           Background="#FFFFFF"
-                                          BorderBrush="#E2E8F0"
-                                          Height="42"
+                                          BorderBrush="#CBD5E1"
+                                          Height="40"
                                           FontSize="13"
                                           Padding="8,4"
                                           VerticalAlignment="Center"
@@ -326,521 +614,658 @@
                             <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                 <Button Content="Limpiar"
                                         Command="{Binding ClearSecondaryFilterDraftsCommand}"
-                                        Style="{DynamicResource MaterialDesignFlatButton}"
-                                        Foreground="DimGray"
-                                        Margin="0,0,12,0"/>
+                                        Style="{StaticResource SecondaryActionButtonStyle}"
+                                        Margin="0,0,10,0"/>
                                 <Button Content="Aplicar"
                                         Command="{Binding ApplySecondaryFiltersCommand}"
-                                        Style="{DynamicResource MaterialDesignRaisedButton}"/>
+                                        Style="{StaticResource PrimaryActionButtonStyle}"/>
                             </StackPanel>
                         </Grid>
                     </Border>
                 </Grid>
-            </Grid>
-        </Border>
+            </Border>
 
-        <!-- ═══════════════════════════════════════════
-             2. TARJETA DE LA TABLA (DATAGRID MODERNO)
-             ═══════════════════════════════════════════ -->
-        <Border Grid.Row="2"
-                Background="#FFFFFF"
-                BorderBrush="#E2E8F0"
-                BorderThickness="1"
-                CornerRadius="8"
-                Padding="0"
-                Effect="{StaticResource EnterpriseCardShadow}">
-            <controls:PerformantDataGrid ItemsSource="{Binding Sales}" 
-                      SelectedItem="{Binding SelectedSale}"
-                      SelectionUnit="FullRow"
-                      SelectionMode="Single"
-                      AutoGenerateColumns="False" 
-                      CanUserAddRows="False"
-                      CanUserDeleteRows="False"
-                      IsReadOnly="True"
-                      HeadersVisibility="Column"
-                      GridLinesVisibility="Horizontal"
-                      HorizontalGridLinesBrush="#E2E8F0"
-                      VerticalGridLinesBrush="Transparent"
-                      MinRowHeight="46"
-                      EnableRowVirtualization="True"
-                      EnableColumnVirtualization="True"
-                      VirtualizingStackPanel.IsVirtualizing="True"
-                      VirtualizingStackPanel.VirtualizationMode="Recycling"
-                      VirtualizingPanel.ScrollUnit="Pixel"
-                      materialDesign:DataGridAssist.CellPadding="14,8,14,8"
-                      materialDesign:DataGridAssist.ColumnHeaderPadding="14,10,14,10"
-                      RowDetailsVisibilityMode="Collapsed"
-                      Background="#FFFFFF"
-                      RowBackground="#FFFFFF"
-                      BorderThickness="0">
-                <controls:PerformantDataGrid.Columns>
-                    
-                    <!-- N° FACTURA -->
-                    <DataGridTemplateColumn Header="N° FACTURA" 
-                                            HeaderStyle="{StaticResource StandardHeaderStyle}" 
-                                            Width="120">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding InvoiceNumber, StringFormat={}N° {0:D6}}" 
-                                           FontWeight="Bold" 
-                                           FontSize="13" 
-                                           Foreground="#1E293B" 
-                                           VerticalAlignment="Center" 
-                                           Margin="14,0,0,0"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
+            <!-- 2. TARJETA ÚNICA: TABLA + PIE (100% del alto útil) -->
+            <Border Grid.Row="2"
+                    Background="#FFFFFF"
+                    BorderBrush="#E2E8F0"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-                    <!-- FECHA / HORA -->
-                    <DataGridTemplateColumn Header="FECHA / HORA" 
-                                            HeaderStyle="{StaticResource StandardHeaderStyle}" 
-                                            Width="140">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <StackPanel VerticalAlignment="Center" Margin="14,0,0,0">
-                                    <TextBlock Text="{Binding DateLocal, StringFormat={}{0:dd/MM/yyyy}}" FontWeight="SemiBold" FontSize="12" Foreground="#1E293B"/>
-                                    <TextBlock Text="{Binding DateLocal, StringFormat={}{0:hh:mm tt}}" Foreground="#94A3B8" FontSize="11" Margin="0,1,0,0"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    
-                    <!-- CLIENTE -->
-                    <DataGridTemplateColumn Header="CLIENTE" 
-                                            HeaderStyle="{StaticResource StandardHeaderStyle}" 
-                                            Width="*">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding CustomerName, FallbackValue='Consumidor Final'}" 
-                                           FontWeight="Medium" 
-                                           FontSize="12" 
-                                           Foreground="#1E293B" 
-                                           VerticalAlignment="Center" 
-                                           Margin="14,0,0,0"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
+                    <controls:PerformantDataGrid Grid.Row="0"
+                              ItemsSource="{Binding Sales}"
+                              SelectedItem="{Binding SelectedSale}"
+                              AutomationProperties.AutomationId="SalesHistory_DataGrid"
+                              SelectionUnit="FullRow"
+                              SelectionMode="Single"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              IsReadOnly="True"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              HorizontalGridLinesBrush="#F1F5F9"
+                              VerticalGridLinesBrush="Transparent"
+                              MinRowHeight="46"
+                              EnableRowVirtualization="True"
+                              EnableColumnVirtualization="True"
+                              VirtualizingStackPanel.IsVirtualizing="True"
+                              VirtualizingStackPanel.VirtualizationMode="Recycling"
+                              VirtualizingPanel.ScrollUnit="Pixel"
+                              RowDetailsVisibilityMode="Collapsed"
+                              Background="#FFFFFF"
+                              BorderThickness="0"
+                              RowStyle="{StaticResource SalesRowStyle}"
+                              CellStyle="{StaticResource SalesCellStyle}">
+                        <controls:PerformantDataGrid.Columns>
 
-                    <!-- CAJERO -->
-                    <DataGridTemplateColumn Header="CAJERO" 
-                                            HeaderStyle="{StaticResource StandardHeaderStyle}" 
-                                            Width="140">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding CashierName, FallbackValue='Usuario Desconocido'}" 
-                                           FontSize="12" 
-                                           Foreground="#475569" 
-                                           VerticalAlignment="Center" 
-                                           Margin="14,0,0,0"/>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
+                            <!-- N° FACTURA -->
+                            <DataGridTemplateColumn Header="N° FACTURA"
+                                                    HeaderStyle="{StaticResource SalesHeaderStyle}"
+                                                    Width="120">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding InvoiceNumber, StringFormat={}N° {0:D6}}"
+                                                   FontWeight="Bold" FontSize="13" Foreground="#0F172A"
+                                                   VerticalAlignment="Center" Margin="14,0,0,0"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
 
-                    <!-- Local total with the primary-currency duplicate below (Dual only) -->
-                    <DataGridTemplateColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='TOTAL {0}'}"
-                                            HeaderStyle="{StaticResource RightAlignedHeaderStyle}"
-                                            Width="150">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
-                                    <TextBlock Text="{Binding TotalBsS, Converter={StaticResource LocalAmountConverter}}" FontWeight="Bold" Foreground="#1E293B" FontSize="13" TextAlignment="Right" Typography.NumeralAlignment="Tabular"/>
-                                    <TextBlock Text="{Binding EffectiveTotalUSD, Converter={StaticResource PrimaryAmountConverter}}"
-                                               Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
-                                               Foreground="#94A3B8" FontSize="11" TextAlignment="Right" Margin="0,1,0,0" Typography.NumeralAlignment="Tabular"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
+                            <!-- FECHA / HORA -->
+                            <DataGridTemplateColumn Header="FECHA / HORA"
+                                                    HeaderStyle="{StaticResource SalesHeaderStyle}"
+                                                    Width="140">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center" Margin="14,0,0,0">
+                                            <TextBlock Text="{Binding DateLocal, StringFormat={}{0:dd/MM/yyyy}}"
+                                                       FontWeight="SemiBold" FontSize="12" Foreground="#1E293B"/>
+                                            <TextBlock Text="{Binding DateLocal, StringFormat={}{0:hh:mm tt}}"
+                                                       Foreground="#94A3B8" FontSize="11" Margin="0,1,0,0"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
 
-                    <!-- ESTADO (Badges tipo Píldora SaaS con CornerRadius="100") -->
-                    <DataGridTemplateColumn Header="ESTADO" 
-                                            HeaderStyle="{StaticResource CenterAlignedHeaderStyle}"
-                                            Width="140">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <Border x:Name="StatusBadgeBorder" 
-                                        CornerRadius="100" 
-                                        Padding="12,4" 
-                                        HorizontalAlignment="Center" 
-                                        VerticalAlignment="Center"
-                                        Background="#F1F5F9">
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <materialDesign:PackIcon x:Name="StatusIcon" Kind="ClockOutline" Width="14" Height="14" Margin="0,0,5,0" VerticalAlignment="Center" Foreground="#475569"/>
-                                        <TextBlock x:Name="StatusText" Text="{Binding Status}" FontSize="11" FontWeight="Bold" Foreground="#475569" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Border>
-                                <DataTemplate.Triggers>
-                                    <!-- Completada / Pagado (Verde pastel y esmeralda oscuro) -->
-                                    <DataTrigger Binding="{Binding Status}" Value="Completed">
-                                        <Setter TargetName="StatusBadgeBorder" Property="Background" Value="#DCFCE7"/>
-                                        <Setter TargetName="StatusIcon" Property="Kind" Value="CheckCircle"/>
-                                        <Setter TargetName="StatusIcon" Property="Foreground" Value="#166534"/>
-                                        <Setter TargetName="StatusText" Property="Text" Value="Completada"/>
-                                        <Setter TargetName="StatusText" Property="Foreground" Value="#166534"/>
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Status}" Value="Pagado">
-                                        <Setter TargetName="StatusBadgeBorder" Property="Background" Value="#DCFCE7"/>
-                                        <Setter TargetName="StatusIcon" Property="Kind" Value="CheckCircle"/>
-                                        <Setter TargetName="StatusIcon" Property="Foreground" Value="#166534"/>
-                                        <Setter TargetName="StatusText" Property="Text" Value="Completada"/>
-                                        <Setter TargetName="StatusText" Property="Foreground" Value="#166534"/>
-                                    </DataTrigger>
+                            <!-- CLIENTE -->
+                            <DataGridTemplateColumn Header="CLIENTE"
+                                                    HeaderStyle="{StaticResource SalesHeaderStyle}"
+                                                    Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding CustomerName, FallbackValue='Consumidor Final'}"
+                                                   FontWeight="Medium" FontSize="12" Foreground="#1E293B"
+                                                   VerticalAlignment="Center" Margin="14,0,0,0"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
 
-                                    <!-- Cancelled / Anulada (Rojo pastel y vino oscuro) -->
-                                    <DataTrigger Binding="{Binding Status}" Value="Cancelled">
-                                        <Setter TargetName="StatusBadgeBorder" Property="Background" Value="#FEE2E2"/>
-                                        <Setter TargetName="StatusIcon" Property="Kind" Value="CloseCircle"/>
-                                        <Setter TargetName="StatusIcon" Property="Foreground" Value="#991B1B"/>
-                                        <Setter TargetName="StatusText" Property="Text" Value="Anulada"/>
-                                        <Setter TargetName="StatusText" Property="Foreground" Value="#991B1B"/>
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Status}" Value="Anulada">
-                                        <Setter TargetName="StatusBadgeBorder" Property="Background" Value="#FEE2E2"/>
-                                        <Setter TargetName="StatusIcon" Property="Kind" Value="CloseCircle"/>
-                                        <Setter TargetName="StatusIcon" Property="Foreground" Value="#991B1B"/>
-                                        <Setter TargetName="StatusText" Property="Text" Value="Anulada"/>
-                                        <Setter TargetName="StatusText" Property="Foreground" Value="#991B1B"/>
-                                    </DataTrigger>
+                            <!-- CAJERO -->
+                            <DataGridTemplateColumn Header="CAJERO"
+                                                    HeaderStyle="{StaticResource SalesHeaderStyle}"
+                                                    Width="140">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding CashierName, FallbackValue='Usuario Desconocido'}"
+                                                   FontSize="12" Foreground="#475569"
+                                                   VerticalAlignment="Center" Margin="14,0,0,0"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
 
-                                    <!-- Pending (Ámbar pastel) -->
-                                    <DataTrigger Binding="{Binding Status}" Value="Pending">
-                                        <Setter TargetName="StatusBadgeBorder" Property="Background" Value="#FEF3C7"/>
-                                        <Setter TargetName="StatusIcon" Property="Kind" Value="ClockOutline"/>
-                                        <Setter TargetName="StatusIcon" Property="Foreground" Value="#92400E"/>
-                                        <Setter TargetName="StatusText" Property="Text" Value="Pendiente"/>
-                                        <Setter TargetName="StatusText" Property="Foreground" Value="#92400E"/>
-                                    </DataTrigger>
+                            <!-- TOTAL (local primario + equivalente Dual debajo) -->
+                            <DataGridTemplateColumn Header="TOTAL"
+                                                    HeaderStyle="{StaticResource SalesRightHeaderStyle}"
+                                                    Width="150">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0">
+                                            <TextBlock Text="{Binding TotalBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                       FontWeight="Bold" Foreground="#0F172A" FontSize="13"
+                                                       TextAlignment="Right" Typography.NumeralAlignment="Tabular"/>
+                                            <TextBlock Text="{Binding EffectiveTotalUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                                       Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                                       Foreground="#94A3B8" FontSize="11" TextAlignment="Right"
+                                                       Margin="0,1,0,0" Typography.NumeralAlignment="Tabular"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
 
-                                    <!-- OnHold (Ámbar pastel) -->
-                                    <DataTrigger Binding="{Binding Status}" Value="OnHold">
-                                        <Setter TargetName="StatusBadgeBorder" Property="Background" Value="#FEF3C7"/>
-                                        <Setter TargetName="StatusIcon" Property="Kind" Value="ClockOutline"/>
-                                        <Setter TargetName="StatusIcon" Property="Foreground" Value="#92400E"/>
-                                        <Setter TargetName="StatusText" Property="Text" Value="En Espera"/>
-                                        <Setter TargetName="StatusText" Property="Foreground" Value="#92400E"/>
-                                    </DataTrigger>
-                                </DataTemplate.Triggers>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
+                            <!-- ESTADO -->
+                            <DataGridTemplateColumn Header="ESTADO"
+                                                    HeaderStyle="{StaticResource SalesCenterHeaderStyle}"
+                                                    Width="140">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ContentControl Content="{Binding}"
+                                                        ContentTemplate="{StaticResource SaleStatusPillTemplate}"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
 
-                </controls:PerformantDataGrid.Columns>
-            </controls:PerformantDataGrid>
-        </Border>
+                            <!-- ACCIONES -->
+                            <DataGridTemplateColumn Header="ACCIONES"
+                                                    HeaderStyle="{StaticResource SalesRightHeaderStyle}"
+                                                    Width="86">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Command="{Binding DataContext.OpenDetailCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource RowActionButtonStyle}"
+                                                HorizontalAlignment="Right"
+                                                Margin="0,0,10,0"
+                                                ToolTip="Abrir inspector de factura">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="EyeOutline" Width="14" Height="14"
+                                                                         VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                                <TextBlock Text="Ver" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
 
-        <!-- ═══════════════════════════════════════════
-             3. PANEL DESPLEGABLE DE DETALLE (FACTURA)
-             ═══════════════════════════════════════════ -->
-        <Border Grid.Row="3" Style="{StaticResource InvoiceDetailPanelBorderStyle}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
+                        </controls:PerformantDataGrid.Columns>
+                    </controls:PerformantDataGrid>
 
-                <!-- Encabezado del Detalle con la Hora Exacta de Emisión -->
-                <DockPanel Grid.Row="0" Margin="4,0,4,8" LastChildFill="True">
-                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                        <Button Style="{DynamicResource MaterialDesignIconButton}"
-                                Command="{Binding TogglePurchaseDetailsPanelCommand}"
-                                ToolTip="Minimizar/Restaurar detalle"
-                                VerticalAlignment="Center">
-                            <materialDesign:PackIcon Width="18" Height="18">
-                                <materialDesign:PackIcon.Style>
-                                    <Style TargetType="materialDesign:PackIcon">
-                                        <Setter Property="Kind" Value="WindowMinimize"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsPurchaseDetailsExpanded}" Value="False">
-                                                <Setter Property="Kind" Value="WindowRestore"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </materialDesign:PackIcon.Style>
-                            </materialDesign:PackIcon>
-                        </Button>
-                        <Button Style="{DynamicResource MaterialDesignIconButton}"
-                                Command="{Binding ClosePurchaseDetailsCommand}"
-                                ToolTip="Cerrar detalle"
-                                VerticalAlignment="Center"
-                                Visibility="{Binding IsPurchaseDetailsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <materialDesign:PackIcon Kind="Close" Width="18" Height="18"/>
-                        </Button>
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <materialDesign:PackIcon Kind="InformationOutline" Width="18" Height="18" Foreground="#5E35B1" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <TextBlock Style="{DynamicResource MaterialDesignSubtitle1TextBlock}" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center">
-                            <Run Text="Detalle de Factura N° "/>
-                            <Run Text="{Binding SelectedSale.InvoiceNumber, StringFormat={}{0:D6}, Mode=OneWay}"/>
-                            <Run Text=" — Emitida: " Foreground="#64748B" FontWeight="Normal"/>
-                        </TextBlock>
-                        <TextBlock Text="{Binding DetailDateLocalFormatted}" 
-                                   Style="{DynamicResource MaterialDesignSubtitle1TextBlock}" 
-                                   Foreground="#5E35B1" 
-                                   FontWeight="Bold" 
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                </DockPanel>
-
-                <ScrollViewer Grid.Row="1"
-                              VerticalScrollBarVisibility="Auto" MaxHeight="320" Background="Transparent"
-                              Visibility="{Binding IsPurchaseDetailsExpanded, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <StackPanel Margin="4,0,4,4">
-
-                        <TextBlock Text="Cargando detalles..." Margin="0,0,0,8" Foreground="#64748B"
-                                   Visibility="{Binding IsDetailDebouncing, Converter={StaticResource BooleanToVisibilityConverter}}"/>
-
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8"
-                                    Visibility="{Binding IsDetailFetching, Converter={StaticResource BooleanToVisibilityConverter}}">
-                            <ProgressBar IsIndeterminate="True" Foreground="#5E35B1" Width="50" Height="4" VerticalAlignment="Center"/>
-                            <TextBlock Text="Obteniendo datos..." Margin="8,0,0,0" VerticalAlignment="Center" Foreground="#64748B"/>
-                        </StackPanel>
-
-                        <TextBlock Text="{Binding DetailErrorMessage}"
-                                   Foreground="#EF4444"
-                                   Margin="0,0,0,8">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding DetailErrorMessage}" Value="{x:Null}">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding DetailErrorMessage}" Value="">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-
-                        <!-- Tabla de Productos Comprados -->
-                        <controls:PerformantDataGrid ItemsSource="{Binding SelectedSaleItems}"
-                                   AutoGenerateColumns="False"
-                                   CanUserAddRows="False"
-                                   IsReadOnly="True"
-                                   EnableRowVirtualization="True"
-                                   EnableColumnVirtualization="True"
-                                   VirtualizingPanel.IsVirtualizing="True"
-                                   VirtualizingPanel.VirtualizationMode="Recycling"
-                                   VirtualizingPanel.ScrollUnit="Pixel"
-                                   ScrollViewer.CanContentScroll="True"
-                                   MaxHeight="260"
-                                   HeadersVisibility="Column"
-                                   Background="Transparent"
-                                   BorderThickness="0"
-                                   GridLinesVisibility="Horizontal"
-                                   HorizontalGridLinesBrush="#E2E8F0"
-                                   VerticalGridLinesBrush="Transparent"
-                                   Margin="0,0,0,12">
-                            <controls:PerformantDataGrid.Columns>
-                                <DataGridTextColumn Header="PRODUCTO" Binding="{Binding ProductName}" Width="*" HeaderStyle="{StaticResource StandardHeaderStyle}"/>
-                                <DataGridTextColumn Header="CANT." Binding="{Binding Quantity, StringFormat={}{0:0.###}}" Width="80" HeaderStyle="{StaticResource StandardHeaderStyle}"/>
-                                <DataGridTextColumn Header="P. UNIDAD" Binding="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}}" Width="110" HeaderStyle="{StaticResource RightAlignedHeaderStyle}" ElementStyle="{StaticResource RightAlignedElementStyle}"/>
-                                <DataGridTextColumn Header="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='SUBTOTAL {0}'}" Binding="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}}" Width="130" HeaderStyle="{StaticResource RightAlignedHeaderStyle}" ElementStyle="{StaticResource RightAlignedElementStyle}" FontWeight="Bold"/>
-                            </controls:PerformantDataGrid.Columns>
-                        </controls:PerformantDataGrid>
-
-                        <!-- Desglose de Métodos de Pago y Totales -->
-                        <Grid Margin="0,8,0,0">
+                    <!-- PIE INTEGRADO DE LA TARJETA -->
+                    <Border Grid.Row="1"
+                            Background="#FAFAFA"
+                            BorderBrush="#F1F5F9"
+                            BorderThickness="0,1,0,0"
+                            CornerRadius="0,0,12,12"
+                            Padding="16,10">
+                        <Grid>
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="Total del Período:" Foreground="#64748B" FontSize="13"
+                                           FontWeight="SemiBold" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding TotalBsSForThePeriod, Converter={StaticResource LocalAmountConverter}}"
+                                           AutomationProperties.AutomationId="SalesHistory_PeriodTotal"
+                                           Foreground="#6D28D9" FontSize="16" FontWeight="Bold"
+                                           VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"/>
+                                <TextBlock Text="{Binding TotalUsdForThePeriod, Converter={StaticResource PrimaryAmountConverter}}"
+                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"
+                                           Foreground="#94A3B8" FontSize="12" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" Margin="10,1,0,0"
+                                           Typography.NumeralAlignment="Tabular"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                                        VerticalAlignment="Center">
+                                <TextBlock AutomationProperties.AutomationId="SalesHistory_PageSummary"
+                                           Text="{Binding PageSummary}" VerticalAlignment="Center"
+                                           FontSize="11.5" FontWeight="SemiBold" Margin="0,0,12,0" Foreground="#64748B"/>
+
+                                <Button Command="{Binding FirstPageCommand}"
+                                        IsEnabled="{Binding CanGoFirst}"
+                                        Style="{StaticResource PagerButtonStyle}"
+                                        Margin="0,0,4,0" ToolTip="Primera Página">
+                                    <materialDesign:PackIcon Kind="PageFirst" Width="16" Height="16"/>
+                                </Button>
+
+                                <Button Command="{Binding PreviousPageCommand}"
+                                        IsEnabled="{Binding CanGoPrevious}"
+                                        Style="{StaticResource PagerButtonStyle}"
+                                        Margin="0,0,4,0" ToolTip="Página Anterior">
+                                    <materialDesign:PackIcon Kind="ChevronLeft" Width="16" Height="16"/>
+                                </Button>
+
+                                <ItemsControl ItemsSource="{Binding PageNumbers}" VerticalAlignment="Center">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.GoToPageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding PageNumber}"
+                                                    Content="{Binding PageNumber}"
+                                                    Style="{StaticResource PagerNumberButtonStyle}"
+                                                    Margin="2,0"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Button Command="{Binding NextPageCommand}"
+                                        IsEnabled="{Binding CanGoNext}"
+                                        Style="{StaticResource PagerButtonStyle}"
+                                        Margin="4,0,4,0" ToolTip="Página Siguiente">
+                                    <materialDesign:PackIcon Kind="ChevronRight" Width="16" Height="16"/>
+                                </Button>
+
+                                <Button Command="{Binding LastPageCommand}"
+                                        IsEnabled="{Binding CanGoLast}"
+                                        Style="{StaticResource PagerButtonStyle}"
+                                        Margin="0,0,12,0" ToolTip="Última Página">
+                                    <materialDesign:PackIcon Kind="PageLast" Width="16" Height="16"/>
+                                </Button>
+
+                                <Rectangle Width="1" Height="20" Fill="#E2E8F0" Margin="0,0,12,0"/>
+
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="11.5"
+                                               Margin="0,0,6,0" Foreground="#64748B"/>
+                                    <TextBox x:Name="TargetPageTextBox"
+                                             Text="{Binding TargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PreviewTextInput="NumberValidationTextBox"
+                                             GotFocus="TargetPageInput_GotFocus"
+                                             PreviewMouseLeftButtonDown="TargetPageInput_PreviewMouseLeftButtonDown"
+                                             Width="44" Height="30"
+                                             FontSize="11.5" FontWeight="Bold"
+                                             HorizontalContentAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             Style="{DynamicResource MaterialDesignOutlinedTextBox}"
+                                             BorderBrush="#E2E8F0"
+                                             Padding="2,0" Margin="0,0,6,0">
+                                        <TextBox.InputBindings>
+                                            <KeyBinding Key="Return" Command="{Binding SubmitGoToPageCommand}"/>
+                                        </TextBox.InputBindings>
+                                    </TextBox>
+                                    <Button Command="{Binding SubmitGoToPageCommand}"
+                                            Style="{StaticResource PagerButtonStyle}"
+                                            ToolTip="Ir a la página especificada">
+                                        <materialDesign:PackIcon Kind="ArrowRight" Width="15" Height="15"/>
+                                    </Button>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ═══════════════════════════════════════════════════════════
+             SLIDE-OVER INVOICE INSPECTOR (superpuesto, no invade la tabla)
+             ═══════════════════════════════════════════════════════════ -->
+        <Grid Panel.ZIndex="50"
+              Visibility="{Binding IsDetailOpen, Converter={StaticResource BoolToVisibility}}">
+
+            <!-- Backdrop clickeable (30% opacidad) -->
+            <Border Background="#4D0F172A"
+                    MouseLeftButtonDown="DetailBackdrop_MouseLeftButtonDown"/>
+
+            <!-- Panel derecho -->
+            <Border Width="520" MaxWidth="560"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Stretch"
+                    Background="#FFFFFF"
+                    BorderBrush="#E2E8F0"
+                    BorderThickness="1,0,0,0"
+                    Effect="{StaticResource DrawerShadow}">
+                <Border.RenderTransform>
+                    <TranslateTransform X="0"/>
+                </Border.RenderTransform>
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsDetailOpen}" Value="True">
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                             From="48" To="0" Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- BANDA 1: CABECERA FIJA -->
+                    <Border Grid.Row="0"
+                            Background="#F8FAFC"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="0,0,0,1"
+                            Padding="24,18">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="INFORMACIÓN DE PAGO" Style="{DynamicResource MaterialDesignCaptionTextBlock}" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,6"/>
-                                <ItemsControl ItemsSource="{Binding SelectedSalePayments}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <StackPanel Orientation="Horizontal" Margin="0,2">
-                                                <TextBlock Text="{Binding MethodName}" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}" FontWeight="SemiBold" Margin="0,0,12,0" VerticalAlignment="Center" Foreground="#5E35B1"/>
-                                                <TextBlock Text="{Binding Reference, StringFormat={}Ref: {0}}" Foreground="#64748B" FontSize="11" FontStyle="Italic" VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                            <Border Grid.Column="0" Width="36" Height="36" CornerRadius="9"
+                                    Background="#EDE9FE" VerticalAlignment="Top">
+                                <materialDesign:PackIcon Kind="ReceiptText" Width="19" Height="19"
+                                                         Foreground="#6D28D9"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+
+                            <StackPanel Grid.Column="1" Margin="12,0,10,0" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock FontSize="18" FontWeight="Bold" Foreground="#0F172A"
+                                               VerticalAlignment="Center">
+                                        <Run Text="Factura N° "/>
+                                        <Run Text="{Binding SelectedSale.InvoiceNumber, StringFormat={}{0:D6}, Mode=OneWay, FallbackValue=—}"/>
+                                    </TextBlock>
+                                    <ContentControl Content="{Binding SelectedSale}"
+                                                    ContentTemplate="{StaticResource SaleStatusPillTemplate}"
+                                                    Margin="10,0,0,0"
+                                                    VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock FontSize="12" Foreground="#64748B" Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis">
+                                    <Run Text="Emitida: "/>
+                                    <Run Text="{Binding DetailDateLocalFormatted, Mode=OneWay}"/>
+                                </TextBlock>
                             </StackPanel>
 
-                            <Grid Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Bottom" MinWidth="240" Margin="16,0,12,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" MaxWidth="160"/>
-                                    <ColumnDefinition Width="*" MinWidth="90"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <!-- Tasa Aplicada (solo existe en Dual) -->
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Tasa Aplicada:" TextTrimming="CharacterEllipsis" Foreground="#64748B" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,4"
-                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
-                                <TextBlock Grid.Row="0" Grid.Column="1" Foreground="#475569" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" Margin="0,0,0,4"
-                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
-                                    <Run Text="{Binding DetailAppliedRate, Mode=OneWay, StringFormat='{}{0:N2}'}"/>
-                                    <Run Text=" "/>
-                                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyCode, Mode=OneWay}"/>
-                                    <Run Text="/"/>
-                                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, Mode=OneWay}"/>
-                                </TextBlock>
-
-                                <!-- Total primario (duplicado oculto en Single) -->
-                                <TextBlock Grid.Row="1" Grid.Column="0" TextTrimming="CharacterEllipsis" Foreground="#64748B" VerticalAlignment="Center" FontSize="12" Margin="0,0,8,4"
-                                           Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyCode, StringFormat='Total {0}:'}"
-                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DetailTotalUSD, Converter={StaticResource PrimaryAmountConverter}}" FontWeight="Bold" Foreground="#1E293B" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" Margin="0,0,0,4"
-                                           Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}"/>
-
-                                <!-- Total Factura en moneda local -->
-                                <TextBlock Grid.Row="2" Grid.Column="0" TextTrimming="CharacterEllipsis" Foreground="#1E293B" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" Margin="0,0,8,0"
-                                           Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencySymbol, StringFormat='Total Factura {0}:'}"/>
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DetailTotalBsS, Converter={StaticResource LocalAmountConverter}}" FontWeight="Bold" FontSize="16" Foreground="#5E35B1" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                            </Grid>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
+                                <Button Command="{Binding PreviousInvoiceCommand}"
+                                        Style="{StaticResource DrawerIconButtonStyle}"
+                                        ToolTip="Factura anterior">
+                                    <materialDesign:PackIcon Kind="ChevronLeft" Width="16" Height="16"/>
+                                </Button>
+                                <Button Command="{Binding NextInvoiceCommand}"
+                                        Style="{StaticResource DrawerIconButtonStyle}"
+                                        Margin="6,0,0,0"
+                                        ToolTip="Factura siguiente">
+                                    <materialDesign:PackIcon Kind="ChevronRight" Width="16" Height="16"/>
+                                </Button>
+                                <Button Command="{Binding CloseDetailCommand}"
+                                        Style="{StaticResource DrawerIconButtonStyle}"
+                                        Width="32" Height="32"
+                                        Margin="8,0,0,0"
+                                        ToolTip="Cerrar detalle (Esc)">
+                                    <materialDesign:PackIcon Kind="Close" Width="16" Height="16"/>
+                                </Button>
+                            </StackPanel>
                         </Grid>
-                    </StackPanel>
-                </ScrollViewer>
-            </Grid>
-        </Border>
+                    </Border>
 
-        <!-- ═══════════════════════════════════════════
-             4. PAGINACIÓN Y FOOTER CON SEPARADOR
-             ═══════════════════════════════════════════ -->
-        <StackPanel Grid.Row="4" Margin="0,16,0,0">
-            <!-- Separador fino -->
-            <Border Height="1" Background="#E2E8F0" Margin="0,0,0,14"/>
+                    <!-- BANDA 2: CUERPO DESPLAZABLE -->
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Padding="24,18">
+                        <StackPanel>
 
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                
-                <!-- Total del Período -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
-                    <TextBlock Text="Total del Período:" Foreground="#64748B" FontSize="13" FontWeight="SemiBold" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding TotalBsSForThePeriod, Converter={StaticResource LocalAmountConverter}}"
-                               AutomationProperties.AutomationId="SalesHistory_PeriodTotal"
-                               Foreground="#5E35B1" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" Typography.NumeralAlignment="Tabular"/>
-                </StackPanel>
+                            <TextBlock Text="Cargando detalles..." Margin="0,0,0,8" FontSize="12"
+                                       Foreground="#64748B"
+                                       Visibility="{Binding IsDetailDebouncing, Converter={StaticResource BoolToVisibility}}"/>
 
-                <!-- Barra de Paginación Avanzada -->
-                <Border Grid.Column="1" 
-                        HorizontalAlignment="Right"
-                        Padding="8,4" 
-                        Background="#FFFFFF" 
-                        BorderBrush="#E2E8F0" 
-                        BorderThickness="1" 
-                        CornerRadius="8"
-                        Effect="{StaticResource EnterpriseCardShadow}">
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <!-- Resumen -->
-                        <TextBlock AutomationProperties.AutomationId="SalesHistory_PageSummary"
-                                   Text="{Binding PageSummary}" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" Margin="0,0,14,0" Foreground="#475569"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8"
+                                        Visibility="{Binding IsDetailFetching, Converter={StaticResource BoolToVisibility}}">
+                                <ProgressBar IsIndeterminate="True" Foreground="#6D28D9"
+                                             Width="50" Height="4" VerticalAlignment="Center"/>
+                                <TextBlock Text="Obteniendo datos..." Margin="8,0,0,0" FontSize="12"
+                                           VerticalAlignment="Center" Foreground="#64748B"/>
+                            </StackPanel>
 
-                        <!-- Botón Primera Página (<<) -->
-                        <Button Command="{Binding FirstPageCommand}" 
-                                IsEnabled="{Binding CanGoFirst}"
-                                Style="{DynamicResource MaterialDesignOutlinedButton}" 
-                                Height="32" Width="36" Padding="0" Margin="0,0,4,0" 
-                                ToolTip="Primera Página">
-                            <materialDesign:PackIcon Kind="PageFirst" Width="18" Height="18"/>
-                        </Button>
+                            <TextBlock Text="{Binding DetailErrorMessage}"
+                                       Foreground="#B91C1C"
+                                       FontSize="12"
+                                       Margin="0,0,0,8">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding DetailErrorMessage}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding DetailErrorMessage}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
 
-                        <!-- Botón Página Anterior (<) -->
-                        <Button Command="{Binding PreviousPageCommand}" 
-                                IsEnabled="{Binding CanGoPrevious}"
-                                Style="{DynamicResource MaterialDesignOutlinedButton}" 
-                                Height="32" Width="36" Padding="0" Margin="0,0,6,0" 
-                                ToolTip="Página Anterior">
-                            <materialDesign:PackIcon Kind="ChevronLeft" Width="18" Height="18"/>
-                        </Button>
+                            <!-- Metadatos de la venta -->
+                            <Border Background="#F8FAFC"
+                                    BorderBrush="#E2E8F0"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="14,12"
+                                    Margin="0,0,0,16">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="1"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
 
-                        <!-- Botones Numéricos de Páginas Relativas -->
-                        <ItemsControl ItemsSource="{Binding PageNumbers}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal"/>
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Button Command="{Binding DataContext.GoToPageCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding PageNumber}"
-                                            Content="{Binding PageNumber}"
-                                            Height="32" MinWidth="34" Padding="6,0" Margin="2,0">
-                                        <Button.Style>
-                                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-                                                <Setter Property="FontWeight" Value="SemiBold"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                        <Setter Property="Background" Value="#5E35B1"/>
-                                                        <Setter Property="Foreground" Value="#FFFFFF"/>
-                                                        <Setter Property="BorderBrush" Value="#5E35B1"/>
-                                                        <Setter Property="FontWeight" Value="Bold"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Button.Style>
-                                    </Button>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                        <TextBlock Text="CLIENTE" Style="{StaticResource SectionCaptionStyle}"/>
+                                        <TextBlock Text="{Binding SelectedSale.CustomerName, FallbackValue='Consumidor Final'}"
+                                                   FontSize="12.5" FontWeight="SemiBold" Foreground="#0F172A"
+                                                   Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding SelectedSale.CustomerCedula}"
+                                                   FontSize="11.5" Foreground="#64748B" Margin="0,2,0,0"
+                                                   Visibility="{Binding SelectedSale.CustomerCedula, Converter={StaticResource StringToVisibilityConverter}}"/>
+                                    </StackPanel>
 
-                        <!-- Botón Página Siguiente (>) -->
-                        <Button Command="{Binding NextPageCommand}" 
-                                IsEnabled="{Binding CanGoNext}"
-                                Style="{DynamicResource MaterialDesignOutlinedButton}" 
-                                Height="32" Width="36" Padding="0" Margin="6,0,4,0" 
-                                ToolTip="Página Siguiente">
-                            <materialDesign:PackIcon Kind="ChevronRight" Width="18" Height="18"/>
-                        </Button>
+                                    <Border Grid.Column="1" Background="#E2E8F0" Margin="0,2,0,2"/>
 
-                        <!-- Botón Última Página (>>) -->
-                        <Button Command="{Binding LastPageCommand}" 
-                                IsEnabled="{Binding CanGoLast}"
-                                Style="{DynamicResource MaterialDesignOutlinedButton}" 
-                                Height="32" Width="36" Padding="0" Margin="0,0,14,0" 
-                                ToolTip="Última Página">
-                            <materialDesign:PackIcon Kind="PageLast" Width="18" Height="18"/>
-                        </Button>
+                                    <StackPanel Grid.Column="2" Margin="12,0,0,0">
+                                        <TextBlock Text="CAJERO" Style="{StaticResource SectionCaptionStyle}"/>
+                                        <TextBlock Text="{Binding SelectedSale.CashierName, FallbackValue='Usuario Desconocido'}"
+                                                   FontSize="12.5" FontWeight="SemiBold" Foreground="#0F172A"
+                                                   Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
 
-                        <!-- Separador vertical -->
-                        <Rectangle Width="1" Height="22" Fill="#E2E8F0" Margin="0,0,14,0"/>
+                            <!-- Artículos vendidos -->
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock Text="Artículos vendidos" FontSize="13" FontWeight="Bold"
+                                           Foreground="#0F172A" VerticalAlignment="Center"/>
+                                <Border HorizontalAlignment="Right" VerticalAlignment="Center"
+                                        Background="#F1F5F9" CornerRadius="999" Padding="8,2">
+                                    <TextBlock FontSize="10.5" FontWeight="SemiBold" Foreground="#475569">
+                                        <Run Text="{Binding SelectedSaleItems.Count, Mode=OneWay}"/>
+                                        <Run Text=" ítems"/>
+                                    </TextBlock>
+                                </Border>
+                            </Grid>
 
-                        <!-- Búsqueda Exacta: Ir a Página -->
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="Ir a:" VerticalAlignment="Center" FontSize="12" Margin="0,0,6,0" Foreground="#64748B"/>
-                            <TextBox x:Name="TargetPageTextBox"
-                                     Text="{Binding TargetPageInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
-                                     PreviewTextInput="NumberValidationTextBox"
-                                     GotFocus="TargetPageInput_GotFocus"
-                                     PreviewMouseLeftButtonDown="TargetPageInput_PreviewMouseLeftButtonDown"
-                                     Width="48" Height="30"
-                                     FontSize="12" FontWeight="Bold"
-                                     HorizontalContentAlignment="Center"
-                                     VerticalContentAlignment="Center"
-                                     Style="{DynamicResource MaterialDesignOutlinedTextBox}"
-                                     Padding="2,0" Margin="0,0,6,0">
-                                <TextBox.InputBindings>
-                                    <KeyBinding Key="Return" Command="{Binding SubmitGoToPageCommand}"/>
-                                </TextBox.InputBindings>
-                            </TextBox>
-                            <Button Command="{Binding SubmitGoToPageCommand}"
-                                    Style="{DynamicResource MaterialDesignRaisedButton}"
-                                    Background="#5E35B1"
-                                    BorderBrush="#5E35B1"
-                                    Foreground="#FFFFFF"
-                                    Height="30" Width="36" Padding="0"
-                                    ToolTip="Ir a la página especificada">
-                                <materialDesign:PackIcon Kind="ArrowRight" Width="16" Height="16"/>
-                            </Button>
+                            <Border Background="#FFFFFF"
+                                    BorderBrush="#E2E8F0"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    ClipToBounds="True">
+                                <StackPanel>
+                                    <!-- Encabezado de columnas -->
+                                    <Border Background="#F8FAFC" Padding="12,8">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="56"/>
+                                                <ColumnDefinition Width="105"/>
+                                                <ColumnDefinition Width="112"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="PRODUCTO" Style="{StaticResource SectionCaptionStyle}"/>
+                                            <TextBlock Grid.Column="1" Text="CANT." Style="{StaticResource SectionCaptionStyle}"
+                                                       TextAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="P. UNIT." Style="{StaticResource SectionCaptionStyle}"
+                                                       TextAlignment="Right"/>
+                                            <TextBlock Grid.Column="3" Text="SUBTOTAL" Style="{StaticResource SectionCaptionStyle}"
+                                                       TextAlignment="Right"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <ItemsControl ItemsSource="{Binding SelectedSaleItems}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="#F1F5F9" BorderThickness="0,1,0,0" Padding="12,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="56"/>
+                                                            <ColumnDefinition Width="105"/>
+                                                            <ColumnDefinition Width="112"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0"
+                                                                   Text="{Binding ProductName}"
+                                                                   FontSize="12" FontWeight="SemiBold"
+                                                                   Foreground="#0F172A"
+                                                                   TextWrapping="Wrap"
+                                                                   VerticalAlignment="Center"
+                                                                   Margin="0,0,8,0"/>
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="{Binding Quantity, StringFormat={}{0:0.###}}"
+                                                                   FontSize="11.5" Foreground="#475569"
+                                                                   TextAlignment="Center"
+                                                                   VerticalAlignment="Center"
+                                                                   Typography.NumeralAlignment="Tabular"/>
+                                                        <TextBlock Grid.Column="2"
+                                                                   Text="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                                   ToolTip="{Binding UnitPriceBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                                   FontSize="11.5" Foreground="#64748B"
+                                                                   TextAlignment="Right"
+                                                                   TextTrimming="None"
+                                                                   VerticalAlignment="Center"
+                                                                   Margin="0,0,8,0"
+                                                                   Typography.NumeralAlignment="Tabular"/>
+                                                        <TextBlock Grid.Column="3"
+                                                                   Text="{Binding SubtotalBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                                   FontSize="11.5" FontWeight="SemiBold"
+                                                                   Foreground="#0F172A"
+                                                                   TextAlignment="Right"
+                                                                   VerticalAlignment="Center"
+                                                                   Typography.NumeralAlignment="Tabular"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Desglose de pagos -->
+                            <TextBlock Text="Desglose de pagos" FontSize="13" FontWeight="Bold"
+                                       Foreground="#0F172A" Margin="0,16,0,8"/>
+
+                            <ItemsControl ItemsSource="{Binding SelectedSalePayments}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#F8FAFC"
+                                                BorderBrush="#E2E8F0"
+                                                BorderThickness="1"
+                                                CornerRadius="8"
+                                                Padding="12,8"
+                                                Margin="0,0,0,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                                    <TextBlock Text="{Binding MethodName}"
+                                                               FontSize="12" FontWeight="SemiBold"
+                                                               Foreground="#0F172A"/>
+                                                    <Border Background="#EDE9FE"
+                                                            CornerRadius="999"
+                                                            Padding="8,2"
+                                                            Margin="0,4,0,0"
+                                                            HorizontalAlignment="Left"
+                                                            Visibility="{Binding Reference, Converter={StaticResource StringToVisibilityConverter}}">
+                                                        <TextBlock Text="{Binding Reference, StringFormat={}Ref: {0}}"
+                                                                   FontSize="10.5" FontWeight="SemiBold"
+                                                                   Foreground="#6D28D9"/>
+                                                    </Border>
+                                                </StackPanel>
+
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding AmountBsS, Converter={StaticResource LocalAmountConverter}}"
+                                                           FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="#0F172A"
+                                                           VerticalAlignment="Center"
+                                                           Typography.NumeralAlignment="Tabular"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
-                    </StackPanel>
-                </Border>
-            </Grid>
-        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- BANDA 3: PIE FINANCIERO FIJO -->
+                    <Border Grid.Row="2"
+                            Background="#F8FAFC"
+                            BorderBrush="#E2E8F0"
+                            BorderThickness="0,1,0,0"
+                            Padding="24,16">
+                        <StackPanel>
+                            <Grid Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                <TextBlock Text="Tasa aplicada" FontSize="12" Foreground="#64748B"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#475569" VerticalAlignment="Center"
+                                           Typography.NumeralAlignment="Tabular">
+                                    <Run Text="1 "/>
+                                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=PrimaryCurrencyDisplayCode, Mode=OneWay}"/>
+                                    <Run Text=" = "/>
+                                    <Run Text="{Binding DetailAppliedRate, Converter={StaticResource LocalNumberConverter}, Mode=OneWay}"/>
+                                    <Run Text=" "/>
+                                    <Run Text="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=LocalCurrencyDisplayCode, Mode=OneWay}"/>
+                                </TextBlock>
+                            </Grid>
+
+                            <Grid Margin="0,4,0,0"
+                                  Visibility="{Binding Source={x:Static core:MonetaryProfilePresenter.Instance}, Path=IsSingle, Converter={StaticResource DualOnlyVisibilityConverter}}">
+                                <TextBlock Text="Total equivalente" FontSize="12" Foreground="#64748B"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding DetailTotalUSD, Converter={StaticResource PrimaryAmountConverter}}"
+                                           HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#475569" VerticalAlignment="Center"
+                                           Typography.NumeralAlignment="Tabular"/>
+                            </Grid>
+
+                            <Border Height="1" Background="#E2E8F0" Margin="0,10"/>
+
+                            <Grid>
+                                <TextBlock Text="Total Factura" FontSize="13" FontWeight="Bold"
+                                           Foreground="#0F172A" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding DetailTotalBsS, Converter={StaticResource LocalAmountConverter}}"
+                                           HorizontalAlignment="Right"
+                                           FontSize="20" FontWeight="Bold"
+                                           Foreground="#6D28D9"
+                                           VerticalAlignment="Center"
+                                           Typography.NumeralAlignment="Tabular"/>
+                            </Grid>
+
+                            <Button Content="Cerrar (Esc)"
+                                    Command="{Binding CloseDetailCommand}"
+                                    Style="{StaticResource SecondaryActionButtonStyle}"
+                                    Height="32" Padding="14,0"
+                                    HorizontalAlignment="Right"
+                                    Margin="0,12,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>
-

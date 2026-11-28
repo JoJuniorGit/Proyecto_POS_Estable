@@ -215,7 +215,7 @@ export function CartProvider({ children }) {
     try {
       const sale = await getSale(saleId);
       if (sale?.status === 'OnHold') {
-        setError('Los pedidos en espera se editan desde Cuentas Abiertas.');
+        setError('Los pedidos en espera se editan desde Pedidos Guardados.');
         sessionStorage.removeItem('active_pos_sale_id');
         sessionStorage.removeItem('active_pos_sale_cache');
         sessionStorage.removeItem('active_pos_has_items');
@@ -248,7 +248,7 @@ export function CartProvider({ children }) {
         try {
           const sale = await getSale(Number(savedSaleId));
           if (sale?.status === 'OnHold') {
-            setError('Los pedidos en espera se editan desde Cuentas Abiertas.');
+            setError('Los pedidos en espera se editan desde Pedidos Guardados.');
             sessionStorage.removeItem('active_pos_sale_id');
             sessionStorage.removeItem('active_pos_sale_cache');
             sessionStorage.removeItem('active_pos_has_items');

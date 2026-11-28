@@ -1065,7 +1065,7 @@ public class PendingPickupsViewModelTests
     [Fact]
     public void PendingPickupClientDto_ComputesAgeAndStaleFlag()
     {
-        var today = DateTime.Today;
+        var today = Core.Helpers.TimeZoneHelper.GetVenezuelaDate().ToDateTime(TimeOnly.MinValue);
 
         var todayPickup = new PendingPickupClientDto
         {

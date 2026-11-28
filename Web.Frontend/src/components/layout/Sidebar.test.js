@@ -24,7 +24,7 @@ globalThis.sessionStorage = {
 
 const ALL_LABELS = [
   'Punto de Venta',
-  'Cuentas Abiertas',
+  'Pedidos Guardados',
   'Retiros Pendientes',
   'Catálogo',
   'Conteo físico',
@@ -40,7 +40,7 @@ const ALL_LABELS = [
 const EXPECTED_LABELS = {
   Admin: ALL_LABELS,
   Manager: ALL_LABELS,
-  Cashier: ['Punto de Venta', 'Cuentas Abiertas', 'Retiros Pendientes', 'Catálogo', 'Conteo físico', 'Historial Ventas', 'Caja', 'Cierre Diario'],
+  Cashier: ['Punto de Venta', 'Pedidos Guardados', 'Retiros Pendientes', 'Catálogo', 'Conteo físico', 'Historial Ventas', 'Caja', 'Cierre Diario'],
   Driver: ['Retiros Pendientes', 'Historial Ventas'],
 };
 

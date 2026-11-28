@@ -678,7 +678,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
       <Modal 
         isOpen={isOpen} 
         onClose={handleRequestClose} 
-        title={overrideSale ? (isFullLiquidation ? "Liquidar Cuenta Completa" : "Liquidar / Registrar Abono a Cuenta") : "Cobranza"} 
+        title={overrideSale ? (isFullLiquidation ? "Liquidar Pedido Completo" : "Liquidar / Registrar Abono al Pedido") : "Cobranza"} 
         maxWidth="560px"
       >
       <CustomerSelectorCard
@@ -879,7 +879,7 @@ const CheckoutModal = forwardRef(function CheckoutModal({ isOpen, onClose, onSuc
               ) : overrideSale ? (
                 isFullLiquidation ? (
                   <>
-                    <Check size={20} /> Liquidar Cuenta
+                    <Check size={20} /> Liquidar Pedido
                   </>
                 ) : (
                   <>

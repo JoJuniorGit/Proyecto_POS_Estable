@@ -183,7 +183,7 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Error", $"Error al cargar cuentas abiertas: {ex.Message}");
+            _dialogService.ShowError("Error", $"Error al cargar pedidos guardados: {ex.Message}");
         }
         finally
         {
@@ -228,7 +228,7 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            _dialogService.ShowError("Error", $"Error al cargar más cuentas: {ex.Message}");
+            _dialogService.ShowError("Error", $"Error al cargar más pedidos: {ex.Message}");
         }
         finally
         {
@@ -362,7 +362,7 @@ public partial class PendingOrdersViewModel : ObservableObject, IDisposable
         if (!_dialogService.ShowConfirm(
                 "Anular pedido",
                 $"¿Anular el pedido #{sale.Id} del cliente '{customer}' por {amount}? " +
-                "El pedido se descartará de las cuentas abiertas."))
+                "El pedido se descartará de los pedidos guardados."))
         {
             return;
         }

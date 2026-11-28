@@ -168,11 +168,49 @@ public class SalesHistoryViewModelTests
 
         vm.SelectedSale = sale;
 
-        Assert.True(vm.IsPurchaseDetailsVisible);
-        Assert.True(vm.IsPurchaseDetailsExpanded);
+        Assert.True(vm.IsDetailOpen);
         Assert.Equal(60.50m, vm.DetailAppliedRate);
         Assert.Equal(10.00m, vm.DetailTotalUSD);
         Assert.Equal(605.00m, vm.DetailTotalBsS);
+    }
+
+    [Fact]
+    public void CloseDetailCommand_WhenInvoked_ClosesInspectorAndClearsSelection()
+    {
+        var vm = CreateViewModel();
+        vm.SelectedSale = new SaleHistoryDto { Id = 7, InvoiceNumber = 7 };
+
+        Assert.True(vm.IsDetailOpen);
+
+        vm.CloseDetailCommand.Execute(null);
+
+        Assert.False(vm.IsDetailOpen);
+        Assert.Null(vm.SelectedSale);
+    }
+
+    [Fact]
+    public void InvoiceNavigationCommands_MoveWithinCurrentPage()
+    {
+        var vm = CreateViewModel();
+        var first = new SaleHistoryDto { Id = 1, InvoiceNumber = 1 };
+        var second = new SaleHistoryDto { Id = 2, InvoiceNumber = 2 };
+        vm.Sales.Add(first);
+        vm.Sales.Add(second);
+
+        vm.SelectedSale = first;
+
+        Assert.False(vm.CanGoPreviousInvoice);
+        Assert.True(vm.CanGoNextInvoice);
+
+        vm.NextInvoiceCommand.Execute(null);
+
+        Assert.Same(second, vm.SelectedSale);
+        Assert.True(vm.CanGoPreviousInvoice);
+        Assert.False(vm.CanGoNextInvoice);
+
+        vm.PreviousInvoiceCommand.Execute(null);
+
+        Assert.Same(first, vm.SelectedSale);
     }
 
     [Fact]
@@ -321,7 +359,7 @@ public class SalesHistoryViewModelTests
         Assert.Equal(new[] { 3, 4, 5, 6, 7 }, vm.PageNumbers.Select(p => p.PageNumber));
         Assert.True(vm.PageNumbers.First(p => p.PageNumber == 5).IsActive);
         Assert.False(vm.PageNumbers.First(p => p.PageNumber == 4).IsActive);
-        Assert.Equal("Pág. 5 de 10 (100 ventas)", vm.PageSummary);
+        Assert.Equal("Pág. 5 de 10 · 100 ventas", vm.PageSummary);
         Assert.Equal("5", vm.TargetPageInput);
     }
 
@@ -335,7 +373,7 @@ public class SalesHistoryViewModelTests
 
         Assert.Empty(vm.PageNumbers);
         Assert.Equal(0, vm.CurrentPage);
-        Assert.Equal("Página 0 de 0 (0 ventas)", vm.PageSummary);
+        Assert.Equal("Pág. 0 de 0 · 0 ventas", vm.PageSummary);
         Assert.Equal("0", vm.TargetPageInput);
         Assert.False(vm.CanGoFirst);
         Assert.False(vm.CanGoLast);

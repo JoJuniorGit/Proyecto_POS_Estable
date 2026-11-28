@@ -42,7 +42,7 @@ public partial class CheckoutViewModel : ObservableObject, IRecipient<CartUpdate
         : (IsPendingPickup && IsCustodyAllowed)
             ? "Cobrar y enviar a retiro"
             : IsOverrideMode
-                ? (IsFullLiquidation ? "Liquidar cuenta" : "Registrar abono")
+                ? (IsFullLiquidation ? "Liquidar pedido" : "Registrar abono")
                 : "Cobrar y Finalizar";
 
     public string CheckoutTitle => IsOverrideMode

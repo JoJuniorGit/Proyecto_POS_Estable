@@ -82,7 +82,7 @@ function PendingOrdersPageContent() {
       setHasMore(totalCount > (items?.length || 0));
     } catch (err) {
       console.error(err);
-      setError('No se pudieron cargar las cuentas abiertas.');
+      setError('No se pudieron cargar los pedidos guardados.');
     } finally {
       setLoading(false);
     }
@@ -106,7 +106,7 @@ function PendingOrdersPageContent() {
       setHasMore(totalCount > pageOffset + items.length);
     } catch (err) {
       console.error(err);
-      setError('No se pudieron cargar más cuentas.');
+      setError('No se pudieron cargar más pedidos.');
     } finally {
       setLoading(false);
     }
@@ -214,10 +214,10 @@ function PendingOrdersPageContent() {
       <div className="pending-orders-header">
         <div>
           <h1 className="pending-orders-title">
-            <Clock className="color-primary" size={26} /> Cuentas Abiertas (Pedidos en Espera)
+            <Clock className="color-primary" size={26} /> Pedidos Guardados
           </h1>
           <p className="pending-orders-desc">
-            Gestiona abonos en {localLabel} protegidos contra devaluación y liquida cuentas sin descontar inventario previamente.
+            Gestiona abonos en {localLabel} protegidos contra devaluación y liquida pedidos sin descontar inventario previamente.
           </p>
         </div>
 
@@ -276,7 +276,7 @@ function PendingOrdersPageContent() {
       {loading && sales.length === 0 ? (
         <div className="ppo-loading text-center">
           <Loader2 size={40} className="spin color-primary mb-4 mx-auto" />
-          <p>Cargando cuentas abiertas...</p>
+          <p>Cargando pedidos guardados...</p>
         </div>
       ) : filteredSales.length === 0 ? (
         <div className="card p-5 text-center text-muted">
@@ -344,7 +344,7 @@ function PendingOrdersPageContent() {
                 disabled={loading}
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <ChevronDown size={16} />}
-                {loading ? 'Cargando...' : 'Ver más cuentas'}
+                {loading ? 'Cargando...' : 'Ver más pedidos'}
               </button>
             </div>
           )}
@@ -381,7 +381,7 @@ function PendingOrdersPageContent() {
                 } else {
                   setCompletedLiquidation({
                     invoiceNumber: invoiceNumber > 0 ? invoiceNumber : targetSaleId,
-                    title: "¡Cuenta Liquidada con Éxito!",
+                    title: "¡Pedido Liquidado con Éxito!",
                     badgeText: `Factura N° ${invoiceNumber > 0 ? invoiceNumber.toString().padStart(6, '0') : targetSaleId}`,
                     message: "La factura fue completada en su totalidad y el inventario ha sido descontado correctamente.",
                     buttonText: "Aceptar"
@@ -414,7 +414,7 @@ function PendingOrdersPageContent() {
                   invoiceNumber: null,
                   title: "¡Abono Registrado con Éxito!",
                   badgeText: `Pedido N° #${targetSaleId}`,
-                  message: "El abono fue registrado exitosamente en el historial de abonos anti-devaluación de la cuenta.",
+                  message: "El abono fue registrado exitosamente en el historial de abonos anti-devaluación del pedido.",
                   buttonText: "Aceptar"
                 });
               }

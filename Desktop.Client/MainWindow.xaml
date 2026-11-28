@@ -189,10 +189,10 @@
                                 Style="{DynamicResource NavItemButtonStyle}"
                                 Command="{Binding NavigateToPendingOrdersCommand}"
                                 Visibility="{Binding UserSession.CurrentUser.Role, Converter={StaticResource RoleViewVisibilityConverter}, ConverterParameter=pending}"
-                                ToolTip="Cuentas Abiertas (Pedidos en Espera)">
+                                ToolTip="Pedidos Guardados">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="ClipboardClock" Width="18" Height="18" VerticalAlignment="Center"/>
-                                <TextBlock Text="Cuentas Abiertas" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Pedidos Guardados" Margin="10,0,0,0" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Button>
 

@@ -331,6 +331,24 @@
   white-space: nowrap;
 }
 
+/* Saldo unificado: primaria (USD) arriba, equivalencia local (Bs.S) abajo. */
+.credit-amount-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.credit-amount-primary {
+  font-weight: 700;
+}
+
+.credit-amount-secondary {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 .credit-toolbar .form-group {
   margin-bottom: 0;
 }
