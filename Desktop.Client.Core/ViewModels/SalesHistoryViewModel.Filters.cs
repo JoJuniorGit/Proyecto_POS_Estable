@@ -147,6 +147,8 @@ public partial class SalesHistoryViewModel
         var visible = _pageBuffer.Where(IsSaleVisible).ToList();
         ReplaceCollection(Sales, visible);
         TotalBsSForThePeriod = visible.Sum(s => s.FinalPaidAmountBsS);
+        TotalUsdForThePeriod = visible.Sum(s => s.EffectiveTotalUSD);
         HiddenByFilterCount = _pageBuffer.Count - visible.Count;
+        NotifyInvoiceNavigationCanExecute();
     }
 }
