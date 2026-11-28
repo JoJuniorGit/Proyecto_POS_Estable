@@ -810,7 +810,7 @@
                                     Command="{Binding HoldOrderCommand}"
                                     Height="54"
                                     materialDesign:ButtonAssist.CornerRadius="8"
-                                    ToolTip="Guardar pedido en Cuentas Abiertas (requiere cliente registrado)">
+                                    ToolTip="Guardar pedido como Pedido Guardado (requiere cliente registrado)">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
                                         <Setter Property="IsEnabled" Value="True"/>

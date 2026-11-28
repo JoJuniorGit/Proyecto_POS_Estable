@@ -245,7 +245,7 @@ public class CheckoutUxTests
         Assert.True(vm.HasValidPayments);
         Assert.True(vm.IsFullLiquidation);
         Assert.True(vm.CanFinalize);
-        Assert.Equal("Liquidar cuenta", vm.FinalizeSaleButtonLabel);
+        Assert.Equal("Liquidar pedido", vm.FinalizeSaleButtonLabel);
     }
 
     [Fact]

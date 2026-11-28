@@ -271,7 +271,7 @@ function MainApp() {
           title={completedHoldSuccess.title}
           badgeText={completedHoldSuccess.badgeText}
           message={completedHoldSuccess.message}
-          buttonText="Ver Cuentas Abiertas"
+          buttonText="Ver Pedidos Guardados"
           onClose={handleCloseHoldSuccess}
         />
       )}

@@ -123,7 +123,7 @@ export default function PendingOrderDesktopRow({ sale, isExpanded, lockInfo, isE
                   <ShieldCheck size={18} className="text-primary" /> Historial de Abonos
                 </h4>
                 {sale.payments.length === 0 ? (
-                  <p className="ppo-no-abonos">No hay abonos registrados para esta cuenta aún.</p>
+                  <p className="ppo-no-abonos">No hay abonos registrados para este pedido aún.</p>
                 ) : (
                   <table className="w-full ppo-detail-table">
                     <thead>

@@ -24,7 +24,7 @@ const NAV_SECTIONS = [
     label: 'PRINCIPAL',
     items: [
       { id: 'pos', label: 'Punto de Venta', icon: ShoppingCart },
-      { id: 'pending', label: 'Cuentas Abiertas', icon: Clock },
+      { id: 'pending', label: 'Pedidos Guardados', icon: Clock },
       { id: 'pickups', label: 'Retiros Pendientes', icon: PackageCheck },
       { id: 'credit', label: 'Cuentas por Cobrar', icon: HandCoins },
     ],
